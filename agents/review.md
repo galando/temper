@@ -54,6 +54,7 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- Wait for every test run in the foreground. Never return while a run goes on in the background: the stage ends when you return.
 - An empty findings ledger is not a review. Always record the `review completed` row.
 - Report every CRITICAL and HIGH finding in the panel, never only the top issues.
 - Record every finding as evidence, also on a Review after a loop back (the loop empties the

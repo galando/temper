@@ -89,6 +89,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -137,6 +139,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -377,6 +380,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -425,6 +430,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -666,6 +672,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": false
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -735,6 +743,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -981,6 +990,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -1050,6 +1061,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -1291,6 +1303,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -1360,6 +1374,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -1595,6 +1610,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -1664,6 +1681,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -1904,6 +1922,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -1973,6 +1993,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -2122,6 +2143,64 @@ export const VIEWS: Record<string, unknown> = {
  },
  "build-fail": {
   "ask": {
+   "more": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage build --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Build: the check failed (tests pass: 2 tests fail: unit/app.test.ts). Run Build again? More options."
+    },
+    "run_id": "run-pw",
+    "stage": "build",
+    "step": 2
+   },
    "options": [
     {
      "calls": [
@@ -2186,10 +2265,10 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-     "label": "Save for later",
-     "move": "pause",
-     "stop": true
+     "description": "Make a small change, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
     }
    ],
    "question": {
@@ -2209,8 +2288,8 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Override and continue"
      },
      {
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later"
+      "description": "Make a small change, Save for later",
+      "label": "More options"
      }
     ],
     "question": "Build: the check failed (tests pass: 2 tests fail: unit/app.test.ts). Run Build again?"
@@ -2305,6 +2384,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -2353,6 +2434,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -2505,6 +2587,64 @@ export const VIEWS: Record<string, unknown> = {
  },
  "build-pass": {
   "ask": {
+   "more": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage build --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Build: the check passed. Continue to Review? More options."
+    },
+    "run_id": "run-pw",
+    "stage": "build",
+    "step": 2
+   },
    "options": [
     {
      "calls": [
@@ -2547,10 +2687,10 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-     "label": "Save for later",
-     "move": "pause",
-     "stop": true
+     "description": "Make a small change, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
     }
    ],
    "question": {
@@ -2570,8 +2710,8 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Loop back to Plan"
      },
      {
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later"
+      "description": "Make a small change, Save for later",
+      "label": "More options"
      }
     ],
     "question": "Build: the check passed. Continue to Review?"
@@ -2666,6 +2806,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -2714,6 +2856,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -2947,6 +3090,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -2995,6 +3140,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -3199,6 +3345,35 @@ export const VIEWS: Record<string, unknown> = {
      }
     },
     {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
+     ],
+     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix of my own"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
+    },
+    {
      "calls": [],
      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
      "label": "Save for later",
@@ -3217,6 +3392,10 @@ export const VIEWS: Record<string, unknown> = {
      {
       "description": "Skip this check with your reason; the report shows it.",
       "label": "Override and continue"
+     },
+     {
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "label": "Make a small change"
      },
      {
       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -3321,6 +3500,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": false
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -3390,6 +3571,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -3542,6 +3724,77 @@ export const VIEWS: Record<string, unknown> = {
  },
  "check-pass": {
   "ask": {
+   "more": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper state set pr stacked",
+       "/plugin/scripts/temper state advance check_complete commit"
+      ],
+      "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
+      "label": "Commit and open stacked PRs",
+      "move": "advance"
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
+       "label": "Commit and open stacked PRs"
+      },
+      {
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Check: more options."
+    },
+    "run_id": "run-pw",
+    "stage": "check",
+    "step": 4
+   },
    "options": [
     {
      "calls": [
@@ -3576,11 +3829,20 @@ export const VIEWS: Record<string, unknown> = {
      }
     },
     {
+     "calls": [
+      "/plugin/scripts/temper state set pr one",
+      "/plugin/scripts/temper state advance check_complete commit"
+     ],
+     "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+     "label": "Commit and open PR",
+     "move": "advance"
+    },
+    {
      "calls": [],
-     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-     "label": "Save for later",
-     "move": "pause",
-     "stop": true
+     "description": "Commit and open stacked PRs, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
     }
    ],
    "question": {
@@ -3596,8 +3858,12 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Loop back to Build"
      },
      {
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later"
+      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+      "label": "Commit and open PR"
+     },
+     {
+      "description": "Commit and open stacked PRs, Save for later",
+      "label": "More options"
      }
     ],
     "question": "Check: the check passed. Commit?"
@@ -3698,6 +3964,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -3767,6 +4035,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -4000,6 +4269,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -4069,6 +4340,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -4090,7 +4362,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Check runs.",
+   "say": "Check: the Check agent is working on sonnet. The run goes on when it returns.",
    "stage": "check",
    "steps": []
   },
@@ -4201,7 +4473,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Check runs.",
+  "status": "Check: the Check agent is working on sonnet. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -4247,6 +4519,35 @@ export const VIEWS: Record<string, unknown> = {
      }
     },
     {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage commit --reason '{reason}'"
+     ],
+     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix of my own"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
+    },
+    {
      "calls": [],
      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
      "label": "Save for later",
@@ -4261,6 +4562,10 @@ export const VIEWS: Record<string, unknown> = {
      {
       "description": "Skip the failed gates with your reason and commit.",
       "label": "Override and commit"
+     },
+     {
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "label": "Make a small change"
      },
      {
       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -4365,6 +4670,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -4434,6 +4741,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -4602,6 +4910,35 @@ export const VIEWS: Record<string, unknown> = {
      "description": "The commit goes on; the report stays the one in the terminal.",
      "label": "Not now",
      "move": null
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage commit --reason '{reason}'"
+     ],
+     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix of my own"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
     }
    ],
    "question": {
@@ -4615,6 +4952,10 @@ export const VIEWS: Record<string, unknown> = {
      {
       "description": "The commit goes on; the report stays the one in the terminal.",
       "label": "Not now"
+     },
+     {
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "label": "Make a small change"
      }
     ],
     "question": "Every gate passed. The report is above. Write it as an HTML page too, before the commit?"
@@ -4715,6 +5056,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -4784,6 +5127,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -5023,6 +5367,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -5092,6 +5438,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -5336,6 +5683,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -5405,6 +5754,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -5649,6 +5999,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -5718,6 +6070,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -6040,6 +6393,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -6088,6 +6443,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -6457,6 +6813,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -6505,6 +6863,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -6853,6 +7212,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -6901,6 +7262,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -7141,6 +7503,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -7189,6 +7553,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -7210,7 +7575,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Design runs.",
+   "say": "Design: the Design agent is working on opus. The run goes on when it returns.",
    "stage": "design",
    "steps": []
   },
@@ -7328,7 +7693,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Design runs.",
+  "status": "Design: the Design agent is working on opus. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -7417,6 +7782,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [],
   "drift": {
    "header": "Scope drift",
@@ -7429,6 +7796,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": true,
@@ -7655,6 +8023,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -7703,6 +8073,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -7931,6 +8302,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -7979,6 +8352,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -8140,6 +8514,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [],
   "drift": {
    "header": "Scope drift",
@@ -8152,6 +8528,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -8169,7 +8546,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Intent runs.",
+   "say": "Intent: the Intent agent is working on opus. The run goes on when it returns.",
    "stage": "intent",
    "steps": []
   },
@@ -8260,7 +8637,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Intent runs.",
+  "status": "Intent: the Intent agent is working on opus. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -8475,6 +8852,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -8523,6 +8902,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -8869,6 +9249,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -8917,6 +9299,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -9274,6 +9657,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -9322,6 +9707,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -9507,6 +9893,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -9555,6 +9943,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -9572,7 +9961,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Plan runs.",
+   "say": "Plan: the Plan agent is working on opus. The run goes on when it returns.",
    "stage": "plan",
    "steps": []
   },
@@ -9663,7 +10052,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Plan runs.",
+  "status": "Plan: the Plan agent is working on opus. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -9746,6 +10135,35 @@ export const VIEWS: Record<string, unknown> = {
       "move": null
      },
      {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage review --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
       "calls": [],
       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
       "label": "Save for later",
@@ -9760,6 +10178,10 @@ export const VIEWS: Record<string, unknown> = {
       {
        "description": "Check the changed modules' depth, then come back here.",
        "label": "Architecture Depth Review"
+      },
+      {
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
       },
       {
        "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -9954,6 +10376,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -10023,6 +10447,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -10283,11 +10708,33 @@ export const VIEWS: Record<string, unknown> = {
       "move": null
      },
      {
-      "calls": [],
-      "description": "Walk through the change.",
-      "do": "Use the teach-me skill on this stage's work, then ask this question again.",
-      "label": "Teach Me",
-      "move": null
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage review --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
      },
      {
       "calls": [],
@@ -10310,8 +10757,8 @@ export const VIEWS: Record<string, unknown> = {
        "label": "Grill Me"
       },
       {
-       "description": "Walk through the change.",
-       "label": "Teach Me"
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
       },
       {
        "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -10485,6 +10932,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -10554,6 +11003,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -10787,6 +11237,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -10835,6 +11287,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -10856,7 +11309,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Review runs.",
+   "say": "Review: the Review agent is working on sonnet. The run goes on when it returns.",
    "stage": "review",
    "steps": []
   },
@@ -10967,7 +11420,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Review runs.",
+  "status": "Review: the Review agent is working on sonnet. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"

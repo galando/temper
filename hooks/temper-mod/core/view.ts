@@ -154,7 +154,9 @@ export function buildView(input: ViewInput): View {
   const stage = cliStage(rv.run?.stage ?? null)
   const wait = waitOf(input, stage)
   const here = rv.stages.find(s => s.mark === 'here')
-  const failed = here?.failed ?? []
+  // While the person's answer is in and Claude carries it out (wait: chosen), no failed row shows: the failure they answered is
+  // being mended. The rows come back on the next view if the check still fails.
+  const failed = wait === 'chosen' ? [] : (here?.failed ?? [])
   const groups = groupsOf(rv)
   const criteria = rv.criteria.map(c => ({ id: c.id, text: c.text || c.id, status: c.status === 'passed' ? ('passed' as const) : ('open' as const), priority: c.priority, evidence: c.evidence }))
   return {
@@ -163,7 +165,7 @@ export function buildView(input: ViewInput): View {
     enforcement: input.enforcement,
     stages: rv.stages
       .filter((s): s is typeof s & { id: Stage } => isStage(s.id))
-      .map(s => ({ id: s.id, label: s.label || stageLabel(s.id), mark: MARKS[s.mark] ?? 'pending', failed: s.verdict === 'FAIL', skip: s.skipped?.reason ?? null })),
+      .map(s => ({ id: s.id, label: s.label || stageLabel(s.id), mark: MARKS[s.mark] ?? 'pending', failed: s.verdict === 'FAIL' && (s.mark !== 'here' || failed.length > 0), skip: s.skipped?.reason ?? null })),
     wait,
     status: statusOf(input, stage, wait),
     detail: detailOf(rv, stage, groups, failed),
@@ -243,6 +245,7 @@ const VERB: Record<Stage, string> = {
   review: 'Reviewing',
   check: 'Checking',
   commit: 'Committing',
+  pipeline: 'Reading the checks',
 }
 
 // "Building · criterion 2 of 5": the criterion being worked is the first not yet passed.

@@ -54,7 +54,7 @@ assert_eq "round 4, 7: with no intent.md the approval accepts nothing" "0" \
   "$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if 'intent accept' in x)")"
 mv r4-intent.md .temper/specs/demo/intent.md
 _at build; gfail build "RED then GREEN" "have red=0 green=0"
-assert_eq "round 4, 7: a walked stage whose check failed can be run now, or skipped" "Run Build (Recommended)|Override and continue|Save for later" "$(labels)"
+assert_eq "round 4, 7: a walked stage whose check failed can be run now, or skipped" "Run Build (Recommended)|Override and continue|Make a small change|Save for later" "$(labels)"
 CALL="$(nx "d['ask']['options'][0]['calls'][0]")"; eval "$CALL" >/dev/null 2>&1
 assert_eq "round 4, 7: Run Build moves the door's entry to Build, so Build runs and is no longer walked" "build|work|1" \
   "$("$TEMPER" state get enter)|$(nx "d['action'] + '|' + str(int(not any('gate build' == c.split('temper ', 1)[-1] for c in d.get('calls', []))))")"
@@ -213,7 +213,7 @@ assert_eq "round 4, 2: the task's commit holds the project's own files" "package
 assert_eq "round 4, 2: integrate merges them into the project" "PASS|echo two" \
   "$(python3 -c "import json; print(json.load(open('$N/packages/app/.temper/groups.json'))['integration']['verdict'])")|$(cat "$N/packages/app/src/parser.sh")"
 (cd "$N/packages/app" && bash "$REPO_ROOT/scripts/guards/install.sh") >/dev/null 2>&1
-(cd "$N/packages/app" && "$TEMPER" state init pw2 && echo code > app.js && git add app.js) >/dev/null 2>&1
+(cd "$N/packages/app" && "$TEMPER" state init pw2 --branch "$(git -C "$N" branch --show-current)" && echo code > app.js && git add app.js) >/dev/null 2>&1   # the hook gates the run's own branch (9.7.5)
 (cd "$N/packages/app" && git -c user.email=t@t -c user.name=t commit -qm "code while every gate fails") >/dev/null 2>&1; rc=$?
 assert_eq "round 4, 3: the native hook gates the commit of a project below the top of its repository" "1|init" \
   "$rc|$(git -C "$N" log --format=%s -1 | sed 's/^Merge.*/init/; s/^merge.*/init/; s/^feat.*/init/; s/^spec$/init/')"
@@ -416,7 +416,7 @@ rm -rf .git
 # --- your question: which model runs each stage is shown before the launch and in the report ---
 fresh
 assert_eq "model: the line next gives before a stage runs names its model" "1" \
-  "$(nx "int(d['say'] == 'Intent runs on %s.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
+  "$(nx "int(d['say'] == 'Intent: the Intent agent is working on %s. The run goes on when it returns.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
 "$TEMPER" usage add --stage intent --model opus --ms 5 >/dev/null 2>&1
 assert_eq "model: the report's stage table names the model each stage was launched on" "1|opus" \
   "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
@@ -489,6 +489,7 @@ assert_eq "live run 6: a loop back to Build from a door runs the fix pass on tha
   "$("$TEMPER" state get enter)|$(nx "d['agents'][0]['type']")|$(nx "sum(1 for c in d['agents'][0]['after'] if c.endswith(' integrate'))")"
 "$TEMPER" evidence add --stage build --phase red --claim 'test: the regression test fails' --exit 1 >/dev/null 2>&1
 "$TEMPER" evidence add --stage build --phase green --claim 'test: the suite passes' --exit 0 >/dev/null 2>&1
+_scen
 assert_exit "live run 6: the fix pass passes Build with its own red and green runs" 0 "$TEMPER" gate build
 gpass build review; "$TEMPER" state loop build plan --reason 'a case is missing' >/dev/null 2>&1
 assert_eq "live run 6: a loop back to Plan drops what the earlier run built, so Build builds the plan again" "|plan" \
@@ -525,7 +526,7 @@ assert_eq "live run 7: a failing integration run beside a passing unit run fails
 assert_eq "live run 7: a later passing run of the same command clears it" "1" \
   "$("$TEMPER" gate check 2>&1 | grep -c '\[v\] tests pass')"
 _at check; gpass check
-assert_eq "live run 7: a passed Check offers Loop back to Build beside Commit" "Commit (Recommended)|Loop back to Build|Save for later" "$(labels)"
+assert_eq "live run 7: a passed Check offers Loop back to Build beside Commit" "Commit (Recommended)|Loop back to Build|Commit and open PR|More options" "$(labels)"
 
 # --- live run 9: Review writes no code; a change a Review agent leaves in the project fails its check ---
 setup; rm -rf .git bare; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null

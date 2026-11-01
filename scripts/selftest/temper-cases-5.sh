@@ -1,7 +1,7 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
 # Build runs in groups of small tasks: the one Build (ADR 0013)
 setup
-assert_eq "model --all prints the 8 stage lines plus task= and task-escalation=" "10|1|1" \
+assert_eq "model --all prints the 9 stage lines plus task= and task-escalation=" "11|1|1" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
 
 # Scenario: Task and escalation models resolve from config with defaults [AC-06, AC-01]
@@ -9,7 +9,7 @@ setup
 printf 'build:\n  mode: grouped\n' >> .claude/temper.config
 assert_eq "model task defaults to claude-haiku-5-5" "claude-haiku-5-5" "$("$TEMPER" model task)"
 assert_eq "model task-escalation defaults to sonnet" "sonnet" "$("$TEMPER" model task-escalation)"
-assert_eq "grouped on: model --all appends task= and task-escalation=" "10|task=claude-haiku-5-5|task-escalation=sonnet" \
+assert_eq "grouped on: model --all appends task= and task-escalation=" "11|task=claude-haiku-5-5|task-escalation=sonnet" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep '^task=')|$("$TEMPER" model --all | grep '^task-escalation=')"
 setup
 printf 'build:\n  mode: grouped\n  grouped:\n    task-model: haiku\n    escalation-model: opus\n' >> .claude/temper.config
@@ -257,7 +257,7 @@ assert_eq "schedule: schedule writes nothing" "no" "$([[ -e .temper/groups.json 
 sg_setup; sg_state '{}'
 assert_eq "schedule: independent tasks of started groups are ready, ordered by task" "1,3" "$(sg_ready)"
 assert_eq "schedule: a ready line carries task, group, the task's own worktree, project, model and attempt" \
-  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "agent_model": "haiku", "attempt": 1}' \
+  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "agent_model": "haiku", "attempt": 1, "manual": false}' \
   "$("$TEMPER" schedule | head -1)"
 
 # agent_model: the alias the Agent tool takes, derived from the model id (feedback #4)
@@ -1178,7 +1178,7 @@ assert_eq "task brief: states the panel rule and the plugin folder rule" "1|1" \
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
-assert_eq "model --all has 10 lines with the task brief present" "10" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
+assert_eq "model --all has 10 lines with the task brief present" "11" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0): plan brief, plan reference and templates for grouped output ---
@@ -1549,4 +1549,40 @@ assert_eq "F6: six waiters on a stale lock lose no row, leave no .lock.dead fold
 assert_eq "F7: reference/plan.md names the test file in the declared-files sentence" "1" \
   "$(grep -c 'including its test file\.' "$REPO_ROOT/reference/plan.md")"
 
+setup
+
+# --- The audit of the port: integrate rows (F8), the integration timeout (F17), the covered accept commit (F19), Maven routing (F22) ---
+gi_all; f9_intent "bash -c 'exit 0'" "bash -c 'exit 5'"
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "F8: a failing scenario test does not fail the integration, and each scenario prints one line (name, exit, seconds)" "0|1|1" \
+  "$rc|$(grep -c "^scenario 'alpha': exit 0, [0-9.]* s$" <<<"$out")|$(grep -c "^scenario 'beta': exit 5, [0-9.]* s$" <<<"$out")"
+assert_eq "F8: integrate records one CLI-run row per scenario, with the exit and the claim" "alpha:0:cli:scenario test at integration|beta:5:cli:scenario test at integration" \
+  "$(python3 -c "import json; print('|'.join('%s:%s:%s:%s' % (r['scenario'], r['exit_code'], r['executed_by'], r['claim']) for r in json.load(open('.temper/evidence/build.json')) if r.get('scenario')))")"
+gi_all
+sed -i 's/^\*\*Integration:\*\*.*/**Integration:** `sleep 5`/' .temper/specs/demo/tasks.md
+python3 -c "
+import json
+for f in ('.temper/groups.json', '.temper/build-state.json'):
+    d = json.load(open(f)); d.pop('plan_hash', None); json.dump(d, open(f, 'w'))"
+out="$(TEMPER_INTEGRATION_TIMEOUT_S=1 "$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "F17: TEMPER_INTEGRATION_TIMEOUT_S limits the integration suite, which fails with exit 124" "1|1" "$rc|$(grep -c 'integration suite failed (exit 124)' <<<"$out")"
+gi_setup
+"$TEMPER" task start 1 >/dev/null 2>&1
+ST_EXIT=0 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+"$TEMPER" task gate 1 --model claude-haiku-5-5 --ms 5 >/dev/null 2>&1
+mkdir -p .claude/worktrees/temper-demo-T1/unit; echo 'exit 0' > .claude/worktrees/temper-demo-T1/unit/a_test.sh
+"$TEMPER" task accept 1 --reason 'an earlier task built it' >/dev/null 2>&1
+assert_eq "F19: task accept commits the tests as test(<slug>): Task N ... (built by an earlier task)" "1" \
+  "$(git log --all --format=%s | grep -c '^test(demo): Task 1 Alpha (built by an earlier task)')"
+gi_setup
+sed -i '0,/^\*\*Test:\*\*.*/s//**Test:** `mvn test`/' .temper/specs/demo/tasks.md
+python3 -c "
+import json
+for f in ('.temper/groups.json', '.temper/build-state.json'):
+    d = json.load(open(f)); d.pop('plan_hash', None); json.dump(d, open(f, 'w'))"
+printf 'import sys\nprint("LOOP-RAN", len(sys.argv))\n' > fake-loop.py
+"$TEMPER" task start 1 >/dev/null 2>&1
+assert_eq "F22: task test hands a Maven test command to the Maven loop (TEMPER_MAVEN_LOOP overrides it)" "1" \
+  "$(TEMPER_MAVEN_LOOP="$PWD/fake-loop.py" ST_EXIT=0 "$TEMPER" task test 1 --phase green 2>&1 | grep -c '^LOOP-RAN')"
+rm -f fake-loop.py
 setup

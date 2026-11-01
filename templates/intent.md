@@ -78,7 +78,9 @@ context and reads only this file, so an answer not written here gets asked again
 {Ships empty. Plan derives scenarios from the measured blast radius — one fenced
 ```gherkin block per scenario, grouped under #### Happy Path / #### Error Paths /
 #### Edge Cases, each carrying Note: (unit|integration|mock|manual) and
-Covers: AC-NN lines. Do NOT write placeholder Scenario: blocks here: the check
+Covers: AC-NN and Test: lines. Test: is a scoped shell command that proves the scenario on the
+merged tree and names the test the plan's task writes (for example
+`Test: pytest unit/test_cli.py::test_color -q`). Do NOT write placeholder Scenario: blocks here: the check
 gate demands a passing test for every Scenario: line and cannot tell a
 placeholder from a real one.}
 

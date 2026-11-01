@@ -13,6 +13,11 @@ Standard library only.
 """
 import hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
+from run_env import run_cmd, test_env  # noqa: F401
+import scenario_ops
+import maven_loop
+import tasks_md
+
 # The project's folder from the top of its repository ("" at the top). git status and git diff name a path from the
 # top of the worktree; the plan names it from the project folder, so each is read from there (a path outside the
 # project reads as ../..., which no task declares).
@@ -101,36 +106,8 @@ def load_run(gfile):
     except Exception:
         return {}
 
-# A credential is no input of a test. The commands the CLI runs (a task's test, a group's Validate command, the
-# integration suite) get the environment without the variables whose names say they hold one: a key, a token, a
-# secret, a password or passphrase, credentials, an auth socket or helper. Every other variable passes as it is.
-CREDENTIAL_NAME = re.compile(r'PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|APIKEY|ASKPASS|(?:^|_)(?:KEYS?|TOKENS?|SECRETS?|AUTH|PAT)(?:_|$)')
-CREDENTIAL_NAMES = {'GPG_AGENT_INFO', 'GNUPGHOME', 'KRB5CCNAME'}
-
-def test_env():
-    """The environment for a command the CLI runs: this one, without its credential-named variables."""
-    return {k: v for k, v in os.environ.items()
-            if not CREDENTIAL_NAME.search(k.upper()) and k.upper() not in CREDENTIAL_NAMES}
-
-def run_cmd(wt, timeout, cmd):
-    """Run cmd (one string runs through bash -c) in wt with a kill timeout and test_env(); returns (output bytes, exit)."""
-    args = ['bash', '-c', cmd[0]] if len(cmd) == 1 else cmd
-    try:
-        p = subprocess.Popen(args, cwd=wt, env=test_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                             start_new_session=True)
-        try:
-            out, _ = p.communicate(timeout=float(timeout))
-            rc = p.returncode if p.returncode >= 0 else 128 - p.returncode
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except OSError:
-                pass
-            out, _ = p.communicate()
-            rc = 124
-    except OSError as e:
-        out, rc = ('%s\n' % e).encode(), 127
-    return out, rc
+# The environment and the runner of every command the CLI runs (credential-named variables left out, the folder the command
+# runs in first on PYTHONPATH) are in run_env.py, shared with the scenario tests.
 
 def show(out, rc, keep=12):
     """Print a suite's output for the orchestrator: a passing run only its last lines (the runner's summary), since the
@@ -169,6 +146,7 @@ def ctx(plan, run, n):
     attempts = rt.get('attempts') or []
     return {'n': n, 'title': t['title'], 'group': g['id'], 'files': t['files'], 'block': t['block'],
             'test': t['test'], 'context': g['context'], 'status': status,
+            'manual': bool(t.get('manual')), 'confirm': t.get('confirm', ''), 'confirmed_by': rt.get('confirmed_by', ''),
             # one worktree per task: a task works in its own worktree (made by task start from the group branch, removed
             # when its gate passes or fails), never in the group worktree, which only takes merges and the group Validate
             'worktree': rt.get('worktree') or rg.get('worktree', ''), 'gworktree': rg.get('worktree', ''),
@@ -294,7 +272,13 @@ elif mode == 'show':
         fail('group %s is not started (temper group start %s)' % (c['group'], c['group']))
     head = 'TASK %d (group %s, attempt %d): %s\nWORKTREE: %s\nPROJECT:  %s\nDECLARED FILES: %s\n' % (
         n, c['group'], c['attempt'], c['title'], os.path.join(project, c['worktree'], PREFIX).rstrip('/'), project, ', '.join(c['files']))
-    body = head + '--- TASK ---\n' + c['block'] + '\n--- GROUP CONTEXT ---\n' + c['context'] + '\n'
+    body = head + '--- TASK ---\n' + c['block'] + '\n'
+    # F9: the scenarios the task owes, with the commands that prove them; the names are exact
+    owes = scenario_ops.owed(plan, os.path.join('.temper', 'specs', run.get('slug', ''), 'intent.md'), n)
+    if owes:
+        body += '--- SCENARIO TESTS (write these tests with these exact names; a test named otherwise does not count) ---\n'
+        body += ''.join('%s: %s\n' % (name, cmd) for name, cmd in owes)
+    body += '--- GROUP CONTEXT ---\n' + c['context'] + '\n'
     # an existing test of the project, so the agent copies its style, imports and fixtures instead of guessing them
     pat = pattern_test(os.path.join(project, c['worktree'], PREFIX).rstrip('/'), c['test'], c['files'], [f for t in plan['tasks'] for f in t['files']])
     if pat:
@@ -327,7 +311,13 @@ elif mode == 'testrun':
     wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
     cmd = sys.argv[10:]   # argv[9] is the '--' separator
     before = untracked(wt)
-    out, rc = run_cmd(wt, timeout, cmd)
+    if len(cmd) == 1 and maven_loop.is_maven(cmd[0]):   # F22: a Maven test runs the declared test classes only, offline
+        slug = load_run(os.environ.get('TEMPER_GROUPS_FILE', '')).get('slug', '')
+        task = next((x for x in tasks_md.parse(os.path.join('.temper', 'specs', slug, 'tasks.md'))['tasks'] if x['n'] == int(n)), {'files': []})
+        loop = os.environ.get('TEMPER_MAVEN_LOOP') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'maven_loop.py')
+        out, rc = run_cmd(wt, timeout, ['python3', '-E', '-s', loop, 'run', wt, str(timeout), cmd[0]] + task['files'])
+    else:
+        out, rc = run_cmd(wt, timeout, cmd)
     # F5: untracked paths that first appear during this CLI run (__pycache__, coverage files, logs) are the test
     # command's byproducts; the task verdict does not count them as undeclared changes
     byproducts = sorted(untracked(wt) - before)
@@ -569,6 +559,11 @@ elif mode == 'verdict':
                       bad[-1].get('exit_code'), red_why(bad[-1])))
     elif green != len(mine) - 1:
         reason = 'the final run of this attempt is not green'
+    if c['manual']:   # a manual task has no RED or GREEN: the person confirms it by hand (F12)
+        reason = ''
+    if not reason and not c['manual']:   # F9: the scenario tests the task owes, run in its worktree
+        reason = scenario_ops.run_owed(scenario_ops.owed(plan, os.path.join('.temper', 'specs', run.get('slug', ''), 'intent.md'), n), wt,
+                                       os.environ.get('TEMPER_TASK_TEST_TIMEOUT_S', '600'))
     # the worktree's own run state (the commit hook writes .temper/gates.json there) is not the task's change
     def internal(p):
         return p.startswith('.temper/') or p.startswith('.claude/worktrees/')
@@ -612,7 +607,13 @@ elif mode == 'verdict':
     if reason:
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
-    print(json.dumps({'verdict': 'FAIL' if reason else 'PASS', 'reason': reason, 'commit_paths': mine_changed,
+    verdict = 'FAIL' if reason else ('AWAIT' if c['manual'] and not c['confirmed_by'] else 'PASS')
+    # F19: the last run of the attempt was a RED that passed, with no GREEN: an earlier task built this (covered)
+    red_cmd = red_tail = ''
+    if not c['manual'] and mine and mine[-1].get('phase') == 'red' and mine[-1].get('exit_code') == 0 and green is None:
+        verdict, red_cmd = 'COVERED', mine[-1].get('cmd') or ''
+        red_tail = '\n'.join((mine[-1].get('output') or '').rstrip('\n').split('\n')[-6:])[:500]
+    print(json.dumps({'verdict': verdict, 'red_cmd': red_cmd, 'red_tail': red_tail, 'reason': reason, 'commit_paths': mine_changed,
                       'foreign_shas': foreign,
                       'output': tail, 'attempt': c['attempt'], 'title': c['title'], 'group': c['group'],
                       'slug': c['slug']}))

@@ -2,51 +2,7 @@
 # (.temper/view.json), and refuses to leave a stage whose check failed unless the person skipped it.
 # Sourced by test-temper.sh (assert_eq, assert_exit, setup, $TEMPER).
 
-_ev() { # _ev <code> <json text>: runs the code over d (the JSON); the last "; " part is printed
-  python3 - "$1" "$2" <<'PY' 2>&1
-import json, sys
-code, text = sys.argv[1], sys.argv[2]
-d = json.loads(text)
-*stmts, last = code.split('; ')
-env = {'d': d}
-for st in stmts:
-    exec(st, env)
-print(eval(last, env))
-PY
-}
-nx() { _ev "$1" "$("$TEMPER" next --json 2>/dev/null)"; }   # one value of `temper next --json`
-vw() { _ev "$1" "$(cat .temper/view.json 2>/dev/null)"; }      # one value of .temper/view.json
-labels() { nx "'|'.join(o['label'] for o in d['ask']['question']['options'])"; }
-gpass() { # gpass <stage>...: record a PASS verdict for each stage, as a gate run would
-  python3 - "$@" <<'PY'
-import json, sys
-p = '.temper/gates.json'
-try:
-    d = json.load(open(p))
-except Exception:
-    d = {}
-for s in sys.argv[1:]:
-    d[s] = {'verdict': 'PASS', 'requirements': [{'name': 'all', 'pass': True, 'detail': 'ok'}]}
-json.dump(d, open(p, 'w'))
-PY
-}
-gfail() { # gfail <stage> <row name> <detail>: record a FAIL verdict with one failed row
-  python3 - "$1" "$2" "$3" <<'PY'
-import json, sys
-p = '.temper/gates.json'
-try:
-    d = json.load(open(p))
-except Exception:
-    d = {}
-d[sys.argv[1]] = {'verdict': 'FAIL', 'requirements': [{'name': sys.argv[2], 'pass': False, 'detail': sys.argv[3]}]}
-json.dump(d, open(p, 'w'))
-PY
-}
-fresh() { # a new run of the demo spec at Intent, with the run state written by the CLI
-  setup
-  rm -f .temper/groups.json .temper/view.json
-  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
-}
+# The helpers this file and the later ones use (_ev, nx, vw, labels, gpass, gfail, fresh) are in case-helpers.sh.
 
 # --- no run ---
 setup; "$TEMPER" state clear >/dev/null 2>&1
@@ -159,10 +115,10 @@ assert_eq "next: with the loop budget spent there is no Loop back option" "0" "$
 fresh; gpass intent plan build review
 for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 gpass check
-assert_eq "next: Check PASS is the one Commit question, with a loop back for what it passed with a warning" "Commit (Recommended)|Loop back to Build|Save for later|state advance check_complete commit" \
+assert_eq "next: Check PASS is the one Commit question, with a loop back for what it passed with a warning" "Commit (Recommended)|Loop back to Build|Commit and open PR|More options|state advance check_complete commit" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['options']) + '|' + d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]")"
 echo '[]' > .temper/specs/demo/config-suggestions.json
-assert_eq "next: config suggestions add their option" "Commit (Recommended)|Loop back to Build|Review config suggestions|Save for later" "$(labels)"
+assert_eq "next: config suggestions add their option; the small change goes under More options" "Commit (Recommended)|Loop back to Build|Commit and open PR|More options" "$(labels)"
 
 # --- the commit stage ---
 "$TEMPER" state advance check_complete commit >/dev/null 2>&1
@@ -296,7 +252,7 @@ assert_eq "next: Design FAIL" "Loop back to Plan|Override and continue|Save for 
 fresh; gpass intent plan build review
 for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 gfail check "tests pass" "no passing test-run evidence recorded"
-assert_eq "next: Check FAIL" "Loop back to Build (Recommended)|Override and continue|Save for later" "$(labels)"
+assert_eq "next: Check FAIL on a missing measurement (no test run recorded) offers Run Check again first, the small change under More options" "Run Check again (Recommended)|Loop back to Build|Override and continue|More options" "$(labels)"
 assert_eq "next: a question names the gate of its stage" "gate check" "$(nx "d['gate'].split('temper ', 1)[1]")"
 assert_eq "next: the question names the failed row" "1" "$(nx "int('no passing test-run evidence recorded' in d['ask']['question']['question'])")"
 
@@ -477,6 +433,8 @@ setup
 # views are a generated module). Regenerated here: a change of the view or of a question shows up as a difference.
 assert_eq "view fixtures: the module the mod's tests import is what the CLI writes now (run make-view-fixtures.sh)" "same" \
   "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" && echo same || echo differs)"
+assert_eq "view fixtures: the second module (the states 9.7.5 added) is what the CLI writes now (make-view-fixtures.sh extra)" "same" \
+  "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" extra 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures-2.ts" && echo same || echo differs)"
 assert_eq "view fixtures: the next field carries the calls of the CLI's own action" "state advance build_complete review" \
   "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" <<'PY'
 import json, sys

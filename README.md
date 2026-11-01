@@ -7,11 +7,11 @@ The model never decides a verdict. With Claude Code 2.1.287 or later, a mod refu
 the current stage ([the mod](docs/mod.md)).
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Version](https://img.shields.io/badge/version-v9.7.4-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.7.5-blue)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](docs/mod.md#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-https://github.com/user-attachments/assets/ec84e98e-7c28-45f9-87c2-8df0b80e19b8
+https://github.com/user-attachments/assets/bcdfa051-4555-49dc-bbef-f672472b34db
 
 [Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [The mod](docs/mod.md) · [Haiku Build](docs/grouped-build.md) · [Releases](https://github.com/galando/temper/releases)
 
@@ -75,12 +75,14 @@ flowchart LR
   run's pane; at the end the run prints its report, and writes it as a page when you ask. It is not a
   sandbox: [Trust](docs/trust.md) lists what it does not see, and [the mod](docs/mod.md) has the details.
 
-https://github.com/user-attachments/assets/31a9f4dc-8860-41be-97ca-f03460630f2f
+https://github.com/user-attachments/assets/6c45dcb9-4386-4eaf-97f9-1e8d8739fcba
 
 ## What the mod reads and writes
 
 The mod makes no network, `process` or `env` call, starts no agent and writes no file itself. It sets no
 setting and runs no command.
+
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 
 - **Reads:** `.temper/view.json`, the one file the CLI writes for it. To find the project it looks for that
   file in the session folder and in up to 11 folders above it. It also reads its own options, store and
@@ -135,6 +137,32 @@ stop a hook of yours, prints one line to add to it. Temper never opens a Claude 
 project's or your home folder's: the guardrails pack prints its hook entries for you to add yourself. The
 full list is in
 [The mod](docs/mod.md#what-the-mod-reads-and-writes).
+
+## What's new in v9.7.5
+
+- A scenario criterion passes only from a test the CLI ran: every scenario has a `Test:` command, and `temper integrate` records it.
+- Plan writes a Context Map; the Context check is the CLI's own question (`temper plan review`).
+- Make a small change at Build, Review, Check and Commit, without a loop back; manual tasks; covered tasks the person accepts.
+- Commit can open draft pull requests (stacked, one per Build group), and an optional Pipeline stage reads their checks and proposes a fix.
+- `temper guards uninstall`, a commit hook that gates the run's branch only, and `temper next` in one process.
+
+Details: [CHANGELOG.md](CHANGELOG.md).
+
+## Working on several things at once
+
+A run owns the folder it is started in: while it is active, the mod refuses a write that does not belong to its stage, and the
+refusal names the run, the stage and the way out. Separate work gets its own folder and so its own run:
+
+- **A worktree per intent.** Start the other work with `claude --worktree <name>`; `/temper:temper` there is a run of its own.
+- **Make a small change.** At the Build, Review, Check and Commit questions, choose it to change the work yourself with no loop back:
+  `temper adhoc open --stage <stage> --reason '<why>'`, make the change, `temper adhoc close`. The change re-runs only what it
+  touches: Review of the changed files, then Check, then the commit gate (a change of docs only re-runs the stage's gate).
+- **The commit gate is branch scoped.** The hook gates a commit on the run's branch only. A commit on another branch passes with one
+  line and records nothing.
+- **Turning Temper off.** Disable the plugin, then run `temper guards uninstall` (it removes the Temper hook and its folder, unsets
+  `core.hooksPath` when it names that folder, and names a Temper line in a hook of your own, which you remove). To end a run,
+  `temper state clear`. After you disable the plugin the hook passes on its own once the plugin's files are gone, with one line
+  that names `temper guards uninstall`.
 
 ## Commands
 

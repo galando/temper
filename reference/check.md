@@ -43,7 +43,7 @@ missing *optional* tool.
 | 1 | Compile/build | STOP, show error, suggest fix | — |
 | 2 | Unit tests | STOP, show failing names | — |
 | 3 | Integration tests | STOP, show failing tests | none configured |
-| 4 | Coverage vs. `check.coverage-threshold` (default 80) | WARN | no coverage tool |
+| 4 | Coverage vs. `check.coverage-threshold` (default 80) | the gate FAILs without a recorded value | never skipped: with no coverage tool the gate fails until it is installed |
 | 4.5 | **Scenario verification** — see below | BLOCK on FAIL, WARN on MISSING | no intent.md |
 | 4.75 | Heuristic test-gap analysis | WARN | level 2 or 4.5 failed |
 | 4.85 | API diff / contract check | WARN (BLOCK if breaking + consumer not updated) | no API files changed |
@@ -176,4 +176,20 @@ Build while the budget allows, a skip with a reason, and Save for later). This s
   one fixes it, else note it as an accepted risk with a workaround if one exists.
 - **Missing tool:** skip that level, name the missing tool and point to its own install
   page (never print an install command), and never fail the whole pipeline for an
-  optional tool.
+  optional tool. The two measurements the gate needs are the exception: a test run and a coverage value. When the
+  tool for one is missing, say so in the summary, record nothing and estimate nothing: the gate fails on that row only,
+  and its question offers **Run Check again**. The person installs the tool and picks it; the person never records a
+  number by hand.
+
+## Maven
+
+A Maven group validates with `mvn verify` run once with JaCoCo on, so the suite and its coverage come from one run. A task's tests run
+only its declared test classes (`-Dtest=`, offline, `mvnd` when it is on PATH, else `mvn`), and GREEN needs a new surefire report for
+each class (`scripts/maven_loop.py`). Check never runs a second full Maven pass for coverage.
+
+## One suite run, with coverage
+
+Check runs the project's suite once. When the stack allows it, coverage is on in that same run; a second full run for coverage is
+never made. The coverage output goes under `.temper/check/` (`.temper/check/coverage.xml`, `.temper/check/htmlcov/`), which the
+blast radius skips along with `.coverage`, `htmlcov/`, `.pytest_cache/` and the other test caches. Task agents and the fix pass
+run scoped tests, never the full suite.

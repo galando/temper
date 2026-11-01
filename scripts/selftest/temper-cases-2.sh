@@ -16,6 +16,7 @@ assert_eq "evidence run records the observed exit code" "1" \
 assert_eq "evidence run keeps PROVEN on a nonzero exit (machine-observed, no downgrade)" "PROVEN" \
   "$(python3 -c "import json; print([e for e in json.load(open('.temper/evidence/build.json')) if e['claim']=='regression test red'][0]['label'])")"
 echo '- [x] t' > .temper/specs/demo/tasks.md
+_scen
 assert_exit "cli-executed RED+GREEN satisfies the build gate" 0 "$TEMPER" gate build
 
 # --- v9 hooks: protected paths, confirm-override ask tier, formatter, imports stdin ---
@@ -431,6 +432,10 @@ assert_eq "bare Scenario: lines FAIL scenarios in gherkin blocks" "yes" \
 
 setup
 cat > .temper/specs/demo/plan.md <<'EOF'
+## Context Map
+- use: intent.md - the accepted scope
+- reviewed: auto - every source is current and on topic
+
 ## Blast Radius
 - none
 
@@ -442,6 +447,10 @@ assert_exit "plan gate PASSes with a recorded cross-repo search" 0 "$TEMPER" gat
 
 setup
 cat > .temper/specs/demo/plan.md <<'EOF'
+## Context Map
+- use: intent.md - the accepted scope
+- reviewed: auto - every source is current and on topic
+
 ## Blast Radius
 - none
 EOF
@@ -535,6 +544,7 @@ assert_exit "a latest nonzero completion row FAILs the gate" 1 "$TEMPER" gate re
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 assert_exit "no feedback rows => requirement skipped" 0 "$TEMPER" gate build
 "$TEMPER" evidence add --stage build --phase feedback --claim "feedback #1: use the builder pattern" >/dev/null
 assert_exit "an unanswered feedback row FAILs the build gate" 1 "$TEMPER" gate build
@@ -740,7 +750,7 @@ setup; scope_fixture completed "" "- none"
 assert_exit "a completed intent without an Out of scope line PASSes" 0 "$TEMPER" gate intent
 setup; scope_fixture draft "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_exit "a draft may hold a Blocking question and still PASS" 0 "$TEMPER" gate intent
+assert_exit "a draft with a Blocking question open FAILs the Intent gate (9.7.5, F10)" 1 "$TEMPER" gate intent
 assert_eq "the gate names the Blocking question still open on the draft" "yes" "$(echo "$OUT" | grep -q 'Blocking question(s) still open on the draft' && echo yes || echo no)"
 setup; scope_fixture accepted "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
 assert_exit "an accepted intent with a Blocking question PASSes (not revisited)" 0 "$TEMPER" gate intent

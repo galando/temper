@@ -51,8 +51,12 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- Wait for every test run in the foreground. Never return while a run goes on in the background: the stage ends when you return.
+- Run the suite once, with coverage on in that same run when the stack allows it (pytest `--cov`, jest `--coverage`, JaCoCo with `mvn verify`). Never run the full suite a second time for coverage. Write the coverage output under `.temper/check/` and point `--artifact` there.
 - Run every command for real and record the exact command and exit code. Never
   estimate a coverage number.
+- When the tool for the tests or the coverage is missing, name it in the summary and tell the person to install it and
+  choose **Run Check again** at the gate. Never tell the person to record a number by hand, and record none yourself.
 - Point `--artifact` at the real coverage report. The CLI downgrades `PROVEN` when the
   file does not exist.
 - Trace every `Scenario:` to a test, not only the ones you are confident about, and

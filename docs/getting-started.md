@@ -31,6 +31,8 @@ folder's.
 On Claude Code 2.1.287 or later, the same install also loads the Temper mod. You get a stage bar
 that shows where the run is, and the mod refuses an edit outside the current stage and
 `--no-verify` on a commit. You still decide each gate in the same question as without the mod.
+
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 It is not a sandbox: [Trust](trust.md) lists what it does not see. Check your version with `claude --version`. On an older version nothing changes.
 
 | Setting | Values | Effect |
@@ -305,6 +307,22 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
   `/temper:init` points it at the new place. A submodule's hook goes in its own git folder.
 - Practical ceiling: how many streams one person can *review*. Two or three is a
   sensible start; add sessions only while your review keeps up.
+
+## Working on several things at once
+
+A run owns the folder it is started in: while it is active, the mod refuses a write that does not belong to its stage, and the
+refusal names the run, the stage and the way out. Separate work gets its own folder and so its own run:
+
+- **A worktree per intent.** Start the other work with `claude --worktree <name>`; `/temper:temper` there is a run of its own.
+- **Make a small change.** At the Build, Review, Check and Commit questions, choose it to change the work yourself with no loop back:
+  `temper adhoc open --stage <stage> --reason '<why>'`, make the change, `temper adhoc close`. The change re-runs only what it
+  touches: Review of the changed files, then Check, then the commit gate (a change of docs only re-runs the stage's gate).
+- **The commit gate is branch scoped.** The hook gates a commit on the run's branch only. A commit on another branch passes with one
+  line and records nothing.
+- **Turning Temper off.** Disable the plugin, then run `temper guards uninstall` (it removes the Temper hook and its folder, unsets
+  `core.hooksPath` when it names that folder, and names a Temper line in a hook of your own, which you remove). To end a run,
+  `temper state clear`. After you disable the plugin the hook passes on its own once the plugin's files are gone, with one line
+  that names `temper guards uninstall`.
 
 ## Next Steps
 

@@ -221,7 +221,8 @@ export function optionCalls(name: string, label: string, which: { more?: boolean
   let ask = (VIEWS[name] as J).ask as J
   if (which.more) ask = ask.more as J
   if (which.accept) ask = ask.accept as J
-  const o = (ask.options as J[]).find(x => x.label === label)
+  // 9.7.5: a full question puts its last options under More options, so look there too
+  const o = ((ask.options as J[]).concat((((ask.more as J | undefined)?.options) as J[] | undefined) ?? [])).find(x => x.label === label)
   if (o === undefined) throw new Error(`no option ${label} in ${name}`)
   return [...((o.calls as string[]) ?? []), ...((o.steps as string[]) ?? [])]
 }

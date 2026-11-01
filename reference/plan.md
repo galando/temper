@@ -63,6 +63,23 @@ security hot path (below).
 ## What `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` Checks
 
 Quoted from the plan gate in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`) so this doc cannot drift from the gate.
+## Context Map and the Context check
+
+`plan.md` opens with `## Context Map`: what Plan used (`use`), what it left out on purpose (`ignore`) and what it could not find
+(`gap`), one line per source and never per code file. The plan gate row `context map reviewed` needs at least one entry, at most 12,
+each line at most 100 characters, and a `- reviewed: human|auto` line. Plan writes `- reviewed: pending`; the CLI replaces it.
+`plan.context-check` is `auto` (ask only when the map has an `ignore` or a `gap`), `always` (ask every run) or `off` (never ask;
+the map is still written and gated). The question is the CLI's own (`temper next` and `view.json` carry `context_map` and
+`context_check`); the person's choice runs `temper plan review --answer '<choice>'`, then `temper gate plan`. Plan never asks it and
+never writes `reviewed: human`. Auto mode may refuse an edit of that line, which is why the CLI writes it
+([auto mode](../docs/auto-mode.md)).
+
+Every scenario carries a `Test:` line, a scoped shell command that proves it on the merged tree and names the test the plan's
+task writes; the gate row `scenario test commands` fails for one without it, and for a `Test:` file no task declares and the
+project lacks. A task owes the scenarios its `Traced to:` line names (`temper task show` lists them with their exact
+commands). Build runs each `Test:` command at integration and records a row: that row, not a `Traced to:` line, is what
+lets a `Validate: scenario` criterion pass.
+
 These run **at every tier**: the artifacts exist (`intent.md` + `tasks.md`); scenario
 count >= Success Criteria count; every criterion has explicit validation links
 (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each, every
@@ -295,8 +312,15 @@ group branch is merged.
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>
+${CLAUDE_PLUGIN_ROOT}/scripts/temper risk
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan
 ```
+
+`temper risk` computes the rating from the blast radius, so the same blast radius always gives the same rating:
+production files (declared files that are not tests or docs) up to 3 is L, up to 10 is M, more is H; a CRITICAL entry
+in `.temper/security-map.json` is H; a HIGH entry, or a `[CROSS-REPO]` row in the Blast Radius section, moves it up one
+tier. The panel's RISK field is the letter it printed. To raise it, `temper risk --raise L|M|H --reason '<why>'`: a
+raise needs a reason and never lowers the rating.
 
 If a security-hot-path scan ran, also persist `.temper/security-map.json` (one entry per
 CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `route`,

@@ -14,6 +14,7 @@ prompt based phases.` With `Temper enforcement: off (UI only)`, it is exactly `T
 off (turned off by the user); continuing with prompt based phases.` With `active`, say nothing about
 it. Say it once per conversation. With the Temper mod, the mod stands aside in a `/temper:fix` run:
 it draws nothing for it and judges none of its moves, but nothing goes around the native commit hook.
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 
 ## Usage
 

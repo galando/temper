@@ -1,6 +1,8 @@
 # The flow: `temper next` and `view.json`
 
 Two outputs of the `temper` CLI carry the whole flow of a run ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
+
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 Both are computed by `scripts/flow.py` from the run's own files; nothing else decides what comes next.
 
 - `temper next --json` prints the next action. The orchestrator (`commands/temper.md`) does what it
@@ -29,7 +31,19 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
 | `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
+| `context_map` | at Plan, when `plan.md` has a Context Map: `{intro, file, rows, answer, table}`, the table as plain text |
+| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`, `Is this the right context for the plan?`), the Blocking line's choices (three at most) plus `Carry forward`, each with the table as its preview; a choice runs `temper plan review --answer '<choice>'` then `temper gate plan`; `answer` is the call a typed answer fills. When the pending check is the plan gate's only failed row, `ask` is this question |
+| `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
+
+The stages are Intent, Plan, Design, Build, Review, Check and Commit, and an optional **Pipeline** stage after a Commit that opened a pull
+request (`phases.pipeline` not `false`; [ADR 0014](decisions/0014-the-pipeline-stage-after-commit.md)). Its agent reads the checks and
+writes `pipeline-context.json`; the push is the orchestrator's, after the person's yes. An agent's gate call is named `gate` (the last of
+its `after` calls) in `agents[]`.
+
+A **small change** (`temper adhoc open --stage S --reason R`, `adhoc close`) is offered at the Build, Review, Check and Commit questions as
+`Make a small change`. After `adhoc close`, `next` runs the steps the change touches: Review of the changed files, then Check, then the
+commit gate (a change made at Build, or of docs only, runs only the stage's gate).
 
 ### The actions
 
@@ -41,6 +55,10 @@ that meets a version it does not know draws nothing and refuses nothing.
   call) and names its `task`, `group`, `title` and `attempt`.
 - **`ask`**: ask `ask.question` with the AskUserQuestion tool exactly as given (header, question,
   options and their descriptions). See "Questions" below.
+- **A failed call stops its action.** A call or step that exits non-zero stops its action, and the loop runs
+  `temper next --json` again. One exception: an agent's gate call, named `gate` (the last of its `after` calls).
+  When it prints `temper gate <stage> -> FAIL`, it has recorded a verdict that `next` asks about, so the action
+  goes on; any other failure of it stops the action.
 - **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
   in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
 - **`auto`**: an armed autonomous run moves by itself: run `calls`, then ask `next` again.

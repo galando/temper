@@ -62,6 +62,18 @@ orchestrator's conversation carries over except the prompt you were launched wit
 - The spec directory holds exactly `intent.md`, `tasks.md` and `plan.md`. Never a
   fourth file (no `spec.md`, `quickstart.md`, README); `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads only
   those three.
+- Write `## Context Map` at the top of `plan.md`, after exploring and before any scenario: one line per source of context,
+  never per code file (an area is one line: `src/auth/ (12 files)`), as `- use:`, `- ignore:` or `- gap:` entries, at most 12 of
+  them and each at most 100 characters, then `- reviewed: pending`. Add this Open Question to `intent.md`:
+  `- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.`
+  Ask nobody yourself, and never write `reviewed: human` or edit that line afterwards: the CLI writes it from the person's answer
+  (`temper plan review --answer`), and `plan.context-check` in the config decides whether the person is asked.
+- A Maven group (a `pom.xml` in it) validates with `mvn verify` run once with JaCoCo on, never a bare test goal; a task's test
+  command names its test classes (a `-Dtest=` list, with or without `#method`), and Build runs only those, offline, on `mvnd` when
+  it is on PATH, and needs a new surefire report for each class. `temper gate plan` names a Maven group that breaks this.
+- Every scenario carries a `Test:` line: a scoped shell command that proves it on the merged tree and names the test a
+  task of `tasks.md` writes. Build runs each one and records a row; a criterion with `Validate: scenario` passes only
+  from that row, never from a `Traced to:` line. `temper gate plan` names every scenario with none.
 - A `Scenario:` outside a ```gherkin fence fails the gate, and a bare one renders as a
   run-on paragraph in every review surface.
 - Record complexity with `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>`
@@ -83,7 +95,7 @@ a long entry onto a continuation row indented two spaces.
 
 Return this panel (the orchestrator prints it verbatim), then the plan's ASCII diagram
 right after its closing border. After them, on a line of its own, return the spec path.
-The complexity tier and the risk level are the panel's COMPLEXITY and RISK fields.
+The complexity tier and the risk level are the panel's COMPLEXITY and RISK fields. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the RISK field is the letter it prints, never your own estimate.
 Nothing else goes outside the panel:
 
 ```

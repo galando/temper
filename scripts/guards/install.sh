@@ -154,6 +154,11 @@ CALL_LINE_965='_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _te
 # Git's hook names: once core.hooksPath is set, git runs none of these from its default folder.
 GIT_HOOK_NAMES="applypatch-msg pre-applypatch post-applypatch pre-commit pre-merge-commit prepare-commit-msg commit-msg post-commit pre-rebase post-checkout post-merge pre-push pre-receive update proc-receive post-receive post-update reference-transaction push-to-checkout pre-auto-gc post-rewrite sendemail-validate fsmonitor-watchman post-index-change"
 
+# --uninstall: turn the commit gate off. The CLI does the work (scripts/guards_ops.py); a second run changes nothing.
+if [[ "${1:-}" == "--uninstall" ]]; then
+  exec python3 -E -s "$SCRIPTS_FOLDER/guards_ops.py" uninstall
+fi
+
 # The hook itself. Fail-open by design: a missing script => skipped; a detected secret or a red
 # commit gate => exit 1 (block). The paths are literal text in the hook: no environment variable
 # moves them, and the hook works none of them out at commit time. The lines are plain sh (no
@@ -176,6 +181,12 @@ TESTS_RAN_SCRIPT=$Q_TESTS_RAN_SCRIPT
 # platform/version, so pin it explicitly: 'temper gate commit' resolves .temper/ and
 # .claude/temper.config relative to the current folder.
 cd "\$(git rev-parse --show-toplevel)" || exit 0
+
+# The plugin is gone (its CLI path no longer exists): the gate has nothing to run, so the commit goes on. To turn it off for good:
+if [ ! -e "\$TEMPER_CLI" ]; then
+  echo "Temper: the plugin is not installed any more, so the commit gate is skipped. To remove this hook, run temper guards uninstall." >&2
+  exit 0
+fi
 
 # 1. Secrets in the staged files (--staged: this is a commit, not an agent's tool call).
 if [ -f "\$SECRETS_SCRIPT" ]; then
@@ -209,7 +220,7 @@ if [ -n "\${HOME:-}" ] && [ "\$REPO_DIR" -ef "\$HOME" ]; then exit 0; fi
 _temper_gate_here() {
   if [ -x "\$TEMPER_CLI" ] && [ -d .temper ]; then
     GATE_RC=0
-    "\$TEMPER_CLI" gate commit || GATE_RC=\$?
+    "\$TEMPER_CLI" gate commit --from-hook || GATE_RC=\$?
     if [ "\$GATE_RC" -eq 3 ]; then
       # Exit 3: the CLI refused the .temper folder (a symlink on a path it keeps run state
       # in). While a run is active that refusal must not open the gate.
@@ -538,7 +549,7 @@ _set_hooks_path() { # points core.hooksPath at the temper-gate folder, in the re
 }
 
 _uninstall_line() {
-  echo "To uninstall: run 'git config --unset core.hooksPath' (when it points at the temper-gate folder), remove the Temper line from your own hook if you added one, and delete $GATE_DIR (and $COMMON_REAL/$KEEP_965_NAME, if Temper 9.6.5 left one)."
+  echo "To uninstall: run 'temper guards uninstall' (or bash $0 --uninstall). It removes the Temper hook and the temper-gate folder, unsets core.hooksPath when it points at that folder, and names a Temper line in a hook of your own, which you remove yourself."
 }
 
 _installed() { # the line a run that set core.hooksPath prints

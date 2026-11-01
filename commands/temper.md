@@ -17,6 +17,9 @@ The temper CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. It decides every step 
 that (its format: `${CLAUDE_PLUGIN_ROOT}/docs/flow.md`). Every path it prints is written out in full:
 run it exactly as printed. Never compute a gate, an option or a next stage yourself.
 
+
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+
 ## Arguments
 
 When the first word is one of these, do this and start no run. Any other first word begins a
@@ -99,6 +102,12 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
 Run the calls of one action in one Bash call, one per line, when they are only `temper` calls; a
 `git` call goes in a call of its own.
 
+**A failed call stops its action.** A call or a step that exits non-zero stops the action it belongs to:
+run no later call or step of it, say in one line which one failed, and run `temper next --json` again.
+One exception: an agent's gate call is named `gate` (the last of its `after` calls). When it prints
+`temper gate {stage} -> FAIL`, it has recorded a verdict that `next` asks about, so the action goes on.
+Any other failure of it still stops the action.
+
 ## Every question
 
 - **Exactly as given.** The header, the question, every option label and description, in the order
@@ -107,13 +116,20 @@ Run the calls of one action in one Bash call, one per line, when they are only `
   allow is refused. Never add "(Recommended)" or any other word.
 - **The person decides.** Only the person's choice in the dialog is a decision. Never choose for
   them, never answer a question for them, and never choose "Start over" yourself.
+- **Names.** An option with `answer_question` needs a typed answer, such as the name of the person who
+  confirms a manual task: ask that question exactly as given, put the answer in place of `{answer}` as
+  "Filling a placeholder" says, and never fill it from git, the account or a guess. "Cancel" asks the
+  first question again.
 - **Reasons.** An option with `reason` needs the person's reason: their note on the option, or else
   ask its `reason_question` exactly as given. Any answer to it but "Cancel" is the reason, typed text
   included; "Cancel" asks the first question again. Put the reason in place of `{reason}`, as "Filling a
   placeholder" says.
 - **Typed text.** An answer typed in "Other" (not to a reason question), or a message the person
-  writes at a question, is a change request or a question: answer it; for a change, make it, run the
-  action's `gate` call when it has one, and ask again. It never moves the run.
+  writes at a question, is a change request or a question. Record it first, so the next agent reads it:
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage {the run's stage} --phase note --kind input --claim '{the text}'`.
+  Then answer it; for a change you make yourself, also record
+  `--kind edit --claim '{what you changed}'`, make it, run the action's `gate` call when it has one,
+  and ask again. A note meant for one Build task begins with `Task N:`, for one group with `Group G<n>:`. It never moves the run.
 - **Blocking questions** (the `blocking` list): ask them in one AskUserQuestion call, one question
   each, with the question's choices as options, the recommended one first, three at most, and a last
   option "Carry forward". Write each answer into intent.md's `### Decisions` and take the question out

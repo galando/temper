@@ -33,6 +33,10 @@ assert_exit "plan gate PASSes without a Blast Radius section (no complexity set)
 "$TEMPER" state set complexity medium >/dev/null
 assert_exit "plan gate FAILs: medium complexity needs a Blast Radius section" 1 "$TEMPER" gate plan
 cat > .temper/specs/demo/plan.md <<'EOF'
+## Context Map
+- use: intent.md - the accepted scope
+- reviewed: auto - every source is current and on topic
+
 ## Blast Radius
 - no external consumers
 
@@ -44,11 +48,13 @@ assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPE
 # --- build gate: RED then GREEN required ---
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 assert_exit "build gate FAILs on GREEN with no RED (TDD discipline)" 1 "$TEMPER" gate build
 
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 assert_exit "build gate PASSes on RED then GREEN + no unchecked tasks" 0 "$TEMPER" gate build
 
 # --- review gate: block-on severity ---
@@ -134,6 +140,7 @@ setup
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" gate build >/dev/null
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
@@ -165,6 +172,7 @@ assert_exit "state loop blocks the third iteration (max-per-type: 2)" 1 "$TEMPER
 setup
 "$TEMPER" evidence add --stage plan --claim "plan row" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 _at review   # a loop goes back from the stage the run is at
@@ -274,8 +282,8 @@ assert_eq "install.sh in a plain repository keeps the hook in .git/temper-gate a
   "0|yes|$WORKDIR/.git/temper-gate|yes" \
   "$P_RC|$([[ -x .git/temper-gate/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -qxF "Installed Temper pre-commit hook -> $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at that folder, so every worktree of this repository runs it)." && echo yes || echo no)"
 assert_eq "install.sh writes nothing else in the git folder: its listing is the same before and after" "$P_GIT_BEFORE" "$(_git_list .git)"
-assert_eq "install.sh ends with how to uninstall" "yes" \
-  "$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "To uninstall: run 'git config --unset core.hooksPath' (when it points at the temper-gate folder), remove the Temper line from your own hook if you added one, and delete $WORKDIR/.git/temper-gate (and $WORKDIR/.git/temper-pre-commit, if Temper 9.6.5 left one)." && echo yes || echo no)"
+assert_eq "install.sh ends with how to uninstall, naming the command" "yes" \
+  "$(printf '%s\n' "$OUT" | tail -1 | grep -qF "To uninstall: run 'temper guards uninstall'" && echo yes || echo no)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); P_RC=$?
 assert_eq "a second run in the plain repository says the hook is already installed" "0|yes" \
   "$P_RC|$(printf '%s\n' "$OUT" | grep -qxF "The Temper pre-commit hook is already installed: $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at its folder)." && echo yes || echo no)"
@@ -316,6 +324,7 @@ assert_eq "the allowed commit actually landed" "yes" "$(git log --oneline 2>&1 |
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 assert_exit "gate build runs cleanly against a config with a stale eval: block" 0 "$TEMPER" gate build
 
 # 2. A stale "eval" key in .temper/gates.json is ignored by gate_commit, not iterated.
@@ -324,6 +333,7 @@ setup
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" gate build >/dev/null
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
@@ -635,8 +645,8 @@ setup
 assert_eq "model plan defaults to agents/plan.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/plan.md")" \
   "$("$TEMPER" model plan)"
-assert_eq "model --all emits one stage=model line per agent stage, plus the task agent's two" "10" "$("$TEMPER" model --all | grep -c '^[a-z-]*=')"
-assert_eq "model --all covers every agent stage (incl. fix-command stages) and the task models" "intent plan design build review check rca fix task task-escalation" \
+assert_eq "model --all emits one stage=model line per agent stage, plus the task agent's two" "11" "$("$TEMPER" model --all | grep -c '^[a-z-]*=')"
+assert_eq "model --all covers every agent stage (incl. fix-command stages) and the task models" "intent plan design build review check pipeline rca fix task task-escalation" \
   "$("$TEMPER" model --all | cut -d= -f1 | tr '\n' ' ' | sed 's/ $//')"
 assert_eq "model rca defaults to agents/rca.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/rca.md")" \
@@ -655,7 +665,7 @@ models:
 EOF
 assert_eq "models.{stage} config overrides the frontmatter default" "opus" "$("$TEMPER" model review)"
 assert_eq "models.{stage} accepts a full model ID, not just an alias" "claude-opus-5" "$("$TEMPER" model check)"
-assert_eq "an unset stage still falls back to frontmatter" "$("$TEMPER" model plan)" "$(cd "$REPO_ROOT" && ./scripts/temper model plan)"
+assert_eq "an unset stage still falls back to frontmatter" "$("$TEMPER" model plan)" "$(cd "$REPO_ROOT" && env -u TEMPER_SELFTEST_ROOT ./scripts/temper model plan)"
 assert_eq "model --all reflects overrides" "review=opus" "$("$TEMPER" model --all | grep '^review=')"
 
 # Absent config => frontmatter defaults, never an empty string.
@@ -932,6 +942,7 @@ setup
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" gate build >/dev/null
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
@@ -980,6 +991,7 @@ setup
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" gate build >/dev/null
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null

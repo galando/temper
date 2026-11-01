@@ -21,7 +21,7 @@ def parse(path):
         lines = open(path, encoding='utf-8').read().split('\n')
     except Exception:
         lines = []
-    FIELD = re.compile(r'^\*\*(Depends|Validate|Interfaces|Integration|Context|File|Test|Cases):\*\*\s*(.*)$')
+    FIELD = re.compile(r'^\*\*(Depends|Validate|Interfaces|Integration|Context|Files?|Test|Cases):\*\*\s*(.*)$')
     # a case of a task's **Cases:** list: a bullet that is not the task's checkbox
     CASE = re.compile(r'^\s*[-*]\s+(?!\[[ xX]\])\S')
     groups, tasks = [], []
@@ -29,6 +29,7 @@ def parse(path):
     cur_g = cur_t = None
     ctx_open = False
     cases_open = False
+    files_open = False
     def path_tokens(text):
         out = []
         for m in re.finditer(r'`([^`]+)`', text):
@@ -45,16 +46,16 @@ def parse(path):
         if gm:
             cur_g = {'id': gm.group(1), 'title': gm.group(2), 'depends': [], 'validate': '',
                      'interfaces': [], 'context': '', 'context_bytes': 0, 'tasks': []}
-            groups.append(cur_g); cur_t = None; ctx_open = False; cases_open = False
+            groups.append(cur_g); cur_t = None; ctx_open = False; cases_open = False; files_open = False
             continue
         if tm:
             cur_t = {'n': int(tm.group(1)), 'title': tm.group(2), 'group': cur_g['id'] if cur_g else None,
-                     'files': [], 'depends': [], 'test': '', 'cases': 0, 'block_bytes': 0, 'block': ''}
-            tasks.append(cur_t); ctx_open = False; cases_open = False
+                     'files': [], 'depends': [], 'test': '', 'manual': False, 'confirm': '', 'cases': 0, 'block_bytes': 0, 'block': ''}
+            tasks.append(cur_t); ctx_open = False; cases_open = False; files_open = False
             if cur_g: cur_g['tasks'].append(cur_t['n'])
             continue
         if re.match(r'^#{1,2}\s', line):
-            cur_t = None; ctx_open = False; cases_open = False
+            cur_t = None; ctx_open = False; cases_open = False; files_open = False
             continue
         fm = FIELD.match(line)
         if fm:
@@ -63,9 +64,15 @@ def parse(path):
                 integration = cmd_of(val); ctx_open = False; continue
             if cur_t is not None:
                 # a **File:** line per file, or several on one line: every path counts, once
-                if key == 'File': cur_t['files'] += [f for f in path_tokens(val) if f not in cur_t['files']]
+                files_open = key in ('File', 'Files')
+                if files_open: cur_t['files'] += [f for f in path_tokens(val) if f not in cur_t['files']]
                 elif key == 'Depends': cur_t['depends'] = [int(x) for x in re.findall(r'Task\s+(\d+)', val)]
-                elif key == 'Test': cur_t['test'] = cmd_of(val)
+                elif key == 'Test':
+                    # **Test:** manual — what the person confirms: no RED or GREEN, the person confirms by hand
+                    mm = re.match(r'^\s*manual\b\s*[—–:\-]*\s*(.*)$', val, re.I)
+                    cur_t['manual'] = bool(mm)
+                    cur_t['confirm'] = mm.group(1).strip() if mm else ''
+                    cur_t['test'] = 'manual' if mm else cmd_of(val)
                 # the concrete cases Plan wrote for the task's test, one bullet each (an inline value counts as one)
                 cases_open = key == 'Cases'
                 if cases_open and val.strip(): cur_t['cases'] += 1
@@ -82,6 +89,12 @@ def parse(path):
                     if val.strip(): cur_g['context'] += val + '\n'
                 continue
         if cur_t is not None:
+            if files_open and re.match(r'^\s*[-*]\s+(?!\[[ xX]\])\S', line):
+                bare = re.sub(r'^\s*[-*]\s+', '', line).strip().strip('`')
+                got = path_tokens(line) or ([bare[2:] if bare.startswith('./') else bare] if re.fullmatch(r'[\w.@\-/*?]+', bare) and ('/' in bare or '.' in bare) else [])
+                cur_t['files'] += [f for f in got if f not in cur_t['files']]
+            elif files_open and line.strip() and not re.match(r'^\s*[-*]\s+\[[ xX]\]', line):
+                files_open = False
             if cases_open and CASE.match(line): cur_t['cases'] += 1
             cur_t['block'] += line + '\n'
         elif cur_g is not None and ctx_open:
@@ -143,7 +156,7 @@ def schedule(plan, run, max_par, task_model, esc_model, project):
         twt = gwt[:-len(g)] + 'T%d' % n if gwt.endswith('-' + g) else gwt
         ready.append({'task': n, 'group': g, 'title': t['title'], 'worktree': twt,
                       'project': project, 'model': mdl, 'agent_model': agent_alias(mdl),
-                      'attempt': attempt})
+                      'attempt': attempt, 'manual': bool(t.get('manual'))})
     out = list(ready)
     if not ready:
         ids = [g['id'] for g in plan['groups']]

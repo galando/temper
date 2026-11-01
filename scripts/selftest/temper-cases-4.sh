@@ -12,6 +12,7 @@ EOF
 assert_exit "protected-paths finds its CLI next to it, with an empty environment" 2 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"src/frozen/a.ts\"}}' | env -i HOME='$HOME' PATH='$PATH' CLAUDE_PROJECT_DIR='$WORKDIR' bash '$REPO_ROOT/scripts/guards/block-protected-paths.sh'"
 UG="$REPO_ROOT/scripts/guards/block-uncommitted-gate.sh"
+git checkout -q -B feature/demo 2>/dev/null   # the gate applies on the run's own branch (9.7.5)
 echo 'x' > gate-file.txt
 git add gate-file.txt >/dev/null 2>&1
 assert_exit "uncommitted-gate: a git commit on a red gate is BLOCKED, with an empty environment" 2 \
@@ -103,6 +104,7 @@ cl_project() { # a fresh git project with one commit and an active run whose gat
   echo a > "$CL_PROJ/a.txt"
   git -C "$CL_PROJ" add a.txt
   git -C "$CL_PROJ" commit -qm init
+  git -C "$CL_PROJ" checkout -q -B feature/demo-run   # the commit hook gates the run's branch only (9.7.5)
   (cd "$CL_PROJ" && "$CL_T" state init demo-run >/dev/null)
   mkdir -p "$CL_PROJ/.temper/specs/demo-run" "$CL_PROJ/.temper/specs/other-run"
 }
@@ -1429,6 +1431,7 @@ rm -rf "$L_TL"
 # path, or a link in the spec folder, never opens the gate.
 L_RED="$WORKDIR/l1-red"
 _l_repo "$L_RED"
+git -C "$L_RED" checkout -q -B feature/demo-run   # the commit hook gates the run's branch only (9.7.5)
 printf '.temper/\n' > "$L_RED/.gitignore"
 bash -c "cd '$L_RED' && bash '$L_INSTALL'" >/dev/null 2>&1
 (cd "$L_RED" && "$L_PLUG/scripts/temper" init >/dev/null 2>&1 && "$L_PLUG/scripts/temper" state init demo-run >/dev/null 2>&1)

@@ -26,6 +26,9 @@ import sys
 from pathlib import Path
 
 RULE_PHRASE = re.compile(r"exactly (ONE|one) closed panel", re.I)
+# These briefs run or wait for tests: each must say to wait for a test run in the foreground (F20).
+FOREGROUND_BRIEFS = ("build.md", "build-task.md", "check.md", "review.md")
+FOREGROUND_RULE = re.compile(r"foreground.*background|background.*foreground", re.I | re.S)
 FULL_BORDER = re.compile(r"^\+[-+]*\+$")
 # A section divider: '+--- NAME (N) ---+-------...---+' — a border carrying a title.
 TITLED_BORDER = re.compile(r"^\+--- [^+]*?\(N\)[^+]*?\+-[-+]*\+$")
@@ -156,6 +159,8 @@ def main():
             print("      - cannot be read: %s" % e)
             continue
         errs = []
+        if name in FOREGROUND_BRIEFS and not FOREGROUND_RULE.search(text):
+            errs.append("does not say to wait for a test run in the foreground and never return while a background run goes on")
         if not RULE_PHRASE.search(text):
             errs.append("does not state the one-panel rule ('exactly ONE closed panel')")
         panels = 0

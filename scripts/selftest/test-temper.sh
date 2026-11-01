@@ -17,6 +17,9 @@ REPO_ROOT="${TESTS_DIR%/scripts/selftest}"
 TEMPER="$REPO_ROOT/scripts/temper"
 WORKDIR="$(mktemp -d)" || exit 1
 WORKDIR="$(cd -P "$WORKDIR" && pwd)" || exit 1   # physical, as the scripts see their own folders
+# A CLI call from outside this folder is refused (exit 3), config and model included, and the real .temper is left as it was.
+export TEMPER_SELFTEST_ROOT="$WORKDIR"
+_REAL_TEMPER_BEFORE="$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASS=0
@@ -113,6 +116,7 @@ Scenario: first
   Then it works
   Note: unit
   Covers: AC-01
+  Test: true
 ```
 ```gherkin
 Scenario: second
@@ -121,6 +125,7 @@ Scenario: second
   Then it still works
   Note: unit
   Covers: AC-02
+  Test: true
 ```
 
 ## Scenario Coverage Checklist
@@ -154,6 +159,13 @@ EOF
   "$TEMPER" init >/dev/null
   "$TEMPER" state init demo --command temper >/dev/null
   printf '{"version": 1, "slug": "demo", "groups": {}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+}
+
+# 9.7.5: a scenario criterion passes only from a row the CLI ran. _scen records one for each scenario of the demo intent, as
+# `temper integrate` does; a case that needs the Build gate to pass calls it after its RED and GREEN rows.
+_scen() {
+  "$TEMPER" evidence run --stage build --scenario first --claim "scenario first" -- true >/dev/null
+  "$TEMPER" evidence run --stage build --scenario second --claim "scenario second" -- true >/dev/null
 }
 
 # Test setup only (ADR 0013: the CLI leaves a stage only once its check passed or the person skipped it):
@@ -209,15 +221,26 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
 # The cases live in the files next to this one, sourced in order so they share the helpers,
 # the counters and the state each case leaves for the next. Each stays well under the size a
 # reader takes in at once.
-source "$TESTS_DIR/temper-cases-1.sh"
-source "$TESTS_DIR/temper-cases-2.sh"
-source "$TESTS_DIR/temper-cases-3.sh"
-source "$TESTS_DIR/temper-cases-4.sh"
-source "$TESTS_DIR/temper-cases-5.sh"
-source "$TESTS_DIR/temper-cases-6.sh"
-source "$TESTS_DIR/temper-cases-7.sh"
-source "$TESTS_DIR/temper-cases-8.sh"
-source "$TESTS_DIR/temper-cases-9.sh"
+source "$TESTS_DIR/case-helpers.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 1 "* ]] && source "$TESTS_DIR/temper-cases-1.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 2 "* ]] && source "$TESTS_DIR/temper-cases-2.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 3 "* ]] && source "$TESTS_DIR/temper-cases-3.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 4 "* ]] && source "$TESTS_DIR/temper-cases-4.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 5 "* ]] && source "$TESTS_DIR/temper-cases-5.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 6 "* ]] && source "$TESTS_DIR/temper-cases-6.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 7 "* ]] && source "$TESTS_DIR/temper-cases-7.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 8 "* ]] && source "$TESTS_DIR/temper-cases-8.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 9 "* ]] && source "$TESTS_DIR/temper-cases-9.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 10 "* ]] && source "$TESTS_DIR/temper-cases-10.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 11 "* ]] && source "$TESTS_DIR/temper-cases-11.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 12 "* ]] && source "$TESTS_DIR/temper-cases-12.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 13 "* ]] && source "$TESTS_DIR/temper-cases-13.sh"
+
+# the suite leaves the real .temper folder as it was, and a CLI call outside its own folder is refused
+assert_eq "selftest safety: the real .temper folder is as it was" "$_REAL_TEMPER_BEFORE" "$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"
+assert_exit "selftest safety: a CLI call from outside the self test folder is refused (exit 3), config included" 3 \
+  bash -c "cd '$REPO_ROOT' && '$TEMPER' config get check.coverage-threshold"
+assert_exit "selftest safety: model is refused there too" 3 bash -c "cd '$REPO_ROOT' && '$TEMPER' model plan"
 
 echo ""
 echo "=== test-temper.sh ==="

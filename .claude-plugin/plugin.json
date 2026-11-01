@@ -2,7 +2,7 @@
   "name": "temper",
   "displayName": "Temper",
   "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a phase bar in Claude Code.",
-  "version": "9.7.4",
+  "version": "9.7.5",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando"
@@ -44,7 +44,8 @@
     "./agents/review.md",
     "./agents/check.md",
     "./agents/rca.md",
-    "./agents/fix.md"
+    "./agents/fix.md",
+    "./agents/pipeline.md"
   ],
   "skills": [
     "./skills/temper-core",

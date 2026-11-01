@@ -69,9 +69,10 @@
     <p>Apart from that plugin store, Temper reads one place outside your project: its own global pack folder, <code>~/.claude/packs</code>, if you made one. It opens no other file in your home Claude Code folder: no settings file, keys, logins, plugin lists, skills or commands. It opens no Claude Code settings file in your project either: the guardrails pack prints its hook entries for you to add yourself. It reads no name or email from git.</p>
 
     <h2>When something leaves your machine</h2>
-    <p>Two optional features send text out, and only when you choose them:</p>
+    <p>Optional features send text out, and only when you choose them:</p>
     <ul>
       <li><strong>Share HTML review.</strong> When you pick it at the plan gate and confirm, Claude Code's Artifact tool publishes the plan review as a private Claude artifact, and you decide who can open it. Without the Artifact tool, Temper offers the local review instead.</li>
+      <li><strong>Pull requests, only when you choose them.</strong> When you pick a pull request option at the Check question, Temper runs <code>git push</code> and <code>gh pr create --draft</code> from your machine to your own repository's remote, and later reads that pull request's checks with <code>gh</code>. Every pull request is a draft, and Temper never marks one ready.</li>
       <li><strong>OCR, off by default.</strong> If you turn it on with <code>tools.ocr.mode</code> and the <code>ocr</code> tool is on your machine, <code>/temper:review</code> uses it, and <code>ocr</code> sends the diff to the model provider you set up for it.</li>
     </ul>
 

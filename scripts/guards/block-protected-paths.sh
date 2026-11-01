@@ -43,6 +43,7 @@ _main() {
   root="${here%/scripts/guards}"
   [[ "$root" != "$here" ]] || return 0
   temper_cli="$root/scripts/temper"
+  [[ -e "$temper_cli" ]] || { echo "Temper: the plugin's CLI is gone, so this guard passes. To remove the commit hook for good, run temper guards uninstall." >&2; return 0; }
   [[ -x "$temper_cli" ]] || return 0
 
   local patterns

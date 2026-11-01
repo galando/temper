@@ -82,7 +82,7 @@ EVIDENCE_DIR="$TEMPER_DIR/evidence"
 METRICS_FILE="$TEMPER_DIR/metrics.json"
 BANDS_FILE="$TEMPER_DIR/bands.json"
 
-STAGES="intent plan design build review check commit"
+STAGES="intent plan design build review check commit pipeline"
 # Grouped Build (9.7.0) byte budgets: the slim task brief, a group's Context block, one task block.
 TASK_BRIEF_MAX_BYTES=6144
 GROUP_CONTEXT_MAX_BYTES=4096
@@ -94,16 +94,16 @@ GROUPS_FILE=".temper/groups.json"   # grouped run state: CLI-owned, every write 
 # `commit` is not one — it's the orchestrator running `temper gate commit`.
 # rca/fix are /temper:fix's subprocess stages: model stages (the rca and fix briefs'
 # frontmatter) but never gate stages — Fix evidence gates as `build`.
-AGENT_STAGES="intent plan design build review check rca fix"
+AGENT_STAGES="intent plan design build review check pipeline rca fix"
 
 # The only stage names an evidence ledger file can carry: every gate stage plus the two
 # /temper:fix subprocess stages. A stage name is checked against this list before any
 # path is built from it (see _stage_ok and _evidence_file).
-EVIDENCE_STAGES="intent plan design build review check commit rca fix"
+EVIDENCE_STAGES="intent plan design build review check commit pipeline rca fix"
 
 _stage_ok() { # _stage_ok <stage> -> 0 only for a name on the fixed EVIDENCE_STAGES list
   case "$1" in
-    intent|plan|design|build|review|check|commit|rca|fix) return 0 ;;
+    intent|plan|design|build|review|check|commit|pipeline|rca|fix) return 0 ;;
   esac
   return 1
 }
@@ -481,6 +481,7 @@ _agent_file() { # <stage> -> its brief, each path written out in full (an unknow
     build)  echo "$PLUGIN_ROOT/agents/build.md" ;;
     review) echo "$PLUGIN_ROOT/agents/review.md" ;;
     check)  echo "$PLUGIN_ROOT/agents/check.md" ;;
+    pipeline) echo "$PLUGIN_ROOT/agents/pipeline.md" ;;
     rca)    echo "$PLUGIN_ROOT/agents/rca.md" ;;
     fix)    echo "$PLUGIN_ROOT/agents/fix.md" ;;
     *)      echo "" ;;
@@ -520,6 +521,10 @@ _resolve_task_escalation_model() {
 
 cmd_model() {
   local stage="${1:-}"
+  if [[ "${2:-}" == "--source" && "$stage" == "--all" ]]; then   # each model and where it comes from (cli_ctx.py)
+    python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --source
+    return
+  fi
   if [[ -z "$stage" || "$stage" == "--all" ]]; then
     local s m rc=0
     for s in $AGENT_STAGES; do
@@ -557,7 +562,7 @@ cmd_model() {
 # older project that lacks a newer one)
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
-security-map.json test-gap-report.json view.json evidence/ index/ reviews/ archive/ .lock/"
+security-map.json test-gap-report.json view.json evidence/ index/ reviews/ archive/ check/ .lock/"
 
 _excludes_current() { # 0 when the clone's info/exclude lists every run file init writes (or this is no git repository)
   local ex pre p
@@ -701,6 +706,7 @@ if sys.argv[7] and sys.argv[3] == 'temper':
 json.dump(d, open(sys.argv[5], 'w'), indent=2)
 " "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
+  echo "Note: the run $slug owns this folder; separate work goes in a worktree (claude --worktree <name>), which gives it its own run."
 }
 
 _state_migrate_legacy() { # idempotent; called before any state read/write and by cmd_gate.
@@ -858,7 +864,7 @@ for name in ('intent.md', 'plan.md'):
 _run_seq() { # the run's own stage sequence, with the commit stage last (a fix run has its own)
   local command="temper"
   [[ -f "$STATE_FILE" ]] && command="$(_json_get_path "$STATE_FILE" command temper)"
-  if [[ "$command" == "fix" ]]; then echo "$STAGE_SEQ_FIX commit"; else echo "$STAGE_SEQ_TEMPER commit"; fi
+  if [[ "$command" == "fix" ]]; then echo "$STAGE_SEQ_FIX commit"; else echo "$STAGE_SEQ_TEMPER commit pipeline"; fi
 }
 
 _stage_before() { # _stage_before <a> <b>: 0 when stage a comes before stage b in the run's own sequence
@@ -993,6 +999,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   for s in $valid_stages; do
     [[ "$stage" == "${s}_complete" ]] && known=true
   done
+  [[ "$command" == "temper" && "$stage" == "commit_complete" && "$next" == "pipeline" ]] && known=true   # F26: Commit opened a pull request
   if [[ "$known" != "true" ]]; then
     echo "FAIL: unknown stage '$stage' for command '$command' (expected one of: $(for s in $valid_stages; do printf '%s_complete ' "$s"; done))" >&2
     return 1
@@ -1092,6 +1099,13 @@ if loop['iteration'] >= max_per_type:
     sys.exit(1)
 loop['iteration'] += 1
 loop['reason'] = reason or loop['reason']
+loop['at'] = ts      # each step writes when it ran: readers order by at, so the latest reason is the one a fix pass reads
+try:                 # an older Run Build again no longer speaks for the stage
+    st = json.load(open(sys.argv[8]))
+    if st.pop('redo', None) is not None:
+        json.dump(st, open(sys.argv[8], 'w'), indent=2)
+except Exception:
+    pass
 # What the stage left open goes with the loop, since the loop clears that stage's ledger: Review's open findings, Check's
 # failed runs. The fix pass reads them (temper next names them in its prompt).
 try:
@@ -1112,7 +1126,7 @@ else:
 d['active_loops'] = active
 json.dump(d, open(f, 'w'), indent=2)
 print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_type))
-" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)")
+" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE")
   local rc=$?
   echo "$result"
   # A loop means "we are going backwards" — evidence is append-only, so a stale row
@@ -1310,6 +1324,7 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
     return 1
   fi
   _redo_from "$stage" || return 1
+  [[ "$stage" == "pipeline" ]] && rm -f "$(_json_get_path "$STATE_FILE" spec_path "")/pipeline-context.json"   # CI is read again
   [[ "$stage" == "review" ]] && _review_code save
   # A run a door started at a later stage checks the stages before it instead of running them: one run again is run,
   # and so is every stage after it (the door's entry moves to it).
@@ -1350,7 +1365,7 @@ cmd_state() {
 # ---------------------------------------------------------------------------
 
 cmd_evidence_add() {
-  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence=""
+  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
@@ -1365,9 +1380,12 @@ cmd_evidence_add() {
       --phase) phase="$2"; shift 2 ;;
       --scenario) scenario="$2"; shift 2 ;;
       --criterion) criterion="$2"; shift 2 ;;
+      --kind) kind="$2"; shift 2 ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
+  case "$kind" in ""|input|edit) ;; *) echo "FAIL: --kind takes input or edit (a note for the next agent, or a change made for the person)" >&2; return 1 ;; esac
+  [[ -z "$kind" || "$phase" == "note" ]] || { echo "FAIL: --kind goes with --phase note" >&2; return 1; }
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
@@ -1397,7 +1415,7 @@ cmd_evidence_add() {
   local entry
   entry=$(python3 -I -c "
 import json, sys
-claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, ts = sys.argv[1:]
+claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, kind, ts = sys.argv[1:]
 e = {'claim': claim, 'cmd': cmd or None,
      'exit_code': int(exit_code) if exit_code != '' else None,
      'artifact': artifact or None, 'sha256': artifact_hash or None,
@@ -1406,8 +1424,10 @@ e = {'claim': claim, 'cmd': cmd or None,
      'criterion': criterion or None, 'label': label, 'ts': ts}
 if confidence != '':
     e['confidence'] = float(confidence)
+if kind:
+    e['kind'] = kind
 print(json.dumps(e))
-" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$(_now)")
+" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -1570,6 +1590,13 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
   [[ -n "$stage" && -n "$claim" && $# -gt 0 ]] || { echo "FAIL: usage: temper evidence run --stage <s> --claim <c> -- <cmd...>" >&2; return 1; }
   # Checked before the command runs: an unknown stage records nothing and runs nothing.
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  if [[ -n "$scenario" ]]; then   # a scenario row names a scenario intent.md holds (F8)
+    local sp; sp="$(_spec_path "")"
+    if [[ -n "$sp" && -f "$sp/intent.md" ]] && ! python3 -E -s "$SCRIPTS_DIR/gate_rows.py" scenario-known "$sp/intent.md" "$scenario"; then
+      echo "FAIL: intent.md holds no scenario named '$scenario'; nothing was run or recorded" >&2
+      return 1
+    fi
+  fi
   _ensure_dirs
   "$@"
   local exit_code=$?
@@ -1670,6 +1697,7 @@ _evidence_file() { # <stage> -> its ledger file, each path written out in full r
     review) echo ".temper/evidence/review.json" ;;
     check)  echo ".temper/evidence/check.json" ;;
     commit) echo ".temper/evidence/commit.json" ;;
+    pipeline) echo ".temper/evidence/pipeline.json" ;;
     rca)    echo ".temper/evidence/rca.json" ;;
     fix)    echo ".temper/evidence/fix.json" ;;
     *)      echo "" ;;
@@ -2182,6 +2210,10 @@ gate_intent() {
       reqs+=("$draft_line")
       grep -q '"pass": false' <<<"$draft_line" && all_pass=0
     done < <(_intent_closure_reqs "$spec_path/intent.md")
+    # A Blocking question still open in a draft (F10, scripts/gate_rows.py): the person answers it before the plan.
+    draft_line="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" intent-blocking "$spec_path/intent.md")"
+    reqs+=("$draft_line")
+    grep -q '"pass": false' <<<"$draft_line" && all_pass=0
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -2501,9 +2533,15 @@ e.setdefault('finished_at', None)
 # temper group gate G: PASS when every task of G passed and the group's own Validate command, run by the
 # CLI in the group worktree, exits 0. Recorded as a build row tagged with the group (phase 'group').
 cmd_group_gate() {
-  local g="${1:-}"
+  local g="${1:-}" tmo="${TEMPER_TASK_TEST_TIMEOUT_S:-600}" timed_out=""; shift || true
+  while [[ $# -gt 0 ]]; do   # --timeout-s N: the limit of the group's own runs (a rerun after a timeout doubles it)
+    case "$1" in
+      --timeout-s) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "FAIL: --timeout-s takes a whole number of seconds" >&2; return 1; }; tmo="$2"; shift 2 ;;
+      *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
+    esac
+  done
   if [[ ! "$g" =~ ^G[0-9]+$ ]]; then
-    echo "FAIL: usage: temper group gate G<n>" >&2
+    echo "FAIL: usage: temper group gate G<n> [--timeout-s N]" >&2
     return 1
   fi
   local spec_path plan chk validate notpassed wt
@@ -2550,18 +2588,25 @@ except Exception:
   if [[ -z "$reason" ]]; then
     local rowfile rc
     rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
-    _task_py grouprun "$(_in_wt "$(pwd -P)/$wt")" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" "$g" -- "$validate"
+    _task_py grouprun "$(_in_wt "$(pwd -P)/$wt")" "$tmo" "$rowfile" "$g" -- "$validate"
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
     rm -f "$rowfile"
-    [[ "$rc" -ne 0 ]] && reason="group $g Validate failed (exit $rc): $validate"
+    if [[ "$rc" -eq 124 ]]; then timed_out="$tmo"; reason="group $g Validate timed out after ${tmo}s: $validate"
+    elif [[ "$rc" -ne 0 ]]; then reason="group $g Validate failed (exit $rc): $validate"; fi
+  fi
+  if [[ -z "$reason" && -f "$spec_path/intent.md" ]]; then   # F9: the scenario tests the group owes, on the merged group branch
+    reason="$(python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" group-run "$spec_path/intent.md" "$spec_path/tasks.md" "$g" "$(_in_wt "$(pwd -P)/$wt")" "$tmo")"
+    [[ "$reason" == *"exit 124"* ]] && timed_out="$tmo"
+    [[ -n "$reason" ]] && reason="group $g: $reason"
   fi
   if [[ -n "$reason" ]]; then
     _groups_mutate "
 g = d.setdefault('groups', {}).setdefault(a[0], {})
 g['gate'] = {'verdict': 'FAIL', 'reason': a[1], 'ts': a[2]}
-" "$g" "$reason" "$(_now)" || return 1
+if a[3]: g['gate']['timeout_s'] = int(a[3])
+" "$g" "$reason" "$(_now)" "$timed_out" || return 1
     echo "FAIL: $reason"
     return 1
   fi
@@ -2977,7 +3022,7 @@ PY
 }
 
 _task_py() { # _task_py <mode> [args...]: the Build task operations, in scripts/task_ops.py
-  TEMPER_GROUPS_FILE="$GROUPS_FILE" TEMPER_PREFIX="$(_prefix)" python3 -I "$SCRIPTS_DIR/task_ops.py" "$@" </dev/null
+  TEMPER_GROUPS_FILE="$GROUPS_FILE" TEMPER_PREFIX="$(_prefix)" python3 -E -s "$SCRIPTS_DIR/task_ops.py" "$@" </dev/null
 }
 
 _jget() { # _jget <json> <key> -> the value (lists and objects as JSON); the JSON goes in on stdin, so a large
@@ -3040,7 +3085,7 @@ _task_start_body() {
   local why=""
   if [[ -z "$wt" ]]; then
     why="group $group is not started (temper group start $group)"
-  elif [[ "$status" == "running" || "$status" == "passed" ]]; then
+  elif [[ "$status" == "running" || "$status" == "passed" || "$status" == "covered" ]]; then
     why="it is already $status"
   else
     local ready max
@@ -3098,7 +3143,8 @@ t['snapshot'] = json.loads(a[3])
 t['started_at'] = a[4]
 t['worktree'] = a[5]
 t['branch'] = a[6]
-" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" || return 1
+t['model'] = a[7] if t['attempt'] <= 2 else a[8]
+" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" || return 1
   echo "OK: Task $n started (group $group, worktree $twt)"
 }
 
@@ -3139,6 +3185,10 @@ cmd_task_test() {
   fi
   _task_load "$n" || return 1
   _task_parked_refuse "$n" test || return 1
+  if [[ "$(_jget "$_T_CTX" manual)" =~ ^[Tt]rue$ ]]; then
+    echo "FAIL: Task $n is a manual task: it has no RED or GREEN run; produce its files, and the person confirms it (temper task confirm)" >&2
+    return 1
+  fi
   if [[ "$(_jget "$_T_CTX" status)" != "running" ]]; then
     echo "FAIL: Task $n is not running (temper task start $n)" >&2
     return 1
@@ -3213,10 +3263,22 @@ _task_gate_body() {
   local v verdict reason
   v="$(_task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
   verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
+  [[ -n "${TEMPER_ACCEPT_COVERED:-}" && "$verdict" == "COVERED" ]] && verdict=PASS   # the person accepted it (task accept)
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
   # D-07: this launch's usage, once, whatever the verdict (a failed attempt took time too).
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
   _usage_append task "$model" "$ms" "$n" "$group" || true
+  if [[ "$verdict" == "COVERED" ]]; then   # F19: its tests pass before any change; the person decides, no attempt is spent
+    _groups_mutate "d['tasks'][a[0]]['status'] = 'covered'; d['tasks'][a[0]]['covered'] = {'cmd': a[1], 'tail': a[2], 'ts': a[3]}" "$n" "$(_jget "$v" red_cmd)" "$(_jget "$v" red_tail)" "$(_now)" || return 1
+    echo "COVERED: Task $n's tests already pass before any change; the worktree is kept with the tests"
+    echo "NEXT: temper next asks the person"
+    return 0
+  fi
+  if [[ "$verdict" == "AWAIT" ]]; then   # a manual task: its files are made, the person confirms them by hand (F12)
+    _groups_mutate "d['tasks'][a[0]]['awaiting'] = 'confirm'" "$n" || return 1
+    echo "NEXT: temper next asks the person to confirm Task $n by hand"
+    return 0
+  fi
 
   if [[ "$verdict" != "PASS" ]]; then
     local att fshas wtrel park=""
@@ -3277,10 +3339,12 @@ print('\n'.join(json.loads(sys.argv[1])))" "$fshas")
 import json, sys
 for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
   if [[ ${#paths[@]} -gt 0 ]]; then
-    local idargs; idargs="$(_git_id_args)"
+    local idargs cmsg; idargs="$(_git_id_args)"
+    cmsg="feat($slug): Task $n $title [$group]"
+    [[ -z "${TEMPER_ACCEPT_COVERED:-}" ]] || cmsg="test($slug): Task $n $title (built by an earlier task) [$group]"
     # shellcheck disable=SC2086
     if ! git --literal-pathspecs -C "$_T_ABS" add -A -- "${paths[@]}" >/dev/null 2>&1 \
-       || ! git --literal-pathspecs -C "$_T_ABS" $idargs commit -q -m "feat($slug): Task $n $title [$group]" -- "${paths[@]}" >/dev/null 2>&1; then
+       || ! git --literal-pathspecs -C "$_T_ABS" $idargs commit -q -m "$cmsg" -- "${paths[@]}" >/dev/null 2>&1; then
       echo "FAIL: could not commit Task $n in $(_jget "$_T_CTX" worktree)" >&2
       return 1
     fi
@@ -3466,7 +3530,7 @@ print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
   if [[ -n "$suite" ]]; then
     local rowfile rc
     rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
-    _task_py integrun "$(pwd -P)" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" -- "$suite"
+    _task_py integrun "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$rowfile" -- "$suite"
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
@@ -3476,6 +3540,11 @@ print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
       echo "FAIL: integration suite failed (exit $rc): $suite" >&2
       return 1
     fi
+  fi
+  # F8: each scenario's Test: command runs on the merged tree, one CLI-run row each. A failing one records a failing row and
+  # does not fail the integration: the Build gate fails for that reason and the person gets the gate question.
+  if [[ -f "$spec_path/intent.md" ]]; then
+    python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" integrate "$spec_path/intent.md" "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$(_evidence_file build)" || true
   fi
   local ifail
   if ! ifail="$(_task_py ifcheck "$(python3 -I -c "import json, sys; print(json.dumps(json.loads(sys.argv[1])['interfaces']))" "$facts")")"; then
@@ -3488,6 +3557,44 @@ print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
   echo "PASS: integrated $order into $feature"
 }
 
+# temper task confirm N --by '<name>': the person confirmed a manual task by hand (F12). The name is what the person typed
+# when asked; Temper reads no name from git or the account. The gate then passes the task.
+cmd_task_confirm() {
+  local n="${1:-}" by=""; shift || true
+  while [[ $# -gt 0 ]]; do case "$1" in --by) by="${2:-}"; shift 2 || true ;; *) shift ;; esac; done
+  [[ -n "$by" ]] || { echo "FAIL: usage: temper task confirm <N> --by '<the name the person gives>'" >&2; return 1; }
+  _task_load "$n" || return 1
+  [[ "$(_jget "$_T_CTX" manual)" == "True" || "$(_jget "$_T_CTX" manual)" == "true" ]] || { echo "FAIL: Task $n is not a manual task" >&2; return 1; }
+  [[ "$(_jget "$_T_CTX" status)" == "running" ]] || { echo "FAIL: Task $n is not running (temper task start $n)" >&2; return 1; }
+  _lock_acquire
+  _groups_mutate "d['tasks'][a[0]]['confirmed_by'] = a[1]; d['tasks'][a[0]].pop('awaiting', None)" "$n" "$by"
+  local rc=$?
+  _lock_release
+  [[ $rc -eq 0 ]] || return $rc
+  _json_append "$(_evidence_file build)" "$(python3 -I -c "
+import json, sys, time
+print(json.dumps({'claim': 'Task %s confirmed by %s' % (sys.argv[1], sys.argv[2]), 'cmd': None, 'exit_code': 0, 'artifact': None,
+                  'sha256': None, 'value': None, 'severity': None, 'phase': 'confirm', 'scenario': None, 'criterion': None,
+                  'label': 'PROVEN', 'task': int(sys.argv[1]), 'executed_by': 'person', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))" "$n" "$by")"
+  echo "OK: Task $n confirmed by $by"
+}
+
+# temper task accept N --reason R | temper task retry N: the person's answer for a covered task (F19, scripts/task_cover.py).
+cmd_task_cover() {
+  local sub="$1" n="${2:-}" reason="" rc; shift 2 || true
+  while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="${2:-}"; shift 2 || true ;; *) shift ;; esac; done
+  _task_load "$n" || return 1
+  _lock_acquire
+  if [[ "$sub" == "retry" ]]; then
+    python3 -E -s "$SCRIPTS_DIR/task_cover.py" retry "$GROUPS_FILE" "$n" && _task_wt_discard "$n" "$(_jget "$_T_CTX" worktree)" "$(_jget "$_T_CTX" tbranch)"
+    rc=$?; _lock_release
+    [[ $rc -eq 0 ]] && echo "OK: Task $n starts again (temper next hands it out)"; return $rc
+  fi
+  python3 -E -s "$SCRIPTS_DIR/task_cover.py" accept "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$reason"; rc=$?; _lock_release
+  [[ $rc -eq 0 ]] || return $rc
+  TEMPER_ACCEPT_COVERED=1 cmd_task_gate "$n" --model person
+}
+
 cmd_task() {
   local sub="${1:-}"; shift || true
   case "$sub" in
@@ -3495,7 +3602,9 @@ cmd_task() {
     show) cmd_task_show "$@" ;;
     test) cmd_task_test "$@" ;;
     gate) cmd_task_gate "$@" ;;
-    *) echo "FAIL: usage: temper task <start|show|test|gate> ..." >&2; return 1 ;;
+    confirm) cmd_task_confirm "$@" ;;
+    accept|retry) cmd_task_cover "$sub" "$@" ;;
+    *) echo "FAIL: usage: temper task <start|show|test|gate|confirm|accept|retry> ..." >&2; return 1 ;;
   esac
 }
 
@@ -3723,6 +3832,12 @@ gate_plan() {
       g_ok="$(python3 -I -c "import json,sys; print(1 if json.loads(sys.argv[1])['pass'] else 0)" "$g_line")"
       [[ "$g_ok" == "1" ]] || all_pass=0
     done <<<"$(_grouped_plan_reqs "$spec_path/tasks.md" "$(_cfg_get autonomy.max-blast-radius 15)")"
+    # the rows scripts/gate_rows.py adds (F8: every scenario has a Test: line)
+    while IFS= read -r g_line; do
+      [[ -n "$g_line" ]] || continue
+      reqs+=("$g_line")
+      grep -q '"pass": false' <<<"$g_line" && all_pass=0
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)" "$(_cfg_get plan.context-check auto)")"
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -3805,7 +3920,9 @@ def test(r): return isinstance(r, dict) and re.search('test', r.get('claim') or 
 red = [i for i, r in enumerate(rows) if test(r) and r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
 print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.get('phase') == 'green' and r.get('exit_code') == 0))
 " "$(_evidence_file build)" 2>/dev/null || echo 0)"
-  if [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
+  if [[ -f "$spec_path/tasks.md" ]] && python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
+    reqs+=("$(_req "RED then GREEN" 1 "every task is manual: the person confirms each by hand, there is no test to run")")
+  elif [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
     reqs+=("$(_req "RED then GREEN" 1 "$red_n failing-first run(s), $green_n passing run(s) recorded")")
   elif [[ "$red_n" -gt 0 && "$green_n" -gt 0 ]]; then
     reqs+=("$(_req "RED then GREEN" 0 "every passing run (GREEN) was recorded before the first failing run (RED); a test first fails, then passes")")
@@ -3815,14 +3932,12 @@ print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.
     all_pass=0
   fi
   if [[ -f "$spec_path/tasks.md" ]]; then
-    local unchecked
-    unchecked=$(_count_lines_matching '^[[:space:]]*- \[ \]' "$spec_path/tasks.md")
-    if [[ "$unchecked" -eq 0 ]]; then
-      reqs+=("$(_req "all tasks complete" 1 "no unchecked tasks in tasks.md")")
-    else
-      reqs+=("$(_req "all tasks complete" 0 "$unchecked unchecked task(s) remain in tasks.md")")
-      all_pass=0
-    fi
+    local trow; trow="$(python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-tasks "$spec_path/tasks.md" "$GROUPS_FILE")"
+    reqs+=("$trow")
+    grep -q '"pass": false' <<<"$trow" && all_pass=0
+    # every success criterion is validated: a scenario criterion by a row the CLI ran (F7, scripts/acceptance.py build)
+    trow="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" build-rows "$spec_path" "$(_evidence_file build)")"
+    if [[ -n "$trow" ]]; then reqs+=("$trow"); grep -q '"pass": false' <<<"$trow" && all_pass=0; fi
   fi
   # Checkpoint feedback: every `feedback #N` row the orchestrator recorded must be
   # answered by a `feedback-resolved` row — applied (detail optional) or declined
@@ -4131,14 +4246,9 @@ sys.exit(0 if any(o.get('stage') == sys.argv[2] for o in d) else 1)
 " "$OVERRIDES_FILE" "$1" 2>/dev/null
 }
 
-_project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder
-  python3 -I -c "
-import os, subprocess, sys
-top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.decode().strip()
-for l in sys.stdin:
-    n = l.rstrip('\n')
-    if n:
-        print(os.path.relpath(os.path.join(top, n)) if top else n)"
+_project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder,
+                   # the ones that do not count toward the blast radius left out (scripts/blast_filter.py, F21)
+  python3 -E -s "$SCRIPTS_DIR/blast_filter.py" project
 }
 
 _glob_touch_match() { # _glob_touch_match <file> <pattern>  (a project pattern from autonomy.park-on-touch)
@@ -4160,6 +4270,10 @@ while i < n:
     else: out.append(re.escape(pat[i])); i += 1
 sys.exit(0 if re.match("^" + "".join(out) + "$", target) else 1)
 PY
+}
+
+gate_pipeline() { # gate_pipeline <spec_path>: the rows of the Pipeline gate (gate_rows.py)
+  python3 -E -s "$SCRIPTS_DIR/gate_rows.py" pipeline-gate "$1"
 }
 
 gate_commit() {
@@ -4291,10 +4405,10 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
     base_sha="$(cmd_state_get base_sha "")"
     if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
       changed_n=$( { git -C "$REPO_ROOT" diff --name-only "$base_sha" 2>/dev/null
-                     git -C "$REPO_ROOT" status --porcelain 2>/dev/null | awk '{print $NF}'
-                   } | sort -u | grep -c . )
+                     git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
+                   } | _project_names | sort -u | grep -c . )
     else
-      changed_n=$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+      changed_n=$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //' | _project_names | sort -u | grep -c .)
     fi
     if [[ -f "$(_spec_path "")/tasks.md" ]]; then
       # D-01: in grouped mode a group may legitimately exceed the count, so the row compares the
@@ -4343,7 +4457,7 @@ else: print('PASS %d changed, all declared' % len(changed))
       # what is still uncommitted; a rename by both its names, so a file moved out of a parked path still parks.
       done < <( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
                     git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
-                  git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain 2>/dev/null | cut -c4- | sed 's/.* -> //'
+                  git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
                 } | _project_names | sort -u)
     fi
     if [[ -z "$touched" ]]; then
@@ -4360,9 +4474,9 @@ else: print('PASS %d changed, all declared' % len(changed))
 cmd_gate() {
   _state_migrate_legacy
   local stage="${1:-}"; shift || true
-  local spec_path_override=""
+  local spec_path_override="" from_hook=0
   while [[ $# -gt 0 ]]; do
-    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; *) shift ;; esac
+    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; --from-hook) from_hook=1; shift ;; *) shift ;; esac
   done
   _ensure_dirs
   local ok=false
@@ -4394,6 +4508,15 @@ cmd_gate() {
     echo "      (gate $stage treats a missing artifact as a legitimate skip, so it refuses to guess where to look)" >&2
     return 1
   fi
+  # F29: the commit hook gates a commit on the run's branch only. A commit on another branch passes with one line and records
+  # nothing; a detached HEAD, and a run with no branch, keep the gate. The orchestrator's own gate call is unchanged.
+  if [[ "$from_hook" == "1" && "$stage" == "commit" && -f "$STATE_FILE" ]]; then
+    local rb cb; rb="$(cmd_state_get branch "")"; cb="$(git branch --show-current 2>/dev/null)"
+    if [[ -n "$rb" && -n "$cb" && "$cb" != "$rb" ]]; then
+      echo "Temper: the run $(cmd_state_get spec "") is on $rb; this commit is on $cb, so the commit gate does not apply."
+      return 0
+    fi
+  fi
   local out reqs_json all_pass
   case "$stage" in
     intent) out=$(gate_intent "$spec_path") ;;
@@ -4403,6 +4526,7 @@ cmd_gate() {
     review) out=$(gate_review) ;;
     check) out=$(gate_check "$spec_path") ;;
     commit) out=$(gate_commit) ;;
+    pipeline) out=$(gate_pipeline "$spec_path") ;;
   esac
   if [[ -n "${out:-}" ]]; then
     reqs_json="${out% *}"
@@ -4423,6 +4547,11 @@ cmd_gate() {
     fi
     # Per-criterion status for the live view. Fail open: never changes the verdict.
     _status_write "$spec_path" >/dev/null 2>&1 || true
+    # A gate the orchestrator runs marks the small change's step done; one the commit hook runs neither marks nor closes it.
+    if [[ "$from_hook" != "1" && -f "$STATE_FILE" ]]; then
+      python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" step "$STATE_FILE" "$stage" || true
+      python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" step "$STATE_FILE" gate || true
+    fi
   fi
 
   echo "temper gate $stage -> $verdict"
@@ -4480,15 +4609,27 @@ cmd_status() { # temper status [--json] [--spec-path P]
   local out
   out="$(python3 "$ACCEPTANCE_PY" status "$spec_path/intent.md" "$EVIDENCE_DIR")" || { echo "FAIL: could not compute criteria status" >&2; return 1; }
   printf '%s\n' "$out" > "$STATUS_FILE" 2>/dev/null || true
+  local models; models="$(python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --source 2>/dev/null)"
   if [[ "$as_json" == "true" ]]; then
-    printf '%s\n' "$out"
+    python3 -I -c "
+import json, sys
+d = json.loads(sys.argv[1])
+d['models'] = [{'stage': l.split('=', 1)[0], 'model': l.split('=', 1)[1].rsplit(' (', 1)[0], 'source': l.rsplit(' (', 1)[1].rstrip(')')}
+               for l in sys.argv[2].splitlines() if '=' in l and ' (' in l]
+print(json.dumps(d))" "$out" "$models"
   else
     python3 -I -c "
 import json, sys
 for c in json.loads(sys.argv[1])['criteria']:
     ev = '; '.join(c['evidence']) if c['evidence'] else 'no evidence'
     print('  [%s] %s (%s) — %s' % ('v' if c['status'] == 'passed' else ' ', c['id'], c['priority'], ev))
-" "$out"
+print('Models')
+for l in sys.argv[2].splitlines():
+    if '=' in l and ' (' in l:
+        name, rest = l.split('=', 1)
+        model, src = rest.rsplit(' (', 1)
+        print('  %-16s %-18s %s' % (name, model, src.rstrip(')')))
+" "$out" "$models"
   fi
 }
 
@@ -4609,23 +4750,75 @@ _setup_calls() {
   fi
 }
 
+# temper plan review --answer '<text>' [--focus '<area>']...: the person's answer to the Context check, written into plan.md's
+# Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand.
+cmd_plan() {
+  _state_migrate_legacy
+  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']..." >&2; return 1; }
+  shift
+  local spec; spec="$(_spec_path "")"
+  [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
+  local args=() answer=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --answer) args+=("--answer" "${2:-}"); answer=1; shift 2 || true ;;
+      --focus) args+=("--focus" "${2:-}"); shift 2 || true ;;
+      *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
+    esac
+  done
+  [[ $answer -eq 1 ]] || { echo "FAIL: temper plan review needs --answer '<text>'" >&2; return 1; }
+  python3 -E -s "$SCRIPTS_DIR/plan_ops.py" review "$spec" "${args[@]}"
+}
+
+# temper adhoc open --stage S --reason R | temper adhoc close: the small-change window (scripts/adhoc_ops.py, F14).
+cmd_adhoc() {
+  _state_migrate_legacy
+  local sub="${1:-}"; shift || true
+  [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state (temper state init)" >&2; return 1; }
+  local stage="" reason="" rc
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --stage) stage="${2:-}"; shift 2 || true ;; --reason) reason="${2:-}"; shift 2 || true ;; *) echo "FAIL: unknown flag $1" >&2; return 1 ;; esac
+  done
+  _lock_acquire
+  case "$sub" in
+    open) python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" open "$STATE_FILE" "$stage" "$reason"; rc=$? ;;
+    close) python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" close "$STATE_FILE"; rc=$? ;;
+    *) echo "FAIL: usage: temper adhoc open --stage <build|review|check|commit|pipeline> --reason '<why>' | temper adhoc close" >&2; rc=1 ;;
+  esac
+  _lock_release
+  # a change that re-runs the Review agent takes the Review code snapshot now, after the change: Review then does not fail on it
+  if [[ "$sub" == "close" && $rc -eq 0 ]] && python3 -I -c "
+import json, sys
+sys.exit(0 if 'review' in (json.load(open(sys.argv[1])).get('adhoc_done') or {}).get('steps', []) else 1)" "$STATE_FILE"; then
+    _review_code save || true
+  fi
+  return $rc
+}
+
+# temper risk [--raise L|M|H --reason R]: the plan's rating from its blast radius (scripts/risk.py), kept in the run state.
+cmd_risk() {
+  _state_migrate_legacy
+  [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state (temper state init)" >&2; return 1; }
+  local spec; spec="$(_spec_path "")"
+  [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
+  local out rc=0
+  out="$(python3 -E -s "$SCRIPTS_DIR/risk.py" compute "$spec" "$TEMPER_DIR/security-map.json" "$@" --prior "$(_json_get_path "$STATE_FILE" risk_raise "")")" || rc=$?
+  [[ $rc -eq 0 ]] || return $rc
+  head -1 <<<"$out"
+  python3 -I -c "
+import json, sys
+for k, v in json.loads(sys.argv[1]).items(): print(k + '\t' + str(v))" "$(tail -1 <<<"$out")" | while IFS=$'\t' read -r k v; do
+    _json_set_path "$STATE_FILE" "$k" "$v" '{}' >/dev/null
+  done
+}
+
 # temper next [--json]: the next action of the run, computed (ADR 0013, docs/flow.md). Read only. flow.py reads the
 # project's facts itself (the branch, HEAD, the spec folder's state, the changed files); the CLI adds the models and the
 # setup calls, which only it knows.
 cmd_next() {
   _state_migrate_legacy
-  local models; models="$(cmd_model --all 2>/dev/null)"
-  local setup; setup="$(_setup_calls)"
-  local ctx
-  ctx="$(python3 -I -c "
-import json, sys
-a = sys.argv[1:]
-models = dict(l.split('=', 1) for l in a[3].splitlines() if '=' in l)
-print(json.dumps({'plugin': a[0], 'cli': a[1], 'config_file': a[2], 'models': models,
-                  'task_model': models.get('task', ''), 'escalation_model': models.get('task-escalation', ''),
-                  'now': a[4], 'setup': [l for l in a[5].splitlines() if l.strip()]}))
-" "$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/temper" "$CONFIG_FILE" "$models" "$(_now)" "$setup")" || return 1
-  python3 "$SCRIPTS_DIR/flow.py" next --ctx "$ctx"
+  python3 "$SCRIPTS_DIR/cli_ctx.py" next --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
+    --config-file "$CONFIG_FILE" --now "$(_now)" --run-files "$_RUN_FILES" "$@"
 }
 
 # .temper/view.json, the one file the mod reads (ADR 0013): written after every command that may change the run.
@@ -5029,6 +5222,12 @@ PY
 main() {
   _require_python
   local sub="${1:-}"; shift || true
+  # The self test exports TEMPER_SELFTEST_ROOT: a call from outside that folder (config and model included) is refused, so a
+  # case that leaves its fixture can never touch a real project's .temper.
+  if [[ -n "${TEMPER_SELFTEST_ROOT:-}" ]]; then
+    local _here; _here="$(pwd -P)"; [[ "$_here" == //* && "$_here" != ///* ]] && _here="${_here#/}"
+    [[ "$_here/" == "$TEMPER_SELFTEST_ROOT"/* ]] || { echo "FAIL: a self test call from outside its own folder is refused ($_here)" >&2; return 3; }
+  fi
   # Every subcommand that reads or writes the project's .temper folder is refused in a
   # folder inside the plugin folder, and in the plugin folder itself unless it is its own
   # git repository (developing Temper). `config` and `model` only read a config file and the
@@ -5037,7 +5236,7 @@ main() {
   # The home folder is refused first (exit 1): it is never a project. A symlink on a path
   # the CLI writes or reads as run state is refused too (exit 3), for the same reason.
   case "$sub" in
-    config|model|""|-h|--help) ;;
+    config|model|guards|""|-h|--help) ;;
     *) _home_refuse || return 1
        _inside_plugin_refuse || return 1
        _unsafe_temper_refuse || return 3
@@ -5061,6 +5260,10 @@ main() {
     integrate) cmd_integrate "$@" ;;
     usage) cmd_usage "$@" ;;
     next) cmd_next "$@" ;;
+    risk) cmd_risk "$@" ;;
+    adhoc) cmd_adhoc "$@" ;;
+    plan) cmd_plan "$@" ;;
+    guards) [[ "${1:-}" == "uninstall" ]] && python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall || { echo "FAIL: usage: temper guards uninstall" >&2; false; } ;;
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
     ""|-h|--help)
@@ -5093,6 +5296,10 @@ Usage:
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)
+  temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
+  temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
+  temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
+  temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
@@ -5100,7 +5307,8 @@ EOF
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|""|-h|--help|report|status|bands|metrics|schedule) ;;
+    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule) ;;
+    next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;
     group) [[ "${1:-}" == "report" ]] || _view_write ;;
