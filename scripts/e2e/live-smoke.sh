@@ -8,7 +8,7 @@
 #   TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh fresh      only the fresh review check
 #   TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh cost [N]   what the fresh review costs: the same session from Plan to the plan
 #                                                               question with plan.fresh-review off and always, N times each
-#                                                               (default 1), with the time, tokens and cost Claude Code reports
+#                                                               (default 1), with the time and the cost Claude Code reports
 #
 # The fresh review check (9.7.6). A scratch Python project gets an accepted intent for a medium change (limit failed logins), with
 # the run already at Plan: a headless session cannot answer the Intent question. Then `claude -p "/temper:temper"` takes the run
@@ -160,17 +160,19 @@ PY
 }
 
 if [[ "$WHAT" == "cost" ]]; then
-  # The same headless session from Plan to the plan question, without the fresh review and with it. Claude Code's own result
-  # (claude -p --output-format json) gives the time, the turns, the tokens and the cost of the whole session, its agents included.
+  # The same headless session from Plan to the plan question, without the fresh review and with it: the wall time the shell
+  # measures, and Claude Code's own API time and cost for the whole session, its agents included (the last result it prints);
+  # plan_s and review_s are the Plan agent's and the reviewer's time from the run's usage rows.
   N="${2:-1}"; [[ "$N" =~ ^[1-9][0-9]*$ ]] || N=1
-  printf '%-7s %-3s %9s %6s %12s %12s %10s %s\n' mode run seconds turns tokens_in tokens_out cost_usd "reviewer s"
+  printf '%-7s %-3s %8s %8s %8s %8s %9s\n' mode run wall_s api_s plan_s review_s cost_usd
   for i in $(seq 1 "$N"); do
     for mode in off always; do
       d="$SCRATCH/cost-$mode-$i"
       (seed "$d" "$mode") >"$SCRATCH/cost-$mode-$i.log" 2>&1 || { fail "cost: the seed did not reach Plan ($mode)"; continue; }
+      t0=$(date +%s)
       (cd "$d" && timeout 1800 claude -p "/temper:temper" --plugin-dir "$PLUGIN" --permission-mode acceptEdits \
-        --allowedTools Bash Read Write Edit Glob Grep Agent --output-format json > "$SCRATCH/cost-$mode-$i.json" 2>/dev/null)
-      python3 -I "$HERE/cost_row.py" "$SCRATCH/cost-$mode-$i.json" "$d/.temper/usage.json" "$mode" "$i"
+        --allowedTools Bash Read Write Edit Glob Grep Agent --output-format stream-json --verbose > "$SCRATCH/cost-$mode-$i.json" 2>/dev/null)
+      python3 -I "$HERE/cost_row.py" "$SCRATCH/cost-$mode-$i.json" "$d/.temper/usage.json" "$mode" "$i" "$(( $(date +%s) - t0 ))"
     done
   done
   echo "The cost is Claude Code's own figure for the session at API prices; on a subscription it is usage, not a bill."
