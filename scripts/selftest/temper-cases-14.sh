@@ -73,6 +73,11 @@ assert_exit "fresh review: every lens and the paraphrase pass the plan gate" 0 "
 assert_eq "fresh review: the plan question shows the reader's paraphrase" "1" \
   "$(nx "int('A reader with no context took it as: the demo runs twice | a demo is one shell step. Approve the plan' in d['ask']['question']['question'])")"
 
+gfail plan "blast radius documented" "plan.md missing a Blast Radius section"
+assert_eq "fresh review: a plan question that failed on another row still carries the reader's paraphrase" "1" \
+  "$(nx "int('Plan: the check failed (blast radius documented: plan.md missing a Blast Radius section). A reader with no context took it as: the demo runs twice' in d['ask']['question']['question'])")"
+"$TEMPER" gate plan >/dev/null 2>&1
+
 # --- 3. A blocker fails the gate; Revise the plan runs the Plan agent again with it; an edited tasks.md makes the review stale ---
 _fr_find high "[readiness] Task 1: the case names no expected value"; _fr_find low "[comprehension] the word demo is not defined"
 assert_eq "fresh review: an open high finding fails the blockers row and names it" \

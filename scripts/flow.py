@@ -533,7 +533,7 @@ class Builder:
             fresh_failed = [x for x in rows if x.get("name") in FRESH_ROWS]
             if fr["applies"] and fresh_failed:
                 return self.fresh_question(fr, why, said, back_opt, override_opt, grill)
-            return self.question(GATE_HEADER, "Plan: the check failed (%s). Fix the plan, or skip the check?" % why, stage=stage,
+            return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said), stage=stage,
                                  options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()])
 
         if stage == "design":

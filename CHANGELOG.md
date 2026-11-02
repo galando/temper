@@ -57,11 +57,18 @@ Temper's own spine: every verdict is still a CLI row from recorded evidence, and
 - **`reviewerModel` also sets the fresh plan reviewer's model** (`temper:temper-plan-review`); `models.plan-review` in the config
   still sets it without the mod.
 
+**A live check, off by default**
+- `scripts/e2e/live-smoke.sh` gains a fresh review check (`TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh fresh`, on a
+  machine where Claude Code is signed in): a scratch Python project with an accepted medium intent at Plan, taken up headless by
+  `claude -p "/temper:temper"`, once with the mod and once with `disableAllHooks`. It checks each lens ran on the tasks.md as it
+  is, the paraphrase, the plan question that carries it and `fresh` in view.json, and that both legs end the same. Never in CI.
+- Found while writing it: a plan question that failed on another row did not carry the reader's paraphrase. It does now.
+
 **Also**
 - The README is short: what Temper is, install, how it works, the commands. The mod's details live in [docs/mod.md](docs/mod.md).
 - The website: each video has a second source and a link to the file; the Pages workflow fails when a restored video is missing
   or not an MP4, and checks after the deploy that the live site serves each one as a playable file.
-- Tests: case file 14 (46 checks); three earlier cases with a medium plan record its fresh review (`fresh_reviewed` in
+- Tests: case file 14 (47 checks); three earlier cases with a medium plan record its fresh review (`fresh_reviewed` in
   case-helpers.sh); the view fixtures carry `fresh` (a new fixture, `plan-fresh-blocker`, holds an open blocker and a contest). The self test: 2056 pass, 0 fail (9.7.5:
   2010). The e2e driver: 19 scenarios, each passing with the mod and without it, the flow identical (new: `fresh-review`,
   `fresh-not-run`, `fresh-contest`). Mod tests: 1620 pass, 0 fail (new: tests/mod/v976.test.tsx).
