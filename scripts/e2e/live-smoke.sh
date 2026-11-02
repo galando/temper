@@ -13,7 +13,8 @@
 # answer. The check reads what the run left: plan.md and tasks.md, a completion row for each lens against the tasks.md as it is,
 # the reader's paraphrase, the paraphrase in the plan question, and the `fresh` field of view.json. It runs twice: with the mod
 # (the plugin as it loads) and without it (`--settings '{"disableAllHooks": true}'`, which stops every mod). Both must end in the
-# same state. A model can word a plan differently each run, so it compares outcomes, never text.
+# same state. A model can word a plan differently each run, so it compares outcomes, never text. When Claude Code prints that it did
+# not load the mod (a rollout switch or an older version), the mod leg fails: it ran without the mod and proves nothing about it.
 #
 # Permissions: the fresh check lets the session edit files and run commands without asking (acceptEdits, with Bash, Agent and the
 # file tools allowed), inside a throwaway folder it deletes at the end. It costs real model calls: a Plan agent and a reviewer per
@@ -119,6 +120,10 @@ leg() { # leg <name> [claude flags...]: seed, take the run up headless, print on
   out="$(cd "$d" && timeout 1800 claude -p "/temper:temper" --plugin-dir "$PLUGIN" --permission-mode acceptEdits \
     --allowedTools Bash Read Write Edit Glob Grep Agent "$@" 2>&1)"; rc=$?
   echo "$out" | tail -15 | sed "s/^/  [$name] /"
+  # The mod leg proves nothing when Claude Code did not load the mod (it says so on its first line): fail it, never pass it.
+  if [[ "$name" == "mod" ]] && grep -q 'hooks module not loaded' <<<"$out"; then
+    fail "mod: Claude Code did not load the mod in this process, so this leg ran without it: $(grep -m1 'hooks module not loaded' <<<"$out" | cut -c1-200)"
+  fi
   local spec=".temper/specs/login-limit"
   (cd "$d" && python3 -I - "$PLUGIN/scripts" "$spec" "$name" "$rc" <<'PY'
 import json, os, subprocess, sys
@@ -157,7 +162,9 @@ echo "--- the fresh review check, without the mod (disableAllHooks) ---"
 B="$(leg plain --settings '{"disableAllHooks": true}')"; echo "$B" | sed '$d'
 grep -q '^FAIL' <<<"$A$B" && FAILED=1
 a="$(tail -1 <<<"$A")"; b="$(tail -1 <<<"$B")"
-if [[ "${a#*|}" == "ok|"* && "${a#*|}" == "${b#*|}" ]]; then
+if [[ "${a#*|}" == "ok|"* && "${a#*|}" == "${b#*|}" ]] && grep -q 'did not load the mod' <<<"$A"; then
+  echo "NOTE: fresh: both legs reached the plan question with the fresh review done, but the mod did not load: only the run without it is checked"
+elif [[ "${a#*|}" == "ok|"* && "${a#*|}" == "${b#*|}" ]]; then
   echo "OK: fresh: with the mod and without it the run reached the plan question with the fresh review done (${a##*|})"
 else
   fail "fresh: the two legs ended differently (mod: ${a#*|}; without: ${b#*|})"
