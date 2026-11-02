@@ -59,6 +59,8 @@ Temper's own spine: every verdict is still a CLI row from recorded evidence, and
 **The evidence** ([docs/evidence/fresh-review.md](docs/evidence/fresh-review.md))
 - The 9.7.5 and 9.7.6 CLIs on the same plan states (`scripts/e2e/ab-plan-gate.sh`): 9.7.5 passes a plan with a reader's
   blocker, a review that stopped after two lenses and a review of an older tasks.md; 9.7.6 fails each, and both pass a good plan.
+- What it costs (`live-smoke.sh cost 3`, the same session three times each): about 26 s of reviewer time, 37 s of wall time and
+  $0.17 at API prices per plan, about 17% of the Plan stage; `temper gate plan` is about 70 ms slower, `temper next` the same.
 - A live run: the fresh reviewer found all 5 defects planted in a plan, and no blocker in its fixed twin. Two Haiku builders
   given the defective task passed their own tests and failed the intent (5 failures, 15 minutes, status 429, nothing wired into
   `/login`); two given the fixed task passed every criterion.

@@ -60,10 +60,31 @@ the test encodes the same guess as the code. Both said so in their reports: `src
 so they left the feature unwired. (The seeded builds pass AC-02 only because nothing is wired, so every attempt is a plain
 401.)
 
+## 3. What it costs
+
+**The model.** `TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh cost 3` runs the same headless session three times without
+the review (`plan.fresh-review: off`) and three times with it (`always`): a scratch Python project with an accepted medium
+intent, from the Plan agent to the plan question. Wall time is what the shell measured; the Plan agent's and the reviewer's
+times come from the run's usage rows; the cost is Claude Code's own figure for the session at API prices.
+
+| Mode | Runs | Wall time (mean) | Plan agent (mean) | Reviewer (mean) | Cost (mean, API prices) |
+|---|---|---|---|---|---|
+| off | 3 | 170 s | 145 s | none | $1.01 |
+| always | 3 | 207 s | 144 s | 26 s | $1.18 |
+
+The review added about 26 seconds of reviewer time, about 37 seconds of wall time (it also adds a turn of the orchestrator),
+and about $0.17 per plan, roughly 17% of the Plan stage. The runs vary (one session with the review cost $1.40, another $1.04),
+so read these as an order of size from three runs each, not a rate. A risk H plan runs two reviewers. On a subscription the
+cost is usage, not a bill. In the earlier evidence run, one reviewer used about 61,000 tokens and 30 to 34 seconds.
+
+**The CLI.** The median of 20 calls on the same medium plan, two rounds each, 9.7.5 against 9.7.6: `temper gate plan` 900 ms
+against 970 ms (the fresh review rows add about 70 ms), `temper next --json` about 130 ms in both.
+
 ## What this does not show
 
 - Two builders per variant and one reviewer run per plan: enough to show the mechanism, not a rate. A reviewer can miss a
   defect or raise a false one; the gate counts what it records, and the person decides each finding.
 - The fixture was written for this test. Real plans differ; the deterministic table above is the part that holds for every
   plan.
-- The fresh review costs one more agent (two at risk H) per medium or complex plan. `plan.fresh-review: off` turns it off.
+- The fresh review runs when the person asks for it at the plan question (`plan.fresh-review: ask`, the default); `auto` runs
+  it by itself for medium and complex plans, and `off` never.
