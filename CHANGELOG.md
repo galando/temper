@@ -82,10 +82,10 @@ Temper's own spine: every verdict is still a CLI row from recorded evidence, and
 - The README is short: what Temper is, install, how it works, the commands. The mod's details live in [docs/mod.md](docs/mod.md).
 - The website: each video has a second source and a link to the file; the Pages workflow fails when a restored video is missing
   or not an MP4, and checks after the deploy that the live site serves each one as a playable file.
-- Tests: case file 14 (47 checks); three earlier cases with a medium plan record its fresh review (`fresh_reviewed` in
-  case-helpers.sh); the view fixtures carry `fresh` (a new fixture, `plan-fresh-blocker`, holds an open blocker and a contest). The self test: 2057 pass, 0 fail (9.7.5:
-  2010). The e2e driver: 19 scenarios, each passing with the mod and without it, the flow identical (new: `fresh-review`,
-  `fresh-not-run`, `fresh-contest`). Mod tests: 1620 pass, 0 fail (new: tests/mod/v976.test.tsx).
+- Tests: case file 14 (63 checks); three earlier cases with a medium plan record its fresh review (`fresh_reviewed` in
+  case-helpers.sh); the view fixtures carry `fresh` (a new fixture, `plan-fresh-blocker`, holds an open blocker and a contest). The self test: 2074 pass, 0 fail (9.7.5:
+  2010). The e2e driver: 20 scenarios, each passing with the mod and without it, the flow identical (new: `fresh-review`,
+  `fresh-not-run`, `fresh-contest`, `fresh-ask`). Mod tests: 1620 pass, 0 fail (new: tests/mod/v976.test.tsx).
 ## v9.7.5: the Context Map, scenario tests that run, small changes, draft pull requests and the Pipeline stage
 
 A private fork of 9.7.0 grew a set of behaviours in its own "9.7.1". This release rebuilds them on 9.7.4, with every hold of the
