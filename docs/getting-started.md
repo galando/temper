@@ -151,6 +151,14 @@ Temper will analyze the blast radius:
 📋 Plan: 7 steps with test gates
 ```
 
+**A fresh review of the plan (9.7.6).** At the plan question, **Fresh review first** has a reviewer with no context read
+`intent.md`, `plan.md` and `tasks.md` before you approve the plan. It checks that each task can be built from its own block
+with no guess, that nothing unneeded or already in the code is planned, and it writes a short summary of the plan that the
+question shows you to compare with the intent. A blocker fails the plan gate; **Revise the plan** sends the findings back to
+the Plan agent. Set `plan.fresh-review: auto` in `.claude/temper.config` to run it by itself for medium and complex plans,
+`always` for every plan, or `off`. It costs one more agent per plan (two for a risk H plan); see
+[the evidence](evidence/fresh-review.md) for what it found and what it costs.
+
 ### 2. Build with Quality Gates
 
 ```bash

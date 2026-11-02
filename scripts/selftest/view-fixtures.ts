@@ -138,6 +138,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -429,6 +430,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -742,6 +744,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -1060,6 +1063,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -1373,6 +1377,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -1680,6 +1685,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -1992,6 +1998,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -2433,6 +2440,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -2855,6 +2863,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -3139,6 +3148,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -3570,6 +3580,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -4034,6 +4045,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -4339,6 +4351,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -4740,6 +4753,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -5126,6 +5140,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -5437,6 +5452,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -5753,6 +5769,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -6069,6 +6086,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -6442,6 +6460,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -6862,6 +6881,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -7022,6 +7042,13 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
+      "description": "Publish the plan as a private Claude artifact others can comment on.",
+      "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
+      "label": "Share HTML review",
+      "move": null
+     },
+     {
+      "calls": [],
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
@@ -7046,6 +7073,10 @@ export const VIEWS: Record<string, unknown> = {
      "header": "Temper gate",
      "multiSelect": false,
      "options": [
+      {
+       "description": "Publish the plan as a private Claude artifact others can comment on.",
+       "label": "Share HTML review"
+      },
       {
        "description": "Stress test the plan.",
        "label": "Grill Me"
@@ -7078,6 +7109,14 @@ export const VIEWS: Record<string, unknown> = {
      "move": "approve"
     },
     {
+     "calls": [
+      "/plugin/scripts/temper plan fresh request"
+     ],
+     "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
+     "label": "Fresh review first",
+     "move": "redo"
+    },
+    {
      "calls": [],
      "description": "Open the plan as a page to comment on.",
      "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
@@ -7086,14 +7125,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Publish the plan as a private Claude artifact others can comment on.",
-     "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
-     "label": "Share HTML review",
-     "move": null
-    },
-    {
-     "calls": [],
-     "description": "Grill Me, Teach Me, Save for later",
+     "description": "Share HTML review, Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -7108,15 +7140,15 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Continue to Design (Recommended)"
      },
      {
+      "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
+      "label": "Fresh review first"
+     },
+     {
       "description": "Open the plan as a page to comment on.",
       "label": "Open HTML review"
      },
      {
-      "description": "Publish the plan as a private Claude artifact others can comment on.",
-      "label": "Share HTML review"
-     },
-     {
-      "description": "Grill Me, Teach Me, Save for later",
+      "description": "Share HTML review, Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],
@@ -7261,6 +7293,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -7552,6 +7585,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -7795,6 +7829,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -8072,6 +8107,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -8351,6 +8387,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -8527,6 +8564,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -8901,6 +8939,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -9059,6 +9098,13 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
+      "description": "Publish the plan as a private Claude artifact others can comment on.",
+      "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
+      "label": "Share HTML review",
+      "move": null
+     },
+     {
+      "calls": [],
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
@@ -9083,6 +9129,10 @@ export const VIEWS: Record<string, unknown> = {
      "header": "Temper gate",
      "multiSelect": false,
      "options": [
+      {
+       "description": "Publish the plan as a private Claude artifact others can comment on.",
+       "label": "Share HTML review"
+      },
       {
        "description": "Stress test the plan.",
        "label": "Grill Me"
@@ -9115,6 +9165,14 @@ export const VIEWS: Record<string, unknown> = {
      "move": "approve"
     },
     {
+     "calls": [
+      "/plugin/scripts/temper plan fresh request"
+     ],
+     "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
+     "label": "Fresh review first",
+     "move": "redo"
+    },
+    {
      "calls": [],
      "description": "Open the plan as a page to comment on.",
      "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
@@ -9123,14 +9181,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Publish the plan as a private Claude artifact others can comment on.",
-     "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
-     "label": "Share HTML review",
-     "move": null
-    },
-    {
-     "calls": [],
-     "description": "Grill Me, Teach Me, Save for later",
+     "description": "Share HTML review, Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -9145,15 +9196,15 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Continue to Build (Recommended)"
      },
      {
+      "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
+      "label": "Fresh review first"
+     },
+     {
       "description": "Open the plan as a page to comment on.",
       "label": "Open HTML review"
      },
      {
-      "description": "Publish the plan as a private Claude artifact others can comment on.",
-      "label": "Share HTML review"
-     },
-     {
-      "description": "Grill Me, Teach Me, Save for later",
+      "description": "Share HTML review, Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],
@@ -9298,6 +9349,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -9451,9 +9503,9 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Publish the plan as a private Claude artifact others can comment on.",
-      "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
-      "label": "Share HTML review",
+      "description": "Open the plan as a page to comment on.",
+      "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
+      "label": "Open HTML review",
       "move": null
      },
      {
@@ -9483,8 +9535,8 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Publish the plan as a private Claude artifact others can comment on.",
-       "label": "Share HTML review"
+       "description": "Open the plan as a page to comment on.",
+       "label": "Open HTML review"
       },
       {
        "description": "Stress test the plan.",
@@ -9530,15 +9582,16 @@ export const VIEWS: Record<string, unknown> = {
      "move": "arm"
     },
     {
-     "calls": [],
-     "description": "Open the plan as a page to comment on.",
-     "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
-     "label": "Open HTML review",
-     "move": null
+     "calls": [
+      "/plugin/scripts/temper plan fresh request"
+     ],
+     "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
+     "label": "Fresh review first",
+     "move": "redo"
     },
     {
      "calls": [],
-     "description": "Share HTML review, Grill Me, Teach Me, Save for later",
+     "description": "Open HTML review, Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -9557,11 +9610,11 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Autonomous: run the rest unattended"
      },
      {
-      "description": "Open the plan as a page to comment on.",
-      "label": "Open HTML review"
+      "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
+      "label": "Fresh review first"
      },
      {
-      "description": "Share HTML review, Grill Me, Teach Me, Save for later",
+      "description": "Open HTML review, Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],
@@ -9706,6 +9759,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -9942,6 +9996,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -10446,6 +10501,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -11002,6 +11058,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -11286,6 +11343,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,

@@ -400,7 +400,8 @@ async function handleTemper($: Api, parsed: Parsed): Promise<CommandRunResult | 
   }
 }
 
-const REVIEWERS = ['temper-review', 'temper:temper-review']
+// The Review agent and (9.7.6) the fresh reviewer of the plan run on reviewerModel when it is set.
+const REVIEWERS = ['temper-review', 'temper:temper-review', 'temper-plan-review', 'temper:temper-plan-review']
 
 // Whether each subagent seen at turn.step is the Temper review agent, by its id. The agent list is read once per id.
 const reviewerIds = new Map<string, boolean>()
@@ -417,7 +418,7 @@ async function isReviewer($: Api, agentId: string): Promise<boolean> {
 }
 
 // The model and effort a step runs with: on the main loop from the phaseModels option (keyed by stage), in the Temper
-// review agent from the reviewerModel option. Null leaves the step exactly as the engine built it.
+// review agent and the fresh plan reviewer from the reviewerModel option. Null leaves the step exactly as the engine built it.
 async function phasePick($: Api, agentId: string | undefined): Promise<{ model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' } | null> {
   if (agentId !== undefined) {
     const model = typeof options.reviewerModel === 'string' ? options.reviewerModel.trim() : ''

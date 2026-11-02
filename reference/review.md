@@ -242,6 +242,21 @@ When fixable issues remain, write them to `review-context.json`. The CLI's Revie
 offers "Loop back to Build" while the loop budget (`loops.max-per-type`, default 2) lasts; once it
 is spent, it offers only "Override and continue" and "Save for later".
 
+## Answering a finding without fixing it (9.7.6)
+
+The fix pass of Build (or the person) can answer a finding it believes is wrong instead of fixing it, in one of two ways.
+Neither closes it: the gate still counts it, and the person decides at the Review question, where the accept question
+lists escalated and contested findings first.
+
+- **Contest**, with evidence the reviewer could have read:
+  `temper evidence contest --stage review --id N --cite <file>[:<line>|:<symbol>] --quote '<the text there>' --reason '<why>'`.
+  The CLI checks that the file is inside the project, holds the line or symbol, and holds the quote (within 3 lines of a
+  cited line). The gate row names the citation, and the accept question offers it and the quote as reasons.
+- **Escalate**, when the evidence is outside every file (a team rule, a decision someone said):
+  `temper evidence escalate --stage review --id N --reason '<what only the person knows>'`.
+
+"This was intentional" is not evidence. A Review agent never contests or accepts its own finding.
+
 ## Metrics + Memory
 
 Append to `.temper/metrics.json`: `reviews.total += 1`, `issues_found`, per-severity

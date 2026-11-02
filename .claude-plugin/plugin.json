@@ -2,7 +2,7 @@
   "name": "temper",
   "displayName": "Temper",
   "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a phase bar in Claude Code.",
-  "version": "9.7.5",
+  "version": "9.7.6",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando"
@@ -38,6 +38,7 @@
   "agents": [
     "./agents/intent.md",
     "./agents/plan.md",
+    "./agents/plan-review.md",
     "./agents/design.md",
     "./agents/build.md",
     "./agents/build-task.md",
@@ -87,7 +88,7 @@
     "reviewerModel": {
       "type": "string",
       "title": "Reviewer model",
-      "description": "Optional model for the Temper review agent. Empty means no change.",
+      "description": "Optional model for the Temper review agent and the fresh reviewer of the plan. Empty means no change.",
       "default": "",
       "sensitive": false
     }

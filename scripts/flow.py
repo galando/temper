@@ -22,6 +22,7 @@ import sys
 import tempfile
 
 import config_yaml
+import fresh_review
 import plan_ops
 import tasks_md
 
@@ -34,6 +35,7 @@ RESUME_HEADER = "Temper resume"
 DRIFT_HEADER = "Scope drift"
 DRIFT_PREFIX = "Outside the plan:"
 DRIFT_OPTIONS = ["Add to plan", "Revert", "Allow once"]
+FRESH_ROWS = ("fresh review ran", "fresh reader's paraphrase", "no open plan blockers")   # the plan gate rows of fresh_review.py
 SEQ = {"temper": ["intent", "plan", "design", "build", "review", "check", "commit"],
        "fix": ["rca", "fix", "review", "check", "commit"]}
 LABEL = {"intent": "Intent", "plan": "Plan", "design": "Design", "build": "Build", "review": "Review",
@@ -168,6 +170,16 @@ class Run:
     def open_concerns(self):
         return open_concerns(os.path.join(self.spec, "design.md")) if self.spec else []
 
+    def fresh(self):
+        """The fresh review of the plan (9.7.6, scripts/fresh_review.py): whether it applies or is offered, what ran on the
+        spec files as they are, the reader's paraphrase and the findings."""
+        if not self.spec or self.command != "temper":
+            return {"applies": False, "offer": False, "launched": False, "stale": False, "capped": False, "missing": [], "need": [],
+                    "lazy": [], "findings": [], "contests": [], "paraphrase": "", "paraphrase_short": False, "rounds": 0, "cap": 0}
+        return fresh_review.status(self.spec, os.path.join(TEMPER, "evidence", "plan.json"), os.path.join(TEMPER, "build-state.json"),
+                                   self.cfg("plan.fresh-review", "ask"), self.cfg("plan.fresh-review-twice", "true"),
+                                   self.cfg("plan.fresh-review-rounds", "3"))
+
     def has_design(self):
         if self.command != "temper":
             return False
@@ -296,6 +308,8 @@ class Run:
             out.append({"id": i, "severity": str(r.get("severity")).lower(), "claim": claim,
                         "file": m.group(1) if m else None, "line": int(m.group(2)) if m else None,
                         "state": state, "label": r.get("label"),
+                        "answer": "contested" if r.get("contested") else ("escalated" if r.get("escalated") else None),
+                        "cite": (r.get("contested") or {}).get("cite"), "quote": (r.get("contested") or {}).get("quote"),
                         "confidence": conf if isinstance(conf, (int, float)) and not isinstance(conf, bool) else None})
         return out
 
@@ -503,18 +517,30 @@ class Builder:
                              do="Follow %s/reference/plan-review.md (Share HTML review), then ask this question again." % self.plugin)
             grill = self.skill("grill-me", "Grill Me", "Stress test the plan.")
             teach = self.skill("teach-me", "Teach Me", "Walk through the plan.")
+            fr = r.fresh()
+            # The fresh reader's paraphrase goes in the question: the person compares it with the intent (a wrong one is a finding).
+            said = " A reader with no context took it as: %s." % fr["paraphrase"][:300].rstrip(".") if fr["paraphrase"] and not skipped else ""
             if passed:
                 go = self.leave_plan()
                 nl = LABEL.get(r.next_of("plan") or "build")
-                text = "Plan: %s. Approve the plan and continue to %s?" % (state_of, nl)
+                text = "Plan: %s.%s Approve the plan and continue to %s?" % (state_of, said, nl)
                 if r.on("autonomy.enabled"):
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
                              self.opt("Autonomous: run the rest unattended", "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
                                       move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
+                    if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
+                        return self.with_more(GATE_HEADER, text, stage, first[:2] + [self.fresh_offer()], [html, grill, teach, self.save()], "Plan: more options.")
+                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
+                if fr["offer"]:
+                    first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go),
+                             self.fresh_offer(), html]
                     return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
                 first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go), html, share]
                 return self.with_more(GATE_HEADER, text, stage, first, [grill, teach, self.save()], "Plan: more options.")
-            return self.question(GATE_HEADER, "Plan: the check failed (%s). Fix the plan, or skip the check?" % why, stage=stage,
+            fresh_failed = [x for x in rows if x.get("name") in FRESH_ROWS]
+            if fr["applies"] and fresh_failed:
+                return self.fresh_question(fr, why, said, back_opt, override_opt, grill)
+            return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said), stage=stage,
                                  options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()])
 
         if stage == "design":
@@ -745,13 +771,56 @@ class Builder:
                      "The fix list in pipeline-context.json is applied, pushed, and the checks are read again.", move="advance", steps=steps),
             self.opt("End the run", "Finish here without the fix; the run state is cleared.", move="advance", calls=[self.c("state clear")]), self.save()])
 
-    def accept_question(self, opens):
+    def fresh_offer(self):
+        """plan.fresh-review: ask (the default): the person asks for the fresh review at the plan question."""
+        return self.opt("Fresh review first", "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
+                        move="redo", calls=[self.c("plan fresh request")])   # next launches the reviewer; its gate call follows it
+
+    def fresh_question(self, fr, why, said, back_opt, override_opt, grill):
+        """The plan question when the fresh review failed the gate: revise the plan with its findings, run a reviewer that
+        did not finish again, or keep a finding (contested and escalated ones first: they need the person's call)."""
+        r = self.r
+        opens = sorted([f for f in fr["findings"] if f["severity"] in fresh_review.BLOCKING and f["state"] not in ("resolved", "accepted")],
+                       key=lambda f: {"escalated": 0, "contested": 1}.get(f["state"], 2))
+        first = []
+        unfinished = fr["launched"] and not fr["stale"] and (fr["missing"] or not fr["paraphrase"] or fr["paraphrase_short"])
+        if unfinished and not fr["capped"]:
+            first.append(self.opt("Run the fresh review again (Recommended)", "A reviewer did not finish (%s); it runs again." % (
+                ", ".join(fr["missing"] + fr["lazy"]) or "no usable paraphrase"), move="redo", calls=[self.c("plan fresh again")]))
+        if opens and not fr["capped"]:
+            first.append(self.opt("Revise the plan%s" % ("" if first else " (Recommended)"),
+                                  "The Plan agent fixes or contests each finding; the fresh review runs again on the changed files.",
+                                  move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
+                                      ("fresh review: " + "; ".join(fresh_review.describe(f) for f in opens))[:300]))]))
+        if opens:
+            first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question."))
+        limit = " The fresh review ran %d of %d rounds (plan.fresh-review-rounds): accept, skip or step back." % (fr["rounds"], fr["cap"]) if fr["capped"] else ""
+        text = "Plan: the check failed (%s).%s%s %s?" % (why, said, limit, "Revise the plan" if opens and not fr["capped"] else
+                                                       "Run the fresh review again" if first and not opens else "Accept a finding, or skip the check" if opens else "Fix the plan, or skip the check")
+        q = self.with_more(GATE_HEADER, text, "plan", first[:3], first[3:] + back_opt() + [override_opt(self.leave_plan()), grill, self.save()],
+                           "Plan: more options.")
+        if opens:
+            q["accept"] = self.accept_question(opens, stage="plan")
+        return q
+
+    def accept_question(self, opens, stage="review"):
         """The `Accept a finding` question: one option per open finding (the first three), and Cancel."""
-        aopts = [self.opt("Accept finding %d" % f["id"], f["claim"][:150], move="accept",
-                          calls=[self.c("evidence accept --stage review --id %d --reason '{reason}'" % f["id"]), self.c("gate review")],
-                          reason=["It is not a real issue", "I accept the risk"]) for f in opens[:3]]
-        return self.question(GATE_HEADER, "Review: which finding do you accept?", stage="review",
-                             options=aopts + [self.opt("Cancel", "Back to the Review question.", do="Ask the Review question again.")])
+        label = LABEL.get(stage, stage)
+        aopts = []
+        # escalated and contested findings first: they wait for the person's call, with what only they know or the author's citation
+        rank = lambda f: {"escalated": 0, "contested": 1}.get(f.get("answer") or f.get("state"), 2)
+        for f in sorted(opens, key=rank)[:3]:
+            reasons = ["It is not a real issue", "I accept the risk"]
+            mark = f.get("answer") or (f.get("state") if f.get("state") in ("contested", "escalated") else None)
+            if mark == "contested" and f.get("cite"):
+                reasons.insert(0, "Contested with evidence: %s" % f["cite"])     # the author's citation, checked by the CLI
+            if mark == "contested" and f.get("quote"):
+                reasons.insert(1, "The quoted text answers it: %s" % f["quote"][:80])
+            aopts.append(self.opt("Accept finding %d" % f["id"], ("[%s] " % mark if mark else "") + f["claim"][:150],
+                                  move="accept", calls=[self.c("evidence accept --stage %s --id %d --reason '{reason}'" % (stage, f["id"])), self.c("gate %s" % stage)],
+                                  reason=reasons))
+        return self.question(GATE_HEADER, "%s: which finding do you accept?" % label, stage=stage,
+                             options=aopts + [self.opt("Cancel", "Back to the %s question." % label, do="Ask the %s question again." % label)])
 
     def go_move(self, stage):
         return "approve" if stage in ("intent", "plan") else "advance"
@@ -812,6 +881,34 @@ class Builder:
                 lines.append("Feedback file: %s." % p)
         return lines
 
+    def fresh_work(self, fr):
+        """Launch the fresh reviewer(s) of the plan: no context but the spec folder (agents/plan-review.md). The first
+        marks the launch (the files' digest and the time), so a row written before it never counts and a reviewer that stopped is
+        reported as not run instead of launched again."""
+        r = self.r
+        model = r.cfg("models.plan-review", "")
+        if not model:
+            import cli_ctx
+            model = cli_ctx.frontmatter_model(os.path.join(self.plugin, "agents", "plan-review.md")) or ""
+        insts = sorted({n.split()[1] for n in fr["need"]})
+        agents = []
+        for i, inst in enumerate(insts):
+            lines = ["Follow %s/agents/plan-review.md exactly." % self.plugin, "Spec path: %s." % r.spec, "Instance: %s." % inst,
+                     "Lenses: %s." % ", ".join(n.split()[0] for n in fr["need"] if n.split()[1] == inst),
+                     "Round: %d of %d." % (fr["rounds"] + 1, fr["cap"])]
+            lines += ["Earlier contest: %s; its evidence: %s (%s). Read that evidence before you raise it again." % (
+                c["claim"][:160], c.get("cite"), (c.get("why") or "")[:160]) for c in fr["contests"]]
+            lines.append(self.plugin_line())
+            a = {"type": "temper:temper-plan-review", "model": model, "prompt": "\n".join(lines),
+                 "after": [self.c("usage add --stage plan --model %s --ms {ms}" % (model or "unknown")), self.c("gate plan")]}
+            a["gate"] = a["after"][-1]
+            if i == 0:   # the CLI's launch mark: only rows recorded from now on count, and only on these files
+                a["before"] = [self.c("plan fresh start")]
+            agents.append(a)
+        return {"action": "work", "stage": "plan", "calls": [], "agents": agents,
+                "say": "Plan: %s with no context reads the plan%s. %s" % (
+                    "a reviewer" if len(agents) == 1 else "%d reviewers" % len(agents), on_model(agents), goes_on(len(agents) > 1))}
+
     def stage_work(self, stage):
         r = self.r
         extra = []
@@ -826,6 +923,11 @@ class Builder:
                 extra = self.feedback_lines()
         if stage == "pipeline":
             extra = ["Round: %s of %s." % (r.state.get("pipeline_round") or 1, self.round_limit())]
+        if stage == "plan":
+            opens = [f for f in r.fresh()["findings"] if f["state"] not in ("resolved", "accepted")]
+            if opens:
+                extra = ["Fresh review findings to answer (reference/plan.md, Answering the fresh review): %s." % "; ".join(
+                    "#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:200]) for f in opens)]
         # A step back to this stage (from Design to Plan, from Review to Intent): the agent runs again for the person's
         # reason, and with what the stage it came from left open.
         back = r.loop_into(stage) if stage not in ("build", "fix") else None
@@ -1383,6 +1485,12 @@ class Builder:
             out.update({"action": "work", "stage": "build", "calls": [], "agents": [a],
                         "say": "Build: the record pass is working%s. %s" % (on_model([a]), goes_on(False))})
             return out
+        if stage == "plan" and verdict is not None and not skipped:
+            fr = r.fresh()
+            ready = all(x.get("name") in FRESH_ROWS + ("context map reviewed",) for x in r.failed_rows("plan"))
+            if fresh_review.need_launch(fr) and ready:
+                out.update(self.fresh_work(fr))
+                return out
         if verdict is None and not skipped:
             if self.walked(stage):
                 out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % stage)], "agents": [],
@@ -1611,6 +1719,17 @@ def build_view(run):
     return {"groups": groups, "integration": (run.groups.get("integration") or {}).get("verdict")}
 
 
+def fresh_view(r):
+    """The fresh review of the plan for the pane (9.7.6): the reader's paraphrase, the lenses not run, whether tasks.md changed
+    after it, and its findings with their state; null when it does not apply to the run."""
+    fr = r.fresh()
+    if not fr["applies"]:
+        return None
+    return {"paraphrase": fr["paraphrase"], "missing": fr["missing"], "stale": fr["stale"],
+            "findings": [{"id": f["id"], "severity": f["severity"], "lens": f["lens"], "claim": f["claim"], "state": f["state"],
+                          "cite": f.get("cite")} for f in fr["findings"]]}
+
+
 def plan_view(run):
     plan = run.plan or {"groups": [], "tasks": []}
     approved = run.state.get("approved_files")
@@ -1680,8 +1799,9 @@ def view(run, nxt):
                   "trivial_exit": r.stage == "intent" and int(r.state.get("step") or 0) == 0 and set(r.gates) <= {"intent"} and not r.overrides
                   and not any(os.path.isfile(os.path.join(r.spec, n)) for n in ("intent.md", "plan.md", "tasks.md", "design.md"))},
         "plan": plan_view(r),
+        "fresh": fresh_view(r),
         "build": build_view(r),
-        "findings": r.findings(),
+        "findings": [{k: v for k, v in f.items() if k not in ("answer", "cite", "quote")} for f in r.findings()],   # the view's schema stays as it was
         "checks": [{"name": x.get("name"), "pass": bool(x.get("pass")), "detail": x.get("detail")} for x in r.rows("check")],
         "check_markers": check_markers(r),
         "criteria": criteria(r),

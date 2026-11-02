@@ -169,6 +169,7 @@ cli(d, "state", "advance", "intent_complete", "plan")
 cli(d, "state", "set", "complexity", "medium")
 write(d, ".temper/specs/pw/plan.md", PLAN)
 write(d, ".temper/specs/pw/tasks.md", TASKS)
+# 9.7.6, plan.fresh-review: ask (the default): nobody asked for the fresh review, so the plan question offers it
 verdict(d, "plan", True)
 snap(d, "design-plan-pass", "run-design")
 cli(d, "state", "advance", "plan_complete", "design")
@@ -294,6 +295,30 @@ cli(bc, "state", "init", "pw", "--feature", "Password reset by email")
 write(bc, ".temper/specs/pw/intent.md", INTENT)
 verdict(bc, "intent", True)
 snap2(bc, "branch-clash", "run-clash")
+
+# ---- 9.7.6: the fresh review of a medium plan, with an open blocker and a contested finding (also in EXTRA_VIEWS) ----
+fr = project("fresh")
+cli(fr, "state", "init", "pw", "--feature", "Password reset by email")
+write(fr, ".temper/specs/pw/intent.md", INTENT.replace("**Complexity:** simple", "**Complexity:** medium"))
+verdict(fr, "intent", True)
+cli(fr, "state", "advance", "intent_complete", "plan")
+cli(fr, "state", "set", "complexity", "medium")
+write(fr, ".temper/specs/pw/plan.md", PLAN)
+write(fr, ".temper/specs/pw/tasks.md", TASKS)
+write(fr, "src/mail.ts", "export function sendMail(to: string, body: string) {}\n")
+art = ("--artifact", ".temper/specs/pw/tasks.md")
+cli(fr, "plan", "fresh", "request")
+cli(fr, "plan", "fresh", "start")
+ntasks = str(TASKS.count("\n### Task "))
+for lens in ("readiness", "zoom-out", "comprehension"):
+    cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--exit", "0", "--label", "PROVEN", "--claim", "fresh review completed: %s A" % lens,
+        *(("--value", ntasks) if lens == "readiness" else ()), *art)
+cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--claim", "paraphrase: a reset link by email, valid for one hour | the app has users and a mail helper", *art)
+cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--severity", "high", "--claim", "[readiness] Task 1: the Case 'expired link' names no status", *art)
+cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--severity", "high", "--claim", "[zoom-out] Task 2: a new mail sender where one exists", *art)
+cli(fr, "evidence", "contest", "--stage", "plan", "--id", "6", "--cite", "src/mail.ts:sendMail", "--quote", "export function sendMail", "--reason", "the task calls sendMail")
+verdict(fr, "plan", False, "no open plan blockers", "2 open")
+snap2(fr, "plan-fresh-blocker", "run-fresh")
 
 
 if len(sys.argv) > 3 and sys.argv[3] == "extra":

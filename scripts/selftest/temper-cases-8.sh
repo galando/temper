@@ -66,10 +66,15 @@ assert_exit "state set next_stage forward: refused past a stage that has no pass
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '# Plan\n\n## Files to Modify\n| File | Change |\n|---|---|\n| `src/demo.sh` | the demo |\n| `README.md` | a line |\n' > .temper/specs/demo/plan.md
 gpass plan
-assert_eq "next: Plan PASS asks to approve the plan, three options and More options" \
-  "Continue to Build (Recommended)|Open HTML review|Share HTML review|More options" "$(labels)"
-assert_eq "next: More options holds the rest, as its own question" "Grill Me|Teach Me|Save for later" \
+assert_eq "next: Plan PASS asks to approve the plan, three options and More options (9.7.6: Fresh review first second)" \
+  "Continue to Build (Recommended)|Fresh review first|Open HTML review|More options" "$(labels)"
+assert_eq "next: More options holds the rest, as its own question" "Share HTML review|Grill Me|Teach Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
+cp .claude/temper.config .claude/temper.config.keep; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
+assert_eq "next: with plan.fresh-review off the Plan question is as before 9.7.6" \
+  "Continue to Build (Recommended)|Open HTML review|Share HTML review|More options|Grill Me|Teach Me|Save for later" \
+  "$(labels)|$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
+mv .claude/temper.config.keep .claude/temper.config
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 assert_eq "advance: leaving Plan keeps the plan's files as approved, and the commit the diff is read against" \
@@ -83,14 +88,14 @@ assert_eq "view: Build is held to the approved files, not to a plan.md edited si
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
 assert_eq "next: with autonomy on, the Plan question offers the arming choice" \
-  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Open HTML review|More options" "$(labels)"
+  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Fresh review first|More options" "$(labels)"
 assert_eq "next: Autonomous arms the run before it advances" "arm|state set run_mode autonomous" \
   "$(nx "o = d['ask']['options'][1]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
-assert_eq "next: the Plan question has no walk through: More options holds the rest" "Share HTML review|Grill Me|Teach Me|Save for later" \
+assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Grill Me|Teach Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
-"$TEMPER" state set complexity medium >/dev/null 2>&1
+"$TEMPER" state set complexity medium >/dev/null 2>&1; fresh_reviewed
 assert_eq "next: a medium plan goes on to Design" "Continue to Design (Recommended)|state advance plan_complete design" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
 assert_exit "advance: a medium plan may not skip Design" 1 "$TEMPER" state advance plan_complete build

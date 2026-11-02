@@ -43,6 +43,7 @@ cat > .temper/specs/demo/plan.md <<'EOF'
 ## Cross-Repo Search
 - not available: no cross-repo search tool connected
 EOF
+fresh_reviewed   # 9.7.6: a medium plan also needs its fresh review
 assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPER" gate plan
 
 # --- build gate: RED then GREEN required ---

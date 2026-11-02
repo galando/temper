@@ -66,6 +66,8 @@ export type RunView = {
     adhocStage: string | null
   } | null
   plan: { approved: boolean; files: string[]; groups: Array<{ id: string; title: string; files: string[] }> }
+  // 9.7.6: the fresh review of the plan (a reader with no context); null when it does not apply to the run.
+  fresh: { paraphrase: string; missing: string[]; stale: boolean; findings: FreshFinding[] } | null
   build: {
     groups: Array<{ id: string; title: string; status: string; verdict: string | null; tasks: Array<{ n: number; title: string; files: string[]; state: TaskState; model: string | null; attempts: number }> }>
     integration: string | null
@@ -79,6 +81,8 @@ export type RunView = {
   usage: { ms: number; byStage: Array<{ stage: string; ms: number; runs: number }>; byModel: Array<{ model: string; ms: number; runs: number }> }
   time: { started: string | null; updated: string | null }
 }
+
+export type FreshFinding = { id: number; severity: string; lens: string; claim: string; state: 'open' | 'resolved' | 'accepted' | 'contested' | 'escalated'; cite: string | null }
 
 type J = Record<string, unknown>
 
@@ -203,6 +207,24 @@ export function parseRunView(text: string): RunView | null {
       files: strs(plan.files),
       groups: arr(plan.groups).map(x => ({ id: str(obj(x).id), title: str(obj(x).title), files: strs(obj(x).files) })),
     },
+    fresh: v.fresh === null || typeof v.fresh !== 'object' || Array.isArray(v.fresh)
+      ? null
+      : {
+          paraphrase: str(obj(v.fresh).paraphrase),
+          missing: strs(obj(v.fresh).missing),
+          stale: obj(v.fresh).stale === true,
+          findings: arr(obj(v.fresh).findings).map(x => {
+            const f = obj(x)
+            return {
+              id: num(f.id),
+              severity: str(f.severity, 'unknown'),
+              lens: str(f.lens),
+              claim: str(f.claim),
+              state: oneOf(f.state, ['open', 'resolved', 'accepted', 'contested', 'escalated'] as const, 'open'),
+              cite: strOrNull(f.cite),
+            }
+          }),
+        },
     build: {
       groups: arr(build.groups).map(x => {
         const gr = obj(x)

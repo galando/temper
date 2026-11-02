@@ -3,6 +3,91 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.6: a fresh reader checks the plan, contests cite evidence, a reviewer that stopped is not a clean review, spec drift
+
+Five ideas from Google's Elephant Goldfish Model (a reviewer with no context reads a design before any code), built on
+Temper's own spine: every verdict is still a CLI row from recorded evidence, and the person still decides each gate.
+
+**The fresh review of the plan**
+- **A plan could leave a decision to the builder (new `agents/plan-review.md`, `scripts/fresh_review.py`).** *What broke:* each
+  Build task runs on a small model that sees only its own task block, and nothing checked that the block was enough. A task
+  that said "rejects too many attempts" was built with whatever limit, window and status the model guessed. *Fix:* a reviewer
+  with no context reads intent.md, plan.md and tasks.md through three lenses: readiness (can each task be built from its own
+  block), zoom-out (work nobody asked for, a helper the code already has, found by searching the code) and comprehension (a
+  newcomer's paraphrase, and project terms used without a definition). Three plan gate rows read what it records:
+  `fresh review ran`, `fresh reader's paraphrase` and `no open plan blockers`. A `high` finding fails the gate.
+- **The person chooses it** (`plan.fresh-review: ask`, the default): the plan question offers **Fresh review first**, at every
+  tier, and the review applies once chosen (`temper plan fresh request`). `auto` runs it by itself for `medium` and `complex`
+  plans, `always` for every plan, `off` never.
+- **The paraphrase is in the plan question** ("A reader with no context took it as: ..."), also when the plan failed on another
+  row, for the person to compare with the intent.
+- **The CLI marks each launch** (`temper plan fresh start`, after Plan returned): the digest of intent.md, plan.md and tasks.md,
+  and how many rows the plan ledger held. Only rows appended after the mark count, so rows the Plan agent writes itself never
+  pass the gate. An edit of any of the three files makes the review stale; it runs again on the new text, and findings against
+  the old text no longer count. `fresh` in the run state is the CLI's; `state set fresh...` is refused.
+- **A lazy review does not pass:** the readiness row names how many tasks it checked (`--value N`), which must be the number of
+  tasks in tasks.md, and each part of the paraphrase needs 6 words or more.
+- **A round limit:** `plan.fresh-review-rounds` (default 3) caps the launches of one run. At the cap the plan question offers no
+  more revisions: accept a finding, skip the check or step back.
+- **Revise the plan** (`state redo plan`) runs the Plan agent again with each open finding. It fixes it, contests it or escalates
+  it (`reference/plan.md`, "Answering the fresh review").
+- **A risk `H` plan gets two independent reviewers** (A and B; `plan.fresh-review-twice: false` turns it off).
+- **A plan entered through a stage command** (checked, not run again) gets the fresh review too.
+
+**Contests that can be checked**
+- **`temper evidence contest --stage S --id N --cite <file>[:<line>|:<symbol>] --quote Q --reason R`** (`scripts/findings.py`).
+  The CLI checks the file is inside the project, holds the line or symbol, and holds the quote (at least 12 characters, within 3
+  lines of a cited line); "it was intentional" is refused, and the refusal names escalate.
+- **`temper evidence escalate --stage S --id N --reason R`** for evidence outside every file (a team rule, a spoken decision).
+- **A comprehension finding is never contested or escalated:** a reader with no context could not follow the plan, so the plan
+  is missing context.
+- Both leave the finding open: the person decides. The accept question lists escalated and contested findings first, and
+  offers the checked citation and the quote as reasons. Review findings work the same way: the Review gate names a contest,
+  the Review accept question orders them the same, and `reference/review.md` and `agents/build.md` say how the fix pass uses it.
+
+**A reviewer that stopped is not run**
+- Each lens of each reviewer records its own completion row. A lens with none is `not run` (the row names it), never a lens
+  with no findings. A launched reviewer that stopped is not launched again by itself: the plan question offers **Run the fresh
+  review again** (`temper plan fresh again`).
+
+**Spec drift**
+- **`temper drift [--run] [--json]`** (`scripts/drift.py`, read only, never a gate): for each finished spec (a committed
+  gate-ledger.json), a planned file that is gone, a scenario test file that is gone, and a planned file changed since the spec.
+  `--run` also runs each scenario's `Test:` command (from the project folder, at most 300 seconds, without credential-named
+  variables) and names each that fails now. `/temper:status` shows it as SPEC DRIFT.
+
+**The evidence** ([docs/evidence/fresh-review.md](docs/evidence/fresh-review.md))
+- The 9.7.5 and 9.7.6 CLIs on the same plan states (`scripts/e2e/ab-plan-gate.sh`): 9.7.5 passes a plan with a reader's
+  blocker, a review that stopped after two lenses and a review of an older tasks.md; 9.7.6 fails each, and both pass a good plan.
+- What it costs (`live-smoke.sh cost 3`, the same session three times each): about 26 s of reviewer time, 37 s of wall time and
+  $0.17 at API prices per plan, about 17% of the Plan stage; `temper gate plan` is about 70 ms slower, `temper next` the same.
+- A live run: the fresh reviewer found all 5 defects planted in a plan, and no blocker in its fixed twin. Two Haiku builders
+  given the defective task passed their own tests and failed the intent (5 failures, 15 minutes, status 429, nothing wired into
+  `/login`); two given the fixed task passed every criterion.
+
+**The mod**
+- **The pane shows the fresh review at Plan and Design**: the reader's summary, a lens that did not run (or that tasks.md changed
+  after the review), and each finding with its lens and state, a contest with its checked citation. The count of open blockers
+  includes contested and escalated ones: they wait for the person. No button, as before. The view carries it as `fresh`
+  (`docs/flow.md`), `null` when the fresh review does not apply.
+- **`reviewerModel` also sets the fresh plan reviewer's model** (`temper:temper-plan-review`); `models.plan-review` in the config
+  still sets it without the mod.
+
+**A live check, off by default**
+- `scripts/e2e/live-smoke.sh` gains a fresh review check (`TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh fresh`, on a
+  machine where Claude Code is signed in): a scratch Python project with an accepted medium intent at Plan, taken up headless by
+  `claude -p "/temper:temper"`, once with the mod and once with `disableAllHooks`. It checks each lens ran on the tasks.md as it
+  is, the paraphrase, the plan question that carries it and `fresh` in view.json, and that both legs end the same. Never in CI.
+- Found while writing it: a plan question that failed on another row did not carry the reader's paraphrase. It does now.
+
+**Also**
+- The README is short: what Temper is, install, how it works, the commands. The mod's details live in [docs/mod.md](docs/mod.md).
+- The website: each video has a second source and a link to the file; the Pages workflow fails when a restored video is missing
+  or not an MP4, and checks after the deploy that the live site serves each one as a playable file.
+- Tests: case file 14 (63 checks); three earlier cases with a medium plan record its fresh review (`fresh_reviewed` in
+  case-helpers.sh); the view fixtures carry `fresh` (a new fixture, `plan-fresh-blocker`, holds an open blocker and a contest). The self test: 2074 pass, 0 fail (9.7.5:
+  2010). The e2e driver: 20 scenarios, each passing with the mod and without it, the flow identical (new: `fresh-review`,
+  `fresh-not-run`, `fresh-contest`, `fresh-ask`). Mod tests: 1620 pass, 0 fail (new: tests/mod/v976.test.tsx).
 ## v9.7.5: the Context Map, scenario tests that run, small changes, draft pull requests and the Pipeline stage
 
 A private fork of 9.7.0 grew a set of behaviours in its own "9.7.1". This release rebuilds them on 9.7.4, with every hold of the

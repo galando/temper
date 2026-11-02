@@ -55,7 +55,16 @@ orchestrator's conversation carries over except the prompt you were launched wit
    treat this list as the whole of "done" — it is a floor, not the methodology. Run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` yourself before returning, and fix
    any FAIL it reports.
-9. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
+9. **The fresh review.** When the person asks for it (or `plan.fresh-review` is `auto` or `always`), a
+   reviewer with no context reads your plan after you return (`${CLAUDE_PLUGIN_ROOT}/agents/plan-review.md`);
+   until it has, the gate rows `fresh review ran`, `fresh reader's paraphrase` and `no open plan blockers`
+   fail. Leave them, and never record a fresh review row yourself: the CLI counts only rows recorded after it
+   launched the reviewer. When your launch
+   prompt carries `Fresh review findings to answer`, answer each one as
+   `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`, "Answering the fresh review", says: fix it, contest it
+   with a citation the CLI checks, or escalate it. Write each task so a builder who sees only that
+   block needs no guess: named files, signatures, error behavior, and an expected value per Case.
+10. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):

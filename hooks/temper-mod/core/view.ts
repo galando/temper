@@ -39,6 +39,10 @@ export type LoopMark = { from: string; to: string; iteration: number; max: numbe
 
 export type FindingRow = { id: number; severity: string; confidence: number | null; where: string | null; claim: string; state: 'open' | 'resolved' | 'accepted' }
 
+// The fresh review of the plan as the pane shows it (9.7.6): the reader's paraphrase, the lenses that did not run, and the
+// findings found against the tasks.md as it is now.
+export type FreshView = { summary: string | null; notRun: string[]; stale: boolean; rows: Array<{ id: number; severity: string; lens: string; claim: string; state: string; cite: string | null }> }
+
 export type Marker = { name: string; state: 'pass' | 'fail' | 'info' | 'none'; detail: string; lines: string[] }
 
 export type View = {
@@ -67,6 +71,8 @@ export type View = {
   grid: GridGroup[] | null
   // Every Review finding, open, resolved or accepted.
   findingRows: FindingRow[]
+  // The fresh review of the plan; null when it does not apply to the run.
+  fresh: FreshView | null
   // The five Check markers: compile, tests, coverage, lint, security.
   markers: Marker[]
   // The person's decisions in this run, as sentences, oldest first.
@@ -184,6 +190,14 @@ export function buildView(input: ViewInput): View {
     planTree: planTreeOf(rv),
     grid: rv.build.groups.length === 0 ? null : rv.build.groups.map(g => ({ id: g.id, title: g.title, status: g.status, tasks: g.tasks.map(t => ({ n: t.n, title: t.title, state: t.state, model: t.model, retries: Math.max(t.attempts - 1, 0) })) })),
     findingRows: rv.findings.map(f => ({ id: f.id, severity: f.severity, confidence: f.confidence, where: f.file ? `${f.file}:${f.line ?? ''}` : null, claim: f.file ? f.claim.replace(/^\s*\S+:\d+\s*/, '') : f.claim, state: f.state })),
+    fresh: rv.fresh === null
+      ? null
+      : {
+          summary: rv.fresh.paraphrase || null,
+          notRun: rv.fresh.missing,
+          stale: rv.fresh.stale,
+          rows: rv.fresh.findings.map(f => ({ id: f.id, severity: f.severity, lens: f.lens, claim: f.claim.replace(/^\[[\w-]+\]\s*/, ''), state: f.state, cite: f.cite })),
+        },
     markers: rv.markers.map(m => ({ name: m.name, state: m.state, detail: m.detail, lines: m.lines })),
     paneOpen: input.paneOpen ?? false,
   }
