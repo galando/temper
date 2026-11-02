@@ -102,8 +102,9 @@ check:
 
 plan:
   context-check: auto               # auto: ask when the Context Map has an ignore or a gap; always; off
-  fresh-review: auto                # a reviewer with no context reads the plan: auto (medium, complex); always; off
+  fresh-review: ask                 # a reviewer with no context reads the plan: ask (the plan question offers it); auto (medium, complex); always; off
   fresh-review-twice: true          # a risk H plan gets two independent fresh reviewers (A and B)
+  fresh-review-rounds: 3            # launches of the fresh review in one run, at most
 phases:
   design: true                 # design stage for medium/complex features (auto-skipped otherwise)
   pipeline: true               # false: no Pipeline stage after a Commit that opened a pull request

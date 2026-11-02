@@ -6,6 +6,9 @@
 #   TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh            the start check, then the fresh review check with the mod and without it
 #   TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh start      only the start check (a run starts; plan mode, nothing is written)
 #   TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh fresh      only the fresh review check
+#   TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh cost [N]   what the fresh review costs: the same session from Plan to the plan
+#                                                               question with plan.fresh-review off and always, N times each
+#                                                               (default 1), with the time, tokens and cost Claude Code reports
 #
 # The fresh review check (9.7.6). A scratch Python project gets an accepted intent for a medium change (limit failed logins), with
 # the run already at Plan: a headless session cannot answer the Intent question. Then `claude -p "/temper:temper"` takes the run
@@ -29,14 +32,14 @@ HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN="${HERE%/scripts/e2e}"
 TEMPER="$PLUGIN/scripts/temper"
 WHAT="${1:-all}"
-case "$WHAT" in all|start|fresh) ;; *) echo "FAIL: usage: live-smoke.sh [all|start|fresh]" >&2; exit 2 ;; esac
+case "$WHAT" in all|start|fresh|cost) ;; *) echo "FAIL: usage: live-smoke.sh [all|start|fresh|cost [N]]" >&2; exit 2 ;; esac
 SCRATCH="$(mktemp -d)"
 trap 'rm -rf "$SCRATCH"' EXIT
 FAILED=0
 fail() { echo "FAIL: $*"; FAILED=1; }
 
 # ---- the start check: a run starts ----
-if [[ "$WHAT" != "fresh" ]]; then
+if [[ "$WHAT" == "all" || "$WHAT" == "start" ]]; then
   d="$SCRATCH/start"; mkdir -p "$d"
   (cd "$d" && git init -q . && git checkout -q -B main && echo "# scratch" > README.md && git add -A && git -c user.email=e2e@example.com -c user.name=e2e commit -qm base)
   OUT="$(cd "$d" && timeout 600 claude -p "/temper:temper \"print hello\"" --plugin-dir "$PLUGIN" --permission-mode plan 2>&1)"; rc=$?
@@ -46,8 +49,8 @@ fi
 [[ "$WHAT" == "start" ]] && exit "$FAILED"
 
 # ---- the fresh review check ----
-seed() { # seed <folder>: a small Python service, its config, and a run at Plan with an accepted medium intent
-  local d="$1"
+seed() { # seed <folder> [plan.fresh-review]: a small Python service, its config, and a run at Plan with an accepted medium intent
+  local d="$1" mode="${2:-always}"
   mkdir -p "$d/src" "$d/unit" "$d/.claude"
   cd "$d" || return 1
   git init -q . && git checkout -q -B main
@@ -57,7 +60,7 @@ seed() { # seed <folder>: a small Python service, its config, and a run at Plan 
   printf '"""Routes in ROUTES, middleware in MIDDLEWARE (run in order before the route)."""\nfrom src import auth\n\nMIDDLEWARE = []\nROUTES = {"POST /login": auth.login}\n\n\ndef handle(method, path, request):\n    for mw in MIDDLEWARE:\n        early = mw(method, path, request)\n        if early is not None:\n            return early\n    return ROUTES[f"{method} {path}"](request)\n' > src/app.py
   printf '__pycache__/\n' > .gitignore
   cp "$PLUGIN/templates/temper.config.default" .claude/temper.config
-  printf '\nplan:\n  fresh-review: always\n' >> .claude/temper.config
+  printf '\nplan:\n  fresh-review: %s\n' "$mode" >> .claude/temper.config
   git add -A && git -c user.email=e2e@example.com -c user.name=e2e commit -qm base
   "$TEMPER" init >/dev/null 2>&1
   "$TEMPER" state init login-limit --feature 'Limit failed logins' >/dev/null || return 1
@@ -155,6 +158,24 @@ print("%s|%s|%s" % (name, "ok" if not bad else "bad", ",".join(sorted(st["done"]
 PY
   )
 }
+
+if [[ "$WHAT" == "cost" ]]; then
+  # The same headless session from Plan to the plan question, without the fresh review and with it. Claude Code's own result
+  # (claude -p --output-format json) gives the time, the turns, the tokens and the cost of the whole session, its agents included.
+  N="${2:-1}"; [[ "$N" =~ ^[1-9][0-9]*$ ]] || N=1
+  printf '%-7s %-3s %9s %6s %12s %12s %10s %s\n' mode run seconds turns tokens_in tokens_out cost_usd "reviewer s"
+  for i in $(seq 1 "$N"); do
+    for mode in off always; do
+      d="$SCRATCH/cost-$mode-$i"
+      (seed "$d" "$mode") >"$SCRATCH/cost-$mode-$i.log" 2>&1 || { fail "cost: the seed did not reach Plan ($mode)"; continue; }
+      (cd "$d" && timeout 1800 claude -p "/temper:temper" --plugin-dir "$PLUGIN" --permission-mode acceptEdits \
+        --allowedTools Bash Read Write Edit Glob Grep Agent --output-format json > "$SCRATCH/cost-$mode-$i.json" 2>/dev/null)
+      python3 -I "$HERE/cost_row.py" "$SCRATCH/cost-$mode-$i.json" "$d/.temper/usage.json" "$mode" "$i"
+    done
+  done
+  echo "The cost is Claude Code's own figure for the session at API prices; on a subscription it is usage, not a bill."
+  exit "$FAILED"
+fi
 
 echo "--- the fresh review check, with the mod ---"
 A="$(leg mod)"; echo "$A" | sed '$d'

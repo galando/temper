@@ -55,9 +55,11 @@ orchestrator's conversation carries over except the prompt you were launched wit
    treat this list as the whole of "done" — it is a floor, not the methodology. Run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` yourself before returning, and fix
    any FAIL it reports.
-9. **The fresh review (medium and complex).** A reviewer with no context reads your plan after you
-   return (`${CLAUDE_PLUGIN_ROOT}/agents/plan-review.md`); until it has, the gate rows `fresh review
-   ran`, `fresh reader's paraphrase` and `no open plan blockers` fail. Leave them. When your launch
+9. **The fresh review.** When the person asks for it (or `plan.fresh-review` is `auto` or `always`), a
+   reviewer with no context reads your plan after you return (`${CLAUDE_PLUGIN_ROOT}/agents/plan-review.md`);
+   until it has, the gate rows `fresh review ran`, `fresh reader's paraphrase` and `no open plan blockers`
+   fail. Leave them, and never record a fresh review row yourself: the CLI counts only rows recorded after it
+   launched the reviewer. When your launch
    prompt carries `Fresh review findings to answer`, answer each one as
    `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`, "Answering the fresh review", says: fix it, contest it
    with a citation the CLI checks, or escalate it. Write each task so a builder who sees only that

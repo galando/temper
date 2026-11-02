@@ -1,15 +1,17 @@
 """findings.py: how the author answers a finding without accepting it (9.7.6). Accepting stays the person's call.
 
-  python3 findings.py contest LEDGER.json ID CITE REASON TS    a contest the reviewer could check: CITE names a file in the
-                                                               project (path, path:LINE or path:SYMBOL) that shows the
-                                                               finding is wrong
+  python3 findings.py contest LEDGER.json ID CITE QUOTE REASON TS   a contest the reviewer could check: CITE names a file in
+                                                               the project (path, path:LINE or path:SYMBOL), and QUOTE
+                                                               is the text there that shows the finding is wrong
   python3 findings.py escalate LEDGER.json ID REASON TS        the evidence is outside every file (a team rule, a spoken
                                                                decision): the person decides, with what only they know
 
 Both keep the finding open: the gate still counts it, and the gate question shows the contest or the escalation, so the
 person accepts it or sends it back. A contest with no readable citation is refused: "This was intentional" is not
-evidence. The citation is checked here, from the project folder: the file exists inside the project, the line exists,
-the symbol is in the file. Standard library only.
+evidence. The citation is checked here, from the project folder: the file exists inside the project, the line exists, the
+symbol is in the file, and the quote (at least 12 characters) is in the file, within 3 lines of a cited line. The quote is
+what the person reads at the accept question. A comprehension finding (claim `[comprehension] ...`) is never contested or
+escalated: when a reader with no context could not follow the plan, the plan is missing context. Standard library only.
 """
 import json
 import os
@@ -22,8 +24,8 @@ def fail(msg):
     return 1
 
 
-def check_cite(cite, root):
-    """None when CITE names something a reviewer could read, else why not."""
+def check_cite(cite, root, quote=""):
+    """None when CITE names something a reviewer could read and QUOTE is there, else why not."""
     cite = (cite or "").strip()
     if not cite:
         return "a contest needs --cite <file>, <file>:<line> or <file>:<symbol>"
@@ -34,16 +36,23 @@ def check_cite(cite, root):
     full = os.path.realpath(os.path.join(root, path))
     if not (full == root or full.startswith(root.rstrip("/") + "/")) or not os.path.isfile(full):
         return "no file %s in the project" % path
-    if not what:
-        return None
     try:
         text = open(full, encoding="utf-8", errors="replace").read()
     except OSError:
         return "%s cannot be read" % path
+    quote = " ".join((quote or "").split())
+    if len(quote) < 12:
+        return "a contest needs --quote: at least 12 characters of the cited text, which the person reads"
+    lines = text.splitlines()
+    flat = lambda part: " ".join(" ".join(part).split())
     if what.isdigit():
-        n = text.count("\n") + (0 if text.endswith("\n") or not text else 1)
-        return None if 1 <= int(what) <= n else "%s has %d line(s), not line %s" % (path, n, what)
-    return None if what in text else "%s does not contain '%s'" % (path, what)
+        n = int(what)
+        if not 1 <= n <= len(lines):
+            return "%s has %d line(s), not line %s" % (path, len(lines), what)
+        return None if quote in flat(lines[max(n - 4, 0):n + 3]) else "the quote is not within 3 lines of %s:%s" % (path, what)
+    if what and what not in text:
+        return "%s does not contain '%s'" % (path, what)
+    return None if quote in flat(lines) else "%s does not contain the quote" % path
 
 
 def mark(ledger, id_s, key, value):
@@ -60,6 +69,9 @@ def mark(ledger, id_s, key, value):
     e = rows[idx - 1]
     if not isinstance(e, dict) or not e.get("severity"):
         return fail("finding #%s carries no severity, so it never counted against a gate" % id_s)
+    if str(e.get("claim") or "").lstrip().lower().startswith("[comprehension]"):
+        return fail("finding #%s is a comprehension finding: a reader with no context could not follow the plan, so the plan is "
+                    "missing context. Fix the plan; it is never contested or escalated" % id_s)
     for k in ("resolved", "accepted"):
         if e.get(k):
             return fail("finding #%s is already %s" % (id_s, k))
@@ -75,15 +87,15 @@ def mark(ledger, id_s, key, value):
 
 
 def main(argv):
-    if len(argv) == 7 and argv[1] == "contest":
-        _, _, ledger, id_s, cite, reason, ts = argv
+    if len(argv) == 8 and argv[1] == "contest":
+        _, _, ledger, id_s, cite, quote, reason, ts = argv
         if not reason.strip():
             return fail("a contest needs --reason")
-        why = check_cite(cite, os.path.realpath(os.getcwd()))
+        why = check_cite(cite, os.path.realpath(os.getcwd()), quote)
         if why:
             return fail("%s. A contest must cite a file the reviewer could read; when the evidence is outside every file, "
                         "use temper evidence escalate" % why)
-        return mark(ledger, id_s, "contested", {"cite": cite.strip(), "reason": reason, "ts": ts})
+        return mark(ledger, id_s, "contested", {"cite": cite.strip(), "quote": " ".join(quote.split()), "reason": reason, "ts": ts})
     if len(argv) == 6 and argv[1] == "escalate":
         _, _, ledger, id_s, reason, ts = argv
         if not reason.strip():

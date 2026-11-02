@@ -34,7 +34,7 @@ The stages are Intent, Plan, Build, Review, Check, then Done. You decide each ga
 
 ```mermaid
 flowchart LR
-  I["Intent<br/>you approve it"] --> P["Plan<br/>a fresh reader checks it"]
+  I["Intent<br/>you approve it"] --> P["Plan<br/>a fresh reader can check it"]
   P --> B["Build<br/>failing test first"]
   B --> R["Review<br/>fix or accept"]
   R --> C["Check<br/>run all checks"]
@@ -43,8 +43,9 @@ flowchart LR
 ```
 
 - **Intent first.** You approve the problem and the success criteria before Claude explores or designs.
-- **A plan a stranger can build.** For medium and complex work, a reviewer with no context reads the plan before you
-  see it, and the gate stays red while a task would make its builder guess.
+- **A plan a stranger can build.** At the plan question you can have a reviewer with no context read the plan first; the
+  gate stays red while a task would make its builder guess. (`plan.fresh-review: auto` runs it by itself for medium and
+  complex work.)
 - **Tests first, in small tasks.** Build runs each task as a small agent that writes a failing test, then the code.
 - **Computed gates.** `scripts/temper` reads an evidence ledger and prints PASS or FAIL per requirement. You can
   override a gate with a reason; Temper records it.
@@ -62,7 +63,7 @@ The rest are listed in [Commands](docs/commands.md).
 
 ## What's new in v9.7.6
 
-- A reviewer with no context reads every medium and complex plan before the plan question, and you see its summary.
+- **Fresh review first** at the plan question: a reviewer with no context reads the plan, and you see its summary.
 - A contest of a finding must cite a file the reviewer could read; anything else goes to you.
 - A reviewer that did not finish counts as not run, never as a clean review.
 - `temper drift` lists where the code moved away from finished specs.

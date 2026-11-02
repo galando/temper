@@ -2555,6 +2555,10 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
         },
         {
          "description": "",
+         "label": "The quoted text answers it: export function sendMail"
+        },
+        {
+         "description": "",
          "label": "It is not a real issue"
         },
         {
@@ -2734,7 +2738,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      "calls": [
       "/plugin/scripts/temper state redo plan --reason 'fresh review: #6 [zoom-out] Task 2: a new mail sender where one exists (contested: src/mail.ts:sendMail); #5 [readiness] Task 1: the Case '\"'\"'expired link'\"'\"' names no status'"
      ],
-     "description": "The Plan agent fixes or contests each finding; the fresh review runs again on a changed tasks.md.",
+     "description": "The Plan agent fixes or contests each finding; the fresh review runs again on the changed files.",
      "label": "Revise the plan (Recommended)",
      "move": "redo"
     },
@@ -2758,7 +2762,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "The Plan agent fixes or contests each finding; the fresh review runs again on a changed tasks.md.",
+      "description": "The Plan agent fixes or contests each finding; the fresh review runs again on the changed files.",
       "label": "Revise the plan (Recommended)"
      },
      {

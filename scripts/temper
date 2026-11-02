@@ -779,8 +779,8 @@ cmd_state_set() {
     echo "FAIL: archived is kept by the CLI (state archive records it when it writes the ledger the commit carries)" >&2
     return 1
   fi
-  if [[ "$1" == "enter" || "$1" == "built_before" || "$1" == "review_snapshot" ]]; then
-    echo "FAIL: $1 is kept by the CLI (a door's stage, what an earlier run built and the code as Review starts are its records)" >&2
+  if [[ "$1" == "enter" || "$1" == "built_before" || "$1" == "review_snapshot" || "$1" == fresh || "$1" == fresh.* ]]; then
+    echo "FAIL: $1 is kept by the CLI (a door's stage, what an earlier run built, the code as Review starts and the fresh review's marks are its records)" >&2
     return 1
   fi
   if [[ "$1" == "end_report" ]]; then
@@ -1630,16 +1630,16 @@ cmd_evidence_clear() { # temper evidence clear --stage <s> — truncate that sta
   echo "OK: evidence cleared for '$stage'"
 }
 
-_evidence_answer() { # temper evidence contest --stage S --id N --cite F[:L|:SYM] --reason R | escalate --stage S --id N --reason R
-  local sub="$1" stage="" id="" cite="" reason=""; shift
+_evidence_answer() { # temper evidence contest --stage S --id N --cite F[:L|:SYM] --quote Q --reason R | escalate --stage S --id N --reason R
+  local sub="$1" stage="" id="" cite="" quote="" reason=""; shift
   while [[ $# -gt 0 ]]; do
-    case "$1" in --stage) stage="$2"; shift 2 ;; --id) id="$2"; shift 2 ;; --cite) cite="$2"; shift 2 ;; --reason) reason="$2"; shift 2 ;; *) shift ;; esac
+    case "$1" in --stage) stage="$2"; shift 2 ;; --id) id="$2"; shift 2 ;; --cite) cite="$2"; shift 2 ;; --quote) quote="$2"; shift 2 ;; --reason) reason="$2"; shift 2 ;; *) shift ;; esac
   done
-  [[ -n "$stage" && -n "$id" ]] || { echo "FAIL: usage: temper evidence contest --stage <s> --id <n> --cite <file[:line|:symbol]> --reason R | escalate --stage <s> --id <n> --reason R" >&2; return 1; }
+  [[ -n "$stage" && -n "$id" ]] || { echo "FAIL: usage: temper evidence contest --stage <s> --id <n> --cite <file[:line|:symbol]> --quote Q --reason R | escalate --stage <s> --id <n> --reason R" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   local file; file="$(_evidence_file "$stage")"; local rc
   _lock_acquire
-  if [[ "$sub" == "contest" ]]; then python3 -I "$SCRIPTS_DIR/findings.py" contest "$file" "$id" "$cite" "$reason" "$(_now)"; rc=$?
+  if [[ "$sub" == "contest" ]]; then python3 -I "$SCRIPTS_DIR/findings.py" contest "$file" "$id" "$cite" "$quote" "$reason" "$(_now)"; rc=$?
   else python3 -I "$SCRIPTS_DIR/findings.py" escalate "$file" "$id" "$reason" "$(_now)"; rc=$?; fi
   _lock_release
   return $rc
@@ -3859,7 +3859,7 @@ gate_plan() {
       [[ -n "$g_line" ]] || continue
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
-    done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$complexity" "$(_cfg_get plan.fresh-review auto)" "$(cmd_state_get risk "")" "$(_cfg_get plan.fresh-review-twice true)")"
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$STATE_FILE" "$(_cfg_get plan.fresh-review ask)" "$(_cfg_get plan.fresh-review-twice true)" "$(_cfg_get plan.fresh-review-rounds 3)")"
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -4056,8 +4056,8 @@ import json, sys
 file, sev_csv = sys.argv[1:3]
 sevs = set(s for s in sev_csv.split(',') if s)
 entries = json.load(open(file))
-claims = [e.get('claim') or '(no claim)' for e in entries
-          if e.get('severity') in sevs and not e.get('resolved') and not e.get('accepted')]
+claims = [(e.get('claim') or '(no claim)') + (' (contested: %s)' % e['contested'].get('cite') if e.get('contested') else ' (escalated: only the person knows)' if e.get('escalated') else '')
+          for e in entries if e.get('severity') in sevs and not e.get('resolved') and not e.get('accepted')]
 print('\x1f'.join(claims))
 " "$file" "$sev_csv"
 }
@@ -4776,7 +4776,12 @@ _setup_calls() {
 # Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand.
 cmd_plan() {
   _state_migrate_legacy
-  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']..." >&2; return 1; }
+  if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
+    local rc; _lock_acquire
+    python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds 3)" "$(_now)" "$(_evidence_file plan)"; rc=$?
+    _lock_release; return $rc
+  fi
+  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again" >&2; return 1; }
   shift
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
@@ -5322,6 +5327,7 @@ Usage:
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
+  temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)
   temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
 EOF

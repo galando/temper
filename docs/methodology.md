@@ -98,6 +98,14 @@ Scenario Coverage: 5/5
 
 If any scenario has no passing test, the Check gate fails, and the person can loop back to Build.
 
+### A reader with no context checks the plan (9.7.6)
+
+Each Build task runs on a small model that sees only its own task block. A plan that leaves a decision open (an error
+status, a field name, a file to register the code in) is a decision that model guesses, and its own test encodes the same
+guess, so TDD cannot catch it. The fresh review (`agents/plan-review.md`) reads the plan as that builder will, before
+anyone writes code, and the gate counts what it records: the CLI marks its launch, so only rows recorded after it count,
+and an edit of the plan after the review makes it stale. The idea comes from Google's Elephant Goldfish Model.
+
 ---
 
 ## TDD: Test-Driven Development

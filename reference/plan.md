@@ -98,20 +98,29 @@ happens after you return. Leave them.
 
 ## The fresh review (9.7.6)
 
-For `medium` and `complex` plans (`plan.fresh-review: auto`; `always` runs it at every tier, `off`
-never), a reviewer with no context reads the plan after Plan returns and before the person sees the
-plan question (`agents/plan-review.md`). It checks three things through three lenses: that each task
-can be built from its own block with no guess (readiness), that nothing unneeded or already in the
-code is planned (zoom-out), and that a newcomer can say in their own words what the plan does
-(comprehension). A plan of risk `H` gets two independent reviewers (A and B; `plan.fresh-review-twice:
-false` turns that off). Every row it records carries the digest of the tasks.md it read, so the gate
-counts only what was found against the tasks.md as it is now. Three plan gate rows read them:
+A reviewer with no context reads the plan before the person approves it (`agents/plan-review.md`). It checks three things
+through three lenses: that each task can be built from its own block with no guess (readiness), that nothing unneeded or
+already in the code is planned (zoom-out), and that a newcomer can say in their own words what the plan does
+(comprehension). A plan of risk `H` gets two independent reviewers (A and B; `plan.fresh-review-twice: false` turns that off).
 
-- `fresh review ran`: a completion row for each lens and reviewer. A lens that recorded none did not
-  review; it is `not run`, never a lens with no findings. An edited tasks.md makes the review stale.
-- `fresh reader's paraphrase`: the reader's summary, which the plan question shows the person to
-  compare with the intent.
-- `no open plan blockers`: no `high` (or `critical`) finding is open.
+When it runs is `plan.fresh-review`:
+
+- `ask` (the default): the plan question offers **Fresh review first**, at every tier. The review applies once the person
+  chooses it (`temper plan fresh request`).
+- `auto`: the CLI runs it by itself for `medium` and `complex` plans.
+- `always`: every plan. `off`: never.
+
+How the CLI counts it:
+
+- The orchestrator marks each launch (`temper plan fresh start`, after Plan returned): the digest of intent.md, plan.md and
+  tasks.md, and how many rows the plan ledger held. Only rows appended after the mark count, so a row the Plan agent wrote
+  itself never does.
+  An edit of any of the three files after the launch makes the review stale, and it runs again on the new text.
+- `plan.fresh-review-rounds` (default 3) caps the launches of one run. At the cap the plan question offers no more
+  revisions: the person accepts a finding, skips the check or steps back.
+- Three plan gate rows: `fresh review ran` (a completion row for each lens and reviewer; the readiness row must name as
+  many tasks as tasks.md has), `fresh reader's paraphrase` (two parts of 6 words or more) and `no open plan blockers`
+  (no `high` or `critical` finding open). A lens with no completion row is `not run`, never a lens with no findings.
 
 ## Answering the fresh review
 
@@ -121,7 +130,7 @@ line. Answer each finding in one of four ways, and say which in your panel's DEC
 - **Fix it** in tasks.md or plan.md (the usual answer). The changed tasks.md makes the review run
   again on the new text.
 - **Contest it** only with evidence the reviewer could have read:
-  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence contest --stage plan --id N --cite <file>[:<line>|:<symbol>] --reason '...'`.
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence contest --stage plan --id N --cite <file>[:<line>|:<symbol>] --quote '<the text there>' --reason '...'`.
   The CLI checks that the file is in the project and holds the line or symbol. "This was intentional"
   is not evidence.
 - **Escalate it** when the evidence is outside every file (a team rule, a decision someone said):
@@ -129,8 +138,8 @@ line. Answer each finding in one of four ways, and say which in your panel's DEC
   add text to the plan only so a reader with no context is satisfied.
 - **Leave a `low` one** as it is, and say so.
 
-Never contest a comprehension finding: if a newcomer could not follow the plan, the plan is missing
-context. Never change a severity. A contested or escalated finding stays open: the person accepts it
+A comprehension finding is never contested or escalated (the CLI refuses it): if a newcomer could not follow the plan,
+the plan is missing context. Never change a severity. A contested or escalated finding stays open: the person accepts it
 at the plan question, or sends it back. You wrote this plan; wanting to contest a finding is not
 evidence that the reviewer is wrong.
 

@@ -26,7 +26,7 @@ CLAUDE_PLUGIN_ROOT variable, use this folder.
 4.5. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` (deterministic control-band drift
    check over metrics history — **CONTROL BANDS section**; a `propose`-tier breach
    offers drafting an intent.md, see `${CLAUDE_PLUGIN_ROOT}/reference/status.md` Step 3.7)
-4.7. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper drift` (read only: each finished spec compared with the
+4.7. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper drift` (add `--run` when the person asks to run each finished scenario test; read only: each finished spec compared with the
    tree as it is now; **SPEC DRIFT section**, printed as it comes: missing file, test gone, changed since)
 5. **Detect MCP tools**: attempt to call `get_impact_radius_tool` (code-review-graph) and check if semgrep tools are available. Report availability in dashboard.
 6. Display: reviews, quality trend, debt, hotspots, top patterns, learning loop, active specs, **MCP TOOLS section**, **GATE LEDGER section**, **FEEDBACK LOOPS section**, **CONTROL BANDS section**, **SPEC DRIFT section**

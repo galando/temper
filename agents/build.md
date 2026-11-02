@@ -98,7 +98,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
   allows it. It goes in the `DRIFT` section, with why and what, and the task waits.
 - A review finding you believe is wrong is not fixed and never accepted by you. Contest it with
   evidence the reviewer could read (`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence contest --stage review
-  --id N --cite <file>[:<line>|:<symbol>] --reason '...'`; the CLI checks the citation), or escalate it
+  --id N --cite <file>[:<line>|:<symbol>] --quote '<the text there>' --reason '...'`; the CLI checks the citation), or escalate it
   when only the person knows (`evidence escalate`). It stays open; the person decides at the Review question.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to

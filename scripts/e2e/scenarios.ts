@@ -55,11 +55,12 @@ export function freshReviewer(w: World, a: Json, found: FreshFinding[], skip: st
   const inst = /Instance:\s*(\w)/.exec(a.prompt)?.[1] ?? 'A'
   const lenses = (/Lenses:\s*([^.]+)\./.exec(a.prompt)?.[1] ?? 'readiness, zoom-out, comprehension').split(',').map(x => x.trim())
   const art = `--artifact ${SPEC}/tasks.md`
+  const tasks = (w.read(`${SPEC}/tasks.md`).match(/^### Task \d+/gm) ?? []).length
   for (const lens of lenses) {
     for (const f of found.filter(x => x.lens === lens))
       t(w, `evidence add --stage plan --phase fresh --severity ${f.severity} --claim '[${f.lens}] ${f.claim}' ${art}`)
     if (skip.includes(lens)) continue
-    t(w, `evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim 'fresh review completed: ${lens} ${inst}' ${art}`)
+    t(w, `evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim 'fresh review completed: ${lens} ${inst}'${lens === 'readiness' ? ` --value ${tasks}` : ''} ${art}`)
     if (lens === 'comprehension')
       t(w, `evidence add --stage plan --phase fresh --claim 'paraphrase: two modules build a CI report from the gate ledger | the ledger is a JSON file the CLI writes' ${art}`)
   }
@@ -619,7 +620,7 @@ const mediumPlan = (wd: World, a: Json): void => {
 }
 const designAgent: Agent = wd => wd.write(`${SPEC}/design.md`, '# Design: CI report\n\n## Architecture\n\nTwo small modules.\n\n## Areas of Concern\n\nNone flagged — the change is two new files.\n')
 export const freshReview = (w: World): void => {
-  startProject(w)
+  startProject(w, 'plan:\n  fresh-review: auto')
   const prompts: string[] = []
   let reviews = 0
   const agents: Record<string, Agent> = {
@@ -646,7 +647,7 @@ export const freshReview = (w: World): void => {
 // A reviewer that stops before a lens is done is not run, never zero findings: the gate fails and names the lens, and the run
 // launches it only when the person asks for it again.
 export const freshNotRun = (w: World): void => {
-  startProject(w)
+  startProject(w, 'plan:\n  fresh-review: auto')
   let reviews = 0
   const agents: Record<string, Agent> = {
     ...AGENTS,
@@ -663,7 +664,7 @@ export const freshNotRun = (w: World): void => {
 
 // The author contests a finding with a citation the CLI checks; the finding stays open, and the person accepts it with that citation.
 export const freshContest = (w: World): void => {
-  startProject(w)
+  startProject(w, 'plan:\n  fresh-review: auto')
   let reviews = 0
   let lastAsk: Json = {}
   const refused: string[] = []
@@ -673,9 +674,9 @@ export const freshContest = (w: World): void => {
       mediumPlan(wd, a)
       const id = /#(\d+) \[high\]/.exec(String(a.prompt))?.[1]
       if (id) {
-        const bad = t(wd, `evidence contest --stage plan --id ${id} --cite src/nothing.py --reason 'it is intentional'`)
+        const bad = t(wd, `evidence contest --stage plan --id ${id} --cite src/nothing.py --quote 'it is intentional here' --reason 'it is intentional'`)
         if (bad.code !== 0) refused.push(bad.out)
-        const ok = t(wd, `evidence contest --stage plan --id ${id} --cite README.md:1 --reason 'the README says this project is a scratch project'`)
+        const ok = t(wd, `evidence contest --stage plan --id ${id} --cite .gitignore:1 --quote '__pycache__/' --reason 'the project ignores its byte code, so no new module is needed'`)
         expect(ok.code === 0, `the contest with a real citation was recorded (${ok.out})`)
       }
     },
@@ -695,9 +696,10 @@ export const freshContest = (w: World): void => {
         const aq = lastAsk.accept as Json
         const opt = (aq.options as Json[]).find(o => String(o.label).startsWith('Accept finding'))!
         expect(String(opt.description).startsWith('[contested]'), 'the accept option marks the contested finding')
-        expect(opt.reason_question.options[0].label === 'Contested with evidence: README.md:1', 'the first reason is the checked citation')
-        wd.answer(aq, opt.label, 'Contested with evidence: README.md:1')
-        runCalls(wd, opt.calls, { reason: 'Contested with evidence: README.md:1' })
+        expect(opt.reason_question.options[0].label === 'Contested with evidence: .gitignore:1', 'the first reason is the checked citation')
+        expect(opt.reason_question.options[1].label === 'The quoted text answers it: __pycache__/', 'the second reason is the checked quote')
+        wd.answer(aq, opt.label, 'Contested with evidence: .gitignore:1')
+        runCalls(wd, opt.calls, { reason: 'Contested with evidence: .gitignore:1' })
         return true
       }
       return /each file the run changed|^Copy what|^When .* records deviations/.test(text)
@@ -705,5 +707,28 @@ export const freshContest = (w: World): void => {
   }))
   expect(refused.length === 1 && refused[0]!.includes('no file src/nothing.py') && refused[0]!.includes('escalate'), `a contest with no readable citation was refused (${refused.join(' / ')})`)
   expect(reviews === 1, 'a contest leaves tasks.md as it was, so the review does not run again')
+  expect(!w.exists('.temper/build-state.json'), 'the run went to its end')
+}
+
+// plan.fresh-review: ask (the default): nothing runs by itself; the person chooses Fresh review first at the plan question, the
+// reviewer runs with the CLI's launch mark before it, and the plan question comes back with the reader's paraphrase.
+export const freshAsk = (w: World): void => {
+  startProject(w)
+  let reviews = 0
+  const asked: string[] = []
+  const agents: Record<string, Agent> = { ...AGENTS, 'temper:temper-plan': mediumPlan, 'temper:temper-plan-review': (wd, a) => { reviews++; freshReviewer(wd, a, []) }, 'temper:temper-design': designAgent }
+  orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      const q = String(ask.question.question)
+      asked.push(q)
+      if (q.startsWith('Plan: the check passed') && reviews === 0) return 'Fresh review first'
+      return recommended(ask, wd)
+    },
+  }))
+  expect(reviews === 1, `the reviewer ran once, on the person's answer (${reviews})`)
+  expect(asked.filter(q => q.startsWith('Plan: the check passed')).length === 2, 'the plan question was asked before and after the review')
+  expect(asked.some(q => q.includes('A reader with no context took it as: two modules build a CI report')), 'the second plan question carries the paraphrase')
+  expect(/plan fresh start/.test(w.trace.join('\n')), 'the launch was marked by the CLI before the reviewer ran')
   expect(!w.exists('.temper/build-state.json'), 'the run went to its end')
 }

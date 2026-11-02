@@ -47,7 +47,7 @@ Run each lens your launch prompt names. Each one is separate: finish it, record 
 `high` (a blocker): a builder would have to guess, or a part cannot be paraphrased. `medium`: the plan works but is weaker
 than it should be (an unneeded abstraction, a reuse missed). `low`: wording. Do not inflate; the gate fails on `high`.
 
-## Recording (every row carries the tasks.md you read)
+## Recording
 
 Each finding, then each lens's completion, then (comprehension) the paraphrase. Quote each value in single quotes, with
 each `'` in it written as `'\''`:
@@ -55,7 +55,7 @@ each `'` in it written as `'\''`:
 ```
 TEMPER evidence add --stage plan --phase fresh --severity high|medium|low \
   --claim '[readiness] Task 3: the Case "rejects a bad id" names no expected error' --artifact {spec}/tasks.md
-TEMPER evidence add --stage plan --phase fresh --exit 0 --label PROVEN \
+TEMPER evidence add --stage plan --phase fresh --exit 0 --label PROVEN --value <tasks you checked> \
   --claim 'fresh review completed: readiness A' --artifact {spec}/tasks.md
 TEMPER evidence add --stage plan --phase fresh \
   --claim 'paraphrase: <what this plan proposes> | <how the system works, per the plan>' --artifact {spec}/tasks.md
@@ -63,11 +63,14 @@ TEMPER evidence add --stage plan --phase fresh \
 
 The claim starts with the lens in brackets, then where (`Task 3`, a plan.md heading, a term), then what is missing. Record
 the completion row of a lens only when you finished it: a lens with no completion row is reported as not run, and the gate
-fails. A lens with nothing to report still records its completion row.
+fails. A lens with nothing to report still records its completion row. The readiness row's `--value` is the number of
+`### Task` blocks you checked; the CLI compares it with tasks.md, and a lower number counts the lens as not run. Each part
+of the paraphrase is a real sentence of 6 words or more: the person compares it with the intent.
+
+The CLI counts only rows recorded after it launched you, against intent.md, plan.md and tasks.md as they were at the launch.
 
 **Gotchas** (each one fails the gate or wastes the run):
 - Never edit intent.md, plan.md, tasks.md or any code. You report; the Plan agent and the person decide.
-- Every row needs `--artifact {spec}/tasks.md`. A row without it is not counted against this plan.
 - Do not run `TEMPER gate plan`, `state`, `accept` or `clear`: the orchestrator runs the gate after you return.
 - Do not ask a question; you run headless.
 - Wait for every command in the foreground before you return.
