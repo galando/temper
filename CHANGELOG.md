@@ -69,7 +69,7 @@ Temper's own spine: every verdict is still a CLI row from recorded evidence, and
 - The website: each video has a second source and a link to the file; the Pages workflow fails when a restored video is missing
   or not an MP4, and checks after the deploy that the live site serves each one as a playable file.
 - Tests: case file 14 (47 checks); three earlier cases with a medium plan record its fresh review (`fresh_reviewed` in
-  case-helpers.sh); the view fixtures carry `fresh` (a new fixture, `plan-fresh-blocker`, holds an open blocker and a contest). The self test: 2056 pass, 0 fail (9.7.5:
+  case-helpers.sh); the view fixtures carry `fresh` (a new fixture, `plan-fresh-blocker`, holds an open blocker and a contest). The self test: 2057 pass, 0 fail (9.7.5:
   2010). The e2e driver: 19 scenarios, each passing with the mod and without it, the flow identical (new: `fresh-review`,
   `fresh-not-run`, `fresh-contest`). Mod tests: 1620 pass, 0 fail (new: tests/mod/v976.test.tsx).
 ## v9.7.5: the Context Map, scenario tests that run, small changes, draft pull requests and the Pipeline stage
