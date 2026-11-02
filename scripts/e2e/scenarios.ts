@@ -48,15 +48,33 @@ export function buildTask(w: World, a: Json): void {
   if (green.code !== 0) throw new Error(`GREEN failed: ${green.out}`)
 }
 
+// The fresh reviewer of the plan (agents/plan-review.md): each lens of its launch prompt records its findings, then its completion,
+// then (comprehension) the paraphrase, every row against the tasks.md it read.
+export type FreshFinding = { lens: string; severity: string; claim: string }
+export function freshReviewer(w: World, a: Json, found: FreshFinding[], skip: string[] = []): void {
+  const inst = /Instance:\s*(\w)/.exec(a.prompt)?.[1] ?? 'A'
+  const lenses = (/Lenses:\s*([^.]+)\./.exec(a.prompt)?.[1] ?? 'readiness, zoom-out, comprehension').split(',').map(x => x.trim())
+  const art = `--artifact ${SPEC}/tasks.md`
+  for (const lens of lenses) {
+    for (const f of found.filter(x => x.lens === lens))
+      t(w, `evidence add --stage plan --phase fresh --severity ${f.severity} --claim '[${f.lens}] ${f.claim}' ${art}`)
+    if (skip.includes(lens)) continue
+    t(w, `evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim 'fresh review completed: ${lens} ${inst}' ${art}`)
+    if (lens === 'comprehension')
+      t(w, `evidence add --stage plan --phase fresh --claim 'paraphrase: two modules build a CI report from the gate ledger | the ledger is a JSON file the CLI writes' ${art}`)
+  }
+}
+
 export const AGENTS: Record<string, Agent> = {
   'temper:temper-intent': w => w.write(`${SPEC}/intent.md`, fs.readFileSync(path.join(ROOT, 'templates/example-intent.md'), 'utf8')),
   'temper:temper-plan': w => {
-    w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('## Scenarios (BDD)\n', INTENT_SCENARIOS))
+    if (!w.read(`${SPEC}/intent.md`).includes(INTENT_SCENARIOS)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('## Scenarios (BDD)\n', INTENT_SCENARIOS))
     w.write(`${SPEC}/plan.md`, PLAN_MD)
     w.write(`${SPEC}/tasks.md`, TASKS_MD)
     t(w, 'state set complexity simple')
     t(w, 'risk')
   },
+  'temper:temper-plan-review': (w, a) => freshReviewer(w, a, []),
   'temper:temper-build-task': buildTask,
   'temper:temper-review': w => {
     t(w, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`)
@@ -590,4 +608,102 @@ export const branchClashCarry = (w: World): void => {
   expect(w.sh('git branch --show-current').trim() === 'feature/ci', 'the run went on the earlier branch')
   expect(w.sh('git log --format=%s feature/ci').includes('docs(intent): accept ci') || w.sh('git log --all --format=%s').includes('docs(intent): accept ci'), 'the intent was accepted and committed there, with the new spec files carried across')
   expect(w.exists('old.txt') || !w.exists('.temper/build-state.json'), 'the earlier work is on the branch')
+}
+
+// 9.7.6, the fresh review of a medium plan: the reviewer finds a task that leaves the expected value to the builder; the person
+// chooses Revise the plan; the Plan agent fixes tasks.md; the review runs again on the new text, passes, and the run goes on.
+const FIX_FINDING: FreshFinding = { lens: 'readiness', severity: 'high', claim: 'Task 2: the Case "two stages are written in the order" names no expected value' }
+const mediumPlan = (wd: World, a: Json): void => {
+  AGENTS['temper:temper-plan']!(wd, a)
+  t(wd, 'state set complexity medium')
+}
+const designAgent: Agent = wd => wd.write(`${SPEC}/design.md`, '# Design: CI report\n\n## Architecture\n\nTwo small modules.\n\n## Areas of Concern\n\nNone flagged — the change is two new files.\n')
+export const freshReview = (w: World): void => {
+  startProject(w)
+  const prompts: string[] = []
+  let reviews = 0
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      prompts.push(String(a.prompt))
+      mediumPlan(wd, a)
+      if (String(a.prompt).includes('Fresh review findings to answer'))
+        wd.write(`${SPEC}/tasks.md`, wd.read(`${SPEC}/tasks.md`).replace('- two stages are written in the order the ledger holds them',
+          '- two stages are written in the order the ledger holds them: build first, then review, as a JSON array'))
+    },
+    'temper:temper-plan-review': (wd, a) => { reviews++; freshReviewer(wd, a, reviews === 1 ? [FIX_FINDING] : []) },
+    'temper:temper-design': designAgent,
+  }
+  const asked: string[] = []
+  orchestrate(w, script({ agents, person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) } }))
+  expect(reviews === 2, `the fresh review ran twice, once on each tasks.md (${reviews})`)
+  expect(asked.some(q => q.startsWith('Plan: the check failed') && q.includes('no open plan blockers') && q.includes('Revise the plan?')), 'the plan question named the blocker and offered Revise the plan')
+  expect(prompts.length === 2 && prompts[1]!.includes('Fresh review findings to answer') && prompts[1]!.includes('names no expected value'), 'the Plan agent ran again with the finding')
+  expect(asked.some(q => q.startsWith('Plan: the check passed. A reader with no context took it as: two modules build a CI report')), 'the plan question showed the paraphrase')
+  expect(!w.exists('.temper/build-state.json'), 'the run went to its end')
+}
+
+// A reviewer that stops before a lens is done is not run, never zero findings: the gate fails and names the lens, and the run
+// launches it only when the person asks for it again.
+export const freshNotRun = (w: World): void => {
+  startProject(w)
+  let reviews = 0
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': mediumPlan,
+    'temper:temper-plan-review': (wd, a) => { reviews++; freshReviewer(wd, a, [], reviews === 1 ? ['comprehension'] : []) },
+    'temper:temper-design': designAgent,
+  }
+  const asked: string[] = []
+  orchestrate(w, script({ agents, person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) } }))
+  expect(asked.some(q => q.includes('not run: comprehension A') && q.includes('Run the fresh review again?')), 'the gate named the lens that did not run')
+  expect(reviews === 2, `the reviewer ran again only on the person's answer (${reviews})`)
+  expect(!w.exists('.temper/build-state.json'), 'the run went to its end')
+}
+
+// The author contests a finding with a citation the CLI checks; the finding stays open, and the person accepts it with that citation.
+export const freshContest = (w: World): void => {
+  startProject(w)
+  let reviews = 0
+  let lastAsk: Json = {}
+  const refused: string[] = []
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      mediumPlan(wd, a)
+      const id = /#(\d+) \[high\]/.exec(String(a.prompt))?.[1]
+      if (id) {
+        const bad = t(wd, `evidence contest --stage plan --id ${id} --cite src/nothing.py --reason 'it is intentional'`)
+        if (bad.code !== 0) refused.push(bad.out)
+        const ok = t(wd, `evidence contest --stage plan --id ${id} --cite README.md:1 --reason 'the README says this project is a scratch project'`)
+        expect(ok.code === 0, `the contest with a real citation was recorded (${ok.out})`)
+      }
+    },
+    'temper:temper-plan-review': (wd, a) => { reviews++; freshReviewer(wd, a, reviews === 1 ? [{ lens: 'zoom-out', severity: 'high', claim: 'src/ci_bytes.py: a byte order module is not needed' }] : []) },
+    'temper:temper-design': designAgent,
+  }
+  orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      lastAsk = ask
+      const q = String(ask.question.question)
+      if (q.startsWith('Plan: the check failed') && q.includes('contested')) return 'Accept a finding'
+      return recommended(ask, wd)
+    },
+    instruction: (wd, text) => {
+      if (text === 'Ask the accept question.') {
+        const aq = lastAsk.accept as Json
+        const opt = (aq.options as Json[]).find(o => String(o.label).startsWith('Accept finding'))!
+        expect(String(opt.description).startsWith('[contested]'), 'the accept option marks the contested finding')
+        expect(opt.reason_question.options[0].label === 'Contested with evidence: README.md:1', 'the first reason is the checked citation')
+        wd.answer(aq, opt.label, 'Contested with evidence: README.md:1')
+        runCalls(wd, opt.calls, { reason: 'Contested with evidence: README.md:1' })
+        return true
+      }
+      return /each file the run changed|^Copy what|^When .* records deviations/.test(text)
+    },
+  }))
+  expect(refused.length === 1 && refused[0]!.includes('no file src/nothing.py') && refused[0]!.includes('escalate'), `a contest with no readable citation was refused (${refused.join(' / ')})`)
+  expect(reviews === 1, 'a contest leaves tasks.md as it was, so the review does not run again')
+  expect(!w.exists('.temper/build-state.json'), 'the run went to its end')
 }

@@ -96,6 +96,10 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
   go in the spec's `build-context.json`.
 - A file outside the plan is never written before the person's `Drift decision:` line
   allows it. It goes in the `DRIFT` section, with why and what, and the task waits.
+- A review finding you believe is wrong is not fixed and never accepted by you. Contest it with
+  evidence the reviewer could read (`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence contest --stage review
+  --id N --cite <file>[:<line>|:<symbol>] --reason '...'`; the CLI checks the citation), or escalate it
+  when only the person knows (`evidence escalate`). It stays open; the person decides at the Review question.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border), and it is the only box you print. Fact rows at the top, then titled sections

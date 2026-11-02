@@ -3,6 +3,57 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.6: a fresh reader checks the plan, contests cite evidence, a reviewer that stopped is not a clean review, spec drift
+
+Five ideas from Google's Elephant Goldfish Model (a reviewer with no context reads a design before any code), built on
+Temper's own spine: every verdict is still a CLI row from recorded evidence, and the person still decides each gate.
+
+**The fresh review of the plan**
+- **A plan could leave a decision to the builder (new `agents/plan-review.md`, `scripts/fresh_review.py`).** *What broke:* each
+  Build task runs on a small model that sees only its own task block, and nothing checked that the block was enough. A task
+  that said "rejects too many attempts" was built with whatever limit, window and status the model guessed. *Fix:* for
+  `medium` and `complex` plans (`plan.fresh-review: auto`; `always`, `off`), the CLI launches a reviewer with no context after
+  Plan returns. It reads intent.md, plan.md and tasks.md through three lenses: readiness (can each task be built from its own
+  block), zoom-out (work nobody asked for, a helper the code already has, found by searching the code) and comprehension (a
+  newcomer's paraphrase, and project terms used without a definition). Three plan gate rows read what it records:
+  `fresh review ran`, `fresh reader's paraphrase` and `no open plan blockers`. A `high` finding fails the gate.
+- **The paraphrase is in the plan question** ("A reader with no context took it as: ..."), for the person to compare with the
+  intent.
+- **Every row carries the digest of the tasks.md it was found against.** An edited tasks.md makes the review stale; it runs again
+  on the new text, and a finding against the old text no longer counts.
+- **Revise the plan** (`state redo plan`) runs the Plan agent again with each open finding. It fixes it, contests it or escalates
+  it (`reference/plan.md`, "Answering the fresh review").
+- **A risk `H` plan gets two independent reviewers** (A and B; `plan.fresh-review-twice: false` turns it off).
+
+**Contests that can be checked**
+- **`temper evidence contest --stage S --id N --cite <file>[:<line>|:<symbol>] --reason R`** (`scripts/findings.py`). The CLI checks
+  the file is inside the project and holds the line or symbol; "it was intentional" is refused, and the refusal names escalate.
+- **`temper evidence escalate --stage S --id N --reason R`** for evidence outside every file (a team rule, a spoken decision).
+- Both leave the finding open: the person decides. The accept question marks a contested or escalated finding, and offers the
+  checked citation as the first reason. The fix pass of Build answers a review finding the same way (`agents/build.md`).
+
+**A reviewer that stopped is not run**
+- Each lens of each reviewer records its own completion row. A lens with none is `not run` (the row names it), never a lens
+  with no findings. The CLI marks a launch (`state set fresh_review <digest>`), so a reviewer that stopped is not launched again
+  by itself: the plan question offers **Run the fresh review again**.
+
+**Spec drift**
+- **`temper drift [--json]`** (`scripts/drift.py`, read only, never a gate): for each finished spec (a committed
+  gate-ledger.json), a planned file that is gone, a scenario test file that is gone, and a planned file changed since the spec.
+  `/temper:status` shows it as SPEC DRIFT.
+
+**The evidence** ([docs/evidence/fresh-review.md](docs/evidence/fresh-review.md))
+- The 9.7.5 and 9.7.6 CLIs on the same plan states (`scripts/e2e/ab-plan-gate.sh`): 9.7.5 passes a plan with a reader's
+  blocker, a review that stopped after two lenses and a review of an older tasks.md; 9.7.6 fails each, and both pass a good plan.
+- A live run: the fresh reviewer found all 5 defects planted in a plan, and no blocker in its fixed twin. Two Haiku builders
+  given the defective task passed their own tests and failed the intent (5 failures, 15 minutes, status 429, nothing wired into
+  `/login`); two given the fixed task passed every criterion.
+
+**Also**
+- The README is short: what Temper is, install, how it works, the commands. The mod's details live in [docs/mod.md](docs/mod.md).
+- The website: each video has a second source and a link to the file; the Pages workflow fails when a restored video is missing
+  or not an MP4, and checks after the deploy that the live site serves each one as a playable file.
+- Tests: case file 14 (46 checks), e2e scenarios `fresh-review`, `fresh-not-run` and `fresh-contest` (with the mod and without it).
 ## v9.7.5: the Context Map, scenario tests that run, small changes, draft pull requests and the Pipeline stage
 
 A private fork of 9.7.0 grew a set of behaviours in its own "9.7.1". This release rebuilds them on 9.7.4, with every hold of the

@@ -7120,7 +7120,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "More options"
      }
     ],
-    "question": "Plan: the check passed. Approve the plan and continue to Design?"
+    "question": "Plan: the check passed. A reader with no context took it as: a reset link by email, valid for one hour | the app has users and an outbound mail helper. Approve the plan and continue to Design?"
    },
    "run_id": "run-design",
    "stage": "plan",

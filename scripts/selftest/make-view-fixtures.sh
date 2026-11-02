@@ -169,6 +169,12 @@ cli(d, "state", "advance", "intent_complete", "plan")
 cli(d, "state", "set", "complexity", "medium")
 write(d, ".temper/specs/pw/plan.md", PLAN)
 write(d, ".temper/specs/pw/tasks.md", TASKS)
+# 9.7.6: a medium plan has its fresh review; each lens records its row against this tasks.md, and the reader's paraphrase
+for lens in ("readiness", "zoom-out", "comprehension"):
+    cli(d, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--exit", "0", "--label", "PROVEN",
+        "--claim", "fresh review completed: %s A" % lens, "--artifact", ".temper/specs/pw/tasks.md")
+cli(d, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--artifact", ".temper/specs/pw/tasks.md",
+    "--claim", "paraphrase: a reset link by email, valid for one hour | the app has users and an outbound mail helper")
 verdict(d, "plan", True)
 snap(d, "design-plan-pass", "run-design")
 cli(d, "state", "advance", "plan_complete", "design")

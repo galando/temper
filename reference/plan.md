@@ -92,7 +92,47 @@ tier into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it h
 reads it; the gate's `tier recorded` row fails when such a line names another tier than the run.
 
 Fix any FAIL before returning: usually a missing scenario, an empty Success Criteria
-section, a missing Cross-Repo Search record, or a missing Blast Radius heading.
+section, a missing Cross-Repo Search record, or a missing Blast Radius heading. The three
+fresh review rows below are the one exception: they fail until the reviewer has run, which
+happens after you return. Leave them.
+
+## The fresh review (9.7.6)
+
+For `medium` and `complex` plans (`plan.fresh-review: auto`; `always` runs it at every tier, `off`
+never), a reviewer with no context reads the plan after Plan returns and before the person sees the
+plan question (`agents/plan-review.md`). It checks three things through three lenses: that each task
+can be built from its own block with no guess (readiness), that nothing unneeded or already in the
+code is planned (zoom-out), and that a newcomer can say in their own words what the plan does
+(comprehension). A plan of risk `H` gets two independent reviewers (A and B; `plan.fresh-review-twice:
+false` turns that off). Every row it records carries the digest of the tasks.md it read, so the gate
+counts only what was found against the tasks.md as it is now. Three plan gate rows read them:
+
+- `fresh review ran`: a completion row for each lens and reviewer. A lens that recorded none did not
+  review; it is `not run`, never a lens with no findings. An edited tasks.md makes the review stale.
+- `fresh reader's paraphrase`: the reader's summary, which the plan question shows the person to
+  compare with the intent.
+- `no open plan blockers`: no `high` (or `critical`) finding is open.
+
+## Answering the fresh review
+
+When the person chooses **Revise the plan**, you run again with a `Fresh review findings to answer`
+line. Answer each finding in one of four ways, and say which in your panel's DECISIONS:
+
+- **Fix it** in tasks.md or plan.md (the usual answer). The changed tasks.md makes the review run
+  again on the new text.
+- **Contest it** only with evidence the reviewer could have read:
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence contest --stage plan --id N --cite <file>[:<line>|:<symbol>] --reason '...'`.
+  The CLI checks that the file is in the project and holds the line or symbol. "This was intentional"
+  is not evidence.
+- **Escalate it** when the evidence is outside every file (a team rule, a decision someone said):
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence escalate --stage plan --id N --reason '...'`. Do not
+  add text to the plan only so a reader with no context is satisfied.
+- **Leave a `low` one** as it is, and say so.
+
+Never contest a comprehension finding: if a newcomer could not follow the plan, the plan is missing
+context. Never change a severity. A contested or escalated finding stays open: the person accepts it
+at the plan question, or sends it back. You wrote this plan; wanting to contest a finding is not
+evidence that the reviewer is wrong.
 
 ## Cross-Repo Search
 

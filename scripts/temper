@@ -1630,6 +1630,21 @@ cmd_evidence_clear() { # temper evidence clear --stage <s> — truncate that sta
   echo "OK: evidence cleared for '$stage'"
 }
 
+_evidence_answer() { # temper evidence contest --stage S --id N --cite F[:L|:SYM] --reason R | escalate --stage S --id N --reason R
+  local sub="$1" stage="" id="" cite="" reason=""; shift
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --stage) stage="$2"; shift 2 ;; --id) id="$2"; shift 2 ;; --cite) cite="$2"; shift 2 ;; --reason) reason="$2"; shift 2 ;; *) shift ;; esac
+  done
+  [[ -n "$stage" && -n "$id" ]] || { echo "FAIL: usage: temper evidence contest --stage <s> --id <n> --cite <file[:line|:symbol]> --reason R | escalate --stage <s> --id <n> --reason R" >&2; return 1; }
+  _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  local file; file="$(_evidence_file "$stage")"; local rc
+  _lock_acquire
+  if [[ "$sub" == "contest" ]]; then python3 -I "$SCRIPTS_DIR/findings.py" contest "$file" "$id" "$cite" "$reason" "$(_now)"; rc=$?
+  else python3 -I "$SCRIPTS_DIR/findings.py" escalate "$file" "$id" "$reason" "$(_now)"; rc=$?; fi
+  _lock_release
+  return $rc
+}
+
 cmd_evidence() {
   local sub="${1:-}"; shift || true
   case "$sub" in
@@ -1639,7 +1654,8 @@ cmd_evidence() {
     resolve) cmd_evidence_resolve "$@" ;;
     accept) cmd_evidence_accept "$@" ;;
     clear) cmd_evidence_clear "$@" ;;
-    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|accept|clear> ..." >&2; return 1 ;;
+    contest|escalate) _evidence_answer "$sub" "$@" ;;
+    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ..." >&2; return 1 ;;
   esac
 }
 
@@ -3838,6 +3854,12 @@ gate_plan() {
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
     done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)" "$(_cfg_get plan.context-check auto)")"
+    # 9.7.6: the fresh review of the plan (scripts/fresh_review.py; medium and complex tiers by default)
+    while IFS= read -r g_line; do
+      [[ -n "$g_line" ]] || continue
+      reqs+=("$g_line")
+      grep -q '"pass": false' <<<"$g_line" && all_pass=0
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$complexity" "$(_cfg_get plan.fresh-review auto)" "$(cmd_state_get risk "")" "$(_cfg_get plan.fresh-review-twice true)")"
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -5266,6 +5288,7 @@ main() {
     guards) [[ "${1:-}" == "uninstall" ]] && python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall || { echo "FAIL: usage: temper guards uninstall" >&2; false; } ;;
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
+    drift) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/drift.py" .temper/specs "$@") ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -5273,7 +5296,7 @@ temper — the deterministic spine of the Temper plugin
 Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
-  temper evidence <add|run|list|resolve|accept|clear> ...
+  temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]
   temper model <intent|plan|design|build|review|check|rca|fix> | --all
   temper override <stage> --reason "..."
@@ -5299,6 +5322,7 @@ Usage:
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
+  temper drift [--json]                   (where the code moved away from the finished specs; read only)
   temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
 EOF
       ;;
@@ -5307,7 +5331,7 @@ EOF
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule) ;;
+    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift) ;;
     next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;

@@ -37,6 +37,13 @@ jobs:
           git cat-file blob d221a932b4086bb03c8fbe1bf0f832fe9cbc9de0 > docs/media/workflow.jpg
           git cat-file blob 20507b8131f0408be8c191bea13432ad7022c62b > docs/media/tour.mp4
           git cat-file blob d35cd16a619580963e8cca74d2aaf3279d67af79 > docs/media/tour.jpg
+          # A missing or broken file fails the deploy here, instead of a page whose players stay black.
+          for f in workflow tour; do
+            test "$(stat -c %s "docs/media/$f.mp4")" -gt 1000000 || { echo "::error::docs/media/$f.mp4 is missing or too small"; exit 1; }
+            head -c 12 "docs/media/$f.mp4" | grep -q ftyp || { echo "::error::docs/media/$f.mp4 is not an MP4 file"; exit 1; }
+            test "$(stat -c %s "docs/media/$f.jpg")" -gt 10000 || { echo "::error::docs/media/$f.jpg is missing or too small"; exit 1; }
+          done
+          ls -l docs/media
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -49,3 +56,19 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # The live site serves each video as video/mp4 with byte ranges (what a browser's player needs); a red run says so.
+      - name: Check the videos on the live site
+        env:
+          SITE: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          for f in workflow.mp4 tour.mp4 workflow.jpg tour.jpg; do
+            ok=""
+            for i in 1 2 3 4 5 6; do
+              h="$(curl -sSI -H 'Range: bytes=0-1023' "${SITE%/}/media/$f" || true)"
+              if grep -qiE '^HTTP/[0-9.]+ 206' <<<"$h" && grep -qiE '^content-type: (video/mp4|image/jpeg)' <<<"$h"; then ok=1; break; fi
+              sleep 20
+            done
+            [ -n "$ok" ] || { echo "::error::${SITE%/}/media/$f is not served as a playable file"; echo "$h"; exit 1; }
+            echo "ok: $f"
+          done
