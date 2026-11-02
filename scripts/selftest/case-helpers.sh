@@ -41,6 +41,15 @@ d[sys.argv[1]] = {'verdict': 'FAIL', 'requirements': [{'name': sys.argv[2], 'pas
 json.dump(d, open(p, 'w'))
 PY
 }
+fresh_reviewed() { # 9.7.6: record a finished fresh review of the demo plan (three lenses and the paraphrase), as agents/plan-review.md does
+  local l
+  for l in readiness zoom-out comprehension; do
+    "$TEMPER" evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim "fresh review completed: $l A" \
+      --artifact .temper/specs/demo/tasks.md >/dev/null 2>&1
+  done
+  "$TEMPER" evidence add --stage plan --phase fresh --claim "paraphrase: the demo runs | a demo is one step" \
+    --artifact .temper/specs/demo/tasks.md >/dev/null 2>&1
+}
 fresh() { # a new run of the demo spec at Intent, with the run state written by the CLI
   setup
   rm -f .temper/groups.json .temper/view.json

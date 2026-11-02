@@ -443,6 +443,7 @@ cat > .temper/specs/demo/plan.md <<'EOF'
 - used: sourcegraph — callers of demo() → 3 hits in sister repo
 EOF
 "$TEMPER" state set complexity medium >/dev/null
+fresh_reviewed   # 9.7.6: a medium plan also needs its fresh review
 assert_exit "plan gate PASSes with a recorded cross-repo search" 0 "$TEMPER" gate plan
 
 setup

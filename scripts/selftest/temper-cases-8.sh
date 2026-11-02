@@ -90,7 +90,7 @@ assert_eq "next: the Plan question has no walk through: More options holds the r
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
-"$TEMPER" state set complexity medium >/dev/null 2>&1
+"$TEMPER" state set complexity medium >/dev/null 2>&1; fresh_reviewed
 assert_eq "next: a medium plan goes on to Design" "Continue to Design (Recommended)|state advance plan_complete design" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
 assert_exit "advance: a medium plan may not skip Design" 1 "$TEMPER" state advance plan_complete build
