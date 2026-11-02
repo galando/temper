@@ -158,6 +158,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -572,6 +573,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -958,6 +960,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -1319,6 +1322,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -1688,6 +1692,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -2020,6 +2025,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -2366,6 +2372,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -2513,6 +2520,567 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    }
   ],
   "status": "Pipeline: waiting for your answer to the Temper gate question.",
+  "time": {
+   "started": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "usage": {
+   "by_model": {},
+   "by_stage": {},
+   "ms": 0
+  },
+  "version": 1,
+  "written": "2026-01-01T00:00:00Z"
+ },
+ "plan-fresh-blocker": {
+  "ask": {
+   "accept": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence accept --stage plan --id 6 --reason '{reason}'",
+       "/plugin/scripts/temper gate plan"
+      ],
+      "description": "[contested] [zoom-out] Task 2: a new mail sender where one exists",
+      "label": "Accept finding 6",
+      "move": "accept",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "Contested with evidence: src/mail.ts:sendMail"
+        },
+        {
+         "description": "",
+         "label": "It is not a real issue"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Accept finding 6. What is the reason?"
+      }
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence accept --stage plan --id 5 --reason '{reason}'",
+       "/plugin/scripts/temper gate plan"
+      ],
+      "description": "[readiness] Task 1: the Case 'expired link' names no status",
+      "label": "Accept finding 5",
+      "move": "accept",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "It is not a real issue"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Accept finding 5. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Back to the Plan question.",
+      "do": "Ask the Plan question again.",
+      "label": "Cancel",
+      "move": null
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "[contested] [zoom-out] Task 2: a new mail sender where one exists",
+       "label": "Accept finding 6"
+      },
+      {
+       "description": "[readiness] Task 1: the Case 'expired link' names no status",
+       "label": "Accept finding 5"
+      },
+      {
+       "description": "Back to the Plan question.",
+       "label": "Cancel"
+      }
+     ],
+     "question": "Plan: which finding do you accept?"
+    },
+    "run_id": "run-fresh",
+    "stage": "plan",
+    "step": 1
+   },
+   "more": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper state loop plan intent --reason '{reason}'"
+      ],
+      "description": "Do Intent again; the stages after it are redone too.",
+      "label": "Loop back to Intent",
+      "move": "back",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "The check found a real problem"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Loop back to Intent. What is the reason?"
+      }
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper override plan --reason '{reason}'",
+       "git checkout -b feature/pw",
+       "git add -- .temper/specs/pw/",
+       "git commit -m \"docs(plan): approve the plan of pw\"",
+       "/plugin/scripts/temper state advance plan_complete design"
+      ],
+      "description": "Skip this check with your reason; the report shows it.",
+      "label": "Override and continue",
+      "move": "override",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "",
+         "label": "It is not a real issue"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Override and continue. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stress test the plan.",
+      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
+      "label": "Grill Me",
+      "move": null
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Do Intent again; the stages after it are redone too.",
+       "label": "Loop back to Intent"
+      },
+      {
+       "description": "Skip this check with your reason; the report shows it.",
+       "label": "Override and continue"
+      },
+      {
+       "description": "Stress test the plan.",
+       "label": "Grill Me"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Plan: more options."
+    },
+    "run_id": "run-fresh",
+    "stage": "plan",
+    "step": 1
+   },
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper state redo plan --reason 'fresh review: #6 [zoom-out] Task 2: a new mail sender where one exists (contested: src/mail.ts:sendMail); #5 [readiness] Task 1: the Case '\"'\"'expired link'\"'\"' names no status'"
+     ],
+     "description": "The Plan agent fixes or contests each finding; the fresh review runs again on a changed tasks.md.",
+     "label": "Revise the plan (Recommended)",
+     "move": "redo"
+    },
+    {
+     "calls": [],
+     "description": "Keep a finding as it is, with your reason.",
+     "do": "Ask the accept question.",
+     "label": "Accept a finding",
+     "move": null
+    },
+    {
+     "calls": [],
+     "description": "Loop back to Intent, Override and continue, Grill Me, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
+    }
+   ],
+   "question": {
+    "header": "Temper gate",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": "The Plan agent fixes or contests each finding; the fresh review runs again on a changed tasks.md.",
+      "label": "Revise the plan (Recommended)"
+     },
+     {
+      "description": "Keep a finding as it is, with your reason.",
+      "label": "Accept a finding"
+     },
+     {
+      "description": "Loop back to Intent, Override and continue, Grill Me, Save for later",
+      "label": "More options"
+     }
+    ],
+    "question": "Plan: the check failed (no open plan blockers: 2 open). A reader with no context took it as: a reset link by email, valid for one hour | the app has users and a mail helper. Revise the plan?"
+   },
+   "run_id": "run-fresh",
+   "stage": "plan",
+   "step": 1
+  },
+  "blocking": [],
+  "build": {
+   "groups": [
+    {
+     "id": "G1",
+     "status": "pending",
+     "tasks": [
+      {
+       "attempts": 0,
+       "files": [
+        "src/app.ts",
+        "unit/app.test.ts"
+       ],
+       "model": null,
+       "n": 1,
+       "state": "waiting",
+       "title": "Issue a token"
+      },
+      {
+       "attempts": 0,
+       "files": [
+        "src/app.ts"
+       ],
+       "model": null,
+       "n": 2,
+       "state": "waiting",
+       "title": "Expire a token"
+      }
+     ],
+     "title": "Tokens",
+     "verdict": null
+    },
+    {
+     "id": "G2",
+     "status": "pending",
+     "tasks": [
+      {
+       "attempts": 0,
+       "files": [
+        "src/mail.ts"
+       ],
+       "model": null,
+       "n": 3,
+       "state": "waiting",
+       "title": "Send the mail"
+      }
+     ],
+     "title": "Mail",
+     "verdict": null
+    }
+   ],
+   "integration": null
+  },
+  "check_markers": [
+   {
+    "detail": "",
+    "lines": [],
+    "name": "compile",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "tests",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "coverage",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "lint",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "security",
+    "state": "none"
+   }
+  ],
+  "checks": [],
+  "context_check": null,
+  "context_map": null,
+  "criteria": [
+   {
+    "evidence": [],
+    "id": "AC-01",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 1 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-02",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 2 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-03",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 3 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-04",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 4 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-05",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 5 (source: test)"
+   }
+  ],
+  "drift": {
+   "header": "Scope drift",
+   "options": [
+    "Add to plan",
+    "Revert",
+    "Allow once"
+   ],
+   "prefix": "Outside the plan:"
+  },
+  "findings": [],
+  "fresh": {
+   "findings": [
+    {
+     "cite": null,
+     "claim": "[readiness] Task 1: the Case 'expired link' names no status",
+     "id": 5,
+     "lens": "readiness",
+     "severity": "high",
+     "state": "open"
+    },
+    {
+     "cite": "src/mail.ts:sendMail",
+     "claim": "[zoom-out] Task 2: a new mail sender where one exists",
+     "id": 6,
+     "lens": "zoom-out",
+     "severity": "high",
+     "state": "contested"
+    }
+   ],
+   "missing": [],
+   "paraphrase": "a reset link by email, valid for one hour | the app has users and a mail helper",
+   "stale": false
+  },
+  "guard": {
+   "adhoc_stage": null,
+   "armed": false,
+   "autonomy_enabled": false,
+   "fix_run": false,
+   "grouped": false,
+   "plan_files": [
+    "src/app.ts",
+    "unit/app.test.ts",
+    "src/mail.ts"
+   ],
+   "prefix": "",
+   "run_id": "run-fresh",
+   "slug": "pw",
+   "spec": ".temper/specs/pw",
+   "stage": "plan",
+   "step": 1,
+   "trivial_exit": false
+  },
+  "loops": [],
+  "next": {
+   "action": "ask",
+   "calls": [],
+   "say": null,
+   "stage": "plan",
+   "steps": []
+  },
+  "plan": {
+   "approved": false,
+   "files": [
+    "src/app.ts",
+    "unit/app.test.ts",
+    "src/mail.ts"
+   ],
+   "groups": [
+    {
+     "files": [
+      "src/app.ts",
+      "unit/app.test.ts"
+     ],
+     "id": "G1",
+     "title": "Tokens"
+    },
+    {
+     "files": [
+      "src/mail.ts"
+     ],
+     "id": "G2",
+     "title": "Mail"
+    }
+   ]
+  },
+  "restart": {
+   "header": "Temper resume",
+   "multiSelect": false,
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper state clear"
+     ],
+     "description": "The saved run state goes; the spec files stay.",
+     "label": "Start over",
+     "move": "restart"
+    },
+    {
+     "calls": [],
+     "description": "Keep the run.",
+     "label": "Cancel",
+     "move": null
+    }
+   ],
+   "question": "A run of pw is open at Plan. Start over?",
+   "run_id": "run-fresh",
+   "step": 1
+  },
+  "run": {
+   "branch": "feature/pw",
+   "command": "temper",
+   "complexity": "medium",
+   "feature": "Password reset by email",
+   "id": "run-fresh",
+   "mode": "interactive",
+   "parked": null,
+   "slug": "pw",
+   "spec": ".temper/specs/pw",
+   "stage": "plan",
+   "step": 1,
+   "title": "Password reset by email"
+  },
+  "skips": [],
+  "stages": [
+   {
+    "failed": [],
+    "id": "intent",
+    "label": "Intent",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [
+     {
+      "detail": "2 open",
+      "name": "no open plan blockers"
+     }
+    ],
+    "id": "plan",
+    "label": "Plan",
+    "mark": "here",
+    "verdict": "FAIL"
+   },
+   {
+    "failed": [],
+    "id": "design",
+    "label": "Design",
+    "mark": "todo",
+    "verdict": null
+   },
+   {
+    "failed": [],
+    "id": "build",
+    "label": "Build",
+    "mark": "todo",
+    "verdict": null
+   },
+   {
+    "failed": [],
+    "id": "review",
+    "label": "Review",
+    "mark": "todo",
+    "verdict": null
+   },
+   {
+    "failed": [],
+    "id": "check",
+    "label": "Check",
+    "mark": "todo",
+    "verdict": null
+   },
+   {
+    "failed": [],
+    "id": "commit",
+    "label": "Commit",
+    "mark": "todo",
+    "verdict": null
+   }
+  ],
+  "status": "Plan: waiting for your answer to the Temper gate question.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -2783,6 +3351,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": "check",
    "armed": false,

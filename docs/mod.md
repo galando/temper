@@ -54,7 +54,9 @@ again.
 
 The pane (`/temper:temper pane`) shows the whole run on one card: the intent, the stages with your skips
 and the loops back, the plan's files by Build group as you approved them, the Build grid (each task's
-state, waiting, running, RED, GREEN, PASS, FAIL or parked, with its model and retries), the Review
+state, waiting, running, RED, GREEN, PASS, FAIL or parked, with its model and retries), at Plan and Design
+the fresh review of the plan (the reader's summary, a lens that did not run, and each finding with its state:
+open, contested with its citation, escalated, resolved or accepted), the Review
 findings (severity, confidence, file and line, open, resolved or accepted), the Check markers (compile,
 tests, coverage, lint, security, with the lines that failed), the acceptance criteria with their evidence,
 and your decisions. It has no button. `minimal` draws the stages only; `off` draws nothing.
@@ -291,7 +293,7 @@ starts no agent, makes no tool call, sets no setting and runs no command. CI fai
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
     `session.start` also opens the pane during a run, as the first read that finds a run started later in the
     session does. Both return what the engine gives them: no context, instruction or setting is added.
-  - `turn.step` sets the model and effort from `phaseModels` and the Temper review agent's model from `reviewerModel`;
+  - `turn.step` sets the model and effort from `phaseModels` and the model of the Temper review agent and of the fresh plan reviewer from `reviewerModel`;
     empty options change nothing. `attribution.text` adds one Temper line to a pull request description during a run
     when `prAttribution` is on. `turn.complete` adds a one line status under an answer in full mode.
   - `ui.render` draws the bar, pane, spinner word, prompt hint and a line above Claude's question

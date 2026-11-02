@@ -88,7 +88,7 @@
     "reviewerModel": {
       "type": "string",
       "title": "Reviewer model",
-      "description": "Optional model for the Temper review agent. Empty means no change.",
+      "description": "Optional model for the Temper review agent and the fresh reviewer of the plan. Empty means no change.",
       "default": "",
       "sensitive": false
     }

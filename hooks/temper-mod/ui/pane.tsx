@@ -12,13 +12,16 @@ const MARK_COLOR = { passed: GREEN, failed: ORANGE, skipped: YELLOW, current: BL
 const TASK_COLOR: Record<GridTask['state'], string> = { waiting: MUTED, running: BLUE, red: ORANGE, green: GREEN, pass: GREEN, fail: ORANGE, parked: YELLOW }
 const MARKER: Record<Marker['state'], [string, string]> = { pass: ['✓', GREEN], fail: ['✗', ORANGE], info: ['•', BLUE], none: ['○', MUTED] }
 const SEVERE = new Set(['critical', 'high'])
+// A fresh review finding the person still has to answer: open, or answered by the author and waiting for them.
+const OPEN_FRESH = new Set(['open', 'contested', 'escalated'])
+const freshTitle = (n: number): string => `Fresh review of the plan · ${n} open ${n === 1 ? 'blocker' : 'blockers'}`
 
 const taskText = (t: GridTask): string =>
   `${TASK_STATE[t.state][0]} ${TASK_STATE[t.state][1].padEnd(7)} Task ${t.n}${t.title ? `: ${t.title}` : ''}${t.model ? ` · ${t.model.replace(/^claude-/, '')}` : ''}${t.retries > 0 ? ` · ${t.retries} ${t.retries === 1 ? 'retry' : 'retries'}` : ''}`
 
 // The pane: the whole run on one card, read only (ADR 0013), drawn from view.json. The intent, the stages with their
 // verdicts, the person's skips and the loops back with their reasons, the status, the plan's files by Build group, the
-// Build grid (each task's state, model and retries), the Review findings, the Check markers with their failing lines,
+// Build grid (each task's state, model and retries), the fresh review of the plan, the Review findings, the Check markers with their failing lines,
 // the acceptance criteria with their evidence, and the person's decisions. The person decides in the question dialog:
 // the pane has no button. `inline` (a pane drawn in the conversation) keeps each section short.
 //
@@ -94,6 +97,24 @@ export function renderPane(kit: Kit, view: View, inline = false): RenderElement 
               )),
               ...more('plan-more', view.planTree.groups.length, 3),
               ...(view.planTree.other.length > 0 ? [<Text key="plan-other" color={FG}>{`Other: ${view.planTree.other.join(', ')}`}</Text>] : []),
+            ],
+          )
+        : null}
+
+      {view.fresh !== null && (view.stage === 'plan' || view.stage === 'design')
+        ? section(
+            'fresh',
+            freshTitle(view.fresh.rows.filter(f => SEVERE.has(f.severity) && OPEN_FRESH.has(f.state)).length),
+            [
+              ...(view.fresh.summary ? [<Text key="fresh-summary" color={FG}>{`A reader with no context: ${view.fresh.summary}`}</Text>] : []),
+              ...(view.fresh.stale ? [<Text key="fresh-stale" color={YELLOW}>tasks.md changed after the review; it runs again</Text>] : []),
+              ...(!view.fresh.stale && view.fresh.notRun.length > 0 ? [<Text key="fresh-not-run" color={YELLOW}>{`Not run: ${view.fresh.notRun.join(', ')}`}</Text>] : []),
+              ...cut(view.fresh.rows, 5).map(f => (
+                <Text key={`fresh-${f.id}`} color={!OPEN_FRESH.has(f.state) ? MUTED : SEVERE.has(f.severity) ? ORANGE : FG}>
+                  {`#${f.id} ${f.severity} ${f.lens ? `[${f.lens}] ` : ''}${f.claim} · ${f.state}${f.cite ? ` (${f.cite})` : ''}`}
+                </Text>
+              )),
+              ...more('fresh-more', view.fresh.rows.length, 5),
             ],
           )
         : null}

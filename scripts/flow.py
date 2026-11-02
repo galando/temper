@@ -1698,6 +1698,17 @@ def build_view(run):
     return {"groups": groups, "integration": (run.groups.get("integration") or {}).get("verdict")}
 
 
+def fresh_view(r):
+    """The fresh review of the plan for the pane (9.7.6): the reader's paraphrase, the lenses not run, whether tasks.md changed
+    after it, and its findings with their state; null when it does not apply to the run."""
+    fr = r.fresh()
+    if not fr["applies"]:
+        return None
+    return {"paraphrase": fr["paraphrase"], "missing": fr["missing"], "stale": fr["stale"],
+            "findings": [{"id": f["id"], "severity": f["severity"], "lens": f["lens"], "claim": f["claim"], "state": f["state"],
+                          "cite": f.get("cite")} for f in fr["findings"]]}
+
+
 def plan_view(run):
     plan = run.plan or {"groups": [], "tasks": []}
     approved = run.state.get("approved_files")
@@ -1767,6 +1778,7 @@ def view(run, nxt):
                   "trivial_exit": r.stage == "intent" and int(r.state.get("step") or 0) == 0 and set(r.gates) <= {"intent"} and not r.overrides
                   and not any(os.path.isfile(os.path.join(r.spec, n)) for n in ("intent.md", "plan.md", "tasks.md", "design.md"))},
         "plan": plan_view(r),
+        "fresh": fresh_view(r),
         "build": build_view(r),
         "findings": [{k: v for k, v in f.items() if k not in ("answer", "cite")} for f in r.findings()],   # the view's schema stays as it was
         "checks": [{"name": x.get("name"), "pass": bool(x.get("pass")), "detail": x.get("detail")} for x in r.rows("check")],

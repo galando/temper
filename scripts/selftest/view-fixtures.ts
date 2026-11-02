@@ -138,6 +138,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -429,6 +430,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -742,6 +744,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -1060,6 +1063,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -1373,6 +1377,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -1680,6 +1685,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -1992,6 +1998,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": true,
@@ -2433,6 +2440,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -2855,6 +2863,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -3139,6 +3148,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -3570,6 +3580,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -4034,6 +4045,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -4339,6 +4351,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -4740,6 +4753,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -5126,6 +5140,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -5437,6 +5452,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -5753,6 +5769,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -6069,6 +6086,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -6442,6 +6460,12 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": {
+   "findings": [],
+   "missing": [],
+   "paraphrase": "a reset link by email, valid for one hour | the app has users and an outbound mail helper",
+   "stale": false
+  },
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -6862,6 +6886,12 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": {
+   "findings": [],
+   "missing": [],
+   "paraphrase": "a reset link by email, valid for one hour | the app has users and an outbound mail helper",
+   "stale": false
+  },
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -7261,6 +7291,12 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": {
+   "findings": [],
+   "missing": [],
+   "paraphrase": "a reset link by email, valid for one hour | the app has users and an outbound mail helper",
+   "stale": false
+  },
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -7552,6 +7588,12 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": {
+   "findings": [],
+   "missing": [],
+   "paraphrase": "a reset link by email, valid for one hour | the app has users and an outbound mail helper",
+   "stale": false
+  },
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -7795,6 +7837,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -8072,6 +8115,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -8351,6 +8395,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -8527,6 +8572,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -8901,6 +8947,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -9298,6 +9345,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -9706,6 +9754,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -9942,6 +9991,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -10446,6 +10496,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -11002,6 +11053,7 @@ export const VIEWS: Record<string, unknown> = {
     "state": "open"
    }
   ],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,
@@ -11286,6 +11338,7 @@ export const VIEWS: Record<string, unknown> = {
    "prefix": "Outside the plan:"
   },
   "findings": [],
+  "fresh": null,
   "guard": {
    "adhoc_stage": null,
    "armed": false,

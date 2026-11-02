@@ -49,14 +49,22 @@ Temper's own spine: every verdict is still a CLI row from recorded evidence, and
   given the defective task passed their own tests and failed the intent (5 failures, 15 minutes, status 429, nothing wired into
   `/login`); two given the fixed task passed every criterion.
 
+**The mod**
+- **The pane shows the fresh review at Plan and Design**: the reader's summary, a lens that did not run (or that tasks.md changed
+  after the review), and each finding with its lens and state, a contest with its checked citation. The count of open blockers
+  includes contested and escalated ones: they wait for the person. No button, as before. The view carries it as `fresh`
+  (`docs/flow.md`), `null` when the fresh review does not apply.
+- **`reviewerModel` also sets the fresh plan reviewer's model** (`temper:temper-plan-review`); `models.plan-review` in the config
+  still sets it without the mod.
+
 **Also**
 - The README is short: what Temper is, install, how it works, the commands. The mod's details live in [docs/mod.md](docs/mod.md).
 - The website: each video has a second source and a link to the file; the Pages workflow fails when a restored video is missing
   or not an MP4, and checks after the deploy that the live site serves each one as a playable file.
 - Tests: case file 14 (46 checks); three earlier cases with a medium plan record its fresh review (`fresh_reviewed` in
-  case-helpers.sh); one view fixture's plan question now carries the paraphrase. The self test: 2056 pass, 0 fail (9.7.5:
+  case-helpers.sh); the view fixtures carry `fresh` (a new fixture, `plan-fresh-blocker`, holds an open blocker and a contest). The self test: 2056 pass, 0 fail (9.7.5:
   2010). The e2e driver: 19 scenarios, each passing with the mod and without it, the flow identical (new: `fresh-review`,
-  `fresh-not-run`, `fresh-contest`). Mod tests: 1610 pass, 0 fail.
+  `fresh-not-run`, `fresh-contest`). Mod tests: 1620 pass, 0 fail (new: tests/mod/v976.test.tsx).
 ## v9.7.5: the Context Map, scenario tests that run, small changes, draft pull requests and the Pipeline stage
 
 A private fork of 9.7.0 grew a set of behaviours in its own "9.7.1". This release rebuilds them on 9.7.4, with every hold of the

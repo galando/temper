@@ -80,6 +80,7 @@ describe('reviewer model (turn.step in the review agent)', () => {
     { id: 'rev2', type: 'temper-review', description: 'review', status: 'running' },
     { id: 'exp', type: 'Explore', description: 'look', status: 'running' },
     { id: 'bld', type: 'temper:temper-build', description: 'build', status: 'running' },
+    { id: 'fresh', type: 'temper:temper-plan-review', description: 'fresh plan review', status: 'running' },
   ]
   const listen = (on: Parameters<typeof world>[0]) => {
     seen.length = 0
@@ -97,13 +98,13 @@ describe('reviewer model (turn.step in the review agent)', () => {
     expect(seen).toEqual([{ model: 'opus', agentId: 'rev' }])
   })
 
-  test('the Temper review agent runs on reviewerModel; other agents and the main loop do not', { options: { reviewerModel: 'haiku' } }, async ($, on) => {
+  test('the Temper review agent and the fresh plan reviewer run on reviewerModel; other agents and the main loop do not', { options: { reviewerModel: 'haiku' } }, async ($, on) => {
     world(on, {})
     listen(on)
-    for (const agentId of ['rev', 'rev2', 'exp', 'bld', 'gone', undefined]) {
+    for (const agentId of ['rev', 'rev2', 'fresh', 'exp', 'bld', 'gone', undefined]) {
       for await (const _chunk of $.turn.step({ ...STEP, ...(agentId ? { agentId } : {}) } as never)) void _chunk
     }
-    expect(seen.map(s => s.model)).toEqual(['haiku', 'haiku', 'opus', 'opus', 'opus', 'opus'])
+    expect(seen.map(s => s.model)).toEqual(['haiku', 'haiku', 'haiku', 'opus', 'opus', 'opus', 'opus'])
   })
 
   test('a spawn passes through unchanged', { options: { reviewerModel: 'haiku' } }, async ($, on) => {
