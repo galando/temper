@@ -441,6 +441,11 @@ def acc_write(lockfile, d):
     os.replace(tmp, lockfile)
 
 
+def acc_copy_dir(lockfile):
+    """Where the lock keeps a copy of the locked files, so `acceptance restore` can put them back."""
+    return os.path.join(os.path.dirname(lockfile), "acceptance-locked")
+
+
 def acc_lock(root, spec, lockfile, cmd):
     folder = os.path.join(root, spec, "acceptance")
     files = _digests(folder, root) if os.path.isdir(folder) else {}
@@ -451,9 +456,70 @@ def acc_lock(root, spec, lockfile, cmd):
         print("FAIL: usage: temper acceptance lock --cmd '<command that runs the acceptance folder>'", file=sys.stderr)
         return 1
     d = acc_read(lockfile)
-    acc_write(lockfile, {"spec": spec, "cmd": cmd, "files": files, "launches": d.get("launches", 0),
-                         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    same = d.get("spec") == spec
+    # A lock is taken once. Only the person reopens it (the Check question's "Correct the acceptance test"), so a builder
+    # cannot change a locked test and lock it again.
+    if same and d.get("cmd") and not d.get("reopened"):
+        print("FAIL: the acceptance tests are locked already; only the person reopens them (Correct the acceptance test, at the Check question)", file=sys.stderr)
+        return 1
+    corrections = list(d.get("corrections") or []) if same else []
+    if same and d.get("reopened"):
+        corrections.append(dict(d["reopened"], changed=sorted(f for f in set(files) | set(d.get("files", {}))
+                                                         if files.get(f) != d.get("files", {}).get(f))))
+    import shutil
+    cp = acc_copy_dir(lockfile)
+    shutil.rmtree(cp, ignore_errors=True)
+    for rel in files:
+        dst = os.path.join(cp, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(os.path.join(root, rel), dst)
+    out = {"spec": spec, "cmd": cmd, "files": files, "launches": d.get("launches", 0) if same else 0,
+           "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if corrections:
+        out["corrections"] = corrections
+    acc_write(lockfile, out)
     print("OK: %d acceptance file(s) locked; Check runs: %s" % (len(files), cmd))
+    return 0
+
+
+def acc_reopen(spec, lockfile, reason):
+    """The person says a locked test is wrong (the Check question): the lock opens for one correction, which the
+    acceptance writer makes and locks again. The report and the gate row show the reason."""
+    d = acc_read(lockfile)
+    if d.get("spec") != spec or not d.get("cmd"):
+        print("FAIL: no locked acceptance tests in this run", file=sys.stderr)
+        return 1
+    if not reason.strip():
+        print("FAIL: usage: temper acceptance reopen --reason '<why the test is wrong>'", file=sys.stderr)
+        return 1
+    d["reopened"] = {"reason": reason.strip()[:300], "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    acc_write(lockfile, d)
+    print("OK: the acceptance tests are open for one correction: %s" % reason.strip()[:300])
+    return 0
+
+
+def acc_restore(root, spec, lockfile):
+    """Put the locked acceptance files back as they were locked (a builder changed one): no decision, the person's lock holds."""
+    d = acc_read(lockfile)
+    if d.get("spec") != spec or not d.get("cmd"):
+        print("FAIL: no locked acceptance tests in this run", file=sys.stderr)
+        return 1
+    import shutil
+    cp = acc_copy_dir(lockfile)
+    folder = os.path.join(root, spec, "acceptance")
+    missing = [rel for rel in d.get("files", {}) if not os.path.isfile(os.path.join(cp, rel))]
+    if missing:
+        print("FAIL: the lock kept no copy of %s; restore them by hand" % ", ".join(missing[:3]), file=sys.stderr)
+        return 1
+    now = _digests(folder, root) if os.path.isdir(folder) else {}
+    for rel in now:
+        if rel not in d.get("files", {}):
+            os.remove(os.path.join(root, rel))
+    for rel in d.get("files", {}):
+        dst = os.path.join(root, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copyfile(os.path.join(cp, rel), dst)
+    print("OK: %d acceptance file(s) restored as they were locked" % len(d.get("files", {})))
     return 0
 
 
@@ -485,13 +551,18 @@ def acc_run(root, spec, lockfile):
         return []
     if d.get("skipped"):
         return [row("acceptance (written before Build): skipped", "", 0, d["skipped"], label="HEURISTIC")]
+    if d.get("reopened"):
+        return [row("acceptance (written before Build)", d["cmd"], 1,
+                    "reopened to correct a test (%s); not locked again" % d["reopened"].get("reason", ""))]
     now = _digests(os.path.join(spec, "acceptance"), root) if os.path.isdir(os.path.join(spec, "acceptance")) else {}
     changed = sorted(f for f in set(now) | set(d.get("files", {})) if now.get(f) != d.get("files", {}).get(f))
     if changed:
         return [row("acceptance (written before Build)", d["cmd"], 1,
                     "changed after they were locked: %s" % ", ".join(changed)[:300])]
     out, rc = run_env.run_cmd(root, SUITE_TIMEOUT_S, [d["cmd"]])
-    return [row("acceptance (written before Build)", d["cmd"], rc, out)]
+    fixed = [c.get("reason", "") for c in d.get("corrections") or [] if isinstance(c, dict)]
+    name = "acceptance (written before Build)" + (", corrected after the lock: %s" % "; ".join(fixed)[:200] if fixed else "")
+    return [row(name, d["cmd"], rc, out)]
 
 
 # ---- run -----------------------------------------------------------------------------------------------------------
@@ -573,6 +644,10 @@ def main(argv):
             return acc_skip(spec, lockfile, text)
         if sub == "start":
             return acc_start(spec, lockfile)
+        if sub == "reopen":
+            return acc_reopen(spec, lockfile, text)
+        if sub == "restore":
+            return acc_restore(root, spec, lockfile)
     if len(argv) >= 3 and argv[1] == "detect":
         print(json.dumps(detect(argv[2], argv[3] if len(argv) > 3 else "", argv[4] if len(argv) > 4 else "")))
         return 0

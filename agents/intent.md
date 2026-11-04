@@ -91,7 +91,8 @@ folder.
    3. **How much**: amount limits, caps, minimums, rounding, what may be partial.
    4. **States**: what each action changes (statuses, flags), what is allowed in each state, what undoing does.
    5. **Where it shows**: the API, exports, reports, notifications, audit records.
-   6. **Exceptions**: what is excluded, what happens twice, what happens on failure.
+   6. **Exceptions**: what is excluded or exempt (below an amount, a kind, a state: separate from any cap or minimum
+      of item 3), what happens twice, what happens on failure.
    When a house rule (CONVENTIONS.md, CLAUDE.md, AGENTS.md, an existing pattern in the code) gives a default for one
    of these, do not assume it holds: ask whether it does for this feature, with the house rule as the recommended
    answer.

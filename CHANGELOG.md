@@ -78,6 +78,29 @@ on record), proves more of it with the CLI instead of an agent, asks better ques
   root cause and regression tests.
 - **"Accept it as done" records its reason itself** (an earlier task built it), with no second question.
 
+**No more loops at Check (measured: two runs at $26.91 and $38.24, against about $3 for the others)**
+- **A step back from Check carries what failed.** Build's fix pass got only the name of the failed run ("acceptance
+  (written before Build)"), passed its own tests, and Check failed again on the same test. The step back now keeps the
+  tail of each failed run's output (the failing test and its assertion) and, for a low mutation score, the surviving
+  mutants, which the mutation row also names.
+- **A wrong locked acceptance test has a way out.** In one run the test assumed customer ids were global, and the code
+  numbers them per tenant: no change to the code could pass it. Check now offers "Correct the acceptance test" with the
+  person's reason (`temper acceptance reopen`, only the person's); the writer corrects only the failing test against the
+  intent and locks it again, and the gate row shows the reason. It is the recommended option once a step back to Build
+  left the same failure.
+- **A lock is taken once.** A builder in one run edited a locked test; it could have locked it again. `acceptance lock`
+  now refuses a second lock unless the person reopened it, the lock keeps a copy, and "Restore the locked tests"
+  (`temper acceptance restore`) puts a changed test back.
+- **Design may change the tasks.** A Design answer (a fee floor) changed tasks.md, and Build refused to start ("the
+  approved plan changed"). The Design question now says what Design changed ("Task 1 gains src/floor.sh", "new Task
+  7", from a copy of the tasks the CLI keeps at the plan gate), and Continue approves them with the design; an
+  unattended run parks for the person instead. A Build agent that edits tasks.md is still refused.
+- **Intent asks about exemptions apart from minimums.** In one run Intent asked about the fee's minimum and never about
+  invoices that get no fee at all; the checklist's Exceptions item now names what is excluded or exempt (below an
+  amount, a kind, a state) as its own rule.
+- **Files outside the plan at the commit gate:** "Add to plan" is the first option (the same record as at a Scope drift
+  question), next to Override and commit.
+
 **Fixes**
 - **"Accept it as done" looped.** A covered Build task's option shared the move `accept` with accepting a review
   finding; it is now `covered`.

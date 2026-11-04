@@ -313,3 +313,88 @@ fresh; gpass intent plan build review check commit; _at commit
 mkdir -p src; echo "the feature" > src/feature_x.sh   # uncommitted code: the commit carries it, with a feature message
 assert_eq "9.8.0: the commit step carries a message drafted from the intent's title, no placeholder" "yes|no" \
   "$(nx "s = [x for x in d.get('steps', []) if x.startswith('git commit')]; ('yes' if s and s[0].startswith(\"git commit -m 'feat(demo): \") else 'no') + '|' + ('yes' if any('{' in x for x in s) else 'no')")"
+
+# --- 14. A wrong locked acceptance test has a way out; a step back carries what failed; Design's task changes; scope at commit ---
+# (the benchmark's costliest runs: a locked test the code could not pass, Build sent back twice without the failing output)
+f9_tasks | m_setup
+rm -f .temper/groups.json; f9_intent true true
+mkdir -p .temper/specs/demo/acceptance
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ac01(self):\n        self.assertEqual(1 + 1, 2)\n' > .temper/specs/demo/acceptance/test_ac.py
+ACMD="python3 -m unittest discover -s .temper/specs/demo/acceptance -t .temper/specs/demo/acceptance"
+"$TEMPER" acceptance lock --cmd "$ACMD" >/dev/null 2>&1
+assert_exit "9.8.0: a lock is taken once: a builder cannot lock a test again after changing it" 1 "$TEMPER" acceptance lock --cmd "$ACMD"
+assert_exit "9.8.0: only with a reason does the person reopen it" 1 "$TEMPER" acceptance reopen
+printf '\n# a builder edits it\n' >> .temper/specs/demo/acceptance/test_ac.py
+echo 'x' > .temper/specs/demo/acceptance/test_extra.py
+assert_exit "9.8.0: acceptance restore puts the locked files back" 0 "$TEMPER" acceptance restore
+assert_eq "9.8.0: restored as locked: the edit is gone, the file added after the lock too" "no|no" \
+  "$(grep -q 'a builder edits it' .temper/specs/demo/acceptance/test_ac.py && echo yes || echo no)|$([[ -f .temper/specs/demo/acceptance/test_extra.py ]] && echo yes || echo no)"
+gpass build review; "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state advance review_complete check >/dev/null 2>&1
+gfail check "acceptance tests written before Build" "changed after they were locked: .temper/specs/demo/acceptance/test_ac.py"
+assert_eq "9.8.0: a changed locked test: the first option puts it back and checks again" "Restore the locked tests (Recommended)|acceptance restore|state redo check" \
+  "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['calls'][0].split('temper ', 1)[1], ' '.join(o['calls'][1].split('temper ', 1)[1].split()[:3])])")"
+gfail check "acceptance tests written before Build" "FAIL: test_ac01 (T.test_ac01) AssertionError: 404 != 403"
+assert_eq "9.8.0: a failing locked test: Build mends the code first, or the person says the test is wrong" "Loop back to Build (Recommended)|Correct the acceptance test" \
+  "$(labels | cut -d'|' -f1-2)"
+python3 - <<'PYEOF'
+import json
+json.dump({"version": 1, "history": [], "active_loops": [{"id": "loop-1", "from_stage": "check", "to_stage": "build", "reason": "x",
+           "iteration": 1, "max_iterations": 2, "started": "2026-01-01T00:00:00Z", "at": "2026-01-01T00:00:00Z"}]}, open('.temper/feedback-loops.json', 'w'))
+PYEOF
+assert_eq "9.8.0: after a step back to Build left it failing, correcting the test is the recommended way" "Correct the acceptance test (Recommended)|Loop back to Build" \
+  "$(labels | cut -d'|' -f1-2)"
+assert_eq "9.8.0: correcting a test asks for the person's reason and reopens the lock with it" "yes|acceptance reopen --reason '{reason}'" \
+  "$(nx "o = d['ask']['options'][0]; ('yes' if o.get('reason') else 'no') + '|' + o['calls'][0].split('temper ', 1)[1]")"
+"$TEMPER" acceptance reopen --reason "The test asks for what the intent does not say" >/dev/null 2>&1
+assert_eq "9.8.0: reopened, the writer corrects the test the failure names, and Check runs again" "work|temper:temper-acceptance|yes|yes|state redo check" \
+  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], 'yes' if 'Correction: the person says a locked test is wrong (The test asks for what the intent does not say)' in a['prompt'] else 'no', 'yes' if '404 != 403' in a['prompt'] else 'no', ' '.join(a['after'][-1].split('temper ', 1)[1].split()[:3])])")"
+python3 - <<'PYEOF'
+p = '.claude/temper.config'; s = open(p).read()
+s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 80\n  commands:\n    test: "true"\n', 1)
+open(p, 'w').write(s)
+PYEOF
+echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
+assert_eq "9.8.0: reopened and not locked again, Check fails the acceptance row" "yes" \
+  "$(_gc | grep -q '\[x\] acceptance tests written before Build — reopened to correct a test' && echo yes || echo no)"
+printf '\n# corrected against the intent\n' >> .temper/specs/demo/acceptance/test_ac.py
+assert_exit "9.8.0: a reopened lock is locked again" 0 "$TEMPER" acceptance lock --cmd "$ACMD"
+echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
+assert_eq "9.8.0: the corrected tests pass, and the row names the person's reason" "yes" \
+  "$(_gc | grep -q '\[v\] acceptance tests written before Build — they pass, as the person corrected them after the lock (The test asks for what the intent does not say)' && echo yes || echo no)"
+assert_exit "9.8.0: and it is locked once more" 1 "$TEMPER" acceptance lock --cmd "$ACMD"
+
+# a step back from Check carries the failing output, and the surviving mutants, to Build's fix pass
+rm -f .temper/feedback-loops.json
+cat > .temper/evidence/check.json <<'JSON'
+[{"claim": "acceptance (written before Build)", "cmd": "x", "exit_code": 1, "output": "FAIL: test_ac08 AssertionError: 404 != 200"},
+ {"claim": "mutation score", "cmd": "40 mutants", "exit_code": 0, "value": 50.0, "output": "lib/calc.py line 3: cmp"}]
+JSON
+"$TEMPER" state loop check build --reason "The check found a real problem" >/dev/null 2>&1
+assert_eq "9.8.0: the step back keeps the failing test's output and the surviving mutants" "yes|yes" \
+  "$(python3 -c "
+import json; f = json.load(open('.temper/feedback-loops.json'))['active_loops'][0]['findings']; j = ' '.join(f)
+print(('yes' if '404 != 200' in j else 'no') + '|' + ('yes' if 'lib/calc.py line 3: cmp' in j else 'no'))")"
+
+# Design changed the approved tasks: the Design question says so, and Continue approves them with the design
+f9_tasks | m_setup
+gpass design
+_at design
+python3 - <<'PYEOF'
+p = '.temper/specs/demo/tasks.md'; s = open(p).read()
+s = s.replace('**File:** `src/a.sh`, `unit/a_test.sh`', '**File:** `src/a.sh`, `unit/a_test.sh`, `src/floor.sh`', 1)
+open(p, 'w').write(s)
+PYEOF
+assert_eq "9.8.0: the Design question names the changed tasks and what Continue does with them" "yes" \
+  "$(nx "'yes' if 'the check passed. Design changed the plan' in d['ask']['question']['question'] and 'Continue approves them with the design. Continue to Build?' in d['ask']['question']['question'] else 'no'")"
+assert_eq "9.8.0: and says what changed, from the tasks kept at the plan gate" "yes" \
+  "$(nx "'yes' if '(tasks.md: Task 1 gains src/floor.sh)' in d['ask']['question']['question'] else 'no'")"
+"$TEMPER" state advance design_complete build >/dev/null 2>&1
+rm -f .temper/groups.json
+assert_exit "9.8.0: after Continue, Build starts on the changed tasks (no 'the approved plan changed')" 0 "$TEMPER" group start G1
+
+# files outside the plan at the commit gate: the person adds them to the plan there
+fresh; f9_tasks > .temper/specs/demo/tasks.md
+gpass intent plan build review check; _at commit
+gfail commit "blast radius" "changed outside declared files: ledger/export.py, docs/x.md"
+assert_eq "9.8.0: the commit gate's scope failure offers Add to plan first, recording each file as the person's drift answer" "Add to plan (Recommended)|drift|evidence add --stage build --phase feedback --claim 'drift ledger/export.py: Add to plan: the person, at the commit gate'|gate commit" \
+  "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][-1].split('temper ', 1)[1]])")"

@@ -114,6 +114,59 @@ class Run:
         self.plan = tasks_md.parse(tasks) if tasks and os.path.isfile(tasks) else None
         self.intent = read_text(os.path.join(self.spec, "intent.md")) if self.spec else ""
 
+    @staticmethod
+    def plan_core_digest(m):
+        """The digest of a parsed plan, the same as the CLI's _plan_digest (None when the plan does not parse)."""
+        import hashlib
+        n = lambda p: p.strip()[2:] if p.strip().startswith("./") else p.strip()
+        try:
+            core = {"tasks": [{"n": t["n"], "group": t["group"], "files": [n(f) for f in t["files"]], "depends": t["depends"], "test": t["test"]}
+                              for t in m["tasks"]],
+                    "groups": [{"id": g["id"], "depends": g["depends"], "validate": g["validate"], "interfaces": g["interfaces"],
+                                "context": g["context"], "tasks": g["tasks"]} for g in m["groups"]],
+                    "integration": m["integration"]}
+        except (KeyError, TypeError):
+            return None
+        return hashlib.sha256(json.dumps(core, sort_keys=True).encode("utf-8")).hexdigest()
+
+    def tasks_changed(self):
+        """True when tasks.md differs from the tasks the person approved at the plan gate (the digest `state advance
+        plan_complete` recorded): Design changed them."""
+        h = self.state.get("plan_hash")
+        if not h or not self.plan:
+            return False
+        d = self.plan_core_digest(self.plan)
+        return d is not None and d != h
+
+    def tasks_change_summary(self):
+        """What changed in the tasks since the plan gate, in a few words each ("Task 1 gains src/floor.sh", "new Task 7"),
+        from the copy the CLI kept at the plan gate; [] when there is no copy of the approved tasks."""
+        old = read_json(os.path.join(TEMPER, "evidence", "approved-tasks.json"), {})
+        if not old or not self.plan or self.plan_core_digest(old) != self.state.get("plan_hash"):
+            return []
+        was = {t["n"]: t for t in old.get("tasks", [])}
+        now = {t["n"]: t for t in self.plan.get("tasks", [])}
+        out = []
+        for k in sorted(set(now) - set(was)):
+            out.append("new Task %s (%s)" % (k, ", ".join(now[k].get("files") or []) or "no file"))
+        for k in sorted(set(was) - set(now)):
+            out.append("Task %s removed" % k)
+        for k in sorted(set(was) & set(now)):
+            a, b = was[k], now[k]
+            gained = [f for f in b.get("files", []) if f not in a.get("files", [])]
+            lost = [f for f in a.get("files", []) if f not in b.get("files", [])]
+            if gained:
+                out.append("Task %s gains %s" % (k, ", ".join(gained)))
+            if lost:
+                out.append("Task %s drops %s" % (k, ", ".join(lost)))
+            if a.get("test") != b.get("test"):
+                out.append("Task %s has a new Test command" % k)
+            if a.get("depends") != b.get("depends"):
+                out.append("Task %s depends on other tasks" % k)
+        if not out:
+            out.append("the groups or the integration command")
+        return out
+
     def notes(self, stage, kind=None):
         """The notes of the stage (temper evidence add --phase note): the person's words for the next agent (input) or a
         change the orchestrator made for them (edit), oldest first."""
@@ -568,6 +621,13 @@ class Builder:
                         state_of, len(opens), "; ".join("%d. %s" % (i + 1, t) for i, t in enumerate(opens[:3])),
                         "; and %d more" % (len(opens) - 3) if len(opens) > 3 else "")
                     cont = "Accept the open concerns as written (design.md records it) and start Build."
+                if r.tasks_changed():
+                    # 9.8.0: Design changed the approved tasks; Continue approves them with the design (the CLI records it),
+                    # so Build does not refuse to start on a plan that changed after the plan gate.
+                    what = r.tasks_change_summary()
+                    text = text[:-len(" Continue to Build?")].rstrip(".") + ". Design changed the plan's tasks (tasks.md%s); Continue approves them with the design. Continue to Build?" % (
+                        ": " + "; ".join(what[:4]) + ("; and %d more" % (len(what) - 4) if len(what) > 4 else "") if what else "")
+                    cont = cont[:-1] + "; the changed tasks are approved with the design."
                 arm = self.opt("Autonomous: run the rest unattended", ("Accept the open concerns as written; " if opens else "") +
                                "Build, Review and Check go on by themselves and park before the commit.",
                                move="arm", calls=[self.c("state set run_mode autonomous")] + go)
@@ -658,6 +718,14 @@ class Builder:
             gap = self.measurement_gap(r.failed_rows("check"))
             again = [self.opt("Run Check again (Recommended)", "Install what the failed row names, then Check measures again; Build is not redone.",
                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))])] if gap else []
+            acc = self.acceptance_options(r.failed_rows("check"))
+            if acc:
+                first = acc[0]
+                rec = first["label"].endswith("(Recommended)")
+                opts = [first] + back_opt(rec=False) if rec else back_opt(rec=True) + [first]
+                lead = next(o["label"] for o in opts if o["label"].endswith("(Recommended)")) if any(o["label"].endswith("(Recommended)") for o in opts) else first["label"]
+                return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, lead.replace(" (Recommended)", "")), stage=stage,
+                                     options=opts + [override_opt(go), self.save()])
             return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, "Run Check again" if gap else "Loop back to %s" % LABEL[back or "build"]), stage=stage,
                                  options=again + back_opt(rec=not gap) + [override_opt(go), self.save()])
 
@@ -1025,6 +1093,53 @@ class Builder:
             return ""
         return ("\nAcceptance tests: %s/acceptance/ holds the tests written from the intent before Build. Read the ones for your "
                 "task's criteria: your code must make them pass at integration. Never edit them (Check fails a change)." % self.r.spec)
+
+    ACC_REASONS = ["The test asks for what the intent does not say", "The test contradicts how the code base works"]
+
+    def acceptance_options(self, rows):
+        """9.8.0: the Check options when the locked acceptance tests failed and nothing else did. A builder changed them:
+        put them back as locked (no decision: the person's lock holds). They fail as locked: Build mends the code (the
+        step back carries the failing test's output), or the person says the test is wrong and the writer corrects it.
+        After a step back to Build left the same failure, the correction is the recommended way. [] when this does not apply."""
+        r = self.r
+        d = self.acceptance()
+        acc = [x for x in rows if str(x.get("name", "")).startswith("acceptance tests written before Build")]
+        if not d.get("cmd") or not acc or len(acc) != len(rows):
+            return []
+        detail = str(acc[0].get("detail", ""))
+        redo = self.c("state redo check --reason %s")
+        if detail.startswith("changed after they were locked"):
+            return [self.opt("Restore the locked tests (Recommended)", "A builder changed the locked acceptance tests: put them back as they were locked, then check again.",
+                             move="redo", calls=[self.c("acceptance restore"), redo % shlex.quote("the locked acceptance tests were restored")])]
+        if d.get("reopened"):
+            return []
+        rec = r.loop_count("check", "build") >= 1 or not r.can_loop("check", "build")
+        return [self.opt("Correct the acceptance test" + (" (Recommended)" if rec else ""),
+                         "The test is wrong, not the code: the writer corrects it against the intent and locks it again; the report shows your reason.",
+                         move="redo", calls=[self.c("acceptance reopen --reason '{reason}'")], reason=self.ACC_REASONS)]
+
+    def acceptance_fix_work(self):
+        """The person reopened the locked acceptance tests at the Check question: the writer corrects the test the failure
+        names, against the intent, and locks it again; Check runs again."""
+        r = self.r
+        d = self.acceptance()
+        if not d.get("reopened") or r.stage != "check":
+            return None
+        model = r.cfg("models.acceptance", "")
+        if not model:
+            import cli_ctx
+            model = cli_ctx.frontmatter_model(os.path.join(self.plugin, "agents", "acceptance.md")) or ""
+        rows = [x for x in r.failed_rows("check") if str(x.get("name", "")).startswith("acceptance tests written before Build")]
+        fail = " ".join(str(rows[0].get("detail", "")).split())[-700:] if rows else ""
+        a = {"type": "temper:temper-acceptance", "model": model,
+             "prompt": "\n".join(["Follow %s/agents/acceptance.md exactly." % self.plugin, "Spec path: %s." % r.spec,
+                                   "Correction: the person says a locked test is wrong (%s)." % d["reopened"].get("reason", ""),
+                                   "The failure: %s" % (fail or "see the acceptance row of the Check ledger"),
+                                   "Lock command: %s" % d.get("cmd", ""), self.plugin_line()]),
+             "after": [self.c("usage add --stage check --model %s --ms {ms}" % (model or "unknown")),
+                       self.c("state redo check --reason 'the person corrected a locked acceptance test'")]}
+        return {"action": "work", "stage": "check", "calls": [], "agents": [a],
+                "say": "Check: the acceptance writer corrects the test you said is wrong, then Check runs again%s. %s" % (on_model([a]), goes_on(False))}
 
     def criteria(self, *types):
         """The required, open criteria of intent.md whose Validate type is one of types."""
@@ -1559,6 +1674,18 @@ class Builder:
         # of the commit check itself, recorded with their reason like any other.
         failing = failing or ["commit"]
         opts = []
+        # 9.8.0: files changed outside the plan (the scope row): the person adds them to the plan here, the same answer as
+        # "Add to plan" at a Scope drift question (a drift row in the Build ledger), and the commit gate runs again.
+        outside = []
+        for x in r.failed_rows("commit"):
+            m = re.match(r"changed outside declared files: (.+)$", str(x.get("detail", ""))) if x.get("name") == "blast radius" else None
+            if m:
+                outside = [f.strip() for f in re.sub(r"\s*\(and \d+ more\)$", "", m.group(1)).split(",") if f.strip() and not re.search(r"\s|'", f.strip())]
+        if outside:
+            opts.append(self.opt("Add to plan (Recommended)", "%s belong%s to this feature: record %s as planned, then check the commit again." % (
+                ", ".join(outside), "s" if len(outside) == 1 else "", "it" if len(outside) == 1 else "them"), move="drift",
+                calls=[self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote("drift %s: Add to plan: the person, at the commit gate" % f))
+                       for f in outside] + [self.c("gate commit")]))
         if r.command == "fix" and "check" in failing and r.can_loop("check", "fix"):
             opts.append(self.opt("Loop back to Fix (Recommended)", "Write the fix again; Review and Check run again.", move="back",
                                  calls=[self.c("state loop check fix --reason '{reason}'")], reason=["The check found a real problem"]))
@@ -1666,6 +1793,10 @@ class Builder:
             return out
         verdict = r.verdict(stage)
         skipped = r.skip(stage) is not None
+        fixacc = self.acceptance_fix_work() if stage == "check" and verdict is not None and not skipped else None
+        if fixacc:
+            out.update(fixacc)
+            return out
         # A note the person gave after the verdict: input goes to the agent again, edit (made for them) only to the gate.
         if verdict is not None and not skipped and not self.walked(stage):
             if r.stale_notes(stage, "input"):
@@ -1708,6 +1839,11 @@ class Builder:
             return out
         if r.armed() and stage not in ("intent", "plan", "rca"):
             nxt = r.next_of(stage)
+            if stage == "design" and r.tasks_changed():
+                out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote(
+                    "Design changed the plan's tasks; the person approves them"))],
+                            "say": "Design changed the plan's tasks; the armed run parks for you."})
+                return out
             if stage == "design" and r.open_concerns():
                 # a person resolves each area of concern at the Design question, before Build: an armed run parks for them
                 out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote(

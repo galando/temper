@@ -42,6 +42,12 @@ code and its tests can encode the same wrong guess in both; your tests come from
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper acceptance skip --reason '<why>'` instead and write no tests.
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`.
 
+**A correction.** When your launch prompt has a `Correction:` line, the tests are locked already and the person said
+one is wrong at the Check question; the `The failure:` line is what Check saw. Do only this: read intent.md (its Decisions
+first) and the code the failing test calls, decide what the intent states, and correct only the failing test(s) so they
+assert that. Never change a test to suit the code where the intent gives the value; keep every other test as it is.
+Run the acceptance folder once, then lock again with the `Lock command:` line's command (step 5). Return the panel.
+
 6. Do NOT show an `AskUserQuestion` — you run headless. Return the panel to the orchestrator.
 
 **Gotchas:**
@@ -49,7 +55,7 @@ code and its tests can encode the same wrong guess in both; your tests come from
   yours. Assert what the intent and the Decisions say; for the rest, assert the kind of answer (a 400, a list), not
   its exact text.
 - Wait for every test run in the foreground.
-- Never edit a locked test. If the run loops back to you, the CLI tells you what changed.
+- Never edit a locked test, except in a correction (above). The CLI refuses a second lock unless the person reopened it.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to the right border), and it is the
 only box you print. One row per item; omit an empty section including its divider.
