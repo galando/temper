@@ -26,7 +26,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
-import { answer } from "./person.mjs";
+import { answer, choose, typedAnswer } from "./person.mjs";
+import { answerQuestion, replyToMessage } from "./person_llm.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN = path.resolve(HERE, "..", "..");
@@ -41,12 +42,17 @@ then write failing tests for the required behaviour, then implement, then run th
 fix anything that fails. Wire the change into the application so it is actually used, and do not add \
 anything the task does not ask for.`;
 
+// careful-ask: the careful words plus the one line a person who knows to ask for questions would add.
+const ASK = `
+
+If the request leaves something important unclear, ask me before you build it.`;
+
 function args() {
   const a = { rep: "1", "timeout-min": "60", out: "" };
   const v = process.argv.slice(2);
   for (let i = 0; i < v.length; i++) if (v[i].startsWith("--")) a[v[i].slice(2)] = v[++i];
-  if (!a.task || !["vanilla", "careful", "temper"].includes(a.arm)) {
-    console.error("usage: run.mjs --task ID --arm vanilla|careful|temper [--rep N] [--model M] [--timeout-min N] [--out DIR]");
+  if (!a.task || !["vanilla", "careful", "careful-ask", "temper"].includes(a.arm)) {
+    console.error("usage: run.mjs --task ID --arm vanilla|careful|careful-ask|temper [--rep N] [--model M] [--timeout-min N] [--out DIR]");
     process.exit(2);
   }
   return a;
@@ -95,7 +101,14 @@ async function main() {
   const tx = fs.createWriteStream(path.join(out, "transcript.jsonl"));
   const px = fs.createWriteStream(path.join(out, "person.jsonl"));
 
-  const prompt = a.arm === "temper" ? `${temperCmd} ${taskText}` : a.arm === "careful" ? taskText + CAREFUL : taskText;
+  const prompt = a.arm === "temper" ? `${temperCmd} ${taskText}` : a.arm === "careful" ? taskText + CAREFUL
+    : a.arm === "careful-ask" ? taskText + CAREFUL + ASK : taskText;
+  // A vague task has a brief.md: its questions go to the product owner (person_llm.mjs), and a session that ends
+  // waiting for an answer gets one.
+  const briefPath = path.join(taskDir, "brief.md");
+  const brief = fs.existsSync(briefPath) ? fs.readFileSync(briefPath, "utf8").trim() : null;
+  const elicited = new Set();
+  let personCost = 0;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), Number(a["timeout-min"]) * 60_000);
   const t0 = Date.now();
@@ -116,9 +129,30 @@ async function main() {
       questions++;
       if (questions > 60) return { behavior: "deny", message: "The person has left: too many questions.", interrupt: true };
       const ctx = a.arm === "temper" ? temperMoves(work) : { moves: {}, action: null, stage: null };
-      const { updatedInput, log } = answer(input, ctx.moves);
-      for (const l of log) px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...l }) + "\n");
-      return { behavior: "allow", updatedInput };
+      if (!brief) {
+        const { updatedInput, log } = answer(input, ctx.moves);
+        for (const l of log) px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...l }) + "\n");
+        return { behavior: "allow", updatedInput };
+      }
+      // Vague task: a Temper gate (its options are the CLI's) and a request for a typed name keep the fixed
+      // policy; every other question goes to the product owner.
+      const answers = {};
+      for (const q of input.questions || []) {
+        const opts = q.options || [];
+        const gate = opts.length > 0 && opts.every((o) => o.label in ctx.moves);
+        let ans, used = [], who = "policy";
+        if (gate) ans = choose(q, ctx.moves);
+        else if (/\bname\b/i.test(`${q.question}`) && /\b(type|other)\b/i.test(`${q.question} ${opts.map((o) => o.label).join(" ")}`)) ans = typedAnswer(q);
+        else {
+          const r = await answerQuestion({ ticket: taskText, brief, question: q.question, options: opts });
+          ans = r.answer; used = r.used; personCost += r.cost; who = "owner";
+          used.forEach((u) => elicited.add(u));
+        }
+        answers[q.question] = ans;
+        px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, who, header: q.header, question: q.question,
+          options: opts.map((o) => o.label), answer: ans, used }) + "\n");
+      }
+      return { behavior: "allow", updatedInput: { ...input, answers } };
     },
   };
 
@@ -127,18 +161,38 @@ async function main() {
   let ended = "done";
   // Temper can end a turn before the run is over (an agent in the background, a stop it asks for). A
   // person would type to go on, so the harness resumes the session with the same command, at most 5 times.
-  const MAX_TURNS = a.arm === "temper" ? 6 : 1;
+  // A vague task: when a session ends with a message that waits for the person (questions asked as text), the
+  // product owner answers it and the session goes on, at most 3 times.
+  const MAX_TURNS = a.arm === "temper" ? 6 : brief ? 4 : 1;
+  let replies = 0;
   try {
+    let p = prompt;
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const p = turn === 0 ? prompt : temperCmd;
+      let lastText = "";
       for await (const m of query({ prompt: p, options: { ...options, ...(sessionId ? { resume: sessionId } : {}) } })) {
         tx.write(JSON.stringify(m) + "\n");
         if (m.session_id) sessionId = m.session_id;
         if (m.type === "result") results.push(m);
+        if (m.type === "assistant" && !m.parent_tool_use_id) {
+          const t = (m.message?.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
+          if (t) lastText = t;
+        }
+      }
+      if (brief && lastText && replies < 3) {
+        const r = await replyToMessage({ ticket: taskText, brief, message: lastText });
+        personCost += r.cost;
+        if (r.answer.trim().toUpperCase() !== "DONE") {
+          replies++;
+          r.used.forEach((u) => elicited.add(u));
+          px.write(JSON.stringify({ t: Date.now() - t0, who: "owner", question: lastText.slice(0, 2000), answer: r.answer, used: r.used, reply: true }) + "\n");
+          p = r.answer;
+          continue;
+        }
       }
       if (a.arm !== "temper") break;
       const n = temperMoves(work);
       if (n.action === "none" || n.action === "unknown") break;
+      p = temperCmd;
     }
   } catch (e) {
     ended = abort.signal.aborted ? "timeout" : `error: ${e?.message || e}`;
@@ -159,6 +213,8 @@ async function main() {
     turns: sum("num_turns"),
     sessions: results.length,
     questions,
+    ...(brief ? { facts_total: (brief.match(/^\d+\./gm) || []).length, facts_elicited: [...elicited].sort((x, y) => x - y),
+      owner_replies: replies, person_cost_usd: Number(personCost.toFixed(4)) } : {}),
     ended,
     last_subtype: results.at(-1)?.subtype ?? null,
     temper_action_at_end: a.arm === "temper" ? temperMoves(work).action : null,

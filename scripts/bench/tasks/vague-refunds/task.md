@@ -1,0 +1,1 @@
+Finance needs to refund paid invoices. Add `POST /invoices/{id}/refunds`, taking `{"amount_cents": ..., "reason": ...}` and answering 201 with the refund (`id`, `invoice_id`, `amount_cents`, `reason`).

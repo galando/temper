@@ -11,7 +11,7 @@ import statistics as st
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ARMS = ["vanilla", "careful", "temper"]
+ARMS = ["vanilla", "careful", "careful-ask", "temper"]
 HARD = {"partial-payments", "subscriptions", "cent-mismatch", "tenant-leak"}
 
 
@@ -23,7 +23,15 @@ def load(results):
             r, g = json.load(open(rp)), json.load(open(gp))
             mp = os.path.join(results, d, "mutation.json")
             m = json.load(open(mp)) if os.path.exists(mp) else {}
-            rows.append({**r, **g, "mutation": m.get("score"), "regression": m.get("regression_caught")})
+            pj = os.path.join(results, d, "person.jsonl")
+            owner = 0
+            if os.path.exists(pj):
+                for line in open(pj):
+                    try:
+                        owner += json.loads(line).get("who") == "owner"
+                    except ValueError:
+                        pass
+            rows.append({**r, **g, "mutation": m.get("score"), "regression": m.get("regression_caught"), "owner_questions": owner})
     return rows
 
 
@@ -45,6 +53,26 @@ def table(rows):
     return out
 
 
+VAGUE_ARMS = ["vanilla", "careful-ask", "careful", "temper"]
+
+
+def vague_table(rows):
+    out = ["| Arm | Runs | Ticket tests pass | Brief facts met | Brief facts asked for | Questions to the owner | Cost (mean) | Wall (mean) |",
+           "|---|---|---|---|---|---|---|---|"]
+    for arm in VAGUE_ARMS:
+        rs = [r for r in rows if r["arm"] == arm]
+        if not rs:
+            continue
+        tp, tt = sum(r["ticket_pass"] for r in rs), sum(r["ticket_total"] for r in rs)
+        fm, ft = sum(len(r["facts_met"]) for r in rs), sum(len(r["facts_tested"]) for r in rs)
+        fa, fz = sum(len(r.get("facts_elicited", [])) for r in rs), sum(r.get("facts_total", 0) for r in rs)
+        owner = sum(r.get("owner_questions", 0) for r in rs)
+        out.append("| %s | %d | %d/%d (%.0f%%) | %d/%d (%.0f%%) | %d/%d (%.0f%%) | %.1f per run | $%.2f | %ds |" % (
+            arm, len(rs), tp, tt, 100 * tp / max(tt, 1), fm, ft, 100 * fm / max(ft, 1), fa, fz, 100 * fa / max(fz, 1),
+            owner / len(rs), st.mean(r["cost_usd"] for r in rs), st.mean(r["wall_s"] for r in rs)))
+    return out
+
+
 def main():
     results = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("TEMPER_BENCH_RESULTS") or os.path.expanduser("~/temper-bench-results"))
     rows = load(results)
@@ -54,6 +82,11 @@ def main():
     hard = [r for r in rows if r.get("size") == "large" or r["task"] in HARD]
     if hard:
         lines += ["## Hard tasks (features and bugs)", ""] + table(hard) + [""]
+    vague = [r for r in rows if "facts_tested" in r]
+    if vague:
+        lines += ["## Vague tasks: what each arm found out and built", ""] + vague_table(vague) + [""]
+        for task in sorted({r["task"] for r in vague}):
+            lines += ["### %s" % task, ""] + vague_table([r for r in vague if r["task"] == task]) + [""]
     lines += ["## All tasks", ""] + table(rows) + [""]
     ended = [r for r in rows if r.get("ended") != "done"]
     if ended:

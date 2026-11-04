@@ -11,6 +11,7 @@ It never changes RUN_DIR/work. It copies it to RUN_DIR/grade, then:
 It writes RUN_DIR/grade.json and prints it.
 """
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -53,6 +54,21 @@ def run_tests(cwd, start, timeout=300):
         if line.startswith("BENCH_JSON "):
             return json.loads(line[len("BENCH_JSON "):])
     return {"__crash__": "error"}
+
+
+def split(hidden):
+    """A vague task's hidden tests are test_ticket_* (from the ticket and the house rules) and test_brief_N_* (brief
+    fact N). A fact counts as met when every one of its tests passes."""
+    ticket = {k: v for k, v in hidden.items() if ".test_ticket_" in k}
+    facts = {}
+    for k, v in hidden.items():
+        m = re.search(r"\.test_brief_(\d+)_", k)
+        if m:
+            facts.setdefault(int(m.group(1)), []).append(v == "pass")
+    if not ticket and not facts:
+        return {}
+    return {"ticket_pass": sum(v == "pass" for v in ticket.values()), "ticket_total": len(ticket),
+            "facts_met": sorted(n for n, ok in facts.items() if all(ok)), "facts_tested": sorted(facts)}
 
 
 def git(cwd, *a):
@@ -98,6 +114,7 @@ def main():
         "hidden_rate": round(passed / len(hidden), 3) if hidden else 0.0,
         "hidden_all": bool(hidden) and passed == len(hidden),
         "hidden": hidden,
+        **split(hidden),
         "suite_ok": all(v == "pass" for v in suite.values()),
         "suite": suite,
         "code_files": len(code),
