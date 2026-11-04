@@ -11,9 +11,11 @@ What `run` records in the Check ledger, every row `executed_by: cli`:
   - coverage    the total line coverage, with the report as its artifact; when no coverage tool is there, a row that
                 names what to install (the gate row says the measurement is missing, and Check runs again once it is)
   - scenario    each intent.md scenario's `Test:` command, its real exit (a scenario row is a real run, not a trace)
-  - mutation    the mutation score of the tests on the lines this run changed (Python): one small bug at a time is
-                planted (a comparison flipped, + and - swapped, a constant moved by one, `and`/`or` swapped, a `not`
-                dropped, a call statement deleted) and the suite must catch it. Coverage says a line ran; this says a
+  - mutation    the mutation score of the tests on the lines this run changed: one small bug at a time is planted and
+                the suite must catch it. Python is read as a syntax tree (a comparison flipped, + and - swapped, a
+                constant moved by one, `and`/`or` swapped, a `not` dropped, a call statement deleted); JavaScript,
+                TypeScript, Java, Kotlin, Go, C#, Rust, Swift, Scala, C, C++, PHP and Ruby as text (a comparison, ==
+                and !=, && and ||, + and -, true and false, a number moved by one). Coverage says a line ran; this says a
                 test would notice it break. Capped at 40 mutants and a time budget; skipped when nothing changed.
   - regression  (fix runs) the tests the fix added or changed, run on the code before the fix: they must FAIL there,
                 or they do not prove the fix
@@ -74,7 +76,7 @@ def detect(root, test_cmd="", cov_cmd=""):
     """The commands Check runs: {"stack", "test", "coverage": {"run", "report", "kind"} | None, "hint"}; {} when unknown."""
     if test_cmd:
         out = {"stack": "configured", "test": test_cmd, "coverage": None, "hint": "set check.commands.coverage to measure coverage",
-               "mutation": any(True for _ in _py_files(root))}
+               "mutation": True}
         if cov_cmd:   # the command that runs the suite with coverage on and prints a total line (TOTAL ... 85%)
             out["coverage"] = {"run": cov_cmd, "kind": "configured"}
         return out
@@ -124,18 +126,21 @@ def detect(root, test_cmd="", cov_cmd=""):
         elif "c8" in deps:
             cov = {"run": "npx c8 --reporter=json-summary --report-dir=.temper/check/coverage npm test --silent",
                    "kind": "c8", "file": ".temper/check/coverage/coverage-summary.json"}
-        return {"stack": "node", "test": "npm test --silent", "coverage": cov,
-                "hint": "" if cov else "add jest, vitest or c8 to measure coverage"}
+        if not cov and "--experimental-test-coverage" in t:   # node --test prints its own coverage table
+            cov = {"run": "npm test --silent", "kind": "node-test"}
+        return {"stack": "node", "test": "npm test --silent", "coverage": cov, "mutation": True,
+                "hint": "" if cov else "add jest, vitest or c8 (or node --test --experimental-test-coverage) to measure coverage"}
     if os.path.exists(j("go.mod")):
         return {"stack": "go", "test": "go test ./...", "coverage": {"run": "go test ./... -coverprofile=.temper/check/cover.out",
-                "report": "go tool cover -func=.temper/check/cover.out", "kind": "go", "file": ".temper/check/cover.out"}, "hint": ""}
+                "report": "go tool cover -func=.temper/check/cover.out", "kind": "go", "file": ".temper/check/cover.out"}, "hint": "",
+                "mutation": True}
     if os.path.exists(j("Cargo.toml")):
-        return {"stack": "rust", "test": "cargo test", "coverage": None, "hint": "set check.commands.coverage (cargo llvm-cov) to measure coverage"}
+        return {"stack": "rust", "test": "cargo test", "coverage": None, "mutation": True, "hint": "set check.commands.coverage (cargo llvm-cov) to measure coverage"}
     if os.path.exists(j("pom.xml")):
-        return {"stack": "maven", "test": "mvn -q test", "coverage": None, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
+        return {"stack": "maven", "test": "mvn -q test", "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
     if os.path.exists(j("build.gradle")) or os.path.exists(j("build.gradle.kts")):
         g = "./gradlew" if os.path.exists(j("gradlew")) else "gradle"
-        return {"stack": "gradle", "test": "%s test" % g, "coverage": None, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
+        return {"stack": "gradle", "test": "%s test" % g, "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
     return {}
 
 
@@ -157,7 +162,7 @@ def coverage_value(root, det, out_text):
             return round(float(json.load(open(f))["total"]["lines"]["pct"]), 1)
     except (OSError, ValueError, KeyError, TypeError):
         return None
-    m = re.findall(r"total:?\s+\(statements\)\s+([\d.]+)%|TOTAL\s+.*?\s([\d.]+)%\s*$|All files\s*\|\s*([\d.]+)", out_text, re.M)
+    m = re.findall(r"total:?\s+\(statements\)\s+([\d.]+)%|TOTAL\s+.*?\s([\d.]+)%\s*$|all files\s*\|\s*([\d.]+)", out_text, re.M | re.I)
     for g in reversed(m):
         v = next((x for x in g if x), None)
         if v:
@@ -193,7 +198,7 @@ def is_test_path(p):
 
 
 def changed_lines(root, base):
-    """{path: set(line numbers)} of added or changed lines in non-test .py files, against base (uncommitted work too)."""
+    """{path: set(line numbers)} of added or changed lines in non-test source files, against base (uncommitted work too)."""
     out, path = {}, None
     try:
         diff = subprocess.run(["git", "diff", "-U0", base, "--", "."], cwd=root, capture_output=True, text=True).stdout
@@ -208,12 +213,12 @@ def changed_lines(root, base):
             start, n = int(m.group(1)), int(m.group(2) or 1)
             out.setdefault(path, set()).update(range(start, start + n))
     for p in new.splitlines():
-        if p.endswith(".py"):
+        if p.endswith((".py",) + TEXT_EXT):
             try:
                 out[p] = set(range(1, len(open(os.path.join(root, p), encoding="utf-8").read().splitlines()) + 1))
             except OSError:
                 pass
-    return {p: ls for p, ls in out.items() if p.endswith(".py") and ls and not is_test_path(p)
+    return {p: ls for p, ls in out.items() if p.endswith((".py",) + TEXT_EXT) and ls and not is_test_path(p)
             and not p.startswith((".temper/", ".claude/"))}
 
 
@@ -264,16 +269,87 @@ def mutants_of(source, lines):
     return out
 
 
+# 9.8.0: mutants for C-style languages (JavaScript, TypeScript, Java, Kotlin, Go, C#, Rust, Swift, Scala, C, C++, PHP,
+# Ruby), on the text of a changed line. Only an operator with a space on each side counts, so a generic (List<String>),
+# an arrow (=>, ->), a shift (<<) or an increment (++) is never touched; string contents are masked first, and a comment
+# line is skipped.
+TEXT_EXT = (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".java", ".kt", ".go", ".cs", ".rs", ".swift", ".scala",
+            ".c", ".cc", ".cpp", ".h", ".hpp", ".php", ".rb")
+_OPS = [(" <= ", " < "), (" >= ", " > "), (" < ", " <= "), (" > ", " >= "), (" === ", " !== "), (" !== ", " === "),
+        (" == ", " != "), (" != ", " == "), (" && ", " || "), (" || ", " && "), (" + ", " - "), (" - ", " + ")]
+_WORDS = [(re.compile(r"\btrue\b"), "false"), (re.compile(r"\bfalse\b"), "true")]
+_NUM = re.compile(r"(?<![\w.])(\d+)(?![\w.])")
+_COMMENT = re.compile(r"^\s*(//|#|/\*|\*|--)")
+
+
+def _mask(line):
+    """The line with the inside of each string literal replaced by spaces (same length), so no match lands in a string."""
+    out, q, i = list(line), None, 0
+    while i < len(line):
+        ch = line[i]
+        if q:
+            if ch == "\\":
+                out[i] = " "
+                if i + 1 < len(line):
+                    out[i + 1] = " "
+                i += 2
+                continue
+            if ch == q:
+                q = None
+            else:
+                out[i] = " "
+        elif ch in "\"'`":
+            q = ch
+        i += 1
+    return "".join(out)
+
+
+def text_mutants(source, lines):
+    """[(description, new source)]: one change at one place of one changed line each."""
+    src = source.split("\n")
+    out = []
+    for ln in sorted(lines):
+        if ln < 1 or ln > len(src):
+            continue
+        line = src[ln - 1]
+        if not line.strip() or _COMMENT.match(line):
+            continue
+        masked = _mask(line)
+        spots = []
+        for old, new in _OPS:
+            start = 0
+            while True:
+                k = masked.find(old, start)
+                if k < 0:
+                    break
+                spots.append((k, len(old), new, "%s->%s" % (old.strip(), new.strip())))
+                start = k + 1
+        for rx, new in _WORDS:
+            for m in rx.finditer(masked):
+                spots.append((m.start(), m.end() - m.start(), new, "%s->%s" % (m.group(0), new)))
+        for m in _NUM.finditer(masked):
+            spots.append((m.start(1), len(m.group(1)), str(int(m.group(1)) + 1), "const"))
+        seen = set()
+        for k, n, new, what in spots:
+            if (k, n) in seen:
+                continue
+            seen.add((k, n))
+            mutated = line[:k] + new + line[k + n:]
+            out.append(("line %d: %s" % (ln, what), "\n".join(src[:ln - 1] + [mutated] + src[ln:])))
+    return out
+
+
 def mutation(root, base, test_cmd, suite_s):
     """(score percent | None, planted, caught, survivors, note)."""
     planted = []
     for path, lines in sorted(changed_lines(root, base).items()):
         try:
-            planted += [(path, d, s) for d, s in mutants_of(open(os.path.join(root, path), encoding="utf-8").read(), lines)]
-        except (OSError, SyntaxError, ValueError):
+            text = open(os.path.join(root, path), encoding="utf-8").read()
+            planted += [(path, d, s) for d, s in (mutants_of(text, lines) if path.endswith(".py") else text_mutants(text, lines))]
+        except (OSError, SyntaxError, ValueError, UnicodeDecodeError):
             continue
     if not planted:
-        return None, 0, 0, [], "no changed Python lines to mutate"
+        return None, 0, 0, [], "no changed source lines to mutate"
     if len(planted) > MUTANT_CAP:
         step = len(planted) / MUTANT_CAP
         planted = [planted[int(i * step)] for i in range(MUTANT_CAP)]
@@ -282,7 +358,9 @@ def mutation(root, base, test_cmd, suite_s):
     per = max(30.0, 3 * suite_s)
     try:
         w = os.path.join(tmp, "w")
-        shutil.copytree(root, w, symlinks=True, ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__", ".temper", ".claude"))
+        shutil.copytree(root, w, symlinks=True, ignore=shutil.ignore_patterns(".git", "__pycache__", ".temper", ".claude", "node_modules"))
+        if os.path.isdir(os.path.join(root, "node_modules")):   # the dependencies are read, never changed: a link will do
+            os.symlink(os.path.join(root, "node_modules"), os.path.join(w, "node_modules"))
         for path, desc, src in planted:
             if time.time() - t0 > MUTATION_BUDGET_S:
                 break
@@ -463,7 +541,7 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd=""):
     for r_ in acc_run(root, spec, lockfile):
         rows.append(r_)
         print("acceptance: exit %s" % r_["exit_code"])
-    # mutation score on the changed lines (Python), only on a green suite
+    # mutation score on the changed lines (any stack with a test command), only on a green suite
     if det.get("mutation") and rc == 0 and base:
         score, ran, caught, surv, note = mutation(root, base, det["test"], suite_s)
         if score is None:

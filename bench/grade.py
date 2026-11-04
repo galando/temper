@@ -56,6 +56,25 @@ def run_tests(cwd, start, timeout=300):
     return {"__crash__": "error"}
 
 
+def run_node_tests(cwd, start, timeout=300):
+    """A Node project's tests (node --test, TypeScript by type stripping): {test name: pass|fail}, from the TAP report. A file
+    that does not load is one failed entry named after the file."""
+    files = sorted(os.path.join(start, f) for f in os.listdir(os.path.join(cwd, start)) if re.search(r"\.test\.[cm]?[jt]s$", f))
+    if not files:
+        return {}
+    try:
+        p = subprocess.run(["node", "--test", "--experimental-strip-types", "--test-reporter=tap"] + files, cwd=cwd,
+                           capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"__timeout__": "error"}
+    res = {}
+    for line in p.stdout.splitlines():
+        m = re.match(r"^(\s*)(not ok|ok) \d+ - (.+?)(?:\s+#.*)?$", line)
+        if m and not m.group(3).startswith("#"):
+            res[m.group(3)] = "pass" if m.group(2) == "ok" else "fail"
+    return res or {"__crash__": "error"}
+
+
 def split(hidden):
     """A vague task's hidden tests are test_ticket_* (from the ticket and the house rules) and test_brief_N_* (brief
     fact N). A fact counts as met when every one of its tests passes."""
@@ -99,15 +118,19 @@ def main():
 
     # 1. hidden tests
     shutil.copytree(os.path.join(task_dir, "hidden"), os.path.join(g, "bench_hidden"))
-    hidden = run_tests(g, "bench_hidden")
+    node = meta.get("runner") == "node"
+    hidden = run_node_tests(g, "bench_hidden") if node else run_tests(g, "bench_hidden")
     # 2. the original suite, as it was at the base
-    orig = os.path.join(task_dir, "repo", "unit")
+    orig = os.path.join(task_dir, "repo", meta.get("suite_dir", "unit"))
     suite = {}
     if os.path.isdir(orig):
         shutil.copytree(orig, os.path.join(g, "bench_suite"))
-        suite = run_tests(g, "bench_suite")
+        suite = run_node_tests(g, "bench_suite") if node else run_tests(g, "bench_suite")
 
     passed = sum(1 for v in hidden.values() if v == "pass")
+    # A test file that does not load counts as one test: the task's own count keeps the rate comparable.
+    for i in range(len(hidden), int(meta.get("hidden_count", 0))):
+        hidden["__not_run_%d__" % i] = "error"
     grade = {
         "task": run["task"], "arm": run["arm"], "rep": run["rep"],
         "hidden_pass": passed, "hidden_total": len(hidden),

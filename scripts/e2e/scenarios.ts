@@ -303,7 +303,9 @@ export const prAndPipeline = (w: World): void => {
   const ghLog = fs.readFileSync(log, 'utf8')
   expect(/gh pr create .*--draft/.test(ghLog) && !/gh pr ready/.test(ghLog), 'the pull request is a draft and nothing marked it ready')
   expect(round === 2, `Pipeline ran twice (${round})`)
-  expect(launches['temper:temper-review'] === 1 && launches['temper:temper-check'] === 1, `a CI fix sends no Review or Check again (review ${launches['temper:temper-review']}, check ${launches['temper:temper-check']})`)
+  // 9.8.0: Check is run by the CLI (temper check run), not an agent
+  const checks = w.trace.filter(l => l.includes('call temper check run')).length
+  expect(launches['temper:temper-review'] === 1 && checks === 1, `a CI fix sends no Review or Check again (review ${launches['temper:temper-review']}, check ${checks})`)
   expect(w.sh('git log --format=%s -n 3').includes('fix(ci): apply the Pipeline fix (CI fix round 1)'), 'the fix was committed with the agreed message')
   expect(w.sh(`git --git-dir=${origin} log --format=%s -n 1 feature/ci`).includes('fix(ci)'), 'the fix was pushed to origin')
   void refused
@@ -324,12 +326,13 @@ export const contextCheck = (w: World): void => {
   orchestrate(w, script({
     agents,
     person: (ask, wd) => {
-      if (String(ask.question.question) === 'Is this the right context for the plan?') {
+      if (String(ask.question.question) === 'It could not find: no rate limit policy was found in code, docs or the ticket. Is that right?') {
         asked += 1
-        const direct = wd.denies({ tool: 'Bash', input: { command: `${TEMPER} plan review --answer 'Right direction'` } })
+        const direct = wd.denies({ tool: 'Bash', input: { command: `${TEMPER} plan review --answer 'As planned'` } })
         expect(wd.mode === 'plain' || direct !== null, 'plan review is refused with no answer')
-        expect((ask.options as Json[]).map(o => o.label).join('|') === 'Right direction|Narrow the focus|Fix the sources|Carry forward', 'the choices are the Blocking line plus Carry forward')
-        return 'Narrow the focus'
+        // 9.8.0: the question names the gap; As planned, Something else (typed: Plan revises), Carry forward
+        expect((ask.options as Json[]).map(o => o.label).join('|') === 'As planned (Recommended)|Something else|Carry forward', 'the options are As planned, Something else and Carry forward')
+        return 'As planned (Recommended)'
       }
       return recommended(ask, wd)
     },
@@ -523,6 +526,9 @@ case "$*" in *verify*) exit 0 ;; esac
 `, { mode: 0o755 })
   w.env.PATH = `${bin}:${w.env.PATH}`
   startProject(w)
+  // 9.8.0: Check is the CLI's; this project has no Python tests, so its Check commands are mvn's
+  const cfg = path.join(w.dir, '.claude/temper.config')
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('    test: python3 -m unittest discover -s unit -t .', '    test: mvn -q verify').replace("    coverage: python3 -m unittest discover -s unit -t . && echo 'TOTAL 100 10 90%'", "    coverage: mvn -q verify && echo 'TOTAL 100 10 90%'"))
   const tasks = TASKS_MD
     .replace(/\*\*Validate:\*\* `python3 -m unittest unit\.test_ci_shape`/, '**Validate:** `mvn verify -Pjacoco`')
     .replace(/\*\*Validate:\*\* `python3 -m unittest unit\.test_ci_bytes`/, '**Validate:** `mvn verify -Pjacoco`')
@@ -624,7 +630,6 @@ const FIX_FINDING: FreshFinding = { lens: 'readiness', severity: 'high', claim: 
 const mediumPlan = (wd: World, a: Json): void => {
   AGENTS['temper:temper-plan']!(wd, a)
   t(wd, 'state set complexity medium')
-      t(wd, "risk --raise H --reason 'the scenario wants Design (9.8.0: medium runs Design at risk H)'")
 }
 const designAgent: Agent = wd => wd.write(`${SPEC}/design.md`, '# Design: CI report\n\n## Architecture\n\nTwo small modules.\n\n## Areas of Concern\n\nNone flagged — the change is two new files.\n')
 export const freshReview = (w: World): void => {

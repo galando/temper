@@ -649,8 +649,9 @@ class Builder:
                 calls = [self.c("evidence add --stage check --criterion %s --claim %s --cmd %s --exit 0" % (
                     c["id"], shlex.quote("confirmed by the person at the Check question: " + c["vdetails"][:150]),
                     shlex.quote("the person, at the Check question"))) for c in manual] + [self.c("gate check")]
-                text = "Check: %s needs your confirmation: %s. Confirm?" % (
-                    ", ".join(c["id"] for c in manual), "; ".join("%s: %s" % (c["id"], c["vdetails"][:150]) for c in manual))
+                text = "Check: %s %s your confirmation: %s. Confirm?" % (
+                    ", ".join(c["id"] for c in manual), "needs" if len(manual) == 1 else "need",
+                    "; ".join("%s: %s" % (c["id"], c["vdetails"][:150]) for c in manual))
                 return self.question(GATE_HEADER, text, stage=stage, options=[
                     self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls)]
                     + back_opt() + [self.save()])

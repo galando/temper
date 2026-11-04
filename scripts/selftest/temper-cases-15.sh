@@ -192,9 +192,9 @@ PEOF
 _fr_plan_ctx
 assert_eq "9.8.0: the Context check names what is left out and not found, with As planned first" \
   "The plan leaves out: ledger/export.py: refunds in exports are out of scope. It could not find: no ticket or linked doc. Is that right?|As planned (Recommended)|Include what is left out|Something else|Carry forward" \
-  "$(nx "q = d['context_check']; '|'.join([q['question']] + [o['label'] for o in q['options']])")"
+  "$(nx "q = d['context_check']; '|'.join([q['question']['question']] + [o['label'] for o in q['options']])")"
 assert_eq "9.8.0: Include what is left out records it and sends Plan back (--redo); a typed answer does too" "yes|yes" \
-  "$(nx "q = d['context_check']; print('yes' if q['options'][1]['calls'][0].endswith('--redo') else 'no', end='|'); print('yes' if q['answer'].endswith('--redo') else 'no')")"
+  "$(nx "q = d['context_check']; ('yes' if q['options'][1]['calls'][0].endswith('--redo') else 'no') + '|' + ('yes' if q['answer'].endswith('--redo') else 'no')")"
 assert_exit "9.8.0: plan review --redo records the answer" 0 "$TEMPER" plan review --answer "Include the export" --redo
 assert_eq "9.8.0: the answer is the person's note for Plan, and the plan verdict is gone (Plan runs again)" "1|yes" \
   "$(python3 -c "import json; print(sum(1 for r in json.load(open('.temper/evidence/plan.json')) if r.get('claim') == 'Context check: Include the export'))")|$(python3 -c "import json; g=json.load(open('.temper/gates.json')); print('yes' if 'plan' not in g else 'no')" 2>/dev/null || echo yes)"
@@ -221,9 +221,51 @@ p = '.claude/temper.config'; s = open(p).read()
 s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 0\n  commands:\n    test: "true"\n    coverage: echo "TOTAL 10 1 90%"\n', 1)
 open(p, 'w').write(s)
 p = '.temper/specs/demo/intent.md'; s = open(p).read()
-s = s.replace('## Scenarios (BDD)', '- [ ] AC-09 [required]: the admin reads the report\n  Why: audit\n  Validate: manual - open the report and read it\n- [ ] AC-10 [optional]: a later nicety (deferred)\n  Why: later\n  Validate: manual - read it\n\n## Scenarios (BDD)', 1)
+s = s.replace('### Constraints', '- [ ] AC-09 [required]: the admin reads the report\n  Why: audit\n  Validate: manual - open the report and read it\n- [ ] AC-10 [optional]: a later nicety\n  Why: later\n  Validate: manual - read it\n  Deferred: not in this release\n\n### Constraints', 1)
 open(p, 'w').write(s)
 PYEOF
 echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
-assert_eq "9.8.0: the Check question asks the person to confirm the manual criterion" "yes|Confirmed (Recommended)|confirm" \
-  "$(nx "q = d['ask']; print('yes' if 'AC-09 needs your confirmation' in q['question']['question'] else 'no', end='|'); print(q['options'][0]['label'] + '|' + q['options'][0]['move'])")"
+assert_eq "9.8.0: the Check question asks the person to confirm the manual criterion, never the deferred optional one" "yes|Confirmed (Recommended)|confirm" \
+  "$(nx "q = d['ask']; ('yes' if 'AC-09' in q['question']['question'] and 'your confirmation' in q['question']['question'] and 'AC-10' not in q['question']['question'] else 'no') + '|' + q['options'][0]['label'] + '|' + q['options'][0]['move']")"
+
+# --- 9. The CLI's Check on a Node project: detection, node --test coverage, and mutation of JavaScript by text ---
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  _at_check
+  rm -rf lib unit src test package.json
+  mkdir -p src test
+  printf '{"name":"t","type":"module","scripts":{"test":"node --test --experimental-test-coverage"}}\n' > package.json
+  printf 'export function grade(s) {\n  return "pass";\n}\n' > src/grade.js
+  printf 'import test from "node:test";\nimport assert from "node:assert";\nimport { grade } from "../src/grade.js";\ntest("g", () => { assert.ok(grade(1)); });\n' > test/grade.test.js
+  git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm "node base" >/dev/null 2>&1
+  "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
+  python3 - <<'PYEOF'
+import re
+p = '.claude/temper.config'; s = open(p).read()
+s = re.sub(r'\n  commands:\n(    .*\n)+', '\n', s)   # the sections above named Python commands: this project is detected
+open(p, 'w').write(s)
+PYEOF
+  assert_eq "9.8.0: a Node project is detected, with node --test's own coverage" "node|node-test|True" \
+    "$("$TEMPER" check detect | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s|%s|%s' % (d['stack'], d['coverage']['kind'], d['mutation']))")"
+  printf 'export function grade(s) {\n  if (s >= 90) return "A";\n  if (s >= 75) return "B";\n  return "F";\n}\n' > src/grade.js
+  printf 'import test from "node:test";\nimport assert from "node:assert";\nimport { grade } from "../src/grade.js";\ntest("g", () => { for (const [s, g] of [[90,"A"],[89,"B"],[75,"B"],[74,"F"]]) assert.equal(grade(s), g); });\n' > test/grade.test.js
+  echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
+  assert_eq "9.8.0: Node: the suite passes, its coverage is read from node --test, and pinned bands catch the planted bugs" "yes|yes|yes" \
+    "$(_gc | grep -q '\[v\] tests pass' && echo yes || echo no)|$(_gc | grep -q '\[v\] coverage >= threshold — 100' && echo yes || echo no)|$(_gc | grep -q '\[v\] mutation score >= threshold — 100' && echo yes || echo no)"
+  printf 'import test from "node:test";\nimport assert from "node:assert";\nimport { grade } from "../src/grade.js";\ntest("g", () => { assert.ok("ABF".includes(grade(95))); });\n' > test/grade.test.js
+  echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
+  assert_eq "9.8.0: Node: a test that only runs the code misses the planted bugs" "yes" \
+    "$(_gc | grep -q '\[x\] mutation score >= threshold' && echo yes || echo no)"
+else
+  echo "SKIP: 9.8.0 Node cases (node or npm is not installed)"
+fi
+
+# --- 10. The text mutation engine: an operator in a string, a comment, a generic or an arrow is never a mutant ---
+assert_eq "9.8.0: text mutants skip strings, comments, generics and arrows" "5|yes" \
+  "$(python3 -I - "$REPO_ROOT/scripts" <<'PYT'
+import sys; sys.path.insert(0, sys.argv[1])
+import check_run
+src = '\n'.join(['// a comment: 90 < 100', 'const xs: Array<string> = [];', 'const f = (a) => a;', 'if (n >= 90 && ok === true) return "A < B";'])
+m = check_run.text_mutants(src, {1, 2, 3, 4})
+print('%d|%s' % (len(m), 'yes' if all('"A < B"' in s for _, s in m) else 'no'))
+PYT
+)"

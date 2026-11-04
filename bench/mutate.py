@@ -27,6 +27,8 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "scripts"))
+from check_run import TEXT_EXT, text_mutants  # noqa: E402  (the CLI's engine for the C-style languages)
 CMP_SWAP = {ast.Lt: ast.LtE, ast.LtE: ast.Lt, ast.Gt: ast.GtE, ast.GtE: ast.Gt, ast.Eq: ast.NotEq, ast.NotEq: ast.Eq,
             ast.In: ast.NotIn, ast.NotIn: ast.In}
 
@@ -42,7 +44,7 @@ def changed_lines(cwd, base, code_dir):
     for line in git(cwd, "diff", "--cached", "-U0", base, "--", code_dir).splitlines():
         if line.startswith("+++ "):
             path = line[6:] if line.startswith("+++ b/") else None
-            if path and path.endswith(".py"):
+            if path and path.endswith((".py",) + TEXT_EXT):
                 lines = out.setdefault(path, set())
             else:
                 path = None
@@ -104,11 +106,14 @@ def mutants_of(source, lines):
     return out
 
 
+SUITE_CMD = None   # a task's own suite command (meta.json suite_cmd), else Python's unittest
+
+
 def suite_passes(cwd, suite_dir, timeout=60):
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    args = ["bash", "-c", SUITE_CMD] if SUITE_CMD else [sys.executable, "-m", "unittest", "discover", "-s", suite_dir, "-t", "."]
     try:
-        p = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", suite_dir, "-t", "."], cwd=cwd,
-                           capture_output=True, text=True, timeout=timeout, env=env)
+        p = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env)
         return p.returncode == 0
     except subprocess.TimeoutExpired:
         return False
@@ -119,6 +124,8 @@ def main():
     cap = int(sys.argv[sys.argv.index("--max") + 1]) if "--max" in sys.argv else 80
     run = json.load(open(os.path.join(run_dir, "run.json")))
     meta = json.load(open(os.path.join(HERE, "tasks", run["task"], "meta.json")))
+    global SUITE_CMD
+    SUITE_CMD = meta.get("suite_cmd")
     code_dir = meta.get("code_dir") or ("ledger" if os.path.isdir(os.path.join(run_dir, "work", "ledger")) else "src")
     suite_dir = meta.get("suite_dir", "unit")
     tmp = tempfile.mkdtemp(prefix="bench-mut-")
@@ -132,7 +139,7 @@ def main():
             planted = []
             for path, lines in sorted(changed_lines(w, run["base"], code_dir).items()):
                 src = open(os.path.join(w, path)).read()
-                planted += [(path, d, s) for d, s in mutants_of(src, lines)]
+                planted += [(path, d, s) for d, s in (mutants_of(src, lines) if path.endswith(".py") else text_mutants(src, lines))]
             if len(planted) > cap:
                 step = len(planted) / cap
                 planted = [planted[int(i * step)] for i in range(cap)]

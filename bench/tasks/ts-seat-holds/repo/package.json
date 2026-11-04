@@ -1,0 +1,8 @@
+{
+  "name": "tickets",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --experimental-strip-types --experimental-test-coverage 'test/**/*.test.ts'"
+  }
+}

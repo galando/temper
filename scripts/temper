@@ -4292,7 +4292,8 @@ print('%d|%s' % (sum(1 for r in runs if r.get('exit_code') == 0), '; '.join(red)
     reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%${cov_hint:+ (${cov_hint#coverage tool missing: })}")")
     all_pass=0
   fi
-  # 9.8.0: the mutation score of the tests on the lines this run changed (scripts/check_run.py, when the CLI ran Check).
+  # 9.8.0: the mutation score of the tests on the lines this run changed (scripts/check_run.py, when the CLI ran Check;
+  # Python by syntax tree, the C-style languages by text).
   # Coverage says a line ran; this says a test would notice it break. No row when Check did not measure it.
   local mut_val mut_note mthr; mthr="$(_cfg_get check.mutation-threshold 70)"
   mut_val=$(_ev_last_value check '^mutation score$'); mut_note="$(_ev_last_claim check '^mutation: not measured')"
