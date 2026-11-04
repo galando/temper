@@ -3305,11 +3305,13 @@ cmd_task_gate() {
 
 _task_gate_body() {
   local n="${1:-}"; shift || true
-  local model="" ms=""
+  local model="" ms="" if_running=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model) model="${2:-}"; shift 2 || true ;;
       --ms) ms="${2:-}"; shift 2 || true ;;
+      # 9.8.0: a chain agent gates each task itself; the after call gates only a task it left running, else does nothing.
+      --if-running) if_running=1; shift ;;
       # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
       --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
@@ -3324,6 +3326,10 @@ _task_gate_body() {
   _task_load "$n" || return 1
   _task_parked_refuse "$n" gate || return 1
   local status; status="$(_jget "$_T_CTX" status)"
+  if [[ "$status" != "running" && $if_running -eq 1 ]]; then
+    echo "OK: Task $n is $status; nothing to gate"
+    return 0
+  fi
   if [[ "$status" != "running" ]]; then
     echo "FAIL: Task $n is not running (status: $status)" >&2
     return 1
@@ -5476,6 +5482,7 @@ main() {
     drift) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/drift.py" .temper/specs "$@") ;;
     check) cmd_check "$@" ;;
     acceptance) cmd_acceptance "$@" ;;
+    go) python3 -E -s "$SCRIPTS_DIR/go.py" "$PLUGIN_ROOT/scripts/temper" "$REPO_ROOT" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -5511,6 +5518,7 @@ Usage:
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
+  temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
   temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
   temper acceptance lock --cmd C | skip --reason R | start   (the acceptance tests written from the intent before Build)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)

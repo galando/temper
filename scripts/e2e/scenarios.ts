@@ -36,8 +36,22 @@ export function startProject(w: World, config = '', before?: (w: World) => void)
 
 export const worktreeOf = (show: string): string => /^WORKTREE:\s*(\S+)/m.exec(show)?.[1] ?? ''
 
-export function buildTask(w: World, a: Json): void {
-  const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
+// 9.8.0: a build agent gets one task (`Task: N`) or a chain (`Tasks: N, M`) and its `Model:`; it starts each next task,
+// builds it, and gates it itself, stopping at the first refusal (agents/build-task.md).
+export const tasksOf = (a: Json): number[] => {
+  const m = /Tasks?:\s*([\d, ]+)/.exec(String(a.prompt))
+  return m ? m[1]!.split(',').map(x => Number(x.trim())).filter(Boolean) : []
+}
+export const chained = (one: (w: World, n: number, a: Json) => void): Agent => (w, a) => {
+  const model = /\nModel:\s*(\S+?)\.?\s*$/m.exec(String(a.prompt))?.[1] ?? 'haiku'
+  tasksOf(a).every((n, i) => {
+    if (i > 0 && t(w, `task start ${n}`).code !== 0) return false
+    one(w, n, a)
+    return t(w, `task gate ${n} --model ${model}`).code === 0
+  })
+}
+
+export function buildOne(w: World, n: number): void {
   const show = t(w, `task show ${n}`).out
   const wt = path.relative(w.dir, worktreeOf(show))
   const [testFile, srcFile, stub, code, test] = n === 1
@@ -51,6 +65,8 @@ export function buildTask(w: World, a: Json): void {
   const green = t(w, `task test ${n} --phase green`)
   if (green.code !== 0) throw new Error(`GREEN failed: ${green.out}`)
 }
+
+export const buildTask: Agent = chained(buildOne)
 
 // The fresh reviewer of the plan (agents/plan-review.md): each lens of its launch prompt records its findings, then its completion,
 // then (comprehension) the paraphrase, every row against the tasks.md it read.
@@ -198,8 +214,7 @@ export const coveredAndManual = (w: World): void => {
       wd.write(`${SPEC}/tasks.md`, tasks)
       wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('| unit/test_ci_bytes.py | tests the byte order | Same ledger gives the same bytes |', '| unit/test_ci_bytes.py | tests the byte order | Same ledger gives the same bytes |\n| docs/guide.md | the guide | Infrastructure: the report needs a guide |'))
     },
-    'temper:temper-build-task': (wd, a) => {
-      const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
+    'temper:temper-build-task': chained((wd, n) => {
       if (n === 3) {
         const wt = path.relative(wd.dir, worktreeOf(t(wd, 'task show 3').out))
         const refused = t(wd, 'task test 3 --phase red')
@@ -210,8 +225,8 @@ export const coveredAndManual = (w: World): void => {
         wd.write(path.join(wt, 'unit/test_ci_bytes.py'), BYTES_TEST)
         const red = t(wd, 'task test 2 --phase red')
         expect(red.code === 0, 'the RED run passes: an earlier task built it')
-      } else buildTask(wd, a)
-    },
+      } else buildOne(wd, n)
+    }),
   }
   const asked: string[] = []
   orchestrate(w, script({
@@ -491,16 +506,15 @@ Plain python, standard library only.
       wd.write(`${SPEC}/tasks.md`, tasks)
       wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('## Files to Modify', '| src/ci_extra.py | an extra module | Infrastructure: a third group for the e2e |\n| unit/test_ci_extra.py | its test | Infrastructure: a third group for the e2e |\n\n## Files to Modify'))
     },
-    'temper:temper-build-task': (wd, a) => {
-      const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
-      if (n !== 3) return buildTask(wd, a)
+    'temper:temper-build-task': chained((wd, n) => {
+      if (n !== 3) return buildOne(wd, n)
       const wt = path.relative(wd.dir, worktreeOf(t(wd, 'task show 3').out))
       wd.write(path.join(wt, 'unit/test_ci_extra.py'), extraTest)
       wd.write(path.join(wt, 'src/ci_extra.py'), 'VALUE = None\n')
       expect(t(wd, 'task test 3 --phase red').code !== 0, 'RED fails')
       wd.write(path.join(wt, 'src/ci_extra.py'), 'VALUE = 1\n')
       expect(t(wd, 'task test 3 --phase green').code === 0, 'GREEN passes')
-    },
+    }),
   }
   orchestrate(w, script({ agents }))
   const starts = w.trace.filter(l => l.includes('group start'))
@@ -547,8 +561,7 @@ case "$*" in *verify*) exit 0 ;; esac
       // the scenario Test: commands are Maven ones too
       wd.write(`${SPEC}/intent.md`, wd.read(`${SPEC}/intent.md`).replace(/Test: python3 -m unittest unit\.test_ci_\w+/g, 'Test: mvn test'))
     },
-    'temper:temper-build-task': (wd, a) => {
-      const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
+    'temper:temper-build-task': chained((wd, n) => {
       const [main, test] = n === 1 ? ['Shape', 'ShapeTest'] : ['Bytes', 'BytesTest']
       const wt = path.relative(wd.dir, worktreeOf(t(wd, `task show ${n}`).out))
       fs.rmSync(green, { force: true })
@@ -558,7 +571,7 @@ case "$*" in *verify*) exit 0 ;; esac
       fs.writeFileSync(green, '')
       const g = t(wd, `task test ${n} --phase green`)
       expect(g.code === 0, `GREEN passes with a new report for the class (${g.out.slice(0, 200)})`)
-    },
+    }),
   }
   orchestrate(w, script({ agents }))
   const calls = fs.readFileSync(log, 'utf8')

@@ -269,3 +269,47 @@ m = check_run.text_mutants(src, {1, 2, 3, 4})
 print('%d|%s' % (len(m), 'yes' if all('"A < B"' in s for _, s in m) else 'no'))
 PYT
 )"
+
+# --- 11. temper go: the CLI runs its own steps and stops at an agent launch, a question or steps ---
+_at_check
+rm -rf lib unit src test package.json
+python3 - <<'PYEOF'
+import re
+p = '.claude/temper.config'; s = open(p).read()
+s = re.sub(r'\n  commands:\n(    .*\n)+', '\n', s)
+s = s.replace('  coverage-threshold: 0\n', '  coverage-threshold: 80\n', 1)
+s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 0\n  mutation-threshold: 0\n  commands:\n    test: "true"\n    coverage: echo "TOTAL 10 1 90%"\n', 1)
+open(p, 'w').write(s)
+PYEOF
+echo '[]' > .temper/evidence/check.json; python3 -c "import json; p='.temper/gates.json'; d=json.load(open(p)); d.pop('check', None); json.dump(d, open(p,'w'))"
+GO="$("$TEMPER" go 2>/dev/null)"
+assert_eq "9.8.0: go at Check runs check run and the gate itself, then stops at the Commit question" "ask|check run,gate check|Commit (Recommended)" \
+  "$(printf '%s' "$GO" | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s|%s|%s' % (d['action'], ','.join(c.split('temper ', 1)[1] for c in d['ran']), d['ask']['options'][0]['label']))")"
+assert_eq "9.8.0: go's answer is compact: no guard, view or restart" "none" \
+  "$(printf '%s' "$GO" | python3 -c "import json,sys; d=json.load(sys.stdin); print(','.join(k for k in ('guard','view','restart','run') if k in d) or 'none')")"
+
+# --- 12. One agent per chain; independent tasks stay parallel; a chain task gated already is not gated again ---
+f9_tasks | m_setup
+rm -f .temper/groups.json; f9_intent true true
+"$TEMPER" acceptance skip --reason "the chain cases" >/dev/null 2>&1
+"$TEMPER" group start G1 >/dev/null 2>&1
+assert_eq "9.8.0: Task 2 depends on Task 1: one agent builds both, in order, and gates each" "1|1,2|task start 1|task gate 1 --model|task gate 2 --model" \
+  "$(nx "a = d['agents']; x = a[0]; '|'.join([str(len(a)), ','.join(str(n) for n in x['tasks']), x['before'][0].split('temper ', 1)[1], ' '.join(x['after'][1].split('temper ', 1)[1].split()[:4]), ' '.join(x['after'][2].split('temper ', 1)[1].split()[:4])])")"
+assert_eq "9.8.0: the chain agent's prompt names the tasks in order and its model" "yes|yes" \
+  "$(nx "p = d['agents'][0]['prompt']; ('yes' if 'Tasks: 1, 2 (a chain' in p else 'no') + '|' + ('yes' if '\nModel: ' in p else 'no')")"
+assert_exit "9.8.0: task gate --if-running on a task that is not running does nothing and succeeds" 0 "$TEMPER" task gate 2 --model haiku --if-running
+assert_exit "9.8.0: without --if-running it still refuses" 1 "$TEMPER" task gate 2 --model haiku
+python3 - <<'PYEOF'
+p = '.temper/specs/demo/tasks.md'; s = open(p).read()
+s = s.replace('**File:** `src/b.sh`, `unit/b_test.sh`\n**Depends:** Task 1', '**File:** `src/b.sh`, `unit/b_test.sh`\n**Depends:** none', 1)
+open(p, 'w').write(s)
+PYEOF
+assert_eq "9.8.0: independent tasks with no shared file keep an agent each, launched together" "2|1|2" \
+  "$(nx "a = d['agents']; '%d|%s|%s' % (len(a), ','.join(str(n) for n in a[0]['tasks']), ','.join(str(n) for n in a[1]['tasks']))")"
+
+# --- 13. The CLI drafts the commit message ---
+fresh; gpass intent plan build review check commit; _at commit
+"$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --html >/dev/null 2>&1
+mkdir -p src; echo "the feature" > src/feature_x.sh   # uncommitted code: the commit carries it, with a feature message
+assert_eq "9.8.0: the commit step carries a message drafted from the intent's title, no placeholder" "yes|no" \
+  "$(nx "s = [x for x in d.get('steps', []) if x.startswith('git commit')]; ('yes' if s and s[0].startswith(\"git commit -m 'feat(demo): \") else 'no') + '|' + ('yes' if any('{' in x for x in s) else 'no')")"

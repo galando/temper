@@ -1044,6 +1044,36 @@ class Builder:
         except Exception:
             return False
 
+    @staticmethod
+    def chain_of(plan, rt, first, ready):
+        """The tasks one agent builds in order, starting at a ready task: each next task of the same group that waits only
+        on this chain (its dependencies passed or in the chain, and it depends on the chain or shares a file with it), and
+        clashes with no other ready or running task. Independent tasks are never pulled in, so they stay parallel."""
+        tasks = sorted([t for t in plan.get("tasks", []) if t.get("group") == first.get("group")], key=lambda t: t["n"])
+        files = {t["n"]: {f.strip().lstrip("./") for f in t.get("files", [])} for t in plan.get("tasks", [])}
+        deps = {t["n"]: set(t.get("depends", [])) for t in plan.get("tasks", [])}
+        status = lambda n: (rt.get(str(n)) or {}).get("status", "pending")
+        others = {x["task"] for x in ready if x["task"] != first["task"]} | {int(n) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"}
+        chain = [first["task"]]
+        grew = True
+        while grew:
+            grew = False
+            mine = set().union(*(files.get(n, set()) for n in chain))
+            for t in tasks:
+                n = t["n"]
+                if n in chain or n in others or status(n) not in ("pending",):
+                    continue
+                if not all(d in chain or status(d) == "passed" for d in deps.get(n, set())):
+                    continue
+                if not (deps.get(n, set()) & set(chain) or files.get(n, set()) & mine):
+                    continue
+                if any(files.get(n, set()) & files.get(o, set()) for o in others):
+                    continue
+                chain.append(n)
+                grew = True
+                break
+        return chain
+
     def ran_on(self, task):
         """The model of the running attempt: the one task start recorded, else (a run started before it did) the one the
         attempt number gives, the task model for the first two attempts and the escalation model after."""
@@ -1122,15 +1152,25 @@ class Builder:
         if ready:
             agents = []
             build_notes = r.notes("build", "input")
+            # 9.8.0: one agent per chain. The tasks that would run one after another anyway (each depends on the one before,
+            # or shares a file with it) go to one agent, which starts, builds and gates each in order (agents/build-task.md);
+            # independent tasks still get agents of their own, launched at once. Each task keeps its worktree, its RED run,
+            # its CLI gate and its retry. In measured runs every task ran alone, each paying a launch and its orchestration.
             for t in ready:
-                said = "".join("\nPerson's note: %s" % x for x in scoped_notes(build_notes, t["task"], t.get("group")))
+                chain = self.chain_of(plan, rt, t, ready)
+                said = "".join("\nPerson's note: %s" % x for n in chain for x in scoped_notes(build_notes, n, t.get("group")))
+                tasks_line = ("Task: %d." % t["task"]) if len(chain) == 1 else (
+                    "Tasks: %s (a chain: do them in this order; start, build and gate each before the next)." % ", ".join(str(n) for n in chain))
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
                                "before": [self.c("task start %d" % t["task"])],
-                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d.%s%s" % (self.plugin, self.plugin_line(), t["task"], said, self.acceptance_line()),
-                               "after": [self.c("task gate %d --model %s --ms {ms}" % (t["task"], t.get("model")))],
-                               "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
+                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\n%s%s%s\nModel: %s." % (
+                                   self.plugin, self.plugin_line(), tasks_line, said, self.acceptance_line(), t.get("model")),
+                               # the first task's gate judges the agent; the others it gated itself (a task it left running is gated here)
+                               "after": [self.c("usage add --stage build --model %s --ms {ms} --task %d" % (t.get("model"), t["task"]))] +
+                                        [self.c("task gate %d --model %s --if-running" % (n, t.get("model"))) for n in chain],
+                               "task": t["task"], "tasks": chain, "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
-                    "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (x["task"], short_model(x["model"])) for x in agents), goes_on(len(agents) > 1))}
+                    "say": "Build: %s. %s" % (", ".join(("Task %d" % x["task"] if len(x["tasks"]) == 1 else "Tasks %s" % ", ".join(str(n) for n in x["tasks"])) + " on " + short_model(x["model"]) for x in agents), goes_on(len(agents) > 1))}
 
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         covered = sorted(int(n) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "covered")
@@ -1413,6 +1453,32 @@ class Builder:
                      "see the output of a Bash call.")
         return steps
 
+    def feature_message(self):
+        title = (self.r.title() or self.r.slug or "the change").strip().rstrip(".")
+        return "feat(%s): %s" % (self.r.slug, title[:1].lower() + title[1:] if title else "the change")
+
+    def fix_commit(self):
+        """git commit for a fix run: fix(<slug>): <the RCA's title>, the root cause and the regression tests, from rca.md and the diff."""
+        r = self.r
+        text = ""
+        try:
+            text = open(os.path.join(r.spec, "rca.md"), encoding="utf-8").read() if r.spec else ""
+        except OSError:
+            pass
+        m = re.search(r"^#\s+(?:RCA:\s*)?(.+?)\s*$", text, re.M)
+        title = (m.group(1) if m else (r.state.get("feature") or "the bug")).strip().rstrip(".")
+        cause = ""
+        sec = re.search(r"^##+\s*Root cause\s*$(.*?)(?=^##|\Z)", text, re.M | re.S | re.I)
+        if sec:
+            cause = next((l.strip() for l in sec.group(1).splitlines() if l.strip()), "")
+        tests = sorted({f for f in (r.ctx.get("changed") or []) if re.search(r"(^|/)(tests?|unit|spec)/|test_[^/]*$|_test\.|\.(test|spec)\.", f)})
+        parts = ["git commit -m %s" % shlex.quote("fix(%s): %s" % (r.slug, title[:1].lower() + title[1:]))]
+        if cause:
+            parts.append("-m %s" % shlex.quote("Root cause: " + cause[:300]))
+        if tests:
+            parts.append("-m %s" % shlex.quote("Regression test: " + ", ".join(tests[:5])))
+        return " ".join(parts)
+
     def page_question(self):
         r = self.r
         return self.question(GATE_HEADER, "Every gate passed. The report is above. Write it as an HTML page too, before the commit?",
@@ -1441,13 +1507,15 @@ class Builder:
             steps.append("git add -- %s" % " ".join(shlex.quote(f) for f in files + lessons) if files
                          else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
             if r.command == "fix":
-                steps.append("git commit -m 'fix({scope}): {description}' -m 'Root cause: {explanation}' -m 'Regression test: {test name}'")
+                # 9.8.0: the CLI drafts the message from rca.md and the tests the fix changed; the person can still amend it.
+                steps.append(self.fix_commit())
             elif files and not code:
                 # A grouped Build commits the code itself (each task, each group, the merge into this branch): this commit is
                 # the run's record, and its message says so.
                 steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug))
             else:
-                steps.append("git commit -m '{a conventional commit message for the feature}'")
+                # 9.8.0: the CLI drafts the message from the intent's title (one call fewer for the session).
+                steps.append("git commit -m %s" % shlex.quote(self.feature_message()))
         pr = r.state.get("pr")
         if pr in ("one", "stacked") and not r.armed() and r.command == "temper":
             steps.append("Pull request: follow %s/reference/pr.md, section Capture, now: note base_sha, the branch, the default branch and the spec path, "

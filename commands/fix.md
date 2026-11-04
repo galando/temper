@@ -1,6 +1,7 @@
 ---
 description: "Root cause analysis + structured fix"
 argument-hint: "<bug-description-or-JIRA-123>"
+model: sonnet
 ---
 
 # Fix: RCA → Fix → Review → Check
@@ -63,7 +64,7 @@ When the git pack is on and `git branch --show-current` prints main or master, r
 
 ## 2. The loop
 
-From here `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json` drives the run: its first question is the
+From here `${CLAUDE_PLUGIN_ROOT}/scripts/temper go` (the compact form of `temper next --json`) drives the run: its first question is the
 RCA question ("Proceed to Fix"), then the Fix stage, Review, Check and the commit, with every
 question's exact options. Follow the sections "The loop", "Every question" and "Agents" of
 `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` (read them now; that file was not filled in when you read

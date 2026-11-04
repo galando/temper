@@ -63,6 +63,21 @@ on record), proves more of it with the CLI instead of an agent, asks better ques
 - **A plan with one group goes on to the merge by itself;** the Build question gains "Change something".
 - **The report page is written without a question.**
 
+**A lighter orchestrator (measured: 127 main session turns, 87k tokens read each, for one feature)**
+- **`temper go` (new `scripts/go.py`).** The CLI runs its own steps (gates, group starts, merges, Check's run, an armed
+  run's moves) and hands the session one compact object at the next agent launch, question or steps. In the measured run
+  59 of 88 tool calls were such steps, each a turn re-reading the whole conversation. `temper next --json` stays the full
+  view; the loop in `commands/temper.md` uses `temper go`. It never runs a call only the person may cause.
+- **The loop runs on Sonnet** (`model: sonnet` on `/temper:temper` and `/temper:fix`): it relays the CLI's decisions and
+  the person's answers, and decides nothing, so it need not run on the session's model. (Ignored where the model is
+  restricted, or in auto mode for a model it does not support.)
+- **One build agent per chain.** Tasks that run one after another anyway (a dependency, a shared file) go to one agent,
+  which starts, builds and gates each in order (`task gate --if-running` covers a task it left running); independent
+  tasks keep agents of their own, launched together. In the measured runs every task ran alone.
+- **The commit message is drafted by the CLI:** `feat(<slug>): <the intent's title>`, and for a fix the RCA's title,
+  root cause and regression tests.
+- **"Accept it as done" records its reason itself** (an earlier task built it), with no second question.
+
 **Fixes**
 - **"Accept it as done" looped.** A covered Build task's option shared the move `accept` with accepting a review
   finding; it is now `covered`.

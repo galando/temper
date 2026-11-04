@@ -5,8 +5,11 @@ Two outputs of the `temper` CLI carry the whole flow of a run ([ADR 0013](decisi
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 Both are computed by `scripts/flow.py` from the run's own files; nothing else decides what comes next.
 
-- `temper next --json` prints the next action. The orchestrator (`commands/temper.md`) does what it
-  says, then asks again.
+- `temper next --json` prints the next action, with the full view. The orchestrator runs
+  `temper go` instead (9.8.0, `scripts/go.py`): it runs the CLI's own steps itself (an `auto` action's
+  calls, a `work` action's calls) and prints one compact object at the first agent launch, question,
+  steps, wait or end: `{action, stage, say, ran, agents | ask, blocking, gate | steps | tasks}`. It
+  never runs an option's calls (the person's answer); a failed call stops it with `action: error`.
 - `.temper/view.json` is written by the CLI after every command that may change the run, and by
   `temper next`. The mod reads this file and nothing else of the CLI's, to draw the run and to check
   the person's answers.

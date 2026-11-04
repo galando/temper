@@ -1,6 +1,7 @@
 ---
 description: "Unified SDLC command: intent → plan → design? → build → review → check → commit, gated by the temper CLI"
 argument-hint: "<feature-description>"
+model: sonnet
 ---
 
 # Temper
@@ -55,11 +56,21 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
 
 ## The loop
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json` and do what its `action` says. Then run it
-again. Stop only where this section says so. When it lists `setup`, run those calls first, each once.
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper go` and do what its `action` says. Then run it again. Stop
+only where this section says so. When it lists `setup`, run those calls first, each once.
 
-- **`work`**: say its `say` in one line (it names the model each agent runs on), then run each of
-  `calls`, launch each agent of `agents`, all in one turn, then do each of `steps` in order.
+**`temper go` (9.8.0)** runs the CLI's own steps itself (a gate, a group start, a merge, Check's run,
+an armed run's moves) and prints one compact object at the first point that needs you: agents to
+launch, a question to ask, steps to do, a wait, or the end. Its `ran` lists what it ran; say nothing
+about those. It never runs a call only the person may cause: the calls of the option the person
+chose are yours to run, as below. When it prints `action: error`, say its `say` in one line and run
+`temper next --json` once to see the full state. `temper next --json` stays the full view (the mod and
+`/temper:status` read it); the loop only needs `temper go`.
+
+- **`work`**: say its `say` in one line (it names the model each agent runs on), then launch each
+  agent of `agents`, all in one turn (`temper go` has run the action's calls already), then do each of
+  `steps` in order. After the agents return, run their `after` calls and `temper go` in ONE Bash call,
+  one per line.
   - An agent: first run its `before` calls. Then launch it with the Agent tool: `subagent_type` its
     `type` (when that type is not offered, the general purpose agent), `model` its `model`, its
     `prompt` exactly, and `run_in_background: false` where the tool takes it, so the run goes on the
@@ -86,8 +97,9 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
     of its own, after the `git add` call.
 - **`ask`**: when it has `blocking`, ask those first (see "Every question"). Then ask `ask.question`
   with AskUserQuestion exactly as given, and do what the chosen option of `ask.options` says: run its
-  `calls`, then its `steps`; or, for an option with `do`, do what it says, then ask the same question
-  again unless it says what comes next;
+  `calls`, then its `steps`, then `temper go` (the calls and `temper go` in one Bash call when the
+  calls are only `temper` calls); or, for an option with `do`, do what it says, then ask the same
+  question again unless it says what comes next;
   "More options" asks `ask.more.question`, "Accept a finding" asks `ask.accept.question`. An option
   with `stop` ends the turn: the run is saved.
 - **`wait`**: tasks are running. For a task whose agent you launched in this conversation, wait for
