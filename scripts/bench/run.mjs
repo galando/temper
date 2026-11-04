@@ -7,7 +7,8 @@
 //   vanilla  Claude Code with the task as the prompt. No plugin, no extra words.
 //   careful  The strong baseline: the task plus the instructions a careful developer would type
 //            (explore, plan, tests first, run the suite). No plugin.
-//   temper   `/temper:temper <task>` with this repository loaded as a plugin.
+//   temper   `/temper:temper <task>` for a feature, `/temper:fix <task>` for a bug (meta.json kind "bug"),
+//            with this repository loaded as a plugin.
 //
 // Every arm runs with no user or project settings (settingSources: []), so nothing installed on this
 // machine leaks in, in the same throwaway git repository built from the task's repo/ folder, and with
@@ -84,6 +85,9 @@ async function main() {
   const a = args();
   const taskDir = path.join(HERE, "tasks", a.task);
   const taskText = fs.readFileSync(path.join(taskDir, "task.md"), "utf8").trim();
+  // A bug task goes through Temper's bug flow (/temper:fix); a feature through the whole pipeline.
+  const meta = JSON.parse(fs.readFileSync(path.join(taskDir, "meta.json"), "utf8"));
+  const temperCmd = meta.kind === "bug" ? "/temper:fix" : "/temper:temper";
   const out = path.resolve(a.out || path.join(RESULTS, `${a.task}__${a.arm}__${a.rep}`));
   fs.mkdirSync(out, { recursive: true });
   const work = path.join(out, "work");
@@ -91,7 +95,7 @@ async function main() {
   const tx = fs.createWriteStream(path.join(out, "transcript.jsonl"));
   const px = fs.createWriteStream(path.join(out, "person.jsonl"));
 
-  const prompt = a.arm === "temper" ? `/temper:temper ${taskText}` : a.arm === "careful" ? taskText + CAREFUL : taskText;
+  const prompt = a.arm === "temper" ? `${temperCmd} ${taskText}` : a.arm === "careful" ? taskText + CAREFUL : taskText;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), Number(a["timeout-min"]) * 60_000);
   const t0 = Date.now();
@@ -126,7 +130,7 @@ async function main() {
   const MAX_TURNS = a.arm === "temper" ? 6 : 1;
   try {
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const p = turn === 0 ? prompt : "/temper:temper";
+      const p = turn === 0 ? prompt : temperCmd;
       for await (const m of query({ prompt: p, options: { ...options, ...(sessionId ? { resume: sessionId } : {}) } })) {
         tx.write(JSON.stringify(m) + "\n");
         if (m.session_id) sessionId = m.session_id;

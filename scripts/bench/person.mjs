@@ -15,9 +15,14 @@ const REFUSE = /\b(stop|start over|cancel|override|skip|discard|later|abandon|no
 // picks: override, commitOverride, accept (a finding), pause, restart.
 const REFUSE_MOVE = new Set(["override", "commitOverride", "accept", "pause", "restart"]);
 
+// A question that wants typed text (a name, a reason) offers an option like "Type a name" or says "use
+// Other": a person types the text instead of picking that option.
+const WANTS_TEXT = /\b(type (a|the|your)|use other|in other)\b/i;
+
 export function choose(question, moves = {}) {
   const opts = Array.isArray(question.options) ? question.options : [];
   if (opts.length === 0) return typedAnswer(question);
+  if (WANTS_TEXT.test(`${question.question}`) || opts.some((o) => /^type\b/i.test(`${o.label}`))) return typedAnswer(question);
   const kept = opts.filter((o) => !REFUSE.test(`${o.label}`) && !REFUSE_MOVE.has(moves[o.label]));
   const pool = kept.length ? kept : opts;
   const rec = pool.find((o) => /recommended/i.test(`${o.label}`));
