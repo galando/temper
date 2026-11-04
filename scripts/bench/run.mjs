@@ -17,17 +17,21 @@
 //   person.jsonl       every question and the answer given
 //   run.json           arm, task, rep, model, cost, time, turns, how it ended
 //   work/              the repository as the arm left it (grade.py reads it)
+// The out folder defaults to $TEMPER_BENCH_RESULTS/<task>__<arm>__<rep>, else ~/temper-bench-results/...
 // It is never part of CI: it costs real model calls. Requires `npm install` in scripts/bench once.
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
 import { answer } from "./person.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN = path.resolve(HERE, "..", "..");
 const TEMPER = path.join(PLUGIN, "scripts", "temper");
+// Results live outside the plugin folder: Temper's CLI refuses to run a project inside its own plugin.
+export const RESULTS = process.env.TEMPER_BENCH_RESULTS || path.join(os.homedir(), "temper-bench-results");
 
 const CAREFUL = `
 
@@ -80,7 +84,7 @@ async function main() {
   const a = args();
   const taskDir = path.join(HERE, "tasks", a.task);
   const taskText = fs.readFileSync(path.join(taskDir, "task.md"), "utf8").trim();
-  const out = path.resolve(a.out || path.join(HERE, "results", `${a.task}__${a.arm}__${a.rep}`));
+  const out = path.resolve(a.out || path.join(RESULTS, `${a.task}__${a.arm}__${a.rep}`));
   fs.mkdirSync(out, { recursive: true });
   const work = path.join(out, "work");
   const base = seed(taskDir, work);

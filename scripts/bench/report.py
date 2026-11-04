@@ -40,7 +40,7 @@ def table(rows):
 
 
 def main():
-    results = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "results"))
+    results = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("TEMPER_BENCH_RESULTS") or os.path.expanduser("~/temper-bench-results"))
     rows = load(results)
     lines = ["# Temper benchmark results", "", "%d graded runs." % len(rows), ""]
     for task in sorted({r["task"] for r in rows}):

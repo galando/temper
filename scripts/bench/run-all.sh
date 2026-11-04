@@ -4,11 +4,12 @@
 set -uo pipefail
 HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPS="${1:-3}"; shift || true
+RESULTS="${TEMPER_BENCH_RESULTS:-$HOME/temper-bench-results}"
 ARMS=("$@"); [[ ${#ARMS[@]} -eq 0 ]] && ARMS=(vanilla careful temper)
 while IFS= read -r t; do
   for rep in $(seq 1 "$REPS"); do
     for arm in "${ARMS[@]}"; do
-      d="$HERE/results/${t}__${arm}__${rep}"
+      d="$RESULTS/${t}__${arm}__${rep}"
       [[ -f "$d/grade.json" ]] && { echo "skip $t $arm $rep (graded)"; continue; }
       echo "run  $t $arm $rep"
       node "$HERE/run.mjs" --task "$t" --arm "$arm" --rep "$rep" || echo "FAIL: run $t $arm $rep"
