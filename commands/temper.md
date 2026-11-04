@@ -133,7 +133,9 @@ Any other failure of it still stops the action.
 - **Blocking questions** (the `blocking` list): ask them in one AskUserQuestion call, one question
   each, with the question's choices as options, the recommended one first, three at most, and a last
   option "Carry forward". Write each answer into intent.md's `### Decisions` and take the question out
-  of Open Questions. Then run the action's `gate` call and run `next` again.
+  of Open Questions; for "Carry forward", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper intent carry '{the question}'`
+  instead (the CLI marks it Deferred, so it stays on record and no longer holds the gate). Then run the action's
+  `gate` call and run `next` again.
   Never list them as text to answer by typing.
 - **A refused call.** When the mod or the CLI refuses a call an answer allowed, run it once more; when
   it is refused again, say so in one line and ask the question again.

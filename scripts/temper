@@ -48,6 +48,18 @@ set -uo pipefail
 unset CDPATH
 
 REPO_ROOT="$(pwd)"
+# 9.8.0: called from a subfolder of the project (the orchestrator after writing a file in docs/), the CLI used to start a
+# second .temper there and write run state into it. When this folder has no .temper, the nearest folder above it that has
+# one is the project, never past the repository's top (a folder holding .git, a file in a worktree), and the CLI runs
+# from there. A folder with no .temper anywhere above stays as it is (temper init makes one here).
+if [[ ! -d "$REPO_ROOT/.temper" ]]; then
+  _up="$REPO_ROOT"
+  while [[ "$_up" != "/" && ! -e "$_up/.git" ]]; do
+    _up="$(dirname "$_up")"
+    if [[ -d "$_up/.temper" ]]; then REPO_ROOT="$_up"; cd "$REPO_ROOT" || exit 1; break; fi
+  done
+  unset _up
+fi
 # Where the plugin itself lives (this script). Used only to read the stage briefs'
 # frontmatter (`temper model`), to load acceptance.py and to refuse a project folder
 # inside the plugin folder, never to locate project state. It comes from this file's
@@ -2027,13 +2039,15 @@ add('no duplicate question', not dup_q,
 
 # --- header fields ---------------------------------------------------------
 missing_h = []
-for f in ('Author', 'Created', 'Reviewer'):
+# 9.8.0: Reviewer is optional. The person who accepts the intent at the gate is its approver (Accepted-by); a named
+# reviewer is welcome but never required, so the Intent stage no longer asks for one (a question that looped runs).
+for f in ('Author', 'Created'):
     hm = re.search(r'^\*\*' + f + r':\*\*\s*(.+?)\s*$', "\n".join(lines), re.I | re.M)
     val = A.blank_placeholders(hm.group(1)).strip() if hm else ''
     if not val:
         missing_h.append(f)
 add('header fields', not missing_h,
-    'Author, Created, Reviewer all present' if not missing_h
+    'Author and Created present' if not missing_h
     else 'missing, empty, or placeholder: ' + ' | '.join(missing_h))
 
 # --- no scenarios in draft -------------------------------------------------
@@ -4680,7 +4694,10 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 }
 
 # ---------------------------------------------------------------------------
-# intent accept|complete: the header of the run's intent.md, written by the CLI (ADR 0013).
+# intent accept|complete|carry: the header of the run's intent.md, written by the CLI (ADR 0013).
+# carry '<question>': the person's Carry forward on a Blocking question (9.8.0): its label turns to
+# `Deferred: (carried forward at the Intent gate)`, so the question stays on record, later gates name it, and it no
+# longer fails the Intent gate (before 9.8.0 Carry forward recorded nothing and the gate stayed red: a dead end).
 # accept: **Status:** accepted plus **Accepted-by:** the person (their Continue at the Intent gate
 # is the acceptance; Temper reads no name or email from git). complete: **Status:** completed plus
 # **Completed:** today.
@@ -4689,9 +4706,39 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 
 cmd_intent() {
   local sub="${1:-}"
-  case "$sub" in accept|complete) ;; *) echo "FAIL: usage: temper intent accept|complete" >&2; return 1 ;; esac
+  case "$sub" in accept|complete|carry) ;; *) echo "FAIL: usage: temper intent accept|complete|carry '<question>'" >&2; return 1 ;; esac
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -f "$spec/intent.md" ]] || { echo "FAIL: no intent.md for the active run" >&2; return 1; }
+  if [[ "$sub" == "carry" ]]; then
+    [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper intent carry '<question>'" >&2; return 1; }
+    python3 -I - "$spec/intent.md" "$2" <<'PY'
+import os, re, sys
+path, q = sys.argv[1:3]
+norm = lambda t: re.sub(r'\W+', ' ', t).strip().lower()
+want = norm(q)[:60]
+lines = open(path, encoding='utf-8').read().split('\n')
+active, hit = False, None
+for i, l in enumerate(lines):
+    h = re.match(r'^#{1,6}\s+(.*)$', l)
+    if h:
+        active = bool(re.match(r'open questions', h.group(1).strip(), re.I))
+        continue
+    m = re.match(r'^(\s*[-*]\s+(?:\[[ xX]\]\s+)?)Blocking:\s*(.+)$', l) if active else None
+    if m and want and (norm(m.group(2)).startswith(want) or want.startswith(norm(m.group(2))[:60])):
+        lines[i] = '%sDeferred: (carried forward at the Intent gate) %s' % (m.group(1), m.group(2).strip())
+        hit = m.group(2).strip()
+        break
+if hit is None:
+    print('FAIL: no Blocking open question starts with: %s' % q[:80], file=sys.stderr)
+    sys.exit(1)
+tmp = '%s.tmp.%d' % (path, os.getpid())
+with open(tmp, 'w', encoding='utf-8') as f:
+    f.write('\n'.join(lines))
+os.replace(tmp, path)
+print('OK: carried forward: %s' % hit[:80])
+PY
+    return
+  fi
   python3 -I - "$spec/intent.md" "$sub" "the person at the Intent gate" "$(date -u +%Y-%m-%d)" <<'PY'
 import os, re, sys
 path, sub, who, day = sys.argv[1:5]
@@ -5321,6 +5368,7 @@ Usage:
   temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
   temper report --end | --no-html (at the commit: the report for the person, then their No to the page)
   temper intent accept|complete   (the Status header of the run's intent.md)
+  temper intent carry '<question>' (the person's Carry forward: a Blocking open question becomes Deferred)
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)

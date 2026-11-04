@@ -337,7 +337,29 @@ s = open('.temper/specs/demo/intent.md').read().replace('**Reviewer:** R Reviewe
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "a placeholder Reviewer FAILs header fields" "yes" "$(echo "$OUT" | grep -q 'missing, empty, or placeholder: Reviewer' && echo yes || echo no)"
+assert_eq "9.8.0: a placeholder or missing Reviewer no longer fails header fields (the person at the gate approves)" "no" \
+  "$(echo "$OUT" | grep -q 'missing, empty, or placeholder' && echo yes || echo no)"
+python3 - <<'EOF2'
+s = open('.temper/specs/demo/intent.md').read()
+import re
+s = re.sub(r'^\*\*Author:\*\*.*$', '**Author:** {name}', s, flags=re.M)
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF2
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a placeholder Author still FAILs header fields" "yes" "$(echo "$OUT" | grep -q 'missing, empty, or placeholder: Author' && echo yes || echo no)"
+
+# 9.8.0: Carry forward on a Blocking open question turns it Deferred, so the Intent gate is not left red with no way out
+setup; good_draft
+python3 - <<'EOF2'
+p = '.temper/specs/demo/intent.md'; s = open(p).read()
+s = s.replace('### Open Questions\n', '### Open Questions\n- Blocking: Who may refund an invoice? (changes the roles; owner: PM)\n', 1)
+open(p, 'w').write(s)
+EOF2
+assert_eq "a Blocking question is open before Carry forward" "yes" "$(grep -q '^- Blocking: Who may refund' .temper/specs/demo/intent.md && echo yes || echo no)"
+assert_exit "intent carry with an unknown question fails" 1 "$TEMPER" intent carry "Nothing like this"
+assert_exit "intent carry turns the question Deferred" 0 "$TEMPER" intent carry "Who may refund an invoice?"
+assert_eq "the question is now Deferred, carried forward, its text kept" "yes" \
+  "$(grep -q '^- Deferred: (carried forward at the Intent gate) Who may refund an invoice?' .temper/specs/demo/intent.md && echo yes || echo no)"
 
 setup; good_draft
 printf '## Scenarios (BDD)\nScenario: premature\n' >> .temper/specs/demo/intent.md

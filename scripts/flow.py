@@ -46,7 +46,7 @@ GATE_OF = {"fix": "build", "rca": None}
 BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "review": "build", "check": "build"},
            "fix": {"review": "fix", "check": "fix"}}
 # The moves only the person may make; the mod lets their CLI calls through only for the person's answer.
-PERSON_MOVES = {"approve", "arm", "override", "back", "accept", "keep", "commitOverride", "restart", "confirm"}
+PERSON_MOVES = {"approve", "arm", "override", "back", "accept", "covered", "keep", "commitOverride", "restart", "confirm"}
 
 
 # ---- reading the run -----------------------------------------------------------------------
@@ -1130,13 +1130,16 @@ class Builder:
         title = next((x.get("title", "") for x in plan.get("tasks", []) if x["n"] == n), "")
         c = info.get("covered") or {}
         if r.armed():
-            return {"action": "auto", "stage": "build", "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(
-                "Task %d: its tests already pass before any change; an earlier task built it" % n))],
-                "say": "Task %d's tests already pass; the armed run parks for you." % n}
+            # 9.8.0: an unattended run takes a covered task as done (its tests pass, the plan asked for work already done);
+            # the reason names it, and the run's report lists it. It parked here before, which ended most unattended runs.
+            return {"action": "auto", "stage": "build", "calls": [self.c("task accept %d --reason %s" % (n, shlex.quote(
+                "An earlier task built it (unattended run)")))],
+                "say": "Task %d's tests already pass: an earlier task built it, so the unattended run takes it as done." % n}
         tail = " ".join(str(c.get("tail", "")).split())[:300]
         text = "Task %d (%s): its tests already pass before any change, so an earlier task built it. The RED run %s passed (exit 0): %s. Accept it as done?" % (
             n, title, c.get("cmd") or "(no command)", tail or "no output")
-        opts = [self.opt("Accept it as done", "Commit its tests, merge them and tick the task.", move="accept",
+        # `covered`, not `accept`: accepting a review finding leaves a defect in; this takes work that is done (9.8.0).
+        opts = [self.opt("Accept it as done", "Commit its tests, merge them and tick the task.", move="covered",
                          calls=[self.c("task accept %d --reason '{reason}'" % n)], reason=["An earlier task built it", "I accept the risk"]),
                 self.opt("Run it again", "The kept worktree goes and a fresh attempt starts.", move="redo", calls=[self.c("task retry %d" % n)])]
         if r.can_loop("build", "plan"):

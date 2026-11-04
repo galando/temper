@@ -309,9 +309,12 @@ assert_eq "F19: the covered question names the task, the RED command and its out
   "$(nx "'|'.join([d['action'], d['ask']['question']['question']] + [o['label'] for o in d['ask']['options']])")"
 assert_eq "F19: Accept asks for a reason and runs task accept; Run it again runs task retry" "task accept 1 --reason '{reason}'|True|task retry 1" \
   "$(nx "o = d['ask']['options']; o[0]['calls'][0].split('temper ', 1)[1] + '|' + str(o[0]['reason']) + '|' + o[1]['calls'][0].split('temper ', 1)[1]")"
+assert_eq "F19: Accept it as done is the move covered, not a finding's accept (9.8.0)" "covered|redo" \
+  "$(nx "o = d['ask']['options']; o[0]['move'] + '|' + o[1]['move']")"
 assert_exit "F19: task start holds a covered task back" 1 "$TEMPER" task start 1
 printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-assert_eq "F19: an armed run parks for the person" "auto|1" "$(nx "d['action'] + '|' + str(sum(1 for c in d['calls'] if 'park' in c))")"
+assert_eq "F19: an armed run takes the covered task as done, with a reason, and does not park" "auto|1|0" \
+  "$(nx "d['action'] + '|' + str(sum(1 for c in d['calls'] if 'task accept 1 --reason' in c)) + '|' + str(sum(1 for c in d['calls'] if 'park' in c))")"
 printf 'stack: auto\n' > .claude/temper.config
 assert_exit "F19: task accept needs a reason" 1 "$TEMPER" task accept 1
 assert_exit "F19: a task that is not covered is not accepted" 1 "$TEMPER" task accept 2 --reason "x"
