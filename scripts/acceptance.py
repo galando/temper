@@ -402,7 +402,9 @@ def main():
                 errors.append(f"scenario '{name}' has no supported passing evidence row")
         latest_crit = latest_by_key(rows, "criterion")
         for c in real:
-            if c.get("id") and c["has_validate"] and c["vtype"] in ("code", "manual", "metric"):
+            # A deferred optional criterion is skipped here as in the Build report (9.8.0: Check asked evidence for it).
+            if c.get("id") and c["has_validate"] and c["vtype"] in ("code", "manual", "metric") \
+                    and not (c.get("deferred") and c.get("optional")):
                 row = latest_crit.get(c["id"])
                 if not row or not supported_pass(row):
                     errors.append(f"{c['id']} has no supported passing evidence row")

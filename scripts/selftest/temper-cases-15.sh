@@ -174,3 +174,56 @@ assert_eq "9.8.0: an unattended run's planned change to a park-on-touch path doe
 echo x > src/billing/other.sh
 assert_eq "9.8.0: a change to a park-on-touch path outside the plan still parks" "yes" \
   "$(_gcm | grep -q '\[x\] park-on-touch paths — src/billing/other.sh matches \*\*/billing/\*\* and is not in the plan' && echo yes || echo no)"
+
+# --- 6. The Context check names what the plan leaves out; an answer other than "As planned" sends Plan back with it ---
+_fr_plan_ctx() { # a plan at Plan whose Context Map has an ignore and a gap and is not reviewed yet
+  fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+  "$TEMPER" state set complexity simple >/dev/null 2>&1
+  cat > .temper/specs/demo/plan.md <<'PEOF'
+## Context Map
+- use: src/ (3 files)
+- ignore: ledger/export.py: refunds in exports are out of scope
+- gap: no ticket or linked doc
+- reviewed: pending
+
+## Plan
+PEOF
+}
+_fr_plan_ctx
+assert_eq "9.8.0: the Context check names what is left out and not found, with As planned first" \
+  "The plan leaves out: ledger/export.py: refunds in exports are out of scope. It could not find: no ticket or linked doc. Is that right?|As planned (Recommended)|Include what is left out|Something else|Carry forward" \
+  "$(nx "q = d['context_check']; '|'.join([q['question']] + [o['label'] for o in q['options']])")"
+assert_eq "9.8.0: Include what is left out records it and sends Plan back (--redo); a typed answer does too" "yes|yes" \
+  "$(nx "q = d['context_check']; print('yes' if q['options'][1]['calls'][0].endswith('--redo') else 'no', end='|'); print('yes' if q['answer'].endswith('--redo') else 'no')")"
+assert_exit "9.8.0: plan review --redo records the answer" 0 "$TEMPER" plan review --answer "Include the export" --redo
+assert_eq "9.8.0: the answer is the person's note for Plan, and the plan verdict is gone (Plan runs again)" "1|yes" \
+  "$(python3 -c "import json; print(sum(1 for r in json.load(open('.temper/evidence/plan.json')) if r.get('claim') == 'Context check: Include the export'))")|$(python3 -c "import json; g=json.load(open('.temper/gates.json')); print('yes' if 'plan' not in g else 'no')" 2>/dev/null || echo yes)"
+
+# --- 7. Design on risk; risk kept by the CLI; the unattended run at the last question before Build ---
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state set complexity medium >/dev/null 2>&1
+assert_exit "9.8.0: risk is kept by the CLI (state set risk is refused)" 1 "$TEMPER" state set risk L
+gpass plan
+assert_eq "9.8.0: a medium plan at risk below H skips Design; the plan question offers the unattended run" \
+  "Plan: the check passed. Approve the plan and continue to Build?|Stage by stage (Recommended)|Autonomous: run the rest unattended" \
+  "$(nx "q = d['ask']; '|'.join([q['question']['question']] + [o['label'] for o in q['options'][:2]])")"
+"$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1
+assert_eq "9.8.0: at risk H a medium plan runs Design, and the plan question does not offer the unattended run" "Continue to Design (Recommended)|no" \
+  "$(nx "q = d['ask']; o = [x['label'] for x in q['options']] + [x['label'] for x in (q.get('more') or {}).get('options', [])]; q['options'][0]['label'] + '|' + ('yes' if any('Autonomous' in x for x in o) else 'no')")"
+"$TEMPER" state advance plan_complete design >/dev/null 2>&1; gpass design
+assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design" "Autonomous: run the rest unattended|arm|state set run_mode autonomous" \
+  "$(nx "o = d['ask']['options'][1]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1]])")"
+
+# --- 8. A criterion validated by hand is confirmed by the person at Check; a deferred optional one needs no evidence ---
+_at_check
+python3 - <<'PYEOF'
+p = '.claude/temper.config'; s = open(p).read()
+s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 0\n  commands:\n    test: "true"\n    coverage: echo "TOTAL 10 1 90%"\n', 1)
+open(p, 'w').write(s)
+p = '.temper/specs/demo/intent.md'; s = open(p).read()
+s = s.replace('## Scenarios (BDD)', '- [ ] AC-09 [required]: the admin reads the report\n  Why: audit\n  Validate: manual - open the report and read it\n- [ ] AC-10 [optional]: a later nicety (deferred)\n  Why: later\n  Validate: manual - read it\n\n## Scenarios (BDD)', 1)
+open(p, 'w').write(s)
+PYEOF
+echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+assert_eq "9.8.0: the Check question asks the person to confirm the manual criterion" "yes|Confirmed (Recommended)|confirm" \
+  "$(nx "q = d['ask']; print('yes' if 'AC-09 needs your confirmation' in q['question']['question'] else 'no', end='|'); print(q['options'][0]['label'] + '|' + q['options'][0]['move'])")"

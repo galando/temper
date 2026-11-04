@@ -642,6 +642,18 @@ class Builder:
                 return self.with_more(GATE_HEADER, "Check: %s. Commit?" % state_of, stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.")
             # A measurement nobody took (no coverage run, no test run recorded: a tool is missing) is not a fault of the code:
             # Check runs again once the tool is there, and going back to Build would redo work for nothing.
+            # 9.8.0: a criterion validated by hand is confirmed by the person here (the agent used to claim it).
+            details = " ".join(str(x.get("detail", "")) for x in r.failed_rows("check"))
+            manual = [c for c in self.criteria("manual") if re.search(r"\b%s has no supported passing evidence row" % re.escape(c["id"]), details)]
+            if manual:
+                calls = [self.c("evidence add --stage check --criterion %s --claim %s --cmd %s --exit 0" % (
+                    c["id"], shlex.quote("confirmed by the person at the Check question: " + c["vdetails"][:150]),
+                    shlex.quote("the person, at the Check question"))) for c in manual] + [self.c("gate check")]
+                text = "Check: %s needs your confirmation: %s. Confirm?" % (
+                    ", ".join(c["id"] for c in manual), "; ".join("%s: %s" % (c["id"], c["vdetails"][:150]) for c in manual))
+                return self.question(GATE_HEADER, text, stage=stage, options=[
+                    self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls)]
+                    + back_opt() + [self.save()])
             gap = self.measurement_gap(r.failed_rows("check"))
             again = [self.opt("Run Check again (Recommended)", "Install what the failed row names, then Check measures again; Build is not redone.",
                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))])] if gap else []
@@ -957,8 +969,19 @@ class Builder:
         # that brings a person's note to it).
         if stage == "check" and not back and self.cli_check():
             gate = self.c("gate %s" % (r.gate_of(stage) or stage))
-            return {"action": "work", "stage": stage, "calls": [self.c("check run"), gate], "agents": [], "gate": gate,
-                    "say": "Check: the CLI runs the suite, coverage, the scenario tests and the mutation score (no agent)."}
+            rec = self.criteria("code", "metric")
+            if not rec:
+                return {"action": "work", "stage": stage, "calls": [self.c("check run"), gate], "agents": [], "gate": gate,
+                        "say": "Check: the CLI runs the suite, coverage, the scenario tests and the mutation score (no agent)."}
+            # A criterion validated by code or by a metric needs its own evidence: the Check agent records only those, after
+            # the CLI's run (a manual one is the person's to confirm at the Check question).
+            a = self.agent("check", extra + ["The CLI has run the suite, coverage, the scenario tests and the mutation score (temper check run). "
+                                            "Record evidence only for these criteria, each with --criterion: %s." % "; ".join(
+                                                "%s (%s: %s)" % (c["id"], c["vtype"], c["vdetails"][:120]) for c in rec)])
+            a["after"].append(gate)
+            a["gate"] = gate
+            return {"action": "work", "stage": stage, "calls": [self.c("check run")], "agents": [a],
+                    "say": "Check: the CLI runs the suite, coverage, the scenario tests and the mutation score; the Check agent records %d criteria%s." % (len(rec), on_model([a]))}
         a = self.agent(stage, extra)
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
         a["gate"] = a["after"][-1]
@@ -1001,6 +1024,17 @@ class Builder:
             return ""
         return ("\nAcceptance tests: %s/acceptance/ holds the tests written from the intent before Build. Read the ones for your "
                 "task's criteria: your code must make them pass at integration. Never edit them (Check fails a change)." % self.r.spec)
+
+    def criteria(self, *types):
+        """The required, open criteria of intent.md whose Validate type is one of types."""
+        r = self.r
+        if not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
+            return []
+        import acceptance
+        lines = open(os.path.join(r.spec, "intent.md"), encoding="utf-8").read().splitlines()
+        return [c for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria"))
+                if c.get("id") and not c.get("placeholder") and c.get("has_validate") and c.get("vtype") in types
+                and not (c.get("deferred") and c.get("optional"))]
 
     def cli_check(self):
         """True when the CLI can run Check itself: a configured test command, or one it detects for the stack."""
