@@ -314,7 +314,7 @@ describe('finding 4: a plain commit is for the native hook; a commit the hook do
 // ---- 5. a decision counts at the run and the step it was made at ----------------------------------------------
 describe('finding 5: a decision counts at its run and step, and no longer', () => {
   test('advance; exit 1 executed the advance: the approval does not approve a second advance', async ($, on) => {
-    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Continue to Build (Recommended)'] })
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Stage by stage (Recommended)'] })
     await ask(api, w)
     const first = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build; exit 1' })
     expect(first.deny).toBeUndefined()
@@ -324,7 +324,7 @@ describe('finding 5: a decision counts at its run and step, and no longer', () =
   })
 
   test('a call that failed with no effect leaves the approval in place (the retry works)', async ($, on) => {
-    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Continue to Build (Recommended)'] })
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Stage by stage (Recommended)'] })
     await ask(api, w)
     w.cliFailures = 1
     const failed = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build' })
@@ -333,7 +333,7 @@ describe('finding 5: a decision counts at its run and step, and no longer', () =
   })
 
   test('an approval made before a step back to the plan is not an approval any more', async ($, on) => {
-    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], answers: ['Continue to Build (Recommended)', why('Loop back to Plan', 'rework the plan')] })
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], answers: ['Stage by stage (Recommended)', why('Loop back to Plan', 'rework the plan')] })
     await ask(api, w)
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
     w.files.set('.temper/gates.json', JSON.stringify({ intent: { verdict: 'PASS' }, plan: { verdict: 'PASS' }, build: { verdict: 'FAIL' } }))

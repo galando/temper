@@ -104,7 +104,7 @@ a long entry onto a continuation row indented two spaces.
 
 Return this panel (the orchestrator prints it verbatim), then the plan's ASCII diagram
 right after its closing border. After them, on a line of its own, return the spec path.
-The complexity tier and the risk level are the panel's COMPLEXITY and RISK fields. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the RISK field is the letter it prints, never your own estimate.
+The complexity tier and the risk level are the panel's COMPLEXITY and RISK fields. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the RISK field is the letter it prints, never your own estimate. Design runs for a `complex` plan, and for a `medium` one only at risk H (9.8.0): when the change adds or changes a data model or a stored schema, moves money, changes who may do what (roles, permissions), or calls an external system, raise it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk --raise H --reason '<which of these>'`.
 Nothing else goes outside the panel:
 
 ```

@@ -70,7 +70,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('an answer in a question with another header decides nothing', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     const q = questionOf(viewText(w) ?? '')
     await askRaw(api, 'Something else', q.question, q.options.map(o => o.label))
@@ -79,7 +79,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('a question Claude reworded decides nothing, and the call stays refused', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     await askRaw(api, 'Temper gate', 'The plan looks good. Shall I go on to Build?', ['Continue to Build (Recommended)', 'Save for later'])
     expect(decisions(w)).toEqual([])
@@ -115,7 +115,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('a new run on the same spec folder starts with no decision', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     await ask(api, w)
     // Start over: the person's answer, then the new run.
@@ -159,7 +159,7 @@ describe('every wait point of the flow audit', () => {
 
   test('the Design gate: Loop back to Plan, or Override and continue', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', stage: 'plan_complete' }) }
+    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H', stage: 'plan_complete' }) }
     const w = begin(on, 'design', { plan: 'PASS', design: 'FAIL' }, [why('Override and continue', 'the platform team owns it')], extra)
     await api.session.start(START)
     expect(await sh(api, `${CLI} override design --reason x`)).toBe(ONLY_USER)
@@ -170,7 +170,7 @@ describe('every wait point of the flow audit', () => {
 
   test('the Design gate: Loop back to Plan', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium' }) }
+    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H' }) }
     const w = begin(on, 'design', { plan: 'PASS', design: 'FAIL' }, [why('Loop back to Plan', 'the API changed')], extra)
     await api.session.start(START)
     await ask(api, w)
@@ -266,7 +266,7 @@ describe('every wait point of the flow audit', () => {
 
   test('with enforcement off nothing is refused, and an answer is still kept for the report', { options: { enforcement: 'off' } }, async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     expect(await write(api, 'src/app.ts')).toBeUndefined()
     await ask(api, w)
@@ -286,7 +286,7 @@ describe('every wait point of the flow audit', () => {
 describe('a stage command is a door into /temper', () => {
   test('a run with Design: Plan goes on to Design, not past it', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium' }) }
+    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H' }) }
     const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Design (Recommended)'], extra)
     await api.session.start(START)
     await ask(api, w)
@@ -297,7 +297,7 @@ describe('a stage command is a door into /temper', () => {
 
   test('a door walks the earlier gates by the same answers: Intent, then Plan, then the stage', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)', 'Continue to Build (Recommended)'])
+    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)', 'Stage by stage (Recommended)'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()
@@ -344,7 +344,7 @@ describe('the system prompt: one flow in every mode', () => {
 describe('Build is judged against the plan the person approved', () => {
   test('a plan.md widened at Build does not let a file outside the approved plan through', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
@@ -358,7 +358,7 @@ describe('Build is judged against the plan the person approved', () => {
 
   test('a plan approved again after a loop back to Plan counts with its new files', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Build (Recommended)', why('Loop back to Plan', 'the plan misses billing'), 'Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Stage by stage (Recommended)', why('Loop back to Plan', 'the plan misses billing'), 'Stage by stage (Recommended)'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()

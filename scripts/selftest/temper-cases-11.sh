@@ -199,6 +199,7 @@ assert_eq "F8: a row that exists and failed keeps the gate question" "ask" "$(nx
 # --- F16. build.grouped.max-groups, and a plan with tasks and no groups stops Build with no agent ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 _three_groups > .temper/specs/demo/tasks.md; rm -f .temper/groups.json
+"$TEMPER" acceptance skip --reason "the scheduling cases below" >/dev/null 2>&1   # 9.8.0: else the acceptance writer comes first
 assert_eq "F16: by default two groups start at once" "group start G1|group start G2" "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'] if 'group start' in c)")"
 printf 'build:\n  grouped:\n    max-groups: 3\n' > .claude/temper.config
 assert_eq "F16: max-groups 3 starts all three" "3" "$(nx "str(sum(1 for c in d['calls'] if 'group start' in c))")"

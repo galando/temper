@@ -48,18 +48,6 @@ set -uo pipefail
 unset CDPATH
 
 REPO_ROOT="$(pwd)"
-# 9.8.0: called from a subfolder of the project (the orchestrator after writing a file in docs/), the CLI used to start a
-# second .temper there and write run state into it. When this folder has no .temper, the nearest folder above it that has
-# one is the project, never past the repository's top (a folder holding .git, a file in a worktree), and the CLI runs
-# from there. A folder with no .temper anywhere above stays as it is (temper init makes one here).
-if [[ ! -d "$REPO_ROOT/.temper" ]]; then
-  _up="$REPO_ROOT"
-  while [[ "$_up" != "/" && ! -e "$_up/.git" ]]; do
-    _up="$(dirname "$_up")"
-    if [[ -d "$_up/.temper" ]]; then REPO_ROOT="$_up"; cd "$REPO_ROOT" || exit 1; break; fi
-  done
-  unset _up
-fi
 # Where the plugin itself lives (this script). Used only to read the stage briefs'
 # frontmatter (`temper model`), to load acceptance.py and to refuse a project folder
 # inside the plugin folder, never to locate project state. It comes from this file's
@@ -79,6 +67,24 @@ SCRIPTS_DIR="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)"
 PLUGIN_ROOT="${SCRIPTS_DIR%/scripts}"
 unset _self _hops _link_dir
 ACCEPTANCE_PY="$PLUGIN_ROOT/scripts/acceptance.py"
+# 9.8.0: called from a subfolder of the project (the orchestrator after writing a file in docs/), the CLI used to start a
+# second .temper there and write run state into it. When this folder has no .temper, the nearest folder above it that has
+# one is the project, and the CLI runs from there. The search never starts in the home folder or inside the plugin folder
+# (both are refused below, as before), never goes up into the home folder, and never past the repository's top (a folder
+# holding .git, a file in a worktree). A folder with no .temper anywhere above stays as it is (temper init makes one here).
+if [[ ! -d "$REPO_ROOT/.temper" && -n "${HOME:-}" && "$REPO_ROOT" != "$HOME" ]]; then
+  _real="$(cd -P "$REPO_ROOT" 2>/dev/null && pwd)"; _plug="$(cd -P "$PLUGIN_ROOT" 2>/dev/null && pwd)"
+  _home="$(cd -P "$HOME" 2>/dev/null && pwd)"
+  if [[ -n "$_real" && "$_real/" != "$_plug/"* && "$_real" != "$_home" ]]; then
+    _up="$_real"
+    while [[ "$_up" != "/" && ! -e "$_up/.git" ]]; do
+      _up="$(dirname "$_up")"
+      [[ "$_up" == "$_home" || "$_up/" == "$_plug/"* ]] && break
+      if [[ -d "$_up/.temper" ]]; then REPO_ROOT="$_up"; cd "$REPO_ROOT" || exit 1; break; fi
+    done
+  fi
+  unset _up _real _plug _home
+fi
 # Run state always lives in this project's .temper folder: no environment variable moves
 # it, so every write and delete below stays inside the project.
 TEMPER_DIR="$REPO_ROOT/.temper"
@@ -789,6 +795,12 @@ cmd_state_set() {
   fi
   if [[ "$1" == "archived" ]]; then
     echo "FAIL: archived is kept by the CLI (state archive records it when it writes the ledger the commit carries)" >&2
+    return 1
+  fi
+  # 9.8.0: the risk decides whether Design runs for a medium plan, so only `temper risk` writes it: computed from the blast
+  # radius, and raised (never lowered) with a reason.
+  if [[ "$1" == "risk" || "$1" == "risk_raise" || "$1" == "risk_reasons" || "$1" == "risk_raise_reason" ]]; then
+    echo "FAIL: $1 is kept by the CLI (temper risk computes it from the blast radius; temper risk --raise L|M|H --reason R raises it)" >&2
     return 1
   fi
   if [[ "$1" == "enter" || "$1" == "built_before" || "$1" == "review_snapshot" || "$1" == fresh || "$1" == fresh.* ]]; then
@@ -4533,8 +4545,8 @@ def ok(p):
     return p in declared or p in allowed or bool(test.search(p))
 changed = [l.strip() for l in sys.stdin if l.strip()]
 bad = [c for c in changed if not ok(c)]
-if bad: print('FAIL changed outside the plan: ' + ', '.join(bad[:5]) + (' (and %d more)' % (len(bad) - 5) if len(bad) > 5 else ''))
-else: print('PASS %d changed, all in the plan' % len(changed))
+if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]) + (' (and %d more)' % (len(bad) - 5) if len(bad) > 5 else ''))
+else: print('PASS %d changed, all declared' % len(changed))
 " "$plan_json" "${gspec#"$REPO_ROOT"/}" "$(_evidence_file build)")"
     if [[ "$gverdict" == PASS* ]]; then
       reqs+=("$(_req "blast radius" 1 "${gverdict#PASS }")")
@@ -4571,7 +4583,7 @@ else: print('PASS %d changed, all in the plan' % len(changed))
       done < <(_changed_since_base)
     fi
     if [[ -z "$touched" ]]; then
-      reqs+=("$(_req "park-on-touch paths" 1 "no changed file outside the plan matches a park-on-touch pattern")")
+      reqs+=("$(_req "park-on-touch paths" 1 "no changed file matches a park-on-touch pattern")")
     else
       reqs+=("$(_req "park-on-touch paths" 0 "$touched")")
       all_pass=0
@@ -4893,8 +4905,9 @@ _setup_calls() {
   fi
 }
 
-# temper plan review --answer '<text>' [--focus '<area>']...: the person's answer to the Context check, written into plan.md's
-# Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand.
+# temper plan review --answer '<text>' [--focus '<area>']... [--redo]: the person's answer to the Context check, written into
+# plan.md's Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand. --redo (9.8.0): the answer
+# changes the plan: it is recorded as the person's note for Plan, and Plan runs again with it.
 cmd_plan() {
   _state_migrate_legacy
   if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
@@ -4906,16 +4919,22 @@ cmd_plan() {
   shift
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
-  local args=() answer=0
+  local args=() answer=0 redo=0 text=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --answer) args+=("--answer" "${2:-}"); answer=1; shift 2 || true ;;
+      --answer) args+=("--answer" "${2:-}"); text="${2:-}"; answer=1; shift 2 || true ;;
       --focus) args+=("--focus" "${2:-}"); shift 2 || true ;;
+      --redo) redo=1; shift ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
   [[ $answer -eq 1 ]] || { echo "FAIL: temper plan review needs --answer '<text>'" >&2; return 1; }
-  python3 -E -s "$SCRIPTS_DIR/plan_ops.py" review "$spec" "${args[@]}"
+  python3 -E -s "$SCRIPTS_DIR/plan_ops.py" review "$spec" "${args[@]}" || return 1
+  # 9.8.0: --redo: the person's answer changes the plan. It becomes a note Plan reads, and Plan runs again with it.
+  if [[ $redo -eq 1 ]]; then
+    cmd_evidence_add --stage plan --phase note --kind input --claim "Context check: ${text}" >/dev/null || return 1
+    cmd_state_redo plan --reason "the Context check: ${text:0:200}"
+  fi
 }
 
 # temper adhoc open --stage S --reason R | temper adhoc close: the small-change window (scripts/adhoc_ops.py, F14).

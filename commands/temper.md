@@ -92,8 +92,9 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
   with `stop` ends the turn: the run is saved.
 - **`wait`**: tasks are running. For a task whose agent you launched in this conversation, wait for
   its result, then run its `after` calls. Otherwise (a new conversation) run its `after` calls now.
-- **`auto`**: an armed run moves by itself: run its `calls`. The person is not watching: never ask
-  "Shall I...?"; the only stop is a park, which `next` turns into a question.
+- **`auto`**: the CLI's own move (an armed run, or a step with nothing to decide, such as the one group of a plan
+  passing): run its `calls`. Never ask "Shall I...?"; in an armed run the only stop is a park, which `next` turns
+  into a question.
 - **`broken`**: say its `say` in one line and ask its `restart` question.
 - **`none`** after a commit: the steps printed the report before they cleared the run (a report printed
   now is empty); when the person asked for the page, it is `report.html` in its spec folder. Say where it
@@ -131,8 +132,9 @@ Any other failure of it still stops the action.
   `--kind edit --claim '{what you changed}'`, make it, run the action's `gate` call when it has one,
   and ask again. A note meant for one Build task begins with `Task N:`, for one group with `Group G<n>:`. It never moves the run.
 - **Blocking questions** (the `blocking` list): ask them in one AskUserQuestion call, one question
-  each, with the question's choices as options, the recommended one first, three at most, and a last
-  option "Carry forward". Write each answer into intent.md's `### Decisions` and take the question out
+  each (four at most per call; ask the rest in a second call), with the question's choices as options: the text after
+  `choices:`, split at `|`, the first one recommended, three at most, and a last option "Carry forward". A question that
+  starts with `Design:` names an area of concern in design.md: also write `resolved: {the answer}` into that concern. Write each answer into intent.md's `### Decisions` and take the question out
   of Open Questions; for "Carry forward", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper intent carry '{the question}'`
   instead (the CLI marks it Deferred, so it stays on record and no longer holds the gate). Then run the action's
   `gate` call and run `next` again.

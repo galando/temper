@@ -162,7 +162,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
@@ -577,7 +577,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -723,38 +723,26 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
  },
  "context-check": {
   "ask": {
-   "answer": "/plugin/scripts/temper plan review --answer '{text}'",
+   "answer": "/plugin/scripts/temper plan review --answer '{text}' --redo",
    "context": true,
    "gate": "/plugin/scripts/temper gate plan",
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper plan review --answer 'Right direction'",
+      "/plugin/scripts/temper plan review --answer 'As planned'",
       "/plugin/scripts/temper gate plan"
      ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Right direction",
+     "description": "The plan's context is right; check the plan again.",
+     "label": "As planned (Recommended)",
      "move": "answer",
      "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
     },
     {
-     "calls": [
-      "/plugin/scripts/temper plan review --answer 'Narrow the focus'",
-      "/plugin/scripts/temper gate plan"
-     ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Narrow the focus",
-     "move": "answer",
-     "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
-    },
-    {
-     "calls": [
-      "/plugin/scripts/temper plan review --answer 'Fix the sources'",
-      "/plugin/scripts/temper gate plan"
-     ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Fix the sources",
-     "move": "answer",
+     "calls": [],
+     "description": "Type what Plan should change or read (Other); Plan revises the plan with it.",
+     "do": "Ask the person to type it in Other, then run the question's `answer` call with their text.",
+     "label": "Something else",
+     "move": null,
      "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
     },
     {
@@ -770,23 +758,19 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Right direction"
+      "description": "The plan's context is right; check the plan again.",
+      "label": "As planned (Recommended)"
      },
      {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Narrow the focus"
-     },
-     {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Fix the sources"
+      "description": "Type what Plan should change or read (Other); Plan revises the plan with it.",
+      "label": "Something else"
      },
      {
       "description": "Decide later; the plan gate keeps naming this question.",
       "label": "Carry forward"
      }
     ],
-    "question": "Is this the right context for the plan?"
+    "question": "It could not find: no rate limit policy. Is that right?"
    },
    "run_id": "run-ctx",
    "stage": "plan",
@@ -831,38 +815,26 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   ],
   "checks": [],
   "context_check": {
-   "answer": "/plugin/scripts/temper plan review --answer '{text}'",
+   "answer": "/plugin/scripts/temper plan review --answer '{text}' --redo",
    "gate": "/plugin/scripts/temper gate plan",
    "header": "Temper gate",
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper plan review --answer 'Right direction'",
+      "/plugin/scripts/temper plan review --answer 'As planned'",
       "/plugin/scripts/temper gate plan"
      ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Right direction",
+     "description": "The plan's context is right; check the plan again.",
+     "label": "As planned (Recommended)",
      "move": "answer",
      "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
     },
     {
-     "calls": [
-      "/plugin/scripts/temper plan review --answer 'Narrow the focus'",
-      "/plugin/scripts/temper gate plan"
-     ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Narrow the focus",
-     "move": "answer",
-     "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
-    },
-    {
-     "calls": [
-      "/plugin/scripts/temper plan review --answer 'Fix the sources'",
-      "/plugin/scripts/temper gate plan"
-     ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Fix the sources",
-     "move": "answer",
+     "calls": [],
+     "description": "Type what Plan should change or read (Other); Plan revises the plan with it.",
+     "do": "Ask the person to type it in Other, then run the question's `answer` call with their text.",
+     "label": "Something else",
+     "move": null,
      "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
     },
     {
@@ -878,23 +850,19 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Right direction"
+      "description": "The plan's context is right; check the plan again.",
+      "label": "As planned (Recommended)"
      },
      {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Narrow the focus"
-     },
-     {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Fix the sources"
+      "description": "Type what Plan should change or read (Other); Plan revises the plan with it.",
+      "label": "Something else"
      },
      {
       "description": "Decide later; the plan gate keeps naming this question.",
       "label": "Carry forward"
      }
     ],
-    "question": "Is this the right context for the plan?"
+    "question": "It could not find: no rate limit policy. Is that right?"
    }
   },
   "context_map": {
@@ -964,7 +932,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
@@ -1098,7 +1066,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      ],
      "description": "Commit its tests, merge them and tick the task.",
      "label": "Accept it as done",
-     "move": "accept",
+     "move": "covered",
      "reason": true,
      "reason_question": {
       "header": "Temper gate",
@@ -1326,7 +1294,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": true,
    "plan_files": [
@@ -1696,7 +1664,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": true,
    "plan_files": [
@@ -2029,7 +1997,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": true,
    "plan_files": [
@@ -2376,7 +2344,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -2665,7 +2633,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
        "git checkout -b feature/pw",
        "git add -- .temper/specs/pw/",
        "git commit -m \"docs(plan): approve the plan of pw\"",
-       "/plugin/scripts/temper state advance plan_complete design"
+       "/plugin/scripts/temper state advance plan_complete build"
       ],
       "description": "Skip this check with your reason; the report shows it.",
       "label": "Override and continue",
@@ -2941,7 +2909,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -3047,13 +3015,6 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "label": "Plan",
     "mark": "here",
     "verdict": "FAIL"
-   },
-   {
-    "failed": [],
-    "id": "design",
-    "label": "Design",
-    "mark": "todo",
-    "verdict": null
    },
    {
     "failed": [],
@@ -3359,7 +3320,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": "check",
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [

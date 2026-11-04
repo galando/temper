@@ -1025,7 +1025,7 @@ gc_out="$(gc_row)"
 assert_eq "a run without tasks.md keeps the count rule (changed entries > 1 fail) [$gc_out]" "1|0" \
   "$(printf '%s\n' "$gc_out" | grep -c 'exceeds autonomy.max-blast-radius=1')|$(printf '%s\n' "$gc_out" | grep -c 'all declared')"
 gc_setup grouped; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
-assert_eq "grouped commit gate: a non-autonomous run has no blast radius row" "0" "$(gc_row | wc -l | tr -d ' ')"
+assert_eq "9.8.0: a non-autonomous run with a plan has the scope row too (before 9.8.0 it had none)" "1" "$(gc_row | grep -c 'all declared')"
 setup
 
 # --- Grouped Build (9.7.0): measurement report and ledger archive (AC-12) ---

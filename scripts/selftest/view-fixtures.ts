@@ -2444,7 +2444,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -2599,6 +2599,30 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [
+       "/plugin/scripts/temper state loop build plan --reason '{reason}'"
+      ],
+      "description": "Do Plan again; the stages after it are redone too.",
+      "label": "Loop back to Plan",
+      "move": "back",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "The check found a real problem"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Loop back to Plan. What is the reason?"
+      }
+     },
+     {
+      "calls": [
        "/plugin/scripts/temper adhoc open --stage build --reason '{reason}'"
       ],
       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
@@ -2639,6 +2663,10 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
+       "description": "Do Plan again; the stages after it are redone too.",
+       "label": "Loop back to Plan"
+      },
+      {
        "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
        "label": "Make a small change"
       },
@@ -2663,19 +2691,12 @@ export const VIEWS: Record<string, unknown> = {
      "move": "advance"
     },
     {
-     "calls": [],
-     "description": "Walk through the changes.",
-     "do": "Use the teach-me skill on this stage's work, then ask this question again.",
-     "label": "Teach Me",
-     "move": null
-    },
-    {
      "calls": [
-      "/plugin/scripts/temper state loop build plan --reason '{reason}'"
+      "/plugin/scripts/temper state redo build --reason '{reason}'"
      ],
-     "description": "Do Plan again; the stages after it are redone too.",
-     "label": "Loop back to Plan",
-     "move": "back",
+     "description": "Say what to change; Build's fix pass makes it, and Build is checked again.",
+     "label": "Change something",
+     "move": "redo",
      "reason": true,
      "reason_question": {
       "header": "Temper gate",
@@ -2683,19 +2704,30 @@ export const VIEWS: Record<string, unknown> = {
       "options": [
        {
         "description": "",
-        "label": "The check found a real problem"
+        "label": "Handle a case it missed"
+       },
+       {
+        "description": "",
+        "label": "Simplify the change"
        },
        {
         "description": "Back to the question before.",
         "label": "Cancel"
        }
       ],
-      "question": "Loop back to Plan. What is the reason?"
+      "question": "Change something. What is the reason?"
      }
     },
     {
      "calls": [],
-     "description": "Make a small change, Save for later",
+     "description": "Walk through the changes.",
+     "do": "Use the teach-me skill on this stage's work, then ask this question again.",
+     "label": "Teach Me",
+     "move": null
+    },
+    {
+     "calls": [],
+     "description": "Loop back to Plan, Make a small change, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -2710,15 +2742,15 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Continue to Review (Recommended)"
      },
      {
+      "description": "Say what to change; Build's fix pass makes it, and Build is checked again.",
+      "label": "Change something"
+     },
+     {
       "description": "Walk through the changes.",
       "label": "Teach Me"
      },
      {
-      "description": "Do Plan again; the stages after it are redone too.",
-      "label": "Loop back to Plan"
-     },
-     {
-      "description": "Make a small change, Save for later",
+      "description": "Loop back to Plan, Make a small change, Save for later",
       "label": "More options"
      }
     ],
@@ -2867,7 +2899,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -3152,7 +3184,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -3171,10 +3203,8 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
-   "calls": [
-    "/plugin/scripts/temper group start G1"
-   ],
-   "say": "Build starts its groups.",
+   "calls": [],
+   "say": "Build: first, an agent that writes no code writes the acceptance tests from the intent on sonnet. The run goes on when it returns.",
    "stage": "build",
    "steps": []
   },
@@ -3285,7 +3315,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Build starts its groups.",
+  "status": "Build: first, an agent that writes no code writes the acceptance tests from the intent on sonnet. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -3584,7 +3614,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -4049,7 +4079,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -4355,7 +4385,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -4757,7 +4787,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -4907,77 +4937,7 @@ export const VIEWS: Record<string, unknown> = {
   "written": "2026-01-01T00:00:00Z"
  },
  "commit-page": {
-  "ask": {
-   "options": [
-    {
-     "calls": [
-      "/plugin/scripts/temper report --html"
-     ],
-     "description": ".temper/specs/pw/report.html, committed with the spec.",
-     "label": "Write report.html",
-     "move": null
-    },
-    {
-     "calls": [
-      "/plugin/scripts/temper report --no-html"
-     ],
-     "description": "The commit goes on; the report stays the one in the terminal.",
-     "label": "Not now",
-     "move": null
-    },
-    {
-     "calls": [
-      "/plugin/scripts/temper adhoc open --stage commit --reason '{reason}'"
-     ],
-     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
-     "label": "Make a small change",
-     "move": "adhoc",
-     "reason": true,
-     "reason_question": {
-      "header": "Temper gate",
-      "multiSelect": false,
-      "options": [
-       {
-        "description": "",
-        "label": "A small fix of my own"
-       },
-       {
-        "description": "",
-        "label": "A change the review asked for"
-       },
-       {
-        "description": "Back to the question before.",
-        "label": "Cancel"
-       }
-      ],
-      "question": "Make a small change. What is the reason?"
-     }
-    }
-   ],
-   "question": {
-    "header": "Temper gate",
-    "multiSelect": false,
-    "options": [
-     {
-      "description": ".temper/specs/pw/report.html, committed with the spec.",
-      "label": "Write report.html"
-     },
-     {
-      "description": "The commit goes on; the report stays the one in the terminal.",
-      "label": "Not now"
-     },
-     {
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "label": "Make a small change"
-     }
-    ],
-    "question": "Every gate passed. The report is above. Write it as an HTML page too, before the commit?"
-   },
-   "run_id": "run-pw",
-   "stage": "commit",
-   "step": 5
-  },
+  "ask": null,
   "blocking": [],
   "build": {
    "groups": [
@@ -5144,7 +5104,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -5162,9 +5122,11 @@ export const VIEWS: Record<string, unknown> = {
   },
   "loops": [],
   "next": {
-   "action": "ask",
-   "calls": [],
-   "say": null,
+   "action": "work",
+   "calls": [
+    "/plugin/scripts/temper report --html"
+   ],
+   "say": "The report page is written (report.html in the spec folder); then the commit.",
    "stage": "commit",
    "steps": []
   },
@@ -5275,7 +5237,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": "PASS"
    }
   ],
-  "status": "Commit: waiting for your answer to the Temper gate question.",
+  "status": "The report page is written (report.html in the spec folder); then the commit.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -5456,7 +5418,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -5773,7 +5735,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -6090,7 +6052,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -6464,7 +6426,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -6625,6 +6587,13 @@ export const VIEWS: Record<string, unknown> = {
    "more": {
     "options": [
      {
+      "calls": [],
+      "description": "Stress test the design.",
+      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
+      "label": "Grill Me",
+      "move": null
+     },
+     {
       "calls": [
        "/plugin/scripts/temper state loop design plan --reason '{reason}'"
       ],
@@ -6668,6 +6637,10 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
+       "description": "Stress test the design.",
+       "label": "Grill Me"
+      },
+      {
        "description": "Do Plan again; the stages after it are redone too.",
        "label": "Loop back to Plan"
       },
@@ -6698,6 +6671,17 @@ export const VIEWS: Record<string, unknown> = {
      "move": "advance"
     },
     {
+     "calls": [
+      "/plugin/scripts/temper state set run_mode autonomous",
+      "/plugin/scripts/temper state advance design_complete build",
+      "git add -- .temper/specs/pw/",
+      "git commit -m \"docs(design): the design of pw\""
+     ],
+     "description": "Build, Review and Check go on by themselves and park before the commit.",
+     "label": "Autonomous: run the rest unattended",
+     "move": "arm"
+    },
+    {
      "calls": [],
      "description": "Review the design section by section.",
      "do": "Walk through the sections design.md has (architecture, API contracts, database changes, integration points, decision log), then ask this question again.",
@@ -6706,14 +6690,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Stress test the design.",
-     "do": "Use the grill-me skill on this stage's work, then ask this question again.",
-     "label": "Grill Me",
-     "move": null
-    },
-    {
-     "calls": [],
-     "description": "Loop back to Plan, Teach Me, Save for later",
+     "description": "Grill Me, Loop back to Plan, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -6728,15 +6705,15 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Continue to Build (Recommended)"
      },
      {
+      "description": "Build, Review and Check go on by themselves and park before the commit.",
+      "label": "Autonomous: run the rest unattended"
+     },
+     {
       "description": "Review the design section by section.",
       "label": "Walk through step by step"
      },
      {
-      "description": "Stress test the design.",
-      "label": "Grill Me"
-     },
-     {
-      "description": "Loop back to Plan, Teach Me, Save for later",
+      "description": "Grill Me, Loop back to Plan, Teach Me, Save for later",
       "label": "More options"
      }
     ],
@@ -6885,7 +6862,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -7297,7 +7274,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -7589,7 +7566,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -7833,7 +7810,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": true,
    "grouped": false,
    "plan_files": [],
@@ -8111,7 +8088,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
@@ -8391,7 +8368,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
@@ -8568,7 +8545,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
@@ -8584,7 +8561,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Intent: the Intent agent is working on opus. The run goes on when it returns.",
+   "say": "Intent: the Intent agent is working on sonnet. The run goes on when it returns.",
    "stage": "intent",
    "steps": []
   },
@@ -8675,7 +8652,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Intent: the Intent agent is working on opus. The run goes on when it returns.",
+  "status": "Intent: the Intent agent is working on sonnet. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -8943,7 +8920,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -9098,9 +9075,9 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Publish the plan as a private Claude artifact others can comment on.",
-      "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
-      "label": "Share HTML review",
+      "description": "Open the plan as a page to comment on.",
+      "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
+      "label": "Open HTML review",
       "move": null
      },
      {
@@ -9130,8 +9107,8 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Publish the plan as a private Claude artifact others can comment on.",
-       "label": "Share HTML review"
+       "description": "Open the plan as a page to comment on.",
+       "label": "Open HTML review"
       },
       {
        "description": "Stress test the plan.",
@@ -9160,9 +9137,21 @@ export const VIEWS: Record<string, unknown> = {
       "git commit -m \"docs(plan): approve the plan of pw\"",
       "/plugin/scripts/temper state advance plan_complete build"
      ],
-     "description": "Approve the plan, commit it, and start Build.",
-     "label": "Continue to Build (Recommended)",
+     "description": "Approve the plan; every later stage keeps its own gate.",
+     "label": "Stage by stage (Recommended)",
      "move": "approve"
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper state set run_mode autonomous",
+      "git checkout -b feature/pw",
+      "git add -- .temper/specs/pw/",
+      "git commit -m \"docs(plan): approve the plan of pw\"",
+      "/plugin/scripts/temper state advance plan_complete build"
+     ],
+     "description": "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
+     "label": "Autonomous: run the rest unattended",
+     "move": "arm"
     },
     {
      "calls": [
@@ -9174,14 +9163,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Open the plan as a page to comment on.",
-     "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
-     "label": "Open HTML review",
-     "move": null
-    },
-    {
-     "calls": [],
-     "description": "Share HTML review, Grill Me, Teach Me, Save for later",
+     "description": "Open HTML review, Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -9192,19 +9174,19 @@ export const VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Approve the plan, commit it, and start Build.",
-      "label": "Continue to Build (Recommended)"
+      "description": "Approve the plan; every later stage keeps its own gate.",
+      "label": "Stage by stage (Recommended)"
+     },
+     {
+      "description": "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
+      "label": "Autonomous: run the rest unattended"
      },
      {
       "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
       "label": "Fresh review first"
      },
      {
-      "description": "Open the plan as a page to comment on.",
-      "label": "Open HTML review"
-     },
-     {
-      "description": "Share HTML review, Grill Me, Teach Me, Save for later",
+      "description": "Open HTML review, Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],
@@ -9353,7 +9335,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -10000,7 +9982,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
@@ -10505,7 +10487,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -11062,7 +11044,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -11347,7 +11329,7 @@ export const VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [

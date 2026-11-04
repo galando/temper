@@ -32,7 +32,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
 | `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
 | `context_map` | at Plan, when `plan.md` has a Context Map: `{intro, file, rows, answer, table}`, the table as plain text |
-| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`, `Is this the right context for the plan?`), the Blocking line's choices (three at most) plus `Carry forward`, each with the table as its preview; a choice runs `temper plan review --answer '<choice>'` then `temper gate plan`; `answer` is the call a typed answer fills. When the pending check is the plan gate's only failed row, `ask` is this question |
+| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
 | `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
 
@@ -61,7 +61,7 @@ commit gate (a change made at Build, or of docs only, runs only the stage's gate
   goes on; any other failure of it stops the action.
 - **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
   in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
-- **`auto`**: an armed autonomous run moves by itself: run `calls`, then ask `next` again.
+- **`auto`**: the CLI's own move: an armed autonomous run, or a step with nothing to decide (9.8.0: the one group of a plan passing, a Build task an earlier task already built in an armed run). Run `calls`, then ask `next` again.
 - **`broken`**: the run state does not fit its spec folder; ask the `restart` question.
 
 ### Questions

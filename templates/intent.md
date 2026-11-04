@@ -60,8 +60,15 @@ acceptance above. Never invent a baseline or an owner: state them only when know
 {Each bullet labeled Blocking or Deferred. A question answered moves to
 ### Decisions and leaves this section — the two never hold the same question.}
 
-- Blocking: {question}; consequence: {effect}; owner: {who decides}.
+- Blocking: {question, concrete} choices: {recommended answer} | {other answer} | {other answer}
 - Deferred: {question}; consequence: {effect}; why work can proceed: {reason}; needed by: {when}.
+
+### Assumptions
+
+{What the intent assumes for the rules nobody was asked about (agents/intent.md, the rules checklist), one line each,
+so the person can scan and correct them at the Intent gate.}
+
+- {what is assumed} (because {why})
 
 ### Decisions
 

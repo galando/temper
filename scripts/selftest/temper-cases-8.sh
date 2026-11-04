@@ -182,6 +182,7 @@ assert_exit "redo: only the stage the run is at runs again" 1 "$TEMPER" state re
 # --- grouped Build: groups start, tasks are handed out, the group question ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 rm -f .temper/groups.json
+"$TEMPER" acceptance skip --reason "the scheduling cases below" >/dev/null 2>&1   # 9.8.0: else the acceptance writer comes first
 assert_eq "next: Build starts the group whose dependencies are met" "work|group start G1" \
   "$(nx "d['action'] + '|' + d['calls'][-1].split('temper ', 1)[1]")"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": ".claude/worktrees/temper-demo-G1"}}, "tasks": {"1": {"status": "pending", "group": "G1"}}}\n' > .temper/groups.json

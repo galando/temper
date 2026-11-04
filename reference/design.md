@@ -34,6 +34,13 @@ who owns the call. These are the points an analyst would have escalated — a hu
 resolves each one at the design gate, before Build spends anything on the wrong
 answer. Design flags; it never silently picks a side on a policy conflict.
 
+**A concern the person must decide becomes a question with ready answers (9.8.0).** Listing a concern at the gate let
+it pass unread: the person approved the list and the design stayed as it was. For each concern that needs a product
+or policy call (a cap, a role, what happens in an edge case), also add one line to intent.md's `### Open Questions`:
+`- Blocking: Design: {the concern as a concrete question} choices: {recommended} | {other} | {other}`. The CLI asks it
+before the Design question, the answer goes into intent.md's Decisions and into that concern's `resolved:` line, and
+the acceptance tests and Build read it there. A concern that is only a note for the builders stays a concern.
+
 The section is **always present** — when nothing was flagged, write
 `None flagged — {one line on why}` rather than omitting it: an absent section is
 indistinguishable from a forgotten check, and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` mechanically
@@ -77,6 +84,9 @@ then re-show the same section / "Other" edits then re-shows the same section). A
 last section, ask the gate question again.
 
 ## ADR Generation
+
+**Only in a project that keeps ADRs (9.8.0):** a `docs/decisions/` folder with at least one ADR in it. Otherwise
+write none: an ADR nobody asked for is a file outside the plan, and the commit gate's scope row names it.
 
 After `design.md` is written, scan it for genuine architectural decisions — schema/
 storage technology choice, framework/library selection for a new capability, API

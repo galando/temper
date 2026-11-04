@@ -116,8 +116,9 @@ export function deriveView(get: (path: string) => string | undefined): string | 
   const skipped = (s: string) => overrides.find(o => o.stage === s)
   const verdict = (s: string): string | undefined => gates[s]?.verdict
   const result = verdict(stage) === 'PASS' || skipped(stage) ? 'pass' : verdict(stage) === 'FAIL' ? 'fail' : 'work'
-  const armed = bs.run_mode === 'autonomous' && autonomy
-  const design = stage === 'design' || verdict('design') !== undefined || ((bs.complexity === 'medium' || bs.complexity === 'complex') && designOn)
+  const armed = bs.run_mode === 'autonomous'   // 9.8.0: no setting; the person arms it at the last question before Build
+  // 9.8.0: Design runs for a complex plan, and for a medium one only at risk H (scripts/flow.py has_design)
+  const design = stage === 'design' || verdict('design') !== undefined || ((bs.complexity === 'complex' || (bs.complexity === 'medium' && bs.risk === 'H')) && designOn)
   let name: string
   if (command === 'fix') name = 'fix-rca'
   else if (armed && `armed-${stage}-${result}` in VIEWS) name = `armed-${stage}-${result}`

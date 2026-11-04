@@ -188,8 +188,12 @@ class Run:
             return True
         if "design" in self.gates or self.stage == "design":
             return True
+        # 9.8.0: Design runs on risk, not on size. A complex plan gets it; a medium one only when its risk is H (temper risk:
+        # a large blast radius, a CRITICAL or HIGH file, or Plan's raise for a data model, money, permissions or an
+        # integration). Before 9.8.0 every medium plan ran Design: minutes per run, and concerns the person only approved.
         complexity = (self.state.get("complexity") or "").lower()
-        return self.on("phases.design", True) and complexity in ("medium", "complex")
+        risk = (self.state.get("risk") or "").upper()
+        return self.on("phases.design", True) and (complexity == "complex" or (complexity == "medium" and risk == "H"))
 
     def next_of(self, stage):
         s = self.seq()
@@ -215,7 +219,9 @@ class Run:
         return hits[-1] if hits else None
 
     def armed(self):
-        return self.state.get("run_mode") == "autonomous" and self.on("autonomy.enabled")
+        # 9.8.0: no setting turns the unattended run on or off; the person arms it at the last question before Build.
+        # autonomy.enabled is no longer read (it was false in the shipped config, so most runs never saw the option).
+        return self.state.get("run_mode") == "autonomous"
 
     def loop_count(self, frm, to):
         for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
@@ -525,7 +531,9 @@ class Builder:
                 go = self.leave_plan()
                 nl = LABEL.get(r.next_of("plan") or "build")
                 text = "Plan: %s.%s Approve the plan and continue to %s?" % (state_of, said, nl)
-                if r.on("autonomy.enabled"):
+                # 9.8.0: the unattended run is offered at the last question before Build: here when no Design follows,
+                # at the Design question when it does (so every decision is made before the run goes on by itself).
+                if not r.has_design():
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
                              self.opt("Autonomous: run the rest unattended", "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
                                       move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
@@ -560,17 +568,22 @@ class Builder:
                         state_of, len(opens), "; ".join("%d. %s" % (i + 1, t) for i, t in enumerate(opens[:3])),
                         "; and %d more" % (len(opens) - 3) if len(opens) > 3 else "")
                     cont = "Accept the open concerns as written (design.md records it) and start Build."
+                arm = self.opt("Autonomous: run the rest unattended", ("Accept the open concerns as written; " if opens else "") +
+                               "Build, Review and Check go on by themselves and park before the commit.",
+                               move="arm", calls=[self.c("state set run_mode autonomous")] + go)
                 return self.with_more(GATE_HEADER, text, stage,
-                                      [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go), walk,
-                                       self.skill("grill-me", "Grill Me", "Stress test the design.")],
-                                      back_opt() + [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.")
+                                      [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go), arm, walk],
+                                      [self.skill("grill-me", "Grill Me", "Stress test the design.")] + back_opt() +
+                                      [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
                                  options=back_opt() + [override_opt(go), self.save()])
 
         if stage in ("build", "fix"):
             go = [self.c("state advance %s_complete %s" % (stage, nxt))]
             if passed:
-                opts = [self.opt("Continue to %s (Recommended)" % LABEL[nxt], "Start %s." % LABEL[nxt], move="advance", calls=go),
+                change = self.opt("Change something", "Say what to change; Build's fix pass makes it, and Build is checked again.", move="redo",
+                                  calls=[self.c("state redo %s --reason '{reason}'" % stage)], reason=["Handle a case it missed", "Simplify the change"])
+                opts = [self.opt("Continue to %s (Recommended)" % LABEL[nxt], "Start %s." % LABEL[nxt], move="advance", calls=go), change,
                         self.skill("teach-me", "Teach Me", "Walk through the changes.")]
                 return self.question(GATE_HEADER, "%s: %s. Continue to %s?" % (label, state_of, LABEL[nxt]), stage=stage,
                                      options=opts + back_opt() + [self.save()])
@@ -1114,6 +1127,11 @@ class Builder:
             if gate == "PASS" and not ginfo.get("confirmed"):
                 if r.armed():
                     return {"action": "auto", "stage": "build", "calls": [self.c("group continue %s" % gidx)], "say": "Group %s passed; the armed run goes on." % gidx}
+                # 9.8.0: a plan with one group goes on to the merge by itself: the Build question comes right after, and
+                # its "Change something" sends work back. Two questions in a row about the same work were one too many.
+                if len(plan.get("groups", [])) == 1:
+                    return {"action": "auto", "stage": "build", "calls": [self.c("group continue %s" % gidx)],
+                            "say": "Group %s passed; the merge and the Build check come next." % gidx}
                 return {"action": "ask", "stage": "build", "ask": self.group_question(g)}
         if gid and all(gpass(g) and (rg.get(g) or {}).get("confirmed") for g in gid):
             return {"action": "work", "stage": "build", "calls": [self.c("integrate"), self.c("gate build")], "agents": [],
@@ -1423,7 +1441,10 @@ class Builder:
                 return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.record_steps(),
                         "say": "The commit carries the run's record."}
             if end == "shown":
-                return {"action": "ask", "stage": "commit", "ask": self.page_question()}
+                # 9.8.0: the report page is written without a question (it is committed with the spec); the run asked
+                # "write it as HTML too?" at every commit before, one more decision with nothing at stake.
+                return {"action": "work", "stage": "commit", "calls": [self.c("report --html")], "agents": [],
+                        "say": "The report page is written (report.html in the spec folder); then the commit."}
             if r.state.get("parked"):
                 return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?", stage="commit", options=[
                     self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.report_steps()), self.save()])}
@@ -1453,21 +1474,43 @@ class Builder:
                             {"label": "Cancel", "description": "Keep the run.", "move": None, "calls": []}]}
 
     # -- the one entry point -------------------------------------------------------------------
+    @staticmethod
+    def context_text(cm):
+        """9.8.0: the Context check names what the plan leaves out and what it could not find, from the map's own `ignore` and
+        `gap` lines, so the person answers a concrete question instead of judging a list of sources."""
+        rows = cm.get("rows") or []
+        cut = lambda t: t if len(t) <= 90 else t[:87] + "..."
+        left = [cut(x["text"]) for x in rows if x.get("kind") == "ignore"][:3]
+        gaps = [cut(x["text"]) for x in rows if x.get("kind") == "gap"][:2]
+        parts = []
+        if left:
+            parts.append("The plan leaves out: %s." % "; ".join(left))
+        if gaps:
+            parts.append("It could not find: %s." % "; ".join(gaps))
+        if not parts:
+            return "Is this the right context for the plan?", []
+        return " ".join(parts) + " Is that right?", left
+
     def context_question(self, cm):
-        """The Context check as the CLI's own question: the person's choice runs `plan review --answer`, then the plan gate."""
-        r = self.r
-        opts = []
-        for choice in r.context_choices():
-            o = self.opt(choice, "Record this answer in the Context Map, then check the plan again.", move="answer",
-                         calls=[self.c("plan review --answer %s" % shlex.quote(choice)), self.c("gate plan")])
-            o["preview"] = cm["table"]
-            opts.append(o)
+        """The Context check as the CLI's own question. "As planned" records the answer and checks the plan again; any other
+        answer (including what was left out, a source the person names) also sends Plan back to revise with it (`--redo`),
+        so the answer changes the plan instead of only being written down (9.8.0)."""
+        text, left = self.context_text(cm)
+        opts = [self.opt("As planned (Recommended)", "The plan's context is right; check the plan again.", move="answer",
+                         calls=[self.c("plan review --answer 'As planned'"), self.c("gate plan")])]
+        if left:
+            what = "Include what is left out: %s" % "; ".join(left)
+            opts.append(self.opt("Include what is left out", "Plan revises the plan to cover: %s." % "; ".join(left), move="answer",
+                                 calls=[self.c("plan review --answer %s --redo" % shlex.quote(what[:100]))]))
+        opts.append(self.opt("Something else", "Type what Plan should change or read (Other); Plan revises the plan with it.",
+                             do="Ask the person to type it in Other, then run the question's `answer` call with their text."))
         carry = self.opt("Carry forward", "Decide later; the plan gate keeps naming this question.", move=None, calls=[])
-        carry["preview"] = cm["table"]
         opts.append(carry)
-        q = self.question(GATE_HEADER, "Is this the right context for the plan?", opts, "plan")
+        for o in opts:
+            o["preview"] = cm["table"]
+        q = self.question(GATE_HEADER, text, opts, "plan")
         q["context"] = True
-        q["answer"] = self.c("plan review --answer '{text}'")
+        q["answer"] = self.c("plan review --answer '{text}' --redo")
         q["gate"] = self.c("gate plan")
         return q
 
@@ -1851,7 +1894,7 @@ def view(run, nxt):
         "restart": nxt.get("restart"),
         "drift": drift_info(),
         "guard": {"stage": r.stage, "spec": r.spec, "slug": r.slug, "fix_run": r.command == "fix",
-                  "grouped": bool(r.groups), "armed": r.armed(), "autonomy_enabled": r.on("autonomy.enabled"),
+                  "grouped": bool(r.groups), "armed": r.armed(), "autonomy_enabled": True,
                   "plan_files": plan_view(r)["files"], "step": r.state.get("step"), "run_id": r.state.get("run_id"),
                   "prefix": git("rev-parse", "--show-prefix"),
                   "adhoc_stage": (r.state.get("adhoc") or {}).get("stage") if isinstance(r.state.get("adhoc"), dict) else None,

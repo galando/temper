@@ -320,12 +320,11 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
 const PROJECT_NOTES = new Set(['CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md', '.claude/AGENTS.md'])
 
 const AUTONOMY_DENY =
-  'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
-  `Next: ${ASK} at the plan gate, exactly as \`temper next --json\` gives it. ` +
-  'It needs autonomy.enabled: true in .claude/temper.config, which only the user sets.'
+  'Temper: only the user can turn on autonomous mode, at the last question before Build. ' +
+  `Next: ${ASK} at the plan gate (or the Design gate, when Design runs), exactly as \`temper next --json\` gives it.`
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'archived', 'enter', 'built_before', 'review_snapshot'])
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +

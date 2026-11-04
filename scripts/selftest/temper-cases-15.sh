@@ -153,13 +153,13 @@ rm -rf lib unit src docs   # what the sections above left in the shared fixture 
 mkdir -p src unit docs/decisions; echo a > src/a.sh; echo t > unit/a_test.sh
 _gcm() { "$TEMPER" gate commit 2>&1 || true; }
 assert_eq "9.8.0: an interactive run's planned and test files are in scope" "yes" \
-  "$(_gcm | grep -q '\[v\] blast radius — 2 changed, all in the plan' && echo yes || echo no)"
+  "$(_gcm | grep -q '\[v\] blast radius — 2 changed, all declared' && echo yes || echo no)"
 echo adr > docs/decisions/0001-x.md
 assert_eq "9.8.0: an interactive run with a file nobody planned fails the scope row, naming it" "yes" \
-  "$(_gcm | grep -q '\[x\] blast radius — changed outside the plan: docs/decisions/0001-x.md' && echo yes || echo no)"
+  "$(_gcm | grep -q '\[x\] blast radius — changed outside declared files: docs/decisions/0001-x.md' && echo yes || echo no)"
 "$TEMPER" evidence add --stage build --phase feedback --claim "drift docs/decisions/0001-x.md: Add to plan: the person wants the record" >/dev/null 2>&1
 assert_eq "9.8.0: a file the person added to the plan at a Scope drift question is in scope" "yes" \
-  "$(_gcm | grep -q '\[v\] blast radius — 3 changed, all in the plan' && echo yes || echo no)"
+  "$(_gcm | grep -q '\[v\] blast radius — 3 changed, all declared' && echo yes || echo no)"
 rm -rf docs
 python3 - <<'PYEOF'
 p = '.temper/specs/demo/tasks.md'; s = open(p).read()

@@ -118,11 +118,11 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect(bash(ctx('intent'), adv('intent', 'plan'))).toEqual({ deny: ONLY_USER })
     expect(bash(ctx('plan'), adv('plan', 'build'))).toEqual({ deny: ONLY_USER })
     expect('allow' in bash(ctx('intent', { allowed: optionCalls('intent-pass', 'Continue to Plan (Recommended)') }), adv('intent', 'plan'))).toBe(true)
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Continue to Build (Recommended)') }), adv('plan', 'build'))).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), adv('plan', 'build'))).toBe(true)
     // The script by any path: the words after it are the call.
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Continue to Build (Recommended)') }), 'cd x && /a/b/scripts/temper state advance plan_complete build')).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), 'cd x && /a/b/scripts/temper state advance plan_complete build')).toBe(true)
     // Another next stage than the answer names is another call.
-    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Continue to Build (Recommended)') }), adv('plan', 'design')))).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), adv('plan', 'design')))).toBe(true)
     const design = optionCalls('design-plan-pass', 'Continue to Design (Recommended)')
     expect('allow' in bash(ctx('plan', { allowed: design }), adv('plan', 'design'))).toBe(true)
     expect(isDeny(bash(ctx('plan', { allowed: design }), adv('plan', 'build')))).toBe(true)

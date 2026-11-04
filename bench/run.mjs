@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One benchmark run: one task, one arm, one repetition.
 //
-//   node scripts/bench/run.mjs --task login-lockout --arm temper --rep 1 [--model M] [--timeout-min 60] [--out DIR]
+//   node bench/run.mjs --task login-lockout --arm temper --rep 1 [--model M] [--timeout-min 60] [--out DIR]
 //
 // Arms (the task text is the same, word for word, in every arm):
 //   vanilla  Claude Code with the task as the prompt. No plugin, no extra words.
@@ -19,7 +19,7 @@
 //   run.json           arm, task, rep, model, cost, time, turns, how it ended
 //   work/              the repository as the arm left it (grade.py reads it)
 // The out folder defaults to $TEMPER_BENCH_RESULTS/<task>__<arm>__<rep>, else ~/temper-bench-results/...
-// It is never part of CI: it costs real model calls. Requires `npm install` in scripts/bench once.
+// It is never part of CI: it costs real model calls. Requires `npm install` in bench once.
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -30,7 +30,7 @@ import { answer, choose, typedAnswer } from "./person.mjs";
 import { answerQuestion, replyToMessage } from "./person_llm.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PLUGIN = path.resolve(HERE, "..", "..");
+const PLUGIN = path.resolve(HERE, "..");
 const TEMPER = path.join(PLUGIN, "scripts", "temper");
 // Results live outside the plugin folder: Temper's CLI refuses to run a project inside its own plugin.
 export const RESULTS = process.env.TEMPER_BENCH_RESULTS || path.join(os.homedir(), "temper-bench-results");

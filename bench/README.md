@@ -49,7 +49,7 @@ It costs real model calls and is never part of CI. It runs the arms unattended w
 scratch folder under `~/temper-bench-results/` (or `$TEMPER_BENCH_RESULTS`), outside the plugin folder, since Temper refuses to run a project inside its own plugin, so run it on a machine or container you are happy to give that access.
 
 ```bash
-cd scripts/bench && npm install
+cd bench && npm install
 node run.mjs --task login-lockout --arm temper --rep 1     # one run
 python3 grade.py ~/temper-bench-results/login-lockout__temper__1           # grade it
 bash run-all.sh 3                                           # every task x every arm x 3 reps, graded

@@ -75,7 +75,7 @@ def detect(root, test_cmd="", cov_cmd=""):
     if test_cmd:
         out = {"stack": "configured", "test": test_cmd, "coverage": None, "hint": "set check.commands.coverage to measure coverage",
                "mutation": any(True for _ in _py_files(root))}
-        if cov_cmd:
+        if cov_cmd:   # the command that runs the suite with coverage on and prints a total line (TOTAL ... 85%)
             out["coverage"] = {"run": cov_cmd, "kind": "configured"}
         return out
     j = lambda *p: os.path.join(root, *p)

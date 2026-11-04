@@ -23,7 +23,11 @@ export function startProject(w: World, config = '', before?: (w: World) => void)
   }
   w.sh('git add -A && git commit -qm base')
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
-  if (config) fs.appendFileSync(path.join(w.dir, '.claude/temper.config'), `\n${config}\n`)
+  // 9.8.0: Check is run by the CLI. The driver names its commands (the suite, with a coverage total it prints) and turns
+  // the mutation gate off, so a run gives the same verdict on every machine.
+  const cfg = path.join(w.dir, '.claude/temper.config')
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80', "  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: python3 -m unittest discover -s unit -t .\n    coverage: python3 -m unittest discover -s unit -t . && echo 'TOTAL 100 10 90%'"))
+  if (config) fs.appendFileSync(cfg, `\n${config}\n`)
   w.sh('git add -A && git commit -qm config')
   before?.(w)
   w.sh(`${TEMPER} init`)
@@ -76,6 +80,8 @@ export const AGENTS: Record<string, Agent> = {
     t(w, 'risk')
   },
   'temper:temper-plan-review': (w, a) => freshReviewer(w, a, []),
+  // 9.8.0: the acceptance writer: no test framework of its own in the driver, so it records why there are none.
+  'temper:temper-acceptance': w => { t(w, "acceptance skip --reason 'the e2e driver writes no acceptance tests'") },
   'temper:temper-build-task': buildTask,
   'temper:temper-review': w => {
     t(w, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`)
@@ -124,8 +130,8 @@ export const modGuards = (w: World): void => {
   if (w.mode === 'mod') {
     expect(write?.includes('The run ci (Plan stage) owns this folder.') && write.includes('claude --worktree'), `the write refusal names the run and the worktree (${write})`)
     expect(advance !== null, 'leaving Plan is refused without the answer')
-    const option = w.answer(n.ask as Json, 'Continue to Build (Recommended)')
-    expect(option.label === 'Continue to Build (Recommended)', 'the option exists')
+    const option = w.answer(n.ask as Json, 'Stage by stage (Recommended)')
+    expect(option.label === 'Stage by stage (Recommended)', 'the option exists')
     expect(w.denies({ tool: 'Bash', input: { command: `${TEMPER} state advance plan_complete build` } }) === null, 'leaving Plan passes as the call the answer maps to')
   } else {
     expect(write === null && advance === null, 'with no mod nothing is refused')
@@ -443,6 +449,7 @@ export const designRun = (w: World): void => {
     'temper:temper-plan': (wd, a) => {
       AGENTS['temper:temper-plan']!(wd, a)
       t(wd, 'state set complexity medium')
+      t(wd, "risk --raise H --reason 'the scenario wants Design (9.8.0: medium runs Design at risk H)'")
     },
     'temper:temper-design': wd => wd.write(`${SPEC}/design.md`, '# Design: CI report\n\n## Architecture\n\nTwo small modules.\n\n## Areas of Concern\n\nNone flagged — the change is two new files.\n'),
   }
@@ -617,6 +624,7 @@ const FIX_FINDING: FreshFinding = { lens: 'readiness', severity: 'high', claim: 
 const mediumPlan = (wd: World, a: Json): void => {
   AGENTS['temper:temper-plan']!(wd, a)
   t(wd, 'state set complexity medium')
+      t(wd, "risk --raise H --reason 'the scenario wants Design (9.8.0: medium runs Design at risk H)'")
 }
 const designAgent: Agent = wd => wd.write(`${SPEC}/design.md`, '# Design: CI report\n\n## Architecture\n\nTwo small modules.\n\n## Areas of Concern\n\nNone flagged — the change is two new files.\n')
 export const freshReview = (w: World): void => {

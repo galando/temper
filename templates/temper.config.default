@@ -137,7 +137,7 @@ loops:
 # the local `temper integrate` merge, both made by the CLI; NEVER re-plans unattended.
 # ============================================================
 autonomy:
-  enabled: false
+  # enabled is no longer read (9.8.0): the unattended run is offered at the last question before Build in every run.
   max-blast-radius: 15         # the plan gate splits a group that declares more files than this
   # Folder-name patterns over paths in your project only (any path before and after).
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
