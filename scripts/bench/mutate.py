@@ -10,6 +10,10 @@ constant moved by one, `and` / `or` swapped, a `not` removed, a call statement d
 write). At most --max mutants (default 80), picked evenly from the sorted list so the sample is deterministic. Some
 mutants are equivalent (no test could catch them); that lowers every arm's score alike.
 
+For a bug task (meta.json kind "bug") it also answers the question that matters most for a fix: if the bug came
+back, would the arm's tests catch it? It restores the task's code folder to the base commit (the buggy code; files
+the arm added stay), keeps the arm's suite, and runs it: `regression_caught` is true when the suite fails.
+
 Writes RUN_DIR/mutation.json and prints it. It never changes RUN_DIR/work: it works on a copy.
 """
 import ast
@@ -115,7 +119,8 @@ def main():
     cap = int(sys.argv[sys.argv.index("--max") + 1]) if "--max" in sys.argv else 80
     run = json.load(open(os.path.join(run_dir, "run.json")))
     meta = json.load(open(os.path.join(HERE, "tasks", run["task"], "meta.json")))
-    code_dir, suite_dir = meta.get("code_dir", "ledger"), meta.get("suite_dir", "unit")
+    code_dir = meta.get("code_dir") or ("ledger" if os.path.isdir(os.path.join(run_dir, "work", "ledger")) else "src")
+    suite_dir = meta.get("suite_dir", "unit")
     tmp = tempfile.mkdtemp(prefix="bench-mut-")
     try:
         w = os.path.join(tmp, "w")
@@ -143,6 +148,10 @@ def main():
                 open(full, "w").write(orig)
             result.update(planted=len(planted), caught=caught,
                           score=round(caught / len(planted), 3) if planted else None, survivors=survivors)
+        if meta.get("kind") == "bug" and result.get("note") is None:
+            git(w, "reset", "-q")
+            git(w, "checkout", run["base"], "--", code_dir)
+            result["regression_caught"] = not suite_passes(w, suite_dir)
         with open(os.path.join(run_dir, "mutation.json"), "w") as f:
             json.dump(result, f, indent=2)
             f.write("\n")
