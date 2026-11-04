@@ -219,7 +219,7 @@ export const coveredAndManual = (w: World): void => {
     person: (ask, wd) => {
       const q = String(ask.question.question)
       asked.push(q)
-      if (q.includes('its tests already pass before any change')) return { label: 'Accept it as done', note: 'an earlier change built it' }
+      if (q.includes('its tests already pass before any change')) return { label: 'Accept it as done (Recommended)', note: 'an earlier change built it' }
       if (q.includes('is a manual task')) return { label: 'Confirm', note: 'Dana Cohen' }
       if (q.startsWith('Every gate passed. The report is above')) {
         const rows = JSON.stringify(wd.json('.temper/evidence/build.json'))

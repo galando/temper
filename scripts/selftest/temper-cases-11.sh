@@ -306,10 +306,10 @@ assert_eq "F14: a change made at Build, or of docs only, re-runs only the stage'
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {"1": {"status": "covered", "group": "G1", "attempt": 3, "covered": {"cmd": "pytest unit/test_a.py -q", "tail": "3 passed in 0.02s"}}}}\n' > .temper/groups.json
 assert_eq "F19: the covered question names the task, the RED command and its output, with the four options" \
-  "ask|Task 1 (done task): its tests already pass before any change, so an earlier task built it. The RED run pytest unit/test_a.py -q passed (exit 0): 3 passed in 0.02s. Accept it as done?|Accept it as done|Run it again|Loop back to Plan|Save for later" \
+  "ask|Task 1 (done task): its tests already pass before any change, so an earlier task built it. The RED run pytest unit/test_a.py -q passed (exit 0): 3 passed in 0.02s. Accept it as done?|Accept it as done (Recommended)|Run it again|Loop back to Plan|Save for later" \
   "$(nx "'|'.join([d['action'], d['ask']['question']['question']] + [o['label'] for o in d['ask']['options']])")"
-assert_eq "F19: Accept asks for a reason and runs task accept; Run it again runs task retry" "task accept 1 --reason '{reason}'|True|task retry 1" \
-  "$(nx "o = d['ask']['options']; o[0]['calls'][0].split('temper ', 1)[1] + '|' + str(o[0]['reason']) + '|' + o[1]['calls'][0].split('temper ', 1)[1]")"
+assert_eq "F19: Accept runs task accept with the question's own reason, no second question (9.8.0); Run it again runs task retry" "task accept 1 --reason 'An earlier task built it'|False|task retry 1" \
+  "$(nx "o = d['ask']['options']; o[0]['calls'][0].split('temper ', 1)[1] + '|' + str(o[0].get('reason', False)) + '|' + o[1]['calls'][0].split('temper ', 1)[1]")"
 assert_eq "F19: Accept it as done is the move covered, not a finding's accept (9.8.0)" "covered|redo" \
   "$(nx "o = d['ask']['options']; o[0]['move'] + '|' + o[1]['move']")"
 assert_exit "F19: task start holds a covered task back" 1 "$TEMPER" task start 1

@@ -139,7 +139,9 @@ async function main() {
       const answers = {};
       for (const q of input.questions || []) {
         const opts = q.options || [];
-        const gate = opts.length > 0 && opts.every((o) => o.label in ctx.moves);
+        // A Temper gate (its options are the CLI's), and a gate's reason follow-up ("... What is the reason?", its options the
+        // CLI's suggested reasons), are the fixed policy's: the product owner knows the product, not the run's mechanics.
+        const gate = opts.length > 0 && (opts.every((o) => o.label in ctx.moves) || /What is the reason\?$/.test(`${q.question}`));
         let ans, used = [], who = "policy";
         if (gate) ans = choose(q, ctx.moves);
         else if (/\bname\b/i.test(`${q.question}`) && /\b(type|other)\b/i.test(`${q.question} ${opts.map((o) => o.label).join(" ")}`)) ans = typedAnswer(q);

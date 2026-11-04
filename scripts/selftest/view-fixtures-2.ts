@@ -1062,31 +1062,11 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper task accept 1 --reason '{reason}'"
+      "/plugin/scripts/temper task accept 1 --reason 'An earlier task built it'"
      ],
-     "description": "Commit its tests, merge them and tick the task.",
-     "label": "Accept it as done",
-     "move": "covered",
-     "reason": true,
-     "reason_question": {
-      "header": "Temper gate",
-      "multiSelect": false,
-      "options": [
-       {
-        "description": "",
-        "label": "An earlier task built it"
-       },
-       {
-        "description": "",
-        "label": "I accept the risk"
-       },
-       {
-        "description": "Back to the question before.",
-        "label": "Cancel"
-       }
-      ],
-      "question": "Accept it as done. What is the reason?"
-     }
+     "description": "Commit its tests, merge them and tick the task (reason: an earlier task built it).",
+     "label": "Accept it as done (Recommended)",
+     "move": "covered"
     },
     {
      "calls": [
@@ -1133,8 +1113,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Commit its tests, merge them and tick the task.",
-      "label": "Accept it as done"
+      "description": "Commit its tests, merge them and tick the task (reason: an earlier task built it).",
+      "label": "Accept it as done (Recommended)"
      },
      {
       "description": "The kept worktree goes and a fresh attempt starts.",

@@ -1248,8 +1248,9 @@ class Builder:
         text = "Task %d (%s): its tests already pass before any change, so an earlier task built it. The RED run %s passed (exit 0): %s. Accept it as done?" % (
             n, title, c.get("cmd") or "(no command)", tail or "no output")
         # `covered`, not `accept`: accepting a review finding leaves a defect in; this takes work that is done (9.8.0).
-        opts = [self.opt("Accept it as done", "Commit its tests, merge them and tick the task.", move="covered",
-                         calls=[self.c("task accept %d --reason '{reason}'" % n)], reason=["An earlier task built it", "I accept the risk"]),
+        # 9.8.0: the reason is the question's own fact (an earlier task built it), so it is recorded without a second question.
+        opts = [self.opt("Accept it as done (Recommended)", "Commit its tests, merge them and tick the task (reason: an earlier task built it).", move="covered",
+                         calls=[self.c("task accept %d --reason %s" % (n, shlex.quote("An earlier task built it")))]),
                 self.opt("Run it again", "The kept worktree goes and a fresh attempt starts.", move="redo", calls=[self.c("task retry %d" % n)])]
         if r.can_loop("build", "plan"):
             opts.append(self.opt("Loop back to Plan", "The plan asks for work that is already done.", move="back",
