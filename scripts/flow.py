@@ -967,6 +967,10 @@ class Builder:
         found = self.r.latest_findings()
         if found:
             lines.append("What the stage before the loop left open: %s." % "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(found)))
+            if any(x.startswith("acceptance (written before Build)") for x in found):
+                # 9.8.0: three benchmark runs looped after a fix pass edited a locked acceptance test.
+                lines.append("The acceptance tests are locked: change the code, never a test in %s/acceptance/. If a test is wrong, "
+                             "say which and why in your panel; the person decides at the Check question." % self.r.spec)
         # The file of the stage the loop came back from: one an earlier run left (a Check context beside a loop from
         # Review) is not this loop's feedback.
         frm = (self.r.latest_loop() or {}).get("from_stage")

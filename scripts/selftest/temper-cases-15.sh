@@ -374,6 +374,10 @@ assert_eq "9.8.0: the step back keeps the failing test's output and the survivin
   "$(python3 -c "
 import json; f = json.load(open('.temper/feedback-loops.json'))['active_loops'][0]['findings']; j = ' '.join(f)
 print(('yes' if '404 != 200' in j else 'no') + '|' + ('yes' if 'lib/calc.py line 3: cmp' in j else 'no'))")"
+python3 -c "
+import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['built_before'] = True; json.dump(d, open(p, 'w'))"   # the fix pass
+assert_eq "9.8.0: the fix pass is told the acceptance tests are locked, and to report a wrong one instead of editing it" "yes" \
+  "$(nx "'yes' if any('The acceptance tests are locked: change the code, never a test' in a['prompt'] for a in d.get('agents', [])) else 'no'")"
 
 # Design changed the approved tasks: the Design question says so, and Continue approves them with the design
 f9_tasks | m_setup
