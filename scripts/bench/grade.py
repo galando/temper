@@ -75,7 +75,7 @@ def main():
     for line in git(g, "diff", "--cached", "--numstat", run["base"]).splitlines():
         add, rem, p = line.split("\t", 2)
         files.append({"path": p, "added": int(add) if add.isdigit() else 0, "removed": int(rem) if rem.isdigit() else 0})
-    files = [f for f in files if "__pycache__/" not in f["path"] and not f["path"].endswith(".pyc")]
+    files = [f for f in files if "__pycache__/" not in f["path"] and not f["path"].endswith(".pyc") and f["path"] != ".coverage"]
     tool = lambda p: p.startswith(".temper/") or p.startswith(".claude/") or p.startswith(".githooks/")
     code = [f for f in files if not tool(f["path"])]
     expected = meta.get("expected_paths", [])
