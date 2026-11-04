@@ -23,7 +23,11 @@ export function choose(question, moves = {}) {
   const opts = Array.isArray(question.options) ? question.options : [];
   if (opts.length === 0) return typedAnswer(question);
   if (WANTS_TEXT.test(`${question.question}`) || opts.some((o) => /^type\b/i.test(`${o.label}`))) return typedAnswer(question);
-  const kept = opts.filter((o) => !REFUSE.test(`${o.label}`) && !REFUSE_MOVE.has(moves[o.label]));
+  // Temper's `accept` move is two things: accepting a review finding (a defect left in: refused) and accepting a
+  // task whose tests already pass because an earlier task built it (a diligent person takes it).
+  const covered = (o) => moves[o.label] === "accept" && /already|accept it as done|covered/i.test(`${o.label} ${o.description || ""} ${question.question}`)
+    && !/finding/i.test(`${question.question} ${question.header || ""}`);
+  const kept = opts.filter((o) => covered(o) || (!REFUSE.test(`${o.label}`) && !REFUSE_MOVE.has(moves[o.label])));
   const pool = kept.length ? kept : opts;
   const rec = pool.find((o) => /recommended/i.test(`${o.label}`));
   return (rec || pool[0]).label;
