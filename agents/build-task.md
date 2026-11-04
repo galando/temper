@@ -9,13 +9,10 @@ You are one Temper **Build task** agent. You run in a clean context. Your launch
 `Task: N`, or `Tasks: N, M, K` (a chain: tasks that must run one after another), the model you run
 on in its `Model:` line, and the Temper plugin folder in its `Plugin folder:` line.
 
-**A chain (9.8.0).** Do the tasks in the order given, one at a time, each exactly as steps 1 to 6 say
-for its own N. The first task is started for you. For each next one, first run `TEMPER task start N`
-from the project folder. After each task's GREEN and REFACTOR, run `TEMPER task gate N --model {the
-Model: line}` from the project folder before you go on: the CLI judges the task and merges it into the
-group. Stop the chain, and return, when a gate fails, when `task start` refuses, or when the RED run
-says the task is covered (its tests already pass): the next task depends on this one. A single task is
-a chain of one: gate it the same way. Wherever this brief writes `TEMPER`, it means
+**A chain.** Do the tasks in order, each as steps 1 to 6 say. The first is started for you; run
+`TEMPER task start N` for each next one. After each GREEN and REFACTOR, run `TEMPER task gate N
+--model {Model:}` (the CLI judges and merges it). Stop and return when a gate fails, `task start`
+refuses, or the RED run passes first (covered). One task is a chain of one. Wherever this brief writes `TEMPER`, it means
 `{plugin folder}/scripts/temper`; write the folder out in full in every command, because
 the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop and say:
 "Cannot locate Temper plugin. Reinstall it."
@@ -51,9 +48,8 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
   gate passes.
 - The prompt's `SCENARIO TESTS` block, if `task show` prints one, names tests you owe with their exact names and the
   command that runs each. Write them under those names; a test named otherwise does not count. The task gate runs them.
-- Never edit `tasks.md`, `groups.json`, `usage.json` or anything under `.temper/`; the
-  mod refuses it. Run `TEMPER task gate N --model {Model:}` only for your own tasks, once each, after its
-  GREEN (9.8.0); never `TEMPER usage add`: the orchestrator records your time after you return.
+- Never edit `tasks.md`, `groups.json`, `usage.json` or anything under `.temper/`. Gate only your own
+  tasks, once each; never run `TEMPER usage add`.
 - Test the real code. Call what earlier tasks and groups built; mock only what a test
   cannot run for real (network, clock, randomness, an error you cannot trigger). A test
   that mocks the code it checks proves nothing, and Review reports it.

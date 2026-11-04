@@ -185,9 +185,9 @@ rm -f .temper/groups.json
 assert_eq "next: Build starts the group whose dependencies are met" "work|group start G1" \
   "$(nx "d['action'] + '|' + d['calls'][-1].split('temper ', 1)[1]")"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": ".claude/worktrees/temper-demo-G1"}}, "tasks": {"1": {"status": "pending", "group": "G1"}}}\n' > .temper/groups.json
-assert_eq "next: a ready task gets its own launch: task start, the task agent, then its task gate" \
-  "work|temper:temper-build-task|task start 1|task gate 1 --model" \
-  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], a['before'][0].split('temper ', 1)[1], ' '.join(a['after'][0].split('temper ', 1)[1].split()[:4])])")"
+assert_eq "next: a ready task gets its own launch: task start, the task agent, then its time and its task gate" \
+  "work|temper:temper-build-task|task start 1|usage add --stage build|task gate 1 --model" \
+  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], a['before'][0].split('temper ', 1)[1], ' '.join(a['after'][0].split('temper ', 1)[1].split()[:4]), ' '.join(a['after'][1].split('temper ', 1)[1].split()[:4])])")"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {"1": {"status": "running", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a running task is waited for" "wait|1" "$(nx "d['action'] + '|' + str(d['tasks'][0]['task'])")"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json

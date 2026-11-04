@@ -382,8 +382,8 @@ python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['
 assert_eq "live run 9: the record's message says the code is in the commits before it, for a door's run too" "1" \
   "$(nx "sum(1 for x in d['steps'] if x.startswith('git commit') and '(the code is in the commits before it)' in x)")"
 mkdir -p src; echo x > src/new.sh
-assert_eq "check: with code changed too, the commit message is the feature's" "1" \
-  "$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
+assert_eq "check: with code changed too, the commit message is the feature's, drafted by the CLI (9.8.0)" "1" \
+  "$(nx "sum(1 for x in d['steps'] if x.startswith(\"git commit -m 'feat(demo): \"))")"
 rm -rf .git src
 
 # --- live run 1: Loop back to Build keeps what Review found, so the fix pass reads it ---

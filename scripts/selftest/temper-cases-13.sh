@@ -104,8 +104,15 @@ f9_tasks > .temper/specs/demo/tasks.md
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": ".claude/worktrees/temper-demo-G1"}}, "tasks": {"1": {"status": "pending", "group": "G1"}}}\n' > .temper/groups.json
 "$TEMPER" evidence add --stage build --phase note --kind input --claim 'Task 1: use the retry helper' >/dev/null 2>&1
 "$TEMPER" evidence add --stage build --phase note --kind input --claim 'Task 2: leave this alone' >/dev/null 2>&1
-assert_eq "F1: the prompt of Task 1 carries its own note and not the note of Task 2" "1|0" \
-  "$(nx "str(sum(a['prompt'].count(\"Person's note: Task 1: use the retry helper\") for a in d['agents'])) + '|' + str(sum(a['prompt'].count('leave this alone') for a in d['agents']))")"
+assert_eq "F1: Task 2 depends on Task 1, so one agent builds both (9.8.0): its prompt carries each task's own note" "1|1" \
+  "$(nx "str(sum(a['prompt'].count(\"Person's note: Task 1: use the retry helper\") for a in d['agents'])) + '|' + str(sum(a['prompt'].count('Person\\'s note: Task 2: leave this alone') for a in d['agents']))")"
+python3 - <<'PYEOF'
+p = '.temper/specs/demo/tasks.md'; s = open(p).read()
+s = s.replace('**Depends:** Task 1', '**Depends:** none', 1)
+open(p, 'w').write(s)
+PYEOF
+assert_eq "F1: with Task 2 independent, the prompt of Task 1 carries its own note and not the note of Task 2" "1|0" \
+  "$(nx "a = [x for x in d['agents'] if x['tasks'] == [1]][0]['prompt']; str(a.count(\"Person's note: Task 1: use the retry helper\")) + '|' + str(a.count('leave this alone'))")"
 
 # --- Run Check again: a measurement nobody took (a missing coverage tool) is not a defect in the code ---
 fresh; gpass intent plan build review; _at check

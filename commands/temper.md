@@ -59,8 +59,8 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper go` and do what its `action` says. Then run it again. Stop
 only where this section says so. When it lists `setup`, run those calls first, each once.
 
-**`temper go` (9.8.0)** runs the CLI's own steps itself (a gate, a group start, a merge, Check's run,
-an armed run's moves) and prints one compact object at the first point that needs you: agents to
+**`temper go` (9.8.0)** runs the CLI's own steps itself (gates, starting and merging Build's work,
+Check's run, an armed run's moves) and prints one compact object at the first point that needs you: agents to
 launch, a question to ask, steps to do, a wait, or the end. Its `ran` lists what it ran; say nothing
 about those. It never runs a call only the person may cause: the calls of the option the person
 chose are yours to run, as below. When it prints `action: error`, say its `say` in one line and run
