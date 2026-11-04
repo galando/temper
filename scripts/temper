@@ -4294,6 +4294,17 @@ print('%d|%s' % (sum(1 for r in runs if r.get('exit_code') == 0), '; '.join(red)
   elif [[ -n "$mut_note" ]]; then
     reqs+=("$(_req "mutation score >= threshold" 1 "${mut_note#mutation: }")")
   fi
+  # 9.8.0: the acceptance tests written from the intent before Build (agents/acceptance.md), run as they were locked.
+  local acc; acc="$(_ev_last_row check '^acceptance \(written before Build\)')"
+  if [[ -n "$acc" ]]; then
+    local acc_claim; acc_claim="$(_ev_last_claim check '^acceptance \(written before Build\)')"
+    if [[ "${acc%%|*}" == "0" ]]; then
+      reqs+=("$(_req "acceptance tests written before Build" 1 "$([[ "$acc_claim" == *skipped ]] && echo "skipped: ${acc#*|}" || echo "they pass, unchanged since they were locked")")")
+    else
+      reqs+=("$(_req "acceptance tests written before Build" 0 "${acc#*|}")")
+      all_pass=0
+    fi
+  fi
   # 9.8.0: a fix's regression proof: the tests it added or changed fail on the code before the fix (scripts/check_run.py).
   if [[ "$(cmd_state_get command temper)" == "fix" ]]; then
     local reg; reg="$(_ev_last_row check '^regression proof$')"
@@ -4486,72 +4497,81 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
       all_pass=0
     fi
   done
-  if [[ "$run_mode" == "autonomous" ]]; then
-    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius 15)"
-    # Checkpoint commits land before Review/Check run, so a plain status diff
-    # returns nothing. When the run recorded a base_sha, the changed set is
-    # base_sha..HEAD plus still-uncommitted paths; without one, the working tree.
-    local base_sha changed_n
-    base_sha="$(cmd_state_get base_sha "")"
-    if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-      changed_n=$( { git -C "$REPO_ROOT" diff --name-only "$base_sha" 2>/dev/null
-                     git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
-                   } | _project_names | sort -u | grep -c . )
-    else
-      changed_n=$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //' | _project_names | sort -u | grep -c .)
-    fi
-    if [[ -f "$(_spec_path "")/tasks.md" ]]; then
-      # D-01: in grouped mode a group may legitimately exceed the count, so the row compares the
-      # changed set (base_sha-relative plus uncommitted) with the union of declared files instead.
-      local gspec; gspec="$(_spec_path "")"
-      local gverdict
-      gverdict="$( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-                       git -C "$REPO_ROOT" diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
-                     git -C "$REPO_ROOT" -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
-                   } | _project_names | sort -u | python3 -I -c "
-import json, sys
+  # 9.8.0: the scope row is checked in every run with a plan, not only an unattended one: each changed file is one
+  # tasks.md declares, a test file, the run's spec folder or Temper's own state, or one the person allowed at a Scope drift
+  # question (Add to plan, Allow once: the `drift {path}: {choice}` rows of the Build ledger). Before 9.8.0 an
+  # interactive run could commit files nobody planned (an ADR, run state written in docs/); now the person sees them.
+  local base_sha; base_sha="$(cmd_state_get base_sha "")"
+  _changed_since_base() {
+    { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
+        git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
+      git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
+    } | _project_names | sort -u
+  }
+  local gspec; gspec="$(_spec_path "")"
+  local plan_json='{"tasks": []}'
+  [[ -n "$gspec" && -f "$gspec/tasks.md" ]] && plan_json="$(_grouped_parse "$gspec/tasks.md")"
+  if [[ -n "$gspec" && -f "$gspec/tasks.md" ]]; then
+    local gverdict
+    gverdict="$(_changed_since_base | python3 -I -c "
+import json, os, re, sys
 plan = json.loads(sys.argv[1]); spec = sys.argv[2].rstrip('/')
-declared = sorted({f for t in plan['tasks'] for f in t['files']})
+declared = {f for t in plan.get('tasks', []) for f in t.get('files', [])}
+try:
+    rows = json.load(open(sys.argv[3]))
+except Exception:
+    rows = []
+allowed = set()
+for r in rows if isinstance(rows, list) else []:
+    m = re.match(r'^drift (\\S+): (Add to plan|Allow once)\\b', str(r.get('claim') or ''), re.I)
+    if m:
+        allowed.add(m.group(1))
+test = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\\.py$|_test\\.(py|go)$|\\.(test|spec)\\.[cm]?[jt]sx?$|Tests?\\.(java|kt|cs)$|_spec\\.rb$')
 def ok(p):
     if spec and (p == spec or p.startswith(spec + '/')): return True
     if p.startswith('.temper/') or p.startswith('.claude/worktrees/'): return True   # run state the CLI owns
-    return any(p == d for d in declared)   # H4: exact paths
+    return p in declared or p in allowed or bool(test.search(p))
 changed = [l.strip() for l in sys.stdin if l.strip()]
 bad = [c for c in changed if not ok(c)]
-if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]))
-else: print('PASS %d changed, all declared' % len(changed))
-" "$(_grouped_parse "$gspec/tasks.md")" "${gspec#"$REPO_ROOT"/}")"
-      if [[ "$gverdict" == PASS* ]]; then
-        reqs+=("$(_req "blast radius" 1 "${gverdict#PASS }")")
-      else
-        reqs+=("$(_req "blast radius" 0 "${gverdict#FAIL }")")
-        all_pass=0
-      fi
-    elif [[ "$changed_n" -le "$max_blast" ]]; then
-      reqs+=("$(_req "blast radius" 1 "$changed_n file(s) <= $max_blast")")
+if bad: print('FAIL changed outside the plan: ' + ', '.join(bad[:5]) + (' (and %d more)' % (len(bad) - 5) if len(bad) > 5 else ''))
+else: print('PASS %d changed, all in the plan' % len(changed))
+" "$plan_json" "${gspec#"$REPO_ROOT"/}" "$(_evidence_file build)")"
+    if [[ "$gverdict" == PASS* ]]; then
+      reqs+=("$(_req "blast radius" 1 "${gverdict#PASS }")")
     else
-      reqs+=("$(_req "blast radius" 0 "$changed_n file(s) exceeds autonomy.max-blast-radius=$max_blast")")
+      reqs+=("$(_req "blast radius" 0 "${gverdict#FAIL }")")
       all_pass=0
     fi
+  fi
+  if [[ "$run_mode" == "autonomous" ]]; then
+    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius 15)"
+    if [[ -z "$gspec" || ! -f "$gspec/tasks.md" ]]; then
+      local changed_n; changed_n=$(_changed_since_base | grep -c .)
+      if [[ "$changed_n" -le "$max_blast" ]]; then
+        reqs+=("$(_req "blast radius" 1 "$changed_n file(s) <= $max_blast")")
+      else
+        reqs+=("$(_req "blast radius" 0 "$changed_n file(s) exceeds autonomy.max-blast-radius=$max_blast")")
+        all_pass=0
+      fi
+    fi
+    # 9.8.0: a park-on-touch path parks an unattended run only when the change to it is not in the plan. Before 9.8.0 any
+    # change to such a path parked, so a billing feature parked at once and the unattended option was of no use there.
     local patterns; patterns="$(_cfg_get autonomy.park-on-touch "")"
     local touched=""
     if [[ -n "$patterns" ]]; then
-      local pats=()
+      local pats=() declared_list
+      declared_list="$(python3 -I -c "import json,sys; print('\\n'.join(sorted({f for t in json.loads(sys.argv[1]).get('tasks', []) for f in t.get('files', [])})))" "$plan_json")"
       IFS=$'\x1f' read -r -a pats <<< "$patterns"
       while IFS= read -r f; do
         [[ -z "$f" ]] && continue
+        grep -qxF -- "$f" <<<"$declared_list" && continue
         for p in "${pats[@]}"; do
-          if _glob_touch_match "$f" "$p"; then touched="$f matches $p"; fi
+          if _glob_touch_match "$f" "$p"; then touched="$f matches $p and is not in the plan"; fi
         done
-      # The changed set the blast radius row reads: what changed since base_sha (grouped Build commits its work), and
-      # what is still uncommitted; a rename by both its names, so a file moved out of a parked path still parks.
-      done < <( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-                    git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
-                  git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
-                } | _project_names | sort -u)
+      done < <(_changed_since_base)
     fi
     if [[ -z "$touched" ]]; then
-      reqs+=("$(_req "park-on-touch paths" 1 "no changed file matches a park-on-touch pattern")")
+      reqs+=("$(_req "park-on-touch paths" 1 "no changed file outside the plan matches a park-on-touch pattern")")
     else
       reqs+=("$(_req "park-on-touch paths" 0 "$touched")")
       all_pass=0
@@ -5367,6 +5387,25 @@ cmd_check() {
   esac
 }
 
+# acceptance start|lock --cmd C|skip --reason R (9.8.0): the acceptance tests an agent writes from the approved intent
+# before Build (agents/acceptance.md), in the spec folder's acceptance/ folder. `lock` keeps their digest and the command
+# that runs them (.temper/evidence/acceptance-lock.json, which only the CLI writes); Check runs them as they were locked,
+# and a change to them after the lock fails the gate. `skip` records why a run has none; `start` counts a launch (the
+# flow launches the writer at most twice).
+cmd_acceptance() {
+  local sub="${1:-}"; shift || true
+  local spec; spec="$(_spec_path "")"
+  [[ -n "$spec" ]] || { echo "FAIL: no active run" >&2; return 1; }
+  local text=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --cmd|--reason) text="${2:-}"; shift 2 ;; *) shift ;; esac
+  done
+  case "$sub" in
+    lock|skip|start) python3 -E -s "$SCRIPTS_DIR/check_run.py" acceptance "$REPO_ROOT" "$spec" "$sub" "$text" ;;
+    *) echo "FAIL: usage: temper acceptance lock --cmd '<command>' | skip --reason '<why>' | start" >&2; return 1 ;;
+  esac
+}
+
 main() {
   _require_python
   local sub="${1:-}"; shift || true
@@ -5416,6 +5455,7 @@ main() {
     park) cmd_park "$@" ;;
     drift) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/drift.py" .temper/specs "$@") ;;
     check) cmd_check "$@" ;;
+    acceptance) cmd_acceptance "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -5452,6 +5492,7 @@ Usage:
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
+  temper acceptance lock --cmd C | skip --reason R | start   (the acceptance tests written from the intent before Build)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)
   temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
 EOF

@@ -34,7 +34,7 @@ import acceptance
 import run_env
 
 SKIP_DIRS = {".git", ".temper", ".claude", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", "target", ".tox"}
-TEST_DIR_NAMES = ("tests", "test", "unit", "spec")
+TEST_DIR_NAMES = ("tests", "test", "unit", "spec", "acceptance")
 MUTANT_CAP = 40
 MUTATION_BUDGET_S = float(os.environ.get("TEMPER_MUTATION_BUDGET_S", "300"))
 SUITE_TIMEOUT_S = float(os.environ.get("TEMPER_CHECK_TIMEOUT_S", "1800"))
@@ -333,6 +333,89 @@ def regression(root, base, test_cmd):
     return 0, "the new or changed tests (%s) fail on the code before the fix and pass with it" % ", ".join(tests)[:200]
 
 
+# ---- acceptance tests written before Build (agents/acceptance.md) --------------------------------------------------
+def _digests(folder, root):
+    out = {}
+    for d, dirs, files in os.walk(folder):
+        dirs[:] = [x for x in dirs if x != "__pycache__"]
+        for f in sorted(files):
+            if f.endswith((".pyc", ".pyo")):
+                continue
+            p = os.path.join(d, f)
+            import hashlib
+            out[os.path.relpath(p, root)] = hashlib.sha256(open(p, "rb").read()).hexdigest()
+    return out
+
+
+def acc_read(lockfile):
+    try:
+        d = json.load(open(lockfile))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def acc_write(lockfile, d):
+    os.makedirs(os.path.dirname(lockfile), exist_ok=True)
+    tmp = "%s.tmp.%d" % (lockfile, os.getpid())
+    with open(tmp, "w") as f:
+        json.dump(d, f, indent=2)
+    os.replace(tmp, lockfile)
+
+
+def acc_lock(root, spec, lockfile, cmd):
+    folder = os.path.join(root, spec, "acceptance")
+    files = _digests(folder, root) if os.path.isdir(folder) else {}
+    if not any(re.search(r"test", os.path.basename(f), re.I) for f in files):
+        print("FAIL: no test file in %s/acceptance" % spec, file=sys.stderr)
+        return 1
+    if not cmd.strip():
+        print("FAIL: usage: temper acceptance lock --cmd '<command that runs the acceptance folder>'", file=sys.stderr)
+        return 1
+    d = acc_read(lockfile)
+    acc_write(lockfile, {"spec": spec, "cmd": cmd, "files": files, "launches": d.get("launches", 0),
+                         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    print("OK: %d acceptance file(s) locked; Check runs: %s" % (len(files), cmd))
+    return 0
+
+
+def acc_skip(spec, lockfile, reason):
+    if not reason.strip():
+        print("FAIL: usage: temper acceptance skip --reason '<why>'", file=sys.stderr)
+        return 1
+    d = acc_read(lockfile)
+    acc_write(lockfile, {"spec": spec, "skipped": reason.strip(), "launches": d.get("launches", 0),
+                         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    print("OK: no acceptance tests for this run: %s" % reason.strip())
+    return 0
+
+
+def acc_start(spec, lockfile):
+    d = acc_read(lockfile)
+    if d.get("spec") != spec:
+        d = {"spec": spec, "launches": 0}
+    d["launches"] = int(d.get("launches", 0)) + 1
+    acc_write(lockfile, d)
+    print("OK: acceptance launch %d" % d["launches"])
+    return 0
+
+
+def acc_run(root, spec, lockfile):
+    """The acceptance row(s) for Check: [] when this run has no lock."""
+    d = acc_read(lockfile)
+    if not spec or d.get("spec") != os.path.relpath(spec, root) or not (d.get("cmd") or d.get("skipped")):
+        return []
+    if d.get("skipped"):
+        return [row("acceptance (written before Build): skipped", "", 0, d["skipped"], label="HEURISTIC")]
+    now = _digests(os.path.join(spec, "acceptance"), root) if os.path.isdir(os.path.join(spec, "acceptance")) else {}
+    changed = sorted(f for f in set(now) | set(d.get("files", {})) if now.get(f) != d.get("files", {}).get(f))
+    if changed:
+        return [row("acceptance (written before Build)", d["cmd"], 1,
+                    "changed after they were locked: %s" % ", ".join(changed)[:300])]
+    out, rc = run_env.run_cmd(root, SUITE_TIMEOUT_S, [d["cmd"]])
+    return [row("acceptance (written before Build)", d["cmd"], rc, out)]
+
+
 # ---- run -----------------------------------------------------------------------------------------------------------
 def run(root, spec, ledger, base, command, test_cmd="", cov_cmd=""):
     det = detect(root, test_cmd, cov_cmd)
@@ -375,6 +458,11 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd=""):
             sout, src = run_env.run_cmd(root, SUITE_TIMEOUT_S, [b["cmd"]])
             rows.append(row("scenario: %s -> %s" % (b["name"], b["cmd"][:120]), b["cmd"], src, sout, phase="scenario", scenario=b["name"]))
             print("scenario '%s': exit %d" % (b["name"][:60], src))
+    # the acceptance tests written before Build, as they were locked
+    lockfile = os.path.join(root, ".temper", "evidence", "acceptance-lock.json")
+    for r_ in acc_run(root, spec, lockfile):
+        rows.append(r_)
+        print("acceptance: exit %s" % r_["exit_code"])
     # mutation score on the changed lines (Python), only on a green suite
     if det.get("mutation") and rc == 0 and base:
         score, ran, caught, surv, note = mutation(root, base, det["test"], suite_s)
@@ -397,6 +485,16 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd=""):
 
 
 def main(argv):
+    if len(argv) >= 5 and argv[1] == "acceptance":   # acceptance ROOT SPEC lock|skip|start [TEXT]
+        root, spec, sub = argv[2], argv[3], argv[4]
+        lockfile = os.path.join(root, ".temper", "evidence", "acceptance-lock.json")
+        text = argv[5] if len(argv) > 5 else ""
+        if sub == "lock":
+            return acc_lock(root, spec, lockfile, text)
+        if sub == "skip":
+            return acc_skip(spec, lockfile, text)
+        if sub == "start":
+            return acc_start(spec, lockfile)
     if len(argv) >= 3 and argv[1] == "detect":
         print(json.dumps(detect(argv[2], argv[3] if len(argv) > 3 else "", argv[4] if len(argv) > 4 else "")))
         return 0

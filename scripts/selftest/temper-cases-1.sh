@@ -417,7 +417,8 @@ printf -- '---\ndescription: home note\n---\n' > "$PACK_HOME/notes/home-note.md"
 printf -- '---\ndescription: local\n---\n' > .claude/commands/local-cmd.md
 # audit-run.py <watched prefixes, '|' separated> <script>: runs the script and prints, on stderr,
 # every open, scandir and listdir of a path under a watched prefix (the script file itself aside).
-cat > "$WORKDIR/audit-run.py" <<'PY'
+AUDIT_PY="$(mktemp -d)/audit-run.py"   # outside the fixture: an untracked file there is a change outside the plan (9.8.0)
+cat > "$AUDIT_PY" <<'PY'
 import runpy, sys
 watch, script = sys.argv[1].split("|"), sys.argv[2]
 seen = []
@@ -435,13 +436,13 @@ print("\n".join("READ " + s for s in seen) if seen else "NO READ", file=sys.stde
 PY
 PD_WD_REAL="$(cd "$WORKDIR" && pwd -P)"
 PD_RR_REAL="$(cd "$REPO_ROOT" && pwd -P)"
-PACK_OUT="$(HOME="$PACK_HOME" python3 -I "$WORKDIR/audit-run.py" \
+PACK_OUT="$(HOME="$PACK_HOME" python3 -I "$AUDIT_PY" \
   "$PACK_HOME|$PD_WD_REAL/fake-home|$REPO_ROOT|$PD_RR_REAL" "$REPO_ROOT/scripts/pack-discover.py" 2>"$WORKDIR/audit.txt")"
 assert_eq "pack-discover opens and lists nothing in the home folder or in Temper's own folder" "NO READ" "$(cat "$WORKDIR/audit.txt")"
 assert_eq "pack-discover prints only the project's rows, nothing from the home folder" "LOCAL_CMD|local-cmd" \
   "$(printf '%s\n' "$PACK_OUT" | cut -d'|' -f1,2 | paste -sd' ' -)"
 # The audit hook sees reads: the same run, watching the project's own .claude folder, records them.
-HOME="$PACK_HOME" python3 -I "$WORKDIR/audit-run.py" "$PD_WD_REAL/.claude" "$REPO_ROOT/scripts/pack-discover.py" >/dev/null 2>"$WORKDIR/audit.txt"
+HOME="$PACK_HOME" python3 -I "$AUDIT_PY" "$PD_WD_REAL/.claude" "$REPO_ROOT/scripts/pack-discover.py" >/dev/null 2>"$WORKDIR/audit.txt"
 assert_eq "the audit hook records the project command the script reads" "1" \
   "$(grep -cxF "READ open $PD_WD_REAL/.claude/commands/local-cmd.md" "$WORKDIR/audit.txt")"
 assert_eq "pack-discover's source asks for no home folder, environment or JSON file" "0" \

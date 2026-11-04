@@ -37,7 +37,8 @@ assert_eq() { # assert_eq <name> <expected> <actual>
 assert_exit() { # assert_exit <name> <expected-code> <cmd...>
   local name="$1" expected="$2"; shift 2
   local actual out
-  out="$(mktemp "$WORKDIR/assert-out.XXXXXX")"
+  # Inside .git when there is one: an untracked file in the fixture would be a change outside the plan (the 9.8.0 scope row).
+  if [[ -d "$WORKDIR/.git" ]]; then out="$(mktemp "$WORKDIR/.git/assert-out.XXXXXX")"; else out="$(mktemp "$WORKDIR/assert-out.XXXXXX")"; fi
   "$@" >"$out" 2>&1; actual=$?
   if [[ "$actual" == "$expected" ]]; then
     PASS=$((PASS+1))

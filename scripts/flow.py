@@ -952,6 +952,43 @@ class Builder:
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
                 "say": "%s: the %s agent is working%s. %s" % (LABEL.get(stage, stage), LABEL.get(stage, stage), on_model([a]), goes_on(False))}
 
+    ACC_LOCK = os.path.join(TEMPER, "evidence", "acceptance-lock.json")
+
+    def acceptance(self):
+        """This run's acceptance lock ({} when none): the tests written from the intent before Build."""
+        d = check_run.acc_read(self.ACC_LOCK)
+        return d if d.get("spec") == self.r.spec else {}
+
+    def acceptance_work(self):
+        """9.8.0: before the first Build task, an agent that writes no code writes the acceptance tests from the approved
+        intent (agents/acceptance.md) and locks them. Only for a /temper:temper run with an intent, before any group starts,
+        and at most two launches (a writer that cannot lock does not hold Build up)."""
+        r = self.r
+        if r.command != "temper" or not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
+            return None
+        if r.state.get("built_before") or (r.groups.get("groups") or {}):
+            return None
+        d = self.acceptance()
+        if d.get("cmd") or d.get("skipped") or int(d.get("launches") or 0) >= 2:
+            return None
+        model = r.cfg("models.acceptance", "")
+        if not model:
+            import cli_ctx
+            model = cli_ctx.frontmatter_model(os.path.join(self.plugin, "agents", "acceptance.md")) or ""
+        a = {"type": "temper:temper-acceptance", "model": model,
+             "prompt": "\n".join(["Follow %s/agents/acceptance.md exactly." % self.plugin, "Spec path: %s." % r.spec, self.plugin_line()]),
+             "before": [self.c("acceptance start")],
+             "after": [self.c("usage add --stage build --model %s --ms {ms}" % (model or "unknown"))]}
+        return {"action": "work", "stage": "build", "calls": [], "agents": [a],
+                "say": "Build: first, an agent that writes no code writes the acceptance tests from the intent%s. %s" % (on_model([a]), goes_on(False))}
+
+    def acceptance_line(self):
+        d = self.acceptance()
+        if not d.get("cmd"):
+            return ""
+        return ("\nAcceptance tests: %s/acceptance/ holds the tests written from the intent before Build. Read the ones for your "
+                "task's criteria: your code must make them pass at integration. Never edit them (Check fails a change)." % self.r.spec)
+
     def cli_check(self):
         """True when the CLI can run Check itself: a configured test command, or one it detects for the stack."""
         try:
@@ -988,6 +1025,9 @@ class Builder:
         plan = r.plan or {"groups": [], "tasks": []}
         if plan.get("tasks") and not plan.get("groups"):
             return self.no_groups()
+        acc = self.acceptance_work()
+        if acc:
+            return acc
         rg = r.groups.get("groups") or {}
         rt = r.groups.get("tasks") or {}
         integ = (r.groups.get("integration") or {}).get("verdict")
@@ -1038,7 +1078,7 @@ class Builder:
                 said = "".join("\nPerson's note: %s" % x for x in scoped_notes(build_notes, t["task"], t.get("group")))
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
                                "before": [self.c("task start %d" % t["task"])],
-                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d.%s" % (self.plugin, self.plugin_line(), t["task"], said),
+                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d.%s%s" % (self.plugin, self.plugin_line(), t["task"], said, self.acceptance_line()),
                                "after": [self.c("task gate %d --model %s --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,

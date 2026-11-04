@@ -46,7 +46,8 @@
     "./agents/check.md",
     "./agents/rca.md",
     "./agents/fix.md",
-    "./agents/pipeline.md"
+    "./agents/pipeline.md",
+    "./agents/acceptance.md"
   ],
   "skills": [
     "./skills/temper-core",
