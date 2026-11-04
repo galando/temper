@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 
+import check_run
 import config_yaml
 import fresh_review
 import plan_ops
@@ -937,11 +938,26 @@ class Builder:
             if back.get("findings"):
                 extra.append("What %s left open: %s." % (LABEL.get(back.get("from_stage"), back.get("from_stage")),
                                                           "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(back["findings"]))))
+        # 9.8.0: Check is run by the CLI (scripts/check_run.py) whenever it can find the project's test command: the suite
+        # with coverage, each scenario's Test: command, the mutation score and a fix's regression proof, all recorded as
+        # real runs. No agent and no model; the Check agent stays for a stack the CLI cannot read (and for a step back
+        # that brings a person's note to it).
+        if stage == "check" and not back and self.cli_check():
+            gate = self.c("gate %s" % (r.gate_of(stage) or stage))
+            return {"action": "work", "stage": stage, "calls": [self.c("check run"), gate], "agents": [], "gate": gate,
+                    "say": "Check: the CLI runs the suite, coverage, the scenario tests and the mutation score (no agent)."}
         a = self.agent(stage, extra)
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
         a["gate"] = a["after"][-1]
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
                 "say": "%s: the %s agent is working%s. %s" % (LABEL.get(stage, stage), LABEL.get(stage, stage), on_model([a]), goes_on(False))}
+
+    def cli_check(self):
+        """True when the CLI can run Check itself: a configured test command, or one it detects for the stack."""
+        try:
+            return bool(check_run.detect(os.getcwd(), self.r.cfg("check.commands.test", ""), self.r.cfg("check.commands.coverage", "")))
+        except Exception:
+            return False
 
     def ran_on(self, task):
         """The model of the running attempt: the one task start recorded, else (a run started before it did) the one the

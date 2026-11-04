@@ -1794,6 +1794,32 @@ print(vals[-1] if vals else '')
 " "$file" "$keyword"
 }
 
+_ev_last_claim() { # _ev_last_claim <stage> <regex> -> the claim of the last row whose claim matches, or ""
+  local file; file="$(_evidence_file "$1")"
+  [[ -f "$file" ]] || { echo ""; return; }
+  python3 -I -c "
+import json, re, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+hits = [str(r.get('claim')) for r in rows if isinstance(r, dict) and re.search(sys.argv[2], str(r.get('claim') or ''))]
+print(hits[-1] if hits else '')" "$file" "$2" 2>/dev/null
+}
+
+_ev_last_row() { # _ev_last_row <stage> <regex> -> "<exit>|<output, one line>" of the last row whose claim matches, or ""
+  local file; file="$(_evidence_file "$1")"
+  [[ -f "$file" ]] || { echo ""; return; }
+  python3 -I -c "
+import json, re, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+hits = [r for r in rows if isinstance(r, dict) and re.search(sys.argv[2], str(r.get('claim') or ''))]
+print('%s|%s' % (hits[-1].get('exit_code'), ' '.join(str(hits[-1].get('output') or '').split())[:300]) if hits else '')" "$file" "$2" 2>/dev/null
+}
+
 _ev_count_severity_in() { # _ev_count_severity_in <stage> <comma-separated severities>
   local stage="$1" sev_csv="$2"
   local file; file="$(_evidence_file "$stage")"
@@ -4243,14 +4269,42 @@ print('%d|%s' % (sum(1 for r in runs if r.get('exit_code') == 0), '; '.join(red)
       all_pass=0
     fi
   fi
-  local cov_val; cov_val=$(_ev_last_value check coverage)
+  local cov_val; cov_val=$(_ev_last_value check 'coverage(?! tool missing)')
   # Both values cross as argv, never as Python source: the threshold comes from the
   # project config and the value from the ledger. A value that is not a number FAILs.
   if [[ -n "$cov_val" ]] && python3 -I -c "import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)" "$cov_val" "$threshold" 2>/dev/null; then
     reqs+=("$(_req "coverage >= threshold" 1 "$cov_val% >= $threshold% threshold")")
   else
-    reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%")")
+    # 9.8.0: when the CLI ran Check and found no coverage tool, the row says what to install.
+    local cov_hint; cov_hint="$(_ev_last_claim check '^coverage tool missing: ')"
+    reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%${cov_hint:+ (${cov_hint#coverage tool missing: })}")")
     all_pass=0
+  fi
+  # 9.8.0: the mutation score of the tests on the lines this run changed (scripts/check_run.py, when the CLI ran Check).
+  # Coverage says a line ran; this says a test would notice it break. No row when Check did not measure it.
+  local mut_val mut_note mthr; mthr="$(_cfg_get check.mutation-threshold 70)"
+  mut_val=$(_ev_last_value check '^mutation score$'); mut_note="$(_ev_last_claim check '^mutation: not measured')"
+  if [[ -n "$mut_val" ]]; then
+    if python3 -I -c "import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)" "$mut_val" "$mthr" 2>/dev/null; then
+      reqs+=("$(_req "mutation score >= threshold" 1 "$mut_val% of planted bugs caught >= $mthr%")")
+    else
+      reqs+=("$(_req "mutation score >= threshold" 0 "$mut_val% of planted bugs caught < $mthr%: the tests miss changes to the new code; the surviving mutants are in the check ledger")")
+      all_pass=0
+    fi
+  elif [[ -n "$mut_note" ]]; then
+    reqs+=("$(_req "mutation score >= threshold" 1 "${mut_note#mutation: }")")
+  fi
+  # 9.8.0: a fix's regression proof: the tests it added or changed fail on the code before the fix (scripts/check_run.py).
+  if [[ "$(cmd_state_get command temper)" == "fix" ]]; then
+    local reg; reg="$(_ev_last_row check '^regression proof$')"
+    if [[ -n "$reg" ]]; then
+      if [[ "${reg%%|*}" == "0" ]]; then
+        reqs+=("$(_req "regression proof" 1 "${reg#*|}")")
+      else
+        reqs+=("$(_req "regression proof" 0 "${reg#*|}")")
+        all_pass=0
+      fi
+    fi
   fi
   if [[ -f "$spec_path/intent.md" ]]; then
     # Every criterion has explicit, SUPPORTED passing evidence — the same checker
@@ -5293,6 +5347,26 @@ PY
 # main
 # ---------------------------------------------------------------------------
 
+# check run | check detect (9.8.0): Check, run by the CLI (scripts/check_run.py). `run` runs the suite with coverage, each
+# scenario's Test: command, the mutation score of the changed lines and, for a fix, the regression proof, and records a
+# row for each in the Check ledger (executed_by: cli). Exit 3: the CLI found no test command for this project (set
+# check.commands.test); the Check agent then runs Check as before.
+cmd_check() {
+  local sub="${1:-}"
+  local tcmd ccmd; tcmd="$(_cfg_get check.commands.test "")"; ccmd="$(_cfg_get check.commands.coverage "")"
+  case "$sub" in
+    detect) python3 -E -s "$SCRIPTS_DIR/check_run.py" detect "$REPO_ROOT" "$tcmd" "$ccmd" ;;
+    run)
+      local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
+      base="$(cmd_state_get base_sha "")"
+      [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+      mkdir -p "$TEMPER_DIR/evidence"
+      local ledger; ledger="$(_evidence_file check)"; [[ -f "$ledger" ]] || echo '[]' > "$ledger"
+      python3 -E -s "$SCRIPTS_DIR/check_run.py" run "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$REPO_ROOT/$ledger" "$base" "$cmd" "$tcmd" "$ccmd" ;;
+    *) echo "FAIL: usage: temper check run|detect" >&2; return 1 ;;
+  esac
+}
+
 main() {
   _require_python
   local sub="${1:-}"; shift || true
@@ -5341,6 +5415,7 @@ main() {
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
     drift) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/drift.py" .temper/specs "$@") ;;
+    check) cmd_check "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -5376,6 +5451,7 @@ Usage:
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
+  temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)
   temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
 EOF
