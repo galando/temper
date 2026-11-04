@@ -69,7 +69,9 @@ Quoted from the plan gate in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temp
 (`gap`), one line per source and never per code file. The plan gate row `context map reviewed` needs at least one entry, at most 12,
 each line at most 100 characters, and a `- reviewed: human|auto` line. Plan writes `- reviewed: pending`; the CLI replaces it.
 `plan.context-check` is `auto` (ask only when the map has an `ignore` or a `gap`), `always` (ask every run) or `off` (never ask;
-the map is still written and gated). The question is the CLI's own (`temper next` and `view.json` carry `context_map` and
+the map is still written and gated). 9.8.0: the question names what the plan leaves out and could not find (the `ignore` and
+`gap` lines, so write each as the decision it is: "refunds in the CSV export are out of scope"); any answer but "As planned"
+sends Plan back with the person's words as a note (`temper plan review --answer '...' --redo`). The question is the CLI's own (`temper next` and `view.json` carry `context_map` and
 `context_check`); the person's choice runs `temper plan review --answer '<choice>'`, then `temper gate plan`. Plan never asks it and
 never writes `reviewed: human`. Auto mode may refuse an edit of that line, which is why the CLI writes it
 ([auto mode](../docs/auto-mode.md)).

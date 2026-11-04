@@ -228,7 +228,7 @@ assert_eq "F17: a timed out gate offers a rerun at 1200 seconds first" "Run the 
 
 # --- F13. Change reopens the task it concerns and the tasks that must reopen with it ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
-_change_tasks > .temper/specs/demo/tasks.md
+_change_tasks > .temper/specs/demo/tasks.md; second_group
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G1"}, "4": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F13: the group question keeps Continue, Change and Stop" "Continue (Recommended)|Change|Stop" "$(nx "'|'.join(o['label'] for o in d['ask']['question']['options'])")"
 assert_eq "F13: Change asks Which task changes? with one option per task; a task shares files with the one it depends on and reopens with it" \
@@ -411,13 +411,13 @@ printf '\n### Open Questions\n\n- Blocking: Context check: is this the right con
 _cmap pending '- use: intent.md - scope' '- gap: no rate limit policy'
 gfail plan "context map reviewed" "the Context check is pending: the person's answer is not recorded yet"
 assert_eq "F6: the pending check is the plan gate's only failed row: ask is the Context check, not the failed gate question" \
-  "ask|Temper gate|Is this the right context for the plan?|Right direction|Narrow the focus|Fix the sources|Carry forward" \
+  "ask|Temper gate|It could not find: no rate limit policy. Is that right?|As planned (Recommended)|Something else|Carry forward" \
   "$(nx "'|'.join([d['action'], d['ask']['question']['header'], d['ask']['question']['question']] + [o['label'] for o in d['ask']['options']])")"
-assert_eq "F6: a choice runs plan review --answer then the plan gate; Carry forward runs nothing; each option carries the table" "plan review --answer 'Narrow the focus'|gate plan|0|1" \
-  "$(nx "o = d['ask']['options']; '|'.join([o[1]['calls'][0].split('temper ', 1)[1], o[1]['calls'][1].split('temper ', 1)[1], str(len(o[3]['calls'])), str(int('Context Map' in o[0]['preview']))])")"
-assert_eq "F6: next and the view carry context_map and context_check, and the Blocking line is not asked twice" "2|4|0" \
+assert_eq "F6: As planned runs plan review --answer then the plan gate; Carry forward runs nothing; each option carries the table" "plan review --answer 'As planned'|gate plan|0|1" \
+  "$(nx "o = d['ask']['options']; '|'.join([o[0]['calls'][0].split('temper ', 1)[1], o[0]['calls'][1].split('temper ', 1)[1], str(len(o[2]['calls'])), str(int('Context Map' in o[0]['preview']))])")"
+assert_eq "F6: next and the view carry context_map and context_check, and the Blocking line is not asked twice" "2|3|0" \
   "$(nx "str(len(d['context_map']['rows'])) + '|' + str(len(d['context_check']['options'])) + '|' + str(len(d.get('blocking', [])))")"
-assert_eq "F6: the view holds the same, and the status says the answer is not recorded yet" "4|1" \
+assert_eq "F6: the view holds the same, and the status says the answer is not recorded yet" "3|1" \
   "$(vw "str(len(d['context_check']['options'])) + '|' + str(int('not recorded yet' in d['status']))")"
 "$TEMPER" plan review --answer "Right direction" >/dev/null 2>&1
 assert_eq "F6: once reviewed there is no context_check" "None" "$(nx "d.get('context_check')")"

@@ -93,7 +93,7 @@ assert_eq "F5: next --json and view.json carry the same question at a passed Bui
 # F13. Past three tasks, the rest go under More options of the Which task changes? question
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 _change_tasks > .temper/specs/demo/tasks.md
-printf '\n### Task 5: extra\n**File:** `src/e5.sh`\n**Depends:** none\n**Test:** `true`\n**Cases:**\n- e\n- [x] done\n' >> .temper/specs/demo/tasks.md
+printf '\n### Task 5: extra\n**File:** `src/e5.sh`\n**Depends:** none\n**Test:** `true`\n**Cases:**\n- e\n- [x] done\n' >> .temper/specs/demo/tasks.md; second_group
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G1"}, "4": {"status": "passed", "group": "G1"}, "5": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F13: with five tasks the question shows three and More options, which holds the rest" "Task 1 (with Task 2)|Task 2|Task 3|More options#Task 4|Task 5" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['change']['question']['options']) + '#' + '|'.join(o['label'] for o in d['ask']['change']['more']['options'])")"

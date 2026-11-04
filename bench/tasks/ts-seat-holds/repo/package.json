@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test --experimental-strip-types --experimental-test-coverage 'test/**/*.test.ts'"
+    "test": "node --test --experimental-strip-types --experimental-test-coverage 'test/**/*.ts'"
   }
 }

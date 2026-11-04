@@ -59,7 +59,7 @@ def run_tests(cwd, start, timeout=300):
 def run_node_tests(cwd, start, timeout=300):
     """A Node project's tests (node --test, TypeScript by type stripping): {test name: pass|fail}, from the TAP report. A file
     that does not load is one failed entry named after the file."""
-    files = sorted(os.path.join(start, f) for f in os.listdir(os.path.join(cwd, start)) if re.search(r"\.test\.[cm]?[jt]s$", f))
+    files = sorted(os.path.join(start, f) for f in os.listdir(os.path.join(cwd, start)) if re.search(r"\.[cm]?[jt]s$", f))
     if not files:
         return {}
     try:

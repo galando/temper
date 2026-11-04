@@ -4,14 +4,15 @@ description: "Autonomous Continuation: what an armed run does, and what it never
 
 # Autonomous Continuation
 
-Opt in: `autonomy.enabled: true` in `.claude/temper.config`. With the block absent or `false` (the
-default), every gate is the ordinary question to the person. The temper CLI computes every move
+No setting (9.8.0): the person chooses it at the last question before Build, and every other gate is the ordinary
+question to the person. `autonomy.enabled` is no longer read. The temper CLI computes every move
 of an armed run (`temper next --json`, ADR 0013); this page says what those moves are. The temper
 CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`.
 
-**Arming.** Only the person arms a run, only at the plan gate, and only after the plan check
-passed: the Plan question then offers "Stage by stage (Recommended)" and "Autonomous: run the rest
-unattended", asked like every gate with the header `Temper gate`. Either answer approves the plan.
+**Arming.** Only the person arms a run, at the last question before Build, and only after its check passed: the Plan
+question when no Design follows, the Design question when it does (9.8.0), so every decision is made first. The
+question offers "Autonomous: run the rest unattended" next to its ordinary way on, asked like every gate with the
+header `Temper gate`. Either answer approves the stage.
 "Autonomous" runs `temper state set run_mode autonomous` while the run is still at Plan, then the
 plan's own steps. The Intent gate is always a question: no unattended run starts without a person
 having accepted the intent.
@@ -20,7 +21,7 @@ having accepted the intent.
 
 - After a passed Design, Build, Review or Check, it goes on to the next stage.
 - In Build, each passed group's question is answered Continue; "Change" and "Stop" stay the
-  person's. Each group's gate still runs, and its panel still prints.
+  person's. A task whose tests already pass because an earlier task built it is taken as done (9.8.0). Each group's gate still runs, and its panel still prints.
 - After a failed Review or Check, it loops back to Build, within the same loop budget as an
   interactive run (`loops.max-per-type`). Build never loops back to Plan by itself.
 - It parks when the budget is spent, when Build fails, when a group fails its check, when a group

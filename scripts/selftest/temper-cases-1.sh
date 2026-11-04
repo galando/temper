@@ -236,7 +236,7 @@ assert_eq "state advance with one arg prints a usage message, not an unbound-var
 # --- state advance: stage vocabulary is scoped per command (temper vs fix) ---
 setup
 assert_exit "a /temper run rejects fix-only stage names (rca_complete)" 1 "$TEMPER" state advance rca_complete design
-_at plan plan; "$TEMPER" state set complexity medium >/dev/null
+_at plan plan; "$TEMPER" state set complexity medium >/dev/null; riskH
 assert_exit "a /temper run accepts its own stage names" 0 "$TEMPER" state advance plan_complete design
 
 setup

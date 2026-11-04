@@ -796,7 +796,7 @@ setup
 "$TEMPER" state init demo --command temper >/dev/null
 _pass intent
 assert_exit "the mod's approve intent command is accepted by the CLI" 0 "$TEMPER" state advance intent_complete plan
-_pass plan design; "$TEMPER" state set complexity medium >/dev/null
+_pass plan design; "$TEMPER" state set complexity medium >/dev/null; riskH
 assert_exit "the mod's approve plan command (design first) is accepted by the CLI" 0 bash -c "'$TEMPER' state advance plan_complete design && '$TEMPER' state advance design_complete build"
 _pass build review check
 assert_exit "the mod's later advances are accepted by the CLI" 0 bash -c "'$TEMPER' state advance build_complete review && '$TEMPER' state advance review_complete check && '$TEMPER' state advance check_complete commit"
@@ -858,7 +858,7 @@ mirror_step "build_complete review" review state advance build_complete review
 mirror_step "review_complete check" check state advance review_complete check
 mirror_step "check_complete commit" commit state advance check_complete commit
 # A medium or complex run goes through design.
-_at plan plan; "$TEMPER" state set complexity medium >/dev/null
+_at plan plan; "$TEMPER" state set complexity medium >/dev/null; riskH
 mirror_step "plan_complete design" design state advance plan_complete design
 mirror_step "design_complete build" build state advance design_complete build
 # A step back: the CLI resumes from the stage it is pointed at.

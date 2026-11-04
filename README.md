@@ -5,7 +5,7 @@
 Temper is a Claude Code plugin that runs AI written code through gates you approve: intent, plan, build, review and
 check. A small CLI computes each gate from recorded evidence. The model never decides a verdict.
 
-[![Version](https://img.shields.io/badge/version-v9.7.6-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.8.0-blue)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Releases](https://github.com/galando/temper/releases)
@@ -61,14 +61,17 @@ flowchart LR
 
 The rest are listed in [Commands](docs/commands.md).
 
-## What's new in v9.7.6
+## What's new in v9.8.0
 
-- **Fresh review first** at the plan question: a reviewer with no context reads the plan, and you see its summary.
-- A contest of a finding must cite a file the reviewer could read; anything else goes to you.
-- A reviewer that did not finish counts as not run, never as a clean review.
-- `temper drift` lists where the code moved away from finished specs.
+- **Check is run by the CLI**, with new gates it computes itself: a mutation score (do the tests notice a planted bug?),
+  a regression proof for every fix, and acceptance tests written from your intent before any code.
+- **Questions you click, not type:** Intent drafts the likely rules (who, when, how much) as questions with ready
+  answers, and the context check names what the plan leaves out.
+- **Fewer steps:** Design only for risky plans, the unattended run offered at the last question before Build, no
+  report question.
+- Works on Python, JavaScript, TypeScript, Go, Java and more: the mutation gate reads every C-style language.
 
-Details: [CHANGELOG.md](CHANGELOG.md) and [the evidence](docs/evidence/fresh-review.md).
+Details: [CHANGELOG.md](CHANGELOG.md) and [the evidence](docs/evidence/bench-2026-11.md).
 
 ## What the mod reads and writes
 

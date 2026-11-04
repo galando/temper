@@ -66,13 +66,13 @@ assert_exit "state set next_stage forward: refused past a stage that has no pass
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '# Plan\n\n## Files to Modify\n| File | Change |\n|---|---|\n| `src/demo.sh` | the demo |\n| `README.md` | a line |\n' > .temper/specs/demo/plan.md
 gpass plan
-assert_eq "next: Plan PASS asks to approve the plan, three options and More options (9.7.6: Fresh review first second)" \
-  "Continue to Build (Recommended)|Fresh review first|Open HTML review|More options" "$(labels)"
-assert_eq "next: More options holds the rest, as its own question" "Share HTML review|Grill Me|Teach Me|Save for later" \
+assert_eq "next: Plan PASS with no Design to follow offers stage by stage or unattended, then Fresh review first (9.8.0)" \
+  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Fresh review first|More options" "$(labels)"
+assert_eq "next: More options holds the rest, as its own question" "Open HTML review|Grill Me|Teach Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 cp .claude/temper.config .claude/temper.config.keep; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
-assert_eq "next: with plan.fresh-review off the Plan question is as before 9.7.6" \
-  "Continue to Build (Recommended)|Open HTML review|Share HTML review|More options|Grill Me|Teach Me|Save for later" \
+assert_eq "next: with plan.fresh-review off the Plan question has no Fresh review first" \
+  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Open HTML review|More options|Share HTML review|Grill Me|Teach Me|Save for later" \
   "$(labels)|$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 mv .claude/temper.config.keep .claude/temper.config
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
@@ -95,7 +95,7 @@ assert_eq "next: the Plan question has no walk through: More options holds the r
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
-"$TEMPER" state set complexity medium >/dev/null 2>&1; fresh_reviewed
+"$TEMPER" state set complexity medium >/dev/null 2>&1; riskH; fresh_reviewed
 assert_eq "next: a medium plan goes on to Design" "Continue to Design (Recommended)|state advance plan_complete design" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
 assert_exit "advance: a medium plan may not skip Design" 1 "$TEMPER" state advance plan_complete build
@@ -134,9 +134,8 @@ assert_eq "next: a passed commit gate gives the report steps first: the intent c
   "work|intent complete|report --end|1" \
   "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], str(int('into your reply' in s[3] and 'Bash call' in s[3]))])")"
 "$TEMPER" report --end >/dev/null 2>&1
-assert_eq "next: after the report, the question whether to write the page, with the calls of each answer" \
-  "ask|Temper gate|Write report.html|report --html|Not now|report --no-html|1" \
-  "$(nx "o = d['ask']['options']; '|'.join([d['action'], d['ask']['question']['header'], o[0]['label'], o[0]['calls'][0].split('temper ', 1)[1], o[1]['label'], o[1]['calls'][0].split('temper ', 1)[1], str(int(d['ask']['question']['question'].startswith('Every gate passed. The report is above')))])")"
+assert_eq "next: after the report, the page is written with no question (9.8.0)" "work|report --html" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 assert_exit "state set: end_report is the CLI's" 1 "$TEMPER" state set end_report none
 "$TEMPER" report --no-html >/dev/null 2>&1
 assert_eq "next: after the answer, the commit steps: the ledger archived, the commit, the state cleared" \
@@ -192,8 +191,8 @@ assert_eq "next: a ready task gets its own launch: task start, the task agent, t
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {"1": {"status": "running", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a running task is waited for" "wait|1" "$(nx "d['action'] + '|' + str(d['tasks'][0]['task'])")"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
-assert_eq "next: a passed group gets the Build group question" "Build group|Continue (Recommended)|Change|Stop" \
-  "$(nx "d['ask']['question']['header'] + '|' + '|'.join(o['label'] for o in d['ask']['question']['options'])")"
+assert_eq "next: the one group of a plan, passed, goes on by itself (9.8.0: the Build question follows at once)" "auto|group continue G1" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 assert_exit "group continue: refused for a group that has not passed" 1 "$TEMPER" group continue G2
 assert_exit "group continue: recorded for a passed group" 0 "$TEMPER" group continue G1
 assert_eq "next: once every group continued, the groups are merged and Build is checked" "integrate|gate build" \
@@ -251,7 +250,7 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "next: Design runs its brief" "temper:temper-design|gate design" "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
 gpass design
-assert_eq "next: Design PASS" "Continue to Build (Recommended)|Walk through step by step|Grill Me|More options" "$(labels)"
+assert_eq "next: Design PASS offers the unattended run too (9.8.0: the last question before Build)" "Continue to Build (Recommended)|Autonomous: run the rest unattended|Walk through step by step|More options" "$(labels)"
 gfail design "areas of concern" "missing"
 assert_eq "next: Design FAIL" "Loop back to Plan|Override and continue|Save for later" "$(labels)"
 
@@ -381,7 +380,7 @@ setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; "$TEMPER" state
 assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
   "$(nx "d['action'] + '|' + (d['calls'][0].split('temper ', 1)[1] if d['calls'] else '') + '|' + str(len(d.get('agents') or []))")"
 # 13. Stop at a group question saves the run; it records no Build verdict.
-fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1; second_group
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "round 2, 13: the group question's Stop makes no call" "Stop|0" "$(nx "o = [o for o in d['ask']['options'] if o['label'] == 'Stop'][0]; o['label'] + '|' + str(len(o.get('calls') or []))")"
 

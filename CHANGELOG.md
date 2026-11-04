@@ -3,6 +3,78 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.8.0: proof the CLI computes, questions the person clicks, and fewer steps
+
+Built from what a benchmark showed (`docs/evidence/bench-2026-11.md`): on complete specs, plain Claude Code was as
+correct as Temper at a tenth of the cost; on vague requests, asking before building mattered, and a one line prompt
+asked as well as Temper. 9.8.0 keeps what only Temper does (a gate the model cannot talk past, the person's decisions
+on record), proves more of it with the CLI instead of an agent, asks better questions, and takes out steps.
+
+**Check, run by the CLI**
+- **The CLI runs Check itself (`temper check run`, new `scripts/check_run.py`).** *Before:* a Sonnet agent ran the suite
+  and typed the results into the ledger; a row it forgot (coverage recorded as "none") failed the gate for no fault of
+  the code. *Now:* the CLI runs the suite with coverage, each scenario's `Test:` command and the new gates below, and
+  records each as a real run. It detects Python (pytest, unittest, coverage.py), Node (npm test; jest, vitest, c8 or
+  `node --test --experimental-test-coverage`), Go, Rust, Maven and Gradle; `check.commands.test` and
+  `check.commands.coverage` name the commands for any other stack. The Check agent runs only for a stack the CLI cannot
+  read, and for criteria validated by code or a metric.
+- **When no coverage tool is there,** the coverage row says what to install, and Check runs again once it is.
+
+**New gates, computed by the CLI**
+- **Mutation score (`mutation score >= threshold`, `check.mutation-threshold`, default 70).** Coverage says a line ran;
+  this says a test would notice it break. One small bug at a time is planted in the lines the run changed (a comparison
+  flipped, + and - swapped, a constant moved by one, `and`/`or` or `&&`/`||` swapped, `true`/`false` swapped, a `not`
+  dropped, a call deleted), and the suite must catch it. Python is read as a syntax tree; JavaScript, TypeScript, Java,
+  Kotlin, Go, C#, Rust, Swift, Scala, C, C++, PHP and Ruby as text, never inside a string or a comment. At most 40
+  mutants and a time budget (`TEMPER_MUTATION_BUDGET_S`, default 300 s).
+- **Regression proof for a fix (`regression proof`).** The tests a fix added or changed must fail on the code before the
+  fix and pass with it; the CLI checks out the old code and runs them.
+- **Acceptance tests written before Build (`acceptance tests written before Build`, new `agents/acceptance.md`).** Before
+  the first task, an agent that writes no code writes tests from the approved intent into the spec's `acceptance/` folder
+  and locks them (`temper acceptance lock`). Check runs them as locked; a change after the lock fails the gate. A builder
+  can no longer encode the same wrong guess in its code and its tests.
+- **Scope in every run.** The commit gate's declared-files row applied to unattended runs only; now every run with a plan
+  has it. Test files, the spec folder and files the person allowed at a Scope drift question count as in scope.
+- **A criterion validated by hand is confirmed by the person** at the Check question ("Confirmed"), never claimed by an
+  agent. A deferred optional criterion needs no evidence (as in the Build report).
+
+**Better questions**
+- **Intent drafts the rules, the person clicks.** It works through a checklist (who may do it, time limits, amounts,
+  states, where it shows, exceptions) and writes each open rule as a Blocking question with ready answers
+  (`choices: A | B | C`, the recommended first); what it does not ask goes under `### Assumptions`, for the person to scan.
+  Where a house rule gives a default, it asks whether the rule holds. It runs on Sonnet. It no longer asks for a reviewer
+  (the header is optional: the person who accepts at the gate is the approver).
+- **Carry forward works.** Carry forward on a Blocking question used to record nothing, leaving the Intent gate red with
+  no way out; `temper intent carry` now marks it Deferred.
+- **The Context check names what the plan leaves out.** "Is this the right context for the plan?" became a concrete
+  question from the map's `ignore` and `gap` lines ("The plan leaves out: refunds in the export. Is that right?"). Any
+  answer but "As planned" sends Plan back to revise with it (`temper plan review --redo`); before, the answer was only
+  written down.
+- **Design runs on risk:** for a complex plan, and for a medium one only at risk H (Plan raises it for a data model,
+  money, permissions or an integration). `risk` is kept by the CLI (`temper risk`), so it cannot be lowered to skip
+  Design. A concern the person must decide becomes a Blocking question with ready answers, asked before the Design
+  question. ADRs only in a project that keeps them (a `docs/decisions/` folder with one in it).
+
+**Fewer steps**
+- **Unattended, with no setting.** "Autonomous: run the rest unattended" is offered at the last question before Build
+  (the plan question, or the Design question when Design runs). `autonomy.enabled` is no longer read; it was `false` in
+  the shipped config, so most runs never saw the option. An unattended run takes a Build task an earlier task already
+  built as done, instead of parking; `auth/`, `payment/` and `billing/` changes park it only when they are outside the plan.
+- **A plan with one group goes on to the merge by itself;** the Build question gains "Change something".
+- **The report page is written without a question.**
+
+**Fixes**
+- **"Accept it as done" looped.** A covered Build task's option shared the move `accept` with accepting a review
+  finding; it is now `covered`.
+- **The CLI called from a subfolder** (after writing a file in `docs/`) started a second `.temper` there; it now finds
+  the project's `.temper` above it (never from the home folder or inside the plugin folder).
+
+**Not done, on purpose:** small plans still build in worktrees. The benchmark showed the time in Build goes to model
+turns, not to worktrees; the one problem worktrees caused (the loop above) is fixed.
+
+**The benchmark** moved to `bench/` (no part of the CLI) and gained a TypeScript task, a mutation scorer for C-style
+languages and a Node grader. The 9.8.0 numbers are in `docs/evidence/bench-2026-11.md`.
+
 ## v9.7.6: a fresh reader checks the plan, contests cite evidence, a reviewer that stopped is not a clean review, spec drift
 
 Five ideas from Google's Elephant Goldfish Model (a reviewer with no context reads a design before any code), built on
