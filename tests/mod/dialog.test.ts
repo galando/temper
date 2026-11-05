@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { ONLY_USER } from '../../hooks/temper-mod/core/rules'
+import { FEATURE_DENY } from '../../hooks/temper-mod/core/session'
 import { SPEC, questionOf, runFiles } from './run-files'
 import { COMPOSE, viewText, world } from './world'
 import type { Answer, World } from './world'
@@ -374,3 +375,37 @@ describe('Build is judged against the plan the person approved', () => {
     expect(await write(api, 'src/billing.ts')).toBeUndefined()
   })
 })
+
+describe('the run starts from the request the person typed, in the conversation that typed it (9.8.0, round 5)', () => {
+  const REQ = 'Add partial refunds. POST /invoices/{id}/refunds takes a payment_id; more than the balance is a 409.'
+  const init = (feature: string) => `${CLI} state init pp --feature '${feature}'`
+  test('a summary is refused, the request whole passes, and quotes around it are the person\'s', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    await api.session.start(START)
+    await api.command.run({ command: 'temper:temper', args: `"${REQ}"`, origin: { kind: 'composer' } })
+    expect(await sh(api, init('Partial refunds for invoices'))).toBe(FEATURE_DENY)
+    expect([...w.files.keys()].filter(k => k.includes('build-state'))).toEqual([])
+    expect(await sh(api, init(REQ))).toBeUndefined()
+    expect([...w.files.keys()].filter(k => k.includes('build-state'))).toEqual(['.temper/build-state.json'])
+  })
+  test('another conversation of the same project: what this one typed holds nothing there', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    await api.session.start(START)
+    await api.command.run({ command: 'temper:temper', args: REQ, origin: { kind: 'composer' } })
+    w.sessionId = 'conv-2'
+    expect(await sh(api, init('Partial refunds for invoices'))).toBeUndefined()
+  })
+  test('a run word keeps nothing, and a door clears what was kept', async ($, on) => {
+    const api = $ as unknown as Api
+    world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    await api.session.start(START)
+    await api.command.run({ command: 'temper:temper', args: REQ, origin: { kind: 'composer' } })
+    await api.command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })
+    expect(await sh(api, init('Partial refunds'))).toBe(FEATURE_DENY)
+    await api.command.run({ command: 'temper:plan', args: 'Partial refunds', origin: { kind: 'composer' } })
+    expect(await sh(api, init('Partial refunds'))).toBeUndefined()
+  })
+})
+

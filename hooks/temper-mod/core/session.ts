@@ -202,12 +202,20 @@ function questionFits(q: unknown, facts: SessionFacts): boolean {
 // keeps what the person typed after /temper:temper; a `temper state init ... --feature` that differs from it is refused.
 // Whitespace aside, the words are compared exactly.
 const words = (t: string): string => t.replace(/\s+/g, ' ').trim()
+// The request without one pair of quotes around all of it: the page shows `/temper:temper "<feature>"`, and a session
+// may pass the words with those quotes or without them.
+const PAIRS: Record<string, string> = { '"': '"', "'": "'", '\u201c': '\u201d', '\u2018': '\u2019' }
+const unquoted = (t: string): string => {
+  const w = words(t)
+  const close = PAIRS[w[0] ?? '']
+  return close !== undefined && w.length >= 2 && w.endsWith(close) ? words(w.slice(1, -1)) : w
+}
 
 // Words after /temper:temper that are not a request (commands/temper.md, Arguments).
 const NOT_A_REQUEST = new Set(['status', 'report', 'timeline', 'help', 'approve', 'next', 'back', 'override', 'accept', 'drift', 'pr', 'discuss', 'mode', 'enforcement', 'pane'])
 
 export function requestOf(args: string): string | null {
-  const t = words(args)
+  const t = unquoted(args)
   const first = (t.split(' ')[0] ?? '').toLowerCase()
   return t === '' || NOT_A_REQUEST.has(first) ? null : t
 }
@@ -224,7 +232,7 @@ export function featureWhy(command: string, request: string | null): string | nu
     const at = w.findIndex(x => x === '--feature' || x.startsWith('--feature='))
     if (at < 0) continue
     const value = w[at] === '--feature' ? w[at + 1] ?? '' : (w[at] as string).slice('--feature='.length)
-    if (words(value) !== request) return FEATURE_DENY
+    if (unquoted(value) !== request) return FEATURE_DENY
   }
   return null
 }

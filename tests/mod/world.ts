@@ -12,6 +12,8 @@ export type World = {
   fsWrites: string[]
   reads: string[]
   store: Record<string, unknown>
+  // The conversation's id `$.session.id()` answers (a test sets another to play a later conversation).
+  sessionId: string
   // Project relative files that exist but cannot be read (chmod 000): a read answers EACCES, not ENOENT.
   unreadable?: Set<string>
   // True: every file write the plugin makes fails (a read only folder).
@@ -223,7 +225,7 @@ const rel = (p: string): string => {
 }
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
-  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], askedOptions: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
+  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], askedOptions: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) }, sessionId: 'conv-1' }
   const panes = new Map<string, boolean>()
   // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
   // The mod keeps its records (events, the report) in the store as `vf:<full path>` (see makeIo). The world
@@ -288,6 +290,7 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     return { value: names.map(k => ({ name: k.slice(prefix.length), kind: 'file' as const, size: 0, mtimeMs: 0, isLink: false })) }
   })
   on('fs.stat', ($, e) => ({ value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, realPath: opts.cwd ?? '/repo' } }))
+  on('session.id', () => ({ value: w.sessionId }))
   on('session.version', () => {
     if (opts.version === null) return { deny: 'no version' }
     const v = opts.version ?? '2.1.288'

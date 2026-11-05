@@ -216,6 +216,14 @@ describe('the run starts from the person\'s request, word for word', () => {
     expect(featureWhy(`${CLI} state init pp --feature 'Partial payments and refunds for invoices'`, requestOf(REQ))).toBe(FEATURE_DENY)
     expect(FEATURE_DENY).toContain('Next: ')
   })
+  test('a request typed in quotes: the session may pass it with the quotes or without them', () => {
+    const typed = '"Add refunds to invoices"'
+    expect(requestOf(typed)).toBe('Add refunds to invoices')
+    expect(featureWhy(`${CLI} state init r --feature 'Add refunds to invoices'`, requestOf(typed))).toBe(null)
+    expect(featureWhy(`${CLI} state init r --feature '"Add refunds to invoices"'`, requestOf(typed))).toBe(null)
+    expect(featureWhy(`${CLI} state init r --feature 'Add refunds'`, requestOf(typed))).toBe(FEATURE_DENY)
+    expect(requestOf('\u201cExport the ledger\u201d')).toBe('Export the ledger')
+  })
   test('no request kept (a door, a new conversation): nothing to compare', () =>
     expect(featureWhy(`${CLI} state init pp --feature 'anything'`, null)).toBe(null))
   test('other calls are not judged here', () => expect(featureWhy(`${CLI} go`, requestOf(REQ))).toBe(null))

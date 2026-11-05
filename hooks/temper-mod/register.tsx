@@ -351,8 +351,14 @@ type Guarded = { deny: string | null; trivialExit?: boolean }
 // loads the mod again between turns.
 const SKILL = 'skill:'
 // 9.8.0: what the person typed after /temper:temper, per project, kept in the plugin store (module state does not
-// survive the engine loading the mod again between turns).
+// survive the engine loading the mod again between turns), with the conversation that typed it: only that
+// conversation's state init is held to it.
 const REQUEST = 'request:'
+type Kept = { session: string; text: string }
+const keptRequest = (v: unknown): Kept | null => {
+  const k = v as Partial<Kept> | null | undefined
+  return k !== null && typeof k === 'object' && typeof k.session === 'string' && typeof k.text === 'string' ? (k as Kept) : null
+}
 
 async function skillActive(io: Io, snap: Snapshot): Promise<boolean> {
   const at = await io.storeGet(SKILL + snap.at.run).catch(() => undefined)
@@ -379,8 +385,9 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
     if ('deny' in s) return { deny: s.deny }
     // The run's request as the person typed it (kept at /temper:temper, below): a state init carries it whole.
     if (tool === 'Bash') {
-      const kept = await makeIo($).storeGet(REQUEST + root).catch(() => undefined)
-      const why = featureWhy(command, typeof kept === 'string' ? kept : null)
+      const kept = keptRequest(await makeIo($).storeGet(REQUEST + root).catch(() => undefined))
+      const here = kept === null ? null : await $.session.id().catch(() => null)
+      const why = featureWhy(command, kept !== null && kept.session === here ? kept.text : null)
       if (why !== null) return { deny: why }
     }
   }
@@ -499,7 +506,10 @@ export const register: Register = (on, opts) => {
       return next(e)
     }
     const req = requestOf(e.args)
-    if (req !== null) await makeIo($).storeSet(REQUEST + root, req).catch(() => undefined)
+    if (req !== null) {
+      const session = await $.session.id().catch(() => null)
+      if (session !== null) await makeIo($).storeSet(REQUEST + root, { session, text: req } satisfies Kept).catch(() => undefined)
+    }
     const parsed = parseArgs(e.args)
     if (parsed === null) {
       // The person's own run word, from the prompt box, opens the pane in full mode; any other origin opens nothing.

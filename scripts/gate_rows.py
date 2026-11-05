@@ -198,11 +198,28 @@ def route_shape(path):
     return "/".join("{}" if re.fullmatch(r"\{[^}]*\}|:[A-Za-z_]\w*|<[^>]*>", seg) else seg for seg in path.split("/"))
 
 
+def intent_decisions(spec_dir):
+    """The text of intent.md's `### Decisions` section (the person's answers), or ""."""
+    try:
+        lines = open(os.path.join(spec_dir, "intent.md"), encoding="utf-8").read().splitlines()
+    except OSError:
+        return ""
+    out, inside = [], False
+    for line in lines:
+        if line.startswith("#"):
+            inside = line.strip().lower() == "### decisions"
+            continue
+        if inside:
+            out.append(line)
+    return "\n".join(out)
+
+
 def plan_request_routes(spec_dir, project):
     """9.8.0 (round 5): every HTTP route the request names (`POST /invoices/{id}/refunds`) is in the plan, method and shape
     unchanged (a parameter may be renamed). A run's Plan once built the request's refund route as another path, and
     Design, the acceptance tests and Build followed it; only the session noticed. The request is the run's feature text
-    (`temper state init --feature`); a request that names no route passes."""
+    (`temper state init --feature`); a request that names no route passes, and so does a route the person changed in the
+    intent's Decisions."""
     name = "request routes kept"
     try:
         state = json.load(open(os.path.join(project, ".temper", "build-state.json"), encoding="utf-8"))
@@ -220,7 +237,11 @@ def plan_request_routes(spec_dir, project):
         except OSError:
             pass
     have = {(m.group(1), route_shape(m.group(2))) for m in ROUTE.finditer(text)}
-    missing = [w for w in want if w not in have]
+    # The person may change a route at Intent: a route the request names that the plan does not is kept out when the
+    # intent's Decisions name it (they decided about it) or name the plan's route of the same method (they chose it).
+    decided = {(m.group(1), route_shape(m.group(2))) for m in ROUTE.finditer(intent_decisions(spec_dir))}
+    missing = [w for w in want if w not in have and w not in decided
+               and not any(h in decided for h in have if h[0] == w[0])]
     if not missing:
         return row(name, True, "%d route(s) of the request, each in the plan: %s" % (len(want), ", ".join("%s %s" % w for w in want)))
     detail = "; ".join("the request names %s %s, the plan does not%s" % (

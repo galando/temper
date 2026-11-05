@@ -123,6 +123,9 @@ How the CLI counts it:
 - Three plan gate rows: `fresh review ran` (a completion row for each lens and reviewer; the readiness row must name as
   many tasks as tasks.md has), `fresh reader's paraphrase` (two parts of 6 words or more) and `no open plan blockers`
   (no `high` or `critical` finding open). A lens with no completion row is `not run`, never a lens with no findings.
+- The plan gate row `request routes kept` (9.8.0): every `METHOD /path` the request names (the run's feature text) is in
+  plan.md or tasks.md, method and shape unchanged (a parameter may be renamed). A route the intent's Decisions name, or
+  a plan route of the same method they name, is the person's change and passes. A request that names no route passes.
 
 ## Answering the fresh review
 

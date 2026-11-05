@@ -26,6 +26,7 @@ agent.list       the reviewerModel option: tells whether a subagent step belongs
 fs.read          reads .temper/view.json, the one file the mod reads of the CLI (ADR 0013)
 fs.stat          resolves "." to the project root so absolute tool paths can be made relative
 session.version  the version guard: the mod stays inert below 2.1.287
+session.id       ties the request kept at /temper:temper to the conversation that typed it (read only)
 state.get        the drawing hooks read the run view and the mode, so a write redraws them
 state.set        publishes the run view and the mode
 store.delete     drops the oldest kept report and the oldest run of answers, so the store stays small

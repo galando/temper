@@ -71,6 +71,9 @@ orchestrator's conversation carries over except the prompt you were launched wit
 - Never read the plugin's own scripts to learn a format (9.8.0: a measured Plan spent three turns in the CLI's Python):
   every format you need is in this brief, its reference page and the templates, and `temper gate` names each row
   that fails with what it wants.
+- Keep each route the request names (`POST /invoices/{id}/refunds`), method and path, in plan.md; a parameter may be
+  renamed. The plan gate's `request routes kept` row checks it (a route the person changed in the intent's Decisions
+  is theirs to change).
 - The spec directory holds exactly `intent.md`, `tasks.md` and `plan.md`. Never a
   fourth file (no `spec.md`, `quickstart.md`, README); `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads only
   those three.

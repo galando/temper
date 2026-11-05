@@ -112,5 +112,9 @@ assert_eq "9.8.0: a plan that keeps each route of the request, a parameter renam
 _r16 "- new route POST /payments/{payment_id}/refunds; GET /invoices/{id} adds them"
 assert_eq "9.8.0: a plan that moves a route of the request fails, naming the route and what it has instead" "FAIL|1|1" \
   "$(_rr | cut -d'|' -f1)|$(_rr | grep -c 'the request names POST /invoices/{}/refunds, the plan does not')|$(_rr | grep -c 'it names POST /payments/{}/refunds')"
+printf '# Intent\n\n### Decisions\n\n- Where do refunds live? -> POST /payments/{id}/refunds (the person, 2026-11-05)\n' > .temper/specs/demo/intent.md
+assert_eq "9.8.0: a route the person changed in the intent's Decisions passes" "PASS" "$(_rr | cut -d'|' -f1)"
+printf '# Intent\n\n### Open Questions\n\n- Deferred: POST /payments/{id}/refunds maybe; consequence: none\n\n### Decisions\n\n- (none yet)\n' > .temper/specs/demo/intent.md
+assert_eq "9.8.0: a route named in the intent outside its Decisions does not excuse a moved route" "FAIL" "$(_rr | cut -d'|' -f1)"
 setup; rm -f .temper/groups.json .temper/view.json; "$TEMPER" state init demo --feature "Make the export faster" >/dev/null 2>&1; printf '# Plan\n' > .temper/specs/demo/plan.md
 assert_eq "9.8.0: a request that names no route passes" "PASS|the request names no route" "$(_rr)"

@@ -208,7 +208,11 @@ The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mo
   keep their stage rules above. The benchmark showed why (`docs/evidence/bench-2026-11.md`, round 4): a session on
   a cheaper model edited the spec files and the locked acceptance tests, worked in a task's worktree and asked
   questions of its own, and a session once launched an agent on a cheaper model than the CLI named. A typed change
-  request now goes to the stage's agent (`temper state redo`, commands/temper.md). A `/temper:fix` run is left to
+  request now goes to the stage's agent (`temper state redo`, commands/temper.md). The run starts from the person's
+  request, word for word: the mod keeps what they typed after `/temper:temper` (in its plugin store, with one pair of
+  quotes around all of it taken off) and refuses a `temper state init` whose `--feature` differs from it, whitespace
+  aside (round 5: a session started a run of a dozen rules with a one line summary, and every agent planned from it).
+  A door (`/temper:plan "..."`) or another temper command clears what was kept. A `/temper:fix` run is left to
   `commands/fix.md`, as before.
 
 The guard reads a Bash command as text: it splits it into statements and words and honours quotes
