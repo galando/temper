@@ -132,6 +132,80 @@ turns, not to worktrees; the one problem worktrees caused (the loop above) is fi
 **The benchmark** moved to `bench/` (no part of the CLI) and gained a TypeScript task, a mutation scorer for C-style
 languages and a Node grader. The 9.8.0 numbers are in `docs/evidence/bench-2026-11.md`.
 
+### Round 5, in the same version: a main session that only relays, and fewer turns for it
+
+Built from round 5 of the benchmark (`docs/evidence/bench-2026-11.md`), which priced every request from Claude Code's
+own logs. The main session cost $0.30 to $0.82 a run, about evenly reading the cache, writing it and writing output;
+Opus (Plan and Design) was about half of every run. A Haiku 5.5 main session is nearly free while its context stays
+under 100,000 tokens and five times dearer above it, and in round 4 it left the script. Round 5 makes the session unable
+to leave the script, and takes out the turns and the context it did not need.
+
+**The main session relays, and the mod holds it to that (`hooks/temper-mod/core/session.ts`)**
+- During a `/temper` run the conversation itself writes no file with the editing tools, runs only the temper CLI and
+  commands that only read (no redirect into a file, no interpreter, no `git add`, `git commit` or `git checkout`),
+  launches only an agent the CLI named at the run's stage with its type, its model and its prompt as given, and asks
+  only a question the CLI gives at the step (header, question and option labels) or a Scope drift question. The agents
+  keep their stage rules. A small change window the person opens, and a skill they choose (Grill Me, Teach Me), are the
+  two openings; a command the CLI wrote whole passes as written. Round 4's Haiku session edited the spec files and the
+  locked acceptance tests and asked a question of its own; a Sonnet session once launched the root cause agent on a
+  cheaper model. Each is now refused, with what to do next.
+- The CLI set in a variable in the same command (`T=/path/scripts/temper; $T go`) is read as the CLI; a program in a
+  variable set anywhere else is refused.
+- A run starts from the person's request, word for word: the mod keeps what they typed after `/temper:temper` and
+  refuses a `temper state init` whose `--feature` differs from it, in the conversation that typed it (a Haiku session
+  started a run of a dozen rules with a one line summary, and every agent planned from that line).
+- The Intent agent's prompt carries the request with one period after it (a request that ended with a period got two;
+  a Haiku session tidied them, and the guard refused the launch as another prompt).
+- A typed change request goes to the stage's agent (`temper state redo <stage> --reason`), never to the session.
+- The view carries what the guard needs: `next.agents` (every agent named at the run's stage, the current action's
+  first: a task's `task start` turns the next action into `wait` before its agent is launched), `blocking_asks` and an
+  option's `skill`. The mod keeps no memory of its own; the engine loads it again between turns.
+
+**The plan keeps the request's routes**
+- The plan gate's new row `request routes kept`: every `METHOD /path` the request names is in plan.md or tasks.md,
+  method and shape unchanged (a parameter may be renamed). A Plan once built the request's `POST /invoices/{id}/refunds`
+  as another path, and Design, the acceptance tests and Build followed it. A request that names no route passes, and so
+  does a route the person changed in the intent's Decisions.
+
+**Fewer turns, and less for each to read again**
+- **`temper intent answer '<question>' '<answer>'`** writes the person's answer to a Blocking question into Decisions
+  (and a `Design:` question's concern in design.md). The session no longer reads intent.md and edits it with a script
+  (two to four turns a stage that asks, and where a cheaper session began editing spec files). `temper go` hands each
+  Blocking question ready to ask, with its answer call; one call takes every answer of a dialog.
+- **`temper spec branch` and `temper spec commit '<message>' [-- FILE...]`**: leaving Intent, Plan or Design, and the
+  record commit, are temper calls (before: `git checkout`, `git add` and a `git commit` that had to go in a call of its
+  own). **`temper spec deviations`** writes plan.md's Deviations from build-context.json (an instruction to the session
+  before).
+- **An agent's gate call prints its failed rows only** (`temper gate <stage> --brief`): the passed rows were the
+  largest single source of the session's context (22,000 to 28,000 characters a run).
+- **`temper go`'s question is slimmer**: the question as it is asked, and per option only what the answer runs.
+- **A fix pass's findings are short** in the agent's prompt (200 characters each, with the file that holds them whole):
+  a raw traceback in a prompt was copied wrong by a cheaper session, and its launch was refused.
+- **The fix run's lesson is written by the Fix agent**, which has the root cause in hand, not by the session at the
+  commit.
+- **Every view is written by one path** (`cli_ctx.py view`), with the models `temper next` resolves: a view written by
+  `group start` once named an agent with another model than `next` did, and the guard refused the launch.
+
+**Agents**
+- Plan and Design are told never to read the plugin's scripts to learn a format (a measured Plan spent three turns in
+  the CLI's Python on the `Test:` line).
+
+**The benchmark**
+- A resumed session's result carries the session's cumulative cost; `run.mjs` added the results up, so a resumed run
+  was counted two or more times. It now takes the last result when the costs only grow.
+- The SDK stream records each message's output count at its first block, so a price from `transcript.jsonl`
+  understates output. `run.mjs` copies Claude Code's own session logs into the run folder, and the new
+  `bench/loop.py` prices every request from them (Opus $4/$20, Sonnet $2/$10, Haiku $0.10/$0.50; cache reads $0.20,
+  $0.10 and $0.01; a 5 minute write 1.25 times the input rate, a 1 hour write 2 times; a Haiku request over 100,000
+  tokens 5 times), matching the SDK's cost to the cent, and shows the main session turn by turn.
+
+**Measured** (round 5 in `docs/evidence/bench-2026-11.md`, 27 counted runs of four tasks): with the loop on Haiku 5.5
+and these guards, the main session cost $0.03 to $0.09 a run (the Sonnet loop: $0.27 to $0.85), and every run met
+every hidden test, every fact of the brief and the plan's scope (partial-payments only once the request checks were
+in: before them, 14/26 twice). A whole run was about 30% cheaper on a bug and 23% to 27% cheaper on a feature. The
+Sonnet loop on the same code was only a little cheaper. Opus (Plan, Design, the root cause agent) is now two thirds to
+four fifths of a run. The loop's model is unchanged in this version (`model: sonnet` in the command pages).
+
 ## v9.7.6: a fresh reader checks the plan, contests cite evidence, a reviewer that stopped is not a clean review, spec drift
 
 Five ideas from Google's Elephant Goldfish Model (a reviewer with no context reads a design before any code), built on
