@@ -43,10 +43,11 @@ assert_eq "9.8.0: the view a command writes names the same agent prompt as next"
   "$([[ -n "$_written" && "$_written" == "$_prompt" ]] && echo same || echo "differs: ${_written##*$'\n'} / ${_prompt##*$'\n'}")"
 "$TEMPER" task start 1 >/dev/null 2>&1
 # 9.8.0: the agent's `before` call (task start) turns the next action into wait before the agent is launched; the mod
-# launches only an agent the view names, and it keeps no memory between turns: the view keeps naming it while the run waits.
+# launches only an agent the view names, and it keeps no memory between turns: the view keeps naming it while the run waits
+# (first: the view keeps every agent it named at the stage, here also the acceptance agent named before the group began).
 assert_eq "9.8.0: while the run waits on a started task, the view still names the agent the CLI named before" \
-  "work|temper:temper-build-task|wait|1|same" \
-  "$_named|$(vw "d['next']['action'] + '|' + str(len(d['next']['agents']))")|$([[ "$(vw "d['next']['agents'][0]['prompt']")" == "$_prompt" ]] && echo same || echo differs)"
+  "work|temper:temper-build-task|wait|temper:temper-build-task|same" \
+  "$_named|$(vw "d['next']['action'] + '|' + d['next']['agents'][0]['type']")|$([[ "$(vw "d['next']['agents'][0]['prompt']")" == "$_prompt" ]] && echo same || echo differs)"
 mkdir -p .claude/worktrees/temper-demo-T1/docs; echo "# Guide" > .claude/worktrees/temper-demo-T1/docs/guide.md
 assert_exit "F12: task test refuses a manual task" 1 "$TEMPER" task test 1 --phase red
 OUT="$("$TEMPER" task gate 1 --model sonnet 2>&1)"; rc=$?
