@@ -271,11 +271,32 @@ answer at that step or a passed check.
 A plain `git commit` goes to the native `pre-commit` hook in every stage, and the hook decides. A spec
 only commit passes it mid run, as does a Build checkpoint commit with a green test run.
 
+## The run driver (9.8.0)
+
+With the mod loaded, `/temper:temper <request>` (no run active) and `/temper:temper` with no words (a run active)
+are carried by the mod itself, with no model in the main session (`core/driver.ts`). It runs `temper go`, the
+calls the CLI gives (the action's calls, an agent's `before` and `after` calls, the CLI calls of `steps`), launches
+each agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report
+the CLI prints, asks each question the CLI gives (header, question and option labels as given; Blocking questions
+with their answer calls), records your answer as the guard does, and runs the calls of the option you picked. The
+guard checks the driver's questions and agents as it checks the session's: each must be the CLI's. Round 5 of the
+benchmark measured why: the main session's own model time was 8% to 10% of a feature run's wall time and 20% to
+30% of a bug run's, and it cost $0.03 to $0.09 a run on Haiku, for steps that need no model.
+
+It hands the run to the conversation (the prompt based `/temper:temper`, which goes on from the same state; the
+CLI holds the run, the driver holds nothing) for anything that needs a model or your own words: an answer you
+type (passed on as `discuss <your words>`), a skill (Grill Me, Teach Me), the HTML plan review, a small change
+window, a pull request step, an agent's DRIFT rows (the Scope drift question), a name question, a call that fails
+and an action it does not know. It says so in one line. A `/temper:fix` run, a run word (`approve`, `next`, ...)
+and a request while another run is active go to the conversation as before. Without the mod, the conversation
+carries every run, as before.
+
 ## What the mod reads and writes
 
-Mods are not sandboxed, so this is the full list. The mod makes no network, `process` or `env` call,
-starts no agent, makes no tool call, sets no setting and runs no command. CI fails on a call outside
-`scripts/check-mod-calls.sh`.
+Mods are not sandboxed, so this is the full list. The mod makes no network or `env` call, makes no tool call
+of its own and sets no setting. While it carries a `/temper:temper` run (the run driver, below) it runs the
+temper CLI's calls, launches the agents the CLI names and asks the CLI's questions, and nothing else; outside a
+run it drives it runs no command and starts no agent. CI fails on a call outside `scripts/check-mod-calls.sh`.
 
 - **Reads:** `.temper/view.json`, the one file the CLI writes for it (ADR 0013; its fields are in
   [The flow](flow.md)). To find the project it stats the session folder and looks for `.temper/view.json` there

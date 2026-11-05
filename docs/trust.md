@@ -21,6 +21,11 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   session owes an intent gate (the other stage commands are doors into `/temper` and owe none).
   `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. Both fail open.
+- **The run driver (9.8.0).** With the mod loaded, the mod carries a `/temper:temper` run itself: it runs the temper CLI's
+  calls (`temper go` and the calls it gives, through `bash -c` in the project, as the session did), launches the agents
+  the CLI names and asks its questions. It runs no command the CLI did not give, and a call of an answer only after you
+  picked that answer in the question dialog. What needs a model or your words goes back to the conversation
+  ([The mod](mod.md), The run driver).
 - **Git hook.** On the first run `scripts/guards/install.sh` writes a `pre-commit` hook (a secret scan of the staged
   files, then `temper gate commit`) to `temper-gate/pre-commit` in the repository's git folder and points
   `core.hooksPath` at that folder, so every worktree runs it. The hook runs the gate of every project the commit

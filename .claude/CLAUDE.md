@@ -29,7 +29,9 @@ with each gate's exact question and options; `commands/temper.md` is a loop over
 `.temper/view.json` after every change, the one file of the CLI's the mod reads. The person decides
 each gate only in the `Temper gate` question, with the mod or without it, in every mode; the mod
 counts an answer only on an exact match for the CLI's run and step, guards, and draws the run (its
-bar decides nothing). The guard is not a sandbox (`docs/trust.md`). The stage commands above are
+bar decides nothing). With the mod loaded, the mod also carries a run itself (the run driver,
+`hooks/temper-mod/core/driver.ts`): it runs the CLI's calls, launches its agents and asks its questions, and hands
+the run to the conversation for whatever needs a model. The guard is not a sandbox (`docs/trust.md`). The stage commands above are
 doors into `/temper`.
 
 **Version:** 9.8.0 (history: `CHANGELOG.md`).

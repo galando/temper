@@ -70,7 +70,8 @@ on record), proves more of it with the CLI instead of an agent, asks better ques
   view; the loop in `commands/temper.md` uses `temper go`. It never runs a call only the person may cause.
 - **The loop runs on Sonnet** (`model: sonnet` on `/temper:temper` and `/temper:fix`): it relays the CLI's decisions and
   the person's answers, and decides nothing, so it need not run on the session's model. (Ignored where the model is
-  restricted, or in auto mode for a model it does not support.)
+  restricted, or in auto mode for a model it does not support.) Round 5, below, moved it to Haiku 5.5, and with the
+  mod loaded the mod carries the run itself.
 - **One build agent per chain.** Tasks that run one after another anyway (a dependency, a shared file) go to one agent,
   which starts, builds and gates each in order (`task gate --if-running` covers a task it left running); independent
   tasks keep agents of their own, launched together. In the measured runs every task ran alone.
@@ -222,6 +223,23 @@ bug and 5 to 6 times on a feature, and 5.5 to 12 times its time.
   names, routes, nouns) the CLI ranks the files the request reaches, lists their tests, copies the conventions and the
   best ranked files whole, and lists the project's files. The Plan and Design actions make it; RCA makes it from the
   bug text. They read one file first, instead of `cat` of the whole project and a second turn to read the saved output.
+
+**The mod carries the run (the run driver, `hooks/temper-mod/core/driver.ts`)**
+- With the mod loaded, `/temper:temper <request>` (no run active) and `/temper:temper` (a run active) are carried by
+  the mod itself, with no model in the main session: it runs `temper go` and the calls the CLI gives, launches each
+  agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report,
+  asks each question the CLI gives (its Blocking questions too) and runs the calls of the answer the person picks.
+  The guard checks its questions and agents as it checks the session's.
+- It hands the run to the conversation for what needs a model or the person's words: a typed answer (as `discuss`),
+  a skill, the HTML plan review, a small change window, a pull request step, an agent's DRIFT rows, a name question,
+  a failed call. The CLI holds the run, so the conversation goes on from the same state. Without the mod, a
+  `/temper:fix` run, a run word or a second request, the conversation carries the run as before.
+- The mod's reviewed calls gain `agent.spawn`, `ui.ask`, `ui.log`, `clock.now` and `process.run` (the one process
+  call, for the CLI's calls): `scripts/check-mod-calls.sh`, `docs/mod.md`, `docs/trust.md`.
+- Measured on vague-refunds (2 live runs, `docs/evidence/bench-2026-11.md`): the run the driver carried to the
+  commit cost $0.00 in the main session, with no main session turn, $1.69 and 678 s in all (the Haiku loop on the
+  same task: $2.00 to $2.31, 689 to 1,010 s). The other run handed back at the Intent gate on a driver defect, fixed
+  (the action's `gate` call after the Blocking answers), and the conversation finished it: 11/11.
 
 **Build: three defects of a measured run**
 - **A scenario is owed by the task that writes its test file.** Plan traced API scenarios to the task that built the

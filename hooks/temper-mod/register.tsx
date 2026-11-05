@@ -11,6 +11,8 @@ import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
+import { drive, slugOf } from './core/driver'
+import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
 import { stageToast, turnLine } from './core/view'
@@ -28,6 +30,8 @@ type Api = EngineInterface
 let options: PluginOptions = {}
 let current: Promise<Snapshot> | null = null
 let root = ''
+// The answer and the time of each agent the run driver launched, by agent id (from turn.complete).
+const agentEnds = new Map<string, AgentEnd>()
 let paneOpen = false
 // The person closed the pane by hand (its close mark, or /temper:temper pane): the mod does not open it for them again
 // in this session; /temper:temper pane does.
@@ -398,6 +402,92 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
   return { deny: null, ...(clearable ? { trivialExit: true } : {}) }
 }
 
+// ---- The run driver (9.8.0, round 5) ------------------------------------------------------------
+// The mod carries a /temper:temper run itself: core/driver.ts decides, these functions reach the engine. A hook's own time
+// is bounded, a `$` call's is not, so the driver waits on its agents with `$` calls (a short sleep run by the host).
+
+const RUN_MS = 600_000
+const WAIT_MS = 90 * 60_000
+
+async function hostRun($: Api, cwd: string, call: string): Promise<{ code: number; out: string }> {
+  const r = await $.process.run(['bash', '-c', call], { cwd, timeoutMs: RUN_MS })
+  return { code: r.exitCode, out: r.stdout + (r.stderr ? `\n${r.stderr}` : '') }
+}
+
+async function hostSpawn($: Api, a: GoAgent): Promise<string | null> {
+  const label = a.type.replace(/^temper:temper-/, '')
+  const s = await $.agent.spawn({ subagentType: a.type, prompt: a.prompt, description: `Temper ${label}`, ...(a.model ? { model: a.model } : {}) })
+  return 'agentId' in s && typeof s.agentId === 'string' ? s.agentId : null
+}
+
+// Waits until every agent of `ids` has ended (its turn.complete, or a status other than running), at most WAIT_MS.
+async function hostWait($: Api, cwd: string, ids: string[]): Promise<Record<string, AgentEnd>> {
+  const out: Record<string, AgentEnd> = {}
+  if (ids.length === 0) {
+    await $.process.run(['sleep', '5'], { cwd, timeoutMs: 30_000 })
+    return out
+  }
+  const start = await $.clock.now()
+  while ((await $.clock.now()) - start < WAIT_MS) {
+    const list = await $.agent.list().catch(() => [])
+    let open = 0
+    for (const id of ids) {
+      if (id in out) continue
+      const kept = agentEnds.get(id)
+      const info = list.find(x => x.id === id)
+      if (kept !== undefined) out[id] = kept
+      else if (info !== undefined && info.status !== 'running' && info.status !== 'pending') out[id] = { text: '', ms: null }
+      else open++
+    }
+    if (open === 0) break
+    await $.process.run(['sleep', '2'], { cwd, timeoutMs: 30_000 })
+  }
+  // An answer that came after the status changed is the agent's own: take it when it is there now.
+  for (const id of ids) {
+    const kept = agentEnds.get(id)
+    if (kept !== undefined) out[id] = kept
+  }
+  return out
+}
+
+async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
+  const a = await $.ui.ask(q.question, { options: q.options.map(o => o.label).slice(0, 4), header: q.header })
+  return typeof a === 'string' && a !== '' ? a : null
+}
+
+async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
+  await recordAnswers($, { result: { questions: [{ header: q.header, question: q.question, options: q.options, multiSelect: false }], answers: { [q.question]: label } } })
+}
+
+async function driveRun($: Api, cwd: string, request: string | null, signal: AbortSignal | undefined): Promise<DriveEnd> {
+  const port: Port = {
+    run: call => hostRun($, cwd, call),
+    spawn: a => hostSpawn($, a),
+    wait: ids => hostWait($, cwd, ids),
+    ask: q => hostAsk($, q),
+    record: (q, label) => hostRecord($, q, label),
+    show: async text => {
+      if (text.trim() !== '') $.ui.log(text)
+      adopt($, await refresh($))
+    },
+    stopped: () => signal?.aborted === true,
+  }
+  return drive(port, pluginCli(), request, request === null ? null : slugOf(request))
+}
+
+// Whether the mod carries this /temper:temper: a request with no run active (a new run), or no words with a run of
+// /temper active (taking it up again). A run word, a request while another run is active (its restart question), a
+// /temper:fix run, an inert or switched off mod: the model loop of commands/temper.md, as before.
+async function drives($: Api, args: string): Promise<{ request: string | null } | null> {
+  const snap = await refresh($)
+  if (snap.inert || snap.enforcement === 'off' || snap.failOpen || snap.runCommand === 'fix') return null
+  const req = requestOf(args)
+  const active = snap.slug !== null
+  if (req !== null && !active) return { request: req }
+  if (args.trim() === '' && active) return { request: null }
+  return null
+}
+
 // ---- /temper:temper -------------------------------------------------------------------------
 
 // Where the person changes the two settings: Claude Code's /config, the plugin's own options. The mod never writes them.
@@ -514,6 +604,19 @@ export const register: Register = (on, opts) => {
     if (parsed === null) {
       // The person's own run word, from the prompt box, opens the pane in full mode; any other origin opens nothing.
       if (e.origin?.kind === 'composer') await openForPerson($).catch(() => undefined)
+      // 9.8.0 (round 5): the mod carries the run itself, with no model in the main session; what needs a model goes on
+      // in the prompt based command, from the same state. Any failure hands the run to that command as well.
+      const d = await drives($, e.args).catch(() => null)
+      if (d !== null) {
+        const end = await driveRun($, root, d.request, (next as { signal?: AbortSignal }).signal).catch((x: unknown) => ({ kind: 'handback' as const, args: 'next', why: `the driver stopped: ${String(x).slice(0, 120)}` }))
+        const after = await refresh($).catch(() => null)
+        if (after !== null) adopt($, after)
+        if (end.kind === 'done') return { text: end.text }
+        // No run was started: the request goes on as the person typed it, and the prompt based command starts the run.
+        if (d.request !== null && (after === null || after.slug === null)) return next(e)
+        $.ui.log(`Temper: the run goes on in the conversation (${end.why}).`)
+        return next({ ...e, args: end.args })
+      }
       return next(e)
     }
     const out = await handleTemper($, parsed).catch(() => null)
@@ -633,6 +736,11 @@ export const register: Register = (on, opts) => {
 
   // A line beneath the answer (stage, progress, next stage). Nothing is submitted.
   on('turn.complete', async ($, e, next) => {
+    // The answer and the time of each subagent, for the run driver that waits on it (9.8.0).
+    if (typeof e.agentId === 'string' && e.agentId !== '') {
+      agentEnds.set(e.agentId, { text: typeof e.answer === 'string' ? e.answer : '', ms: typeof e.durationMs === 'number' ? e.durationMs : null })
+      if (agentEnds.size > 200) agentEnds.delete(agentEnds.keys().next().value as string)
+    }
     const result = await next(e)
     try {
       if (e.agentId !== undefined || e.reason !== 'answer') return result

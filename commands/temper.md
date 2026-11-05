@@ -21,6 +21,9 @@ gate, an option or a next stage yourself.
 
 
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod on, the mod carries a run it can by itself (the run driver, 9.8.0: `docs/mod.md`) and hands it here for
+what needs you: `next` (go on with the loop below) or `discuss <the person's words>` (a typed answer). Either way the
+run is where the CLI says it is: start with the loop.
 
 ## Arguments
 
