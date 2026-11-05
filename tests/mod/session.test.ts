@@ -4,6 +4,7 @@
 // locked acceptance tests and asked a question of its own; a Sonnet session once launched an agent on a cheaper model.
 import { describe, expect, test } from 'claude-code/testing'
 
+import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
 import { SESSION_AGENT_DENY, SESSION_ASK_DENY, SESSION_WRITE_DENY, bashWhy, evaluateSession, factsOf, skillChosen } from '../../hooks/temper-mod/core/session'
 import type { SessionFacts } from '../../hooks/temper-mod/core/session'
@@ -62,6 +63,8 @@ describe('Bash: the CLI and commands that only read', () => {
     `for f in ledger/*.py; do echo "== $f"; head -5 "$f"; done`,
     "sed -n 1,40p plan.md",
     `${CLI} spec commit 'docs(intent): accept pw'`,
+    // Seen in round 5 (4 of 4 Sonnet runs): the CLI's path set in a variable, then the calls through it.
+    `T=${CLI}\n$T intent answer 'Who?' 'Admin' 'When?' '60 days'\n$T gate intent; \${T} go`,
   ]
   for (const c of OK) test(`allows: ${c.split('\n')[0]}`, () => expect(bashWhy(c)).toBe(null))
   const NO: Array<[string, string]> = [
@@ -77,8 +80,10 @@ describe('Bash: the CLI and commands that only read', () => {
     ['echo $(python3 -c "print(1)")', 'python3'],
     ['git branch new-branch', 'git branch'],
     ['xargs rm < list.txt', 'xargs'],
-    // Seen in round 5: the CLI's path in a variable. No rule sees a temper call made that way.
-    ['T=/plugin/scripts/temper\n$T intent answer \'Who?\' \'Admin\'\n$T go', 'write the CLI\'s path out in full'],
+    // A program in a variable the guard cannot read: not the CLI set plainly in the same command.
+    ['T=$(ls /plugin/scripts/temper)\n$T go', 'write the CLI\'s path out in full'],
+    ['X=python3\n$X -c 1', 'write the CLI\'s path out in full'],
+    ['T=/plugin/scripts/temper\nT=python3\n$T -c 1', 'write the CLI\'s path out in full'],
   ]
   for (const [c, why] of NO) {
     test(`refuses: ${c.split('\n')[0]}`, () => {
@@ -187,4 +192,13 @@ describe('a Build task\'s start changes the view before its agent is launched', 
     expect(isDeny(call(ctx('build'), 'Agent', { subagent_type: TASK.type, model: 'sonnet', prompt: TASK.prompt }, f))).toBe(true)
   })
   test('an ask names no agent', () => expect(factsOf(at('ask', [TASK]), false).agents).toEqual([]))
+})
+
+describe('the CLI set in a variable is read as the CLI, by both guards', () => {
+  test('a call only the person may cause, made through the variable, needs the person\'s answer like one written out', () => {
+    const r = evaluate(ctx('plan'), { tool: 'Bash', input: { command: `T=${CLI}\n$T state advance plan_complete build` } })
+    expect(isDeny(r) && r.deny).toBe(ONLY_USER)
+    const ok = evaluate(ctx('plan', { allowed: [`${CLI} state advance plan_complete build`] }), { tool: 'Bash', input: { command: `T=${CLI}\n$T state advance plan_complete build` } })
+    expect(isDeny(ok)).toBe(false)
+  })
 })

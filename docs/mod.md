@@ -222,11 +222,14 @@ program starts, so no keyword, wrapper or variable word hides it (`then`, `copro
 `sudo`, `exec -a`, `X=1`, a full path); a name matches without regard to case and through a glob of
 some literal text (`/usr/bin/gi[t]`, `/usr/bin/[[:alpha:]]it`). The price is that a command which only
 names one as words (`echo rm .temper/gates.json`, or `ls s* .temper/gates.json`, where `s*` could be
-`sed`) is refused too. It does not follow variables, the output of a
+`sed`) is refused too. A variable the same command sets plainly to the temper script
+(`T=/p/scripts/temper` as a statement of its own, then `$T go`) is read as the script, so a call made
+through it is checked like one written out (round 5 of the benchmark: a session writes it when it runs
+several calls). Apart from that, it does not follow variables, the output of a
 substitution, `cd` or links, and it does not read the program another program runs. These are still
 possible, and listed as known limits in the mod's tests:
 
-- A call or a path in a variable, or built at run time by a program.
+- A call or a path in a variable set outside the command, or built at run time by a program.
 - A call in a string another program runs (`sh -c`, `eval`, `xargs`, `perl -e`), or in a here document
   a shell reads.
 - A link or a script that an earlier call made, or a script that is already on disk.

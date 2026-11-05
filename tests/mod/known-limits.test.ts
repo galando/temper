@@ -17,9 +17,9 @@ const verdict = (command: string) => evaluate(stateAt('plan'), ctx, { tool: 'Bas
 
 export const KNOWN_LIMITS: Array<{ name: string; command: string; why: string }> = [
   {
-    name: 'a call in a variable',
-    command: 'T=scripts/temper; $T override plan --reason x',
-    why: 'The command word is $T. The guard does not follow variables, so no temper call is written out.',
+    name: 'a call in a variable set outside the command',
+    command: '$T override plan --reason x',
+    why: 'The command word is $T, set by an earlier command or the environment. The guard reads a variable only when the same command sets it plainly to the script (T=scripts/temper; $T ...).',
   },
   {
     name: 'a call in a string another program runs',

@@ -321,6 +321,29 @@ function bracketEnd(b: string, i: number): number {
 // The temper script: a word naming it that sets no variable.
 export const isScript = (word: string): boolean => !ASSIGNMENT.test(unmask(word)) && nameIs(word, 'temper')
 
+// 9.8.0 (round 5): the CLI named through a variable set in the same command (`T=/p/scripts/temper` as a statement of its
+// own, then `$T go` or `${T} go`), as a session writes when it runs several calls. Only a plain assignment counts: its
+// value is the script's path, with no `$`, backquote or glob in it; any other assignment of the name takes it back. Read
+// this way the call is checked like one written out (before, a call only the person may cause went through unseen).
+const VAR_WORD = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/
+
+export function noteScriptVar(words: readonly string[], vars: Set<string>): void {
+  if (words.length === 0 || !words.every(w => ASSIGNMENT.test(unmask(w)))) return
+  for (const w of words) {
+    const plain = unmask(w)
+    const eq = plain.indexOf('=')
+    const name = plain.slice(0, eq).replace(/\+$/, '')
+    const value = plain.slice(eq + 1)
+    if (!/[$`*?[\]{}]/.test(value) && value !== '' && nameIs(value, 'temper') && !plain.includes('+=')) vars.add(name)
+    else vars.delete(name)
+  }
+}
+
+export const scriptViaVar = (word: string, vars: ReadonlySet<string>): boolean => {
+  const m = VAR_WORD.exec(unmask(word))
+  return m !== null && vars.has(m[1] as string)
+}
+
 // Where a program the guard reads may run in a statement: every word that names it. Bash runs a program after
 // `VAR=value` words, after a keyword (`then`, `do`, `{`, `!`, `coproc`, `function f {`), and after a program that runs
 // the words that follow (`env`, `timeout 5`, `sudo -D /x`, `exec -a x`, `flock f`, a full path to one); no list of
@@ -572,7 +595,9 @@ export function readShell(command: string): ShellRead {
   // can hold an alias or a hooks path.
   let home = false
   let runsGit = false
+  const cliVars = new Set<string>()
   for (const raw of tokens(command)) {
+    noteScriptVar(raw, cliVars)
     // Every word as bash expands its brace lists, so no list hides a program, a call or a path (`{git,commit}`). A word
     // past the cap is read as it is: it is refused when it holds a list of words (which could name a program) or when
     // it is a path a program writes.
@@ -634,7 +659,7 @@ export function readShell(command: string): ShellRead {
     }
     // Every word that names the script starts a call: the words after it are the call's.
     for (let i = 0; i < masked.length; i++) {
-      if (!isScript(masked[i] as string)) continue
+      if (!isScript(masked[i] as string) && !scriptViaVar(masked[i] as string, cliVars)) continue
       read.calls.push(words.slice(i + 1))
       const rest = masked.slice(i + 1)
       read.globWords.push(rest.filter((x, k) => isGlob(x) && !x.startsWith('--reason=') && rest[k - 1] !== '--reason'))

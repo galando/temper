@@ -14,7 +14,7 @@
 import type { RuleContext, RuleResult, ToolCall } from './rules'
 import { DRIFT_HEADER, DRIFT_PREFIX } from './rules'
 import type { Ask, Option, Question, RunView } from './runview'
-import { isScript, readShell, statements } from './shell'
+import { isScript, noteScriptVar, readShell, scriptViaVar, statements } from './shell'
 
 // What the CLI's view says the session may do at this step.
 export type SessionFacts = {
@@ -118,12 +118,12 @@ const DEVICES = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
 const base = (w: string): string => (w.split('/').pop() ?? '').toLowerCase()
 
 // Why a statement is not one the session may run, or null when it may.
-function statementWhy(words: readonly string[], publish: boolean): string | null {
+function statementWhy(words: readonly string[], publish: boolean, cliVars: ReadonlySet<string> = new Set()): string | null {
   let i = 0
   while (i < words.length && (ASSIGNMENT.test(words[i] as string) || PREFIX.has(words[i] as string))) i++
   const first = words[i]
   if (first === undefined || HEADER.has(first)) return null
-  if (isScript(first)) return null
+  if (isScript(first) || scriptViaVar(first, cliVars)) return null
   const name = base(first)
   const rest = words.slice(i + 1).filter(w => !REDIRECT.test(w))
   if (publish && name === 'gh') return null
@@ -141,8 +141,8 @@ function statementWhy(words: readonly string[], publish: boolean): string | null
     if (sub === 'worktree' && args[0] === 'list') return null
     return `git ${sub || '(no subcommand)'} changes the repository`
   }
-  // A program named by a variable (`T=.../temper; $T go`): the guard cannot tell what runs, and a temper call made that
-  // way is one no rule sees (a call only the person may cause among them).
+  // Any other program named by a variable: the guard cannot tell what runs (the CLI set in the same command, as
+  // `T=/p/scripts/temper`, is read above as the CLI).
   if (first.startsWith('$')) return `${first} names the program through a variable: write the CLI's path out in full in every call`
   if (!READERS.has(name)) return `${name} is not the CLI and not a command that only reads`
   if (name === 'find' && rest.some(w => ['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0', '-fprintf', '-fls'].includes(w))) return 'find with an action that runs or writes'
@@ -156,8 +156,10 @@ export function bashWhy(command: string, publish = false): string | null {
   const read = readShell(command)
   const writes = [...read.writes, ...read.targets, ...read.landings].filter(p => !DEVICES.has(p))
   if (writes.length > 0) return `it writes ${writes[0]}`
+  const cliVars = new Set<string>()
   for (const st of statements(command)) {
-    const why = statementWhy(st, publish)
+    noteScriptVar(st, cliVars)
+    const why = statementWhy(st, publish, cliVars)
     if (why !== null) return why
   }
   return null
