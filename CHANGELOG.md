@@ -297,6 +297,23 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
   feature tasks). Every hidden test passed. The same page has the seven other benchmark tasks on this code against
   vanilla Claude Code: vanilla met all 84 hidden tests, Temper 82, at 3 to 13 times the cost.
 
+**Three gaps of the last measured pass**
+- **Exempt is an item of the rules checklist, asked with Who, When and How much** (`scripts/gate_rows.py`,
+  `agents/intent.md`): what never gets the action (below an amount, a kind of record, a state), asked as one open
+  question that names every kind of exclusion. A vague-late-fees run spent its last questions on narrow exceptions
+  (once ever, fees on fees), never asked which invoices are exempt, and missed "invoices under 20.00 are never charged".
+  The Intent gate fails a draft with no Exempt line, or with Exempt assumed while a later item was asked.
+- **A rule the request states decides its edges** (`agents/intent.md`): an orders-pagination run asked whether a last
+  page of exactly `limit` items gets a cursor, though the request said `next_cursor` is null on the last page; the
+  click put a cursor there, and a hidden test failed.
+- **A corrected acceptance test that fails again keeps the acceptance path** (`scripts/temper`, the Check gate): the
+  "tests pass" row read the acceptance run as a suite run once a correction named it ("corrected after the lock: ..."),
+  so two rows failed, the triage and "Correct the acceptance test" were no longer offered, and a login-lockout run went
+  back to Build twice for a test that was wrong (it counted a failure 601 s old), then ended in an override. The
+  acceptance run is judged by its own row only.
+- **Not done, measured:** running the acceptance writer beside Design. Design edits intent.md and plan.md in all 20
+  measured runs, so tests written beside it would miss what Design decided.
+
 **Build: three defects of a measured run**
 - **A scenario is owed by the task that writes its test file.** Plan traced API scenarios to the task that built the
   domain module, while their test file came with the route's later task: that task's gate could never pass, and the

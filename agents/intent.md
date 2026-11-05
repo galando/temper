@@ -89,11 +89,12 @@ folder.
    1. **Who** may do it: which roles or users, and what the others get.
    2. **When**: time limits, windows, deadlines, grace periods, what "today" means.
    3. **How much**: amount limits, caps, minimums, rounding, what may be partial.
-   4. **States**: what each action changes (statuses, flags), what is allowed in each state, what undoing does.
-   5. **Where it shows**: the API, exports, reports, notifications, audit records.
-   6. **Exceptions**, each its own question when the request does not settle it:
-      - **excluded or exempt**: what never gets the action (below an amount, a kind, a state), apart from any cap or
-        minimum of item 3;
+   4. **Exempt**: what never gets the action, apart from any cap or minimum of item 3. Ask it as one open question
+      that names every kind of exclusion you can see (below an amount, a kind of record, a state, a customer), so the
+      person can name each that holds: a question about one kind ("do fee invoices get fees?") leaves the others out.
+   5. **States**: what each action changes (statuses, flags), what is allowed in each state, what undoing does.
+   6. **Where it shows**: the API, exports, reports, notifications, audit records.
+   7. **Exceptions**, each its own question when the request does not settle it:
       - **twice**: the same action or request again (a retry, a replay, a second run);
       - **at the edge**: exactly at a limit, zero, empty, the last day;
       - **gone**: a referenced record deleted or missing;
@@ -106,7 +107,7 @@ folder.
 
    **Record the checklist.** Under `### Rules covered` in intent.md, one line per item, naming it exactly:
    `- Who: asked`, `- When: assumed (see Assumptions)`, `- States: not applicable (no status changes)`, and so on for
-   How much, Where it shows and Exceptions. The Intent gate fails a draft that leaves an item out. When the feature
+   How much, Exempt, Where it shows and Exceptions. The Intent gate fails a draft that leaves an item out. When the feature
    has states (a status such as `active`, `canceled`, `refunded`), also write one line `**States:** active, canceled`
    naming each: the acceptance tests must cover every one.
 
@@ -114,16 +115,20 @@ folder.
    is decided: write it under `### Decisions` as `- {the rule} -> as the request states (the request)`, never as a
    question, and never offer a choice that contradicts it. A measured run asked what an amount above the balance
    answers, which the request gave as 409, recommended 400, and the person's click put the contradiction in the code.
-   Ask only what the request leaves open, or a house rule the request does not settle.
+   Ask only what the request leaves open, or a house rule the request does not settle. A rule the request states also
+   decides its edges: a last page that holds exactly one page of items, an amount exactly at a cap, a time exactly at
+   a limit follow the rule as written, so they are decisions, not questions. A measured run asked whether a last page
+   of exactly `limit` items gets a cursor, though the request said `next_cursor` is null on the last page; the click
+   put a cursor there, and the code broke the request. Ask an edge only when the rule as written leaves it open.
 
    **Write each question so the person clicks, never types.** One line each, in this form:
    `- Blocking: {the question, concrete, naming the feature} choices: {recommended answer} | {other} | {other}`
    with two or three choices, the one you would pick first, each a short concrete answer ("Admins only", "60 days
-   after the payment", "Stays paid"), never "Other" or "It depends". Ask at most six: **Who, When and How much
-   first**, then the others in the checklist's order; fold the rest into assumptions. That the request does not say
+   after the payment", "Stays paid"), never "Other" or "It depends". Ask at most six: **Who, When, How much and
+   Exempt first**, then the others in the checklist's order; fold the rest into assumptions. That the request does not say
    an item is the reason to ask it, never to mark it not applicable: not applicable means the feature has no such rule
    at all (a CLI flag has no time limit; a refund may well have one). The Intent gate fails "When: not applicable (no
-   time window in the request)", and Who, When or How much assumed while a later item was asked. Everything on the checklist you do not ask about goes under `### Assumptions` in intent.md, one line
+   time window in the request)", and Who, When, How much or Exempt assumed while a later item was asked. Everything on the checklist you do not ask about goes under `### Assumptions` in intent.md, one line
    each (`- {what you assume} (because {why})`), so the person can scan and correct them at the gate.
 
 6. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` yourself before returning and

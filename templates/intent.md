@@ -78,6 +78,7 @@ a draft that leaves one out.}
 - Who: {asked | assumed | not applicable} ({which question, or why})
 - When: {asked | assumed | not applicable}
 - How much: {asked | assumed | not applicable}
+- Exempt: {asked | assumed | not applicable}
 - States: {asked | assumed | not applicable}
 - Where it shows: {asked | assumed | not applicable}
 - Exceptions: {asked | assumed | not applicable} ({which: excluded, twice, at the edge, gone, someone else's, halfway})

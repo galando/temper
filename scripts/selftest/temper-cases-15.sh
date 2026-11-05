@@ -366,6 +366,16 @@ echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
 assert_eq "9.8.0: the corrected tests pass, and the row names the person's reason" "yes" \
   "$(_gc | grep -q '\[v\] acceptance tests written before Build — they pass, as the person corrected them after the lock (The test asks for what the intent does not say)' && echo yes || echo no)"
 assert_exit "9.8.0: and it is locked once more" 1 "$TEMPER" acceptance lock --cmd "$ACMD"
+# The corrected tests fail again (a measured run: a second wrong test): the acceptance row alone fails. The tests row reads
+# the suite's runs only, so the person still gets the triage and the way to correct a test, not a step back to Build
+# that cannot make right code pass a wrong test.
+cat > .temper/evidence/check.json <<'JSON'
+[{"claim": "tests: the suite (run by the CLI)", "cmd": "true", "exit_code": 0, "output": "OK"},
+ {"claim": "acceptance (written before Build), corrected after the lock: The test asks for what the intent does not say", "cmd": "x", "exit_code": 1,
+  "output": "FAIL: test_ac05 AssertionError: 401 != 423"}]
+JSON
+assert_eq "9.8.0: a corrected acceptance run that fails again fails its own row, never the tests row" "yes|yes" \
+  "$(_gc | grep -q '\[v\] tests pass' && echo yes || echo no)|$(_gc | grep -q '\[x\] acceptance tests written before Build' && echo yes || echo no)"
 
 # a step back from Check carries the failing output, and the surviving mutants, to Build's fix pass
 rm -f .temper/feedback-loops.json
@@ -462,8 +472,8 @@ assert_eq "9.8.0: the Intent gate records that the person was asked something" "
 assert_eq "9.8.0: a choice marked (house rule) is listed first, as the recommended answer" "Who may run it? choices: Clerks and admins (house rule) | Admins only | Anyone" \
   "$(nx "d['blocking'][0]")"
 assert_eq "9.8.0: a draft intent with no Rules covered section fails the rules checklist row, naming every item" "yes" \
-  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q 'rules checklist covered — ### Rules covered has no asked, assumed or not applicable line for: Who, When, How much, States, Where it shows, Exceptions' && echo yes || echo no)"
-printf '\n### Rules covered\n\n- Who: asked\n- When: not applicable (no time rule)\n- How much: not applicable\n- States: assumed (none change)\n- Where it shows: assumed\n' >> .temper/specs/demo/intent.md
+  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q 'rules checklist covered — ### Rules covered has no asked, assumed or not applicable line for: Who, When, How much, Exempt, States, Where it shows, Exceptions' && echo yes || echo no)"
+printf '\n### Rules covered\n\n- Who: asked\n- When: not applicable (no time rule)\n- How much: not applicable\n- Exempt: not applicable (every run is reported)\n- States: assumed (none change)\n- Where it shows: assumed\n' >> .temper/specs/demo/intent.md
 assert_eq "9.8.0: an item left out still fails the row" "yes" \
   "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q 'line for: Exceptions$' && echo yes || echo no)"
 printf -- '- Exceptions: asked (twice, gone)\n' >> .temper/specs/demo/intent.md

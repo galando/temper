@@ -290,14 +290,19 @@ _rc16() { # a draft intent whose rules checklist is $1 (lines)
   fresh; printf '# Intent: Demo\n\n**Status:** draft\n\n### Rules covered\n\n%b\n' "$1" > .temper/specs/demo/intent.md
 }
 _rcr() { python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" intent-rules .temper/specs/demo/intent.md | python3 -c "import json,sys; r=json.load(sys.stdin); print(('PASS' if r['pass'] else 'FAIL') + '|' + r['detail'])"; }
-_rc16 '- Who: asked\n- When: not applicable (no time window in the request)\n- How much: asked\n- States: asked\n- Where it shows: assumed\n- Exceptions: asked'
+_rc16 '- Who: asked\n- When: not applicable (no time window in the request)\n- How much: asked\n- Exempt: asked\n- States: asked\n- Where it shows: assumed\n- Exceptions: asked'
 assert_eq "9.8.0: When not applicable because the request is silent fails, and says to ask it" "FAIL|1" "$(_rcr | cut -d'|' -f1)|$(_rcr | grep -c 'that is the reason to ask')"
-_rc16 '- Who: asked\n- When: assumed (see Assumptions: no time limit)\n- How much: asked\n- States: asked\n- Where it shows: asked (the export)\n- Exceptions: asked'
+_rc16 '- Who: asked\n- When: assumed (see Assumptions: no time limit)\n- How much: asked\n- Exempt: asked\n- States: asked\n- Where it shows: asked (the export)\n- Exceptions: asked'
 assert_eq "9.8.0: When assumed while a later item was asked fails: the first three come first" "FAIL|1" "$(_rcr | cut -d'|' -f1)|$(_rcr | grep -c 'When assumed while States, Where it shows, Exceptions asked')"
-_rc16 '- Who: asked\n- When: not applicable (a CLI flag has no time rule)\n- How much: not applicable (no amounts)\n- States: not applicable\n- Where it shows: asked (the CI log)\n- Exceptions: assumed (see Assumptions)'
+_rc16 '- Who: asked\n- When: not applicable (a CLI flag has no time rule)\n- How much: not applicable (no amounts)\n- Exempt: not applicable (every stage is reported)\n- States: not applicable\n- Where it shows: asked (the CI log)\n- Exceptions: assumed (see Assumptions)'
 assert_eq "9.8.0: not applicable with a reason of the feature itself passes, and so does a later item assumed" "PASS" "$(_rcr | cut -d'|' -f1)"
-_rc16 '- Who: asked\n- When: asked\n- How much: assumed (house rule: CONVENTIONS.md caps every amount)\n- States: assumed\n- Where it shows: assumed\n- Exceptions: assumed'
-assert_eq "9.8.0: a first three item assumed while no later item was asked passes (the six questions went to the first three)" "PASS" "$(_rcr | cut -d'|' -f1)"
+_rc16 '- Who: asked\n- When: asked\n- How much: assumed (house rule: CONVENTIONS.md caps every amount)\n- Exempt: asked\n- States: assumed\n- Where it shows: assumed\n- Exceptions: assumed'
+assert_eq "9.8.0: a first four item assumed while no later item was asked passes (the six questions went to the first four)" "PASS" "$(_rcr | cut -d'|' -f1)"
+_rc16 '- Who: asked\n- When: asked\n- How much: asked\n- Exempt: assumed (none)\n- States: asked\n- Where it shows: assumed\n- Exceptions: asked (twice, fees on fees)'
+assert_eq "9.8.0: Exempt assumed while narrower exceptions were asked fails: what never gets the action is asked with the first" "FAIL|1" \
+  "$(_rcr | cut -d'|' -f1)|$(_rcr | grep -c 'Exempt assumed while States, Exceptions asked')"
+_rc16 '- Who: asked\n- When: asked\n- How much: asked\n- States: asked\n- Where it shows: assumed\n- Exceptions: asked'
+assert_eq "9.8.0: a draft with no Exempt line fails the row, naming it" "FAIL|1" "$(_rcr | cut -d'|' -f1)|$(_rcr | grep -c 'line for: Exempt$')"
 
 # --- 9. A command that would wait for input until the Bash timeout is refused (block-stdin-wait.sh) ---
 _sw() { # _sw <cwd> <command>: the guard's exit code for this Bash call

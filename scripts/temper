@@ -3963,8 +3963,9 @@ try:
     rows = json.load(open(sys.argv[1]))
 except Exception:
     rows = []
+# the acceptance run has a row of its own (a correction names its tests: 'corrected after the lock: test_...')
 runs = [r for r in rows if isinstance(r, dict) and not r.get('scenario') and isinstance(r.get('exit_code'), int)
-        and re.search('test', r.get('claim') or '', re.I)]
+        and re.search('test', r.get('claim') or '', re.I) and not (r.get('claim') or '').startswith('acceptance (written before Build)')]
 last = {}
 for r in runs:
     last[' '.join(str(r.get('claim')).lower().split())] = r

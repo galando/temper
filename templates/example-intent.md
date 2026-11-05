@@ -76,6 +76,7 @@ number of downstream repos that read `--ci` output (owner: Dana, reviewed each q
 - Who: not applicable (a CLI flag; anyone who can run the CLI)
 - When: not applicable (no time rule)
 - How much: not applicable (no amounts)
+- Exempt: not applicable (every stage of the run is reported)
 - States: assumed (the report reads verdicts and changes none)
 - Where it shows: asked (the CI job log; see Decisions)
 - Exceptions: assumed (a stage with no verdict yet is left out; see Open Questions)

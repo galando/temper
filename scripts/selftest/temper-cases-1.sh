@@ -869,6 +869,7 @@ Support spends a third of call time on status-only queries.
 - Who: not applicable
 - When: not applicable
 - How much: not applicable
+- Exempt: not applicable
 - States: not applicable
 - Where it shows: not applicable
 - Exceptions: not applicable

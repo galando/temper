@@ -234,6 +234,7 @@ A real problem with real text.
 - Who: not applicable
 - When: not applicable
 - How much: not applicable
+- Exempt: not applicable
 - States: not applicable
 - Where it shows: not applicable
 - Exceptions: not applicable

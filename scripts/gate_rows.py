@@ -49,8 +49,10 @@ def intent_blocking(path):
     return row("blocking question open", True, "no Blocking question is open")
 
 
-RULES = ("Who", "When", "How much", "States", "Where it shows", "Exceptions")
-CORE_RULES = ("Who", "When", "How much")
+# 9.8.0: Exempt (what never gets the action) is an item of its own and comes with the first: a measured run spent its
+# questions on narrow exceptions (once ever, fees on fees) and never asked which invoices are exempt, and missed one.
+RULES = ("Who", "When", "How much", "Exempt", "States", "Where it shows", "Exceptions")
+CORE_RULES = ("Who", "When", "How much", "Exempt")
 # A reason that is only the request's silence ("no time window in the request", "not stated").
 SILENCE = re.compile(r"\b(in|by|from) the (request|ticket)\b|\b(request|ticket) (does not|doesn't|did not|didn't) "
                      r"(say|name|state|mention|give|specify)|\bnot (stated|given|mentioned|named|specified)\b|\bunspecified\b", re.I)
@@ -84,7 +86,7 @@ def intent_rules(path):
         return row("rules checklist covered", False, "### Rules covered has no asked, assumed or not applicable line for: %s" % ", ".join(missing))
     # 9.8.0 (round 5): two measured runs skipped the refund window. One wrote "When: not applicable (no time window in
     # the request)": the request's silence is the reason to ask, never to skip. The other assumed "no time limit" while
-    # it asked about where refunds show: with six questions at most, Who, When and How much come first.
+    # it asked about where refunds show: with six questions at most, Who, When, How much and Exempt come first.
     silent = [r for r in CORE_RULES if seen[r.lower()] != "asked" and SILENCE.search(why[r.lower()])]
     if silent:
         return row("rules checklist covered", False, "%s: not asked because the request does not say it; that is the reason to ask: "
@@ -92,7 +94,7 @@ def intent_rules(path):
     later = [r for r in RULES if r not in CORE_RULES and seen[r.lower()] == "asked"]
     skipped = [r for r in CORE_RULES if seen[r.lower()] == "assumed"]
     if skipped and later:
-        return row("rules checklist covered", False, "%s assumed while %s asked: Who, When and How much come first; ask %s and "
+        return row("rules checklist covered", False, "%s assumed while %s asked: Who, When, How much and Exempt come first; ask %s and "
                    "fold a later item into Assumptions" % (", ".join(skipped), ", ".join(later), " and ".join(skipped)))
     return row("rules checklist covered", True, "; ".join("%s %s" % (r, seen[r.lower()]) for r in RULES))
 
