@@ -223,6 +223,12 @@ bug and 5 to 6 times on a feature, and 5.5 to 12 times its time.
   names, routes, nouns) the CLI ranks the files the request reaches, lists their tests, copies the conventions and the
   best ranked files whole, and lists the project's files. The Plan and Design actions make it; RCA makes it from the
   bug text. They read one file first, instead of `cat` of the whole project and a second turn to read the saved output.
+  A word counts by how rare it is in the project, a file with no extension (a script) is read, and every part is
+  bounded: on a 529 file repository the brief is 57 KB in 0.3 s; on 7,810 files, 42 KB in 7 s.
+- **Intent asks Who, When and How much first.** Two measured runs skipped a refund window: one wrote "When: not
+  applicable (no time window in the request)", the other assumed "no time limit" while it asked where refunds show.
+  The Intent gate fails both: the request's silence is the reason to ask, and within its six questions the first three
+  items of the checklist come first.
 
 **The mod carries the run (the run driver, `hooks/temper-mod/core/driver.ts`)**
 - With the mod loaded, `/temper:temper <request>` (no run active) and `/temper:temper` (a run active) are carried by

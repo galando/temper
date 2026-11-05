@@ -31,9 +31,15 @@ every some such than then too very can could should would will shall may might m
 make makes made build builds want wants need needs new add adds added use uses used today only also more most less
 least other same one two three after before about above below over under again further once just like per via
 customers customer user users finance team way part parts""".split())
-WHOLE_BUDGET = 60000     # characters of whole files copied in, best ranked first
-WHOLE_MAX = 20000        # a file longer than this is listed, not copied
-LIST_MAX = 400           # project files listed
+WHOLE_BUDGET = 30000     # characters of whole files copied in, best ranked first
+WHOLE_MAX = 15000        # a file longer than this is listed, not copied
+LIST_MAX = 200           # project files listed
+RANK_MAX = 25            # files in the ranked table
+TESTS_MAX = 30           # test files listed
+CONV_MAX = 6000          # characters of each conventions file
+SCAN_MAX = 4000          # files read for the request's names (a larger project: the best named by path first)
+SCAN_BYTES = 1500000     # a file larger than this is ranked by its path only
+SCAN_SECONDS = 20        # the reading stops here; what was read is ranked
 
 
 def git_files(project):
@@ -48,7 +54,19 @@ def git_files(project):
             dirs[:] = [d for d in dirs if not (("." if rel == "." else rel + "/") + d + "/").lstrip("./").startswith(SKIP_DIRS) and not d.startswith(".git")]
             files += [os.path.normpath(os.path.join(rel, n)) for n in names]
     return sorted(f for f in files if not f.startswith(SKIP_DIRS) and not any("/" + d in "/" + f for d in SKIP_DIRS)
-                  and TEXT_EXT.search(f) and os.path.isfile(os.path.join(project, f)))
+                  and os.path.isfile(os.path.join(project, f)) and (TEXT_EXT.search(f) or plain_text(project, f)))
+
+
+def plain_text(project, f):
+    """A file with no known extension that is text (a script such as `scripts/temper`, a Makefile): no NUL byte in its
+    first 2,000, and not an image or an archive by its name."""
+    if "." in os.path.basename(f) or os.path.getsize(os.path.join(project, f)) > 4_000_000:
+        return False
+    try:
+        with open(os.path.join(project, f), "rb") as h:
+            return b"\0" not in h.read(2000)
+    except OSError:
+        return False
 
 
 def read(project, f, limit=None):
@@ -61,7 +79,9 @@ def read(project, f, limit=None):
 
 def terms(text):
     """The request's words that can name code: file paths, backticked names, routes, and nouns."""
-    paths = sorted(set(re.findall(r"[\w.-]+(?:/[\w.-]+)+\.[A-Za-z]{1,5}\b|\b[\w-]+\.(?:py|js|ts|tsx|go|rs|java|rb|php|cs|sql|sh)\b", text)))
+    # A path is a word with a slash (`scripts/temper`, `src/app.ts`) or a file name with a known extension.
+    paths = sorted({p.strip("./") for p in re.findall(r"(?<![\w/])[\w.-]+(?:/[\w.-]+)+", text) if not p.startswith("//")}
+                   | set(re.findall(r"\b[\w-]+\.(?:py|js|ts|tsx|go|rs|java|rb|php|cs|sql|sh)\b", text)))
     ticks = re.findall(r"`([^`\n]{2,80})`", text)
     idents = sorted({w for t in ticks for w in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", t)
                      if not w.isupper() and w.lower() not in STOP and w not in ("GET", "POST", "PUT", "PATCH", "DELETE")})
@@ -76,32 +96,56 @@ def stem(word):
 
 
 def rank(project, files, t):
-    """Each file the request's words reach, with its score and why."""
+    """Each file the request's words reach, with its score and why. A word counts by how rare it is in the project (a
+    name every file holds says little), and a word of a file's own name counts more than one of its folder."""
+    import math
+    import time as _t
     stems = {stem(w): w for w in t["words"]}
-    out = {}
-    for f in files:
-        why, score = [], 0
+    found = {}
+    # A large project: the files whose path names a word of the request are read first, then the others, within bounds.
+    order = sorted(files, key=lambda f: -sum(1 for x in re.split(r"[/_.\-]", f.lower()) if stem(x) in stems))
+    started = _t.time()
+    for i, f in enumerate(order):
         base = os.path.basename(f)
-        if any(f.endswith(p) or base == os.path.basename(p) for p in t["paths"]):
-            why.append("named in the request")
-            score += 10
-        parts = [stem(x) for x in re.split(r"[/_.\-]", f.lower()) if x]
-        hit = sorted({stems[s] for s in parts if s in stems})
-        if hit:
-            why.append("its path matches " + ", ".join(hit))
-            score += 2 * len(hit)
-        if t["identifiers"] or t["segments"]:
-            text = read(project, f, 400000)
-            ids = [i for i in t["identifiers"] if re.search(r"\b%s\b" % re.escape(i), text)]
-            if ids:
-                why.append("names " + ", ".join(ids[:8]) + (" and %d more" % (len(ids) - 8) if len(ids) > 8 else ""))
-                score += 3 * len(ids)
-            segs = [s for s in t["segments"] if ("/" + s) in text]
-            if segs:
-                why.append("holds the route part " + ", ".join("/" + s for s in segs))
-                score += 2 * len(segs)
-        if score:
-            out[f] = (score, why)
+        named = any(f == p or f.endswith("/" + p) or ("." in os.path.basename(p) and base == os.path.basename(p)) for p in t["paths"])
+        own = {stems[stem(x)] for x in re.split(r"[_.\-]", os.path.splitext(base)[0].lower()) if stem(x) in stems}
+        folder = {stems[stem(x)] for x in re.split(r"[/_.\-]", os.path.dirname(f).lower()) if x and stem(x) in stems} - own
+        ids, segs = [], []
+        if (t["identifiers"] or t["segments"]) and i < SCAN_MAX and _t.time() - started < SCAN_SECONDS:
+            try:
+                big = os.path.getsize(os.path.join(project, f)) > SCAN_BYTES
+            except OSError:
+                big = True
+            if not big:
+                text = read(project, f)
+                ids = [x for x in t["identifiers"] if re.search(r"\b%s\b" % re.escape(x), text)]
+                segs = [x for x in t["segments"] if ("/" + x) in text]
+        if named or own or folder or ids or segs:
+            found[f] = (named, own, folder, ids, segs)
+    n = max(len(files), 1)
+    df = {}
+    for named, own, folder, ids, segs in found.values():
+        for k in set(own) | set(folder):
+            df[("w", k)] = df.get(("w", k), 0) + 1
+        for k in ids:
+            df[("i", k)] = df.get(("i", k), 0) + 1
+        for k in segs:
+            df[("s", k)] = df.get(("s", k), 0) + 1
+    idf = lambda key: math.log((n + 1) / (df.get(key, 0) + 1)) + 0.1
+    out = {}
+    for f, (named, own, folder, ids, segs) in found.items():
+        score = (10 if named else 0) + sum(2 * idf(("w", k)) for k in own) + sum(0.5 * idf(("w", k)) for k in folder) \
+            + sum(3 * idf(("i", k)) for k in ids) + sum(2 * idf(("s", k)) for k in segs)
+        why = (["named in the request"] if named else []) + (["its name matches " + ", ".join(sorted(own))] if own else []) \
+            + (["names " + ", ".join(ids[:8]) + (" and %d more" % (len(ids) - 8) if len(ids) > 8 else "")] if ids else []) \
+            + (["holds the route part " + ", ".join("/" + x for x in segs)] if segs else []) \
+            + (["its folder matches " + ", ".join(sorted(folder))] if folder and not (named or own or ids or segs) else [])
+        out[f] = (score, why)
+    if out:
+        # The files that stand out: within the best RANK_MAX, and at least a fifth of the best score.
+        best = max(v[0] for v in out.values())
+        keep = sorted(out, key=lambda f: -out[f][0])[:RANK_MAX]
+        out = {f: out[f] for f in keep if out[f][0] >= best / 5}
     return out
 
 
@@ -153,13 +197,14 @@ def write(project, out_path, text):
     else:
         md.append("None found by name: search the project for the request's terms.")
     if tests:
+        tests = dict(sorted(tests.items(), key=lambda kv: -len(kv[1]))[:TESTS_MAX])
         md += ["", "## Their tests (%d)" % len(tests), ""]
         md += ["- `%s`: %s" % (tf, ("mentions " + ", ".join("`%s`" % x for x in sorted(set(src))[:6])) if src else "; ".join(ranked[tf][1]))
                for tf, src in sorted(tests.items())]
     if conv:
         md += ["", "## Conventions", ""]
         for c in conv:
-            body = read(project, c, 12000)
+            body = read(project, c, CONV_MAX)
             md += ["### `%s`" % c, "", "````markdown", body.rstrip(), "````", ""]
     whole, used = [], 0
     for f in order + sorted(tests):

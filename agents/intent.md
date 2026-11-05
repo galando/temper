@@ -119,8 +119,11 @@ folder.
    **Write each question so the person clicks, never types.** One line each, in this form:
    `- Blocking: {the question, concrete, naming the feature} choices: {recommended answer} | {other} | {other}`
    with two or three choices, the one you would pick first, each a short concrete answer ("Admins only", "60 days
-   after the payment", "Stays paid"), never "Other" or "It depends". Ask at most six; fold the rest into
-   assumptions. Everything on the checklist you do not ask about goes under `### Assumptions` in intent.md, one line
+   after the payment", "Stays paid"), never "Other" or "It depends". Ask at most six: **Who, When and How much
+   first**, then the others in the checklist's order; fold the rest into assumptions. That the request does not say
+   an item is the reason to ask it, never to mark it not applicable: not applicable means the feature has no such rule
+   at all (a CLI flag has no time limit; a refund may well have one). The Intent gate fails "When: not applicable (no
+   time window in the request)", and Who, When or How much assumed while a later item was asked. Everything on the checklist you do not ask about goes under `### Assumptions` in intent.md, one line
    each (`- {what you assume} (because {why})`), so the person can scan and correct them at the gate.
 
 6. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` yourself before returning and

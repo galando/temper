@@ -233,6 +233,11 @@ assert_eq "9.8.0: temper brief ranks the file the request's names reach, lists i
   "$(grep -c '^| `src/payments.py` |' <<<"$B")|$(grep -c '^- `unit/test_payments.py`: mentions `src/payments.py`' <<<"$B")|$(grep -c '^| `src/totals.py` |' <<<"$B")|$(grep -c '^1. Money is integer cents.$' <<<"$B")|$(grep -c '^OK: .temper/brief.md' <<<"$OUT")"
 assert_eq "9.8.0: temper brief with no request still maps the project and never fails" "0|1" \
   "$(rm -f .temper/brief.md; python3 -E -s "$REPO_ROOT/scripts/brief.py" "$(pwd -P)" .temper/brief.md --text '' >/dev/null 2>&1; echo $?)|$(grep -c '^- `src/totals.py`' .temper/brief.md)"
+mkdir -p bin; printf '#!/usr/bin/env bash\ncmd_status() { echo ok; }\n' > bin/tool
+"$TEMPER" brief --text 'Add a flag to `cmd_status` in bin/tool' >/dev/null 2>&1
+assert_eq "9.8.0: a file with no extension that the request names (a script) is read and ranks first" '| `bin/tool` |' \
+  "$(sed -n '/^| File/,/^$/p' .temper/brief.md | sed -n 3p | cut -d'|' -f1-2)|"
+rm -rf bin
 python3 - <<'PY'
 import json; p='.temper/build-state.json'; d=json.load(open(p)); d['next_stage']='plan'; json.dump(d, open(p,'w'))
 PY
@@ -278,3 +283,17 @@ mkdir -p empty_tests
 assert_exit "9.8.0: acceptance lock refuses a command that collects no test" 1 "$TEMPER" acceptance lock --cmd "python3 -m unittest discover -s empty_tests"
 assert_exit "9.8.0: acceptance lock takes tests that fail, as they do before the feature is built" 0 "$TEMPER" acceptance lock --cmd "python3 -m unittest discover -s .temper/specs/demo/acceptance -t .temper/specs/demo/acceptance"
 rm -rf empty_tests
+
+# --- 8. Intent asks Who, When and How much first, and never skips one because the request is silent (round 5) ---
+_rc16() { # a draft intent whose rules checklist is $1 (lines)
+  fresh; printf '# Intent: Demo\n\n**Status:** draft\n\n### Rules covered\n\n%b\n' "$1" > .temper/specs/demo/intent.md
+}
+_rcr() { python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" intent-rules .temper/specs/demo/intent.md | python3 -c "import json,sys; r=json.load(sys.stdin); print(('PASS' if r['pass'] else 'FAIL') + '|' + r['detail'])"; }
+_rc16 '- Who: asked\n- When: not applicable (no time window in the request)\n- How much: asked\n- States: asked\n- Where it shows: assumed\n- Exceptions: asked'
+assert_eq "9.8.0: When not applicable because the request is silent fails, and says to ask it" "FAIL|1" "$(_rcr | cut -d'|' -f1)|$(_rcr | grep -c 'that is the reason to ask')"
+_rc16 '- Who: asked\n- When: assumed (see Assumptions: no time limit)\n- How much: asked\n- States: asked\n- Where it shows: asked (the export)\n- Exceptions: asked'
+assert_eq "9.8.0: When assumed while a later item was asked fails: the first three come first" "FAIL|1" "$(_rcr | cut -d'|' -f1)|$(_rcr | grep -c 'When assumed while States, Where it shows, Exceptions asked')"
+_rc16 '- Who: asked\n- When: not applicable (a CLI flag has no time rule)\n- How much: not applicable (no amounts)\n- States: not applicable\n- Where it shows: asked (the CI log)\n- Exceptions: assumed (see Assumptions)'
+assert_eq "9.8.0: not applicable with a reason of the feature itself passes, and so does a later item assumed" "PASS" "$(_rcr | cut -d'|' -f1)"
+_rc16 '- Who: asked\n- When: asked\n- How much: assumed (house rule: CONVENTIONS.md caps every amount)\n- States: assumed\n- Where it shows: assumed\n- Exceptions: assumed'
+assert_eq "9.8.0: a first three item assumed while no later item was asked passes (the six questions went to the first three)" "PASS" "$(_rcr | cut -d'|' -f1)"
