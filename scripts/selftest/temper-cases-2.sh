@@ -230,6 +230,14 @@ A real problem with real text.
 - In scope: the demo
 - Out of scope: production behavior
 
+### Rules covered
+- Who: not applicable
+- When: not applicable
+- How much: not applicable
+- States: not applicable
+- Where it shows: not applicable
+- Exceptions: not applicable
+
 ### Target Users
 - developer: uses the feature → gets a result
 

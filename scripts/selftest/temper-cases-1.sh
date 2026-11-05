@@ -865,6 +865,14 @@ Support spends a third of call time on status-only queries.
 - In scope: the demo
 - Out of scope: production behavior
 
+### Rules covered
+- Who: not applicable
+- When: not applicable
+- How much: not applicable
+- States: not applicable
+- Where it shows: not applicable
+- Exceptions: not applicable
+
 ### Target Users
 - support agent: opens the portal → sees status without a call
 

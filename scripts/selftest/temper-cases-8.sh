@@ -247,6 +247,8 @@ assert_eq "next: it is a read: the run state is unchanged" "same" "$(cmp -s .tem
 
 # --- Design, Check FAIL, a door's failed stage ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity complex >/dev/null 2>&1
+python3 -c "
+import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['intent_asked'] = True; json.dump(d, open(p, 'w'))"   # Intent asked the person (9.8.0: Design runs)
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "next: Design runs its brief" "temper:temper-design|gate design" "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
 gpass design
