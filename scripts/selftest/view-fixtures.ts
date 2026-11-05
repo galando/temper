@@ -162,7 +162,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/acceptance.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-acceptance"
+    }
+   ],
    "calls": [
     "/plugin/scripts/temper park --verdict PARKED-NEEDS-DECISION --reason 'Build failed: tests pass: 2 tests fail: unit/app.test.ts'"
    ],
@@ -456,7 +462,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/acceptance.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-acceptance"
+    }
+   ],
    "calls": [
     "/plugin/scripts/temper state advance build_complete review"
    ],
@@ -772,7 +784,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/check.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-check"
+    }
+   ],
    "calls": [
     "/plugin/scripts/temper state loop check build --reason 'tests pass: exit 1: 2 failed'"
    ],
@@ -1093,7 +1111,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/check.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-check"
+    }
+   ],
    "calls": [
     "/plugin/scripts/temper state advance check_complete commit"
    ],
@@ -1719,7 +1743,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/review.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-review"
+    }
+   ],
    "calls": [
     "/plugin/scripts/temper state loop review build --reason 'critical findings: 1 open critical finding'"
    ],
@@ -2034,7 +2064,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/review.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-review"
+    }
+   ],
    "calls": [
     "/plugin/scripts/temper state advance review_complete check"
    ],
@@ -2478,7 +2514,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/acceptance.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-acceptance"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -2936,7 +2978,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/acceptance.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-acceptance"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -3661,7 +3709,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/check.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-check"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "check",
@@ -4128,7 +4182,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/check.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-check"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "check",
@@ -6493,7 +6553,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/design.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-design"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "design",
@@ -6931,7 +6997,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/design.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-design"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "design",
@@ -7346,7 +7418,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -8168,7 +8246,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/intent.md exactly.\nFeature: Password reset by email.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-intent"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "intent",
@@ -8451,7 +8535,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/intent.md exactly.\nFeature: Password reset by email.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-intent"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "intent",
@@ -9017,7 +9107,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -9434,7 +9530,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -9846,7 +9948,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -10598,7 +10706,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/review.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-review"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "review",
@@ -11158,7 +11272,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
-   "agents": [],
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/review.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-review"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "review",

@@ -55,7 +55,7 @@ export function factsOf(view: RunView | null, skill: boolean): SessionFacts {
     opts(view.restart.options)
   }
   view.blockingAsks.forEach(q => put(q, true))
-  return { agents: view.next.action === 'work' || view.next.action === 'wait' ? view.next.agents : [], questions: qs, skill }
+  return { agents: view.next.agents, questions: qs, skill }
 }
 
 // The skill a chosen option carries out, when the dialog's answer picked one of this view's options that has one.

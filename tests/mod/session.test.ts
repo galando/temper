@@ -163,7 +163,7 @@ describe('factsOf and skillChosen: what the view allows at this step', () => {
     expect(f.questions[3]?.labels).toEqual(['Admin only', 'Carry forward'])
     expect(f.questions[3]?.header).toBe(null)
   })
-  test('an ask action names no agent', () => expect(f.agents).toEqual([]))
+  test('a view that names no agent lets none launch', () => expect(f.agents).toEqual([]))
   test('a Blocking question matches whatever its header: its number shifts as answers are recorded (round 5, Haiku)', () => {
     const q = { question: 'Who may refund?', labels: ['Admin only', 'Carry forward'] }
     expect(isDeny(ask({ header: 'Question 6', ...q }, f))).toBe(false)
@@ -191,7 +191,7 @@ describe('a Build task\'s start changes the view before its agent is launched', 
     expect(isDeny(call(ctx('build'), 'Agent', { subagent_type: TASK.type, model: 'haiku', prompt: TASK.prompt }, f))).toBe(false)
     expect(isDeny(call(ctx('build'), 'Agent', { subagent_type: TASK.type, model: 'sonnet', prompt: TASK.prompt }, f))).toBe(true)
   })
-  test('an ask names no agent', () => expect(factsOf(at('ask', [TASK]), false).agents).toEqual([]))
+  test('a question at the same stage (a manual task\'s) keeps the agents the view names', () => expect(factsOf(at('ask', [TASK]), false).agents).toEqual([TASK]))
 })
 
 describe('the CLI set in a variable is read as the CLI, by both guards', () => {

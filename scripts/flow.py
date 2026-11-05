@@ -2228,17 +2228,22 @@ def view(run, nxt):
     if not run.active:
         return {"version": VERSION, "run": None, "status": "No run is active.", "drift": drift_info()}
     r = run
-    # 9.8.0: the agents the session may launch now (the mod launches no other: its session guard). A Build task's `before`
-    # call (`task start`) turns the next action into `wait` before its agent is launched: while the run waits at the same
-    # stage, the agents the view named before are named still. The view written last is that memory; the mod keeps none
-    # (it is loaded again between turns).
+    # 9.8.0: the agents the session may launch now (the mod launches no other: its session guard). An agent's `before`
+    # call (a Build task's `task start`) changes the next action before the agent is launched: to `wait`, to a `work`
+    # that names only the other tasks of the same launch (and a chain shortened by the task now running), or to the
+    # question a manual task asks. While the run
+    # stays at the same stage, the view keeps naming every agent it named there. The view written last is that memory;
+    # the mod keeps none (it is loaded again between turns).
     agents = [{"type": a.get("type") or "", "model": a.get("model") or "", "prompt": a.get("prompt") or ""}
               for a in (nxt.get("agents") or [])] if nxt.get("action") == "work" else []
-    if nxt.get("action") == "wait":
+    if nxt.get("action") in ("work", "wait", "ask", "auto"):
         prev = read_json(os.path.join(TEMPER, "view.json"), {})
         pr = prev.get("run") if isinstance(prev.get("run"), dict) else {}
         if pr.get("id") == r.state.get("run_id") and pr.get("stage") == r.stage:
-            agents = [a for a in ((prev.get("next") or {}).get("agents") or []) if isinstance(a, dict)]
+            for a in (prev.get("next") or {}).get("agents") or []:
+                if isinstance(a, dict) and a not in agents:
+                    agents.append(a)
+            agents = agents[:16]   # the current action's first
     out = {
         "version": VERSION,
         "run": {"id": r.state.get("run_id"), "step": r.state.get("step"), "slug": r.slug, "title": r.title(),
