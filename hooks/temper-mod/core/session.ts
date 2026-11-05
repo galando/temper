@@ -212,7 +212,7 @@ const unquoted = (t: string): string => {
 }
 
 // Words after /temper:temper that are not a request (commands/temper.md, Arguments).
-const NOT_A_REQUEST = new Set(['status', 'report', 'timeline', 'help', 'approve', 'next', 'back', 'override', 'accept', 'drift', 'pr', 'discuss', 'mode', 'enforcement', 'pane'])
+const NOT_A_REQUEST = new Set(['status', 'report', 'timeline', 'help', 'approve', 'next', 'back', 'override', 'accept', 'drift', 'pr', 'discuss', 'chose', 'mode', 'enforcement', 'pane'])
 
 export function requestOf(args: string): string | null {
   const t = unquoted(args)

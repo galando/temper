@@ -1,7 +1,8 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-import { orchestrate, runCalls } from './loop'
+import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
 import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, TASKS_MD } from './project'
 import { ROOT, TEMPER, World } from './world'
@@ -143,7 +144,7 @@ export const modGuards = (w: World): void => {
   expect(n.action === 'ask', 'the run reached the plan question')
   const write = w.denies({ tool: 'Write', input: { file_path: `${w.dir}/src/other.py` } })
   const advance = w.denies({ tool: 'Bash', input: { command: `${TEMPER} state advance plan_complete build` } })
-  if (w.mode === 'mod') {
+  if (w.mode !== 'plain') {
     expect(write?.includes('The run ci (Plan stage) owns this folder.') && write.includes('claude --worktree'), `the write refusal names the run and the worktree (${write})`)
     expect(advance !== null, 'leaving Plan is refused without the answer')
     const option = w.answer(n.ask as Json, 'Stage by stage (Recommended)')
@@ -292,8 +293,11 @@ export const prAndPipeline = (w: World): void => {
         const br = wd.sh('git branch --show-current').trim()
         expect(wd.denies({ tool: 'Bash', input: { command: `gh pr create --head ${br} --base main --title 't' --body-file b` } }) !== null || wd.mode === 'plain', 'a pull request without --draft is refused by the mod')
         expect(wd.denies({ tool: 'Bash', input: { command: 'gh pr ready 7' } }) !== null || wd.mode === 'plain', 'gh pr ready is refused by the mod')
-        fs.writeFileSync(path.join(wd.dir, '.pr-body'), 'The body\n')
-        runCalls(wd, [`git push -q -u origin ${br}`, `gh pr create --head ${br} --base main --title 'feat: CI report' --body-file .pr-body --draft`])
+        // The body goes in a file from mktemp, outside the project, as reference/pr.md says (a file in the project is a
+        // change outside the plan, and the commit hook the driver installs refuses the next commit).
+        const body = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'temper-pr-')), 'body.md')
+        fs.writeFileSync(body, 'The body\n')
+        runCalls(wd, [`git push -q -u origin ${br}`, `gh pr create --head ${br} --base main --title 'feat: CI report' --body-file ${body} --draft`])
         opened.push(br)
         return true
       }
@@ -392,7 +396,7 @@ export const hookScope = (w: World): void => {
   expect(off.code === 0 && /removed the Temper hook/.test(off.out), `guards uninstall removes the hook (${off.out})`)
   expect(w.run(`${TEMPER} guards uninstall`).out.includes('nothing to change'), 'a second uninstall changes nothing')
   expect(!w.exists('.git/temper-gate'), 'the temper-gate folder is gone')
-  if (w.mode === 'mod') {
+  if (w.mode !== 'plain') {
     const ref = w.denies({ tool: 'Bash', input: { command: `${TEMPER} guards uninstall` } })
     expect(ref !== null && ref.includes('turning the commit gate off'), 'the mod refuses uninstall while a run is active')
   }
@@ -586,7 +590,8 @@ export const fixRun = (w: World): void => {
     wd.sh('git add -A && git commit -qm "a shape with a bug"')
   })
   t(w, 'state clear')
-  w.sh(`${TEMPER} state init bug --command fix`)
+  // 9.8.0: with the mod's run driver, the driver starts the fix itself (the root cause agent, the panel, the state).
+  if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix`)
   const bug = '.temper/specs/bug'
   const agents: Record<string, Agent> = {
     'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
@@ -605,12 +610,8 @@ export const fixRun = (w: World): void => {
       t(wd, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
     },
   }
-  // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question
-  agents['temper:temper-rca']!(w, {})
-  // 9.8.0 (round 5): the CLI draws the RCA panel from the file the agent wrote; commands/fix.md prints it
-  expect(w.sh(`${TEMPER} panel rca ${bug}/rca.md`).includes('| RCA: the shape drops the verdict'), 'the CLI drew the RCA panel from rca.md')
   const asked: string[] = []
-  orchestrate(w, script({
+  const fixScript = script({
     agents,
     person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) },
     instruction: (wd, text) => {
@@ -620,7 +621,16 @@ export const fixRun = (w: World): void => {
       }
       return /each file the run changed|^Copy what|^When .* records deviations/.test(text)
     },
-  }))
+  })
+  if (w.mode === 'driver') {
+    orchestrateFix(w, fixScript, 'the shape drops the verdict', 'bug')
+  } else {
+    // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question
+    agents['temper:temper-rca']!(w, {})
+    // 9.8.0 (round 5): the CLI draws the RCA panel from the file the agent wrote; commands/fix.md prints it
+    expect(w.sh(`${TEMPER} panel rca ${bug}/rca.md`).includes('| RCA: the shape drops the verdict'), 'the CLI drew the RCA panel from rca.md')
+    orchestrate(w, fixScript)
+  }
   expect(asked.some(q => q.startsWith('RCA: the root cause is in')), 'the RCA question was asked')
   expect(w.sh('git log --format=%s -n 1').length > 0 && !w.exists('.temper/build-state.json'), 'the fix run ended with its commit')
 }

@@ -1,7 +1,7 @@
 ---
 description: "Root cause analysis + structured fix"
 argument-hint: "<bug-description-or-JIRA-123>"
-model: haiku
+model: sonnet
 ---
 
 # Fix: RCA → Fix → Review → Check
@@ -37,7 +37,9 @@ first, each once, as the Start section of `${CLAUDE_PLUGIN_ROOT}/commands/temper
 install the native commit hook, without which nothing gates the fix's commit.
 
 With no arguments and a fix run active (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state get command`
-prints `fix`), skip to step 2. A `/temper` run that is active is not this command's: say so in one
+prints `fix`), skip to step 2. With the mod loaded, the mod carries a fix itself (the run driver, `docs/mod.md`) and
+hands it here with `next`, `discuss <the person's words>` or `chose <label>` for what needs you: with a fix run active,
+skip to step 2 and do as the Arguments of `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` say for that word. A `/temper` run that is active is not this command's: say so in one
 line and ask its `restart` question from `temper next --json`.
 
 Pick the bug's slug first (letters, digits, `.`, `_` or `-`; a ticket key keeps its case, as in

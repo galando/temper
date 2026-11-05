@@ -1,7 +1,7 @@
 ---
 description: "Unified SDLC command: intent → plan → design? → build → review → check → commit, gated by the temper CLI"
 argument-hint: "<feature-description>"
-model: haiku
+model: sonnet
 ---
 
 # Temper
@@ -22,8 +22,8 @@ gate, an option or a next stage yourself.
 
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 With the mod on, the mod carries a run it can by itself (the run driver, 9.8.0: `docs/mod.md`) and hands it here for
-what needs you: `next` (go on with the loop below) or `discuss <the person's words>` (a typed answer). Either way the
-run is where the CLI says it is: start with the loop.
+what needs you: `next` (go on with the loop below), `discuss <the person's words>` (a typed answer) or `chose <label>`
+(an option the person chose that needs you: see Arguments). Either way the run is where the CLI says it is.
 
 ## Arguments
 
@@ -38,6 +38,7 @@ feature description.
 | `approve`, `next`, `back`, `override`, `accept`, `drift` | A wish, never a decision: run the loop below. When it reaches a question, ask it as given; the person chooses there. |
 | `pr` | Write a pull request description from `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` (the verdicts), `.temper/overrides.json` (each skip with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review` (each accepted finding with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage build` (the drift answers) and the `loops` of `.temper/view.json`. |
 | `discuss <text>` | The person's message at the current question: as "Typed text" says (a question is answered, a change request goes to the stage's agent). |
+| `chose <label>` | From the mod's run driver: the person already chose the option `<label>` of the question `temper go` gives now. Do not ask it again: carry that option out as the answer it is (its calls, its `steps`, its `do`), then go on with the loop. |
 | `mode`, `enforcement`, `pane` | These belong to the Temper mod. Without it, say they are not available here. |
 
 ## Start

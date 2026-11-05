@@ -70,8 +70,8 @@ on record), proves more of it with the CLI instead of an agent, asks better ques
   view; the loop in `commands/temper.md` uses `temper go`. It never runs a call only the person may cause.
 - **The loop runs on Sonnet** (`model: sonnet` on `/temper:temper` and `/temper:fix`): it relays the CLI's decisions and
   the person's answers, and decides nothing, so it need not run on the session's model. (Ignored where the model is
-  restricted, or in auto mode for a model it does not support.) Round 5, below, moved it to Haiku 5.5, and with the
-  mod loaded the mod carries the run itself.
+  restricted, or in auto mode for a model it does not support.) With the mod loaded, the mod carries the run itself
+  (round 5, below), and the loop runs only what is handed back to it.
 - **One build agent per chain.** Tasks that run one after another anyway (a dependency, a shared file) go to one agent,
   which starts, builds and gates each in order (`task gate --if-running` covers a task it left running); independent
   tasks keep agents of their own, launched together. In the measured runs every task ran alone.
@@ -207,11 +207,13 @@ in: before them, 14/26 twice). A whole run was about 30% cheaper on a bug and 23
 Sonnet loop on the same code was only a little cheaper. Opus (Plan, Design, the root cause agent) is now two thirds to
 four fifths of a run.
 
-**The loop runs on Haiku 5.5** (`model: haiku` in `commands/temper.md` and `commands/fix.md`), after a confirming pass
-of the four tasks on the final code (8 runs): 7 met every hidden test; the eighth stopped at Build on three CLI
-defects, fixed below, none of them the loop's. Against vanilla Claude Code on the same tasks the same day, Temper met
-every hidden test where vanilla did and more on the vague task (11/11 against 8/11), at about 2 times its cost on a
-bug and 5 to 6 times on a feature, and 5.5 to 12 times its time.
+**The loop stays on Sonnet** (`model: sonnet` in `commands/temper.md` and `commands/fix.md`). A guarded Haiku loop
+met every hidden test in 7 of 8 runs of a confirming pass (the eighth stopped at Build on three CLI defects, fixed
+below). Without the mod nothing guards it, and in 8 runs with no mod it left the script twice: it edited and committed
+the project's `CONVENTIONS.md`, and it started a run from a one line summary of the request (17/26). With the mod the
+mod carries the run and the loop's model matters only for what is handed back, the steps that need judgment; without
+it Sonnet is the loop that was measured safe. Against vanilla Claude Code on the same tasks the same day, Temper met
+every hidden test where vanilla did and more on the vague task (11/11 against 8/11).
 
 **Work the CLI does instead of a model**
 - **The CLI draws the Plan, Design and RCA panels** (`temper panel plan | design | rca <rca.md>`) from the files those
@@ -240,6 +242,15 @@ bug and 5 to 6 times on a feature, and 5.5 to 12 times its time.
   a skill, the HTML plan review, a small change window, a pull request step, an agent's DRIFT rows, a name question,
   a failed call. The CLI holds the run, so the conversation goes on from the same state. Without the mod, a
   `/temper:fix` run, a run word or a second request, the conversation carries the run as before.
+- An option the conversation must carry out (a skill, the HTML plan review, a small change, a name to type) is handed
+  over as `chose <label>` before any of its calls runs, and the conversation carries it out as the answer given, with
+  no second question; a list of steps with one only the conversation can do (a pull request) is handed over whole, so
+  none is left half done. Found by the e2e driver below: a skill chosen in the dialog was asked about again, never run.
+- `/temper:fix <bug>` with no run active is carried too: the CLI's setup, the root cause agent with the prompt of
+  `commands/fix.md`, the panel from `rca.md`, the run's state, the fix branch, then the same loop.
+- The e2e driver gains a third mode, `driver` (`bun scripts/e2e/run.ts all`): the same 20 scenarios carried by the run
+  driver's core, the real CLI's setup included. It found the half done steps above, and a scenario that wrote the pull
+  request body into the project (`reference/pr.md` says `mktemp`), which the commit hook the setup installs refuses.
 - What the question dialog of a mod cannot show (each option's description, the Context check's table) is printed
   just above the question; an interrupt stops the driver between steps and while it waits on an agent, with no model
   turn after it; a CLI call streams, so a long Check inside `temper go` has no time cap.

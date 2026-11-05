@@ -17,7 +17,7 @@ export const ROOT = path.resolve(import.meta.dir, '../..')
 export const TEMPER = path.join(ROOT, 'scripts/temper')
 
 export type Json = Record<string, any>
-export type Mode = 'mod' | 'plain'
+export type Mode = 'mod' | 'plain' | 'driver'   // driver: the mod loaded, and its run driver carries the run
 export type Agent = (w: World, agent: Json) => void
 export type Person = (ask: Json, w: World) => string | { label: string; note?: string } | null
 
@@ -128,7 +128,7 @@ export class World {
   answer(ask: Json, label: string, note = ''): Json {
     const option = (ask.options as Json[]).find(o => o.label === label)
     if (option === undefined) throw new Error(`no option ${label} in ${ask.question.question} (${(ask.options as Json[]).map(o => o.label).join(' | ')})`)
-    if (this.mode === 'mod') {
+    if (this.mode !== 'plain') {
       const rv = parseRunView(this.read('.temper/view.json'))
       const q = ask.question
       const result = { result: { questions: [{ header: q.header, question: q.question, multiSelect: false }], answers: { [q.question]: label }, annotations: note ? { [q.question]: { notes: note } } : {} } }

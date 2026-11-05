@@ -290,9 +290,12 @@ It hands the run to the conversation (the prompt based `/temper:temper`, which g
 CLI holds the run, the driver holds nothing) for anything that needs a model or your own words: an answer you
 type (passed on as `discuss <your words>`), a skill (Grill Me, Teach Me), the HTML plan review, a small change
 window, a pull request step, an agent's DRIFT rows (the Scope drift question), a name question, a call that fails
-and an action it does not know. It says so in one line. A `/temper:fix` run, a run word (`approve`, `next`, ...)
-and a request while another run is active go to the conversation as before. Without the mod, the conversation
-carries every run, as before.
+and an action it does not know. It says so in one line. An option you chose that only the conversation can carry out
+(a skill, the HTML review, a small change) goes over as `chose <label>`, before any of its calls runs: the
+conversation carries it out as your answer, with no second question. `/temper:fix <bug>` with no run active is carried
+the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop). A run word (`approve`,
+`next`, ...) and a request while another run is active go to the conversation as before. Without the mod, the
+conversation carries every run, as before.
 
 ## What the mod reads and writes
 

@@ -11,7 +11,7 @@ import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
-import { drive, optionLines, slugOf } from './core/driver'
+import { drive, driveFix, optionLines, slugOf } from './core/driver'
 import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
@@ -477,7 +477,7 @@ async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
   await recordAnswers($, { result: { questions: [{ header: q.header, question: q.question, options: q.options, multiSelect: false }], answers: { [q.question]: label } } })
 }
 
-async function driveRun($: Api, cwd: string, request: string | null, signal: AbortSignal | undefined): Promise<DriveEnd> {
+async function driveRun($: Api, cwd: string, request: string | null, signal: AbortSignal | undefined, fix = false): Promise<DriveEnd> {
   const port: Port = {
     run: call => hostRun($, cwd, call, signal),
     spawn: a => hostSpawn($, a),
@@ -490,6 +490,7 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
     },
     stopped: () => signal?.aborted === true,
   }
+  if (fix && request !== null) return driveFix(port, pluginCli(), request)
   return drive(port, pluginCli(), request, request === null ? null : slugOf(request))
 }
 
@@ -611,6 +612,20 @@ export const register: Register = (on, opts) => {
     if (e.command !== 'temper' && e.command !== 'temper:temper') {
       // A door (/temper:plan "...") or another command: no request is held to it.
       if (/^temper:/.test(e.command)) await makeIo($).storeDelete(REQUEST + root).catch(() => undefined)
+      // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; what needs a model goes to fix.md.
+      if (e.command === 'temper:fix' || e.command === 'fix') {
+        const bug = requestOf(e.args)
+        const snap = bug === null ? null : await refresh($).catch(() => null)
+        if (bug !== null && snap !== null && !snap.inert && snap.enforcement !== 'off' && !snap.failOpen && snap.slug === null) {
+          const end = await driveRun($, root, bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => ({ kind: 'handback' as const, args: 'next', why: `the driver stopped: ${String(x).slice(0, 120)}` }))
+          const after = await refresh($).catch(() => null)
+          if (after !== null) adopt($, after)
+          if (end.kind === 'done') return { text: end.text }
+          if (after === null || after.slug === null) return next(e)
+          $.ui.log(`Temper: the fix goes on in the conversation (${end.why}).`)
+          return next({ ...e, args: end.args })
+        }
+      }
       return next(e)
     }
     const req = requestOf(e.args)

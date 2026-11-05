@@ -1,7 +1,7 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { STOPPED, drive, fill, hasDrift, optionLines, parseGo, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, drive, driveFix, fill, fixSlug, hasDrift, optionLines, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 
 const CLI = '/p/scripts/temper'
@@ -134,14 +134,29 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran).toContain(`${CLI} task gate 1 --model haiku`)
   })
 
-  test('the report steps: CLI calls run, the report is shown as printed; a step only a model can do hands back', async () => {
+  test('the report steps: CLI calls run and the report is shown as printed', async () => {
     const { p, log } = port({
-      goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Copy what temper report printed into your reply, as it printed it.', 'Follow /p/reference/pr.md, section One PR.'] }],
+      goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Copy what temper report printed into your reply, as it printed it.'] }, { action: 'none', say: 'end' }],
       out: call => (call.endsWith('report --end') ? 'REPORT TEXT' : ''),
     })
-    const end = await drive(p, CLI, null)
+    expect((await drive(p, CLI, null)).kind).toBe('done')
     expect(log.shown).toContain('REPORT TEXT')
-    expect(end.kind === 'handback' && end.why).toContain('pr.md')
+  })
+
+  test('steps where one needs the conversation (a pull request): none runs here, so none is left half done', async () => {
+    const { p, log } = port({ goes: [{ action: 'work', steps: [`${CLI} state archive`, 'Follow /p/reference/pr.md, section One PR.', `${CLI} state clear`] }] })
+    const end = await drive(p, CLI, null)
+    expect(end.kind === 'handback' && end.args).toBe('next')
+    expect(log.ran).toEqual([`${CLI} go`])
+  })
+
+  test('an option the conversation carries out (a skill): recorded, nothing of it run, handed on as chose <label>', async () => {
+    const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'Grill Me']), options: [
+      { label: 'Approve', calls: [`${CLI} state advance plan_complete build`] },
+      { label: 'Grill Me', calls: [`${CLI} usage note grill`], do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' }] } }], answers: ['Grill Me'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'chose Grill Me', why: 'Use the grill-me skill on this stage\'s work, then ask this question again.' })
+    expect(log.recorded).toEqual(['Approve? -> Grill Me'])
+    expect(log.ran).toEqual([`${CLI} go`])
   })
 
   test('a failed call, an error action and a gate that records FAIL', async () => {
@@ -164,6 +179,41 @@ describe('the driver carries a run from the request to the end', () => {
   test('nobody answers (a session with no one to ask): the conversation takes the run on', async () => {
     const { p } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [{ label: 'Approve' }, { label: 'No' }] } }], answers: [] })
     expect((await drive(p, CLI, null)).kind).toBe('handback')
+  })
+})
+
+describe('the driver carries a /temper:fix run', () => {
+  test('setup, the root cause agent with fix.md\'s prompt, the panel from rca.md, the run\'s state, the branch, then the loop', async () => {
+    const { p, log } = port({
+      goes: [
+        { action: 'none', setup: [`bash /p/scripts/guards/install.sh`] },
+        { action: 'ask', stage: 'rca', ask: { question: q('RCA: the root cause is in .temper/specs/totals/rca.md. Proceed to Fix?', ['Proceed to Fix (Recommended)', 'Save for later']),
+          options: [{ label: 'Proceed to Fix (Recommended)', calls: [`${CLI} state advance rca_complete fix`] }, { label: 'Save for later', stop: true }] } },
+        { action: 'none', say: 'The fix is committed.' },
+      ],
+      answers: ['Proceed to Fix (Recommended)'],
+      out: call => (call.endsWith('model rca') ? 'claude-opus-5-5\n' : call.includes('panel rca') ? '| RCA: totals |' : ''),
+    })
+    const end = await driveFix(p, CLI, 'Totals drop a cent', 'totals')
+    expect(end).toEqual({ kind: 'done', text: 'The fix is committed.' })
+    expect(log.spawned.map(a => [a.type, a.model, a.prompt])).toEqual([['temper:temper-rca', 'claude-opus-5-5', rcaPrompt('/p', 'Totals drop a cent', 'totals')]])
+    const at = (c: string) => log.ran.indexOf(c)
+    expect(at(`bash /p/scripts/guards/install.sh`) < at(`${CLI} model rca`)).toBe(true)
+    expect(at(`${CLI} panel rca .temper/specs/totals/rca.md`) < at(`${CLI} state init totals --command fix`)).toBe(true)
+    expect(log.ran).toContain(`${CLI} usage add --stage rca --model claude-opus-5-5 --ms 1234`)
+    expect(log.ran.some(c => c.includes("git checkout -q -b 'fix/totals'"))).toBe(true)
+    expect(log.shown).toContain('| RCA: totals |')
+    expect(log.ran).toContain(`${CLI} state advance rca_complete fix`)
+  })
+  test('a run already active: the fix command takes it, as before', async () => {
+    const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [] } }] })
+    expect((await driveFix(p, CLI, 'a bug')).kind).toBe('handback')
+    expect(log.spawned).toEqual([])
+  })
+  test('the fix slug keeps a ticket key\'s case', () => {
+    expect(fixSlug('JIRA-123 checkout answers 500')).toBe('JIRA-123-checkout-answers-500')
+    expect(fixSlug('Totals drop a cent on export')).toBe('totals-drop-cent-export')
+    expect(rcaPrompt('/p', 'x', 's')).toContain('RCA file: .temper/specs/s/rca.md')
   })
 })
 
