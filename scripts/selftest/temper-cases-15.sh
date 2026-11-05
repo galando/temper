@@ -13,11 +13,14 @@ assert_eq "9.8.0: and writes to it, never to docs/decisions/.temper" "medium|no"
 
 # --- 2. Check is run by the CLI when it finds a test command; the agent stays for a stack it cannot read ---
 _gc() { "$TEMPER" gate check 2>&1 || true; }   # the gate's rows; its exit (FAIL is 1) is not the pipe's under pipefail
+# The shared fixture folder keeps what earlier case files left at its top level (CI runs them all in one folder): a
+# section that reads the changed files or the stack clears it first, keeping the repository, the run and the README.
+_clear_root() { [[ "$PWD" == "$WORKDIR" ]] || return 1; find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .temper ! -name .claude ! -name README -exec rm -rf {} +; }
 _at_check() { # a run at Check, with the earlier gates passed
   fresh; gpass intent plan build review
   for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 }
-_at_check
+_at_check; _clear_root
 assert_eq "9.8.0: with no test command the CLI can find, Check is the agent as before" "work|1|0" \
   "$(nx "'|'.join([d['action'], str(len(d['agents'])), str(sum(1 for c in d['calls'] if 'check run' in c))])")"
 python3 - <<'PYEOF'
@@ -148,7 +151,7 @@ assert_eq "9.8.0: an acceptance test changed after the lock fails the gate, nami
 
 # --- 5. The scope row in every run with a plan; park-on-touch parks only for a file outside the plan ---
 f9_tasks | m_setup
-rm -rf lib unit src docs   # what the sections above left in the shared fixture folder
+_clear_root
 "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
 mkdir -p src unit docs/decisions; echo a > src/a.sh; echo t > unit/a_test.sh
 _gcm() { "$TEMPER" gate commit 2>&1 || true; }
@@ -231,7 +234,7 @@ assert_eq "9.8.0: the Check question asks the person to confirm the manual crite
 # --- 9. The CLI's Check on a Node project: detection, node --test coverage, and mutation of JavaScript by text ---
 if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
   _at_check
-  rm -rf lib unit src test package.json
+  _clear_root
   mkdir -p src test
   printf '{"name":"t","type":"module","scripts":{"test":"node --test --experimental-test-coverage"}}\n' > package.json
   printf 'export function grade(s) {\n  return "pass";\n}\n' > src/grade.js

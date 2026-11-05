@@ -52,7 +52,7 @@ assert_exit() { # assert_exit <name> <expected-code> <cmd...>
 
 setup() {
   cd "$WORKDIR" || exit 1   # never run the deletes below anywhere but the throwaway folder
-  rm -rf .temper .claude
+  rm -rf .temper .claude .gitignore   # no case ignores .temper for the next one
   mkdir -p .claude .temper/specs/demo
   git init -q . 2>/dev/null || true
   cat > .claude/temper.config <<'EOF'

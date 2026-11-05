@@ -182,5 +182,5 @@ _plctx '{"status": "green", "round": 2, "failed_jobs": [], "fix": []}'
 "$TEMPER" gate pipeline >/dev/null 2>&1
 assert_eq "Pipeline loop: the second read is green and the run may end" "Pipeline: every job passed. End the run?|End the run (Recommended)" \
   "$(nx "d['ask']['question']['question'] + '|' + d['ask']['options'][0]['label']")"
-rm -rf ../pl-origin.git
+rm -rf ../pl-origin.git .gitignore   # the ignore list was this loop's own: a later case commits .temper
 setup

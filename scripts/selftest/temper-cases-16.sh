@@ -78,7 +78,8 @@ assert_eq "9.8.0: gate --brief prints the verdict and the failed rows, no passed
   "$("$TEMPER" gate intent --brief 2>&1 | grep -c '^temper gate intent -> FAIL')|$("$TEMPER" gate intent --brief 2>&1 | grep -c '^  \[v\]')|$("$TEMPER" gate intent 2>&1 | grep -c '^  \[v\]' | awk '{print ($1 > 0)}')"
 
 # --- 3. temper spec branch | commit | deviations: the git steps and the Deviations, by the CLI ---
-fresh
+# A repository of its own: an earlier case file may leave files (src/) and git settings (a hooks path) in the folder.
+fresh; rm -rf .git src; git init -q . 2>/dev/null
 git config user.email t@t; git config user.name t
 echo base > README.demo; git add README.demo; git commit -qm base --no-verify >/dev/null 2>&1; git checkout -q -B main
 assert_eq "9.8.0: spec branch switches to the run's branch, creating it" "0|feature/demo" \
