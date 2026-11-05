@@ -1,4 +1,4 @@
-// The main session's own calls while a /temper run is active (9.9.0). The session relays: it runs the temper CLI and
+// The main session's own calls while a /temper run is active (9.8.0). The session relays: it runs the temper CLI and
 // reads, launches the agent the CLI names, and asks the question the CLI gives; the stage agents and the CLI change the
 // files. Each rule here is deterministic, so a cheaper model for the session cannot leave the script. Round 4 of the
 // benchmark (docs/evidence/bench-2026-11.md) is why: a Haiku session edited design.md and tasks.md itself, went into a
@@ -20,8 +20,10 @@ import { isScript, readShell, statements } from './shell'
 export type SessionFacts = {
   // The agents of the CLI's current action, each as it is to be launched.
   agents: ReadonlyArray<{ type: string; model: string; prompt: string }>
-  // Every question the CLI gives at this step: its header, its text and its option labels in order.
-  questions: ReadonlyArray<{ header: string; question: string; labels: readonly string[] }>
+  // Every question the CLI gives at this step: its header, its text and its option labels in order. A header of null
+  // matches any: a Blocking question's header (`Question N`) counts the questions still open, so it changes as answers
+  // are recorded, and it decides nothing (the answer is written by its own call).
+  questions: ReadonlyArray<{ header: string | null; question: string; labels: readonly string[] }>
   // A skill the person chose at a question of this step is being carried out: its own questions pass.
   skill: boolean
 }
@@ -29,13 +31,14 @@ export type SessionFacts = {
 // The facts of a view: its agents, and every question of this step (the gate question with its More options and Accept a
 // finding questions, each option's reason and name questions, the Context check, the Temper resume question and the
 // Blocking questions). `skill`: the person chose a skill option at this step (register.tsx keeps that).
-// `seen`: the agents the CLI listed earlier at this stage of the run (Launched, below): an agent's `before` call (a Build
-// task's `task start`) changes the view before the launch, and the next action then waits for that agent instead of naming it.
-export function factsOf(view: RunView | null, skill: boolean, seen: ReadonlyArray<SessionFacts['agents'][number]> = []): SessionFacts {
-  if (view === null) return { agents: [...seen], questions: [], skill }
-  const qs: Array<{ header: string; question: string; labels: string[] }> = []
-  const put = (q: Question | null) => {
-    if (q !== null) qs.push({ header: q.header, question: q.question, labels: q.options.map(o => o.label) })
+// The view names the agents the session may launch: a work action's, and while the run waits on them at the same stage,
+// the ones it named before (a Build task's `task start` turns the action into `wait` before the launch). The mod keeps no
+// memory of its own for this: it is loaded again between turns.
+export function factsOf(view: RunView | null, skill: boolean): SessionFacts {
+  if (view === null) return { agents: [], questions: [], skill }
+  const qs: Array<{ header: string | null; question: string; labels: string[] }> = []
+  const put = (q: Question | null, anyHeader = false) => {
+    if (q !== null) qs.push({ header: anyHeader ? null : q.header, question: q.question, labels: q.options.map(o => o.label) })
   }
   const opts = (os: readonly Option[]) => os.forEach(o => (put(o.reasonQuestion), put(o.answerQuestion)))
   const walk = (a: Ask | null) => {
@@ -51,20 +54,8 @@ export function factsOf(view: RunView | null, skill: boolean, seen: ReadonlyArra
     qs.push({ header: view.restart.header, question: view.restart.question, labels: view.restart.options.map(o => o.label) })
     opts(view.restart.options)
   }
-  view.blockingAsks.forEach(put)
-  return { agents: [...seen, ...(view.next.action === 'work' ? view.next.agents : [])], questions: qs, skill }
-}
-
-// The agents the CLI has listed at one stage of one run: what a launch may match while the run is at that stage. A view
-// at another run or stage starts the list again.
-export type Launched = { run: string; stage: string; agents: Array<SessionFacts['agents'][number]> }
-
-export function rememberAgents(prev: Launched | null, view: RunView | null): Launched | null {
-  if (view === null || view.run === null) return prev
-  const same = prev !== null && prev.run === view.run.id && prev.stage === view.run.stage
-  const agents = same ? [...prev.agents] : []
-  if (view.next.action === 'work') for (const a of view.next.agents) if (!agents.some(x => x.type === a.type && x.model === a.model && x.prompt === a.prompt)) agents.push(a)
-  return { run: view.run.id, stage: view.run.stage, agents }
+  view.blockingAsks.forEach(q => put(q, true))
+  return { agents: view.next.action === 'work' || view.next.action === 'wait' ? view.next.agents : [], questions: qs, skill }
 }
 
 // The skill a chosen option carries out, when the dialog's answer picked one of this view's options that has one.
@@ -150,6 +141,9 @@ function statementWhy(words: readonly string[], publish: boolean): string | null
     if (sub === 'worktree' && args[0] === 'list') return null
     return `git ${sub || '(no subcommand)'} changes the repository`
   }
+  // A program named by a variable (`T=.../temper; $T go`): the guard cannot tell what runs, and a temper call made that
+  // way is one no rule sees (a call only the person may cause among them).
+  if (first.startsWith('$')) return `${first} names the program through a variable: write the CLI's path out in full in every call`
   if (!READERS.has(name)) return `${name} is not the CLI and not a command that only reads`
   if (name === 'find' && rest.some(w => ['-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0', '-fprintf', '-fls'].includes(w))) return 'find with an action that runs or writes'
   if (name === 'sed' && rest.some(w => w === '--in-place' || w.startsWith('--in-place=') || /^-[a-zA-Z]*i/.test(w))) return 'sed -i writes the file'
@@ -176,16 +170,20 @@ const family = (m: string): string => {
 }
 const prompt = (p: unknown): string => (typeof p === 'string' ? p.replace(/[ \t]+$/gm, '').trim() : '')
 
-function agentFits(input: Record<string, unknown>, facts: SessionFacts): boolean {
-  const type = typeof input.subagent_type === 'string' ? input.subagent_type : ''
+// Why a launch is none of the CLI's agents (the part that differs from the closest one), or null when it is one.
+export function agentWhy(input: Record<string, unknown>, facts: SessionFacts): string | null {
+  const type = typeof input.subagent_type === 'string' ? input.subagent_type : typeof input.subagentType === 'string' ? input.subagentType : ''
   const model = typeof input.model === 'string' ? input.model : ''
-  // The general purpose agent stands in where the CLI's agent type is not offered (commands/temper.md); its prompt then
-  // names the brief, and the model and the prompt still have to be the CLI's.
-  return facts.agents.some(a =>
-    (type === a.type || type === '' || type === 'general-purpose') &&
-    (a.model === '' || family(model) === family(a.model)) &&
-    prompt(input.prompt) === prompt(a.prompt),
-  )
+  if (facts.agents.length === 0) return 'the CLI names no agent to launch now'
+  const why = facts.agents.map(a => {
+    // The general purpose agent stands in where the CLI's agent type is not offered (commands/temper.md); its prompt then
+    // names the brief, and the model and the prompt still have to be the CLI's.
+    if (!(type === a.type || type === '' || type === 'general-purpose')) return `the type is ${type}, the CLI names ${a.type}`
+    if (!(a.model === '' || family(model) === family(a.model))) return `the model is ${model}, the CLI names ${a.model}`
+    if (prompt(input.prompt) !== prompt(a.prompt)) return `the prompt differs from the one the CLI gives for ${a.type}`
+    return null
+  })
+  return why.includes(null) ? null : (why.find(w => w !== null && !w.startsWith('the type')) ?? why[0] ?? null)
 }
 
 function questionFits(q: unknown, facts: SessionFacts): boolean {
@@ -194,7 +192,7 @@ function questionFits(q: unknown, facts: SessionFacts): boolean {
   const text = typeof x.question === 'string' ? x.question : ''
   const labels = Array.isArray(x.options) ? x.options.map(o => (o && typeof o === 'object' && typeof (o as { label?: unknown }).label === 'string' ? (o as { label: string }).label : '')) : []
   if (header === DRIFT_HEADER && text.startsWith(DRIFT_PREFIX)) return true
-  return facts.questions.some(f => f.header === header && f.question === text && f.labels.length === labels.length && f.labels.every((l, i) => l === labels[i]))
+  return facts.questions.some(f => (f.header === null || f.header === header) && f.question === text && f.labels.length === labels.length && f.labels.every((l, i) => l === labels[i]))
 }
 
 // The main session's call: allowed, or denied with what to do instead. `ctx` is the rule context of rules.ts; the
@@ -213,7 +211,10 @@ export function evaluateSession(ctx: RuleContext, facts: SessionFacts, call: Too
     const why = bashWhy(command, r.stage === 'commit' || r.stage === 'pipeline')
     return why === null ? ALLOW : { deny: SESSION_BASH_DENY(why) }
   }
-  if (AGENT_TOOLS.has(call.tool)) return agentFits(call.input, facts) ? ALLOW : { deny: SESSION_AGENT_DENY }
+  if (AGENT_TOOLS.has(call.tool)) {
+    const why = agentWhy(call.input, facts)
+    return why === null ? ALLOW : { deny: `${SESSION_AGENT_DENY} (Here ${why}.)` }
+  }
   if (call.tool === 'AskUserQuestion') {
     if (facts.skill) return ALLOW
     const qs = Array.isArray(call.input.questions) ? call.input.questions : []

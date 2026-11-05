@@ -47,7 +47,7 @@ the plugin folder.
    why the fix needs it, and the change you would make. The orchestrator asks the person and
    launches you again with one `Drift decision: {path}: {add|revert|allow-once}` line per
    answer; `revert` means fix without that file, `allow-once` allows one edit.
-5. **The lesson** (9.9.0, written by you, not by the orchestrator at the commit): once the test is GREEN, append one
+5. **The lesson** (9.8.0, written by you, not by the orchestrator at the commit): once the test is GREEN, append one
    entry for this fix to `.temper/lessons.md` (create it with a `# Lessons` header when it is absent) in the format of
    `${CLAUDE_PLUGIN_ROOT}/reference/fix.md`, Commit + record; `Fix:` is one line on what changed (the commit comes
    later). When you run again for the same fix (a step back from Review or Check), update this fix's entry instead of

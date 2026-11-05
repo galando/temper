@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""answer_ops.py: the person's answer to a Blocking question, written by the CLI (9.9.0).
+"""answer_ops.py: the person's answer to a Blocking question, written by the CLI (9.8.0).
 
-  answer_ops.py SPEC QUESTION ANSWER     `temper intent answer '<question>' '<answer>'`
+  answer_ops.py SPEC QUESTION ANSWER [QUESTION ANSWER ...]
+                                          `temper intent answer '<question>' '<answer>' ['<question>' '<answer>' ...]`:
+                                          one call for every answer of a dialog (a session that wrote six calls with the
+                                          CLI's long path put the path in a shell variable, which the mod refuses)
 
-Before 9.9.0 the session wrote each answer itself: it read intent.md, then edited it (in the measured runs, with a Python
+Earlier the session wrote each answer itself: it read intent.md, then edited it (in the measured runs, with a Python
 script typed into a Bash call), and when the edit left a stray line the Intent gate failed and it edited again. That was
 two to four turns per stage that asks, each rereading the whole conversation, and on a cheaper model it was where the
 session started editing spec files of its own accord. Now one call per answer:
@@ -113,19 +116,22 @@ def resolve_concern(spec, asked, answer):
 
 
 def main(argv):
-    if len(argv) != 3 or not argv[1].strip() or not argv[2].strip():
-        print("FAIL: usage: temper intent answer '<question>' '<answer>'", file=sys.stderr)
+    pairs = argv[1:]
+    if len(argv) < 3 or len(pairs) % 2 or any(not x.strip() for x in pairs):
+        print("FAIL: usage: temper intent answer '<question>' '<answer>' ['<question>' '<answer>' ...]", file=sys.stderr)
         return 1
-    spec, q, answer = argv
-    asked = answer_intent(spec, q, answer, datetime.date.today().isoformat())
-    if asked is None:
-        print("FAIL: no Blocking open question starts with: %s" % q[:80], file=sys.stderr)
-        return 1
-    print("OK: answered: %s" % asked[:80])
-    if re.match(r"^\s*design:", asked, re.I):
-        title = resolve_concern(spec, asked, answer)
-        print("OK: resolved in design.md: %s" % title[:80] if title else "Note: no open concern in design.md matched; the Design question resolves it")
-    return 0
+    spec, rc = argv[0], 0
+    for q, answer in zip(pairs[0::2], pairs[1::2]):
+        asked = answer_intent(spec, q, answer, datetime.date.today().isoformat())
+        if asked is None:
+            print("FAIL: no Blocking open question starts with: %s" % q[:80], file=sys.stderr)
+            rc = 1
+            continue
+        print("OK: answered: %s" % asked[:80])
+        if re.match(r"^\s*design:", asked, re.I):
+            title = resolve_concern(spec, asked, answer)
+            print("OK: resolved in design.md: %s" % title[:80] if title else "Note: no open concern in design.md matched; the Design question resolves it")
+    return rc
 
 
 if __name__ == "__main__":

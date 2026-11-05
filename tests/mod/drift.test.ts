@@ -5,7 +5,7 @@ import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import { SPEC, runFiles, view } from './run-files'
 import { denyText, world } from './world'
 
-// A Build agent's edit (9.9.0: the main session writes none, core/session.ts).
+// A Build agent's edit (9.8.0: the main session writes none, core/session.ts).
 const edit = (path: string) => ({ tool: 'Edit', file_path: path, old_string: 'a', new_string: 'b', agentId: 'agent' }) as const
 
 // The Scope drift question as Claude asks it: the file, Claude's why, the change, and the three choices.

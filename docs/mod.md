@@ -196,7 +196,7 @@ The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mo
   command line or written with `git config` whose body skips the hook, and a command that runs git and
   sets `HOME` or `XDG_CONFIG_HOME` (git reads that folder's config, which can hold an alias or a hooks path).
 
-- **The main session relays (9.9.0, `core/session.ts`).** During a `/temper` run the conversation itself (a call
+- **The main session relays (9.8.0, `core/session.ts`).** During a `/temper` run the conversation itself (a call
   with no agent id) does only what the flow gives it: it runs the temper CLI and commands that only read (`cat`,
   `grep`, `git status`, `git diff` and the like, with no redirect into a file), launches only an agent the CLI
   listed at this stage, with its type, its model and its prompt as given, and asks only a question the CLI gives at

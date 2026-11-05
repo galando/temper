@@ -2,6 +2,8 @@
 
   python3 cli_ctx.py next --plugin DIR --cli PATH --config-file FILE --now TS --run-files "A B ..."
   python3 cli_ctx.py models --plugin DIR --config-file FILE [--source]
+  python3 cli_ctx.py view --plugin DIR --cli PATH --config-file FILE --now TS   (9.8.0: the view every other command
+                                                                               writes, with the models `next` resolves)
 
 `temper next` used to start a shell for each stage's model, one for each setup check, and two Python
 processes (the action, then the view). It starts one now: the models and the setup calls are worked out
@@ -118,7 +120,7 @@ def option(argv, name, default=""):
 
 
 def main(argv):
-    if len(argv) < 2 or argv[1] not in ("next", "models"):
+    if len(argv) < 2 or argv[1] not in ("next", "models", "view"):
         print(__doc__, file=sys.stderr)
         return 2
     plugin = option(argv, "--plugin")
@@ -131,6 +133,13 @@ def main(argv):
         return 0
     import flow
     models = {k: v[0] for k, v in found.items()}
+    if argv[1] == "view":
+        # 9.8.0: the view every other command writes, with the same models `next` resolves. Before, it was written without
+        # them, so a Build task's prompt in the view named its model as `haiku` where `next` named `claude-haiku-5-5`, and
+        # the mod refused the launch of the agent `next` had named.
+        flow.run_view({"plugin": plugin, "cli": option(argv, "--cli"), "config_file": config_file, "now": option(argv, "--now"),
+                       "models": models, "task_model": models.get("task", ""), "escalation_model": models.get("task-escalation", "")})
+        return 0
     ctx = {"plugin": plugin, "cli": option(argv, "--cli"), "config_file": config_file, "models": models,
            "task_model": models.get("task", ""), "escalation_model": models.get("task-escalation", ""),
            "now": option(argv, "--now"), "setup": setup_calls(plugin, config_file, option(argv, "--run-files"))}

@@ -110,6 +110,12 @@ folder.
    has states (a status such as `active`, `canceled`, `refunded`), also write one line `**States:** active, canceled`
    naming each: the acceptance tests must cover every one.
 
+   **The request decides first (9.8.0).** What the request or its ticket states (a status code, a cap, who may do it)
+   is decided: write it under `### Decisions` as `- {the rule} -> as the request states (the request)`, never as a
+   question, and never offer a choice that contradicts it. A measured run asked what an amount above the balance
+   answers, which the request gave as 409, recommended 400, and the person's click put the contradiction in the code.
+   Ask only what the request leaves open, or a house rule the request does not settle.
+
    **Write each question so the person clicks, never types.** One line each, in this form:
    `- Blocking: {the question, concrete, naming the feature} choices: {recommended answer} | {other} | {other}`
    with two or three choices, the one you would pick first, each a short concrete answer ("Admins only", "60 days

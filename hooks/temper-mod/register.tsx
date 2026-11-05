@@ -10,8 +10,7 @@ import type { UiMode } from './core/config'
 import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
-import { evaluateSession, factsOf, rememberAgents, skillChosen } from './core/session'
-import type { Launched } from './core/session'
+import { evaluateSession, factsOf, skillChosen } from './core/session'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
 import { stageToast, turnLine } from './core/view'
@@ -347,15 +346,15 @@ function failedGuard(tool: string): Guarded {
 // run it cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
 type Guarded = { deny: string | null; trivialExit?: boolean }
 
-// 9.9.0: the run and step at which the person chose a skill option (Grill Me, Teach Me): until the run moves on, the
-// session asks the skill's own questions (core/session.ts).
-let skillAt: { run: string; step: number } | null = null
+// 9.8.0: the run and step at which the person chose a skill option (Grill Me, Teach Me): until the run moves on, the
+// session asks the skill's own questions (core/session.ts). Kept in the plugin store, not in module state: the engine
+// loads the mod again between turns.
+const SKILL = 'skill:'
 
-const skillActive = (snap: Snapshot): boolean => skillAt !== null && skillAt.run === snap.at.run && skillAt.step === snap.at.step
-
-// 9.9.0: the agents the CLI listed at the run's current stage (core/session.ts): a Build task's `task start` changes the view
-// before its agent is launched.
-let launched: Launched | null = null
+async function skillActive(io: Io, snap: Snapshot): Promise<boolean> {
+  const at = await io.storeGet(SKILL + snap.at.run).catch(() => undefined)
+  return typeof at === 'number' && at === snap.at.step
+}
 
 async function guard($: Api, tool: string, input: Record<string, unknown>, main = false): Promise<Guarded> {
   // A Bash call may run the CLI, so it is judged on the run as the files say now; a write on the run last read. The main
@@ -373,8 +372,7 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
   // The main session (no agent id) relays the CLI and the person: it runs the CLI and reads, launches the CLI's agent and
   // asks the CLI's question (core/session.ts).
   if (main) {
-    launched = rememberAgents(launched, snap.view)
-    const s = evaluateSession(rc, factsOf(snap.view, skillActive(snap), launched?.agents ?? []), { tool, input })
+    const s = evaluateSession(rc, factsOf(snap.view, tool === 'AskUserQuestion' && (await skillActive(makeIo($), snap))), { tool, input })
     if ('deny' in s) return { deny: s.deny }
   }
   if (r.use !== undefined) {
@@ -465,8 +463,6 @@ export const register: Register = (on, opts) => {
   paneOpen = false
   paneShut = false
   lastStage = undefined
-  skillAt = null
-  launched = null
   live.paneOpen = undefined
   reviewerIds.clear()
 
@@ -533,15 +529,11 @@ export const register: Register = (on, opts) => {
       // A skill option chosen (Grill Me, Teach Me): its questions are the session's to ask until the run moves on.
       if (main) {
         const snap = await ensure($).catch(() => null)
-        if (snap !== null && skillChosen(snap.view, result) !== null) skillAt = { run: snap.at.run, step: snap.at.step }
+        if (snap !== null && skillChosen(snap.view, result) !== null) await makeIo($).storeSet(SKILL + snap.at.run, snap.at.step).catch(() => undefined)
       }
       await recordAnswers($, result).catch(() => undefined)
     }
-    else if (e.tool === 'Bash') {
-      const snap = await refresh($).catch(() => null)
-      // The agents a `temper go` names are remembered before the next call (their `before` call may change the view).
-      if (snap !== null) launched = rememberAgents(launched, snap.view)
-    }
+    else if (e.tool === 'Bash') await refresh($).catch(() => undefined)
     return result
   }).catch(($, e, next) => {
     // The engine skips a hook that throws or outruns its budget, and the tool would run unguarded. In its place: what the

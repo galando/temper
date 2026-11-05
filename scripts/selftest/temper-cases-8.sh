@@ -21,7 +21,7 @@ assert_eq "next: Intent PASS asks the Temper gate question with its four options
   "$(nx "d['action'] + '|' + d['ask']['question']['header'] + '|' + d['ask']['question']['question']")"
 assert_eq "next: the Intent PASS options" "Continue to Plan (Recommended)|Grill Me|Teach Me|Save for later" "$(labels)"
 _b="$(git symbolic-ref -q HEAD)"; git branch -f temper-test-other HEAD >/dev/null 2>&1; git symbolic-ref HEAD refs/heads/temper-test-other   # on another branch than the run's, at the same commit
-assert_eq "next: Continue to Plan is the person's approval: switch to the run's branch, accept the intent, commit it, then advance (9.9.0: each a temper call)" \
+assert_eq "next: Continue to Plan is the person's approval: switch to the run's branch, accept the intent, commit it, then advance (9.8.0: each a temper call)" \
   "approve|spec branch|intent accept|spec commit 'docs(intent): accept demo'|state advance intent_complete plan" \
   "$(nx "o = d['ask']['options'][0]; '|'.join([o['move']] + [c.split('temper ', 1)[1] for c in (o['calls'][0], o['calls'][1], o['calls'][2], o['calls'][-1])])")"
 git symbolic-ref HEAD "$_b"
@@ -138,7 +138,7 @@ assert_eq "next: after the report, the page is written with no question (9.8.0)"
   "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 assert_exit "state set: end_report is the CLI's" 1 "$TEMPER" state set end_report none
 "$TEMPER" report --no-html >/dev/null 2>&1
-assert_eq "next: after the answer, the commit steps: the ledger archived, the commit (9.9.0: one temper call), the state cleared" \
+assert_eq "next: after the answer, the commit steps: the ledger archived, the commit (9.8.0: one temper call), the state cleared" \
   "work|state archive|spec commit|state clear|3" \
   "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[1].split('temper ', 1)[1][:11], s[-1].split('temper ', 1)[1], str(len(s))])")"
 "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --html >/dev/null 2>&1
@@ -361,7 +361,7 @@ assert_eq "round 2, 6: an untracked file older than the run is not added" "0|1" 
   "$(grep -c 'local.env' <<<"$ADD")|$(grep -c 'café.md' <<<"$ADD")"
 git config user.email t@t; git config user.name t   # the step commits as printed: CI has no global identity
 _pre="$(git rev-parse HEAD)"; ( bash -c "$ADD" ) >/dev/null 2>&1; rc=$?
-assert_eq "round 2, 7: the commit step runs as printed (9.9.0: temper spec commit): no file name runs, a non ASCII name is committed" "0|0|1" \
+assert_eq "round 2, 7: the commit step runs as printed (9.8.0: temper spec commit): no file name runs, a non ASCII name is committed" "0|0|1" \
   "$rc|$([[ -e PWNED5 ]] && echo 1 || echo 0)|$(git diff --name-only -z "$_pre" HEAD | tr '\0' '\n' | grep -c 'café.md')"
 git reset -q --soft "$_pre" >/dev/null 2>&1; git reset -q >/dev/null 2>&1; rm -f local.env 'docs/café.md' 'x$(touch PWNED5).txt'
 # 10. The person's own text goes into a call as one single quoted word, so a backquote in it is text.
@@ -429,7 +429,7 @@ gpass build; "$TEMPER" state advance fix_complete review >/dev/null 2>&1
 assert_eq "next: a fix run's Review reads rca.md (fix mode)" "temper:temper-review|1" \
   "$(nx "d['agents'][0]['type'] + '|' + str(int('Fix mode: there is no intent.md' in d['agents'][0]['prompt']))")"
 gpass review check; "$TEMPER" state advance review_complete check >/dev/null 2>&1; "$TEMPER" state advance check_complete commit >/dev/null 2>&1; gpass commit
-assert_eq "next: a fix run's report steps no longer write the lesson (9.9.0: the Fix agent writes it, agents/fix.md)" "work|0|1" \
+assert_eq "next: a fix run's report steps no longer write the lesson (9.8.0: the Fix agent writes it, agents/fix.md)" "work|0|1" \
   "$(nx "s = d['steps']; d['action'] + '|' + str(int(any('lessons.md' in x for x in s)))")|$(grep -c 'append one' "$REPO_ROOT/agents/fix.md")"
 "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
 assert_eq "next: a fix run's commit steps commit .temper/lessons.md" "work|1" \

@@ -1,11 +1,11 @@
-// 9.9.0: the main session's own calls during a run (core/session.ts). It relays the CLI and the person: it runs the temper
+// 9.8.0: the main session's own calls during a run (core/session.ts). It relays the CLI and the person: it runs the temper
 // CLI and commands that only read, launches the agent the CLI names (type, model, prompt) and asks the question the CLI
 // gives; the agents and the CLI write. Round 4 of the benchmark is the reason: a Haiku session edited the spec files and the
 // locked acceptance tests and asked a question of its own; a Sonnet session once launched an agent on a cheaper model.
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
-import { SESSION_AGENT_DENY, SESSION_ASK_DENY, SESSION_WRITE_DENY, bashWhy, evaluateSession, factsOf, rememberAgents, skillChosen } from '../../hooks/temper-mod/core/session'
+import { SESSION_AGENT_DENY, SESSION_ASK_DENY, SESSION_WRITE_DENY, bashWhy, evaluateSession, factsOf, skillChosen } from '../../hooks/temper-mod/core/session'
 import type { SessionFacts } from '../../hooks/temper-mod/core/session'
 import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
@@ -77,6 +77,8 @@ describe('Bash: the CLI and commands that only read', () => {
     ['echo $(python3 -c "print(1)")', 'python3'],
     ['git branch new-branch', 'git branch'],
     ['xargs rm < list.txt', 'xargs'],
+    // Seen in round 5: the CLI's path in a variable. No rule sees a temper call made that way.
+    ['T=/plugin/scripts/temper\n$T intent answer \'Who?\' \'Admin\'\n$T go', 'write the CLI\'s path out in full'],
   ]
   for (const [c, why] of NO) {
     test(`refuses: ${c.split('\n')[0]}`, () => {
@@ -106,8 +108,11 @@ describe('Agent: only the agent the CLI names, as named', () => {
   test('a full model id of the same family is the same model', () => expect(isDeny(launch({ model: 'claude-opus-5-5' }))).toBe(false))
   test('trailing spaces in the prompt do not count', () => expect(isDeny(launch({ prompt: PLAN_AGENT.prompt + '  \n' }))).toBe(false))
   test('the general purpose agent stands in with the same model and prompt', () => expect(isDeny(launch({ subagent_type: 'general-purpose' }))).toBe(false))
-  test('a cheaper model than the CLI named is refused (round 3: the root cause agent on Sonnet)', () =>
-    expect(isDeny(launch({ model: 'sonnet' })) && SESSION_AGENT_DENY).toBe(SESSION_AGENT_DENY))
+  test('a cheaper model than the CLI named is refused (round 3: the root cause agent on Sonnet), and the refusal says so', () => {
+    const r = launch({ model: 'sonnet' })
+    expect(isDeny(r) && r.deny.startsWith(SESSION_AGENT_DENY)).toBe(true)
+    expect(isDeny(r) && r.deny).toContain('the model is sonnet, the CLI names opus')
+  })
   test('another agent type is refused', () => expect(isDeny(launch({ subagent_type: 'temper:temper-design' }))).toBe(true))
   test('a prompt of its own is refused', () => expect(isDeny(launch({ prompt: PLAN_AGENT.prompt + '\nAlso fix the tests.' }))).toBe(true))
   test('no agent in the CLI\'s action: none is launched', () => expect(isDeny(call(ctx('plan'), 'Agent', { subagent_type: PLAN_AGENT.type, model: 'opus', prompt: PLAN_AGENT.prompt }, facts({ agents: [] })))).toBe(true))
@@ -151,8 +156,14 @@ describe('factsOf and skillChosen: what the view allows at this step', () => {
   test('the gate question, its reason question, the Blocking question and the resume question are all the CLI\'s', () => {
     expect(f.questions.map(q => q.question)).toEqual(['Intent: the check passed. Continue?', 'Override. What is the reason?', 'A run of pw is open at Intent. Start over?', 'Who may refund?'])
     expect(f.questions[3]?.labels).toEqual(['Admin only', 'Carry forward'])
+    expect(f.questions[3]?.header).toBe(null)
   })
   test('an ask action names no agent', () => expect(f.agents).toEqual([]))
+  test('a Blocking question matches whatever its header: its number shifts as answers are recorded (round 5, Haiku)', () => {
+    const q = { question: 'Who may refund?', labels: ['Admin only', 'Carry forward'] }
+    expect(isDeny(ask({ header: 'Question 6', ...q }, f))).toBe(false)
+    expect(isDeny(ask({ header: 'Question 6', question: 'Who may refund?', labels: ['Admin only'] }, f))).toBe(true)
+  })
   test('the answer Grill Me is a skill; Continue is not', () => {
     expect(skillChosen(view, { result: { questions: [], answers: { 'Intent: the check passed. Continue?': 'Grill Me' } } })).toBe('grill-me')
     expect(skillChosen(view, { result: { questions: [], answers: { 'Intent: the check passed. Continue?': 'Continue' } } })).toBe(null)
@@ -164,18 +175,16 @@ describe('factsOf and skillChosen: what the view allows at this step', () => {
   })
 })
 
-describe('rememberAgents: a Build task\'s start changes the view before its agent is launched', () => {
+describe('a Build task\'s start changes the view before its agent is launched', () => {
   const TASK = { type: 'temper:temper-build-task', model: 'haiku', prompt: 'Follow /plugin/agents/build-task.md exactly.\nTask: 1.' }
-  const at = (stage: string, action: string, agents: unknown[]) => parseRunView(JSON.stringify({ version: 1,
-    run: { id: 'r1', step: 7, slug: 'pw', stage, command: 'temper', spec: 's' }, next: { action, stage, say: '', calls: [], steps: [], agents } }))
-  test('the agent named before `task start` may still be launched while the run waits for it', () => {
-    const seen = rememberAgents(rememberAgents(null, at('build', 'work', [TASK])), at('build', 'wait', []))
-    const f = factsOf(at('build', 'wait', []), false, seen?.agents ?? [])
+  const at = (action: string, agents: unknown[]) => parseRunView(JSON.stringify({ version: 1,
+    run: { id: 'r1', step: 7, slug: 'pw', stage: 'build', command: 'temper', spec: 's' }, next: { action, stage: 'build', say: '', calls: [], steps: [], agents } }))
+  // Round 5: the mod kept the named agents in memory, which the engine drops when it loads the mod again between turns; the
+  // Build agents were refused after `task start`. The CLI's waiting view names them now (scripts/flow.py, view).
+  test('a waiting view that names the agent lets it launch, as named', () => {
+    const f = factsOf(at('wait', [TASK]), false)
     expect(isDeny(call(ctx('build'), 'Agent', { subagent_type: TASK.type, model: 'haiku', prompt: TASK.prompt }, f))).toBe(false)
     expect(isDeny(call(ctx('build'), 'Agent', { subagent_type: TASK.type, model: 'sonnet', prompt: TASK.prompt }, f))).toBe(true)
   })
-  test('a new stage, or another run, starts the list again', () => {
-    const seen = rememberAgents(null, at('build', 'work', [TASK]))
-    expect(rememberAgents(seen, at('review', 'ask', []))?.agents).toEqual([])
-  })
+  test('an ask names no agent', () => expect(factsOf(at('ask', [TASK]), false).agents).toEqual([]))
 })

@@ -148,7 +148,7 @@ def analyse(run_dir, check=False):
     tools = {}            # tool_use_id -> (name, input, main?)
     growth = defaultdict(int)
     agents = []
-    refused = []           # the main session's calls the mod refused (9.9.0: its session guard and the stage rules)
+    refused = []           # the main session's calls the mod refused (9.8.0: its session guard and the stage rules)
     sdk = defaultdict(float)
     for line in lines:
         try:

@@ -442,7 +442,7 @@ class Builder:
 
     def skill(self, name, label, what):
         o = self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name)
-        o["skill"] = name   # 9.9.0: the mod lets the skill's own questions through while it runs (its session guard)
+        o["skill"] = name   # 9.8.0: the mod lets the skill's own questions through while it runs (its session guard)
         return o
 
     def question(self, header, text, options, stage, more=None, extra=None):
@@ -470,7 +470,7 @@ class Builder:
         commit hook (no spec only carve out applies), which would stop the answer's calls."""
         if self.r.spec_ignored() or not self.r.spec or not (changes or self.r.ctx.get("spec_dirty")):
             return []
-        # 9.9.0: one CLI call (scripts/spec_ops.py) in place of `git add` and `git commit`, which had to go in two Bash
+        # 9.8.0: one CLI call (scripts/spec_ops.py) in place of `git add` and `git commit`, which had to go in two Bash
         # calls; now every call of the answer is a temper call, run with `temper go` in one.
         return [self.c("spec commit %s" % shlex.quote(message))]
 
@@ -480,7 +480,7 @@ class Builder:
         branch = self.r.state.get("branch") or ""
         if not branch or (self.r.ctx.get("branch") or "") == branch:
             return []
-        return [self.c("spec branch")]   # 9.9.0: git checkout (-b) of the run's branch, by the CLI
+        return [self.c("spec branch")]   # 9.8.0: git checkout (-b) of the run's branch, by the CLI
 
     def branch_clash(self):
         """The run's branch (`feature/{slug}`) exists from an earlier run, the project is on another branch, and that branch holds
@@ -988,7 +988,14 @@ class Builder:
             lines.append("Feedback re-entry: %s. Fix this, then continue." % fb)
         found = self.r.latest_findings()
         if found:
-            lines.append("What the stage before the loop left open: %s." % "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(found)))
+            # 9.8.0: each finding in a line short enough to copy exactly, the full text where the agent reads it. A finding
+            # can hold a test's whole output (tracebacks with ~~~^^^ marks): the session launches the agent with this prompt
+            # word for word (the mod refuses any other), and in round 5 a session miscounted those marks twice.
+            def brief(x):
+                x = " ".join(re.sub(r"[~^]{3,}", " ", x).split())
+                return x if len(x) <= 200 else x[:197].rstrip() + "..."
+            lines.append("What the stage before the loop left open (each in full in .temper/feedback-loops.json, the latest loop's "
+                         "findings): %s." % "; ".join("%d. %s" % (i + 1, brief(x)) for i, x in enumerate(found)))
             if any(x.startswith("acceptance (written before Build)") for x in found):
                 # 9.8.0: three benchmark runs looped after a fix pass edited a locked acceptance test.
                 lines.append("The acceptance tests are locked: change the code, never a test in %s/acceptance/. If a test is wrong, "
@@ -1638,7 +1645,7 @@ class Builder:
         steps = []
         if r.command == "temper":
             steps.append(self.c("intent complete"))
-            steps.append(self.c("spec deviations"))   # 9.9.0: by the CLI, from build-context.json
+            steps.append(self.c("spec deviations"))   # 9.8.0: by the CLI, from build-context.json
         steps.append(self.c("report --end"))
         steps.append("Copy what temper report printed into your reply, as it printed it, in a code block: the person does not "
                      "see the output of a Bash call.")
@@ -1706,7 +1713,7 @@ class Builder:
                 # 9.8.0: the CLI drafts the message from the intent's title (one call fewer for the session).
                 message = self.feature_message()
             if files:
-                # 9.9.0: one CLI call stages the files and commits (scripts/spec_ops.py): the steps are all temper calls,
+                # 9.8.0: one CLI call stages the files and commits (scripts/spec_ops.py): the steps are all temper calls,
                 # run in one Bash call. Each name is one shell quoted word: a file name is never shell code.
                 steps.append(self.c("spec commit %s -- %s" % (shlex.quote(message), " ".join(shlex.quote(f) for f in files + lessons))))
             else:
@@ -1960,7 +1967,7 @@ CARRY = "Carry forward"
 
 
 def blocking_asks(items, cli):
-    """9.9.0: each Blocking question as the session asks it, built by the CLI: `{question, answer, carry}`. `question` is the
+    """9.8.0: each Blocking question as the session asks it, built by the CLI: `{question, answer, carry}`. `question` is the
     AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options with the first marked
     recommended, at most three, then Carry forward); `answer` is the call that writes the person's answer into intent.md
     (`{answer}` is theirs: the label they chose or the text they typed), `carry` the call for Carry forward. Before, the
@@ -2221,6 +2228,17 @@ def view(run, nxt):
     if not run.active:
         return {"version": VERSION, "run": None, "status": "No run is active.", "drift": drift_info()}
     r = run
+    # 9.8.0: the agents the session may launch now (the mod launches no other: its session guard). A Build task's `before`
+    # call (`task start`) turns the next action into `wait` before its agent is launched: while the run waits at the same
+    # stage, the agents the view named before are named still. The view written last is that memory; the mod keeps none
+    # (it is loaded again between turns).
+    agents = [{"type": a.get("type") or "", "model": a.get("model") or "", "prompt": a.get("prompt") or ""}
+              for a in (nxt.get("agents") or [])] if nxt.get("action") == "work" else []
+    if nxt.get("action") == "wait":
+        prev = read_json(os.path.join(TEMPER, "view.json"), {})
+        pr = prev.get("run") if isinstance(prev.get("run"), dict) else {}
+        if pr.get("id") == r.state.get("run_id") and pr.get("stage") == r.stage:
+            agents = [a for a in ((prev.get("next") or {}).get("agents") or []) if isinstance(a, dict)]
     out = {
         "version": VERSION,
         "run": {"id": r.state.get("run_id"), "step": r.state.get("step"), "slug": r.slug, "title": r.title(),
@@ -2232,9 +2250,7 @@ def view(run, nxt):
         "next": {"action": nxt.get("action"), "stage": nxt.get("stage"), "say": nxt.get("say"),
                  "calls": nxt.get("calls") or [] if nxt.get("action") in ("work", "auto") else [],
                  "steps": nxt.get("steps") or [] if nxt.get("action") == "work" else [],
-                 # 9.9.0: the agents to launch, as the session launches them (the mod launches no other: its session guard)
-                 "agents": [{"type": a.get("type") or "", "model": a.get("model") or "", "prompt": a.get("prompt") or ""}
-                            for a in (nxt.get("agents") or [])] if nxt.get("action") == "work" else []},
+                 "agents": agents},
         "ask": nxt.get("ask") if nxt.get("action") == "ask" else None,
         "blocking": nxt.get("blocking") or [],
         "blocking_asks": nxt.get("blocking_asks") or [],

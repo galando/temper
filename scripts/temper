@@ -4417,7 +4417,7 @@ try:
 except Exception:
     pass" "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
   fi
-  # --brief (9.9.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
+  # --brief (9.8.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
   # passed row was context the session read again on every later turn.
   python3 -I -c "
 import json, sys
@@ -4528,8 +4528,8 @@ cmd_intent() {
   case "$sub" in accept|complete|carry|answer) ;; *) echo "FAIL: usage: temper intent accept|complete|carry '<question>'|answer '<question>' '<answer>'" >&2; return 1 ;; esac
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -f "$spec/intent.md" ]] || { echo "FAIL: no intent.md for the active run" >&2; return 1; }
-  # 9.9.0: the person's answer to a Blocking question, written by the CLI (scripts/answer_ops.py).
-  [[ "$sub" == "answer" ]] && { python3 -E -s "$SCRIPTS_DIR/answer_ops.py" "$spec" "${2:-}" "${3:-}"; return; }
+  # 9.8.0: the person's answer to a Blocking question, written by the CLI (scripts/answer_ops.py).
+  [[ "$sub" == "answer" ]] && { python3 -E -s "$SCRIPTS_DIR/answer_ops.py" "$spec" "${@:2}"; return; }
   if [[ "$sub" == "carry" ]]; then
     [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper intent carry '<question>'" >&2; return 1; }
     python3 -I - "$spec/intent.md" "$2" <<'PY'
@@ -4727,7 +4727,7 @@ cmd_next() {
 # Fail open: a view that cannot be written never changes what the command did.
 _view_write() {
   [[ -d "$TEMPER_DIR" && ! -L "$TEMPER_DIR" ]] || return 0
-  python3 "$SCRIPTS_DIR/flow.py" view --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
+  python3 "$SCRIPTS_DIR/cli_ctx.py" view --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
     --config-file "$CONFIG_FILE" --now "$(_now)" >/dev/null 2>&1 || true
 }
 
@@ -5221,7 +5221,7 @@ main() {
     check) cmd_check "$@" ;;
     acceptance) cmd_acceptance "$@" ;;
     go) python3 -E -s "$SCRIPTS_DIR/go.py" "$PLUGIN_ROOT/scripts/temper" "$REPO_ROOT" ;;
-    spec) case "${1:-}" in   # 9.9.0: the git steps of leaving a stage (scripts/spec_ops.py)
+    spec) case "${1:-}" in   # 9.8.0: the git steps of leaving a stage (scripts/spec_ops.py)
             branch) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" branch "$(cmd_state_get branch)") ;;
             commit|deviations) local _sp; _sp="$(_spec_path "")"; [[ -n "$_sp" ]] || { echo "FAIL: no active run" >&2; return 1; }
                     (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" "$1" "$_sp" "${@:2}") ;;
@@ -5255,7 +5255,7 @@ Usage:
   temper report --end | --no-html (at the commit: the report for the person, then their No to the page)
   temper intent accept|complete   (the Status header of the run's intent.md)
   temper intent carry '<question>' (the person's Carry forward: a Blocking open question becomes Deferred)
-  temper intent answer '<question>' '<answer>' (the person's answer: into Decisions, out of Open Questions)
+  temper intent answer '<question>' '<answer>' [...]  (the person's answers: into Decisions, out of Open Questions)
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)

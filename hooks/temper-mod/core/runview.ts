@@ -18,7 +18,7 @@ export type Option = {
   reasonQuestion: Question | null
   // The move needs a typed answer (the name of the person who confirms a manual task): this question asks it.
   answerQuestion: Question | null
-  // 9.9.0: the skill the option carries out (Grill Me, Teach Me), whose own questions the session then asks; null for any other.
+  // 9.8.0: the skill the option carries out (Grill Me, Teach Me), whose own questions the session then asks; null for any other.
   skill: string | null
 }
 
@@ -44,10 +44,11 @@ export type RunView = {
   } | null
   stages: Array<{ id: string; label: string; mark: StageMark; verdict: 'PASS' | 'FAIL' | null; failed: Array<{ name: string; detail: string }>; skipped: { reason: string; by: string } | null }>
   status: string
-  // 9.9.0: `agents` are the agents of a work action, each as it is to be launched (the session launches only these).
+  // 9.8.0: `agents` are the agents the session may launch, each as it is to be launched: a work action's, and while the run
+  // waits on them at the same stage, the ones it named (the session launches only these).
   next: { action: string; stage: string; say: string; calls: string[]; steps: string[]; agents: Array<{ type: string; model: string; prompt: string }> }
   ask: Ask | null
-  // 9.9.0: the Blocking open questions as the session asks them (header, question, options), before the gate question.
+  // 9.8.0: the Blocking open questions as the session asks them (header, question, options), before the gate question.
   blockingAsks: Question[]
   // The Context check of Plan (a question of the CLI's own), while the Context Map is not reviewed: its choices run `plan review --answer`.
   contextCheck: { ask: Ask; answer: string } | null

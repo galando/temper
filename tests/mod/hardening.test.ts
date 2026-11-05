@@ -57,7 +57,7 @@ async function begin($: unknown, on: Parameters<typeof world>[0], o: Opts = {}):
   return { w, api }
 }
 
-// 9.9.0: these are the commands and writes of a stage agent (they carry an agent id); the main session's own calls are
+// 9.8.0: these are the commands and writes of a stage agent (they carry an agent id); the main session's own calls are
 // held to core/session.ts as well, which session.test.ts covers.
 const sh = async (api: Api, command: string): Promise<string | undefined> => (await api.tool.call({ tool: 'Bash', command, agentId: 'agent' } as never)).deny
 const wr = async (api: Api, path: string): Promise<string | undefined> => (await api.tool.call({ tool: 'Write', file_path: path, content: 'x', agentId: 'agent' } as never)).deny

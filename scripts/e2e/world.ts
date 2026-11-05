@@ -8,8 +8,7 @@ import path from 'node:path'
 
 import { answersIn } from '../../hooks/temper-mod/core/answers'
 import { evaluate } from '../../hooks/temper-mod/core/rules'
-import { evaluateSession, factsOf, rememberAgents } from '../../hooks/temper-mod/core/session'
-import type { Launched } from '../../hooks/temper-mod/core/session'
+import { evaluateSession, factsOf } from '../../hooks/temper-mod/core/session'
 import type { RuleContext, RunFacts } from '../../hooks/temper-mod/core/rules'
 import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import { cliStage } from '../../hooks/temper-mod/core/stages'
@@ -86,15 +85,13 @@ export class World {
   guardWrite(rel: string): void {
     this.guard({ tool: 'Write', input: { file_path: path.join(this.dir, rel) } })
   }
-  // 9.9.0: a call of the orchestrator (the main session) is also held to core/session.ts: it runs the CLI and reads, launches
+  // 9.8.0: a call of the orchestrator (the main session) is also held to core/session.ts: it runs the CLI and reads, launches
   // the CLI's agent as named and asks the CLI's question.
-  launched: Launched | null = null
+  // No memory between calls, as in the engine (it loads the mod again between turns): the view alone says what may run.
   session(call: { tool: string; input: Json }): void {
     const { ctx } = this.facts()
     if (ctx === null) return
-    const view = parseRunView(this.read('.temper/view.json'))
-    this.launched = rememberAgents(this.launched, view)
-    const r = evaluateSession(ctx, factsOf(view, false, this.launched?.agents ?? []), call as never) as { deny?: string }
+    const r = evaluateSession(ctx, factsOf(parseRunView(this.read('.temper/view.json')), false), call as never) as { deny?: string }
     if (r.deny !== undefined) {
       this.denials.push(r.deny)
       throw new Denied(`${r.deny} [${call.tool}: ${JSON.stringify(call.input).slice(0, 200)}]`)
@@ -124,7 +121,6 @@ export class World {
   next(extra = ''): Json {
     const r = this.cli(`next --json ${extra}`)
     if (r.code !== 0) throw new Error(`next failed: ${r.out}`)
-    if (this.mode === 'mod' && this.exists('.temper/view.json')) this.launched = rememberAgents(this.launched, parseRunView(this.read('.temper/view.json')))
     return JSON.parse(r.out)
   }
   // The person answers a question: the mod reads the answer from the dialog result against the view, and what it maps to is

@@ -593,7 +593,7 @@ MD
 gpass design
 assert_eq "design: the question names each open area of concern" "1|0" \
   "$(nx "int('with 1 open area(s) of concern: 1. 1. The cache can serve stale prices for a minute' in d['ask']['question']['question'])")|$(nx "int('Logs hold' in d['ask']['question']['question'])")"
-assert_eq "design: Continue leaves Design, then commits design.md (9.9.0: one temper call)" "state advance design_complete build|spec commit|2" \
+assert_eq "design: Continue leaves Design, then commits design.md (9.8.0: one temper call)" "state advance design_complete build|spec commit|2" \
   "$(nx "c = d['ask']['options'][0]['calls']; c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1][:11] + '|' + str(len(c))")"
 python3 -c "p='.claude/temper.config'; s=open(p).read(); open(p, 'w').write(s.replace('autonomy:\n  enabled: false', 'autonomy:\n  enabled: true'))"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='autonomous'; json.dump(d, open(p, 'w'))"

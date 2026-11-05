@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""spec_ops.py: the git steps of leaving Intent, Plan and Design, run by the CLI (9.9.0).
+"""spec_ops.py: the git steps of leaving Intent, Plan and Design, run by the CLI (9.8.0).
 
   spec_ops.py branch BRANCH            `temper spec branch`: switch to the run's branch (create it when it is new)
   spec_ops.py deviations SPEC          `temper spec deviations`: the deviations build-context.json records, written into
@@ -8,7 +8,7 @@
                                        `temper spec commit '<message>' [-- FILE...]`: stage the spec folder (and the files
                                        named after `--`, the run's record commit) and commit, when that holds a change
 
-Before 9.9.0 the options that leave a stage handed the session `git checkout`, `git add` and `git commit` calls, and the
+Earlier the options that leave a stage handed the session `git checkout`, `git add` and `git commit` calls, and the
 commit had to go in a Bash call of its own (the in-agent commit hook judges a commit before the call runs, so a `git add`
 in the same call is not staged yet when it looks). That was two or three turns per accepted stage, each rereading the
 whole conversation. Run here, the commit goes through the native pre-commit hook like any other, and every call of the
@@ -69,7 +69,7 @@ def commit(spec, message, files=()):
 
 def deviations(spec):
     """build-context.json's deviations (unplanned files, skipped tasks, approach changes) as plan.md's `## Deviations`
-    section, replacing one an earlier call wrote. Before 9.9.0 this was an instruction the session carried out itself."""
+    section, replacing one an earlier call wrote. Earlier this was an instruction the session carried out itself."""
     import json
     import os
     import re

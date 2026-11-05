@@ -33,7 +33,7 @@ def short(call, cli):
 
 
 def brief(call, cli):
-    """9.9.0: an agent's gate call prints its failed rows only (`--brief`); the question after it names them, and the
+    """9.8.0: an agent's gate call prints its failed rows only (`--brief`); the question after it names them, and the
     passed rows (3,000 to 7,000 characters a gate in the measured runs) were read again on every later turn."""
     return call + " --brief" if re.fullmatch(re.escape(cli) + r" gate [a-z]+", call) else call
 
@@ -42,7 +42,7 @@ SLIM_KEYS = ("calls", "steps", "do", "stop", "reason", "reason_question", "answe
 
 
 def slim(a):
-    """9.9.0: a question as the session needs it: `question` to ask exactly, and per option only what the answer runs
+    """9.8.0: a question as the session needs it: `question` to ask exactly, and per option only what the answer runs
     (its label, calls, steps, do, stop, reason and name questions). The description and the move were in it twice (they are
     in `question` too), and the run id, step and stage are the mod's, read from view.json."""
     if not isinstance(a, dict) or "question" not in a:
@@ -70,7 +70,7 @@ def compact(n, ran, cli):
             out["ask"] = slim(n["ask"])
         if n.get("gate"):
             out["gate"] = n["gate"]
-        if n.get("blocking_asks"):   # 9.9.0: each Blocking question ready to ask, with the call that records its answer
+        if n.get("blocking_asks"):   # 9.8.0: each Blocking question ready to ask, with the call that records its answer
             out["blocking"] = n["blocking_asks"]
     elif act == "wait":
         out["tasks"] = n.get("tasks") or []

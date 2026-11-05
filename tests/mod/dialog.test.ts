@@ -18,7 +18,7 @@ type Api = {
   prompt: { compose: (a: unknown) => Promise<{ sections: Array<{ text: string }> }> }
 }
 const sh = async (api: Api, command: string) => (await api.tool.call({ tool: 'Bash', command })).deny
-// A stage agent's write (9.9.0: the main session writes none, core/session.ts).
+// A stage agent's write (9.8.0: the main session writes none, core/session.ts).
 const write = async (api: Api, path: string) => (await api.tool.call({ tool: 'Write', file_path: `/repo/${path}`, content: 'x', agentId: 'agent' } as never)).deny
 // The question `temper next --json` gives now, asked exactly as given (or its More options, accept, reason or resume
 // question).

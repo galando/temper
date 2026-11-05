@@ -4,7 +4,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { runFiles } from './run-files'
 import { world } from './world'
 
-// A stage agent's write (9.9.0: the main session writes none, core/session.ts).
+// A stage agent's write (9.8.0: the main session writes none, core/session.ts).
 const write = (path: string) => ({ tool: 'Write', file_path: path, content: 'x', agentId: 'agent' }) as const
 const bash = (command: string) => ({ tool: 'Bash', command }) as const
 

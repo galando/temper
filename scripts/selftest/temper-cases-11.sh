@@ -34,7 +34,19 @@ The guide.
 - the guide links the changelog
 - [ ] done
 TASKS
+"$TEMPER" group start G1 >/dev/null 2>&1
+_written="$(vw "d['next']['agents'][0]['prompt']")"   # the view group start wrote, before any next
+_named="$(nx "d['action'] + '|' + d['agents'][0]['type']")"; _prompt="$(nx "d['agents'][0]['prompt']")"
+# 9.8.0 (round 5): a view written by any command names the agent with the models next resolves. Before, group start and task
+# start wrote it without them ("Model: haiku." where next said "Model: claude-haiku-5-5."), and the mod refused the launch.
+assert_eq "9.8.0: the view a command writes names the same agent prompt as next" "same" \
+  "$([[ -n "$_written" && "$_written" == "$_prompt" ]] && echo same || echo "differs: ${_written##*$'\n'} / ${_prompt##*$'\n'}")"
 "$TEMPER" task start 1 >/dev/null 2>&1
+# 9.8.0: the agent's `before` call (task start) turns the next action into wait before the agent is launched; the mod
+# launches only an agent the view names, and it keeps no memory between turns: the view keeps naming it while the run waits.
+assert_eq "9.8.0: while the run waits on a started task, the view still names the agent the CLI named before" \
+  "work|temper:temper-build-task|wait|1|same" \
+  "$_named|$(vw "d['next']['action'] + '|' + str(len(d['next']['agents']))")|$([[ "$(vw "d['next']['agents'][0]['prompt']")" == "$_prompt" ]] && echo same || echo differs)"
 mkdir -p .claude/worktrees/temper-demo-T1/docs; echo "# Guide" > .claude/worktrees/temper-demo-T1/docs/guide.md
 assert_exit "F12: task test refuses a manual task" 1 "$TEMPER" task test 1 --phase red
 OUT="$("$TEMPER" task gate 1 --model sonnet 2>&1)"; rc=$?

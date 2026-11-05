@@ -16,7 +16,8 @@ ask one to say it.
 The temper CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. It decides every step of a run:
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json` prints what to do next, and this page only does
 that (its format: `${CLAUDE_PLUGIN_ROOT}/docs/flow.md`). Every path it prints is written out in full:
-run it exactly as printed. Never compute a gate, an option or a next stage yourself.
+run it exactly as printed, never through a shell variable (the mod refuses a program it cannot read). Never compute a
+gate, an option or a next stage yourself.
 
 
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
@@ -146,10 +147,12 @@ Any other failure of it still stops the action.
   agent runs again with the note. At Review, Check or Commit, ask the same question again: its options say how a change
   is made there (a step back to Build, or "Make a small change"). A note meant for one Build task begins with `Task N:`,
   for one group with `Group G<n>:`.
-- **Blocking questions** (the `blocking` list): ask the `question` of each, exactly as given, in one AskUserQuestion
-  call (four at most per call; the rest in a second call). For each answer run its `answer` call with the answer in
+- **Blocking questions** (the `blocking` list): ask the `question` of each, exactly as given (the CLI writes three at most
+  of its ready answers, the first recommended, then "Carry forward"), in one AskUserQuestion call (four questions at most
+  per call; the rest in a second call). For each answer run its `answer` call with the answer in
   place of `{answer}` (the label chosen, or the text typed; see "Filling a placeholder"), or its `carry` call for
-  "Carry forward". The CLI writes the answer into intent.md (and a `Design:` question's concern in design.md); never
+  "Carry forward"; several answers go in one `answer` call, one `'{question}' '{answer}'` pair after another, the
+  CLI's path written once. The CLI writes the answer into intent.md (and a `Design:` question's concern in design.md); never
   edit those files for an answer. Then the action's `gate` call and `temper go`, all in one Bash call.
   Never list them as text to answer by typing.
 - **A refused call.** When the mod or the CLI refuses a call an answer allowed, run it once more; when
