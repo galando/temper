@@ -1,6 +1,7 @@
 """gate_rows.py: gate rows that scripts/temper asks for by name, one mode per call (each prints JSON rows, one per line).
 
   python3 gate_rows.py intent-blocking INTENT.md   the row for a Blocking question left open in a draft intent
+  python3 gate_rows.py intent-rules INTENT.md      the row for the rules checklist (### Rules covered) of a draft intent
   python3 gate_rows.py plan-rows SPEC_DIR PROJECT  the rows added to the plan gate (scenario test commands)
   python3 gate_rows.py build-rows SPEC_DIR EVIDENCE.json  the rows added to the build gate (criteria validated)
 
@@ -45,6 +46,37 @@ def intent_blocking(path):
         return row("blocking question open", False, "%d Blocking question(s) open: %s%s; answer them before the plan" % (
             len(open_q), open_q[0][:80], "" if len(open_q) == 1 else " and %d more" % (len(open_q) - 1)))
     return row("blocking question open", True, "no Blocking question is open")
+
+
+RULES = ("Who", "When", "How much", "States", "Where it shows", "Exceptions")
+
+
+def intent_rules(path):
+    """9.8.0: a draft intent says, for each item of Intent's rules checklist (agents/intent.md), whether it asked the
+    person, assumed an answer, or found it does not apply: a `### Rules covered` section with one line per item
+    (`- Exceptions: asked (...)`). The row checks only that every item is there; what was asked is the person's to see at
+    the gate. It stops an item from being left out, as when the exemptions were folded into another question."""
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return row("rules checklist covered", True, "intent.md unreadable; the other rows report it")
+    m = re.search(r"^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$", text, re.I | re.M)
+    status = m.group(1).lower() if m else None
+    if status != "draft":
+        return row("rules checklist covered", True, "skipped: the intent is %s; this check applies to drafts only" % (status or "of no known status"))
+    seen, active = {}, False
+    for line in text.splitlines():
+        h = re.match(r"^#{1,6}\s+(.*)$", line)
+        if h:
+            active = bool(re.match(r"rules covered", h.group(1).strip(), re.I))
+            continue
+        b = re.match(r"^\s*[-*]\s+([A-Za-z ]+?):\s*(asked|assumed|not applicable)\b", line, re.I) if active else None
+        if b:
+            seen[b.group(1).strip().lower()] = b.group(2).lower()
+    missing = [r for r in RULES if r.lower() not in seen]
+    if missing:
+        return row("rules checklist covered", False, "### Rules covered has no asked, assumed or not applicable line for: %s" % ", ".join(missing))
+    return row("rules checklist covered", True, "; ".join("%s %s" % (r, seen[r.lower()]) for r in RULES))
 
 
 FILE_TOKEN = re.compile(r"[\w./@-]+\.\w+")
@@ -172,6 +204,9 @@ def main(argv):
     if len(argv) == 4 and argv[1] == "build-rows":
         if os.path.isfile(os.path.join(argv[2], "intent.md")):
             print(json.dumps(build_criteria(argv[2], argv[3])))
+        return 0
+    if len(argv) == 3 and argv[1] == "intent-rules":
+        print(json.dumps(intent_rules(argv[2])))
         return 0
     if len(argv) == 3 and argv[1] == "intent-blocking":
         print(json.dumps(intent_blocking(argv[2])))

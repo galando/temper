@@ -334,6 +334,7 @@ gfail check "acceptance tests written before Build" "changed after they were loc
 assert_eq "9.8.0: a changed locked test: the first option puts it back and checks again" "Restore the locked tests (Recommended)|acceptance restore|state redo check" \
   "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['calls'][0].split('temper ', 1)[1], ' '.join(o['calls'][1].split('temper ', 1)[1].split()[:3])])")"
 gfail check "acceptance tests written before Build" "FAIL: test_ac01 (T.test_ac01) AssertionError: 404 != 403"
+bash -c "$(nx "d['agents'][0]['after'][-1]")" >/dev/null 2>&1   # the triage agent gave no verdict
 assert_eq "9.8.0: a failing locked test: Build mends the code first, or the person says the test is wrong" "Loop back to Build (Recommended)|Correct the acceptance test" \
   "$(labels | cut -d'|' -f1-2)"
 python3 - <<'PYEOF'
@@ -402,3 +403,99 @@ gpass intent plan build review check; _at commit
 gfail commit "blast radius" "changed outside declared files: ledger/export.py, docs/x.md"
 assert_eq "9.8.0: the commit gate's scope failure offers Add to plan first, recording each file as the person's drift answer" "Add to plan (Recommended)|drift|evidence add --stage build --phase feedback --claim 'drift ledger/export.py: Add to plan: the person, at the commit gate'|gate commit" \
   "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][-1].split('temper ', 1)[1]])")"
+
+# --- 15. Check runs while Review reads; Design on a fully specified plan; the triage; the rules checklist; states ---
+f9_tasks | m_setup
+rm -f .temper/groups.json; f9_intent true true
+python3 - <<'PYEOF'
+p = '.claude/temper.config'; s = open(p).read()
+s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 80\n  commands:\n    test: "true"\n', 1)
+open(p, 'w').write(s)
+PYEOF
+gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
+assert_eq "9.8.0: the Review agent's launch first starts Check's run in the background" "yes" \
+  "$(nx "'yes' if any(c.endswith('temper check ahead') for c in d['agents'][0].get('before', [])) else 'no'")"
+_ahead_done() { for _ in $(seq 1 100); do [[ -f .temper/check/ahead.pid ]] || { [[ -f .temper/check/ahead.json ]] && return 0; }; sleep 0.2; done; return 1; }
+"$TEMPER" check ahead >/dev/null 2>&1; _ahead_done
+echo '[]' > .temper/evidence/check.json
+assert_eq "9.8.0: Check adopts the run made during Review when the tree is unchanged" "yes|yes" \
+  "$("$TEMPER" check run 2>&1 | grep -q 'adopted the run made while Review read the change' && echo yes || echo no)|$(python3 -c "import json; print('yes' if any('tests: the suite' in r.get('claim', '') for r in json.load(open('.temper/evidence/check.json'))) else 'no')")"
+"$TEMPER" check ahead >/dev/null 2>&1; _ahead_done
+mkdir -p src; echo "changed after" > src/later.sh
+echo '[]' > .temper/evidence/check.json
+assert_eq "9.8.0: a tree changed since that run is measured again, never adopted" "no" \
+  "$("$TEMPER" check run 2>&1 | grep -q 'adopted' && echo yes || echo no)"
+rm -f src/later.sh
+
+# Design: a complex plan of a fully specified request (Intent asked nothing) skips it unless its risk is H
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state set complexity complex >/dev/null 2>&1; gpass plan
+assert_eq "9.8.0: complex, nothing asked at Intent, risk below H: the plan goes on to Build, no Design" "Plan: the check passed. Approve the plan and continue to Build?" \
+  "$(nx "d['ask']['question']['question']")"
+python3 -c "
+import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['intent_asked'] = True; json.dump(d, open(p, 'w'))"
+assert_eq "9.8.0: complex and Intent asked the person: Design runs" "Continue to Design (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state set complexity complex >/dev/null 2>&1; gpass plan; "$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1
+assert_eq "9.8.0: complex at risk H runs Design even when nothing was asked" "Continue to Design (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+fresh
+cat > .temper/specs/demo/intent.md <<'INT'
+**Status:** draft
+
+## Problem
+The demo.
+
+### Success Criteria
+- [ ] AC-01 [required]: alpha works
+  Why: a
+  Validate: manual - check it
+
+### Open Questions
+
+- Blocking: Who may run it? choices: Admins only | Clerks and admins (house rule) | Anyone
+INT
+assert_eq "9.8.0: the Intent gate records that the person was asked something" "true" \
+  "$("$TEMPER" gate intent >/dev/null 2>&1; "$TEMPER" state get intent_asked 2>/dev/null)"
+assert_eq "9.8.0: a choice marked (house rule) is listed first, as the recommended answer" "Who may run it? choices: Clerks and admins (house rule) | Admins only | Anyone" \
+  "$(nx "d['blocking'][0]")"
+assert_eq "9.8.0: a draft intent with no Rules covered section fails the rules checklist row, naming every item" "yes" \
+  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q 'rules checklist covered — ### Rules covered has no asked, assumed or not applicable line for: Who, When, How much, States, Where it shows, Exceptions' && echo yes || echo no)"
+printf '\n### Rules covered\n\n- Who: asked\n- When: not applicable (no time rule)\n- How much: not applicable\n- States: assumed (none change)\n- Where it shows: assumed\n' >> .temper/specs/demo/intent.md
+assert_eq "9.8.0: an item left out still fails the row" "yes" \
+  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q 'line for: Exceptions$' && echo yes || echo no)"
+printf -- '- Exceptions: asked (twice, gone)\n' >> .temper/specs/demo/intent.md
+assert_eq "9.8.0: every item covered: the row passes" "yes" \
+  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q '\[v\] rules checklist covered' && echo yes || echo no)"
+
+# the triage of a failing locked test sets which option the Check question recommends
+f9_tasks | m_setup
+rm -f .temper/groups.json; f9_intent true true
+mkdir -p .temper/specs/demo/acceptance
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ac01(self):\n        self.assertEqual(1 + 1, 2)\n' > .temper/specs/demo/acceptance/test_ac.py
+ACMD="python3 -m unittest discover -s .temper/specs/demo/acceptance -t .temper/specs/demo/acceptance"
+"$TEMPER" acceptance lock --cmd "$ACMD" >/dev/null 2>&1
+gpass build review; "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state advance review_complete check >/dev/null 2>&1
+gfail check "acceptance tests written before Build" "FAIL: test_ac01 AssertionError: 1 != 2"
+assert_eq "9.8.0: a failing locked test is first triaged by an agent that changes nothing" "work|temper:temper-acceptance|yes|acceptance triaged --reason" \
+  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], 'yes' if 'Triage: a locked acceptance test fails at Check' in a['prompt'] else 'no', ' '.join(a['after'][-1].split('temper ', 1)[1].split()[:3])])")"
+STAMP="$(nx "d['agents'][0]['after'][-1]")"
+"$TEMPER" acceptance triage --reason "test: its helper reads the list answer in the wrong shape" >/dev/null 2>&1
+bash -c "$STAMP" >/dev/null 2>&1
+assert_eq "9.8.0: the triage says the test is wrong: correcting it is recommended, and the question says why" "Correct the acceptance test (Recommended)|yes" \
+  "$(nx "d['ask']['options'][0]['label'] + '|' + ('yes' if 'The triage says the test looks wrong: its helper reads the list answer in the wrong shape' in d['ask']['question']['question'] else 'no')")"
+"$TEMPER" acceptance triage --reason "code: the route answers 200 where AC-01 says 403" >/dev/null 2>&1
+bash -c "$STAMP" >/dev/null 2>&1
+assert_eq "9.8.0: the triage says the code is wrong: the step back to Build is recommended" "Loop back to Build (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+gfail check "acceptance tests written before Build" "FAIL: test_ac01 AssertionError: another failure"
+assert_eq "9.8.0: a new failure gets a new triage" "work" "$(nx "d['action']")"
+
+# every state the intent lists is named in an acceptance test
+f9_tasks | m_setup
+rm -f .temper/groups.json; f9_intent true true
+printf '\n**States:** active, canceled\n' >> .temper/specs/demo/intent.md
+mkdir -p .temper/specs/demo/acceptance
+printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ac01_active(self):\n        self.assertEqual("active", "active")\n' > .temper/specs/demo/acceptance/test_ac.py
+assert_eq "9.8.0: the lock refuses tests that never name a listed state" "1|yes" \
+  "$("$TEMPER" acceptance lock --cmd "$ACMD" >/dev/null 2>&1; echo $?)|$({ "$TEMPER" acceptance lock --cmd "$ACMD" 2>&1 || true; } | grep -q 'no acceptance test names the state(s) canceled' && echo yes || echo no)"
+printf '    def test_ac02_canceled_reads_back(self):\n        self.assertEqual("canceled", "canceled")\n' >> .temper/specs/demo/acceptance/test_ac.py
+assert_exit "9.8.0: with a test for each state, it locks" 0 "$TEMPER" acceptance lock --cmd "$ACMD"

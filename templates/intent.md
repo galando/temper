@@ -70,6 +70,18 @@ so the person can scan and correct them at the Intent gate.}
 
 - {what is assumed} (because {why})
 
+### Rules covered
+
+{One line per item of the rules checklist (agents/intent.md): asked, assumed or not applicable. The Intent gate fails
+a draft that leaves one out.}
+
+- Who: {asked | assumed | not applicable} ({which question, or why})
+- When: {asked | assumed | not applicable}
+- How much: {asked | assumed | not applicable}
+- States: {asked | assumed | not applicable}
+- Where it shows: {asked | assumed | not applicable}
+- Exceptions: {asked | assumed | not applicable} ({which: excluded, twice, at the edge, gone, someone else's, halfway})
+
 ### Decisions
 
 {One row per question a human answered, written the moment the answer arrives.

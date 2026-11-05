@@ -71,6 +71,15 @@ number of downstream repos that read `--ci` output (owner: Dana, reviewed each q
 - Deferred: does `--ci` exit non-zero when any stage FAILs, or does `gate` alone own the exit code; consequence: pipelines that use the exit code need a wrapper if we choose wrong; why work can proceed: `report --ci` is the only caller and Marco decides before the first outside user; needed by: before the first outside user.
 - Deferred: does the array include stages with no verdict yet; consequence: users must handle missing stages either way; why work can proceed: the shape does not change, so we can omit missing stages now and add them later; needed by: before the first outside user.
 
+### Rules covered
+
+- Who: not applicable (a CLI flag; anyone who can run the CLI)
+- When: not applicable (no time rule)
+- How much: not applicable (no amounts)
+- States: assumed (the report reads verdicts and changes none)
+- Where it shows: asked (the CI job log; see Decisions)
+- Exceptions: assumed (a stage with no verdict yet is left out; see Open Questions)
+
 ### Decisions
 
 - Include `requirements[]` for each stage or only verdicts? -> a verdict plus the full requirements array for each stage (Dana Okafor, 2026-09-29)

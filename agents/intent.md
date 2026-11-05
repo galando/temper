@@ -91,11 +91,24 @@ folder.
    3. **How much**: amount limits, caps, minimums, rounding, what may be partial.
    4. **States**: what each action changes (statuses, flags), what is allowed in each state, what undoing does.
    5. **Where it shows**: the API, exports, reports, notifications, audit records.
-   6. **Exceptions**: what is excluded or exempt (below an amount, a kind, a state: separate from any cap or minimum
-      of item 3), what happens twice, what happens on failure.
-   When a house rule (CONVENTIONS.md, CLAUDE.md, AGENTS.md, an existing pattern in the code) gives a default for one
-   of these, do not assume it holds: ask whether it does for this feature, with the house rule as the recommended
-   answer.
+   6. **Exceptions**, each its own question when the request does not settle it:
+      - **excluded or exempt**: what never gets the action (below an amount, a kind, a state), apart from any cap or
+        minimum of item 3;
+      - **twice**: the same action or request again (a retry, a replay, a second run);
+      - **at the edge**: exactly at a limit, zero, empty, the last day;
+      - **gone**: a referenced record deleted or missing;
+      - **someone else's**: another tenant's, owner's or user's record;
+      - **halfway**: a failure part way through, and what is kept.
+   A house rule is what the project already does by default: a rule written in CONVENTIONS.md, CLAUDE.md, AGENTS.md
+   or CONTRIBUTING.md, or a pattern the existing code follows everywhere (every POST takes an idempotency key, every
+   invoice line is taxed, clerks may write). When one gives a default for an item, do not assume it holds: ask whether
+   it does for this feature, and mark that choice `(house rule)`; the CLI lists it first, as the recommended answer.
+
+   **Record the checklist.** Under `### Rules covered` in intent.md, one line per item, naming it exactly:
+   `- Who: asked`, `- When: assumed (see Assumptions)`, `- States: not applicable (no status changes)`, and so on for
+   How much, Where it shows and Exceptions. The Intent gate fails a draft that leaves an item out. When the feature
+   has states (a status such as `active`, `canceled`, `refunded`), also write one line `**States:** active, canceled`
+   naming each: the acceptance tests must cover every one.
 
    **Write each question so the person clicks, never types.** One line each, in this form:
    `- Blocking: {the question, concrete, naming the feature} choices: {recommended answer} | {other} | {other}`

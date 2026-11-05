@@ -2,13 +2,11 @@
 
 **Claude cannot write code before you approve the intent.**
 
-Temper is a Claude Code plugin that runs AI written code through gates you approve: intent, plan, build, review and
-check. A small CLI computes each gate from recorded evidence. The model never decides a verdict.
+A Claude Code plugin that runs AI written code through gates you approve. A small CLI computes each gate from
+recorded evidence; the model never decides a verdict.
 
 [![Version](https://img.shields.io/badge/version-v9.8.0-blue)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-[Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Releases](https://github.com/galando/temper/releases)
 
 ## Install
 
@@ -17,68 +15,33 @@ check. A small CLI computes each gate from recorded evidence. The model never de
 /plugin install temper
 ```
 
-On Claude Code 2.1.275 or later one line does both: `/plugin install temper --marketplace galando/temper`.
-
-Then run `/temper:temper "describe the feature"` in your project. The first run adds the config, the `.temper/`
-folder and a `pre-commit` hook that blocks `git commit` while a gate is red.
-
-## Why
-
-AI writes code fast, and it fails in predictable ways: happy paths with no edge cases, features nobody asked for,
-calls to methods that do not exist, and correct code that nothing uses. Temper checks that the code solves the
-problem you approved, and it checks it mechanically instead of asking the model to grade itself.
+Then run `/temper:temper "describe the feature"` in your project.
 
 ## How it works
 
-The stages are Intent, Plan, Build, Review, Check, then Done. You decide each gate in one question.
+Intent, Plan, Build, Review, Check, then commit. You decide each gate by clicking an answer.
 
-```mermaid
-flowchart LR
-  I["Intent<br/>you approve it"] --> P["Plan<br/>a fresh reader can check it"]
-  P --> B["Build<br/>failing test first"]
-  B --> R["Review<br/>fix or accept"]
-  R --> C["Check<br/>run all checks"]
-  C --> D(("Done<br/>commit allowed"))
-  C -- "a check fails, you loop back" --> B
-```
+- **Intent:** the rules your request left out (who, when, how much, exceptions) come back as questions with ready answers.
+- **Plan:** tasks a builder can follow without guessing; files outside the plan need your OK.
+- **Build:** tests first; acceptance tests written from your intent before any code, and locked.
+- **Review and Check:** the CLI runs the suite, coverage, a mutation score and the acceptance tests. A red gate blocks
+  `git commit`.
 
-- **Intent first.** You approve the problem and the success criteria before Claude explores or designs.
-- **A plan a stranger can build.** At the plan question you can have a reviewer with no context read the plan first; the
-  gate stays red while a task would make its builder guess. (`plan.fresh-review: auto` runs it by itself for medium and
-  complex work.)
-- **Tests first, in small tasks.** Build runs each task as a small agent that writes a failing test, then the code.
-- **Computed gates.** `scripts/temper` reads an evidence ledger and prints PASS or FAIL per requirement. You can
-  override a gate with a reason; Temper records it.
+On vague requests it met 98% of what the person wanted, against 73% for plain Claude Code, at about 7 times the cost
+per run ([the evidence](docs/evidence/bench-2026-11.md)).
 
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
-| `/temper:temper "..."` | The whole pipeline, from intent to commit |
+| `/temper:temper "..."` | The whole flow, from intent to commit |
 | `/temper:fix "..."` | Root cause, a failing regression test, a minimal fix |
 | `/temper:intent "..."` | Capture an idea now, build it later |
-| `/temper:status` | Quality metrics, the gate ledger and spec drift |
-
-The rest are listed in [Commands](docs/commands.md).
-
-## What's new in v9.8.0
-
-- **Check is run by the CLI**, with new gates it computes itself: a mutation score (do the tests notice a planted bug?),
-  a regression proof for every fix, and acceptance tests written from your intent before any code.
-- **Questions you click, not type:** Intent drafts the likely rules (who, when, how much) as questions with ready
-  answers, and the context check names what the plan leaves out.
-- **Fewer steps:** Design only for risky plans, the unattended run offered at the last question before Build, no
-  report question.
-- Works on Python, JavaScript, TypeScript, Go, Java and more: the mutation gate reads every C-style language.
-
-Details: [CHANGELOG.md](CHANGELOG.md) and [the evidence](docs/evidence/bench-2026-11.md).
+| `/temper:status` | Gates, metrics and spec drift |
 
 ## What the mod reads and writes
 
-On Claude Code 2.1.287 or later an optional mod draws the stage bar and refuses writes outside the current stage. It
-reads only `.temper/view.json` and its own options and store, makes no network call, and runs no command. The full
-list is in [The mod](docs/mod.md#what-the-mod-reads-and-writes).
+An optional mod (Claude Code 2.1.287 or later) draws the stage bar and refuses writes outside the current stage. It
+reads only `.temper/view.json` and its own store, makes no network call and runs no command ([details](docs/mod.md#what-the-mod-reads-and-writes)).
 
-## More
-
-[Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Trust](docs/trust.md) · [Packs](docs/packs.md) · [Methodology](docs/methodology.md) · [Privacy](https://galando.github.io/temper/privacy.html) · [CONTRIBUTING.md](CONTRIBUTING.md) · MIT © [Gal Naor](https://github.com/galando)
+[Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Trust](docs/trust.md) · [CHANGELOG](CHANGELOG.md) · [Privacy](https://galando.github.io/temper/privacy.html) · MIT © [Gal Naor](https://github.com/galando)

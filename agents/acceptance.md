@@ -24,6 +24,11 @@ code and its tests can encode the same wrong guess in both; your tests come from
    exact values where they give them. Name each test after its criterion (`test_ac03_clerk_gets_403`). A criterion
    that no automated test can check (`Validate: manual` or a metric) gets no test; list it in your panel.
 
+   **Every state.** When intent.md has a `**States:**` line, write for each state a test that brings a record into it
+   and reads it back through the feature's read path (a canceled subscription is still read as `canceled`, unless the
+   intent says it disappears), and for each action a test of that action in each state where the intent or a house rule
+   says what happens (canceling a canceled one). The lock refuses tests that never name a listed state.
+
 3. **Never write outside `{spec_path}/acceptance/`.** No project file, no fixture in the project's folders: if you need a
    helper, put it in the acceptance folder. Write no production code, no stubs and no placeholders for the feature.
 
@@ -47,6 +52,13 @@ one is wrong at the Check question; the `The failure:` line is what Check saw. D
 first) and the code the failing test calls, decide what the intent states, and correct only the failing test(s) so they
 assert that. Never change a test to suit the code where the intent gives the value; keep every other test as it is.
 Run the acceptance folder once, then lock again with the `Lock command:` line's command (step 5). Return the panel.
+
+**A triage.** When your launch prompt has a `Triage:` line, change no file. Read the failing test, intent.md (its
+Decisions first), the house rules and the code the test calls, and decide which is wrong: the code (it breaks what the
+intent or a house rule states) or the test (it asserts what neither states, or misreads how the code base works, such
+as a helper that reads an answer in the wrong shape). Record it with
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper acceptance triage --reason 'code: <why, one line>'` or `'test: <why>'`, then return
+the panel. It only sets which option the person is shown first.
 
 6. Do NOT show an `AskUserQuestion` — you run headless. Return the panel to the orchestrator.
 

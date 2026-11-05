@@ -95,11 +95,30 @@ on record), proves more of it with the CLI instead of an agent, asks better ques
   approved plan changed"). The Design question now says what Design changed ("Task 1 gains src/floor.sh", "new Task
   7", from a copy of the tasks the CLI keeps at the plan gate), and Continue approves them with the design; an
   unattended run parks for the person instead. A Build agent that edits tasks.md is still refused.
-- **Intent asks about exemptions apart from minimums.** In one run Intent asked about the fee's minimum and never about
-  invoices that get no fee at all; the checklist's Exceptions item now names what is excluded or exempt (below an
-  amount, a kind, a state) as its own rule.
 - **Files outside the plan at the commit gate:** "Add to plan" is the first option (the same record as at a Scope drift
   question), next to Override and commit.
+
+**Shorter runs, and rules that cannot be skipped**
+- **Check runs while Review reads.** Review writes no code, so the CLI starts Check's suite, coverage and mutation score
+  in the background when the Review agent starts (`temper check ahead`); `check run` adopts that run when the tree is
+  unchanged since, and runs again otherwise. On a project with a slow suite this takes the whole Check run off the
+  clock.
+- **Design on a fully specified request is skipped.** A complex plan runs Design when Intent had to ask the person
+  something or when the risk is H; when the request settled every rule and the risk is below H, the plan goes on to
+  Build.
+- **A failing locked test is triaged before a Build round.** An agent that changes nothing reads the failing test, the
+  intent and the code, and records which looks wrong (`temper acceptance triage`); the Check question recommends
+  correcting the test or stepping back to Build from that, and says why. Before, a wrong test cost a Build and a Review
+  round first.
+- **The rules checklist is recorded.** A draft intent lists each checklist item (who, when, how much, states, where it
+  shows, exceptions) as asked, assumed or not applicable under `### Rules covered`, and the Intent gate fails one that
+  leaves an item out. Exceptions name six kinds: excluded or exempt, twice, at the edge, gone, someone else's, halfway.
+- **House rules first.** A Blocking choice marked `(house rule)` (what CONVENTIONS.md, CLAUDE.md, AGENTS.md or the code
+  already does) is listed first by the CLI, as the recommended answer, whatever order the model wrote.
+- **Every state is tested.** When intent.md lists `**States:**`, the acceptance writer brings a record into each and
+  reads it back, and tries each action in each state; `acceptance lock` refuses tests that never name a listed state.
+- **`scripts/temper` is under 256 KiB again** (it had grown past the plugin directory's limit): three Python blocks
+  moved to their own files, and `quality-check.sh` now fails any file over 256 KiB.
 
 **Fixes**
 - **"Accept it as done" looped.** A covered Build task's option shared the move `accept` with accepting a review

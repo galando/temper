@@ -244,9 +244,12 @@ class Run:
         # 9.8.0: Design runs on risk, not on size. A complex plan gets it; a medium one only when its risk is H (temper risk:
         # a large blast radius, a CRITICAL or HIGH file, or Plan's raise for a data model, money, permissions or an
         # integration). Before 9.8.0 every medium plan ran Design: minutes per run, and concerns the person only approved.
+        # A complex plan of a request that was fully specified (Intent asked the person nothing) skips it too, unless its
+        # risk is H: the request already settled what Design would ask, and the design concerns were only approved.
         complexity = (self.state.get("complexity") or "").lower()
         risk = (self.state.get("risk") or "").upper()
-        return self.on("phases.design", True) and (complexity == "complex" or (complexity == "medium" and risk == "H"))
+        asked = bool(self.state.get("intent_asked"))
+        return self.on("phases.design", True) and (risk == "H" and complexity in ("medium", "complex") or (complexity == "complex" and asked))
 
     def next_of(self, stage):
         s = self.seq()
@@ -341,8 +344,21 @@ class Run:
                 continue
             m = re.match(r"^\s*[-*]\s+Blocking:\s*(.+)$", line) if active else None
             if m and not m.group(1).strip().lower().startswith("context check:"):   # the CLI asks the Context check itself
-                out.append(m.group(1).strip())
+                out.append(self.house_rule_first(m.group(1).strip()))
         return out
+
+    @staticmethod
+    def house_rule_first(q):
+        """9.8.0: a choice marked `(house rule)` (what CONVENTIONS.md, CLAUDE.md, AGENTS.md or the code's own pattern
+        already does) goes first, so it is the recommended answer whatever order the model wrote."""
+        m = re.match(r"^(.*?\bchoices:\s*)(.+?)(\.?)\s*$", q, re.I)
+        if not m:
+            return q
+        cs = [c.strip() for c in m.group(2).split("|")]
+        house = [c for c in cs if re.search(r"\(house rule\)", c, re.I)]
+        if not house:
+            return q
+        return m.group(1) + " | ".join(house[:1] + [c for c in cs if c is not house[0]]) + m.group(3)
 
     def context(self):
         """The Context Map of plan.md as `temper next` and the view carry it, or None."""
@@ -724,7 +740,9 @@ class Builder:
                 rec = first["label"].endswith("(Recommended)")
                 opts = [first] + back_opt(rec=False) if rec else back_opt(rec=True) + [first]
                 lead = next(o["label"] for o in opts if o["label"].endswith("(Recommended)")) if any(o["label"].endswith("(Recommended)") for o in opts) else first["label"]
-                return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, lead.replace(" (Recommended)", "")), stage=stage,
+                t = self.acc_triage()
+                said = (" The triage says the %s looks wrong: %s." % (t["verdict"], t.get("reason", ""))) if t.get("verdict") in ("code", "test") else ""
+                return self.question(GATE_HEADER, "Check: the check failed (%s).%s %s?" % (why, said, lead.replace(" (Recommended)", "")), stage=stage,
                                      options=opts + [override_opt(go), self.save()])
             return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, "Run Check again" if gap else "Loop back to %s" % LABEL[back or "build"]), stage=stage,
                                  options=again + back_opt(rec=not gap) + [override_opt(go), self.save()])
@@ -971,6 +989,9 @@ class Builder:
                 # 9.8.0: three benchmark runs looped after a fix pass edited a locked acceptance test.
                 lines.append("The acceptance tests are locked: change the code, never a test in %s/acceptance/. If a test is wrong, "
                              "say which and why in your panel; the person decides at the Check question." % self.r.spec)
+                t = check_run.acc_read(self.ACC_LOCK).get("triage") or {}
+                if t.get("verdict") == "code" and t.get("reason"):
+                    lines.append("The triage of the failing test: %s." % t["reason"])
         # The file of the stage the loop came back from: one an earlier run left (a Check context beside a loop from
         # Review) is not this loop's feedback.
         frm = (self.r.latest_loop() or {}).get("from_stage")
@@ -1056,6 +1077,10 @@ class Builder:
             return {"action": "work", "stage": stage, "calls": [self.c("check run")], "agents": [a],
                     "say": "Check: the CLI runs the suite, coverage, the scenario tests and the mutation score; the Check agent records %d criteria%s." % (len(rec), on_model([a]))}
         a = self.agent(stage, extra)
+        if stage == "review" and r.command == "temper" and self.cli_check():
+            # 9.8.0: the CLI runs Check's suite, coverage and mutation score while Review reads the change (Review writes
+            # no code); Check adopts that run when the tree is unchanged.
+            a["before"] = (a.get("before") or []) + [self.c("check ahead")]
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
         a["gate"] = a["after"][-1]
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
@@ -1100,6 +1125,48 @@ class Builder:
 
     ACC_REASONS = ["The test asks for what the intent does not say", "The test contradicts how the code base works"]
 
+    def acc_failure(self):
+        """(detail, digest) when Check failed on the locked acceptance tests and on nothing else, they were not changed
+        after the lock and are not reopened: a test or the code is wrong. Else None."""
+        d = self.acceptance()
+        rows = self.r.failed_rows("check")
+        acc = [x for x in rows if str(x.get("name", "")).startswith("acceptance tests written before Build")]
+        if not d.get("cmd") or d.get("reopened") or not acc or len(acc) != len(rows):
+            return None
+        detail = str(acc[0].get("detail", ""))
+        if detail.startswith(("changed after they were locked", "reopened")):
+            return None
+        import hashlib
+        return detail, hashlib.sha256(detail.encode("utf-8")).hexdigest()[:16]
+
+    def acc_triage(self):
+        """The triage of the current acceptance failure ({} when none, or when it read another failure)."""
+        f = self.acc_failure()
+        t = self.acceptance().get("triage")
+        return t if f and isinstance(t, dict) and t.get("failure") == f[1] else {}
+
+    def acceptance_triage_work(self):
+        """9.8.0: before the person is asked whether to step back to Build, an agent reads the failing test, the intent
+        and the code, and says which looks wrong (`temper acceptance triage`). It only sets the recommended option; a
+        step back to Build when the test is wrong is a Build and a Review round for nothing (the benchmark's reruns)."""
+        r = self.r
+        f = self.acc_failure()
+        if not f or r.armed() or self.acc_triage():
+            return None
+        model = r.cfg("models.acceptance", "")
+        if not model:
+            import cli_ctx
+            model = cli_ctx.frontmatter_model(os.path.join(self.plugin, "agents", "acceptance.md")) or ""
+        a = {"type": "temper:temper-acceptance", "model": model,
+             "prompt": "\n".join(["Follow %s/agents/acceptance.md exactly." % self.plugin, "Spec path: %s." % r.spec,
+                                   "Triage: a locked acceptance test fails at Check. Decide whether the code or the test is wrong; change nothing.",
+                                   "The failure: %s" % " ".join(f[0].split())[-900:], self.plugin_line()]),
+             "after": [self.c("usage add --stage check --model %s --ms {ms}" % (model or "unknown")),
+                       self.c("acceptance triaged --reason %s" % f[1])]}
+        return {"action": "work", "stage": "check", "calls": [], "agents": [a],
+                "say": "Check: a locked acceptance test fails; an agent reads it, the intent and the code to say which looks wrong%s. %s" % (
+                    on_model([a]), goes_on(False))}
+
     def acceptance_options(self, rows):
         """9.8.0: the Check options when the locked acceptance tests failed and nothing else did. A builder changed them:
         put them back as locked (no decision: the person's lock holds). They fail as locked: Build mends the code (the
@@ -1117,7 +1184,11 @@ class Builder:
                              move="redo", calls=[self.c("acceptance restore"), redo % shlex.quote("the locked acceptance tests were restored")])]
         if d.get("reopened"):
             return []
-        rec = r.loop_count("check", "build") >= 1 or not r.can_loop("check", "build")
+        t = self.acc_triage()
+        if t.get("verdict") in ("code", "test"):
+            rec = t["verdict"] == "test" or not r.can_loop("check", "build")
+        else:
+            rec = r.loop_count("check", "build") >= 1 or not r.can_loop("check", "build")
         return [self.opt("Correct the acceptance test" + (" (Recommended)" if rec else ""),
                          "The test is wrong, not the code: the writer corrects it against the intent and locks it again; the report shows your reason.",
                          move="redo", calls=[self.c("acceptance reopen --reason '{reason}'")], reason=self.ACC_REASONS)]
@@ -1797,7 +1868,7 @@ class Builder:
             return out
         verdict = r.verdict(stage)
         skipped = r.skip(stage) is not None
-        fixacc = self.acceptance_fix_work() if stage == "check" and verdict is not None and not skipped else None
+        fixacc = (self.acceptance_fix_work() or self.acceptance_triage_work()) if stage == "check" and verdict is not None and not skipped else None
         if fixacc:
             out.update(fixacc)
             return out

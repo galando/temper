@@ -455,6 +455,20 @@ def acc_lock(root, spec, lockfile, cmd):
     if not cmd.strip():
         print("FAIL: usage: temper acceptance lock --cmd '<command that runs the acceptance folder>'", file=sys.stderr)
         return 1
+    # 9.8.0: every state the intent lists (`**States:** a, b`) is named in some acceptance test, so a state no test brings
+    # a record into (a canceled one read back) cannot pass unseen.
+    try:
+        itext = open(os.path.join(root, spec, "intent.md"), encoding="utf-8").read()
+    except OSError:
+        itext = ""
+    sm = re.search(r"^\*\*States:\*\*\s*(.+?)\s*$", itext, re.M)
+    if sm:
+        states = [x.strip(" `'\".").lower() for x in sm.group(1).split(",") if x.strip(" `'\".")]
+        body = " ".join(open(os.path.join(root, f), encoding="utf-8", errors="replace").read().lower() for f in files)
+        missing = [x for x in states if x not in body]
+        if missing:
+            print("FAIL: no acceptance test names the state(s) %s that intent.md lists (**States:**); add a test that brings a record into each and reads it back" % ", ".join(missing), file=sys.stderr)
+            return 1
     d = acc_read(lockfile)
     same = d.get("spec") == spec
     # A lock is taken once. Only the person reopens it (the Check question's "Correct the acceptance test"), so a builder
@@ -495,6 +509,35 @@ def acc_reopen(spec, lockfile, reason):
     d["reopened"] = {"reason": reason.strip()[:300], "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     acc_write(lockfile, d)
     print("OK: the acceptance tests are open for one correction: %s" % reason.strip()[:300])
+    return 0
+
+
+def acc_triage(spec, lockfile, text):
+    """The triage of a failing locked test (agents/acceptance.md, Triage): `code: why` or `test: why`. It only sets which
+    option the Check question recommends; the person decides. Kept with a digest of the failure it read, so a new
+    failure gets a new triage."""
+    d = acc_read(lockfile)
+    m = re.match(r"^\s*(code|test)\s*[:-]\s*(.+)$", text or "", re.S | re.I)
+    if d.get("spec") != spec or not d.get("cmd") or not m:
+        print("FAIL: usage: temper acceptance triage --reason 'code: <why>' | 'test: <why>' (a locked run)", file=sys.stderr)
+        return 1
+    d["triage"] = {"verdict": m.group(1).lower(), "reason": " ".join(m.group(2).split())[:300],
+                   "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    acc_write(lockfile, d)
+    print("OK: triage recorded: the %s looks wrong" % d["triage"]["verdict"])
+    return 0
+
+
+def acc_triaged(spec, lockfile, failure):
+    """After the triage agent: which failure it read (the flow's digest of the acceptance row), so the triage counts
+    for that failure only. No triage recorded: the agent did not finish, and the question is asked without one."""
+    d = acc_read(lockfile)
+    if d.get("spec") != spec:
+        return 0
+    t = d.get("triage") if isinstance(d.get("triage"), dict) else {}
+    d["triage"] = dict(t, failure=failure.strip()) if t.get("verdict") else {"failure": failure.strip(), "verdict": ""}
+    acc_write(lockfile, d)
+    print("OK: triage of failure %s %s" % (failure.strip()[:12], "recorded" if t.get("verdict") else "not given"))
     return 0
 
 
@@ -633,6 +676,85 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd=""):
     return 0
 
 
+# ---- ahead: Check's run made while Review reads the change ------------------------------------------------------------
+# Review writes no code, so the CLI runs Check's suite, coverage and mutation score in the background while the Review
+# agent works. `check run` adopts that run when the tree is still the one it measured (the same digest), else runs
+# again. A run that did not finish, or a tree that changed, is never adopted.
+def tree_digest(root):
+    """HEAD, plus every changed, added or removed file outside .temper/ and .claude/ with its content."""
+    import hashlib
+    def git(*a):
+        p = subprocess.run(["git", "-C", root] + list(a), capture_output=True, text=True)
+        return p.stdout if p.returncode == 0 else ""
+    h = hashlib.sha256(git("rev-parse", "HEAD").encode())
+    names = sorted(set(git("-c", "core.quotePath=false", "ls-files", "-m", "-o", "-d", "--exclude-standard").splitlines()))
+    for n in names:
+        if n.startswith((".temper/", ".claude/")) or "__pycache__" in n:
+            continue
+        h.update(n.encode() + b"\0")
+        f = os.path.join(root, n)
+        if os.path.isfile(f):
+            h.update(hashlib.sha256(open(f, "rb").read()).digest())
+    return h.hexdigest()
+
+
+def ahead_paths(root):
+    d = os.path.join(root, ".temper", "check")
+    return os.path.join(d, "ahead.json"), os.path.join(d, "ahead.pid")
+
+
+def ahead(root, spec, base, command, test_cmd="", cov_cmd=""):
+    out, pidf = ahead_paths(root)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    for f in (out,):
+        if os.path.exists(f):
+            os.remove(f)
+    open(pidf, "w").write(str(os.getpid()))
+    try:
+        before = tree_digest(root)
+        fd, tmp = tempfile.mkstemp(prefix="temper-ahead-", suffix=".json")
+        os.close(fd)
+        open(tmp, "w").write("[]")
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = run(root, spec, tmp, base, command, test_cmd, cov_cmd)
+        rows = json.load(open(tmp))
+        os.remove(tmp)
+        if rc == 0 and tree_digest(root) == before:
+            acc_write(out, {"digest": before, "rows": rows})
+    finally:
+        if os.path.exists(pidf):
+            os.remove(pidf)
+    return 0
+
+
+def adopt(root, ledger):
+    """Add the rows of the ahead run to Check's ledger when it measured this very tree; True when adopted. Waits for an
+    ahead run still going (it is the same work this run would do)."""
+    out, pidf = ahead_paths(root)
+    t0 = time.time()
+    while os.path.exists(pidf) and time.time() - t0 < SUITE_TIMEOUT_S:
+        try:
+            os.kill(int(open(pidf).read().strip() or "0"), 0)
+        except (ValueError, OSError):
+            break
+        time.sleep(1)
+    d = acc_read(out)
+    if os.path.exists(out):
+        os.remove(out)
+    if not d.get("rows") or d.get("digest") != tree_digest(root):
+        return False
+    try:
+        rows = json.load(open(ledger))
+        rows = rows if isinstance(rows, list) else []
+    except (OSError, ValueError):
+        rows = []
+    rows.extend(d["rows"])
+    acc_write(ledger, rows)
+    print("adopted the run made while Review read the change (%d rows; the tree is unchanged since)" % len(d["rows"]))
+    return True
+
+
 def main(argv):
     if len(argv) >= 5 and argv[1] == "acceptance":   # acceptance ROOT SPEC lock|skip|start [TEXT]
         root, spec, sub = argv[2], argv[3], argv[4]
@@ -648,10 +770,18 @@ def main(argv):
             return acc_reopen(spec, lockfile, text)
         if sub == "restore":
             return acc_restore(root, spec, lockfile)
+        if sub == "triage":
+            return acc_triage(spec, lockfile, text)
+        if sub == "triaged":
+            return acc_triaged(spec, lockfile, text)
     if len(argv) >= 3 and argv[1] == "detect":
         print(json.dumps(detect(argv[2], argv[3] if len(argv) > 3 else "", argv[4] if len(argv) > 4 else "")))
         return 0
+    if len(argv) >= 6 and argv[1] == "ahead":   # ahead ROOT SPEC BASE COMMAND [TEST_CMD COV_CMD]
+        return ahead(argv[2], argv[3], argv[4], argv[5], argv[6] if len(argv) > 6 else "", argv[7] if len(argv) > 7 else "")
     if len(argv) >= 7 and argv[1] == "run":
+        if adopt(argv[2], argv[4]):
+            return 0
         return run(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7] if len(argv) > 7 else "", argv[8] if len(argv) > 8 else "")
     print(__doc__, file=sys.stderr)
     return 2
