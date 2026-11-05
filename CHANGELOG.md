@@ -263,6 +263,12 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
 - **The final pass** (the four tasks twice on the final code, `docs/evidence/bench-2026-11.md`): against 9.8.0 before
   round 5 a run costs 28% to 54% less and takes 15% to 45% less time, with 7 of 8 runs meeting every hidden test.
   Against vanilla Claude Code it costs 1.3 to 1.4 times as much on a bug and 4 to 5 times on a feature.
+- **The shipped code, measured** (16 runs, the Sonnet loop, with the mod and without, `docs/evidence/bench-2026-11.md`):
+  every run met every hidden test, and every vague-refunds run met all 5 facts, its Intent agent asking the time limit
+  each time. With the mod the driver carried 7 of 8 runs with no main session turn: a bug run it carried whole cost
+  $0.45 to $0.50 in 88 to 110 s, a feature $1.93 to $2.28 in 11 to 14 minutes (means), 31% to 55% less than before
+  round 5 on three tasks. Without the mod the Sonnet loop stayed on the script in all 8 runs, at $0.28 to $0.97 of main
+  session a run.
 
 **Build: three defects of a measured run**
 - **A scenario is owed by the task that writes its test file.** Plan traced API scenarios to the task that built the
