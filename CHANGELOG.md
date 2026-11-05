@@ -234,7 +234,10 @@ bug and 5 to 6 times on a feature, and 5.5 to 12 times its time.
   a skill, the HTML plan review, a small change window, a pull request step, an agent's DRIFT rows, a name question,
   a failed call. The CLI holds the run, so the conversation goes on from the same state. Without the mod, a
   `/temper:fix` run, a run word or a second request, the conversation carries the run as before.
-- The mod's reviewed calls gain `agent.spawn`, `ui.ask`, `ui.log`, `clock.now` and `process.run` (the one process
+- What the question dialog of a mod cannot show (each option's description, the Context check's table) is printed
+  just above the question; an interrupt stops the driver between steps and while it waits on an agent, with no model
+  turn after it; a CLI call streams, so a long Check inside `temper go` has no time cap.
+- The mod's reviewed calls gain `agent.spawn`, `ui.ask`, `ui.log`, `clock.now` and `process.spawn` (the one process
   call, for the CLI's calls): `scripts/check-mod-calls.sh`, `docs/mod.md`, `docs/trust.md`.
 - Measured on vague-refunds (2 live runs, `docs/evidence/bench-2026-11.md`): the run the driver carried to the
   commit cost $0.00 in the main session, with no main session turn, $1.69 and 678 s in all (the Haiku loop on the

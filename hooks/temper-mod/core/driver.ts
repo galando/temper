@@ -5,7 +5,7 @@
 // small change window, an unknown step) it hands back to the model loop of commands/temper.md, which goes on from the
 // same state: the CLI holds the run, the driver holds nothing. Pure: the engine is reached through `Port`.
 
-export type GoQuestion = { header: string; question: string; options: Array<{ label: string; description?: string }>; multiSelect?: boolean }
+export type GoQuestion = { header: string; question: string; options: Array<{ label: string; description?: string; preview?: string }>; multiSelect?: boolean }
 export type GoOption = {
   label: string
   calls?: string[]
@@ -46,6 +46,19 @@ export type Port = {
 export type DriveEnd = { kind: 'done'; text: string } | { kind: 'handback'; args: string; why: string }
 
 const MAX_TURNS = 300
+
+export const STOPPED = 'Temper: stopped at your interrupt. The run is saved where the CLI shows it; an agent launched before it may ' +
+  'still be finishing. /temper:temper takes the run up again.'
+
+// What the dialog cannot show (a mod's question dialog takes labels alone): each option's description, and the preview the
+// options share (the Context check's table), as lines printed above the question. Empty when there is nothing to add.
+export function optionLines(q: GoQuestion): string {
+  const described = q.options.filter(o => (o.description ?? '').trim() !== '')
+  const preview = q.options.map(o => o.preview ?? '').find(p => p.trim() !== '') ?? ''
+  if (described.length === 0 && preview === '') return ''
+  const rows = described.map(o => `  ${o.label}: ${(o.description ?? '').trim()}`)
+  return [preview.trim(), rows.length > 0 ? `${q.header}, the choices:` : '', ...rows].filter(l => l !== '').join('\n')
+}
 
 // The last line of `temper go` that is a JSON object, or null.
 export function parseGo(stdout: string): GoOut | null {
@@ -149,7 +162,8 @@ export async function drive(port: Port, cli: string, request: string | null, slu
   let started = false
   let waits = 0
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    if (port.stopped()) return handback('stopped')
+    // The person interrupted: stop here, with no model turn they did not ask for. The CLI holds the run.
+    if (port.stopped()) return { kind: 'done', text: STOPPED }
     const go = await port.run(`${cli} go`)
     const g = parseGo(go.out)
     if (g === null) return handback('temper go gave no action')
@@ -204,6 +218,7 @@ export async function drive(port: Port, cli: string, request: string | null, slu
       if (agents.length > 0) {
         const ids: Array<[string, GoAgent]> = []
         for (const a of agents) {
+          if (port.stopped()) return { kind: 'done', text: STOPPED }
           if ((await runAll(port, a.before ?? [], {})) === null) return handback('a before call failed')
           const id = await port.spawn(a)
           if (id === null) return handback(`the ${a.type} agent could not start`)
@@ -223,6 +238,7 @@ export async function drive(port: Port, cli: string, request: string | null, slu
       if (drift) return handback('an agent listed files outside the plan (DRIFT)')
       let last = ''
       for (const s of g.steps ?? []) {
+        if (port.stopped()) return { kind: 'done', text: STOPPED }
         const p = stepPlan(s, cli)
         if (p.kind === 'run') {
           const r = await port.run(p.call)

@@ -1,5 +1,5 @@
 // The run driver through the engine (9.8.0, round 5): the person's /temper:temper with a request, and the mod carries the
-// run with `$.process.run`, `$.agent.spawn` and the question dialog; the person's answer is recorded as in the model loop.
+// run with `$.process.spawn`, `$.agent.spawn` and the question dialog; the person's answer is recorded as in the model loop.
 import { describe, expect, test } from 'claude-code/testing'
 
 import { optionCalls, questionOf, runFiles } from './run-files'
@@ -17,15 +17,19 @@ const isGo = (call: string) => /scripts\/temper go$/.test(call)
 function engine(on: On, w: ReturnType<typeof world>, goes: unknown[], opts: { agentStatus?: string } = {}) {
   const ran: string[] = []
   const spawned: Array<{ subagent_type?: string; model?: string; prompt?: string }> = []
-  on('process.run', ($, e) => {
+  on('process.spawn', async function* ($, e) {
     const argv = (e as { argv: string[] }).argv
     const call = argv[0] === 'bash' && argv[1] === '-c' ? (argv[2] as string) : argv.join(' ')
-    if (argv[0] !== 'sleep') ran.push(call)
-    if (isGo(call)) return { value: { exitCode: 0, stdout: JSON.stringify(goes.shift() ?? { action: 'none', say: 'The run is done.' }), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    if (argv[0] === 'sleep') return { value: { code: 0, signal: null } }
+    ran.push(call)
+    if (isGo(call)) {
+      yield { stream: 'stdout' as const, text: JSON.stringify(goes.shift() ?? { action: 'none', say: 'The run is done.' }) }
+      return { value: { code: 0, signal: null } }
+    }
     if (/ state init /.test(call)) {
       w.files.set('.temper/build-state.json', JSON.stringify({ spec: 'refunds', spec_path: '.temper/specs/refunds', command: 'temper', next_stage: 'intent', run_id: 'run-1', step: 0, run_mode: 'interactive' }))
     }
-    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    return { value: { code: 0, signal: null } }
   })
   on('agent.spawn', ($, e) => {
     spawned.push(e as never)
@@ -90,7 +94,9 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     const { ran, logged } = engine(on, w, goes)
     await api.session.start(START)
     await api.command.run({ command: 'temper', args: '', origin: { kind: 'composer' } })
-    expect([w.commandRuns.map(c => c.args), logged]).toEqual([['discuss make it admin only'], ['Temper: the run goes on in the conversation (the person typed an answer).']])
+    expect([w.commandRuns.map(c => c.args), logged.at(-1)]).toEqual([['discuss make it admin only'], 'Temper: the run goes on in the conversation (the person typed an answer).'])
+    // What the dialog cannot show, each option's description, was printed above the question.
+    expect(logged[0]).toContain('Temper gate, the choices:\n  Stage by stage (Recommended): ')
     expect(ran.filter(c => c.includes('state advance'))).toEqual([])
   })
 

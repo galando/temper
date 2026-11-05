@@ -1,7 +1,7 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { drive, fill, hasDrift, parseGo, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, drive, fill, hasDrift, optionLines, parseGo, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 
 const CLI = '/p/scripts/temper'
@@ -14,7 +14,7 @@ type Script = {
   out?: (call: string) => string
 }
 
-function port(s: Script) {
+function port(s: Script & { stop?: number }) {
   const log = { ran: [] as string[], spawned: [] as GoAgent[], asked: [] as GoQuestion[], recorded: [] as string[], shown: [] as string[] }
   const answers = [...(s.answers ?? [])]
   let n = 0
@@ -42,7 +42,7 @@ function port(s: Script) {
     show: async text => {
       log.shown.push(text)
     },
-    stopped: () => false,
+    stopped: () => s.stop !== undefined && log.ran.length >= s.stop,
   }
   return { p, log }
 }
@@ -164,6 +164,24 @@ describe('the driver carries a run from the request to the end', () => {
   test('nobody answers (a session with no one to ask): the conversation takes the run on', async () => {
     const { p } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [{ label: 'Approve' }, { label: 'No' }] } }], answers: [] })
     expect((await drive(p, CLI, null)).kind).toBe('handback')
+  })
+})
+
+describe('the person interrupts', () => {
+  test('the drive stops where it is, says how to take the run up again, and starts no model turn', async () => {
+    const { p, log } = port({ goes: [{ action: 'work', steps: [`${CLI} report --end`] }, { action: 'none' }], stop: 1 })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: STOPPED })
+    expect(log.ran).toEqual([`${CLI} go`])
+  })
+})
+
+describe('what the dialog cannot show', () => {
+  test('each option\'s description and the shared preview are printed above the question', () => {
+    const q = { header: 'Temper gate', question: 'Plan: approve?', options: [
+      { label: 'Approve (Recommended)', description: 'Go on to Design.', preview: '| a | b |' },
+      { label: 'Save for later', description: 'Stop here.', preview: '| a | b |' }] }
+    expect(optionLines(q)).toBe('| a | b |\nTemper gate, the choices:\n  Approve (Recommended): Go on to Design.\n  Save for later: Stop here.')
+    expect(optionLines({ header: 'Question 1', question: 'Who?', options: [{ label: 'Admins' }, { label: 'Carry forward', description: '' }] })).toBe('')
   })
 })
 

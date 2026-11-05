@@ -11,7 +11,7 @@ import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
-import { drive, slugOf } from './core/driver'
+import { drive, optionLines, slugOf } from './core/driver'
 import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
@@ -406,12 +406,25 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
 // The mod carries a /temper:temper run itself: core/driver.ts decides, these functions reach the engine. A hook's own time
 // is bounded, a `$` call's is not, so the driver waits on its agents with `$` calls (a short sleep run by the host).
 
-const RUN_MS = 600_000
 const WAIT_MS = 90 * 60_000
 
-async function hostRun($: Api, cwd: string, call: string): Promise<{ code: number; out: string }> {
-  const r = await $.process.run(['bash', '-c', call], { cwd, timeoutMs: RUN_MS })
-  return { code: r.exitCode, out: r.stdout + (r.stderr ? `\n${r.stderr}` : '') }
+// One call of the CLI, through bash in the project. Streamed, so a long call (Check's suite and mutation score inside
+// `temper go`) has no time cap; leaving the loop at the person's interrupt ends the child.
+async function hostRun($: Api, cwd: string, call: string, signal: AbortSignal | undefined): Promise<{ code: number; out: string }> {
+  const child = $.process.spawn({ argv: ['bash', '-c', call], cwd })
+  let out = ''
+  for await (const piece of child) {
+    out += piece.text
+    if (signal?.aborted === true) return { code: 130, out }
+  }
+  const end = await child.result
+  return { code: end.code ?? 1, out }
+}
+
+// A short wait between looks at the driver's agents: a child of the host, so the hook's own time does not run.
+async function hostPause($: Api, cwd: string, seconds: number): Promise<void> {
+  const child = $.process.spawn({ argv: ['sleep', String(seconds)], cwd })
+  for await (const piece of child) void piece
 }
 
 async function hostSpawn($: Api, a: GoAgent): Promise<string | null> {
@@ -420,15 +433,16 @@ async function hostSpawn($: Api, a: GoAgent): Promise<string | null> {
   return 'agentId' in s && typeof s.agentId === 'string' ? s.agentId : null
 }
 
-// Waits until every agent of `ids` has ended (its turn.complete, or a status other than running), at most WAIT_MS.
-async function hostWait($: Api, cwd: string, ids: string[]): Promise<Record<string, AgentEnd>> {
+// Waits until every agent of `ids` has ended (its turn.complete, or a status other than running), at most WAIT_MS, or
+// until the person interrupts.
+async function hostWait($: Api, cwd: string, ids: string[], signal: AbortSignal | undefined): Promise<Record<string, AgentEnd>> {
   const out: Record<string, AgentEnd> = {}
   if (ids.length === 0) {
-    await $.process.run(['sleep', '5'], { cwd, timeoutMs: 30_000 })
+    await hostPause($, cwd, 5)
     return out
   }
   const start = await $.clock.now()
-  while ((await $.clock.now()) - start < WAIT_MS) {
+  while ((await $.clock.now()) - start < WAIT_MS && signal?.aborted !== true) {
     const list = await $.agent.list().catch(() => [])
     let open = 0
     for (const id of ids) {
@@ -440,7 +454,7 @@ async function hostWait($: Api, cwd: string, ids: string[]): Promise<Record<stri
       else open++
     }
     if (open === 0) break
-    await $.process.run(['sleep', '2'], { cwd, timeoutMs: 30_000 })
+    await hostPause($, cwd, 2)
   }
   // An answer that came after the status changed is the agent's own: take it when it is there now.
   for (const id of ids) {
@@ -451,6 +465,10 @@ async function hostWait($: Api, cwd: string, ids: string[]): Promise<Record<stri
 }
 
 async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
+  // The dialog a mod raises shows the labels alone: what each option does, and a preview (the Context check's table),
+  // are printed just above it.
+  const lines = optionLines(q)
+  if (lines !== '') $.ui.log(lines)
   const a = await $.ui.ask(q.question, { options: q.options.map(o => o.label).slice(0, 4), header: q.header })
   return typeof a === 'string' && a !== '' ? a : null
 }
@@ -461,9 +479,9 @@ async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
 
 async function driveRun($: Api, cwd: string, request: string | null, signal: AbortSignal | undefined): Promise<DriveEnd> {
   const port: Port = {
-    run: call => hostRun($, cwd, call),
+    run: call => hostRun($, cwd, call, signal),
     spawn: a => hostSpawn($, a),
-    wait: ids => hostWait($, cwd, ids),
+    wait: ids => hostWait($, cwd, ids, signal),
     ask: q => hostAsk($, q),
     record: (q, label) => hostRecord($, q, label),
     show: async text => {

@@ -64,7 +64,7 @@ the panel. It only sets which option the person is shown first.
 
 6. Do NOT show an `AskUserQuestion` — you run headless. Return the panel to the orchestrator.
 
-**Gotchas:**
+**Gotchas**:
 - A test that encodes a value the intent does not give (a field name, a message text) forces the builders to guess
   yours. Assert what the intent and the Decisions say; for the rest, assert the kind of answer (a 400, a list), not
   its exact text.

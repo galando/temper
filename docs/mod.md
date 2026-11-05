@@ -279,6 +279,9 @@ calls the CLI gives (the action's calls, an agent's `before` and `after` calls, 
 each agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report
 the CLI prints, asks each question the CLI gives (header, question and option labels as given; Blocking questions
 with their answer calls), records your answer as the guard does, and runs the calls of the option you picked. The
+question dialog a mod raises shows labels alone, so each option's description (and the Context check's table) is
+printed just above it. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
+model turn after it, and `/temper:temper` takes the run up again (an agent already launched may still finish). The
 guard checks the driver's questions and agents as it checks the session's: each must be the CLI's. Round 5 of the
 benchmark measured why: the main session's own model time was 8% to 10% of a feature run's wall time and 20% to
 30% of a bug run's, and it cost $0.03 to $0.09 a run on Haiku, for steps that need no model.
