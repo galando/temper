@@ -100,6 +100,13 @@ assert_eq "9.8.0: spec deviations writes plan.md's Deviations from build-context
   "$(grep -c '^## Deviations$' .temper/specs/demo/plan.md)|$(grep -c '^- Files outside the plan: src/b.sh$' .temper/specs/demo/plan.md)|$(grep -c '^- Approach changes: a queue, not a cron$' .temper/specs/demo/plan.md)"
 rm -rf .git src README.demo; git init -q . 2>/dev/null
 
+# --- 3b. The Intent agent's prompt carries the request as typed, one period after it ---
+fresh; "$TEMPER" state init demo --feature "Add refunds. A refund needs a reason." >/dev/null 2>&1
+assert_eq "9.8.0: a request that ends a sentence gets no second period in the Intent prompt" "1|0" \
+  "$(nx "d['agents'][0]['prompt']" | grep -c '^Feature: Add refunds. A refund needs a reason.$')|$(nx "d['agents'][0]['prompt']" | grep -c '\.\.$')"
+fresh; "$TEMPER" state init demo --feature "Add refunds" >/dev/null 2>&1
+assert_eq "9.8.0: a request with no end gets its period" "1" "$(nx "d['agents'][0]['prompt']" | grep -c '^Feature: Add refunds\.$')"
+
 # --- 4. The plan keeps every route the request names (a run's Plan once built the request's refund route as another path) ---
 _r16() { # a run whose request names routes, with a plan
   setup; rm -f .temper/groups.json .temper/view.json

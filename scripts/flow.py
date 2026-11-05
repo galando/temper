@@ -973,7 +973,10 @@ class Builder:
         models = r.ctx.get("models") or {}
         lines = ["Follow %s/agents/%s.md exactly." % (self.plugin, stage)]
         if stage == "intent" and r.state.get("feature"):
-            lines.append("Feature: %s." % r.state.get("feature"))
+            # The request as typed, with one period after it unless it already ends a sentence (round 5: a request that
+            # ended with a period got two, a session tidied them to one, and its launch was refused as another prompt).
+            feature = r.state.get("feature").rstrip()
+            lines.append("Feature: %s%s" % (feature, "" if feature[-1:] in ".!?" else "."))
         lines.append("Spec path: %s." % r.spec)
         lines.extend(extra_lines)
         lines.extend("Person's note: %s" % x["claim"] for x in r.notes(stage, "input"))
