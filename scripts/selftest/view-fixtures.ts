@@ -6556,7 +6556,7 @@ export const VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/design.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/design.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-design"
     }
    ],
@@ -7000,7 +7000,7 @@ export const VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/design.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/design.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-design"
     }
    ],
@@ -7421,7 +7421,7 @@ export const VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     }
    ],
@@ -7721,11 +7721,13 @@ export const VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/design.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/design.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-design"
     }
    ],
-   "calls": [],
+   "calls": [
+    "/plugin/scripts/temper brief"
+   ],
    "say": "Design: the Design agent is working on opus. The run goes on when it returns.",
    "stage": "design",
    "steps": []
@@ -9110,7 +9112,7 @@ export const VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     }
    ],
@@ -9533,7 +9535,7 @@ export const VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     }
    ],
@@ -9951,7 +9953,7 @@ export const VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     }
    ],
@@ -10192,11 +10194,13 @@ export const VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     }
    ],
-   "calls": [],
+   "calls": [
+    "/plugin/scripts/temper brief"
+   ],
    "say": "Plan: the Plan agent is working on opus. The run goes on when it returns.",
    "stage": "plan",
    "steps": []

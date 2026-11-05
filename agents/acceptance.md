@@ -34,10 +34,12 @@ code and its tests can encode the same wrong guess in both; your tests come from
 
 4. **Run them once.** They should fail or error now, because the feature is not built. A test that passes before any
    code exists tests nothing new: change it so it checks the new behavior. Use a command that runs only the acceptance
-   folder from the project's top folder (for Python: `python3 -m pytest -q {spec_path}/acceptance`, or
+   folder from the project's top folder, with the runner the project's own tests use (for Python:
+   `python3 -m pytest -q {spec_path}/acceptance` where pytest is installed, else
    `python3 -m unittest discover -s {spec_path}/acceptance -t {spec_path}/acceptance` with no `__init__.py`: a folder
    whose name starts with a dot cannot be a package. The CLI runs it with the project's top folder on the import path,
-   so `from mypackage import x` works).
+   so `from mypackage import x` works). The lock runs the command once and refuses one that cannot run here (a runner
+   that is not installed, a program not found, no test collected).
 
 5. **Lock them**, so the CLI keeps their digest and Check runs them:
    ```

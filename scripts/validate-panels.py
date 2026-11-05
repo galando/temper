@@ -2,7 +2,8 @@
 """validate-panels.py — one closed panel per stage brief.
 
 Every stage brief (each agents entry in .claude-plugin/plugin.json) must:
-  1. state the panel rule itself (the brief is all a clean-context stage reads);
+  1. state the panel rule itself (the brief is all a clean-context stage reads), or say that the CLI draws its
+     panel (`temper panel plan|design|rca`, 9.8.0), and then show none;
   2. show at most ONE panel (a fenced code block containing box borders), and that
      panel must be a single closed box: every line the same width, `+` corners,
      `|` content rows, at least one titled `+--- NAME (N) ---+` section.
@@ -26,6 +27,8 @@ import sys
 from pathlib import Path
 
 RULE_PHRASE = re.compile(r"exactly (ONE|one) closed panel", re.I)
+# 9.8.0 (round 5): a brief whose panel the CLI draws from the files it wrote says so, and shows no panel of its own.
+CLI_PANEL = re.compile(r"\*\*(Your panel is drawn by the CLI|Write your findings to the RCA file)\*\*.*?`temper panel (plan|design|rca)", re.S)
 # These briefs run or wait for tests: each must say to wait for a test run in the foreground (F20).
 FOREGROUND_BRIEFS = ("build.md", "build-task.md", "check.md", "review.md")
 FOREGROUND_RULE = re.compile(r"foreground.*background|background.*foreground", re.I | re.S)
@@ -161,8 +164,9 @@ def main():
         errs = []
         if name in FOREGROUND_BRIEFS and not FOREGROUND_RULE.search(text):
             errs.append("does not say to wait for a test run in the foreground and never return while a background run goes on")
-        if not RULE_PHRASE.search(text):
-            errs.append("does not state the one-panel rule ('exactly ONE closed panel')")
+        cli_drawn = bool(CLI_PANEL.search(text))
+        if not cli_drawn and not RULE_PHRASE.search(text):
+            errs.append("does not state the one-panel rule ('exactly ONE closed panel') or that the CLI draws its panel")
         panels = 0
         for lineno, block in extract_fences(text):
             if any(BORDER.match(ln.strip()) for ln in block):
@@ -171,6 +175,8 @@ def main():
                     errs.append("panel at line %d: %s" % (lineno, e))
         if panels > 1:
             errs.append("shows %d panels — a stage returns exactly one" % panels)
+        if cli_drawn and panels:
+            errs.append("the CLI draws this stage's panel (temper panel), yet the brief shows one of its own")
         if errs:
             failures += 1
             print("FAIL %s" % rel)

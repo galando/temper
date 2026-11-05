@@ -204,7 +204,34 @@ and these guards, the main session cost $0.03 to $0.09 a run (the Sonnet loop: $
 every hidden test, every fact of the brief and the plan's scope (partial-payments only once the request checks were
 in: before them, 14/26 twice). A whole run was about 30% cheaper on a bug and 23% to 27% cheaper on a feature. The
 Sonnet loop on the same code was only a little cheaper. Opus (Plan, Design, the root cause agent) is now two thirds to
-four fifths of a run. The loop's model is unchanged in this version (`model: sonnet` in the command pages).
+four fifths of a run.
+
+**The loop runs on Haiku 5.5** (`model: haiku` in `commands/temper.md` and `commands/fix.md`), after a confirming pass
+of the four tasks on the final code (8 runs): 7 met every hidden test; the eighth stopped at Build on three CLI
+defects, fixed below, none of them the loop's. Against vanilla Claude Code on the same tasks the same day, Temper met
+every hidden test where vanilla did and more on the vague task (11/11 against 8/11), at about 2 times its cost on a
+bug and 5 to 6 times on a feature, and 5.5 to 12 times its time.
+
+**Work the CLI does instead of a model**
+- **The CLI draws the Plan, Design and RCA panels** (`temper panel plan | design | rca <rca.md>`) from the files those
+  stages wrote; it counts the criteria, the scenarios and the files to create or modify itself. Each Opus agent drew
+  its own 76 column box (a Python script to pad it, then the box again as its last message: 2,000 to 3,000 output
+  tokens and 30 to 40 seconds a stage) and now returns one line. Plan writes the terminal drawing of its diagram into
+  plan.md's Diagram section; RCA writes `rca.md` as plain fields, which Fix and the fix commit message read.
+- **The project brief** (`temper brief`, `.temper/brief.md`): from the request's own words (file paths, backticked
+  names, routes, nouns) the CLI ranks the files the request reaches, lists their tests, copies the conventions and the
+  best ranked files whole, and lists the project's files. The Plan and Design actions make it; RCA makes it from the
+  bug text. They read one file first, instead of `cat` of the whole project and a second turn to read the saved output.
+
+**Build: three defects of a measured run**
+- **A scenario is owed by the task that writes its test file.** Plan traced API scenarios to the task that built the
+  domain module, while their test file came with the route's later task: that task's gate could never pass, and the
+  group parked again and again. A task that writes a file a scenario's `Test:` command runs is now traced too, and the
+  latest of them owes it.
+- **A group parked again after a rerun recommends Loop back to Plan** (the rerun is still offered): the same gate had
+  failed six times on every model, and the question kept recommending another rerun.
+- **`acceptance lock` runs the command once** and refuses one that cannot run here (a test runner that is not
+  installed, a program not found, no test collected). A run locked `python3 -m pytest` with pytest not installed.
 
 ## v9.7.6: a fresh reader checks the plan, contests cite evidence, a reviewer that stopped is not a clean review, spec drift
 

@@ -125,3 +125,156 @@ printf '# Intent\n\n### Open Questions\n\n- Deferred: POST /payments/{id}/refund
 assert_eq "9.8.0: a route named in the intent outside its Decisions does not excuse a moved route" "FAIL" "$(_rr | cut -d'|' -f1)"
 setup; rm -f .temper/groups.json .temper/view.json; "$TEMPER" state init demo --feature "Make the export faster" >/dev/null 2>&1; printf '# Plan\n' > .temper/specs/demo/plan.md
 assert_eq "9.8.0: a request that names no route passes" "PASS|the request names no route" "$(_rr)"
+
+# --- 5. The CLI draws the Plan, Design and RCA panels from the files those stages wrote (9.8.0, round 5) ---
+_p16() { # a run at Plan with intent.md, plan.md and tasks.md written, one file of the plan already in the project
+  fresh; mkdir -p src; echo x > src/old.py
+  cat > .temper/specs/demo/intent.md <<'MD'
+# Intent: Demo
+
+### Problem
+
+The demo prints nothing yet. It should.
+
+### Success Criteria
+
+- [ ] AC-01 [required]: it prints (source: request) Why: read. Validate: scenario
+- [ ] AC-02 [required]: it exits 0 (source: request) Why: scripts. Validate: scenario
+
+## Scenarios (BDD)
+
+#### Happy Path
+
+Scenario: it prints the output
+  Covers: AC-01
+
+#### Error Paths
+
+Scenario: a bad flag exits 2
+  Covers: AC-02
+MD
+  cat > .temper/specs/demo/plan.md <<'MD'
+# Plan: Demo printer
+
+## Cross-Repo Search
+
+- not available: local grep used.
+
+## Approach Decisions
+
+### Decision 1: print from main, not from a hook
+
+## Diagram
+
+```mermaid
+flowchart LR
+  A --> B
+```
+
+```text
++------+     +------+
+| main | --> | out  |
++------+     +------+
+```
+MD
+  printf '# Tasks: demo\n\n## Group G1: Core\n**Depends:** none\n**Validate:** `true`\n**Context:**\nc\n\n### Task 1: print\n**Files:**\n- `src/old.py`\n- `src/new.py`\n**Depends:** none\n**Test:** `true`\n**Cases:**\n- prints\n- [ ] done\n' > .temper/specs/demo/tasks.md
+  "$TEMPER" state set complexity medium >/dev/null 2>&1
+}
+_p16
+PANEL="$("$TEMPER" panel plan 2>&1)"
+assert_eq "9.8.0: the Plan panel counts the criteria, the scenarios and the files from the spec files" "1|1|1|1|1" \
+  "$(tr -s ' |\n' ' ' <<<"$PANEL" | grep -c 'INTENT: The demo prints nothing yet. -> 2 criteria (2 scenarios cover them)')|$(grep -c '^| ARCHITECTURE: create 1 files, modify 1 files' <<<"$PANEL")|$(grep -c '^| COMPLEXITY: medium   SEARCH: local' <<<"$PANEL")|$(grep -c '^| \[Error Paths\] a bad flag exits 2, Covers: AC-02' <<<"$PANEL")|$(grep -c '^| print from main, not from a hook' <<<"$PANEL")"
+assert_eq "9.8.0: the Plan panel is one closed box of 76 columns, then the text diagram and never the mermaid" "1|1|0" \
+  "$(awk '/^\+-+\+$/ && length($0) == 76 { last = NR } { a[NR] = $0 } END { for (i = 1; i <= last; i++) if (length(a[i]) != 76) bad = 1; print (last && !bad) ? 1 : 0 }' <<<"$PANEL")|$(grep -c '^| main | --> | out  |$' <<<"$PANEL")|$(grep -c 'flowchart' <<<"$PANEL")"
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1 || python3 - <<'PY'
+import json; p='.temper/build-state.json'; d=json.load(open(p)); d['next_stage']='plan'; json.dump(d, open(p,'w'))
+PY
+assert_eq "9.8.0: the Plan agent's after calls draw its panel, before the gate call (the gate stays last)" "panel plan|gate plan" \
+  "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['agents'][0]['after'][-2:])")"
+printf '# Design: Demo\n\n## Areas of Concern\n\n### Two writes, no transaction\n\nresolved: accepted as written\n\n### Logs hold names\n\nMask them.\n\n## Decision Log\n\n| Decision | Options Considered | Chosen | Rationale |\n|---|---|---|---|\n| Store | table / file | table | queries |\n' > .temper/specs/demo/design.md
+PANEL="$("$TEMPER" panel design 2>&1)"
+assert_eq "9.8.0: the Design panel lists each concern with its state, and the Decision Log rows" "1|1|1|1" \
+  "$(grep -c 'CONCERNS OPEN: 1' <<<"$PANEL")|$(grep -c '^| Two writes, no transaction (resolved: accepted as written)' <<<"$PANEL")|$(grep -c '^| Logs hold names (open)' <<<"$PANEL")|$(grep -c '^| Store: table, because queries' <<<"$PANEL")"
+cat > .temper/specs/demo/rca.md <<'MD'
+# RCA: Totals drop a cent
+
+CAUSE: round() runs per line, not on the sum
+AT: ledger/totals.py:41   CONFIDENCE: HIGH
+SINCE: unknown
+FIX: round once, on the sum.
+TEST: three lines of 0.333 total 1.00
+
+## Root cause
+
+round() runs on each line, so three thirds lose a cent.
+
+## Blast radius
+
+- ledger/export.py: sums rounded lines too
+MD
+PANEL="$("$TEMPER" panel rca .temper/specs/demo/rca.md 2>&1)"
+assert_eq "9.8.0: the RCA panel comes from rca.md's fields, with its blast radius" "1|1|1|0" \
+  "$(grep -c '^| RCA: Totals drop a cent' <<<"$PANEL")|$(grep -c '^| CAUSE: round() runs per line, not on the sum' <<<"$PANEL")|$(grep -c '^+--- BLAST RADIUS (1) ---+' <<<"$PANEL")|$(grep -c 'READ FIRST' <<<"$PANEL")"
+printf '+----+\n| RCA |\n+----+\n' > .temper/specs/demo/rca.md
+assert_eq "9.8.0: an rca.md saved as a box by an earlier version prints as it is; no file is a note, not a failure" "| RCA ||0" \
+  "$("$TEMPER" panel rca .temper/specs/demo/rca.md | sed -n 2p)|$("$TEMPER" panel rca .temper/specs/demo/none.md >/dev/null 2>&1; echo $?)"
+assert_exit "9.8.0: temper panel with no stage is a usage error" 1 "$TEMPER" panel
+rm -rf src
+
+# --- 6. The project brief: the CLI maps the code the request reaches, with no model (9.8.0, round 5) ---
+fresh; mkdir -p src unit
+printf 'def refund(invoice, amount_cents):\n    return amount_cents\n' > src/payments.py
+printf 'def total(lines):\n    return sum(lines)\n' > src/totals.py
+printf 'from src import payments\n\ndef test_refund():\n    assert payments.refund(None, 1) == 1\n' > unit/test_payments.py
+printf '# House rules\n\n1. Money is integer cents.\n' > CONVENTIONS.md
+"$TEMPER" state init demo --feature 'Add partial refunds: `refund` takes `amount_cents`. POST /invoices/{id}/refunds.' >/dev/null 2>&1
+OUT="$("$TEMPER" brief 2>&1)"; B="$(cat .temper/brief.md 2>/dev/null)"
+assert_eq "9.8.0: temper brief ranks the file the request's names reach, lists its test and copies the conventions" "1|1|0|1|1" \
+  "$(grep -c '^| `src/payments.py` |' <<<"$B")|$(grep -c '^- `unit/test_payments.py`: mentions `src/payments.py`' <<<"$B")|$(grep -c '^| `src/totals.py` |' <<<"$B")|$(grep -c '^1. Money is integer cents.$' <<<"$B")|$(grep -c '^OK: .temper/brief.md' <<<"$OUT")"
+assert_eq "9.8.0: temper brief with no request still maps the project and never fails" "0|1" \
+  "$(rm -f .temper/brief.md; python3 -E -s "$REPO_ROOT/scripts/brief.py" "$(pwd -P)" .temper/brief.md --text '' >/dev/null 2>&1; echo $?)|$(grep -c '^- `src/totals.py`' .temper/brief.md)"
+python3 - <<'PY'
+import json; p='.temper/build-state.json'; d=json.load(open(p)); d['next_stage']='plan'; json.dump(d, open(p,'w'))
+PY
+assert_eq "9.8.0: the Plan action's own call makes the brief, and the Plan prompt names it" "brief|1" \
+  "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'])")|$(nx "d['agents'][0]['prompt']" | grep -c '^Project brief: .temper/brief.md')"
+rm -rf src unit CONVENTIONS.md
+
+# --- 7. Three defects of a measured Build (round 5): a scenario owed by a task before its test file exists, a park question
+#        that recommended the same rerun again, and acceptance tests locked with a command that cannot run ---
+fresh
+cat > .temper/specs/demo/intent.md <<'MD'
+# Intent: Demo
+
+## Scenarios (BDD)
+
+Scenario: an admin refunds a paid invoice
+  Covers: AC-01
+  Test: python3 -m unittest unit/test_refunds_api.py -k test_partial
+MD
+printf '# Tasks: demo\n\n## Group G1: Core\n**Depends:** none\n**Validate:** `true`\n**Context:**\nc\n\n### Task 1: the refund module\n**File:** `ledger/refunds.py`, `unit/test_refunds.py`\n**Depends:** none\n**Test:** `python3 -m unittest unit/test_refunds.py`\n**Cases:**\n- x\n**Traced to:** Scenario: "an admin refunds a paid invoice"\n- [ ] done\n\n### Task 2: the route\n**File:** `ledger/api.py`, `unit/test_refunds_api.py`\n**Depends:** Task 1\n**Test:** `python3 -m unittest unit/test_refunds_api.py`\n**Cases:**\n- y\n- [ ] done\n' > .temper/specs/demo/tasks.md
+assert_eq "9.8.0: a scenario traced to a task is owed by the later task that writes the test file it runs" "0|1" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/scenario_ops.py" owed .temper/specs/demo/intent.md .temper/specs/demo/tasks.md 1 | wc -l | tr -d ' ')|$(python3 -E -s "$REPO_ROOT/scripts/scenario_ops.py" owed .temper/specs/demo/intent.md .temper/specs/demo/tasks.md 2 | grep -c '^an admin refunds a paid invoice')"
+f9_tasks | m_setup
+python3 - <<'PY'
+import json; p='.temper/groups.json'; d=json.load(open(p))
+d['groups']['G1'].update(status='parked', parked_reason='Task 1 failed 3 attempts')
+d.setdefault('tasks', {})['1'] = {'group': 'G1', 'status': 'failed', 'attempt': 3}
+json.dump(d, open(p, 'w'))
+PY
+assert_eq "9.8.0: the park question recommends running the task again the first time" "Run the task again (Recommended)" "$(nx "d['ask']['question']['options'][0]['label']")"
+python3 - <<'PY'
+import json; p='.temper/groups.json'; d=json.load(open(p))
+d['tasks']['1']['reopened'] = [{'ts': '2026-11-05T13:21:37Z', 'feedback': None}]
+json.dump(d, open(p, 'w'))
+PY
+assert_eq "9.8.0: a group parked again after a rerun recommends Loop back to Plan, and still offers the rerun" "Loop back to Plan (Recommended)|1|1" \
+  "$(nx "d['ask']['question']['options'][0]['label']")|$(nx "d['ask']['question']['question']" | grep -c 'parked again after a rerun')|$(labels | grep -c 'Run the task again')"
+_at_lock() { fresh; mkdir -p .temper/specs/demo/acceptance; printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ac01(self):\n        self.assertEqual(1, 2)\n' > .temper/specs/demo/acceptance/test_ac.py; }
+_at_lock
+assert_eq "9.8.0: acceptance lock refuses a command that cannot run here, and names why" "1|1" \
+  "$("$TEMPER" acceptance lock --cmd "nosuchrunner-x .temper/specs/demo/acceptance" >/dev/null 2>&1; echo $?)|$("$TEMPER" acceptance lock --cmd "nosuchrunner-x ." 2>&1 | grep -c 'cannot run here (command not found)')"
+mkdir -p empty_tests
+assert_exit "9.8.0: acceptance lock refuses a command that collects no test" 1 "$TEMPER" acceptance lock --cmd "python3 -m unittest discover -s empty_tests"
+assert_exit "9.8.0: acceptance lock takes tests that fail, as they do before the feature is built" 0 "$TEMPER" acceptance lock --cmd "python3 -m unittest discover -s .temper/specs/demo/acceptance -t .temper/specs/demo/acceptance"
+rm -rf empty_tests

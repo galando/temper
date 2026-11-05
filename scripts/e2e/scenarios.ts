@@ -607,6 +607,8 @@ export const fixRun = (w: World): void => {
   }
   // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question
   agents['temper:temper-rca']!(w, {})
+  // 9.8.0 (round 5): the CLI draws the RCA panel from the file the agent wrote; commands/fix.md prints it
+  expect(w.sh(`${TEMPER} panel rca ${bug}/rca.md`).includes('| RCA: the shape drops the verdict'), 'the CLI drew the RCA panel from rca.md')
   const asked: string[] = []
   orchestrate(w, script({
     agents,

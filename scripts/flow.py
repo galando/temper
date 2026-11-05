@@ -972,6 +972,9 @@ class Builder:
         r = self.r
         models = r.ctx.get("models") or {}
         lines = ["Follow %s/agents/%s.md exactly." % (self.plugin, stage)]
+        if stage in ("plan", "design"):
+            # 9.8.0 (round 5): the CLI's map of the code the request reaches, made by the action's own call (temper brief).
+            lines.append("Project brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).")
         if stage == "intent" and r.state.get("feature"):
             # The request as typed, with one period after it unless it already ends a sentence (round 5: a request that
             # ended with a period got two, a session tidied them to one, and its launch was refused as another prompt).
@@ -1095,9 +1098,12 @@ class Builder:
             # 9.8.0: the CLI runs Check's suite, coverage and mutation score while Review reads the change (Review writes
             # no code); Check adopts that run when the tree is unchanged.
             a["before"] = (a.get("before") or []) + [self.c("check ahead")]
+        if stage in ("plan", "design"):
+            # 9.8.0 (round 5): the CLI draws the stage's panel from the files the agent wrote; the agent draws none.
+            a["after"].append(self.c("panel %s" % stage))
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
         a["gate"] = a["after"][-1]
-        return {"action": "work", "stage": stage, "calls": [], "agents": [a],
+        return {"action": "work", "stage": stage, "calls": [self.c("brief")] if stage in ("plan", "design") else [], "agents": [a],
                 "say": "%s: the %s agent is working%s. %s" % (LABEL.get(stage, stage), LABEL.get(stage, stage), on_model([a]), goes_on(False))}
 
     ACC_LOCK = os.path.join(TEMPER, "evidence", "acceptance-lock.json")
@@ -1630,13 +1636,21 @@ class Builder:
                     self.save()]
             text = "Group %s is parked: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
         else:
-            opts = [self.opt("Run the task again (Recommended)", "The parked tasks run again, from Haiku.", move="redo",
-                             calls=[self.c("group reopen %s %s" % (gid, targs))])]
+            # 9.8.0 (round 5): a group that parks again after the person ran it again failed every model twice over: the
+            # plan is the likelier cause, so Loop back to Plan is the recommended answer then (a measured run reran a
+            # task whose gate ran a test a later task writes, and parked five times).
+            again = r.can_loop("build", "plan") and any((r.groups.get("tasks", {}).get(str(n)) or {}).get("reopened") for n in tasks)
+            rerun = self.opt("Run the task again" + ("" if again else " (Recommended)"), "The parked tasks run again, from Haiku.", move="redo",
+                             calls=[self.c("group reopen %s %s" % (gid, targs))])
+            opts = [] if again else [rerun]
             if r.can_loop("build", "plan"):
-                opts.append(self.opt("Loop back to Plan", "The plan cannot be built as written.", move="back",
+                opts.append(self.opt("Loop back to Plan" + (" (Recommended)" if again else ""), "The plan cannot be built as written.", move="back",
                                      calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
+            if again:
+                opts.append(rerun)
             opts.append(self.save())
-            text = "Group %s is parked (%s). Run the task again?" % (gid, str(g.get("parked_reason", ""))[:200])
+            text = ("Group %s is parked again after a rerun (%s). Loop back to Plan?" if again else
+                    "Group %s is parked (%s). Run the task again?") % (gid, str(g.get("parked_reason", ""))[:200])
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
 
     # -- the end of the run --------------------------------------------------------------------

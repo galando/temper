@@ -1,7 +1,7 @@
 ---
 description: "Root cause analysis + structured fix"
 argument-hint: "<bug-description-or-JIRA-123>"
-model: sonnet
+model: haiku
 ---
 
 # Fix: RCA → Fix → Review → Check
@@ -40,19 +40,22 @@ With no arguments and a fix run active (`${CLAUDE_PLUGIN_ROOT}/scripts/temper st
 prints `fix`), skip to step 2. A `/temper` run that is active is not this command's: say so in one
 line and ask its `restart` question from `temper next --json`.
 
-Launch the root cause stage with the Agent tool, `subagent_type` `temper:temper-rca` (or the general
-purpose agent), `model` from `${CLAUDE_PLUGIN_ROOT}/scripts/temper model rca`, and the prompt:
+Pick the bug's slug first (letters, digits, `.`, `_` or `-`; a ticket key keeps its case, as in
+`JIRA-123-checkout-500`). Launch the root cause stage with the Agent tool, `subagent_type`
+`temper:temper-rca` (or the general purpose agent), `model` from
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper model rca`, and the prompt:
 
 ```
 Follow ${CLAUDE_PLUGIN_ROOT}/agents/rca.md exactly. Bug: $ARGUMENTS.
+RCA file: .temper/specs/{bug-slug}/rca.md
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
 ```
 
-Print the box it returns verbatim. Save its findings to `.temper/specs/{bug-slug}/rca.md` (the slug
-is letters, digits, `.`, `_` or `-`; a ticket key keeps its case, as in `JIRA-123-checkout-500`).
-Then run, in one Bash call:
+The agent writes its findings to that file and returns one line. Then run, in one Bash call, and print
+the panel the first call prints, verbatim (the CLI draws it from `rca.md`):
 
 ```
+${CLAUDE_PLUGIN_ROOT}/scripts/temper panel rca .temper/specs/{bug-slug}/rca.md
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {bug-slug} --command fix
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage rca --model {model} --ms {ms}
 ```
@@ -72,7 +75,8 @@ it: wherever it writes the CLAUDE_PLUGIN_ROOT variable, use the folder that hold
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper). Two things are this command's own:
 
 - **A change typed at the RCA question** (for example "look at the auth module instead") runs the RCA
-  agent again with that direction, saves its findings to `rca.md` again, and asks `next` again.
+  agent again with that direction and the same `RCA file:` line, prints the panel
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper panel rca .temper/specs/{bug-slug}/rca.md` draws, and asks `next` again.
 - **The commit:** the commit message is `fix({scope}): {description}`, then the lines
   `Root cause: {explanation}` and `Regression test: {test name}`, and `Closes JIRA-123` or
   `Fixes #456` when there is one. Stage only the files the fix changed, the regression test and the

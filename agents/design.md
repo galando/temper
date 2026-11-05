@@ -10,7 +10,9 @@ is the project's `.temper/specs/{slug}` folder, never a path in the plugin folde
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/design.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-1. Load `{spec_path}/intent.md` and `{spec_path}/plan.md`.
+1. Load `{spec_path}/intent.md` and `{spec_path}/plan.md`, and in the same turn the project brief your
+   prompt names (`.temper/brief.md`, 9.8.0): the CLI's map of the code the request reaches, with its
+   tests, the conventions and the best ranked files whole. Read only what it leaves out.
 2. Read `${CLAUDE_PLUGIN_ROOT}/reference/design.md` once — the full methodology. Follow it
    exactly; nothing here overrides it.
 3. Produce `{spec_path}/design.md` as it describes — including its **Areas of Concern**
@@ -21,7 +23,7 @@ is the project's `.temper/specs/{slug}` folder, never a path in the plugin folde
    execute it and what Review finds. Run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` yourself before returning and fix
    a FAIL (add the section).
-5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
+5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the one line below to the
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
@@ -33,30 +35,14 @@ is the project's `.temper/specs/{slug}` folder, never a path in the plugin folde
   explicit `None flagged` line with the reason. Silence is not a valid claim.
 - Give each area of concern its own heading under the Areas of Concern heading (or its own list
   item): the Design question names each open one, and a line starting with `resolved:` closes it.
-- Areas of Concern come first in your panel. They are the reason the human is at this
-  gate.
+- Areas of Concern come first in the panel the CLI draws. They are the reason the human is at
+  this gate.
 - Design flags a policy conflict and names its owner. It never silently picks a side.
 
-**Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border), and it is the only box you print. Fact rows at the top, then titled sections
-(`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
-more"; omit an empty section including its divider — never a row saying "none"; wrap
-a long entry onto a continuation row indented two spaces.
+**Your panel is drawn by the CLI** (9.8.0, round 5): `temper panel design` draws the Design panel from design.md (the
+Areas of Concern, each with its `resolved:` line when it has one, the Decision Log table, and the counts of the API
+Contracts and Database Changes headings), and the orchestrator prints it. Draw no panel and no box, and write no script
+to draw one. Areas of Concern come first in it, because they are why the person is at the gate: give each concern its
+own heading under `## Areas of Concern`, and each decision its row of the Decision Log table.
 
-Return this panel (the orchestrator prints it verbatim; areas of concern come first,
-because they are why the human is at the gate). After it, on a line of its own, return
-the path to `design.md`. The key architectural decisions are the `DECISIONS` section.
-Nothing else goes outside the panel:
-
-```
-+--------------------------------------------------------------------------+
-| DESIGN — {Feature Name}                                                  |
-+--------------------------------------------------------------------------+
-| COMPONENTS: {N} new / {N} modified / {N} existing                        |
-+--- AREAS OF CONCERN (N) ---+---------------------------------------------+
-| {conflict or policy tension, with the owner who resolves it}             |
-| (when design.md says "None flagged — {why}", omit this entire section)   |
-+--- DECISIONS (N) ---+----------------------------------------------------+
-| {decision} — {rationale}                                                 |
-+--------------------------------------------------------------------------+
-```
+Return `DESIGN DONE {path to design.md}` on one line and nothing else.

@@ -58,13 +58,36 @@ def _precedes(plan, a, b):
     return a in task_deps(b, {b}) or by_n[a]["group"] in group_deps(by_n[b]["group"], {by_n[b]["group"]})
 
 
-def owners(plan):
+def cmd_files(cmd):
+    """The project files a scenario's Test command names: each path (a word with a / or a file extension), and a dotted
+    module (`unit.test_api`) as its path."""
+    out = set()
+    for tok in re.findall(r"[\w./-]+", cmd):
+        tok = tok.strip("./") if tok.startswith("./") else tok
+        if "/" in tok or re.search(r"\.[A-Za-z]{1,5}$", tok):
+            out.add(tok)
+        if re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", tok):
+            out.add(tok.replace(".", "/") + ".py")
+    return out
+
+
+def owners(plan, intent_path=None):
     """{scenario name: (task n or None, group id)}: a scenario traced to one task is owed by it; traced to several, by the
-    task all the others precede; else (no such task) by the group gate of the last of those tasks."""
+    task all the others precede; else (no such task) by the group gate of the last of those tasks.
+
+    9.8.0 (round 5): a task that writes a file the scenario's Test command runs is traced too. A Plan traced API scenarios
+    to the task that builds the domain module, while their test file came with the route's later task: that task's gate
+    could never pass, and the group parked three times over. Now the later task (or the group gate) owes it."""
     tracing = {}
     for t in plan["tasks"]:
         for name in traced(t):
             tracing.setdefault(name, []).append(t)
+    for b in blocks(intent_path) if intent_path else []:
+        if b["name"] in tracing and b["cmd"].strip():
+            files = cmd_files(b["cmd"])
+            for t in plan["tasks"]:
+                if t not in tracing[b["name"]] and files & set(t.get("files") or []):
+                    tracing[b["name"]].append(t)
     out = {}
     for name, ts in tracing.items():
         if len(ts) == 1:
@@ -77,14 +100,14 @@ def owners(plan):
 
 def owed(plan, intent_path, n):
     """[(name, cmd)] Task n owes at its gate."""
-    own = owners(plan)
+    own = owners(plan, intent_path)
     return [(b["name"], b["cmd"]) for b in blocks(intent_path) if b["cmd"].strip() and own.get(b["name"], (0,))[0] == n]
 
 
 def group_owed(plan, intent_path, gid):
     """[(name, cmd)] the group gate runs on the merged group branch: what a task of the group owes, and what has no single
     task to owe it."""
-    own = owners(plan)
+    own = owners(plan, intent_path)
     return [(b["name"], b["cmd"]) for b in blocks(intent_path)
             if b["cmd"].strip() and b["name"] in own and own[b["name"]][1] == gid]
 

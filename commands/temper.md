@@ -1,7 +1,7 @@
 ---
 description: "Unified SDLC command: intent → plan → design? → build → review → check → commit, gated by the temper CLI"
 argument-hint: "<feature-description>"
-model: sonnet
+model: haiku
 ---
 
 # Temper
@@ -78,8 +78,9 @@ chose are yours to run, as below. When it prints `action: error`, say its `say` 
     moment the agent returns; the agents of one action go in one message, so they still run at once.
     When it returns, print the box it returns verbatim, then run its `after` calls: `{ms}` (how long the agent
     ran, in milliseconds) comes from the Agent result, or, for an agent run in the background, from the
-    `duration_ms` of its completion notice, and is `none` only when neither gave a value. Then go on
-    with the loop in the same turn.
+    `duration_ms` of its completion notice, and is `none` only when neither gave a value. An agent whose
+    `after` calls hold `temper panel` returns one line and draws no box: print the panel that call prints,
+    verbatim, in place of its box. Then go on with the loop in the same turn.
   - **An agent the tool runs in the background anyway:** say in one line what is running, that the run
     goes on when it returns, that if it waits after the agent finished, any message moves it on, and
     that `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, which the person sets, keeps agents in the foreground.

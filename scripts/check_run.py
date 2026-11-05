@@ -446,6 +446,27 @@ def acc_copy_dir(lockfile):
     return os.path.join(os.path.dirname(lockfile), "acceptance-locked")
 
 
+# The signs that a test command cannot run at all, as opposed to tests that fail (the expected state at the lock): the
+# shell found no program, the test runner itself is not installed, or the runner found no test to run.
+CANNOT_RUN = re.compile(r"command not found|No module named '?(pytest|nose2?|tox|hypothesis)'?\b|Cannot find module '(jest|vitest|mocha)'|"
+                        r"\bNO TESTS RAN\b|^Ran 0 tests\b|no tests ran\b|No tests found", re.M | re.I)
+
+
+def cannot_run(root, cmd, timeout=300):
+    """9.8.0 (round 5): why the acceptance command cannot run here, or None. A measured run locked `python3 -m pytest` with
+    pytest not installed: Check could never pass, and only the person could reopen the lock. Tests that fail are fine (the
+    feature is not built yet); a timeout is no proof either way, and passes."""
+    out, rc = run_env.run_cmd(root, timeout, [cmd])
+    text = out.decode("utf-8", "replace")[-4000:]
+    if rc == 124:
+        return None
+    m = CANNOT_RUN.search(text)
+    if rc in (126, 127) or m or ("pytest" in cmd and rc in (4, 5)):
+        line = (m.group(0) if m else "exit %d" % rc).strip()
+        return "the command cannot run here (%s)" % line[:120]
+    return None
+
+
 def acc_lock(root, spec, lockfile, cmd):
     folder = os.path.join(root, spec, "acceptance")
     files = _digests(folder, root) if os.path.isdir(folder) else {}
@@ -469,6 +490,11 @@ def acc_lock(root, spec, lockfile, cmd):
         if missing:
             print("FAIL: no acceptance test names the state(s) %s that intent.md lists (**States:**); add a test that brings a record into each and reads it back" % ", ".join(missing), file=sys.stderr)
             return 1
+    why = cannot_run(root, cmd)
+    if why:
+        print("FAIL: %s: lock the acceptance tests with a command that runs in this project (the runner the project's own "
+              "tests use), and lock again" % why, file=sys.stderr)
+        return 1
     d = acc_read(lockfile)
     same = d.get("spec") == spec
     # A lock is taken once. Only the person reopens it (the Check question's "Correct the acceptance test"), so a builder

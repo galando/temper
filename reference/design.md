@@ -53,13 +53,10 @@ Write the project's `.temper/specs/{feature}/design.md` from `${CLAUDE_PLUGIN_RO
 
 ## Step 4: Summary + Gate
 
-The panel format is owned by the design brief (`${CLAUDE_PLUGIN_ROOT}/agents/design.md`) — render exactly the panel it defines
-(76 columns, fact rows then `AREAS OF CONCERN` and `DECISIONS` titled sections; the
-concerns section is omitted entirely when design.md says "None flagged — {why}").
-Never carry a second, different box here: whichever box a clean-context stage reads
-first is the one that renders, and two shapes means two different reviews. Append
-fact rows for what the design actually has: API contracts (`+ POST /api/x — shape →
-response`), DB changes (`+ {table} — {columns}`), integration points.
+The CLI draws the Design panel (`temper panel design`, 9.8.0) from design.md: the counts of the API Contracts and
+Database Changes headings and of the open concerns, then the `AREAS OF CONCERN` (each heading, with its `resolved:`
+line or `(open)`) and `DECISIONS` (the Decision Log table's rows) sections; a "None flagged" Areas of Concern gives no
+concerns section. This stage draws no box: it returns `DESIGN DONE {path to design.md}`.
 
 Any flagged concern is presented **first** at the gate — it is the reason the human is
 here. Write each concern as its own heading under Areas of Concern (or its own list item

@@ -130,7 +130,8 @@ How the CLI counts it:
 ## Answering the fresh review
 
 When the person chooses **Revise the plan**, you run again with a `Fresh review findings to answer`
-line. Answer each finding in one of four ways, and say which in your panel's DECISIONS:
+line. Answer each finding in one of four ways, and say which in the lines you return (`#{id}: fixed`, `contested`,
+`escalated` or `left`):
 
 - **Fix it** in tasks.md or plan.md (the usual answer). The changed tasks.md makes the review run
   again on the new text.
@@ -290,10 +291,10 @@ practice and which alternative it beat. Mirror each as one line in the summary b
 Generate a mermaid diagram in `plan.md`'s `## Diagram` section (flowchart for component/
 data flow, `stateDiagram-v2` for lifecycles, `sequenceDiagram` for cross-boundary calls,
 `classDiagram` for type hierarchies) — under 30 nodes, `classDef` color-coding new vs.
-existing vs. modified when it helps. Render the diagram as ASCII box-drawing art right
-after the terminal summary panel too, as the one drawing allowed beside that panel (the
-terminal can't render mermaid); keep the mermaid block in
-plan.md for GitHub/tool rendering.
+existing vs. modified when it helps. Right after the mermaid block, write the same diagram as
+ASCII box-drawing art in a fenced `text` block (under 80 columns): the terminal cannot render
+mermaid, and `temper panel plan` prints that block after the Plan panel. Keep the mermaid block
+for GitHub and tool rendering.
 
 ## Grouped tasks
 
@@ -373,7 +374,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan
 `temper risk` computes the rating from the blast radius, so the same blast radius always gives the same rating:
 production files (declared files that are not tests or docs) up to 3 is L, up to 10 is M, more is H; a CRITICAL entry
 in `.temper/security-map.json` is H; a HIGH entry, or a `[CROSS-REPO]` row in the Blast Radius section, moves it up one
-tier. The panel's RISK field is the letter it printed. To raise it, `temper risk --raise L|M|H --reason '<why>'`: a
+tier. The panel's RISK field is the letter it printed (the CLI reads it from the run state). To raise it, `temper risk --raise L|M|H --reason '<why>'`: a
 raise needs a reason and never lowers the rating.
 
 If a security-hot-path scan ran, also persist `.temper/security-map.json` (one entry per
@@ -382,14 +383,10 @@ CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `ro
 
 ## Summary Panel
 
-The panel format is owned by the plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) — render exactly the panel it defines
-(76 columns, fact rows then titled sections, one row per item, empty sections
-omitted), appending a `SECURITY: {N} CRITICAL, {N} HIGH hot paths` fact row when the
-security scan found any. Never carry a second, different box here: whichever box a
-clean-context stage reads first is the one that renders, and two shapes means two
-different reviews.
-
-Trivial: a one-line box, no gate. Simple: `Files: {N} create, {N} modify` / `Risk: {L/M}`.
+The CLI draws the Plan panel (`temper panel plan`, 9.8.0) from intent.md, plan.md, tasks.md, the run state and
+`.temper/security-map.json` (a `SECURITY: {N} CRITICAL, {N} HIGH hot paths` row when the scan found any), and prints
+the `text` block of plan.md's Diagram section after it. This stage draws no box: it returns `PLAN DONE {spec path}`,
+and after a fresh review one line per finding it answered.
 
 ## Approval
 

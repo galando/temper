@@ -966,7 +966,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     }
    ],
@@ -2967,17 +2967,17 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #5 [high] [readiness] Task 1: the Case 'expired link' names no status; #6 [high] [zoom-out] Task 2: a new mail sender where one exists.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #5 [high] [readiness] Task 1: the Case 'expired link' names no status; #6 [high] [zoom-out] Task 2: a new mail sender where one exists.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     },
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #5 [high] [readiness] Task 1: the Case 'expired link' names no status.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #5 [high] [readiness] Task 1: the Case 'expired link' names no status.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     },
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     }
    ],
