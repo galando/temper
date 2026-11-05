@@ -292,6 +292,10 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
   nothing back. In the 16 runs, 4 commands of Build agents did this: 480 seconds, 14% to 24% of each of the 3 feature
   runs it hit. Replayed through the guard, the 902 Bash commands of those runs had exactly those 4 refused. It acts
   only in a folder with a `.temper` folder at or above it, and fails open.
+- **Measured** (`docs/evidence/bench-2026-11.md`, 10 runs): no command hung, and a Build task agent took 122 s on
+  average against 193 s. A whole run moved less than its run to run noise (6% to 10% faster with the mod on the two
+  feature tasks). Every hidden test passed. The same page has the seven other benchmark tasks on this code against
+  vanilla Claude Code: vanilla met all 84 hidden tests, Temper 82, at 3 to 13 times the cost.
 
 **Build: three defects of a measured run**
 - **A scenario is owed by the task that writes its test file.** Plan traced API scenarios to the task that built the
