@@ -37,6 +37,8 @@ export type World = {
   // Questions the mod asked the person through the engine's dialog, in order, and the options of each.
   asked: string[]
   askedOptions: string[][]
+  // The description each option of those questions carried into the dialog ('' for none).
+  askedDescriptions: string[][]
   // Answers the person gives, in order; empty means nobody answers (a `-p` run). An answer with a note is the person's
   // note on the option (the dialog's annotation).
   answers: Answer[]
@@ -225,7 +227,7 @@ const rel = (p: string): string => {
 }
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
-  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], askedOptions: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) }, sessionId: 'conv-1' }
+  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], askedOptions: [], askedDescriptions: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) }, sessionId: 'conv-1' }
   const panes = new Map<string, boolean>()
   // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
   // The mod keeps its records (events, the report) in the store as `vf:<full path>` (see makeIo). The world
@@ -341,6 +343,7 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
       const question = questions[0]?.question ?? ''
       w.asked.push(question)
       w.askedOptions.push((questions[0] as { options?: Array<{ label?: string }> } | undefined)?.options?.map(o => o.label ?? '') ?? [])
+      w.askedDescriptions.push((questions[0] as { options?: Array<{ description?: string }> } | undefined)?.options?.map(o => o.description ?? '') ?? [])
       const answer = w.answers.shift()
       if (answer === undefined) return { deny: 'no one to ask' }
       const label = typeof answer === 'string' ? answer : answer.label

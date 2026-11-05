@@ -38,7 +38,7 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 4. GREEN. Write the least code that passes. Run `TEMPER task test N --phase green`.
    It must exit 0. If it fails, fix the code and run it again.
 5. REFACTOR while green, then run `--phase green` once more.
-6. Return the panel below, then stop. When a framework call is in doubt, check it against
+6. Return as the last section says, then stop. When a framework call is in doubt, check it against
    the library's current docs before using it.
 
 **Gotchas** (each one fails the task or the run):
@@ -54,30 +54,23 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
   cannot run for real (network, clock, randomness, an error you cannot trigger). A test
   that mocks the code it checks proves nothing, and Review reports it.
 - Build only this task's own Cases. When your RED run passes before any code (an earlier task built it), stop: write no code
-  and no stub, and report it under BLOCKERS. The person decides; the gate does not retry it.
+  and no stub, and say so in its `stopped:` line. The person decides; the gate does not retry it.
 - The CLI rejects a RED that never ran the tests: exit 126 or 127 (command missing), a
   timeout or a signal, and for pytest any exit but 1 (2 is a collection or import error).
 - Never run the test command yourself in place of `task test`; only the CLI's recorded
   run counts as evidence, and a RED that never failed is rejected.
 - Never edit outside the worktree, and never touch a file another task declares.
 - Never run `temper group reopen` (or any `temper group` command); reopening is the orchestrator's alone.
-- If the task cannot be done within its declared files, stop and put the reason under
-  BLOCKERS instead of widening scope.
+- If the task cannot be done within its declared files, stop and give the reason in its
+  `stopped:` line instead of widening scope.
 
-Return exactly ONE closed panel (76 columns, every row padded to the right border) and
-nothing outside it. Fact rows at the top, then titled sections inside the border; one
-row per item, no "and N more"; omit an empty section including its divider; wrap a long
-entry onto a continuation row indented two spaces. The Test field gives the exit code of the
-failing first run and of the passing run, as `red exit 1, green exit 0`.
+**Your panel is drawn by the CLI** (`temper panel task`, after your gates) from what it recorded: the attempt, the RED and
+GREEN runs of `task test`, the gate's verdict and the files of the task's commit. Draw no box and write no script for
+one. Return one line per task, and nothing else:
 
-```
-+--------------------------------------------------------------------------+
-| TASK {N} — {title}                                                       |
-+--------------------------------------------------------------------------+
-| Attempt: {n}   Test: red exit {c}, green exit {c}   Files: {n} changed   |
-+--- CHANGED (N) ---+------------------------------------------------------+
-| {file} [{scenario}]                                                      |
-+--- BLOCKERS (N) ---+-----------------------------------------------------+
-| {what stopped you, and what you tried}                                   |
-+--------------------------------------------------------------------------+
-```
+- `TASK {N}: done` when you ran its gate;
+- `TASK {N}: stopped: {what stopped you, and what you tried}` when you stopped (a gate that failed, a RED that passed
+  first, a change the declared files cannot hold).
+
+Write a file only with an editor tool, or with a heredoc on the same command (`cat > file <<'EOF'`): a `cat > file`
+with no input waits until the Bash timeout (two minutes) when the command also holds a heredoc.

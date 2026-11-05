@@ -3,6 +3,7 @@
   python3 panel.py plan SPEC_DIR PROJECT     the Plan panel, then the plan's diagram
   python3 panel.py design SPEC_DIR           the Design panel
   python3 panel.py rca RCA_MD                the RCA panel (rca.md as the RCA agent writes it)
+  python3 panel.py task SPEC_DIR PROJECT N... each Build task's panel, from tasks.md, groups.json and the build ledger
 
 Before, each Opus agent drew its own 76 column box (a Python script to pad the rows, then the box again as its last
 message): 2,000 to 3,000 output tokens and 30 to 40 seconds a stage, for text the CLI can draw from the files. The CLI
@@ -14,11 +15,13 @@ Standard library only.
 import json
 import os
 import re
+import subprocess
 import sys
 import textwrap
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import acceptance  # noqa: E402
+import scenario_ops  # noqa: E402
 import tasks_md  # noqa: E402
 
 WIDTH = 76
@@ -221,6 +224,58 @@ def rca(path):
     return box("RCA: %s" % title, facts, [("BLAST RADIUS", items("Blast radius")), ("READ FIRST", items("Read first"))])
 
 
+def load_json(path, default):
+    try:
+        return json.load(open(path, encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
+def task(spec, project, ns):
+    """Each Build task's panel, from what the CLI recorded: the attempt, the RED and GREEN runs of the CLI (`task test`),
+    the gate's verdict and reason, the files of the task's commit and the scenarios it owes. Before, each Build task agent
+    drew this box itself: a Python script to pad it, then the box (about a minute of a Haiku agent, and a command that
+    could hang until the Bash timeout)."""
+    plan = tasks_md.parse(os.path.join(spec, "tasks.md"))
+    run = load_json(os.path.join(project, ".temper", "groups.json"), {})
+    rows = load_json(os.path.join(project, ".temper", "evidence", "build.json"), [])
+    rows = rows if isinstance(rows, list) else []
+    intent = os.path.join(spec, "intent.md")
+    out = []
+    for n in ns:
+        t = next((x for x in plan.get("tasks", []) if x.get("n") == n), None)
+        if t is None:
+            out.append("(no Task %d in tasks.md)" % n)
+            continue
+        rt = ((run.get("tasks") if isinstance(run, dict) else None) or {}).get(str(n)) or {}
+        atts = rt.get("attempts") or []
+        last = atts[-1] if atts and isinstance(atts[-1], dict) else {}
+        status = rt.get("status", "pending")
+        attempt = rt.get("attempt") if status == "running" else (last.get("n") or rt.get("attempt") or 1)
+        mine = [r for r in rows if isinstance(r, dict) and r.get("task") == n and r.get("attempt") == attempt
+                and r.get("executed_by") == "cli"]
+        red = next((r.get("exit_code") for r in mine if r.get("phase") == "red"), None)
+        green = next((r.get("exit_code") for r in reversed(mine) if r.get("phase") == "green"), None)
+        verdict = {"passed": "PASS", "covered": "COVERED (an earlier task built it)", "running": "not judged yet"}.get(
+            status, last.get("outcome") or status.upper())
+        changed = []
+        if rt.get("commit"):
+            r = subprocess.run(["git", "-C", project, "show", "--name-only", "--format=", rt["commit"]],
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            changed = [x for x in r.stdout.decode("utf-8", "replace").split("\n") if x.strip()][:20]
+        try:
+            owed = [name for name, _ in scenario_ops.owed(plan, intent, n)]
+        except Exception:  # the panel only shows: a scenario it cannot read is left out
+            owed = []
+        facts = ["Attempt: %s   Test: red exit %s, green exit %s   Gate: %s" % (
+            attempt, "none" if red is None else red, "none" if green is None else green, verdict)]
+        why = [last.get("reason")] if last.get("outcome") == "FAIL" and last.get("reason") and status != "passed" else []
+        out += box("TASK %d: %s" % (n, plain(t.get("title") or "")), facts,
+                   [("CHANGED" if changed else "DECLARED", changed or list(t.get("files") or [])),
+                    ("SCENARIOS", owed), ("WHY IT FAILED", why)])
+    return out
+
+
 def main(argv):
     if len(argv) >= 4 and argv[1] == "plan":
         out = plan(argv[2], argv[3])
@@ -228,8 +283,10 @@ def main(argv):
         out = design(argv[2])
     elif len(argv) >= 3 and argv[1] == "rca":
         out = rca(argv[2])
+    elif len(argv) >= 5 and argv[1] == "task" and all(a.isdigit() for a in argv[4:]):
+        out = task(argv[2], argv[3], [int(a) for a in argv[4:]])
     else:
-        print("usage: panel.py plan SPEC_DIR PROJECT | design SPEC_DIR | rca RCA_MD", file=sys.stderr)
+        print("usage: panel.py plan SPEC_DIR PROJECT | design SPEC_DIR | rca RCA_MD | task SPEC_DIR PROJECT N...", file=sys.stderr)
         return 1
     print("\n".join(out))
     return 0

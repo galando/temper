@@ -251,9 +251,18 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
 - The e2e driver gains a third mode, `driver` (`bun scripts/e2e/run.ts all`): the same 20 scenarios carried by the run
   driver's core, the real CLI's setup included. It found the half done steps above, and a scenario that wrote the pull
   request body into the project (`reference/pr.md` says `mktemp`), which the commit hook the setup installs refuses.
-- What the question dialog of a mod cannot show (each option's description, the Context check's table) is printed
-  just above the question; an interrupt stops the driver between steps and while it waits on an agent, with no model
-  turn after it; a CLI call streams, so a long Check inside `temper go` has no time cap.
+- The driver's question dialog shows each option's description and its preview (the Context check's table): `$.ui.ask`
+  takes labels alone, and the mod's own tool call hook gives the AskUserQuestion it raises the CLI's descriptions and
+  previews back (a live probe confirmed the dialog receives them). An interrupt stops the driver between steps and
+  while it waits on an agent, with no model turn after it; a CLI call streams, so a long Check inside `temper go` has
+  no time cap.
+- **Checked in an interactive terminal** (Claude Code 2.1.318, tmux): `/temper:fix` held the command while the root
+  cause agent worked, the agent's permission prompts reached the person, and the gate dialog showed each option's
+  description. Two defects showed there and nowhere headless, both fixed: a panel logged in one call was drawn as one
+  row with marks for its line breaks and cut at 2000 characters (now logged a row at a time), and at Esc the read of
+  the aborted child threw, which the driver took for a failure and handed to the conversation (now it is the stop, with
+  no model turn after it). Probes in the same terminal confirmed both fixes and a hand back (`next` with new words).
+  The rest of that run was not taken further: answering a permission prompt is the person's.
 - The mod's reviewed calls gain `agent.spawn`, `ui.ask`, `ui.log`, `clock.now` and `process.spawn` (the one process
   call, for the CLI's calls): `scripts/check-mod-calls.sh`, `docs/mod.md`, `docs/trust.md`.
 - Measured on vague-refunds (2 live runs, `docs/evidence/bench-2026-11.md`): the run the driver carried to the
@@ -269,6 +278,20 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
   $0.45 to $0.50 in 88 to 110 s, a feature $1.93 to $2.28 in 11 to 14 minutes (means), 31% to 55% less than before
   round 5 on three tasks. Without the mod the Sonnet loop stayed on the script in all 8 runs, at $0.28 to $0.97 of main
   session a run.
+
+**Build: faster, from where the measured time went**
+- **The CLI draws each Build task's panel** (`temper panel task N...`, after the task gates) from what it recorded:
+  the attempt, the RED and GREEN runs of `task test`, the gate's verdict and reason, the files of the task's commit and
+  the scenarios the task owes. A Build task agent drew the 76 column box itself, with a Python script to pad it: about
+  a minute of each Haiku Build agent's three, in the 16 runs of the shipped code, and the driver never showed that box.
+  The agent now returns one line a task (`TASK N: done`, or `TASK N: stopped: why`), and the driver shows a stopped
+  line, the one thing the CLI cannot know.
+- **A command that would wait for input until the Bash timeout is refused** (`scripts/guards/block-stdin-wait.sh`, a
+  `PreToolUse` hook on Bash in the plugin's hooks, with the mod or without it). Claude Code runs a command that holds a
+  heredoc with its input left open, so a `cat > file` with no input in it waits two minutes, and the agent gets
+  nothing back. In the 16 runs, 4 commands of Build agents did this: 480 seconds, 14% to 24% of each of the 3 feature
+  runs it hit. Replayed through the guard, the 902 Bash commands of those runs had exactly those 4 refused. It acts
+  only in a folder with a `.temper` folder at or above it, and fails open.
 
 **Build: three defects of a measured run**
 - **A scenario is owed by the task that writes its test file.** Plan traced API scenarios to the task that built the

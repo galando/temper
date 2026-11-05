@@ -50,14 +50,46 @@ const MAX_TURNS = 300
 export const STOPPED = 'Temper: stopped at your interrupt. The run is saved where the CLI shows it; an agent launched before it may ' +
   'still be finishing. /temper:temper takes the run up again.'
 
-// What the dialog cannot show (a mod's question dialog takes labels alone): each option's description, and the preview the
-// options share (the Context check's table), as lines printed above the question. Empty when there is nothing to add.
-export function optionLines(q: GoQuestion): string {
-  const described = q.options.filter(o => (o.description ?? '').trim() !== '')
-  const preview = q.options.map(o => o.preview ?? '').find(p => p.trim() !== '') ?? ''
-  if (described.length === 0 && preview === '') return ''
-  const rows = described.map(o => `  ${o.label}: ${(o.description ?? '').trim()}`)
-  return [preview.trim(), rows.length > 0 ? `${q.header}, the choices:` : '', ...rows].filter(l => l !== '').join('\n')
+// The dialog's question, filled in: a mod's `$.ui.ask` raises the engine's AskUserQuestion with the labels alone, and the
+// mod's tool.call hook gives each option back its description and preview (the Context check's table) from the CLI's
+// question, so the person reads in the dialog itself what each choice does. Null when the call is not this question
+// (another text, or other labels): it is then passed on as it is.
+export function dialogQuestions(questions: unknown, q: GoQuestion): unknown[] | null {
+  if (!Array.isArray(questions) || questions.length !== 1) return null
+  const first = questions[0] as { question?: unknown; options?: unknown }
+  if (first.question !== q.question || !Array.isArray(first.options)) return null
+  const want = labelsOf(q)
+  const opts = first.options as Array<Record<string, unknown>>
+  if (opts.length !== want.length || opts.some((o, i) => o.label !== want[i])) return null
+  return [{
+    ...first,
+    options: opts.map((o, i) => {
+      const src = q.options[i]!
+      const d = (src.description ?? '').trim()
+      const p = src.preview ?? ''
+      return { ...o, ...(d !== '' ? { description: d } : {}), ...(p.trim() !== '' ? { preview: p } : {}) }
+    }),
+  }]
+}
+
+// A throw out of the driver. At the person's interrupt the engine aborts the child the driver was reading, and the read
+// throws: that is the stop, with no model turn after it. Any other throw hands the run to the conversation, which takes
+// it up from the CLI's state.
+export function driverThrew(x: unknown, interrupted: boolean): DriveEnd {
+  if (interrupted) return { kind: 'done', text: STOPPED }
+  return { kind: 'handback', args: 'next', why: `the driver stopped: ${String(x).slice(0, 120)}` }
+}
+
+// A text as the rows `$.ui.log` can draw: one row a line (a line break inside a row is drawn as a mark), each at most
+// 2000 characters (the terminal cuts a row there), trailing blank lines left out. A blank line inside stays a row of
+// one space, so a report keeps its paragraphs.
+export function logRows(text: string): string[] {
+  const out: string[] = []
+  for (const line of text.replace(/\s+$/, '').split(/\r?\n/)) {
+    if (line.length === 0) out.push(' ')
+    for (let i = 0; i < line.length; i += 2000) out.push(line.slice(i, i + 2000))
+  }
+  return out
 }
 
 // The last line of `temper go` that is a JSON object, or null.
@@ -256,6 +288,9 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
         for (const [id, a] of ids) {
           const end = ends[id] ?? { text: '', ms: null }
           if (hasDrift(end.text)) drift = true
+          // What stopped a Build task agent is the one thing the CLI did not record: its own line, shown as it wrote it.
+          const stoppedLines = end.text.split('\n').filter(l => /^\s*TASK \d+: stopped:/.test(l)).map(l => l.trim())
+          if (stoppedLines.length > 0) yield* show(stoppedLines.join('\n'))
           for (const c of a.after ?? []) {
             const r = yield* run(fill(c, { ms: end.ms === null ? 'none' : String(Math.round(end.ms)) }))
             if (/ panel [a-z]+/.test(c) && r.code === 0) yield* show(r.out)

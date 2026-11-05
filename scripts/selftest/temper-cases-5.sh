@@ -1173,8 +1173,8 @@ assert_eq "task brief: frontmatter name and model" "temper-build-task|claude-hai
 assert_eq "model task reads the brief frontmatter as the default" "claude-haiku-5-5" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
 assert_eq "plugin.json lists ./agents/build-task.md" "1" "$(python3 -c "import json; print(int('./agents/build-task.md' in json.load(open('$REPO_ROOT/.claude-plugin/plugin.json'))['agents']))")"
 # Scenario: Grouped logic stays in the briefs and the CLI [AC-05]
-assert_eq "task brief: states the panel rule and the plugin folder rule" "1|1" \
-  "$(grep -ciE 'exactly one closed panel' "$TB" 2>/dev/null | head -1 | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Plugin folder' "$TB" 2>/dev/null | sed 's/^[1-9][0-9]*$/1/')"
+assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plugin folder rule" "1|1" \
+  "$(grep -c 'Your panel is drawn by the CLI.*temper panel task' "$TB" 2>/dev/null | head -1 | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Plugin folder' "$TB" 2>/dev/null | sed 's/^[1-9][0-9]*$/1/')"
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"

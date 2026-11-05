@@ -1,7 +1,7 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { STOPPED, drive, driveFix, fill, fixSlug, hasDrift, optionLines, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, dialogQuestions, drive, driverThrew, logRows, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 
 const CLI = '/p/scripts/temper'
@@ -134,6 +134,19 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran).toContain(`${CLI} task gate 1 --model haiku`)
   })
 
+  test('a Build task agent: the CLI draws its panel after the gates, and only a stopped line of the agent is shown', async () => {
+    const b = agent('temper:temper-build-task', [`${CLI} task gate 1 --model haiku --if-running`, `${CLI} task gate 2 --model haiku --if-running`, `${CLI} panel task 1 2`])
+    const { p, log } = port({
+      goes: [{ action: 'work', agents: [b] }, { action: 'none', say: 'end' }],
+      ends: { ag1: { text: 'TASK 1: done\n  TASK 2: stopped: the RED run passed first; Task 1 built it', ms: 5 } },
+      out: call => (call.endsWith('panel task 1 2') ? 'PANEL 1 2' : ''),
+    })
+    const end = await drive(p, CLI, null)
+    expect(end).toEqual({ kind: 'done', text: 'end' })
+    expect(log.ran.filter(c => / task gate | panel task /.test(c))).toEqual([`${CLI} task gate 1 --model haiku --if-running`, `${CLI} task gate 2 --model haiku --if-running`, `${CLI} panel task 1 2`])
+    expect(log.shown).toEqual(['TASK 2: stopped: the RED run passed first; Task 1 built it', 'PANEL 1 2'])
+  })
+
   test('the report steps: CLI calls run and the report is shown as printed', async () => {
     const { p, log } = port({
       goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Copy what temper report printed into your reply, as it printed it.'] }, { action: 'none', say: 'end' }],
@@ -225,13 +238,43 @@ describe('the person interrupts', () => {
   })
 })
 
-describe('what the dialog cannot show', () => {
-  test('each option\'s description and the shared preview are printed above the question', () => {
-    const q = { header: 'Temper gate', question: 'Plan: approve?', options: [
+describe('a throw out of the driver', () => {
+  test('at the interrupt it is the stop, with no hand back; otherwise the conversation takes the run up', () => {
+    expect(driverThrew(new Error('$.process.spawn(bash) aborted'), true)).toEqual({ kind: 'done', text: STOPPED })
+    expect(driverThrew(new Error('boom'), false)).toEqual({ kind: 'handback', args: 'next', why: 'the driver stopped: Error: boom' })
+  })
+})
+
+describe('what the driver shows, as the rows the terminal draws', () => {
+  test('a panel is one row a line, a blank line stays a row, trailing blanks go, and a long line is cut in rows of 2000', () => {
+    expect(logRows('+--+\n| a |\n+--+\n\n')).toEqual(['+--+', '| a |', '+--+'])
+    expect(logRows('Report\n\nNext: commit\r\nDone')).toEqual(['Report', ' ', 'Next: commit', 'Done'])
+    const long = 'x'.repeat(4500)
+    expect(logRows(long).map(r => r.length)).toEqual([2000, 2000, 500])
+  })
+})
+
+describe('the dialog of the driver\'s question', () => {
+  const q = { header: 'Temper gate', question: 'Plan: approve?', options: [
+    { label: 'Approve (Recommended)', description: 'Go on to Design.', preview: '| a | b |' },
+    { label: 'Save for later', description: ' Stop here. ' }] }
+  const raised = [{ question: 'Plan: approve?', header: 'Temper gate', multiSelect: false,
+    options: [{ label: 'Approve (Recommended)', description: '' }, { label: 'Save for later', description: '' }] }]
+
+  test('each option gets its description and its preview back from the CLI\'s question', () => {
+    expect(dialogQuestions(raised, q)).toEqual([{ question: 'Plan: approve?', header: 'Temper gate', multiSelect: false, options: [
       { label: 'Approve (Recommended)', description: 'Go on to Design.', preview: '| a | b |' },
-      { label: 'Save for later', description: 'Stop here.', preview: '| a | b |' }] }
-    expect(optionLines(q)).toBe('| a | b |\nTemper gate, the choices:\n  Approve (Recommended): Go on to Design.\n  Save for later: Stop here.')
-    expect(optionLines({ header: 'Question 1', question: 'Who?', options: [{ label: 'Admins' }, { label: 'Carry forward', description: '' }] })).toBe('')
+      { label: 'Save for later', description: 'Stop here.' }] }])
+  })
+
+  test('an option with no description keeps what it had, and a call that is not this question is passed on as it is', () => {
+    const bare = { header: 'Question 1', question: 'Who?', options: [{ label: 'Admins' }, { label: 'Carry forward', description: '' }] }
+    const who = [{ question: 'Who?', options: [{ label: 'Admins', description: '' }, { label: 'Carry forward', description: '' }] }]
+    expect(dialogQuestions(who, bare)).toEqual(who)
+    expect(dialogQuestions([{ ...raised[0], question: 'Another?' }], q)).toBe(null)
+    expect(dialogQuestions([{ ...raised[0], options: [{ label: 'Save for later' }, { label: 'Approve (Recommended)' }] }], q)).toBe(null)
+    expect(dialogQuestions([...raised, ...raised], q)).toBe(null)
+    expect(dialogQuestions('not a list', q)).toBe(null)
   })
 })
 

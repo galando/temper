@@ -5231,7 +5231,8 @@ main() {
     panel) case "${1:-}" in   # 9.8.0: a stage's panel, drawn from the files it wrote (scripts/panel.py)
             plan|design) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" "$1" "$(_spec_path "")" "$REPO_ROOT") ;;
             rca) [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper panel rca <rca.md>" >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" rca "$2") ;;
-            *) echo "FAIL: usage: temper panel plan | design | rca <rca.md>" >&2; false ;;
+            task) shift; [[ $# -gt 0 ]] || { echo "FAIL: usage: temper panel task <N>..." >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" task "$(_spec_path "")" "$REPO_ROOT" "$@") ;;
+            *) echo "FAIL: usage: temper panel plan | design | rca <rca.md> | task <N>..." >&2; false ;;
           esac ;;
     ""|-h|--help)
       cat <<'EOF'
@@ -5242,7 +5243,7 @@ Usage:
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
-  temper panel plan | design | rca <rca.md>   (the stage's panel, drawn from its files)
+  temper panel plan | design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
   temper brief [--text TEXT | --stdin]   (.temper/brief.md: the code the request reaches, for Plan, Design, RCA)
   temper model <intent|plan|design|build|review|check|rca|fix> | --all
   temper override <stage> --reason "..."

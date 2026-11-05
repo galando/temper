@@ -298,3 +298,46 @@ _rc16 '- Who: asked\n- When: not applicable (a CLI flag has no time rule)\n- How
 assert_eq "9.8.0: not applicable with a reason of the feature itself passes, and so does a later item assumed" "PASS" "$(_rcr | cut -d'|' -f1)"
 _rc16 '- Who: asked\n- When: asked\n- How much: assumed (house rule: CONVENTIONS.md caps every amount)\n- States: assumed\n- Where it shows: assumed\n- Exceptions: assumed'
 assert_eq "9.8.0: a first three item assumed while no later item was asked passes (the six questions went to the first three)" "PASS" "$(_rcr | cut -d'|' -f1)"
+
+# --- 9. A command that would wait for input until the Bash timeout is refused (block-stdin-wait.sh) ---
+_sw() { # _sw <cwd> <command>: the guard's exit code for this Bash call
+  python3 -I -c 'import json,sys; print(json.dumps({"tool_name": "Bash", "cwd": sys.argv[1], "tool_input": {"command": sys.argv[2]}}))' "$1" "$2" \
+    | bash "$REPO_ROOT/scripts/guards/block-stdin-wait.sh" >/dev/null 2>&1; echo $?
+}
+fresh; mkdir -p deep/er
+_SW_HANG=$'cat > /tmp/x 2>/dev/null; python3 - <<\'EOF\'\nprint(1)\nEOF'
+assert_eq "9.8.0: a bare cat in a command with a heredoc is refused, from the project and from a folder below it" "2|2" \
+  "$(_sw "$WORKDIR" "$_SW_HANG")|$(_sw "$WORKDIR/deep/er" "$_SW_HANG")"
+assert_eq "9.8.0: cat with its own heredoc, of a file, after a pipe or from a file passes; so does a bare cat with no heredoc" "0|0|0|0|0" \
+  "$(_sw "$WORKDIR" $'cat > f.py <<\'EOF\'\ncat x\nEOF\npython3 f.py')|$(_sw "$WORKDIR" $'cat a > b; python3 - <<EOF\nEOF')|$(_sw "$WORKDIR" $'echo hi | cat > b; python3 - <<EOF\nEOF')|$(_sw "$WORKDIR" $'cat < a > b; python3 - <<EOF\nEOF')|$(_sw "$WORKDIR" 'cat > /tmp/x')"
+assert_eq "9.8.0: a bare cat inside a heredoc body, in quotes, or outside a Temper project passes" "0|0|0" \
+  "$(_sw "$WORKDIR" $'python3 - <<\'EOF\'\ncat > x\nEOF')|$(_sw "$WORKDIR" $'echo \'cat > x\'; python3 - <<EOF\nEOF')|$(_sw / "$_SW_HANG")"
+assert_eq "9.8.0: the refusal says why and what to do instead" "1" \
+  "$(python3 -I -c 'import json,sys; print(json.dumps({"cwd": sys.argv[1], "tool_input": {"command": sys.argv[2]}}))' "$WORKDIR" "$_SW_HANG" \
+     | bash "$REPO_ROOT/scripts/guards/block-stdin-wait.sh" 2>&1 >/dev/null | grep -c 'Write the file with its own heredoc')"
+rm -rf deep
+
+# --- 10. The CLI draws each Build task's panel from what it recorded; the agent draws none ---
+f9_tasks | m_setup
+mkdir -p src unit; echo a > src/a.sh; echo t > unit/a_test.sh; git add src/a.sh unit/a_test.sh; git commit -qm "task 1" >/dev/null 2>&1
+python3 - "$(git rev-parse HEAD)" <<'PY'
+import json, sys
+p = '.temper/groups.json'; d = json.load(open(p))
+d.setdefault('tasks', {})['1'] = {'status': 'passed', 'commit': sys.argv[1], 'attempts': [{'n': 1, 'outcome': 'PASS', 'reason': ''}]}
+d['tasks']['2'] = {'status': 'failed', 'attempts': [{'n': 1, 'outcome': 'FAIL', 'reason': 'no green run for this task and attempt'}]}
+json.dump(d, open(p, 'w'))
+rows = [{'task': 1, 'attempt': 1, 'phase': 'red', 'exit_code': 1, 'executed_by': 'cli'},
+        {'task': 1, 'attempt': 1, 'phase': 'green', 'exit_code': 0, 'executed_by': 'cli'},
+        {'task': 2, 'attempt': 1, 'phase': 'red', 'exit_code': 1, 'executed_by': 'cli'}]
+json.dump(rows, open('.temper/evidence/build.json', 'w'))
+PY
+_PT="$("$TEMPER" panel task 1 2)"
+assert_eq "9.8.0: a passed task's panel: its title, the attempt, both runs, the verdict, and the files of its commit" "1|1|1" \
+  "$(grep -c '^| TASK 1: first ' <<<"$_PT")|$(grep -c 'Attempt: 1   Test: red exit 1, green exit 0   Gate: PASS' <<<"$_PT")|$(grep -A1 -- '--- CHANGED (2)' <<<"$_PT" | grep -c 'src/a.sh')"
+assert_eq "9.8.0: a failed task's panel names why its gate failed, and its declared files" "1|1|1" \
+  "$(grep -c 'Test: red exit 1, green exit none   Gate: FAIL' <<<"$_PT")|$(grep -A1 -- '--- WHY IT FAILED (1)' <<<"$_PT" | grep -c 'no green run')|$(grep -c -- '--- DECLARED (2)' <<<"$_PT")"
+assert_eq "9.8.0: every row of the task panels is 76 columns" "0" "$(awk 'length($0) != 76' <<<"$_PT" | wc -l | tr -d ' ')"
+assert_eq "9.8.0: a task tasks.md does not have prints a line, and the panel never fails" "0|1" \
+  "$("$TEMPER" panel task 9 >/dev/null 2>&1; echo $?)|$("$TEMPER" panel task 9 2>&1 | grep -c 'no Task 9')"
+assert_eq "9.8.0: the Build task brief draws no box and returns one line a task" "0|1|1" \
+  "$(grep -c '^+---' "$REPO_ROOT/agents/build-task.md")|$(grep -c 'TASK {N}: done' "$REPO_ROOT/agents/build-task.md")|$(grep -c 'TASK {N}: stopped:' "$REPO_ROOT/agents/build-task.md")"

@@ -35,7 +35,7 @@ function engine(on: On, w: ReturnType<typeof world>, goes: unknown[], opts: { ag
     spawned.push(e as never)
     return { model: 'opus', agentId: `ag${spawned.length}` }
   })
-  on('agent.list', () => ({ value: spawned.map((s, i) => ({ id: `ag${i + 1}`, description: 'Temper', type: s.subagent_type ?? '', status: opts.agentStatus ?? 'completed' })) }))
+  on('agent.list', () => ({ value: spawned.map((s, i) => ({ id: `ag${i + 1}`, description: 'Temper', type: s.subagent_type ?? '', status: (opts.agentStatus ?? 'completed') as 'completed' })) }))
   on('clock.now', () => ({ value: Date.now() }))
   const logged: string[] = []
   on('ui.log', ($, e) => {
@@ -95,8 +95,10 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     await api.session.start(START)
     await api.command.run({ command: 'temper', args: '', origin: { kind: 'composer' } })
     expect([w.commandRuns.map(c => c.args), logged.at(-1)]).toEqual([['discuss make it admin only'], 'Temper: the run goes on in the conversation (the person typed an answer).'])
-    // What the dialog cannot show, each option's description, was printed above the question.
-    expect(logged[0]).toContain('Temper gate, the choices:\n  Stage by stage (Recommended): ')
+    // The dialog itself shows what each option does: the descriptions the CLI gave, which `$.ui.ask` cannot carry.
+    expect(w.askedDescriptions[0]).toEqual(q.options.map(o => (o.description ?? '').trim()))
+    expect(w.askedDescriptions[0]!.every(d => d !== '')).toBe(true)
+    expect(logged.some(l => l.includes('the choices:'))).toBe(false)
     expect(ran.filter(c => c.includes('state advance'))).toEqual([])
   })
 

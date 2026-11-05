@@ -11,7 +11,7 @@ import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
-import { drive, driveFix, optionLines, slugOf } from './core/driver'
+import { dialogQuestions, drive, driveFix, driverThrew, logRows, slugOf } from './core/driver'
 import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
@@ -410,21 +410,32 @@ const WAIT_MS = 90 * 60_000
 
 // One call of the CLI, through bash in the project. Streamed, so a long call (Check's suite and mutation score inside
 // `temper go`) has no time cap; leaving the loop at the person's interrupt ends the child.
+// At the person's interrupt the engine aborts a running child, and reading it throws ("aborted", seen in an interactive
+// terminal): that is the interrupt, answered as one (exit 130), never as a failed call the conversation should take up.
 async function hostRun($: Api, cwd: string, call: string, signal: AbortSignal | undefined): Promise<{ code: number; out: string }> {
-  const child = $.process.spawn({ argv: ['bash', '-c', call], cwd })
   let out = ''
-  for await (const piece of child) {
-    out += piece.text
+  try {
+    const child = $.process.spawn({ argv: ['bash', '-c', call], cwd })
+    for await (const piece of child) {
+      out += piece.text
+      if (signal?.aborted === true) return { code: 130, out }
+    }
+    const end = await child.result
+    return { code: end.code ?? 1, out }
+  } catch (x) {
     if (signal?.aborted === true) return { code: 130, out }
+    throw x
   }
-  const end = await child.result
-  return { code: end.code ?? 1, out }
 }
 
 // A short wait between looks at the driver's agents: a child of the host, so the hook's own time does not run.
-async function hostPause($: Api, cwd: string, seconds: number): Promise<void> {
-  const child = $.process.spawn({ argv: ['sleep', String(seconds)], cwd })
-  for await (const piece of child) void piece
+async function hostPause($: Api, cwd: string, seconds: number, signal?: AbortSignal): Promise<void> {
+  try {
+    const child = $.process.spawn({ argv: ['sleep', String(seconds)], cwd })
+    for await (const piece of child) void piece
+  } catch (x) {
+    if (signal?.aborted !== true) throw x
+  }
 }
 
 async function hostSpawn($: Api, a: GoAgent): Promise<string | null> {
@@ -438,7 +449,7 @@ async function hostSpawn($: Api, a: GoAgent): Promise<string | null> {
 async function hostWait($: Api, cwd: string, ids: string[], signal: AbortSignal | undefined): Promise<Record<string, AgentEnd>> {
   const out: Record<string, AgentEnd> = {}
   if (ids.length === 0) {
-    await hostPause($, cwd, 5)
+    await hostPause($, cwd, 5, signal)
     return out
   }
   const start = await $.clock.now()
@@ -454,7 +465,7 @@ async function hostWait($: Api, cwd: string, ids: string[], signal: AbortSignal 
       else open++
     }
     if (open === 0) break
-    await hostPause($, cwd, 2)
+    await hostPause($, cwd, 2, signal)
   }
   // An answer that came after the status changed is the agent's own: take it when it is there now.
   for (const id of ids) {
@@ -464,13 +475,18 @@ async function hostWait($: Api, cwd: string, ids: string[], signal: AbortSignal 
   return out
 }
 
+// The question the driver is asking now: the tool.call hook below gives its dialog each option's description and preview,
+// which `$.ui.ask` cannot carry.
+let asking: GoQuestion | null = null
+
 async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
-  // The dialog a mod raises shows the labels alone: what each option does, and a preview (the Context check's table),
-  // are printed just above it.
-  const lines = optionLines(q)
-  if (lines !== '') $.ui.log(lines)
-  const a = await $.ui.ask(q.question, { options: q.options.map(o => o.label).slice(0, 4), header: q.header })
-  return typeof a === 'string' && a !== '' ? a : null
+  asking = q
+  try {
+    const a = await $.ui.ask(q.question, { options: q.options.map(o => o.label).slice(0, 4), header: q.header })
+    return typeof a === 'string' && a !== '' ? a : null
+  } finally {
+    asking = null
+  }
 }
 
 async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
@@ -485,7 +501,9 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
     ask: q => hostAsk($, q),
     record: (q, label) => hostRecord($, q, label),
     show: async text => {
-      if (text.trim() !== '') $.ui.log(text)
+      // `$.ui.log` appends one line: the terminal draws a line break inside it as a mark and cuts the line at 2000
+      // characters, so a panel or a report (many rows, thousands of characters) is logged a row at a time.
+      if (text.trim() !== '') for (const row of logRows(text)) $.ui.log(row)
       adopt($, await refresh($))
     },
     stopped: () => signal?.aborted === true,
@@ -617,7 +635,7 @@ export const register: Register = (on, opts) => {
         const bug = requestOf(e.args)
         const snap = bug === null ? null : await refresh($).catch(() => null)
         if (bug !== null && snap !== null && !snap.inert && snap.enforcement !== 'off' && !snap.failOpen && snap.slug === null) {
-          const end = await driveRun($, root, bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => ({ kind: 'handback' as const, args: 'next', why: `the driver stopped: ${String(x).slice(0, 120)}` }))
+          const end = await driveRun($, root, bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
           const after = await refresh($).catch(() => null)
           if (after !== null) adopt($, after)
           if (end.kind === 'done') return { text: end.text }
@@ -641,7 +659,7 @@ export const register: Register = (on, opts) => {
       // in the prompt based command, from the same state. Any failure hands the run to that command as well.
       const d = await drives($, e.args).catch(() => null)
       if (d !== null) {
-        const end = await driveRun($, root, d.request, (next as { signal?: AbortSignal }).signal).catch((x: unknown) => ({ kind: 'handback' as const, args: 'next', why: `the driver stopped: ${String(x).slice(0, 120)}` }))
+        const end = await driveRun($, root, d.request, (next as { signal?: AbortSignal }).signal).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
         const after = await refresh($).catch(() => null)
         if (after !== null) adopt($, after)
         if (end.kind === 'done') return { text: end.text }
@@ -673,9 +691,11 @@ export const register: Register = (on, opts) => {
     const main = (e as { agentId?: unknown }).agentId === undefined
     const g = await guard($, e.tool, { ...e }, main).catch(() => failedGuard(e.tool))
     if (g.deny !== null) return { deny: g.deny }
+    // The driver's own question: the dialog shows what each option does (the labels alone came through `$.ui.ask`).
+    const filled = e.tool === 'AskUserQuestion' && asking !== null ? dialogQuestions((e as { questions?: unknown }).questions, asking) : null
     let result
     try {
-      result = await next(e)
+      result = await next(filled === null ? e : ({ ...e, questions: filled } as typeof e))
     } finally {
       // After the TRIVIAL exit ran (or failed): the cleared run is no longer held, and the run is read again. When the
       // clear did not take effect, build-state.json is still there and the run reads back as it was.

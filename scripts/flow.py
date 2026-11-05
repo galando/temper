@@ -1377,7 +1377,9 @@ class Builder:
                                    self.plugin, self.plugin_line(), tasks_line, said, self.acceptance_line(), t.get("model")),
                                # the first task's gate judges the agent; the others it gated itself (a task it left running is gated here)
                                "after": [self.c("usage add --stage build --model %s --ms {ms} --task %d" % (t.get("model"), t["task"]))] +
-                                        [self.c("task gate %d --model %s --if-running" % (n, t.get("model"))) for n in chain],
+                                        [self.c("task gate %d --model %s --if-running" % (n, t.get("model"))) for n in chain] +
+                                        # the CLI draws each task's panel from what it recorded; the agent returns one line a task
+                                        [self.c("panel task %s" % " ".join(str(n) for n in chain))],
                                "task": t["task"], "tasks": chain, "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
                     "say": "Build: %s. %s" % (", ".join(("Task %d" % x["task"] if len(x["tasks"]) == 1 else "Tasks %s" % ", ".join(str(n) for n in x["tasks"])) + " on " + short_model(x["model"]) for x in agents), goes_on(len(agents) > 1))}
@@ -1391,7 +1393,8 @@ class Builder:
             return self.manual_task(waiting_on_person[0], plan)
         if running:
             return {"action": "wait", "stage": "build", "tasks": [
-                {"task": n, "model": self.ran_on(v), "after": [self.c("task gate %d --model %s --ms {ms}" % (n, self.ran_on(v)))]}
+                {"task": n, "model": self.ran_on(v), "after": [self.c("task gate %d --model %s --ms {ms}" % (n, self.ran_on(v))),
+                                                                 self.c("panel task %d" % n)]}
                 for n, v in sorted(running)],
                 "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (n, short_model(self.ran_on(v))) for n, v in sorted(running)), goes_on(len(running) > 1))}
 

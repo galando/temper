@@ -278,9 +278,12 @@ are carried by the mod itself, with no model in the main session (`core/driver.t
 calls the CLI gives (the action's calls, an agent's `before` and `after` calls, the CLI calls of `steps`), launches
 each agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report
 the CLI prints, asks each question the CLI gives (header, question and option labels as given; Blocking questions
-with their answer calls), records your answer as the guard does, and runs the calls of the option you picked. The
-question dialog a mod raises shows labels alone, so each option's description (and the Context check's table) is
-printed just above it. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
+with their answer calls), records your answer as the guard does, and runs the calls of the option you picked. The dialog a mod raises
+takes labels alone; the mod's own tool call hook gives each option back its description and its preview (the Context
+check's table) from the CLI's question, so the dialog shows what each choice does. A Build task's panel is the CLI's
+(`temper panel task`, after the task gates); of the agent's answer the driver shows only a `TASK N: stopped:` line,
+which the CLI cannot know. What it shows goes to the transcript one row at a time: a mod's log line is one row, and
+the terminal draws a line break inside it as a mark and cuts it at 2000 characters. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
 model turn after it, and `/temper:temper` takes the run up again (an agent already launched may still finish). The
 guard checks the driver's questions and agents as it checks the session's: each must be the CLI's. Round 5 of the
 benchmark measured why: the main session's own model time was 8% to 10% of a feature run's wall time and 20% to
