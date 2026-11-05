@@ -240,6 +240,9 @@ bug and 5 to 6 times on a feature, and 5.5 to 12 times its time.
   commit cost $0.00 in the main session, with no main session turn, $1.69 and 678 s in all (the Haiku loop on the
   same task: $2.00 to $2.31, 689 to 1,010 s). The other run handed back at the Intent gate on a driver defect, fixed
   (the action's `gate` call after the Blocking answers), and the conversation finished it: 11/11.
+- **The final pass** (the four tasks twice on the final code, `docs/evidence/bench-2026-11.md`): against 9.8.0 before
+  round 5 a run costs 28% to 54% less and takes 15% to 45% less time, with 7 of 8 runs meeting every hidden test.
+  Against vanilla Claude Code it costs 1.3 to 1.4 times as much on a bug and 4 to 5 times on a feature.
 
 **Build: three defects of a measured run**
 - **A scenario is owed by the task that writes its test file.** Plan traced API scenarios to the task that built the
