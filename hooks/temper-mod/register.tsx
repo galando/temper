@@ -10,7 +10,7 @@ import type { UiMode } from './core/config'
 import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
-import { evaluateSession, factsOf, skillChosen } from './core/session'
+import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
 import { stageToast, turnLine } from './core/view'
@@ -350,6 +350,9 @@ type Guarded = { deny: string | null; trivialExit?: boolean }
 // session asks the skill's own questions (core/session.ts). Kept in the plugin store, not in module state: the engine
 // loads the mod again between turns.
 const SKILL = 'skill:'
+// 9.8.0: what the person typed after /temper:temper, per project, kept in the plugin store (module state does not
+// survive the engine loading the mod again between turns).
+const REQUEST = 'request:'
 
 async function skillActive(io: Io, snap: Snapshot): Promise<boolean> {
   const at = await io.storeGet(SKILL + snap.at.run).catch(() => undefined)
@@ -374,6 +377,12 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
   if (main) {
     const s = evaluateSession(rc, factsOf(snap.view, tool === 'AskUserQuestion' && (await skillActive(makeIo($), snap))), { tool, input })
     if ('deny' in s) return { deny: s.deny }
+    // The run's request as the person typed it (kept at /temper:temper, below): a state init carries it whole.
+    if (tool === 'Bash') {
+      const kept = await makeIo($).storeGet(REQUEST + root).catch(() => undefined)
+      const why = featureWhy(command, typeof kept === 'string' ? kept : null)
+      if (why !== null) return { deny: why }
+    }
   }
   if (r.use !== undefined) {
     await spendDecision(makeIo($), r.use)
@@ -484,7 +493,13 @@ export const register: Register = (on, opts) => {
   // Only the words the mod answers are handled here; anything else (a feature description, a decision word, or nothing)
   // goes on to the prompt based command unchanged.
   on('command.run', async ($, e, next) => {
-    if (e.command !== 'temper' && e.command !== 'temper:temper') return next(e)
+    if (e.command !== 'temper' && e.command !== 'temper:temper') {
+      // A door (/temper:plan "...") or another command: no request is held to it.
+      if (/^temper:/.test(e.command)) await makeIo($).storeDelete(REQUEST + root).catch(() => undefined)
+      return next(e)
+    }
+    const req = requestOf(e.args)
+    if (req !== null) await makeIo($).storeSet(REQUEST + root, req).catch(() => undefined)
     const parsed = parseArgs(e.args)
     if (parsed === null) {
       // The person's own run word, from the prompt box, opens the pane in full mode; any other origin opens nothing.

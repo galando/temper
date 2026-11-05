@@ -197,6 +197,38 @@ function questionFits(q: unknown, facts: SessionFacts): boolean {
   return facts.questions.some(f => (f.header === null || f.header === header) && f.question === text && f.labels.length === labels.length && f.labels.every((l, i) => l === labels[i]))
 }
 
+// The person's request, word for word (round 5: a Haiku session started a run with `--feature 'Partial payments and
+// refunds for invoices'` for a request of a dozen rules, and every agent after it planned from that one line). The mod
+// keeps what the person typed after /temper:temper; a `temper state init ... --feature` that differs from it is refused.
+// Whitespace aside, the words are compared exactly.
+const words = (t: string): string => t.replace(/\s+/g, ' ').trim()
+
+// Words after /temper:temper that are not a request (commands/temper.md, Arguments).
+const NOT_A_REQUEST = new Set(['status', 'report', 'timeline', 'help', 'approve', 'next', 'back', 'override', 'accept', 'drift', 'pr', 'discuss', 'mode', 'enforcement', 'pane'])
+
+export function requestOf(args: string): string | null {
+  const t = words(args)
+  const first = (t.split(' ')[0] ?? '').toLowerCase()
+  return t === '' || NOT_A_REQUEST.has(first) ? null : t
+}
+
+export const FEATURE_DENY =
+  "Temper: the run's request is the person's words, word for word: pass what they typed after /temper:temper to --feature, " +
+  "unshortened (the agents plan from it). Next: run temper state init again with --feature '{their request}', each ' in it written as '\\''."
+
+export function featureWhy(command: string, request: string | null): string | null {
+  if (request === null) return null
+  for (const call of readShell(command).calls) {
+    const w = call.filter(x => !/^(?:>|>>|>&|2>&1|\d?>)$/.test(x))
+    if (w[0] !== 'state' || w[1] !== 'init') continue
+    const at = w.findIndex(x => x === '--feature' || x.startsWith('--feature='))
+    if (at < 0) continue
+    const value = w[at] === '--feature' ? w[at + 1] ?? '' : (w[at] as string).slice('--feature='.length)
+    if (words(value) !== request) return FEATURE_DENY
+  }
+  return null
+}
+
 // The main session's call: allowed, or denied with what to do instead. `ctx` is the rule context of rules.ts; the
 // stage rules there have already passed the call.
 export function evaluateSession(ctx: RuleContext, facts: SessionFacts, call: ToolCall): RuleResult {

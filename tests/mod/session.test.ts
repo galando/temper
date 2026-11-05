@@ -6,7 +6,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
-import { SESSION_AGENT_DENY, SESSION_ASK_DENY, SESSION_WRITE_DENY, bashWhy, evaluateSession, factsOf, skillChosen } from '../../hooks/temper-mod/core/session'
+import { FEATURE_DENY, SESSION_AGENT_DENY, SESSION_ASK_DENY, SESSION_WRITE_DENY, bashWhy, evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from '../../hooks/temper-mod/core/session'
 import type { SessionFacts } from '../../hooks/temper-mod/core/session'
 import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
@@ -201,4 +201,22 @@ describe('the CLI set in a variable is read as the CLI, by both guards', () => {
     const ok = evaluate(ctx('plan', { allowed: [`${CLI} state advance plan_complete build`] }), { tool: 'Bash', input: { command: `T=${CLI}\n$T state advance plan_complete build` } })
     expect(isDeny(ok)).toBe(false)
   })
+})
+
+describe('the run starts from the person\'s request, word for word', () => {
+  const REQ = "Build partial payments. - `POST /invoices/{id}/refunds` takes {\"payment_id\": ...}; more than the balance is a 409 conflict."
+  test('what the person typed after /temper:temper is the request; a run word is not', () => {
+    expect(requestOf(`  ${REQ}\n`)).toBe(REQ)
+    for (const w of ['', 'status', 'approve', 'discuss why 409?', 'report']) expect(requestOf(w)).toBe(null)
+  })
+  test('state init with the request whole passes (whitespace aside); a summary is refused (round 5: a Haiku session)', () => {
+    const q = REQ.replace(/'/g, "'\\''")
+    expect(featureWhy(`${CLI} state init pp --feature '${q}'`, requestOf(REQ))).toBe(null)
+    expect(featureWhy(`${CLI} state init pp --feature '${q.replace(/ /g, '  ')}'`, requestOf(REQ))).toBe(null)
+    expect(featureWhy(`${CLI} state init pp --feature 'Partial payments and refunds for invoices'`, requestOf(REQ))).toBe(FEATURE_DENY)
+    expect(FEATURE_DENY).toContain('Next: ')
+  })
+  test('no request kept (a door, a new conversation): nothing to compare', () =>
+    expect(featureWhy(`${CLI} state init pp --feature 'anything'`, null)).toBe(null))
+  test('other calls are not judged here', () => expect(featureWhy(`${CLI} go`, requestOf(REQ))).toBe(null))
 })

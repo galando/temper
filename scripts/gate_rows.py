@@ -2,7 +2,8 @@
 
   python3 gate_rows.py intent-blocking INTENT.md   the row for a Blocking question left open in a draft intent
   python3 gate_rows.py intent-rules INTENT.md      the row for the rules checklist (### Rules covered) of a draft intent
-  python3 gate_rows.py plan-rows SPEC_DIR PROJECT  the rows added to the plan gate (scenario test commands)
+  python3 gate_rows.py plan-rows SPEC_DIR PROJECT  the rows added to the plan gate (scenario test commands, the request's
+                                                   routes kept)
   python3 gate_rows.py build-rows SPEC_DIR EVIDENCE.json  the rows added to the build gate (criteria validated)
 
 They live here so scripts/temper stays under the directory's 256 KiB limit. Standard library only.
@@ -188,6 +189,46 @@ def fix_paths_row(fix):
     return row("fix paths", not bad, "every fix entry names a file that exists, or says `no file:`" if not bad else "; ".join(bad[:3]) + " (a fix entry starts with an existing `path:` or `no file:`)")
 
 
+ROUTE = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE)\s+(/[^\s`'\",;)]*)")
+
+
+def route_shape(path):
+    """A route's shape: each parameter segment (`{id}`, `{payment_id}`, `:id`, `<id>`) as `{}`, no trailing punctuation."""
+    path = path.rstrip(".:")
+    return "/".join("{}" if re.fullmatch(r"\{[^}]*\}|:[A-Za-z_]\w*|<[^>]*>", seg) else seg for seg in path.split("/"))
+
+
+def plan_request_routes(spec_dir, project):
+    """9.8.0 (round 5): every HTTP route the request names (`POST /invoices/{id}/refunds`) is in the plan, method and shape
+    unchanged (a parameter may be renamed). A run's Plan once built the request's refund route as another path, and
+    Design, the acceptance tests and Build followed it; only the session noticed. The request is the run's feature text
+    (`temper state init --feature`); a request that names no route passes."""
+    name = "request routes kept"
+    try:
+        state = json.load(open(os.path.join(project, ".temper", "build-state.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    feature = state.get("feature") if isinstance(state, dict) else None
+    want = [(m.group(1), route_shape(m.group(2))) for m in ROUTE.finditer(feature or "")]
+    want = list(dict.fromkeys(want))
+    if not want:
+        return row(name, True, "the request names no route")
+    text = ""
+    for f in ("plan.md", "tasks.md"):
+        try:
+            text += open(os.path.join(spec_dir, f), encoding="utf-8").read() + "\n"
+        except OSError:
+            pass
+    have = {(m.group(1), route_shape(m.group(2))) for m in ROUTE.finditer(text)}
+    missing = [w for w in want if w not in have]
+    if not missing:
+        return row(name, True, "%d route(s) of the request, each in the plan: %s" % (len(want), ", ".join("%s %s" % w for w in want)))
+    detail = "; ".join("the request names %s %s, the plan does not%s" % (
+        mth, path, (" (it names %s)" % ", ".join("%s %s" % h for h in sorted(have) if h[0] == mth)) if any(h[0] == mth for h in have) else "")
+        for mth, path in missing)
+    return row(name, False, detail + ". Keep each route the request names, method and path, in plan.md (a parameter may be renamed)")
+
+
 def main(argv):
     if len(argv) == 3 and argv[1] == "pipeline-gate":
         print(pipeline_gate(argv[2]))
@@ -198,6 +239,7 @@ def main(argv):
     if len(argv) in (4, 5) and argv[1] == "plan-rows":
         print(json.dumps(plan_scenario_commands(argv[2], argv[3])))
         print(json.dumps(plan_maven_verify(argv[2])))
+        print(json.dumps(plan_request_routes(argv[2], argv[3])))
         if os.path.isfile(os.path.join(argv[2], "plan.md")):   # a run with no plan.md (the trivial path) has no map to review
             print(json.dumps(plan_ops.gate_row(argv[2], argv[4] if len(argv) == 5 else "auto")))
         return 0

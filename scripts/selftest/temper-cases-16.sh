@@ -99,3 +99,18 @@ printf '{"deviations": {"unplanned_files": ["src/b.sh"], "skipped_tasks": [], "a
 assert_eq "9.8.0: spec deviations writes plan.md's Deviations from build-context.json, once however often it runs" "1|1|1" \
   "$(grep -c '^## Deviations$' .temper/specs/demo/plan.md)|$(grep -c '^- Files outside the plan: src/b.sh$' .temper/specs/demo/plan.md)|$(grep -c '^- Approach changes: a queue, not a cron$' .temper/specs/demo/plan.md)"
 rm -rf .git src README.demo; git init -q . 2>/dev/null
+
+# --- 4. The plan keeps every route the request names (a run's Plan once built the request's refund route as another path) ---
+_r16() { # a run whose request names routes, with a plan
+  setup; rm -f .temper/groups.json .temper/view.json
+  "$TEMPER" state init demo --feature "Add refunds. POST /invoices/{id}/refunds takes a payment_id. GET /invoices/{id} shows them." >/dev/null 2>&1
+  printf '# Plan\n\n## Architecture\n%s\n' "$1" > .temper/specs/demo/plan.md
+}
+_rr() { python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$(pwd -P)" auto | python3 -c "import json,sys; r=[json.loads(l) for l in sys.stdin if 'request routes' in l][0]; print(('PASS' if r['pass'] else 'FAIL') + '|' + r['detail'])"; }
+_r16 "- new route POST /invoices/{invoice_id}/refunds; GET /invoices/{id} adds them"
+assert_eq "9.8.0: a plan that keeps each route of the request, a parameter renamed, passes" "PASS" "$(_rr | cut -d'|' -f1)"
+_r16 "- new route POST /payments/{payment_id}/refunds; GET /invoices/{id} adds them"
+assert_eq "9.8.0: a plan that moves a route of the request fails, naming the route and what it has instead" "FAIL|1|1" \
+  "$(_rr | cut -d'|' -f1)|$(_rr | grep -c 'the request names POST /invoices/{}/refunds, the plan does not')|$(_rr | grep -c 'it names POST /payments/{}/refunds')"
+setup; rm -f .temper/groups.json .temper/view.json; "$TEMPER" state init demo --feature "Make the export faster" >/dev/null 2>&1; printf '# Plan\n' > .temper/specs/demo/plan.md
+assert_eq "9.8.0: a request that names no route passes" "PASS|the request names no route" "$(_rr)"
