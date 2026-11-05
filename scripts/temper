@@ -4325,9 +4325,9 @@ else: print('PASS %d changed, all declared' % len(changed))
 cmd_gate() {
   _state_migrate_legacy
   local stage="${1:-}"; shift || true
-  local spec_path_override="" from_hook=0
+  local spec_path_override="" from_hook=0 brief=0
   while [[ $# -gt 0 ]]; do
-    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; --from-hook) from_hook=1; shift ;; *) shift ;; esac
+    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; --from-hook) from_hook=1; shift ;; --brief) brief=1; shift ;; *) shift ;; esac
   done
   _ensure_dirs
   local ok=false
@@ -4417,12 +4417,16 @@ try:
 except Exception:
     pass" "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
   fi
+  # --brief (9.9.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
+  # passed row was context the session read again on every later turn.
   python3 -I -c "
 import json, sys
 for r in json.loads(sys.argv[1]):
+    if r['pass'] and sys.argv[2] == '1':
+        continue
     mark = 'v' if r['pass'] else 'x'
     print(f\"  [{mark}] {r['name']} — {r['detail']}\")
-" "$reqs_json"
+" "$reqs_json" "$brief"
 
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
 }
@@ -4521,9 +4525,11 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 
 cmd_intent() {
   local sub="${1:-}"
-  case "$sub" in accept|complete|carry) ;; *) echo "FAIL: usage: temper intent accept|complete|carry '<question>'" >&2; return 1 ;; esac
+  case "$sub" in accept|complete|carry|answer) ;; *) echo "FAIL: usage: temper intent accept|complete|carry '<question>'|answer '<question>' '<answer>'" >&2; return 1 ;; esac
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -f "$spec/intent.md" ]] || { echo "FAIL: no intent.md for the active run" >&2; return 1; }
+  # 9.9.0: the person's answer to a Blocking question, written by the CLI (scripts/answer_ops.py).
+  [[ "$sub" == "answer" ]] && { python3 -E -s "$SCRIPTS_DIR/answer_ops.py" "$spec" "${2:-}" "${3:-}"; return; }
   if [[ "$sub" == "carry" ]]; then
     [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper intent carry '<question>'" >&2; return 1; }
     python3 -I - "$spec/intent.md" "$2" <<'PY'
@@ -5215,6 +5221,12 @@ main() {
     check) cmd_check "$@" ;;
     acceptance) cmd_acceptance "$@" ;;
     go) python3 -E -s "$SCRIPTS_DIR/go.py" "$PLUGIN_ROOT/scripts/temper" "$REPO_ROOT" ;;
+    spec) case "${1:-}" in   # 9.9.0: the git steps of leaving a stage (scripts/spec_ops.py)
+            branch) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" branch "$(cmd_state_get branch)") ;;
+            commit|deviations) local _sp; _sp="$(_spec_path "")"; [[ -n "$_sp" ]] || { echo "FAIL: no active run" >&2; return 1; }
+                    (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" "$1" "$_sp" "${@:2}") ;;
+            *) echo "FAIL: usage: temper spec branch | deviations | commit '<message>' [-- FILE...]" >&2; false ;;
+          esac ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -5223,7 +5235,7 @@ Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
-  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]
+  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
   temper model <intent|plan|design|build|review|check|rca|fix> | --all
   temper override <stage> --reason "..."
   temper report [--json]
@@ -5243,6 +5255,7 @@ Usage:
   temper report --end | --no-html (at the commit: the report for the person, then their No to the page)
   temper intent accept|complete   (the Status header of the run's intent.md)
   temper intent carry '<question>' (the person's Carry forward: a Blocking open question becomes Deferred)
+  temper intent answer '<question>' '<answer>' (the person's answer: into Decisions, out of Open Questions)
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)
@@ -5251,6 +5264,7 @@ Usage:
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
+  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
   temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
   temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
                                                              (the acceptance tests written from the intent before Build)

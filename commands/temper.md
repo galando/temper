@@ -33,7 +33,7 @@ feature description.
 | `help` | List these words with one line each. |
 | `approve`, `next`, `back`, `override`, `accept`, `drift` | A wish, never a decision: run the loop below. When it reaches a question, ask it as given; the person chooses there. |
 | `pr` | Write a pull request description from `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` (the verdicts), `.temper/overrides.json` (each skip with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review` (each accepted finding with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage build` (the drift answers) and the `loops` of `.temper/view.json`. |
-| `discuss <text>` | The person's message at the current question: answer it; if it asks for a change, make it, run the action's `gate` call, and ask the question again. It moves nothing. |
+| `discuss <text>` | The person's message at the current question: as "Typed text" says (a question is answered, a change request goes to the stage's agent). |
 | `mode`, `enforcement`, `pane` | These belong to the Temper mod. Without it, say they are not available here. |
 
 ## Start
@@ -140,16 +140,17 @@ Any other failure of it still stops the action.
 - **Typed text.** An answer typed in "Other" (not to a reason question), or a message the person
   writes at a question, is a change request or a question. Record it first, so the next agent reads it:
   `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage {the run's stage} --phase note --kind input --claim '{the text}'`.
-  Then answer it; for a change you make yourself, also record
-  `--kind edit --claim '{what you changed}'`, make it, run the action's `gate` call when it has one,
-  and ask again. A note meant for one Build task begins with `Task N:`, for one group with `Group G<n>:`. It never moves the run.
-- **Blocking questions** (the `blocking` list): ask them in one AskUserQuestion call, one question
-  each (four at most per call; ask the rest in a second call), with the question's choices as options: the text after
-  `choices:`, split at `|`, the first one recommended, three at most, and a last option "Carry forward". A question that
-  starts with `Design:` names an area of concern in design.md: also write `resolved: {the answer}` into that concern. Write each answer into intent.md's `### Decisions` and take the question out
-  of Open Questions; for "Carry forward", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper intent carry '{the question}'`
-  instead (the CLI marks it Deferred, so it stays on record and no longer holds the gate). Then run the action's
-  `gate` call and run `next` again.
+  A question: answer it, and ask the same question again. A change request: you never make it yourself (during a run
+  this conversation writes no file; the mod refuses it). At Intent, Plan, Design or Build, run
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper state redo {the run's stage} --reason '{the text}'` and `temper go`: the stage's
+  agent runs again with the note. At Review, Check or Commit, ask the same question again: its options say how a change
+  is made there (a step back to Build, or "Make a small change"). A note meant for one Build task begins with `Task N:`,
+  for one group with `Group G<n>:`.
+- **Blocking questions** (the `blocking` list): ask the `question` of each, exactly as given, in one AskUserQuestion
+  call (four at most per call; the rest in a second call). For each answer run its `answer` call with the answer in
+  place of `{answer}` (the label chosen, or the text typed; see "Filling a placeholder"), or its `carry` call for
+  "Carry forward". The CLI writes the answer into intent.md (and a `Design:` question's concern in design.md); never
+  edit those files for an answer. Then the action's `gate` call and `temper go`, all in one Bash call.
   Never list them as text to answer by typing.
 - **A refused call.** When the mod or the CLI refuses a call an answer allowed, run it once more; when
   it is refused again, say so in one line and ask the question again.
@@ -158,14 +159,14 @@ Any other failure of it still stops the action.
 
 - **Intent returns TRIVIAL** (a typo or a one line change with no product problem): say "trivial,
   handling directly, no pipeline" in one line, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`
-  at once, make the change, run the project's tests, and commit normally. If it turns out not to be
+  at once (no run is active after it), then make the change, run the project's tests, and commit normally. If it turns out not to be
   trivial, stop and start `/temper:temper` again.
 - **A panel with a `DRIFT` section** (Build's fix pass): before anything else, ask the person about
   each row, one AskUserQuestion per row: header `Scope drift`, a question whose first line is
   `Outside the plan: {path}`, then `Why: {why}` and `Change: {change}` lines, and the options
   "Add to plan", "Revert" and "Allow once". Record each answer with
   `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim 'drift {path}: {choice}: {why}'`
-  (for "Add to plan", also add the file to plan.md's Files to Modify table), then launch the same
+  (the CLI and the mod read the answer there), then launch the same
   agent again with one `Drift decision: {path}: {add|revert|allow-once}` line per answer. A drift is
   never answered for the person, in an armed run either. A typed answer is a change request.
 - **An agent that fails or blocks**: show what it returned and ask the current question again.

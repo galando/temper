@@ -50,10 +50,10 @@ fresh; gpass intent plan build review check commit
 git add -A >/dev/null 2>&1; git -c user.email=t@example.com -c user.name=T commit -qm "the spec is committed" >/dev/null 2>&1
 _at commit; "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
 assert_eq "F27: a committed, unchanged spec folder with no code says there is no record commit, and gives no git add" "1|0" \
-  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add')))")"
+  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add') or ' spec commit ' in s))")"
 echo "a changed line" >> .temper/specs/demo/intent.md
 assert_eq "F27: a changed spec folder gets its record commit" "0|1" \
-  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add')))")"
+  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add') or ' spec commit ' in s))")"
 git checkout -q -- . >/dev/null 2>&1
 
 # F8. The plan gate names a scenario without a Test: line; the CLI refuses a scenario name intent.md does not hold

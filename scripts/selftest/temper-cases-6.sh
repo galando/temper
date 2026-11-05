@@ -451,7 +451,7 @@ out="$("$TEMPER" task gate 1 --model m 2>&1)"; rc=$?
 assert_eq "merge park: the rerun passes and merges the kept commit" "0|yes|work src/a.sh" "$rc|$(d_on_g1 "$TSHA")|$(d_gfile src/a.sh)"
 # Blocking questions are asked with AskUserQuestion in every stage, with the mod or without it
 assert_eq "orchestrator: Blocking questions go to one AskUserQuestion before the gate question" "1|1" \
-  "$(grep -c '^- \*\*Blocking questions\*\* (the `blocking` list): ask them in one AskUserQuestion call' "$REPO_ROOT/commands/temper.md")|$(grep -c 'Never list them as text to answer' "$REPO_ROOT/commands/temper.md")"
+  "$(grep -c '^- \*\*Blocking questions\*\* (the `blocking` list): ask the `question` of each, exactly as given, in one AskUserQuestion' "$REPO_ROOT/commands/temper.md")|$(grep -c 'Never list them as text to answer' "$REPO_ROOT/commands/temper.md")"
 # --- Better tests from small task agents: Plan writes the cases, task show adds a pattern test ---
 gp_setup
 assert_exit "cases: the fixture plan with 2 cases per task passes" 0 "$TEMPER" gate plan

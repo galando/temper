@@ -312,7 +312,7 @@ fresh; gpass intent plan build review check commit; _at commit
 "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --html >/dev/null 2>&1
 mkdir -p src; echo "the feature" > src/feature_x.sh   # uncommitted code: the commit carries it, with a feature message
 assert_eq "9.8.0: the commit step carries a message drafted from the intent's title, no placeholder" "yes|no" \
-  "$(nx "s = [x for x in d.get('steps', []) if x.startswith('git commit')]; ('yes' if s and s[0].startswith(\"git commit -m 'feat(demo): \") else 'no') + '|' + ('yes' if any('{' in x for x in s) else 'no')")"
+  "$(nx "s = [x for x in d.get('steps', []) if ' spec commit ' in x]; ('yes' if s and \" spec commit 'feat(demo): \" in s[0] else 'no') + '|' + ('yes' if any('{' in x for x in s) else 'no')")"
 
 # --- 14. A wrong locked acceptance test has a way out; a step back carries what failed; Design's task changes; scope at commit ---
 # (the benchmark's costliest runs: a locked test the code could not pass, Build sent back twice without the failing output)

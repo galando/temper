@@ -21,6 +21,7 @@ next question asks about). The full view still goes to .temper/view.json for the
 Standard library only.
 """
 import json
+import re
 import subprocess
 import sys
 
@@ -31,19 +32,46 @@ def short(call, cli):
     return call.replace(cli + " ", "temper ", 1) if call.startswith(cli + " ") else call
 
 
+def brief(call, cli):
+    """9.9.0: an agent's gate call prints its failed rows only (`--brief`); the question after it names them, and the
+    passed rows (3,000 to 7,000 characters a gate in the measured runs) were read again on every later turn."""
+    return call + " --brief" if re.fullmatch(re.escape(cli) + r" gate [a-z]+", call) else call
+
+
+SLIM_KEYS = ("calls", "steps", "do", "stop", "reason", "reason_question", "answer_question")
+
+
+def slim(a):
+    """9.9.0: a question as the session needs it: `question` to ask exactly, and per option only what the answer runs
+    (its label, calls, steps, do, stop, reason and name questions). The description and the move were in it twice (they are
+    in `question` too), and the run id, step and stage are the mod's, read from view.json."""
+    if not isinstance(a, dict) or "question" not in a:
+        return a
+    out = {"question": a["question"],
+           "options": [dict({"label": o.get("label")}, **{k: o[k] for k in SLIM_KEYS if o.get(k)}) for o in a.get("options") or []]}
+    for k in ("more", "accept"):
+        if a.get(k):
+            out[k] = slim(a[k])
+    return out
+
+
 def compact(n, ran, cli):
     out = {"action": n.get("action"), "stage": n.get("stage"), "say": n.get("say", ""), "ran": [short(c, cli) for c in ran]}
     act = n.get("action")
     if act == "work":
-        out["agents"] = n.get("agents") or []
+        out["agents"] = [dict(a, after=[brief(c, cli) for c in a.get("after") or []], **({"gate": brief(a["gate"], cli)} if a.get("gate") else {}))
+                         for a in n.get("agents") or []]
         if n.get("steps"):
             out["steps"] = n["steps"]
         if n.get("gate"):
             out["gate"] = n["gate"]
     elif act == "ask":
-        for k in ("ask", "blocking", "gate"):
-            if n.get(k):
-                out[k] = n[k]
+        if n.get("ask"):
+            out["ask"] = slim(n["ask"])
+        if n.get("gate"):
+            out["gate"] = n["gate"]
+        if n.get("blocking_asks"):   # 9.9.0: each Blocking question ready to ask, with the call that records its answer
+            out["blocking"] = n["blocking_asks"]
     elif act == "wait":
         out["tasks"] = n.get("tasks") or []
     elif act == "broken":

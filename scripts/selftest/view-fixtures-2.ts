@@ -8,8 +8,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      "calls": [
       "t=\"$(mktemp -d)\" && cp -R .temper/specs/pw/. \"$t\"/ && { git restore --source=HEAD --worktree -- .temper/specs/pw 2>/dev/null; git clean -fdq -- .temper/specs/pw; } ; if git checkout feature/pw; then mkdir -p .temper/specs/pw && cp -R \"$t\"/. .temper/specs/pw/ && rm -rf \"$t\"; else mkdir -p .temper/specs/pw && cp -R \"$t\"/. .temper/specs/pw/; echo \"FAIL: could not switch to feature/pw; your spec files are in $t\" >&2; exit 1; fi",
       "/plugin/scripts/temper intent accept",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(intent): accept pw\"",
+      "/plugin/scripts/temper spec commit 'docs(intent): accept pw'",
       "/plugin/scripts/temper state advance intent_complete plan"
      ],
      "description": "Switch to it (the new spec files go across), accept intent.md, commit it there, and start Plan.",
@@ -21,8 +20,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "git checkout -b feature/pw-2",
       "/plugin/scripts/temper state set branch feature/pw-2",
       "/plugin/scripts/temper intent accept",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(intent): accept pw\"",
+      "/plugin/scripts/temper spec commit 'docs(intent): accept pw'",
       "/plugin/scripts/temper state advance intent_complete plan"
      ],
      "description": "Start a new branch from here, accept intent.md, commit it there, and start Plan.",
@@ -34,7 +32,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      "description": "Stress test the intent first.",
      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
      "label": "Grill Me",
-     "move": null
+     "move": null,
+     "skill": "grill-me"
     },
     {
      "calls": [],
@@ -72,6 +71,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 0
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -177,6 +177,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "intent",
@@ -433,6 +434,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 4
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -596,6 +598,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "check",
@@ -777,6 +780,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 1
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -947,6 +951,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -1136,6 +1141,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -1293,6 +1299,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -1506,6 +1513,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -1663,6 +1671,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -1839,6 +1848,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -1996,6 +2006,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -2180,6 +2191,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 6
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -2343,6 +2355,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "pipeline",
@@ -2610,9 +2623,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      {
       "calls": [
        "/plugin/scripts/temper override plan --reason '{reason}'",
-       "git checkout -b feature/pw",
-       "git add -- .temper/specs/pw/",
-       "git commit -m \"docs(plan): approve the plan of pw\"",
+       "/plugin/scripts/temper spec branch",
+       "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
        "/plugin/scripts/temper state advance plan_complete build"
       ],
       "description": "Skip this check with your reason; the report shows it.",
@@ -2644,7 +2656,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
-      "move": null
+      "move": null,
+      "skill": "grill-me"
      },
      {
       "calls": [],
@@ -2729,6 +2742,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 1
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -2908,6 +2922,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -3156,6 +3171,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 4
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -3319,6 +3335,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "check",

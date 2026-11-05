@@ -10,6 +10,8 @@ import type { UiMode } from './core/config'
 import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
+import { evaluateSession, factsOf, rememberAgents, skillChosen } from './core/session'
+import type { Launched } from './core/session'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
 import { stageToast, turnLine } from './core/view'
@@ -345,17 +347,36 @@ function failedGuard(tool: string): Guarded {
 // run it cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
 type Guarded = { deny: string | null; trivialExit?: boolean }
 
-async function guard($: Api, tool: string, input: Record<string, unknown>): Promise<Guarded> {
-  // A Bash call may run the CLI, so it is judged on the run as the files say now; a write on the run last read.
-  const snap = tool === 'Bash' ? await refresh($) : await ensure($)
+// 9.9.0: the run and step at which the person chose a skill option (Grill Me, Teach Me): until the run moves on, the
+// session asks the skill's own questions (core/session.ts).
+let skillAt: { run: string; step: number } | null = null
+
+const skillActive = (snap: Snapshot): boolean => skillAt !== null && skillAt.run === snap.at.run && skillAt.step === snap.at.step
+
+// 9.9.0: the agents the CLI listed at the run's current stage (core/session.ts): a Build task's `task start` changes the view
+// before its agent is launched.
+let launched: Launched | null = null
+
+async function guard($: Api, tool: string, input: Record<string, unknown>, main = false): Promise<Guarded> {
+  // A Bash call may run the CLI, so it is judged on the run as the files say now; a write on the run last read. The main
+  // session's question and agent launch are judged on the view as it is now too (an agent's own calls may have moved it).
+  const snap = tool === 'Bash' || (main && (tool === 'AskUserQuestion' || tool === 'Agent' || tool === 'Task')) ? await refresh($) : await ensure($)
   // Fail open: when the mod cannot tell where the run is, it never blocks Temper.
   if (snap.inert || snap.enforcement === 'off' || snap.failOpen) return { deny: null }
   const command = typeof input.command === 'string' ? input.command : ''
   // A `state clear` at Intent (the TRIVIAL exit), as view.json says now.
   const clearable = tool === 'Bash' && snap.run?.trivialExit === true && readShell(command).calls.some(w => w[0] === 'state' && w[1] === 'clear')
   const rootDir = await rootOf($)
-  const r = evaluate(ruleContext(snap, rootDir), { tool, input })
+  const rc = ruleContext(snap, rootDir)
+  const r = evaluate(rc, { tool, input })
   if ('deny' in r) return { deny: r.deny }
+  // The main session (no agent id) relays the CLI and the person: it runs the CLI and reads, launches the CLI's agent and
+  // asks the CLI's question (core/session.ts).
+  if (main) {
+    launched = rememberAgents(launched, snap.view)
+    const s = evaluateSession(rc, factsOf(snap.view, skillActive(snap), launched?.agents ?? []), { tool, input })
+    if ('deny' in s) return { deny: s.deny }
+  }
   if (r.use !== undefined) {
     await spendDecision(makeIo($), r.use)
     adopt($, await refresh($))
@@ -444,6 +465,8 @@ export const register: Register = (on, opts) => {
   paneOpen = false
   paneShut = false
   lastStage = undefined
+  skillAt = null
+  launched = null
   live.paneOpen = undefined
   reviewerIds.clear()
 
@@ -490,7 +513,8 @@ export const register: Register = (on, opts) => {
 
   // Subagent calls arrive here too (e.agentId names the loop); they are held to the same rules as the main loop.
   on('tool.call', async ($, e, next) => {
-    const g = await guard($, e.tool, { ...e }).catch(() => failedGuard(e.tool))
+    const main = (e as { agentId?: unknown }).agentId === undefined
+    const g = await guard($, e.tool, { ...e }, main).catch(() => failedGuard(e.tool))
     if (g.deny !== null) return { deny: g.deny }
     let result
     try {
@@ -505,8 +529,19 @@ export const register: Register = (on, opts) => {
     }
     const errored = (result as { isError?: boolean }).isError === true
     // A command may have moved the run (the CLI), and an answer is a decision: read the run again.
-    if (e.tool === 'AskUserQuestion' && !errored) await recordAnswers($, result).catch(() => undefined)
-    else if (e.tool === 'Bash') await refresh($).catch(() => undefined)
+    if (e.tool === 'AskUserQuestion' && !errored) {
+      // A skill option chosen (Grill Me, Teach Me): its questions are the session's to ask until the run moves on.
+      if (main) {
+        const snap = await ensure($).catch(() => null)
+        if (snap !== null && skillChosen(snap.view, result) !== null) skillAt = { run: snap.at.run, step: snap.at.step }
+      }
+      await recordAnswers($, result).catch(() => undefined)
+    }
+    else if (e.tool === 'Bash') {
+      const snap = await refresh($).catch(() => null)
+      // The agents a `temper go` names are remembered before the next call (their `before` call may change the view).
+      if (snap !== null) launched = rememberAgents(launched, snap.view)
+    }
     return result
   }).catch(($, e, next) => {
     // The engine skips a hook that throws or outruns its budget, and the tool would run unguarded. In its place: what the

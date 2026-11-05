@@ -53,6 +53,7 @@ export function orchestrate(w: World, script: Script, limit = 400): Json {
         runCalls(w, a.before ?? [])
         const agent = script.agents[a.type]
         if (agent === undefined) throw new Error(`no scripted agent for ${a.type}`)
+        w.guardAgent(a)
         agent(w, a)
         runCalls(w, a.after ?? [], { ms: '1' }, a.gate ?? '')
       }
@@ -64,6 +65,7 @@ export function orchestrate(w: World, script: Script, limit = 400): Json {
       continue
     }
     if (n.action === 'ask') {
+      w.guardAsk(ask!.question)
       const pick = script.person(ask!, w)
       if (pick === null) return n
       let label = typeof pick === 'string' ? pick : pick.label
@@ -73,6 +75,7 @@ export function orchestrate(w: World, script: Script, limit = 400): Json {
       if (label === 'More options' && q.more) {
         w.answer(q, label)
         q = q.more as Json
+        w.guardAsk(q.question)
         const second = script.person(q, w)
         if (second === null) return n
         label = typeof second === 'string' ? second : second.label

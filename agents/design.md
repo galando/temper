@@ -25,6 +25,9 @@ is the project's `.temper/specs/{slug}` folder, never a path in the plugin folde
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- Never read the plugin's own scripts to learn a format (9.9.0: a measured Plan spent three turns in the CLI's Python):
+  every format you need is in this brief, its reference page and the templates, and `temper gate` names each row
+  that fails with what it wants.
 - The gate checks only that an Areas of Concern heading exists. That is a floor, not
   the standard: list the real conflicts with the owner who resolves each, or write an
   explicit `None flagged` line with the reason. Silence is not a valid claim.

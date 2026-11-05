@@ -87,6 +87,24 @@ function temperMoves(work) {
   }
 }
 
+function copySessionLog(sessionId, dest) {
+  if (!sessionId) return;
+  const projects = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "projects");
+  try {
+    for (const p of fs.readdirSync(projects)) {
+      const log = path.join(projects, p, `${sessionId}.jsonl`);
+      if (!fs.existsSync(log)) continue;
+      fs.mkdirSync(dest, { recursive: true });
+      fs.copyFileSync(log, path.join(dest, "main.jsonl"));
+      const subs = path.join(projects, p, sessionId, "subagents");
+      if (fs.existsSync(subs)) fs.cpSync(subs, path.join(dest, "subagents"), { recursive: true });
+      return;
+    }
+  } catch (e) {
+    console.error(`session log not copied: ${e?.message || e}`);
+  }
+}
+
 async function main() {
   const a = args();
   const taskDir = path.join(HERE, "tasks", a.task);
@@ -203,13 +221,21 @@ async function main() {
   }
 
   const sum = (k) => results.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  // A resumed session's result carries the cost of the whole session so far (SDK 0.3.x), not of its own query: adding the
+  // results up counted a resumed run twice or more. When every model's cost only grows from one result to the next, the
+  // last result is the run's cost; otherwise (an SDK that reports each query alone) the results add up.
+  const usageOf = (r) => Object.fromEntries(Object.entries(r.modelUsage || {}).map(([k, v]) => [k, Number(v?.costUSD) || 0]));
+  const cumulative = results.length > 1 && results.every((r, i) => i === 0 || Object.entries(usageOf(results[i - 1])).every(([k, c]) => (usageOf(r)[k] ?? -1) >= c));
   const models = {};
-  for (const r of results) for (const [k, v] of Object.entries(r.modelUsage || {})) models[k] = (models[k] || 0) + (Number(v?.costUSD) || 0);
+  if (cumulative) Object.assign(models, usageOf(results.at(-1)));
+  else for (const r of results) for (const [k, c] of Object.entries(usageOf(r))) models[k] = (models[k] || 0) + c;
+  const totalCost = cumulative ? Number(results.at(-1).total_cost_usd) || 0 : sum("total_cost_usd");
   const run = {
     task: a.task, arm: a.arm, rep: Number(a.rep), base,
     model_requested: a.model || "default",
     models_cost_usd: models,
-    cost_usd: Number(sum("total_cost_usd").toFixed(4)),
+    cost_usd: Number(totalCost.toFixed(4)),
+    cost_results: cumulative ? "last (cumulative)" : "sum",
     wall_s: Math.round((Date.now() - t0) / 1000),
     api_s: Math.round(sum("duration_api_ms") / 1000),
     turns: sum("num_turns"),
@@ -222,6 +248,9 @@ async function main() {
     temper_action_at_end: a.arm === "temper" ? temperMoves(work).action : null,
   };
   fs.writeFileSync(path.join(out, "run.json"), JSON.stringify(run, null, 2) + "\n");
+  // Claude Code's own log of the session and of each agent: its usage per request holds the true output tokens (the SDK
+  // stream above records only the count at the first block). bench/loop.py prices the main session from it.
+  copySessionLog(sessionId, path.join(out, "session"));
   tx.end(); px.end();
   console.log(JSON.stringify(run));
 }

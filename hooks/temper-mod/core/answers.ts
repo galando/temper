@@ -80,7 +80,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
       const text = answer.replace(/\s+/g, ' ').trim()
       if (text !== '' && text.length <= 100 && answer !== CANCEL && check.answer !== '') {
         const option: Option = {
-          label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null,
+          label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null, skill: null,
           calls: [check.answer.replace("'{text}'", quote(text)), ...(check.ask.options[0]?.calls.slice(1) ?? [])],
         }
         out.push({ kind: 'gate', stage: 'plan', question: q.question, ask: view.ask?.question.question ?? q.question, option, reason: '' })

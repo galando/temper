@@ -18,7 +18,8 @@ type Api = {
   prompt: { compose: (a: unknown) => Promise<{ sections: Array<{ text: string }> }> }
 }
 const sh = async (api: Api, command: string) => (await api.tool.call({ tool: 'Bash', command })).deny
-const write = async (api: Api, path: string) => (await api.tool.call({ tool: 'Write', file_path: `/repo/${path}`, content: 'x' })).deny
+// A stage agent's write (9.9.0: the main session writes none, core/session.ts).
+const write = async (api: Api, path: string) => (await api.tool.call({ tool: 'Write', file_path: `/repo/${path}`, content: 'x', agentId: 'agent' } as never)).deny
 // The question `temper next --json` gives now, asked exactly as given (or its More options, accept, reason or resume
 // question).
 const ask = (api: Api, w: World, which: Parameters<typeof questionOf>[1] = {}) =>
@@ -313,7 +314,8 @@ describe('commits: the native hook is the commit gate', () => {
     const api = $ as unknown as Api
     begin(on, 'build', { plan: 'PASS' })
     await api.session.start(START)
-    expect(await sh(api, 'git add src/app.ts && git commit -m "feat: x"')).toBeUndefined()
+    // The Build agent's commit (an agent id: the main session commits only through the CLI).
+    expect((await api.tool.call({ tool: 'Bash', command: 'git add src/app.ts && git commit -m "feat: x"', agentId: 'agent' } as never)).deny).toBeUndefined()
     expect(await sh(api, 'git commit --no-verify -m x')).toContain('pre-commit hook')
   })
 })

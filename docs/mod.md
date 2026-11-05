@@ -172,7 +172,7 @@ Temper is not a sandbox. The guard keeps a cooperating Claude on the path and ma
 Claude set on getting around a gate through Bash can do it. The hard guarantees are the editing tools
 (Write, Edit, MultiEdit, NotebookEdit) and the native `pre-commit` hook for `git commit`.
 
-The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
+The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
 - **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
   step back, accepting a finding, arming autonomy, keeping an agent's commits, overriding the commit
@@ -195,6 +195,21 @@ The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-m
   git, such as `GIT_CONFIG_KEY_0` or `GIT_CONFIG_GLOBAL`) are refused. So is an alias given on the
   command line or written with `git config` whose body skips the hook, and a command that runs git and
   sets `HOME` or `XDG_CONFIG_HOME` (git reads that folder's config, which can hold an alias or a hooks path).
+
+- **The main session relays (9.9.0, `core/session.ts`).** During a `/temper` run the conversation itself (a call
+  with no agent id) does only what the flow gives it: it runs the temper CLI and commands that only read (`cat`,
+  `grep`, `git status`, `git diff` and the like, with no redirect into a file), launches only an agent the CLI
+  listed at this stage, with its type, its model and its prompt as given, and asks only a question the CLI gives at
+  this step (its header, its question and its option labels), or a Scope drift question for a DRIFT row. It writes
+  no file with the editing tools. Two openings are the person's: a small change window they open at a question
+  (`Make a small change`) lets the session write by that stage's rules, and a skill they choose (Grill Me, Teach Me)
+  asks its own questions until the run moves on. A command the CLI wrote whole (a setup call, a commit step, the
+  calls of the person's answer) passes as written, and at the commit the pull request steps may push. The agents
+  keep their stage rules above. The benchmark showed why (`docs/evidence/bench-2026-11.md`, round 4): a session on
+  a cheaper model edited the spec files and the locked acceptance tests, worked in a task's worktree and asked
+  questions of its own, and a session once launched an agent on a cheaper model than the CLI named. A typed change
+  request now goes to the stage's agent (`temper state redo`, commands/temper.md). A `/temper:fix` run is left to
+  `commands/fix.md`, as before.
 
 The guard reads a Bash command as text: it splits it into statements and words and honours quotes
 (`'...'`, `"..."`, `$'...'` with its escapes, `$"..."`, a backslash), joins a line ended by a backslash,

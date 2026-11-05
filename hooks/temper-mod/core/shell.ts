@@ -319,7 +319,7 @@ function bracketEnd(b: string, i: number): number {
 }
 
 // The temper script: a word naming it that sets no variable.
-const isScript = (word: string): boolean => !ASSIGNMENT.test(unmask(word)) && nameIs(word, 'temper')
+export const isScript = (word: string): boolean => !ASSIGNMENT.test(unmask(word)) && nameIs(word, 'temper')
 
 // Where a program the guard reads may run in a statement: every word that names it. Bash runs a program after
 // `VAR=value` words, after a keyword (`then`, `do`, `{`, `!`, `coproc`, `function f {`), and after a program that runs

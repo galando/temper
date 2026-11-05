@@ -4,6 +4,7 @@ export const VIEWS: Record<string, unknown> = {
  "armed-build-fail": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -161,6 +162,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper park --verdict PARKED-NEEDS-DECISION --reason 'Build failed: tests pass: 2 tests fail: unit/app.test.ts'"
    ],
@@ -296,6 +298,7 @@ export const VIEWS: Record<string, unknown> = {
  "armed-build-pass": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -453,6 +456,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper state advance build_complete review"
    ],
@@ -583,6 +587,7 @@ export const VIEWS: Record<string, unknown> = {
  "armed-check-fail": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -767,6 +772,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper state loop check build --reason 'tests pass: exit 1: 2 failed'"
    ],
@@ -902,6 +908,7 @@ export const VIEWS: Record<string, unknown> = {
  "armed-check-pass": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -1086,6 +1093,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper state advance check_complete commit"
    ],
@@ -1216,6 +1224,7 @@ export const VIEWS: Record<string, unknown> = {
  "armed-commit-pass": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -1400,6 +1409,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed'"
    ],
@@ -1530,6 +1540,7 @@ export const VIEWS: Record<string, unknown> = {
  "armed-review-fail": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -1708,6 +1719,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper state loop review build --reason 'critical findings: 1 open critical finding'"
    ],
@@ -1843,6 +1855,7 @@ export const VIEWS: Record<string, unknown> = {
  "armed-review-pass": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -2021,6 +2034,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "auto",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper state advance review_complete check"
    ],
@@ -2306,6 +2320,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -2463,6 +2478,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -2723,7 +2739,8 @@ export const VIEWS: Record<string, unknown> = {
      "description": "Walk through the changes.",
      "do": "Use the teach-me skill on this stage's work, then ask this question again.",
      "label": "Teach Me",
-     "move": null
+     "move": null,
+     "skill": "teach-me"
     },
     {
      "calls": [],
@@ -2761,6 +2778,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -2918,6 +2936,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -3046,6 +3065,7 @@ export const VIEWS: Record<string, unknown> = {
  "build-work": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -3203,6 +3223,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/acceptance.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-acceptance"
+    }
+   ],
    "calls": [],
    "say": "Build: first, an agent that writes no code writes the acceptance tests from the intent on sonnet. The run goes on when it returns.",
    "stage": "build",
@@ -3449,6 +3476,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 4
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -3633,6 +3661,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "check",
@@ -3914,6 +3943,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 4
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -4098,6 +4128,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "check",
@@ -4226,6 +4257,7 @@ export const VIEWS: Record<string, unknown> = {
  "check-work": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -4404,6 +4436,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/check.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-check"
+    }
+   ],
    "calls": [],
    "say": "Check: the Check agent is working on sonnet. The run goes on when it returns.",
    "stage": "check",
@@ -4622,6 +4661,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 5
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -4806,6 +4846,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "commit",
@@ -4939,6 +4980,7 @@ export const VIEWS: Record<string, unknown> = {
  "commit-page": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -5123,6 +5165,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper report --html"
    ],
@@ -5253,6 +5296,7 @@ export const VIEWS: Record<string, unknown> = {
  "commit-pass": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -5437,12 +5481,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [],
    "calls": [],
    "say": "Every gate passed: the report first, then the commit.",
    "stage": "commit",
    "steps": [
     "/plugin/scripts/temper intent complete",
-    "When .temper/specs/pw/build-context.json records deviations from the plan, write them into plan.md as a ## Deviations section.",
+    "/plugin/scripts/temper spec deviations",
     "/plugin/scripts/temper report --end",
     "Copy what temper report printed into your reply, as it printed it, in a code block: the person does not see the output of a Bash call."
    ]
@@ -5570,6 +5615,7 @@ export const VIEWS: Record<string, unknown> = {
  "commit-record": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -5754,13 +5800,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [],
    "calls": [],
    "say": "The commit carries the run's record.",
    "stage": "commit",
    "steps": [
     "/plugin/scripts/temper state archive",
-    "git add -- .temper/specs/pw/",
-    "git commit -m 'docs(pw): record the run: spec, gate ledger and report (the code is in the commits before it)'",
+    "/plugin/scripts/temper spec commit 'docs(pw): record the run: spec, gate ledger and report (the code is in the commits before it)' -- .temper/specs/pw/",
     "/plugin/scripts/temper state clear"
    ]
   },
@@ -5887,6 +5933,7 @@ export const VIEWS: Record<string, unknown> = {
  "commit-work": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -6071,6 +6118,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [],
    "calls": [
     "/plugin/scripts/temper gate commit"
    ],
@@ -6229,8 +6277,7 @@ export const VIEWS: Record<string, unknown> = {
      "calls": [
       "/plugin/scripts/temper override design --reason '{reason}'",
       "/plugin/scripts/temper state advance design_complete build",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(design): the design of pw\""
+      "/plugin/scripts/temper spec commit 'docs(design): the design of pw'"
      ],
      "description": "Skip this check with your reason; the report shows it.",
      "label": "Override and continue",
@@ -6288,6 +6335,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -6445,6 +6493,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "design",
@@ -6591,7 +6640,8 @@ export const VIEWS: Record<string, unknown> = {
       "description": "Stress test the design.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
-      "move": null
+      "move": null,
+      "skill": "grill-me"
      },
      {
       "calls": [
@@ -6622,7 +6672,8 @@ export const VIEWS: Record<string, unknown> = {
       "description": "Walk through the design.",
       "do": "Use the teach-me skill on this stage's work, then ask this question again.",
       "label": "Teach Me",
-      "move": null
+      "move": null,
+      "skill": "teach-me"
      },
      {
       "calls": [],
@@ -6663,8 +6714,7 @@ export const VIEWS: Record<string, unknown> = {
     {
      "calls": [
       "/plugin/scripts/temper state advance design_complete build",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(design): the design of pw\""
+      "/plugin/scripts/temper spec commit 'docs(design): the design of pw'"
      ],
      "description": "Start Build.",
      "label": "Continue to Build (Recommended)",
@@ -6674,8 +6724,7 @@ export const VIEWS: Record<string, unknown> = {
      "calls": [
       "/plugin/scripts/temper state set run_mode autonomous",
       "/plugin/scripts/temper state advance design_complete build",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(design): the design of pw\""
+      "/plugin/scripts/temper spec commit 'docs(design): the design of pw'"
      ],
      "description": "Build, Review and Check go on by themselves and park before the commit.",
      "label": "Autonomous: run the rest unattended",
@@ -6724,6 +6773,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -6881,6 +6931,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "design",
@@ -7029,14 +7080,16 @@ export const VIEWS: Record<string, unknown> = {
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
-      "move": null
+      "move": null,
+      "skill": "grill-me"
      },
      {
       "calls": [],
       "description": "Walk through the plan.",
       "do": "Use the teach-me skill on this stage's work, then ask this question again.",
       "label": "Teach Me",
-      "move": null
+      "move": null,
+      "skill": "teach-me"
      },
      {
       "calls": [],
@@ -7076,9 +7129,8 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "git checkout -b feature/pw",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(plan): approve the plan of pw\"",
+      "/plugin/scripts/temper spec branch",
+      "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
       "/plugin/scripts/temper state advance plan_complete design"
      ],
      "description": "Approve the plan, commit it, and start Design.",
@@ -7136,6 +7188,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 1
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -7293,6 +7346,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -7428,6 +7482,7 @@ export const VIEWS: Record<string, unknown> = {
  "design-work": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -7585,6 +7640,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/design.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-design"
+    }
+   ],
    "calls": [],
    "say": "Design: the Design agent is working on opus. The run goes on when it returns.",
    "stage": "design",
@@ -7756,6 +7818,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 0
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -7825,6 +7888,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "rca",
@@ -7929,10 +7993,9 @@ export const VIEWS: Record<string, unknown> = {
     {
      "calls": [
       "/plugin/scripts/temper override intent --reason '{reason}'",
-      "git checkout -b feature/pw",
+      "/plugin/scripts/temper spec branch",
       "/plugin/scripts/temper intent accept",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(intent): accept pw\"",
+      "/plugin/scripts/temper spec commit 'docs(intent): accept pw'",
       "/plugin/scripts/temper state advance intent_complete plan"
      ],
      "description": "Skip this check with your reason; the report shows it.",
@@ -7964,7 +8027,8 @@ export const VIEWS: Record<string, unknown> = {
      "description": "Stress test the intent first.",
      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
      "label": "Grill Me",
-     "move": null
+     "move": null,
+     "skill": "grill-me"
     },
     {
      "calls": [],
@@ -7998,6 +8062,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 0
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -8103,6 +8168,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "intent",
@@ -8218,10 +8284,9 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "git checkout -b feature/pw",
+      "/plugin/scripts/temper spec branch",
       "/plugin/scripts/temper intent accept",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(intent): accept pw\"",
+      "/plugin/scripts/temper spec commit 'docs(intent): accept pw'",
       "/plugin/scripts/temper state advance intent_complete plan"
      ],
      "description": "Accept intent.md, commit it on the run's branch, and start Plan.",
@@ -8233,14 +8298,16 @@ export const VIEWS: Record<string, unknown> = {
      "description": "Stress test the intent first.",
      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
      "label": "Grill Me",
-     "move": null
+     "move": null,
+     "skill": "grill-me"
     },
     {
      "calls": [],
      "description": "Walk through the intent.",
      "do": "Use the teach-me skill on this stage's work, then ask this question again.",
      "label": "Teach Me",
-     "move": null
+     "move": null,
+     "skill": "teach-me"
     },
     {
      "calls": [],
@@ -8278,6 +8345,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 0
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -8383,6 +8451,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "intent",
@@ -8491,6 +8560,7 @@ export const VIEWS: Record<string, unknown> = {
  "intent-work": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -8560,6 +8630,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/intent.md exactly.\nFeature: Password reset by email.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-intent"
+    }
+   ],
    "calls": [],
    "say": "Intent: the Intent agent is working on sonnet. The run goes on when it returns.",
    "stage": "intent",
@@ -8710,9 +8787,8 @@ export const VIEWS: Record<string, unknown> = {
     {
      "calls": [
       "/plugin/scripts/temper override plan --reason '{reason}'",
-      "git checkout -b feature/pw",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(plan): approve the plan of pw\"",
+      "/plugin/scripts/temper spec branch",
+      "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
       "/plugin/scripts/temper state advance plan_complete build"
      ],
      "description": "Skip this check with your reason; the report shows it.",
@@ -8744,7 +8820,8 @@ export const VIEWS: Record<string, unknown> = {
      "description": "Stress test the plan.",
      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
      "label": "Grill Me",
-     "move": null
+     "move": null,
+     "skill": "grill-me"
     },
     {
      "calls": [],
@@ -8782,6 +8859,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 1
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -8939,6 +9017,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -9085,14 +9164,16 @@ export const VIEWS: Record<string, unknown> = {
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
-      "move": null
+      "move": null,
+      "skill": "grill-me"
      },
      {
       "calls": [],
       "description": "Walk through the plan.",
       "do": "Use the teach-me skill on this stage's work, then ask this question again.",
       "label": "Teach Me",
-      "move": null
+      "move": null,
+      "skill": "teach-me"
      },
      {
       "calls": [],
@@ -9132,9 +9213,8 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "git checkout -b feature/pw",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(plan): approve the plan of pw\"",
+      "/plugin/scripts/temper spec branch",
+      "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
       "/plugin/scripts/temper state advance plan_complete build"
      ],
      "description": "Approve the plan; every later stage keeps its own gate.",
@@ -9144,9 +9224,8 @@ export const VIEWS: Record<string, unknown> = {
     {
      "calls": [
       "/plugin/scripts/temper state set run_mode autonomous",
-      "git checkout -b feature/pw",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(plan): approve the plan of pw\"",
+      "/plugin/scripts/temper spec branch",
+      "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
       "/plugin/scripts/temper state advance plan_complete build"
      ],
      "description": "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
@@ -9197,6 +9276,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 1
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -9354,6 +9434,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -9495,14 +9576,16 @@ export const VIEWS: Record<string, unknown> = {
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
-      "move": null
+      "move": null,
+      "skill": "grill-me"
      },
      {
       "calls": [],
       "description": "Walk through the plan.",
       "do": "Use the teach-me skill on this stage's work, then ask this question again.",
       "label": "Teach Me",
-      "move": null
+      "move": null,
+      "skill": "teach-me"
      },
      {
       "calls": [],
@@ -9542,9 +9625,8 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "git checkout -b feature/pw",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(plan): approve the plan of pw\"",
+      "/plugin/scripts/temper spec branch",
+      "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
       "/plugin/scripts/temper state advance plan_complete build"
      ],
      "description": "Approve the plan; every later stage keeps its own gate.",
@@ -9554,9 +9636,8 @@ export const VIEWS: Record<string, unknown> = {
     {
      "calls": [
       "/plugin/scripts/temper state set run_mode autonomous",
-      "git checkout -b feature/pw",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(plan): approve the plan of pw\"",
+      "/plugin/scripts/temper spec branch",
+      "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
       "/plugin/scripts/temper state advance plan_complete build"
      ],
      "description": "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
@@ -9607,6 +9688,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 1
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -9764,6 +9846,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -9892,6 +9975,7 @@ export const VIEWS: Record<string, unknown> = {
  "plan-work": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -9997,6 +10081,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    }
+   ],
    "calls": [],
    "say": "Plan: the Plan agent is working on opus. The run goes on when it returns.",
    "stage": "plan",
@@ -10328,6 +10419,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 3
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -10506,6 +10598,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "review",
@@ -10743,7 +10836,8 @@ export const VIEWS: Record<string, unknown> = {
       "description": "Stress test the change.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
-      "move": null
+      "move": null,
+      "skill": "grill-me"
      },
      {
       "calls": [
@@ -10885,6 +10979,7 @@ export const VIEWS: Record<string, unknown> = {
    "step": 3
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -11063,6 +11158,7 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [],
    "calls": [],
    "say": null,
    "stage": "review",
@@ -11191,6 +11287,7 @@ export const VIEWS: Record<string, unknown> = {
  "review-work": {
   "ask": null,
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -11348,6 +11445,13 @@ export const VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "work",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/review.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-review"
+    }
+   ],
    "calls": [],
    "say": "Review: the Review agent is working on sonnet. The run goes on when it returns.",
    "stage": "review",

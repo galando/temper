@@ -441,7 +441,9 @@ class Builder:
         return self.opt("Save for later", "Stop here. The run is saved; /temper:temper takes it up again.", move="pause", stop=True)
 
     def skill(self, name, label, what):
-        return self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name)
+        o = self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name)
+        o["skill"] = name   # 9.9.0: the mod lets the skill's own questions through while it runs (its session guard)
+        return o
 
     def question(self, header, text, options, stage, more=None, extra=None):
         q = {"header": header, "question": text, "multiSelect": False,
@@ -468,7 +470,9 @@ class Builder:
         commit hook (no spec only carve out applies), which would stop the answer's calls."""
         if self.r.spec_ignored() or not self.r.spec or not (changes or self.r.ctx.get("spec_dirty")):
             return []
-        return ["git add -- %s/" % self.r.spec, 'git commit -m "%s"' % message]
+        # 9.9.0: one CLI call (scripts/spec_ops.py) in place of `git add` and `git commit`, which had to go in two Bash
+        # calls; now every call of the answer is a temper call, run with `temper go` in one.
+        return [self.c("spec commit %s" % shlex.quote(message))]
 
     def to_branch(self):
         """The switch to the run's branch (`feature/{slug}`) when the project is on another one: the first commit of the
@@ -476,7 +480,7 @@ class Builder:
         branch = self.r.state.get("branch") or ""
         if not branch or (self.r.ctx.get("branch") or "") == branch:
             return []
-        return ["git checkout %s" % shlex.quote(branch) if self.r.ctx.get("branch_exists") else "git checkout -b %s" % shlex.quote(branch)]
+        return [self.c("spec branch")]   # 9.9.0: git checkout (-b) of the run's branch, by the CLI
 
     def branch_clash(self):
         """The run's branch (`feature/{slug}`) exists from an earlier run, the project is on another branch, and that branch holds
@@ -1634,10 +1638,7 @@ class Builder:
         steps = []
         if r.command == "temper":
             steps.append(self.c("intent complete"))
-            steps.append("When %s/build-context.json records deviations from the plan, write them into plan.md as a ## Deviations section." % r.spec)
-        if r.command == "fix":
-            steps.append("Append one entry for this fix to .temper/lessons.md (create it with a # Lessons header when it is absent), "
-                         "as %s/reference/fix.md section Commit + record shows: the next RCA reads it first." % self.plugin)
+            steps.append(self.c("spec deviations"))   # 9.9.0: by the CLI, from build-context.json
         steps.append(self.c("report --end"))
         steps.append("Copy what temper report printed into your reply, as it printed it, in a code block: the person does not "
                      "see the output of a Bash call.")
@@ -1647,8 +1648,9 @@ class Builder:
         title = (self.r.title() or self.r.slug or "the change").strip().rstrip(".")
         return "feat(%s): %s" % (self.r.slug, title[:1].lower() + title[1:] if title else "the change")
 
-    def fix_commit(self):
-        """git commit for a fix run: fix(<slug>): <the RCA's title>, the root cause and the regression tests, from rca.md and the diff."""
+    def fix_message(self):
+        """The commit message of a fix run: fix(<slug>): <the RCA's title>, then the root cause and the regression tests, from
+        rca.md and the diff, one paragraph each."""
         r = self.r
         text = ""
         try:
@@ -1662,12 +1664,12 @@ class Builder:
         if sec:
             cause = next((l.strip() for l in sec.group(1).splitlines() if l.strip()), "")
         tests = sorted({f for f in (r.ctx.get("changed") or []) if re.search(r"(^|/)(tests?|unit|spec)/|test_[^/]*$|_test\.|\.(test|spec)\.", f)})
-        parts = ["git commit -m %s" % shlex.quote("fix(%s): %s" % (r.slug, title[:1].lower() + title[1:]))]
+        parts = ["fix(%s): %s" % (r.slug, title[:1].lower() + title[1:])]
         if cause:
-            parts.append("-m %s" % shlex.quote("Root cause: " + cause[:300]))
+            parts.append("Root cause: " + cause[:300])
         if tests:
-            parts.append("-m %s" % shlex.quote("Regression test: " + ", ".join(tests[:5])))
-        return " ".join(parts)
+            parts.append("Regression test: " + ", ".join(tests[:5]))
+        return "\n\n".join(parts)
 
     def page_question(self):
         r = self.r
@@ -1693,19 +1695,23 @@ class Builder:
             # F27: nothing to stage: no uncommitted code, no lesson file, and a spec folder git ignores. No git add, no git commit.
             steps.append("There is no record commit: no uncommitted code, no lesson file, and the spec folder is git-ignored or unchanged, so there is nothing to stage.")
         else:
-            # Each name one shell quoted word: the step runs as printed, and a file name is never shell code.
-            steps.append("git add -- %s" % " ".join(shlex.quote(f) for f in files + lessons) if files
-                         else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
             if r.command == "fix":
                 # 9.8.0: the CLI drafts the message from rca.md and the tests the fix changed; the person can still amend it.
-                steps.append(self.fix_commit())
+                message = self.fix_message()
             elif files and not code:
                 # A grouped Build commits the code itself (each task, each group, the merge into this branch): this commit is
                 # the run's record, and its message says so.
-                steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug))
+                message = "docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug
             else:
                 # 9.8.0: the CLI drafts the message from the intent's title (one call fewer for the session).
-                steps.append("git commit -m %s" % shlex.quote(self.feature_message()))
+                message = self.feature_message()
+            if files:
+                # 9.9.0: one CLI call stages the files and commits (scripts/spec_ops.py): the steps are all temper calls,
+                # run in one Bash call. Each name is one shell quoted word: a file name is never shell code.
+                steps.append(self.c("spec commit %s -- %s" % (shlex.quote(message), " ".join(shlex.quote(f) for f in files + lessons))))
+            else:
+                steps.append("git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
+                steps.append("git commit -m %s" % shlex.quote(message))
         pr = r.state.get("pr")
         if pr in ("one", "stacked") and not r.armed() and r.command == "temper":
             steps.append("Pull request: follow %s/reference/pr.md, section Capture, now: note base_sha, the branch, the default branch and the spec path, "
@@ -1946,7 +1952,31 @@ class Builder:
         blocking = r.blocking()
         if blocking:
             out["blocking"] = blocking
+            out["blocking_asks"] = blocking_asks(blocking, self.cli)
         return out
+
+
+CARRY = "Carry forward"
+
+
+def blocking_asks(items, cli):
+    """9.9.0: each Blocking question as the session asks it, built by the CLI: `{question, answer, carry}`. `question` is the
+    AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options with the first marked
+    recommended, at most three, then Carry forward); `answer` is the call that writes the person's answer into intent.md
+    (`{answer}` is theirs: the label they chose or the text they typed), `carry` the call for Carry forward. Before, the
+    session built each question from the line and then edited intent.md itself."""
+    out = []
+    for i, item in enumerate(items):
+        m = re.match(r"^(.*?)\s+choices:\s*(.+?)\.?\s*$", item, re.I | re.S)
+        q, cs = (m.group(1).strip(), [c.strip() for c in m.group(2).split("|") if c.strip()][:3]) if m else (item.strip(), [])
+        opts = [{"label": c, "description": "Recommended" if k == 0 else ""} for k, c in enumerate(cs)]
+        if not opts:   # a question with no ready answers: the person types the answer in Other
+            opts = [{"label": "Type the answer", "description": "Type it in Other; this option alone answers nothing."}]
+        opts.append({"label": CARRY, "description": "Keep it on record as Deferred; it no longer holds the gate."})
+        out.append({"question": {"header": "Question %d" % (i + 1), "question": q, "multiSelect": False, "options": opts},
+                    "answer": "%s intent answer %s '{answer}'" % (cli, shlex.quote(q)),
+                    "carry": "%s intent carry %s" % (cli, shlex.quote(q))})
+    return out
 
 
 # ---- the CLI's own checks -----------------------------------------------------------------------
@@ -2201,9 +2231,13 @@ def view(run, nxt):
         "status": status_line(r, nxt),
         "next": {"action": nxt.get("action"), "stage": nxt.get("stage"), "say": nxt.get("say"),
                  "calls": nxt.get("calls") or [] if nxt.get("action") in ("work", "auto") else [],
-                 "steps": nxt.get("steps") or [] if nxt.get("action") == "work" else []},
+                 "steps": nxt.get("steps") or [] if nxt.get("action") == "work" else [],
+                 # 9.9.0: the agents to launch, as the session launches them (the mod launches no other: its session guard)
+                 "agents": [{"type": a.get("type") or "", "model": a.get("model") or "", "prompt": a.get("prompt") or ""}
+                            for a in (nxt.get("agents") or [])] if nxt.get("action") == "work" else []},
         "ask": nxt.get("ask") if nxt.get("action") == "ask" else None,
         "blocking": nxt.get("blocking") or [],
+        "blocking_asks": nxt.get("blocking_asks") or [],
         "context_map": nxt.get("context_map"),
         "context_check": nxt.get("context_check"),
         "restart": nxt.get("restart"),
