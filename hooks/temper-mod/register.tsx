@@ -15,7 +15,7 @@ import { dialogQuestions, drive, driveFix, driverThrew, logRows, slugOf } from '
 import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
-import { stageToast, turnLine } from './core/view'
+import { isTemperAgent, stageToast, turnLine } from './core/view'
 import type { View } from './core/view'
 import { hintProps } from './ui/hint'
 import { renderBand } from './ui/band'
@@ -777,6 +777,23 @@ export const register: Register = (on, opts) => {
     const ui = await readUi($).catch(() => null)
     const props = ui !== null && ui.mode === 'full' ? hintProps(e.props, ui.view, e.surface) : null
     return props === null ? next(e) : next({ ...e, props })
+  })
+
+  // A Temper agent's message, drawn in full where the engine draws one dim line naming its sender (core/view.ts,
+  // isTemperAgent). Other senders, the ctrl+o transcript and the mod's off mode keep the engine's drawing.
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    const p = e.props as { text: string; isExpanded: boolean; from?: { name: string } }
+    const sender = p.from?.name ?? ''
+    if (p.isExpanded || !isTemperAgent(sender) || p.text.trim() === '') return next(e)
+    const ui = await readUi($).catch(() => null)
+    if (ui !== null && ui.mode === 'off') return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{`Message from @${sender}`}</Text>
+        <Text>{p.text}</Text>
+      </Box>
+    )
   })
 
   // One Temper line above the engine's dialog, which stays exactly once in the tree.

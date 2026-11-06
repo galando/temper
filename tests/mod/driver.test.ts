@@ -1,7 +1,7 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { STOPPED, dialogQuestions, drive, driverThrew, logRows, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, compactPanel, dialogQuestions, drive, driverThrew, logRows, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 
 const CLI = '/p/scripts/temper'
@@ -68,7 +68,7 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran).toContain(`${CLI} state init refunds --feature 'Refund an invoice'\\''s payment'`)
     expect(log.spawned.map(a => [a.type, a.model, a.prompt])).toEqual([['temper:temper-plan', 'opus', 'Follow temper:temper-plan.']])
     expect(log.ran).toContain(`${CLI} usage add --stage plan --model opus --ms 1234`)
-    expect(log.shown).toContain('+----+\n| PLAN |\n+----+')
+    expect(log.shown).toContain('PLAN')   // the panel, as the compact rows the terminal draws
     expect(log.recorded).toEqual(['Plan: the check passed. Approve the plan? -> Approve (Recommended)'])
     expect(log.ran).toContain(`${CLI} state advance plan_complete build`)
   })
@@ -266,6 +266,39 @@ describe('a throw out of the driver', () => {
 })
 
 describe('what the driver shows, as the rows the terminal draws', () => {
+  test('a CLI panel is a few rows: the title, a row a fact, a row a section, and where the diagram is', () => {
+    const W = 76
+    const rule = '+' + '-'.repeat(W - 2) + '+'
+    const row = (t: string) => '| ' + t.padEnd(W - 4) + ' |'
+    const head = (n: string) => { const h = `+--- ${n} ---+`; return h + '-'.repeat(W - h.length - 1) + '+' }
+    const plan = [rule, row('PLAN: List N jokes'), rule, row('INTENT: one joke a call -> 4 criteria'), row('ARCHITECTURE: create 1 files   RISK: L'),
+      head('SCENARIOS (2)'), row('[Happy Path] N jokes, Covers: AC-01'), row('[Edge Cases] more than there are,'), row('  Covers: AC-02'),
+      head('DECISIONS (1)'), row('argparse type= function'), rule, '+-----+  bad N  +-----+', '| cli | ------> | err |', '+-----+         +-----+'].join('\n')
+    expect(compactPanel(plan)).toEqual([
+      'PLAN: List N jokes',
+      'INTENT: one joke a call -> 4 criteria',
+      'ARCHITECTURE: create 1 files · RISK: L',
+      'SCENARIOS (2): [Happy Path] N jokes, Covers: AC-01 · [Edge Cases] more than there are, Covers: AC-02',
+      'DECISIONS (1): argparse type= function',
+      "The plan's diagram is in plan.md, under Diagram.",
+    ])
+  })
+
+  test('a title that wraps stays whole; a box with one fact row joins it to the title; two boxes stay two', () => {
+    const W = 76
+    const rule = '+' + '-'.repeat(W - 2) + '+'
+    const row = (t: string) => '| ' + t.padEnd(W - 4) + ' |'
+    const head = (n: string) => { const h = `+--- ${n} ---+`; return h + '-'.repeat(W - h.length - 1) + '+' }
+    const task = (n: number) => [rule, row(`TASK ${n}: the title`), rule, row('Attempt: 1   Test: red exit 1, green exit 0   Gate: PASS'), head('CHANGED (1)'), row(`src/t${n}.py`), rule]
+    expect(compactPanel([...task(1), ...task(2)].join('\n'))).toEqual([
+      'TASK 1: the title. Attempt: 1 · Test: red exit 1, green exit 0 · Gate: PASS', 'CHANGED (1): src/t1.py',
+      'TASK 2: the title. Attempt: 1 · Test: red exit 1, green exit 0 · Gate: PASS', 'CHANGED (1): src/t2.py',
+    ])
+    expect(compactPanel([rule, row('RCA: a total differs between the app and the export,'), row('  the credit notes and the payments'), rule,
+      row('CAUSE: one formula too many'), row('AT: a.py:17'), rule].join('\n'))[0]).toBe('RCA: a total differs between the app and the export, the credit notes and the payments')
+    expect(compactPanel('no box at all\nsecond line')).toEqual(['no box at all', 'second line'])
+  })
+
   test('a panel is one row a line, a blank line stays a row, trailing blanks go, and a long line is cut in rows of 2000', () => {
     expect(logRows('+--+\n| a |\n+--+\n\n')).toEqual(['+--+', '| a |', '+--+'])
     expect(logRows('Report\n\nNext: commit\r\nDone')).toEqual(['Report', ' ', 'Next: commit', 'Done'])

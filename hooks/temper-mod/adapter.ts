@@ -128,12 +128,26 @@ export async function readBook(io: Io, run: string): Promise<Decision[]> {
   return parseBook(await io.storeGet(BOOK + run).catch(() => undefined))
 }
 
+// The same answer of the person: the same kind, and the same option (a gate's label and the question it answered), the
+// same restart, or the same path and choice (a Scope drift answer).
+function sameAnswer(d: Decision, body: Record<string, unknown>): boolean {
+  if (d.kind !== body.kind) return false
+  if (d.kind === 'gate') return d.label === body.label && (d.ask ?? '') === ((body.ask as string | undefined) ?? '')
+  if (d.kind === 'drift') return d.path === body.path && d.choice === body.choice
+  return true
+}
+
 // Keeps one decision of the person, stamped with the CLI's run and step. The store holds the decisions of the last
 // MAX_RUNS runs on this machine; an older run's list is dropped.
 export async function keepDecision(io: Io, at: At, stage: string, body: Record<string, unknown> & { kind: Decision['kind'] }): Promise<Decision> {
+  const book = await readBook(io, at.run)
+  // One answer is kept once. With the mod carrying the run, the answer in the dialog reaches the guard's hook and the
+  // driver's own record; the person saw "Your decisions" list it twice (9.8.0).
+  const same = book.find(d => d.step === at.step && d.stage === stage && sameAnswer(d, body))
+  if (same !== undefined) return same
   const now = Date.now()
   const d = { ...body, id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`, run: at.run, step: at.step, stage, ts: now } as Decision
-  await io.storeSet(BOOK + at.run, [...(await readBook(io, at.run)), d])
+  await io.storeSet(BOOK + at.run, [...book, d])
   const raw = await io.storeGet(RUNS).catch(() => undefined)
   const runs = (Array.isArray(raw) ? raw.filter((r): r is string => typeof r === 'string') : []).filter(r => r !== at.run)
   runs.push(at.run)

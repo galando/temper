@@ -82,7 +82,9 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     expect(r.text).toBe('The run is done.')
     expect(w.asked).toEqual([q.question])
     for (const c of calls) expect(ran).toContain(c)
-    expect(Object.keys(w.store).some(k => k.startsWith('dec:'))).toBe(true)
+    // One answer, one decision: the dialog's own hook and the driver's record both see it (the pane listed it twice).
+    const books = Object.entries(w.store).filter(([k]) => k.startsWith('dec:')).map(([, v]) => v as unknown[])
+    expect(books.map(b => b.length)).toEqual([1])
   })
 
   test('a typed answer: the run goes on in the conversation with the person\'s words (discuss), nothing run', async ($, on) => {

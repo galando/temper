@@ -5,7 +5,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Decision } from '../../hooks/temper-mod/core/decisions'
 import { parseRunView } from '../../hooks/temper-mod/core/runview'
-import { buildView, whereText } from '../../hooks/temper-mod/core/view'
+import { buildView, isTemperAgent, whereText } from '../../hooks/temper-mod/core/view'
 import type { ViewInput } from '../../hooks/temper-mod/core/view'
 import { deriveView, questionOf, runFiles, view } from './run-files'
 import { viewText, world } from './world'
@@ -25,6 +25,24 @@ const input = (name: string, over: Partial<ViewInput> = {}, patch: Record<string
 const answer = (label: string, move: string, reason = ''): Extract<Decision, { kind: 'gate' }> => ({ kind: 'gate', id: 'm1', run: 'run-pw', step: 3, stage: 'build', ts: 1, label, move, calls: [], steps: [], reason })
 
 describe('the view of the run', () => {
+  test('a message from a Temper agent is told by its sender, so the mod draws it in full', () => {
+    for (const n of ['temper-temper-intent', 'temper-temper-build-task', 'temper:temper-plan']) expect(isTemperAgent(n)).toBe(true)
+    for (const n of ['general-purpose', 'temper', 'my-temper-temper-x', 'temper-temper-', 'Explore']) expect(isTemperAgent(n)).toBe(false)
+  })
+
+  test('a stage that only waits for the person\'s answers is current, not failed (9.8.0); a real failure still is', () => {
+    const base = view('build-pass') as { stages: Array<Record<string, unknown>> }
+    const here = (failed: unknown[]) => ({ stages: base.stages.map(st => st.mark === 'here' ? { ...st, verdict: 'FAIL', failed } : st) })
+    const waiting = buildView(input('build-pass', {}, here([{ name: 'blocking question open', detail: '2 Blocking question(s) open', waits: true }])))
+    const cur = waiting.stages.find(st => st.mark === 'current')
+    expect(cur?.failed).toBe(false)
+    expect(waiting.failedChecks).toEqual([])
+    expect(waiting.detail.some(l => l.startsWith('Failed:'))).toBe(false)
+    const broken = buildView(input('build-pass', {}, here([{ name: 'blocking question open', detail: 'x', waits: true }, { name: 'tests pass', detail: 'a test fails' }])))
+    expect(broken.stages.find(st => st.mark === 'current')?.failed).toBe(true)
+    expect(broken.failedChecks.map(q => q.name)).toEqual(['tests pass'])
+  })
+
   test('the timeline: the stages behind are passed, failed or skipped, the current one is here, the rest to come', () => {
     const files: Record<string, string> = {
       ...runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'FAIL' } }),

@@ -14,9 +14,9 @@
 | `/temper:status` | Quality + observability dashboard |
 | `/temper:init` | Seed a project's `.claude/temper.config` (idempotent) |
 
-**Autonomous Continuation (opt-in):** after approving the plan, `/temper` can run the
-remaining stages unattended and park before commit. Armed at the plan gate (never at
-invocation); never pushes/merges. With the `autonomy:` block absent or `enabled: false`,
+**Autonomous Build (opt-in):** after approving the plan, `/temper` can run Build
+unattended; Review, Check and the commit keep their questions. Armed at the last question
+before Build (never at invocation); never pushes/merges. With the `autonomy:` block absent or `enabled: false`,
 every gate is the ordinary interactive one. Config: `.claude/temper.config` → `autonomy:`.
 
 **The deterministic spine (v7):** every gate verdict is computed by `scripts/temper`

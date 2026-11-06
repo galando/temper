@@ -306,8 +306,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "calls": [
        "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
       ],
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
       "label": "Make a small change",
       "move": "adhoc",
       "reason": true,
@@ -317,7 +317,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
        "options": [
         {
          "description": "",
-         "label": "A small fix of my own"
+         "label": "A small fix I will describe"
         },
         {
          "description": "",
@@ -348,7 +348,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
        "label": "Commit and open stacked PRs"
       },
       {
-       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
       },
       {
@@ -1030,7 +1030,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "failed": [
      {
       "detail": "the Context check is pending: the person's answer is not recorded yet",
-      "name": "context map reviewed"
+      "name": "context map reviewed",
+      "waits": true
      }
     ],
     "id": "plan",
@@ -3061,7 +3062,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "failed": [
      {
       "detail": "2 open",
-      "name": "no open plan blockers"
+      "name": "no open plan blockers",
+      "waits": true
      }
     ],
     "id": "plan",

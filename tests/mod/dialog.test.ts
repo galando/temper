@@ -186,7 +186,7 @@ describe('every wait point of the flow audit', () => {
   test('arming autonomy: Autonomous arms the run and approves the plan; Stage by stage only approves', async ($, on) => {
     const api = $ as unknown as Api
     const cfg = { '.claude/temper.config': 'autonomy:\n  enabled: true\n' }
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Autonomous: run the rest unattended'], cfg)
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Autonomous Build: run Build unattended'], cfg)
     await api.session.start(START)
     expect(await sh(api, `${CLI} state set run_mode autonomous`)).toContain('only the user can turn on autonomous mode')
     await ask(api, w)
@@ -195,24 +195,15 @@ describe('every wait point of the flow audit', () => {
     expect(state(w).run_mode).toBe('autonomous')
   })
 
-  test('an armed run loops back to Build by itself after a failed Check, and keeps every write rule', async ($, on) => {
+  test('an armed run is Build alone (9.8.0): a failed Check asks the person, and no loop back goes by itself', async ($, on) => {
     const api = $ as unknown as Api
     const cfg = { '.claude/temper.config': 'autonomy:\n  enabled: true\n', '.temper/build-state.json': JSON.stringify({ run_mode: 'autonomous' }) }
     const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, [], cfg)
     await api.session.start(START)
-    // The armed run's own move is the call the CLI wrote, word for word; another reason is another call.
-    const own = (JSON.parse(viewText(w) ?? '{}') as { next: { calls: string[] } }).next.calls[0] ?? ''
-    expect(own).toContain('state loop check build')
+    const next = (JSON.parse(viewText(w) ?? '{}') as { next: { action: string } }).next
+    expect(next.action).toBe('ask')
     expect(await sh(api, `${CLI} state loop check build --reason 'my own words'`)).toBeDefined()
-    expect(await sh(api, own.replace(/^\S+/, CLI))).toBeUndefined()
-    gates(w, { plan: 'PASS', build: 'PASS' })
-    expect(await sh(api, `${CLI} state advance build_complete review`)).toBeUndefined()
-    expect(await write(api, 'src/app.ts')).toContain('Review stage')
-    expect(await system(api)).not.toContain('looks reset')
-    gates(w, { plan: 'PASS', build: 'PASS', review: 'PASS' })
-    expect(await sh(api, `${CLI} state advance review_complete check`)).toBeUndefined()
     expect(await write(api, 'src/app.ts')).toContain('Check only runs checks')
-    expect(await sh(api, `${CLI} state loop check plan --reason x`)).toBeDefined()
   })
 
   test('the commit gate FAIL after the run is done: Override and commit', async ($, on) => {

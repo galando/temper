@@ -282,8 +282,11 @@ with their answer calls), records your answer as the guard does, and runs the ca
 takes labels alone; the mod's own tool call hook gives each option back its description and its preview (the Context
 check's table) from the CLI's question, so the dialog shows what each choice does. A Build task's panel is the CLI's
 (`temper panel task`, after the task gates); of the agent's answer the driver shows only a `TASK N: stopped:` line,
-which the CLI cannot know. What it shows goes to the transcript one row at a time: a mod's log line is one row, and
-the terminal draws a line break inside it as a mark and cuts it at 2000 characters. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
+which the CLI cannot know. A panel the CLI draws is shown as a few rows: its title, a row a fact and a row a section,
+with the Plan's diagram left in plan.md (a mod's log line is one row with the plugin's name before it, and a box drawn
+row by row read as forty rows of "temper:"). A stage that only waits for your answers (open Blocking questions, the
+Context check, a criterion you confirm) draws as the current stage, never red. A Temper agent's message is drawn in
+full, where the engine shows one folded line. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
 model turn after it, and `/temper:temper` takes the run up again (an agent already launched may still finish). The
 guard checks the driver's questions and agents as it checks the session's: each must be the CLI's. Round 5 of the
 benchmark measured why: the main session's own model time was 8% to 10% of a feature run's wall time and 20% to

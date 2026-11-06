@@ -346,3 +346,9 @@ assert_eq "9.8.0: a task tasks.md does not have prints a line, and the panel nev
   "$("$TEMPER" panel task 9 >/dev/null 2>&1; echo $?)|$("$TEMPER" panel task 9 2>&1 | grep -c 'no Task 9')"
 assert_eq "9.8.0: the Build task brief draws no box and returns one line a task" "0|1|1" \
   "$(grep -c '^+---' "$REPO_ROOT/agents/build-task.md")|$(grep -c 'TASK {N}: done' "$REPO_ROOT/agents/build-task.md")|$(grep -c 'TASK {N}: stopped:' "$REPO_ROOT/agents/build-task.md")"
+
+# --- 11. A stage waiting only for the person's answers is no failure in the view (the mod draws it current, not red) ---
+fresh; printf '# Intent: Demo\n\n**Status:** draft\n\n## Problem\nThe demo.\n\n## Open Questions\n- Blocking: Who may run it? choices: Admins | Anyone\n' > .temper/specs/demo/intent.md
+"$TEMPER" gate intent >/dev/null 2>&1
+assert_eq "9.8.0: the view marks an open Blocking question's row as waiting for the person, and only that row" "yes|no" \
+  "$(vw "rows = next(s for s in d['stages'] if s['id'] == 'intent')['failed']; ('yes' if any(r['name'] == 'blocking question open' and r.get('waits') for r in rows) else 'no') + '|' + ('yes' if any(r.get('waits') and r['name'] != 'blocking question open' for r in rows) else 'no')")"

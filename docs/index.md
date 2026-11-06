@@ -86,8 +86,8 @@ Each stage command (`/temper:plan`, `:build`, `:review`, `:check`) starts the sa
 stage, or takes up the one that is active; `:status`, `:pack` and `:init` stand alone. See the
 [commands reference](commands.html).
 
-**Autonomy (opt-in):** after you approve the plan, `/temper` can run the remaining
-stages unattended, parking before commit. It never commits, pushes, or merges.
+**Autonomy (opt-in):** after you approve the plan, `/temper` can run Build unattended; Review,
+Check and the commit still ask you. It never commits, pushes, or merges.
 
 **Works with any CI:** temper ships no platform files — its automation surface is
 commands and exit codes, the same under GitHub Actions, GitLab, Jenkins, or cron.

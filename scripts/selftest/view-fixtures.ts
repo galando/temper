@@ -470,9 +470,10 @@ export const VIEWS: Record<string, unknown> = {
     }
    ],
    "calls": [
-    "/plugin/scripts/temper state advance build_complete review"
+    "/plugin/scripts/temper state advance build_complete review",
+    "/plugin/scripts/temper state set run_mode interactive"
    ],
-   "say": "Build passed; the armed run goes on.",
+   "say": "Build passed; the unattended part ends here, and Review asks you as usual.",
    "stage": "build",
    "steps": []
   },
@@ -583,7 +584,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Build passed; the armed run goes on.",
+  "status": "Build passed; the unattended part ends here, and Review asks you as usual.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -597,7 +598,125 @@ export const VIEWS: Record<string, unknown> = {
   "written": "2026-01-01T00:00:00Z"
  },
  "armed-check-fail": {
-  "ask": null,
+  "ask": {
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper state loop check build --reason '{reason}'"
+     ],
+     "description": "Do Build again; the stages after it are redone too.",
+     "label": "Loop back to Build (Recommended)",
+     "move": "back",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "The check found a real problem"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Loop back to Build (Recommended). What is the reason?"
+     }
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper override check --reason '{reason}'",
+      "/plugin/scripts/temper state advance check_complete commit"
+     ],
+     "description": "Skip this check with your reason; the report shows it.",
+     "label": "Override and continue",
+     "move": "override",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "I accept the risk"
+       },
+       {
+        "description": "",
+        "label": "It is not a real issue"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Override and continue. What is the reason?"
+     }
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
+     ],
+     "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+     "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix I will describe"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
+    },
+    {
+     "calls": [],
+     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+     "label": "Save for later",
+     "move": "pause",
+     "stop": true
+    }
+   ],
+   "question": {
+    "header": "Temper gate",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": "Do Build again; the stages after it are redone too.",
+      "label": "Loop back to Build (Recommended)"
+     },
+     {
+      "description": "Skip this check with your reason; the report shows it.",
+      "label": "Override and continue"
+     },
+     {
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "label": "Make a small change"
+     },
+     {
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later"
+     }
+    ],
+    "question": "Check: the check failed (tests pass: exit 1: 2 failed). Loop back to Build?"
+   },
+   "run_id": "run-armed",
+   "stage": "check",
+   "step": 4
+  },
   "blocking": [],
   "blocking_asks": [],
   "build": {
@@ -783,7 +902,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "loops": [],
   "next": {
-   "action": "auto",
+   "action": "ask",
    "agents": [
     {
      "model": "sonnet",
@@ -791,10 +910,8 @@ export const VIEWS: Record<string, unknown> = {
      "type": "temper:temper-check"
     }
    ],
-   "calls": [
-    "/plugin/scripts/temper state loop check build --reason 'tests pass: exit 1: 2 failed'"
-   ],
-   "say": "Check failed; the armed run loops back to Build.",
+   "calls": [],
+   "say": null,
    "stage": "check",
    "steps": []
   },
@@ -910,7 +1027,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Check failed; the armed run loops back to Build.",
+  "status": "Check: waiting for your answer to the Temper gate question.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -924,7 +1041,104 @@ export const VIEWS: Record<string, unknown> = {
   "written": "2026-01-01T00:00:00Z"
  },
  "armed-check-pass": {
-  "ask": null,
+  "ask": {
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper state advance check_complete commit"
+     ],
+     "description": "Commit the change with its spec files.",
+     "label": "Commit (Recommended)",
+     "move": "advance"
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper state loop check build --reason '{reason}'"
+     ],
+     "description": "Do Build again; the stages after it are redone too.",
+     "label": "Loop back to Build",
+     "move": "back",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "The check found a real problem"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Loop back to Build. What is the reason?"
+     }
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
+     ],
+     "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+     "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix I will describe"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
+    },
+    {
+     "calls": [],
+     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+     "label": "Save for later",
+     "move": "pause",
+     "stop": true
+    }
+   ],
+   "question": {
+    "header": "Temper gate",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": "Commit the change with its spec files.",
+      "label": "Commit (Recommended)"
+     },
+     {
+      "description": "Do Build again; the stages after it are redone too.",
+      "label": "Loop back to Build"
+     },
+     {
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "label": "Make a small change"
+     },
+     {
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later"
+     }
+    ],
+    "question": "Check: the check passed. Commit?"
+   },
+   "run_id": "run-armed",
+   "stage": "check",
+   "step": 4
+  },
   "blocking": [],
   "blocking_asks": [],
   "build": {
@@ -1110,7 +1324,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "loops": [],
   "next": {
-   "action": "auto",
+   "action": "ask",
    "agents": [
     {
      "model": "sonnet",
@@ -1118,10 +1332,8 @@ export const VIEWS: Record<string, unknown> = {
      "type": "temper:temper-check"
     }
    ],
-   "calls": [
-    "/plugin/scripts/temper state advance check_complete commit"
-   ],
-   "say": "Check passed; the armed run goes on.",
+   "calls": [],
+   "say": null,
    "stage": "check",
    "steps": []
   },
@@ -1232,7 +1444,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Check passed; the armed run goes on.",
+  "status": "Check: waiting for your answer to the Temper gate question.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -1562,7 +1774,230 @@ export const VIEWS: Record<string, unknown> = {
   "written": "2026-01-01T00:00:00Z"
  },
  "armed-review-fail": {
-  "ask": null,
+  "ask": {
+   "accept": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence accept --stage review --id 1 --reason '{reason}'",
+       "/plugin/scripts/temper gate review"
+      ],
+      "description": "src/app.ts:12 the token never expires",
+      "label": "Accept finding 1",
+      "move": "accept",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "It is not a real issue"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Accept finding 1. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Back to the Review question.",
+      "do": "Ask the Review question again.",
+      "label": "Cancel",
+      "move": null
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "src/app.ts:12 the token never expires",
+       "label": "Accept finding 1"
+      },
+      {
+       "description": "Back to the Review question.",
+       "label": "Cancel"
+      }
+     ],
+     "question": "Review: which finding do you accept?"
+    },
+    "run_id": "run-armed",
+    "stage": "review",
+    "step": 3
+   },
+   "more": {
+    "options": [
+     {
+      "calls": [],
+      "description": "Check the changed modules' depth, then come back here.",
+      "do": "Run the module depth analysis of /plugin/reference/architecture-depth.md on the changed files, add its [ARCH-DEPTH] findings to the summary, then ask this question again.",
+      "label": "Architecture Depth Review",
+      "move": null
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage review --reason '{reason}'"
+      ],
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix I will describe"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Check the changed modules' depth, then come back here.",
+       "label": "Architecture Depth Review"
+      },
+      {
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+       "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Review: more options."
+    },
+    "run_id": "run-armed",
+    "stage": "review",
+    "step": 3
+   },
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper state loop review build --reason '{reason}'"
+     ],
+     "description": "Do Build again; the stages after it are redone too.",
+     "label": "Loop back to Build (Recommended)",
+     "move": "back",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "The check found a real problem"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Loop back to Build (Recommended). What is the reason?"
+     }
+    },
+    {
+     "calls": [],
+     "description": "Keep a finding as it is, with your reason.",
+     "do": "Ask the accept question.",
+     "label": "Accept a finding",
+     "move": null
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper override review --reason '{reason}'",
+      "/plugin/scripts/temper state advance review_complete check"
+     ],
+     "description": "Skip this check with your reason; the report shows it.",
+     "label": "Override and continue",
+     "move": "override",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "I accept the risk"
+       },
+       {
+        "description": "",
+        "label": "It is not a real issue"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Override and continue. What is the reason?"
+     }
+    },
+    {
+     "calls": [],
+     "description": "Architecture Depth Review, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
+    }
+   ],
+   "question": {
+    "header": "Temper gate",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": "Do Build again; the stages after it are redone too.",
+      "label": "Loop back to Build (Recommended)"
+     },
+     {
+      "description": "Keep a finding as it is, with your reason.",
+      "label": "Accept a finding"
+     },
+     {
+      "description": "Skip this check with your reason; the report shows it.",
+      "label": "Override and continue"
+     },
+     {
+      "description": "Architecture Depth Review, Save for later",
+      "label": "More options"
+     }
+    ],
+    "question": "Review: the check failed (critical findings: 1 open critical finding). Loop back to Build?"
+   },
+   "run_id": "run-armed",
+   "stage": "review",
+   "step": 3
+  },
   "blocking": [],
   "blocking_asks": [],
   "build": {
@@ -1742,7 +2177,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "loops": [],
   "next": {
-   "action": "auto",
+   "action": "ask",
    "agents": [
     {
      "model": "sonnet",
@@ -1750,10 +2185,8 @@ export const VIEWS: Record<string, unknown> = {
      "type": "temper:temper-review"
     }
    ],
-   "calls": [
-    "/plugin/scripts/temper state loop review build --reason 'critical findings: 1 open critical finding'"
-   ],
-   "say": "Review failed; the armed run loops back to Build.",
+   "calls": [],
+   "say": null,
    "stage": "review",
    "steps": []
   },
@@ -1869,7 +2302,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Review failed; the armed run loops back to Build.",
+  "status": "Review: waiting for your answer to the Temper gate question.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -1883,7 +2316,254 @@ export const VIEWS: Record<string, unknown> = {
   "written": "2026-01-01T00:00:00Z"
  },
  "armed-review-pass": {
-  "ask": null,
+  "ask": {
+   "accept": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence accept --stage review --id 1 --reason '{reason}'",
+       "/plugin/scripts/temper gate review"
+      ],
+      "description": "src/app.ts:12 the token never expires",
+      "label": "Accept finding 1",
+      "move": "accept",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "It is not a real issue"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Accept finding 1. What is the reason?"
+      }
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence accept --stage review --id 2 --reason '{reason}'",
+       "/plugin/scripts/temper gate review"
+      ],
+      "description": "src/mail.ts:4 the subject is not localized",
+      "label": "Accept finding 2",
+      "move": "accept",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "It is not a real issue"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Accept finding 2. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Back to the Review question.",
+      "do": "Ask the Review question again.",
+      "label": "Cancel",
+      "move": null
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "src/app.ts:12 the token never expires",
+       "label": "Accept finding 1"
+      },
+      {
+       "description": "src/mail.ts:4 the subject is not localized",
+       "label": "Accept finding 2"
+      },
+      {
+       "description": "Back to the Review question.",
+       "label": "Cancel"
+      }
+     ],
+     "question": "Review: which finding do you accept?"
+    },
+    "run_id": "run-armed",
+    "stage": "review",
+    "step": 3
+   },
+   "more": {
+    "options": [
+     {
+      "calls": [],
+      "description": "Keep a finding as it is, with your reason.",
+      "do": "Ask the accept question.",
+      "label": "Accept a finding",
+      "move": null
+     },
+     {
+      "calls": [],
+      "description": "Stress test the change.",
+      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
+      "label": "Grill Me",
+      "move": null,
+      "skill": "grill-me"
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage review --reason '{reason}'"
+      ],
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix I will describe"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Keep a finding as it is, with your reason.",
+       "label": "Accept a finding"
+      },
+      {
+       "description": "Stress test the change.",
+       "label": "Grill Me"
+      },
+      {
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+       "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Review: more options."
+    },
+    "run_id": "run-armed",
+    "stage": "review",
+    "step": 3
+   },
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper state advance review_complete check"
+     ],
+     "description": "Start Check.",
+     "label": "Continue to Check (Recommended)",
+     "move": "advance"
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper state loop review build --reason '{reason}'"
+     ],
+     "description": "Do Build again; the stages after it are redone too.",
+     "label": "Loop back to Build",
+     "move": "back",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "The check found a real problem"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Loop back to Build. What is the reason?"
+     }
+    },
+    {
+     "calls": [],
+     "description": "Check the changed modules' depth, then come back here.",
+     "do": "Run the module depth analysis of /plugin/reference/architecture-depth.md on the changed files, add its [ARCH-DEPTH] findings to the summary, then ask this question again.",
+     "label": "Architecture Depth Review",
+     "move": null
+    },
+    {
+     "calls": [],
+     "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
+    }
+   ],
+   "question": {
+    "header": "Temper gate",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": "Start Check.",
+      "label": "Continue to Check (Recommended)"
+     },
+     {
+      "description": "Do Build again; the stages after it are redone too.",
+      "label": "Loop back to Build"
+     },
+     {
+      "description": "Check the changed modules' depth, then come back here.",
+      "label": "Architecture Depth Review"
+     },
+     {
+      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+      "label": "More options"
+     }
+    ],
+    "question": "Review: the check passed. Continue to Check?"
+   },
+   "run_id": "run-armed",
+   "stage": "review",
+   "step": 3
+  },
   "blocking": [],
   "blocking_asks": [],
   "build": {
@@ -2063,7 +2743,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "loops": [],
   "next": {
-   "action": "auto",
+   "action": "ask",
    "agents": [
     {
      "model": "sonnet",
@@ -2071,10 +2751,8 @@ export const VIEWS: Record<string, unknown> = {
      "type": "temper:temper-review"
     }
    ],
-   "calls": [
-    "/plugin/scripts/temper state advance review_complete check"
-   ],
-   "say": "Review passed; the armed run goes on.",
+   "calls": [],
+   "say": null,
    "stage": "review",
    "steps": []
   },
@@ -2185,7 +2863,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Review passed; the armed run goes on.",
+  "status": "Review: waiting for your answer to the Temper gate question.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -2206,8 +2884,8 @@ export const VIEWS: Record<string, unknown> = {
       "calls": [
        "/plugin/scripts/temper adhoc open --stage build --reason '{reason}'"
       ],
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
       "label": "Make a small change",
       "move": "adhoc",
       "reason": true,
@@ -2217,7 +2895,7 @@ export const VIEWS: Record<string, unknown> = {
        "options": [
         {
          "description": "",
-         "label": "A small fix of my own"
+         "label": "A small fix I will describe"
         },
         {
          "description": "",
@@ -2244,7 +2922,7 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
       },
       {
@@ -2683,8 +3361,8 @@ export const VIEWS: Record<string, unknown> = {
       "calls": [
        "/plugin/scripts/temper adhoc open --stage build --reason '{reason}'"
       ],
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
       "label": "Make a small change",
       "move": "adhoc",
       "reason": true,
@@ -2694,7 +3372,7 @@ export const VIEWS: Record<string, unknown> = {
        "options": [
         {
          "description": "",
-         "label": "A small fix of my own"
+         "label": "A small fix I will describe"
         },
         {
          "description": "",
@@ -2725,7 +3403,7 @@ export const VIEWS: Record<string, unknown> = {
        "label": "Loop back to Plan"
       },
       {
-       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
       },
       {
@@ -3463,8 +4141,8 @@ export const VIEWS: Record<string, unknown> = {
      "calls": [
       "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
      ],
-     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+     "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
      "label": "Make a small change",
      "move": "adhoc",
      "reason": true,
@@ -3474,7 +4152,7 @@ export const VIEWS: Record<string, unknown> = {
       "options": [
        {
         "description": "",
-        "label": "A small fix of my own"
+        "label": "A small fix I will describe"
        },
        {
         "description": "",
@@ -3509,7 +4187,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Override and continue"
      },
      {
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
       "label": "Make a small change"
      },
      {
@@ -3863,8 +4541,8 @@ export const VIEWS: Record<string, unknown> = {
       "calls": [
        "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
       ],
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
       "label": "Make a small change",
       "move": "adhoc",
       "reason": true,
@@ -3874,7 +4552,7 @@ export const VIEWS: Record<string, unknown> = {
        "options": [
         {
          "description": "",
-         "label": "A small fix of my own"
+         "label": "A small fix I will describe"
         },
         {
          "description": "",
@@ -3905,7 +4583,7 @@ export const VIEWS: Record<string, unknown> = {
        "label": "Commit and open stacked PRs"
       },
       {
-       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
       },
       {
@@ -4664,8 +5342,8 @@ export const VIEWS: Record<string, unknown> = {
      "calls": [
       "/plugin/scripts/temper adhoc open --stage commit --reason '{reason}'"
      ],
-     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+     "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
      "label": "Make a small change",
      "move": "adhoc",
      "reason": true,
@@ -4675,7 +5353,7 @@ export const VIEWS: Record<string, unknown> = {
       "options": [
        {
         "description": "",
-        "label": "A small fix of my own"
+        "label": "A small fix I will describe"
        },
        {
         "description": "",
@@ -4706,7 +5384,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Override and commit"
      },
      {
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
       "label": "Make a small change"
      },
      {
@@ -6792,8 +7470,8 @@ export const VIEWS: Record<string, unknown> = {
       "/plugin/scripts/temper state advance design_complete build",
       "/plugin/scripts/temper spec commit 'docs(design): the design of pw'"
      ],
-     "description": "Build, Review and Check go on by themselves and park before the commit.",
-     "label": "Autonomous: run the rest unattended",
+     "description": "Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+     "label": "Autonomous Build: run Build unattended",
      "move": "arm"
     },
     {
@@ -6820,8 +7498,8 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Continue to Build (Recommended)"
      },
      {
-      "description": "Build, Review and Check go on by themselves and park before the commit.",
-      "label": "Autonomous: run the rest unattended"
+      "description": "Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+      "label": "Autonomous Build: run Build unattended"
      },
      {
       "description": "Review the design section by section.",
@@ -9326,8 +10004,8 @@ export const VIEWS: Record<string, unknown> = {
       "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
       "/plugin/scripts/temper state advance plan_complete build"
      ],
-     "description": "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
-     "label": "Autonomous: run the rest unattended",
+     "description": "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+     "label": "Autonomous Build: run Build unattended",
      "move": "arm"
     },
     {
@@ -9355,8 +10033,8 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Stage by stage (Recommended)"
      },
      {
-      "description": "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
-      "label": "Autonomous: run the rest unattended"
+      "description": "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+      "label": "Autonomous Build: run Build unattended"
      },
      {
       "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
@@ -9744,8 +10422,8 @@ export const VIEWS: Record<string, unknown> = {
       "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
       "/plugin/scripts/temper state advance plan_complete build"
      ],
-     "description": "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
-     "label": "Autonomous: run the rest unattended",
+     "description": "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+     "label": "Autonomous Build: run Build unattended",
      "move": "arm"
     },
     {
@@ -9773,8 +10451,8 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Stage by stage (Recommended)"
      },
      {
-      "description": "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
-      "label": "Autonomous: run the rest unattended"
+      "description": "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+      "label": "Autonomous Build: run Build unattended"
      },
      {
       "description": "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
@@ -10378,8 +11056,8 @@ export const VIEWS: Record<string, unknown> = {
       "calls": [
        "/plugin/scripts/temper adhoc open --stage review --reason '{reason}'"
       ],
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
       "label": "Make a small change",
       "move": "adhoc",
       "reason": true,
@@ -10389,7 +11067,7 @@ export const VIEWS: Record<string, unknown> = {
        "options": [
         {
          "description": "",
-         "label": "A small fix of my own"
+         "label": "A small fix I will describe"
         },
         {
          "description": "",
@@ -10420,7 +11098,7 @@ export const VIEWS: Record<string, unknown> = {
        "label": "Architecture Depth Review"
       },
       {
-       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
       },
       {
@@ -10961,8 +11639,8 @@ export const VIEWS: Record<string, unknown> = {
       "calls": [
        "/plugin/scripts/temper adhoc open --stage review --reason '{reason}'"
       ],
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
       "label": "Make a small change",
       "move": "adhoc",
       "reason": true,
@@ -10972,7 +11650,7 @@ export const VIEWS: Record<string, unknown> = {
        "options": [
         {
          "description": "",
-         "label": "A small fix of my own"
+         "label": "A small fix I will describe"
         },
         {
          "description": "",
@@ -11007,7 +11685,7 @@ export const VIEWS: Record<string, unknown> = {
        "label": "Grill Me"
       },
       {
-       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
       },
       {

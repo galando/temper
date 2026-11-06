@@ -164,18 +164,18 @@ describe('what only the person may cause, at the step the run is at', () => {
 
   test('arming autonomy needs the Autonomous answer at the plan gate', () => {
     const arm = `${CLI} state set run_mode autonomous`
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Autonomous: run the rest unattended') }), arm)).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Autonomous Build: run Build unattended') }), arm)).toBe(true)
     expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Stage by stage (Recommended)') }), arm))).toBe(true)
     expect(isDeny(bash(ctx('build'), arm))).toBe(true)
     expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
   })
 
-  test('an armed run\'s own loop back is the CLI\'s action, word for word', () => {
-    const own = nextCalls('armed-review-fail')
-    expect(own.some(c => c.includes('state loop review build'))).toBe(true)
-    const loop = (own[0] ?? '').replace(/^\S+/, CLI)
-    expect('allow' in bash(ctx('review', { allowed: own }), loop)).toBe(true)
-    expect(isDeny(bash(ctx('review', { allowed: own }), `${CLI} state loop review plan --reason x`))).toBe(true)
+  test('an armed run is Build alone (9.8.0): its own move ends the unattended part, and Review loops back only on the person\'s answer', () => {
+    const own = nextCalls('armed-build-pass')
+    expect(own.map(c => c.replace(/^\S+ /, ''))).toEqual(['state advance build_complete review', 'state set run_mode interactive'])
+    for (const c of own) expect('allow' in bash(ctx('build', { allowed: own }), c.replace(/^\S+/, CLI))).toBe(true)
+    expect(nextCalls('armed-review-fail').some(c => c.includes('state loop'))).toBe(false)
+    expect(isDeny(bash(ctx('review'), `${CLI} state loop review build --reason x`))).toBe(true)
   })
 
   test("keeping a task agent's commits needs the person's answer", () => {

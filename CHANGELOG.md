@@ -297,6 +297,30 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
   feature tasks). Every hidden test passed. The same page has the seven other benchmark tasks on this code against
   vanilla Claude Code: vanilla met all 84 hidden tests, Temper 82, at 3 to 13 times the cost.
 
+**From the first hands-on run in a terminal**
+- **Autonomous is Build alone** ("Autonomous Build: run Build unattended"): Build runs every group and task by itself
+  and parks if it stops; when its gate passes, the run goes on to Review and turns back to interactive, so Review,
+  Check and the commit ask the person as in every run. An armed Review or Check no longer loops back by itself. The CLI
+  records that Build ran unattended (`ran_unattended`, set when the person arms the run, refused to `state set`), and
+  the commit gate still holds such a run to the plan's files and to `autonomy.park-on-touch`.
+- **One answer is one decision.** With the mod carrying the run, the answer in the dialog reached both the guard's
+  hook and the driver's own record, and the pane's "Your decisions" listed it twice. The book keeps an answer once per
+  run, step and stage.
+- **A stage that waits for the person is not red.** The bar drew Intent red before its first question: its check
+  "failed" only because the Blocking questions were open. The view now marks such rows (`waits`): open Blocking
+  questions at any stage, the Context check and a fresh review at Plan, a criterion only the person confirms at Check,
+  and a criterion record the CLI writes itself at Build. The mod draws the stage as current; a real failure stays red.
+- **Panels in the mod's output are a few rows.** A panel logged a row a call read as forty rows of "temper:", and a
+  dialog's preview cannot hold one ("cannot be shown in full", seen in a terminal). The driver shows each CLI panel as
+  its title, a row a fact and a row a section, and says where the Plan's diagram is; without the mod the conversation
+  prints the whole box, which draws in markdown.
+- **A Temper agent's message is drawn in full**, where the engine folds a message from another agent into one line
+  ("Message from @temper-temper-plan (ctrl+o to expand)"). Other senders, the ctrl+o view and the mod's off mode keep
+  the engine's drawing. Written against the documented message row; not yet seen live.
+- **"Make a small change" says who makes it:** Claude makes one small change in the conversation, with no loop back to
+  Build, and asks the person what to change when the fix is theirs ("Change the work yourself" read as the person's
+  own edit).
+
 **Three gaps of the last measured pass**
 - **Exempt is an item of the rules checklist, asked with Who, When and How much** (`scripts/gate_rows.py`,
   `agents/intent.md`): what never gets the action (below an amount, a kind of record, a state), asked as one open

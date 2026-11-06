@@ -44,7 +44,7 @@ PY
 # --- 1. ask (the default): the plan question offers it; it applies only once the person asks ---
 _fr_plan
 assert_exit "ask: a medium plan passes the plan gate when nobody asked for a fresh review" 0 "$TEMPER" gate plan
-assert_eq "ask: the plan question offers Fresh review first after the two ways on (9.8.0: no Design below risk H)" "Stage by stage (Recommended)|Autonomous: run the rest unattended|Fresh review first|More options" "$(labels)"
+assert_eq "ask: the plan question offers Fresh review first after the two ways on (9.8.0: no Design below risk H)" "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
 assert_eq "ask: the option asks for it; next then launches the reviewer, whose gate call follows it" "plan fresh request" \
   "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][2]['calls'])")"
 "$TEMPER" plan fresh request >/dev/null 2>&1

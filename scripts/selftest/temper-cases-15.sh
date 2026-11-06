@@ -177,6 +177,10 @@ assert_eq "9.8.0: an unattended run's planned change to a park-on-touch path doe
 echo x > src/billing/other.sh
 assert_eq "9.8.0: a change to a park-on-touch path outside the plan still parks" "yes" \
   "$(_gcm | grep -q '\[x\] park-on-touch paths — src/billing/other.sh matches \*\*/billing/\*\* and is not in the plan' && echo yes || echo no)"
+"$TEMPER" state set run_mode interactive >/dev/null 2>&1   # the armed Build is over: the run asks the person again
+assert_eq "9.8.0: arming records that Build ran unattended, and the commit gate still holds the run to park-on-touch after it" "true|yes" \
+  "$("$TEMPER" state get ran_unattended)|$(_gcm | grep -q '\[x\] park-on-touch paths — src/billing/other.sh' && echo yes || echo no)"
+assert_exit "9.8.0: the record is the CLI's: state set ran_unattended is refused" 1 "$TEMPER" state set ran_unattended false
 
 # --- 6. The Context check names what the plan leaves out; an answer other than "As planned" sends Plan back with it ---
 _fr_plan_ctx() { # a plan at Plan whose Context Map has an ignore and a gap and is not reviewed yet
@@ -208,13 +212,13 @@ fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&
 assert_exit "9.8.0: risk is kept by the CLI (state set risk is refused)" 1 "$TEMPER" state set risk L
 gpass plan
 assert_eq "9.8.0: a medium plan at risk below H skips Design; the plan question offers the unattended run" \
-  "Plan: the check passed. Approve the plan and continue to Build?|Stage by stage (Recommended)|Autonomous: run the rest unattended" \
+  "Plan: the check passed. Approve the plan and continue to Build?|Stage by stage (Recommended)|Autonomous Build: run Build unattended" \
   "$(nx "q = d['ask']; '|'.join([q['question']['question']] + [o['label'] for o in q['options'][:2]])")"
 "$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1
 assert_eq "9.8.0: at risk H a medium plan runs Design, and the plan question does not offer the unattended run" "Continue to Design (Recommended)|no" \
   "$(nx "q = d['ask']; o = [x['label'] for x in q['options']] + [x['label'] for x in (q.get('more') or {}).get('options', [])]; q['options'][0]['label'] + '|' + ('yes' if any('Autonomous' in x for x in o) else 'no')")"
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1; gpass design
-assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design" "Autonomous: run the rest unattended|arm|state set run_mode autonomous" \
+assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design" "Autonomous Build: run Build unattended|arm|state set run_mode autonomous" \
   "$(nx "o = d['ask']['options'][1]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1]])")"
 
 # --- 8. A criterion validated by hand is confirmed by the person at Check; a deferred optional one needs no evidence ---

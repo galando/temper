@@ -807,10 +807,13 @@ cmd_state_set() {
     echo "FAIL: $1 is kept by the CLI (a door's stage, what an earlier run built, the code as Review starts and the fresh review's marks are its records)" >&2
     return 1
   fi
-  if [[ "$1" == "end_report" ]]; then
-    echo "FAIL: end_report is kept by the CLI (temper report --end, then the person's answer: report --html or report --no-html)" >&2
+  if [[ "$1" == "end_report" || "$1" == "ran_unattended" ]]; then
+    echo "FAIL: $1 is kept by the CLI (temper report --end, then the person's answer; an armed run's record of its unattended Build)" >&2
     return 1
   fi
+  # 9.8.0: an armed run is Build alone and turns interactive after it, so the CLI keeps that it ran unattended: the
+  # commit gate holds such a run to the plan's files and to park-on-touch, as it held a run still armed.
+  [[ "$1" == "run_mode" && "$2" == "autonomous" && -f "$STATE_FILE" ]] && _json_set_path "$STATE_FILE" ran_unattended true '{}' >/dev/null
   # The commit the run's diff is read against is recorded once (state advance plan_complete): a later one would hide
   # what the run changed from Review and from the commit gate.
   if [[ "$1" == "base_sha" && -f "$STATE_FILE" && -n "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
@@ -4286,7 +4289,7 @@ else: print('PASS %d changed, all declared' % len(changed))
       all_pass=0
     fi
   fi
-  if [[ "$run_mode" == "autonomous" ]]; then
+  if [[ "$run_mode" == "autonomous" || "$(cmd_state_get ran_unattended "")" == "true" ]]; then
     local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius 15)"
     if [[ -z "$gspec" || ! -f "$gspec/tasks.md" ]]; then
       local changed_n; changed_n=$(_changed_since_base | grep -c .)

@@ -42,7 +42,7 @@ export type RunView = {
     spec: string
     parked: string | null
   } | null
-  stages: Array<{ id: string; label: string; mark: StageMark; verdict: 'PASS' | 'FAIL' | null; failed: Array<{ name: string; detail: string }>; skipped: { reason: string; by: string } | null }>
+  stages: Array<{ id: string; label: string; mark: StageMark; verdict: 'PASS' | 'FAIL' | null; failed: Array<{ name: string; detail: string; waits?: boolean }>; skipped: { reason: string; by: string } | null }>
   status: string
   // 9.8.0: `agents` are the agents the session may launch, each as it is to be launched: a work action's, and while the run
   // waits on them at the same stage, the ones it named (the session launches only these).
@@ -181,7 +181,7 @@ export function parseRunView(text: string): RunView | null {
         label: str(s.label, str(s.id)),
         mark: oneOf(s.mark, ['passed', 'failed', 'skipped', 'here', 'todo'] as const, 'todo'),
         verdict: s.verdict === 'PASS' || s.verdict === 'FAIL' ? s.verdict : null,
-        failed: arr(s.failed).map(f => ({ name: str(obj(f).name), detail: str(obj(f).detail) })),
+        failed: arr(s.failed).map(f => ({ name: str(obj(f).name), detail: str(obj(f).detail), ...(obj(f).waits === true ? { waits: true } : {}) })),
         skipped: s.skipped === undefined || s.skipped === null ? null : { reason: str(sk.reason), by: str(sk.by) },
       }
     }),

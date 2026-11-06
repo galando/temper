@@ -79,6 +79,61 @@ export function taskVerdict(call: string, out: string): boolean {
   return / task gate \d+ /.test(` ${call} `) && (/^NEXT: /m.test(out) || /\bis parked\b/.test(out))
 }
 
+// A CLI panel (`temper panel ...`) as the few rows the driver shows. A mod's log line is one row with the plugin's name
+// before it, and a dialog's preview cannot hold a panel of forty rows, so a box drawn row by row read as forty rows of
+// "temper:". Each box becomes its title (joined with its one fact row, as a task's panel has), a row a fact row, and a
+// row a section, its items joined; the lines outside the boxes (the Plan's diagram) give way to where they are.
+export function compactPanel(text: string): string[] {
+  const out: string[] = []
+  const rule = /^\+[-+]*\+$/
+  const sectionHead = /^\+--- (.+?) ---\+-*\+$/
+  type Box = { title: string; facts: string[]; sections: Array<{ name: string; items: string[] }> }
+  let box: Box | null = null
+  let phase: 'title' | 'body' = 'title'
+  let dropped = false
+  const add = (to: string[], cell: string) => {
+    if (/^ {2}\S/.test(cell) && to.length > 0) to[to.length - 1] += ' ' + cell.trim()
+    else to.push(cell.trim())
+  }
+  const flush = (b: Box) => {
+    const facts = b.facts.map(f => f.replace(/\s{3,}/g, ' · '))
+    if (b.title !== '') out.push(facts.length === 1 ? `${b.title}. ${facts[0]}` : b.title)
+    if (facts.length !== 1) out.push(...facts)
+    for (const sct of b.sections) if (sct.items.length > 0) out.push(`${sct.name}: ${sct.items.join(' · ')}`)
+  }
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trimEnd()
+    const head = sectionHead.exec(line)
+    if (box !== null && phase === 'body' && head !== null) {
+      box.sections.push({ name: head[1] as string, items: [] })
+      continue
+    }
+    if (rule.test(line)) {
+      if (box === null) {
+        box = { title: '', facts: [], sections: [] }
+        phase = 'title'
+      } else if (phase === 'title') {
+        phase = 'body'
+      } else {
+        flush(box)
+        box = null
+      }
+      continue
+    }
+    const row = box === null ? null : /^\| (.*?) *\|$/.exec(line)
+    if (box !== null && row !== null) {
+      const cell = row[1] as string
+      if (phase === 'title') box.title = box.title === '' ? cell.trim() : `${box.title} ${cell.trim()}`
+      else add(box.sections.length > 0 ? box.sections[box.sections.length - 1]!.items : box.facts, cell)
+      continue
+    }
+    if (line.trim() !== '') dropped = true
+  }
+  if (box !== null) flush(box)
+  if (dropped && out.some(l => l.startsWith('PLAN:'))) out.push("The plan's diagram is in plan.md, under Diagram.")
+  return out.length > 0 ? out : text.split(/\r?\n/).filter(l => l.trim() !== '')
+}
+
 // A throw out of the driver. At the person's interrupt the engine aborts the child the driver was reading, and the read
 // throws: that is the stop, with no model turn after it. Any other throw hands the run to the conversation, which takes
 // it up from the CLI's state.
@@ -300,7 +355,7 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
           if (stoppedLines.length > 0) yield* show(stoppedLines.join('\n'))
           for (const c of a.after ?? []) {
             const r = yield* run(fill(c, { ms: end.ms === null ? 'none' : String(Math.round(end.ms)) }))
-            if (/ panel [a-z]+/.test(c) && r.code === 0) yield* show(r.out)
+            if (/ panel [a-z]+/.test(c) && r.code === 0) yield* show(compactPanel(r.out).join('\n'))
             if (r.code !== 0 && !(c === a.gate && r.out.includes('-> FAIL')) && !taskVerdict(c, r.out)) return handback(`an after call of the ${a.type} agent failed`)
           }
         }
@@ -366,7 +421,7 @@ export function* fixSteps(cli: string, bug: string, slug: string | null = null):
   const ends = (yield { k: 'wait', ids: [id] }) as Record<string, AgentEnd>
   const ms = ends[id]?.ms ?? null
   const panel = yield* run(`${cli} panel rca .temper/specs/${s}/rca.md`)
-  if (panel.code === 0) yield* show(panel.out)
+  if (panel.code === 0) yield* show(compactPanel(panel.out).join('\n'))
   if ((yield* run(`${cli} state init ${s} --command fix`)).code !== 0) return handback('state init failed')
   yield* run(`${cli} usage add --stage rca --model ${model || 'unknown'} --ms ${ms === null ? 'none' : String(Math.round(ms))}`)
   // The fix branch, as commands/fix.md says: with the git pack on, off main or master.

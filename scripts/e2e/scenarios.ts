@@ -171,7 +171,7 @@ export const smallChange = (w: World): void => {
       return recommended(ask, wd)
     },
     instruction: (wd, text) => {
-      if (text.startsWith('Make the change, run')) {
+      if (text.startsWith('Make the small change')) {
         seen = 'changed'
         wd.write('src/ci_shape.py', SHAPE_CODE + '\n# a small change made by hand\n')
         const r = t(wd, 'adhoc close')
@@ -438,19 +438,25 @@ export const failingScenario = (w: World): void => {
 }
 
 // An armed run: the plan answer arms it, the stages go on by themselves, and it parks before the commit; nothing is pushed.
+// 9.8.0: an armed run is Build alone. Build goes on by itself; Review, Check and the commit ask the person as usual.
 export const armedRun = (w: World): void => {
   startProject(w, 'autonomy:\n  enabled: true')
-  let parkedAt = ''
+  const asked: string[] = []
   orchestrate(w, script({
     person: (ask, wd) => {
       const q = String(ask.question.question)
-      if (q.startsWith('Plan: the check passed')) return 'Autonomous: run the rest unattended'
-      if (q.includes('the armed run parked here for you')) parkedAt = q
+      asked.push(q)
+      if (q.startsWith('Plan: the check passed')) return 'Autonomous Build: run Build unattended'
       return recommended(ask, wd)
     },
   }))
-  expect(parkedAt !== '', 'the armed run parked before the commit and asked the person')
-  expect(!/git push|gh pr/.test(w.trace.join('\n')), 'an armed run never pushes')
+  const flow = w.trace.join('\n')
+  expect(!asked.some(q => q.startsWith('Build:')), 'Build asked the person nothing: it ran unattended')
+  expect(/state set run_mode interactive/.test(flow), 'after Build the run turned back to interactive')
+  expect(asked.some(q => q.startsWith('Review: the check passed')), 'Review asked the person')
+  expect(asked.some(q => q.startsWith('Check: the check passed')), 'Check asked the person')
+  expect(!asked.some(q => q.includes('the armed run parked here for you')), 'the run did not park before the commit: the person was asked')
+  expect(!/git push|gh pr/.test(flow), 'an armed run never pushes')
 }
 
 // Save for later stops the run; /temper:temper takes it up again at the same question.

@@ -283,7 +283,7 @@ assert_eq "F14: a passed Check keeps Loop back to Build beside Commit, and offer
   "Commit (Recommended)|Loop back to Build|Commit and open PR|More options" "$(labels)"
 assert_eq "F14: the option opens the window with a reason question and says what to do" "adhoc|1|1|1" \
   "$(nx "o = [x for x in d['ask']['more']['options'] if x['label'] == 'Make a small change'][0]; '|'.join([o['move'], str(len(o['calls'])), str(int('adhoc open --stage check --reason' in o['calls'][0])), str(int('adhoc close' in o['do'] and o.get('reason') is True))])")"
-assert_eq "F14: the description is the agreed sentence" "Change the work yourself, with no loop back; the change re-runs only what it touches." \
+assert_eq "F14: the description says Claude makes the change (9.8.0: a person read \"yourself\" as their own edit)" "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again." \
   "$(nx "[x for x in d['ask']['more']['options'] if x['label'] == 'Make a small change'][0]['description']")"
 python3 - <<'PYT'
 import json

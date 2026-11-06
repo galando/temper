@@ -170,9 +170,9 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
 - [ ] **Plan gate.** A dialog of four options at most, the rest behind "More options". Choose
   Continue: Build (or Design, for a medium run with `phases.design: true`) starts.
 - [ ] **Arming autonomy.** Add `autonomy:` and `  enabled: true` to `.claude/temper.config` and
-  start a new run. At the plan gate: a dialog "Stage by stage (Recommended)" / "Autonomous: run
-  the rest unattended" / "Open HTML review" / "More options" (Save for later is there). Choose Autonomous: the run goes on without asking, and
-  nothing is refused. Remove the lines afterwards.
+  start a new run. At the plan gate: a dialog "Stage by stage (Recommended)" / "Autonomous Build: run
+  Build unattended" / "Open HTML review" / "More options" (Save for later is there). Choose Autonomous Build: Build
+  goes on without asking and nothing is refused; after it, Review asks you as usual. Remove the lines afterwards.
 - [ ] **Design gate** (a medium run with `phases.design: true`). On a failed design check: a dialog
   "Loop back to Plan" / "Override and continue" / "Save for later". Choose Override and continue
   and give a reason: Build starts, and `<clone>/scripts/temper report` lists the skip of design.

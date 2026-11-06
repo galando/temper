@@ -608,7 +608,7 @@ class Builder:
                 # at the Design question when it does (so every decision is made before the run goes on by itself).
                 if not r.has_design():
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
-                             self.opt("Autonomous: run the rest unattended", "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
+                             self.opt("Autonomous Build: run Build unattended", "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
                                       move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
                         return self.with_more(GATE_HEADER, text, stage, first[:2] + [self.fresh_offer()], [html, grill, teach, self.save()], "Plan: more options.")
@@ -648,8 +648,8 @@ class Builder:
                     text = text[:-len(" Continue to Build?")].rstrip(".") + ". Design changed the plan's tasks (tasks.md%s); Continue approves them with the design. Continue to Build?" % (
                         ": " + "; ".join(what[:4]) + ("; and %d more" % (len(what) - 4) if len(what) > 4 else "") if what else "")
                     cont = cont[:-1] + "; the changed tasks are approved with the design."
-                arm = self.opt("Autonomous: run the rest unattended", ("Accept the open concerns as written; " if opens else "") +
-                               "Build, Review and Check go on by themselves and park before the commit.",
+                arm = self.opt("Autonomous Build: run Build unattended", ("Accept the open concerns as written; " if opens else "") +
+                               "Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
                                move="arm", calls=[self.c("state set run_mode autonomous")] + go)
                 return self.with_more(GATE_HEADER, text, stage,
                                       [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go), arm, walk],
@@ -776,10 +776,13 @@ class Builder:
     ADHOC_STAGES = ("build", "review", "check", "commit")
 
     def adhoc_option(self, stage):
-        return self.opt("Make a small change", "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+        # Claude makes it, here in the conversation (a person read "change the work yourself" as their own edit).
+        return self.opt("Make a small change", "Claude makes one small change here, with no loop back to Build: the one you describe, "
+                        "or the one the review asked for. Only what it touches is checked again.",
                         move="adhoc", calls=[self.c("adhoc open --stage %s --reason '{reason}'" % stage)],
-                        do="Make the change, run %s, then run %s again." % (self.c("adhoc close"), self.c("next --json")),
-                        reason=["A small fix of my own", "A change the review asked for"])
+                        do="Make the small change: for a fix the person describes, ask them in one line what to change first; for the "
+                           "review's, take what the review asked for. Then run %s, then run %s again." % (self.c("adhoc close"), self.c("next --json")),
+                        reason=["A small fix I will describe", "A change the review asked for"])
 
     def add_adhoc(self, out, stage):
         """Add Make a small change to the gate question of Build, Review, Check or Commit, before Save for later. Four options
@@ -1945,7 +1948,9 @@ class Builder:
             else:
                 out.update(self.stage_work(stage))
             return out
-        if r.armed() and stage not in ("intent", "plan", "rca"):
+        # 9.8.0: the unattended run is Build alone (the person asked for it): Review, Check and the commit keep their
+        # questions. When Build's gate passes, the run goes on to Review and turns back to interactive.
+        if r.armed() and stage not in ("intent", "plan", "rca", "review", "check"):
             nxt = r.next_of(stage)
             if stage == "design" and r.tasks_changed():
                 out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote(
@@ -1959,15 +1964,14 @@ class Builder:
                             "say": "Design has open areas of concern; the armed run parks for you."})
                 return out
             if verdict == "PASS" or skipped:
-                out.update({"action": "auto", "stage": stage, "calls": [self.c("state advance %s_complete %s" % (stage, nxt))],
-                            "say": "%s passed; the armed run goes on." % LABEL[stage]})
+                calls = [self.c("state advance %s_complete %s" % (stage, nxt))]
+                say = "%s passed; the armed run goes on." % LABEL[stage]
+                if stage == "build":
+                    calls.append(self.c("state set run_mode interactive"))
+                    say = "Build passed; the unattended part ends here, and %s asks you as usual." % LABEL.get(nxt, nxt)
+                out.update({"action": "auto", "stage": stage, "calls": calls, "say": say})
                 return out
-            back = BACK_TO.get(r.command, {}).get(stage)
             why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows(stage))[:200]
-            if stage in ("review", "check") and back and r.can_loop(stage, back):
-                out.update({"action": "auto", "stage": stage, "calls": [self.c('state loop %s %s --reason %s' % (stage, back, shlex.quote(why)))],
-                            "say": "%s failed; the armed run loops back to %s." % (LABEL[stage], LABEL[back])})
-                return out
             out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("%s failed: %s" % (LABEL[stage], why)))],
                         "say": "%s failed; the armed run parks for you." % LABEL[stage]})
             return out
@@ -2121,6 +2125,38 @@ def criteria(run):
     return report.get("criteria", [])
 
 
+# 9.8.0: a failed row that only waits for the person's answer: the Intent's open Blocking questions, the Plan's Context
+# check and the fresh review the person asked for, a criterion only the person can confirm at Check. The stage is waiting
+# for the person, not failed, and the mod draws it so: a person read the red Intent before its first question as a fault.
+PERSON_ROWS = ("blocking question open", "context map reviewed") + FRESH_ROWS
+
+
+def manual_ids(run):
+    """The ids of the intent's required criteria validated by hand."""
+    if not run.spec or not os.path.isfile(os.path.join(run.spec, "intent.md")):
+        return set()
+    try:
+        import acceptance
+        lines = open(os.path.join(run.spec, "intent.md"), encoding="utf-8").read().splitlines()
+        return {c["id"] for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria"))
+                if c.get("id") and c.get("vtype") == "manual"}
+    except Exception:
+        return set()
+
+
+def waits_on_person(row, stage, manual, records=()):
+    """True for a failed row that is no fault of the work: it waits for the person's answer, or for a record the CLI
+    writes itself next (Build's criteria with no CLI row yet)."""
+    if row.get("name") in PERSON_ROWS:
+        return True
+    if stage == "build" and records and row.get("name") == "criteria validated":
+        return True
+    if stage == "check":
+        ids = re.findall(r"\b([A-Z]+-\d+) has no supported passing evidence row", str(row.get("detail", "")))
+        return bool(ids) and all(i in manual for i in ids)
+    return False
+
+
 def stage_marks(run, nxt):
     out = []
     seq = run.seq()
@@ -2136,8 +2172,11 @@ def stage_marks(run, nxt):
             mark = "here"
         else:
             mark = "todo"
+        manual = manual_ids(run) if s == "check" else set()
+        records = run.missing_records(s) if s == "build" else []
         row = {"id": s, "label": LABEL.get(s, s), "mark": mark, "verdict": v,
-               "failed": [{"name": x.get("name"), "detail": x.get("detail")} for x in run.failed_rows(s)] if s != "rca" else []}
+               "failed": [dict({"name": x.get("name"), "detail": x.get("detail")}, **({"waits": True} if waits_on_person(x, s, manual, records) else {}))
+                          for x in run.failed_rows(s)] if s != "rca" else []}
         if sk:
             row["skipped"] = {"reason": sk.get("reason"), "by": sk.get("by")}
         out.append(row)

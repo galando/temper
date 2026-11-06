@@ -67,12 +67,12 @@ fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&
 printf '# Plan\n\n## Files to Modify\n| File | Change |\n|---|---|\n| `src/demo.sh` | the demo |\n| `README.md` | a line |\n' > .temper/specs/demo/plan.md
 gpass plan
 assert_eq "next: Plan PASS with no Design to follow offers stage by stage or unattended, then Fresh review first (9.8.0)" \
-  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Fresh review first|More options" "$(labels)"
+  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
 assert_eq "next: More options holds the rest, as its own question" "Open HTML review|Grill Me|Teach Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 cp .claude/temper.config .claude/temper.config.keep; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
 assert_eq "next: with plan.fresh-review off the Plan question has no Fresh review first" \
-  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Open HTML review|More options|Share HTML review|Grill Me|Teach Me|Save for later" \
+  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Open HTML review|More options|Share HTML review|Grill Me|Teach Me|Save for later" \
   "$(labels)|$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 mv .claude/temper.config.keep .claude/temper.config
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
@@ -88,7 +88,7 @@ assert_eq "view: Build is held to the approved files, not to a plan.md edited si
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
 assert_eq "next: with autonomy on, the Plan question offers the arming choice" \
-  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Fresh review first|More options" "$(labels)"
+  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
 assert_eq "next: Autonomous arms the run before it advances" "arm|state set run_mode autonomous" \
   "$(nx "o = d['ask']['options'][1]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
 assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Grill Me|Teach Me|Save for later" \
@@ -149,16 +149,25 @@ assert_eq "next: a failed commit gate asks to override the failed stages, with a
   "Override and commit|commitOverride|override review --reason '{reason}'|gate commit" \
   "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][-1].split('temper ', 1)[1]])")"
 
-# --- an armed run decides its own moves, and parks for the person ---
+# --- an armed run is Build alone (9.8.0, the person asked for it): it goes on by itself through Build, then Review,
+# Check and the commit ask the person as in every run ---
 fresh; printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
-gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+gpass intent plan build; for s in intent_complete:plan plan_complete:build; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+assert_eq "next: an armed run's passed Build goes on to Review by itself and turns back to interactive" \
+  "auto|state advance build_complete review|state set run_mode interactive" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + d['calls'][1].split('temper ', 1)[1]")"
+"$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 gpass review
-assert_eq "next: an armed run goes on by itself after a passed Review" "auto|state advance review_complete check" \
-  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
+assert_eq "next: after the unattended Build, a passed Review asks the person" "ask|Continue to Check (Recommended)" \
+  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
+"$TEMPER" state set run_mode autonomous >/dev/null 2>&1   # a run armed before this change
+gpass review
+assert_eq "next: even armed, Review asks the person and goes on by nothing itself" "ask|Continue to Check (Recommended)" \
+  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
 gfail review "no blocking findings" "1 open finding"
-assert_eq "next: an armed run loops a failed Review back to Build by itself" "auto|state loop review build" \
-  "$(nx "d['action'] + '|' + ' '.join(d['calls'][0].split('temper ', 1)[1].split()[:4])")"
+assert_eq "next: even armed, a failed Review asks the person, with no loop back by itself" "ask|Loop back to Build (Recommended)" \
+  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
 "$TEMPER" park --verdict PARKED-NEEDS-DECISION --reason "a test" >/dev/null 2>&1
 assert_eq "park: the run is interactive again, marked parked, and the report says where it waits" "interactive|review|1" \
   "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the gate it parked at' .temper/autonomy-report.md)"
@@ -252,7 +261,7 @@ import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['intent_a
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "next: Design runs its brief" "temper:temper-design|gate design" "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
 gpass design
-assert_eq "next: Design PASS offers the unattended run too (9.8.0: the last question before Build)" "Continue to Build (Recommended)|Autonomous: run the rest unattended|Walk through step by step|More options" "$(labels)"
+assert_eq "next: Design PASS offers the unattended run too (9.8.0: the last question before Build)" "Continue to Build (Recommended)|Autonomous Build: run Build unattended|Walk through step by step|More options" "$(labels)"
 gfail design "areas of concern" "missing"
 assert_eq "next: Design FAIL" "Loop back to Plan|Override and continue|Save for later" "$(labels)"
 
@@ -301,12 +310,12 @@ assert_exit "review 1: state advance started nowhere is refused" 1 "$TEMPER" sta
 assert_eq "review 1: the run is still at Intent" "intent" "$("$TEMPER" state get next_stage)"
 # 2. Text from a failed row or a finding is never shell code in a call the orchestrator runs as printed.
 fresh; printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
-gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+gpass intent plan; for s in intent_complete:plan plan_complete:build; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-gfail review "no blocking findings" 'src/a.sh:4 runs $(touch PWNED1) and `touch PWNED2` on install'
+gfail build "tests pass" 'src/a.sh:4 runs $(touch PWNED1) and `touch PWNED2` on install'
 CALL="$(nx "d['calls'][0]")"; ( bash -c "$CALL" ) >/dev/null 2>&1
-assert_eq "review 2: an armed loop back runs no text of the finding, and keeps it as written" "0|0|1" \
-  "$([[ -e PWNED1 ]] && echo 1 || echo 0)|$([[ -e PWNED2 ]] && echo 1 || echo 0)|$(grep -c 'touch PWNED1' .temper/feedback-loops.json)"
+assert_eq "review 2: an armed run's park runs no text of the failed row, and keeps it as written" "0|0|1" \
+  "$([[ -e PWNED1 ]] && echo 1 || echo 0)|$([[ -e PWNED2 ]] && echo 1 || echo 0)|$(grep -q 'touch PWNED1' .temper/autonomy-report.md && echo 1 || echo 0)"
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 gfail build "tests pass" 'npm test exited 1: `touch PWNED3` $(touch PWNED4)'
