@@ -296,8 +296,8 @@ benchmark measured why: the main session's own model time was 8% to 10% of a fea
 It hands the run to the conversation (the prompt based `/temper:temper`, which goes on from the same state; the
 CLI holds the run, the driver holds nothing) for anything that needs a model or your own words: an answer you
 type (passed on as `discuss <your words>`), a skill (Grill Me, Teach Me), the HTML plan review, a small change
-window, a pull request step, an agent's DRIFT rows (the Scope drift question), a name question, a call that fails
-and an action it does not know. It says so in one line. An option you chose that only the conversation can carry out
+window, a pull request step, an agent's DRIFT rows (the Scope drift question), a call that fails and an action it
+does not know (a manual task's name question it asks itself, and runs the confirm calls with the typed name). It says so in one line. An option you chose that only the conversation can carry out
 (a skill, the HTML review, a small change) goes over as `chose <label>`, before any of its calls runs: the
 conversation carries it out as your answer, with no second question. `/temper:fix <bug>` with no run active is carried
 the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop). A run word (`approve`,
