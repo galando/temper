@@ -339,8 +339,8 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
   git records of worktrees whose folders were gone. Group start then took such a record for this run's worktree and
   went on with no folder, and task start failed on it, or refused the leftover branch and
   told the person to run git. Now a record whose folder is gone is cleared, a clean leftover worktree is removed, and a
-  branch this run did not make is moved aside to `temper/{slug}/earlier-{time}/{G or Tn}` with its commits kept, all
-  said on one NOTE line; a leftover worktree with uncommitted work is never removed (exit 3, naming it). This run's own
+  branch this run did not make is moved aside to `refs/temper/kept/{slug}/earlier-{time}/{G or Tn}` with its commits
+  kept, all said on one NOTE line; a leftover worktree with uncommitted work is never removed (exit 3, naming it). This run's own
   group worktree whose folder went comes back on its branch at the next task start or task gate. Claude Code 2.1.318
   deletes nothing under `.claude/worktrees/` when a session starts or ends (checked in a sandbox), so the folders went
   by another hand.
@@ -348,6 +348,14 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
   then handed the run back when `task start 2` failed, with Task 1's agent running and no one to follow it ("a before
   call failed"). Now every agent's before calls run first; when one fails, the agents whose tasks started are launched
   and followed to their gates, and the hand back names the CLI's FAIL line.
+- **Earlier attempts' branches leave `git branch`** (`scripts/task_ops.py`, `keep` and `tidy`). A re-plan renamed each
+  group and task branch to `temper/{slug}/replan-{time}/{G}`, and nothing ever deleted them, so repeated attempts piled up
+  in `git branch`. That work now goes to `refs/temper/kept/` with its commits, and `temper state clear` (the end of a
+  run, and Start over) moves the branches older versions left there too, and drops what was kept longer than
+  `build.grouped.keep-days` (30 days; 0 keeps everything). A branch checked out in a worktree is left where it is.
+- **Room in the CLI:** the grouped plan gate's rows and the quality bands moved from `scripts/temper` into
+  `scripts/plan_rows.py` and `scripts/bands.py`, as they ran; the CLI had 886 bytes left under the directory's
+  256 KiB limit for a file, and has 11 KiB now.
 - **The words of a question match the run** (`scripts/flow.py`), found when every question was read for the flow
   explainer: More options named what used to be behind it once Make a small change went in or Teach Me went out
   (it lists what is there now); in a `/temper:fix` run, a failed Review asked "Loop back to Build?" over a Loop back

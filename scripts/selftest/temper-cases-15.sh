@@ -555,3 +555,27 @@ assert_eq "9.8.0: a fix run's small change says there is no loop back to Fix" "1
   "$(nx "o = [x for x in d['ask']['options'] + d['ask'].get('more', {}).get('options', []) if x['label'] == 'Make a small change'][0]; str(int('no loop back to Fix' in o['description'])) + '|' + str(int('Build' in o['description']))")"
 assert_eq "9.8.0: the page question is gone from the CLI (the page is written with no question)" "0" "$(grep -c 'def page_question' "$REPO_ROOT/scripts/flow.py")"
 setup
+
+# --- 9.8.0: earlier attempts' branches leave `git branch`, and old ones are dropped (state clear) ---
+setup; [[ "$PWD" == "$WORKDIR" ]] || exit 1   # a fresh repository: no branch or kept ref of an earlier case file counts
+rm -rf .git; git init -q .; git config user.email t@example.com; git config user.name T
+git commit -q --allow-empty -m base
+"$TEMPER" state init demo >/dev/null 2>&1
+git branch temper/demo/replan-20200101T000000Z/G1; git branch "temper/demo/replan-$(date -u +%Y%m%dT%H%M%SZ)/G2"
+git branch temper/demo/earlier-20200101T000000Z/T1; git branch temper/demo/G3
+git worktree add -q .claude/worktrees/kept-probe temper/demo/earlier-20200101T000000Z/T1 2>/dev/null
+out="$("$TEMPER" state clear 2>&1)"
+assert_eq "tidy: earlier attempts' branches leave git branch for refs/temper/kept, and the run says so" "1|2" \
+  "$(printf '%s' "$out" | grep -c '^OK: 2 branch(es) of earlier attempts moved out of git branch')|$(git for-each-ref 'refs/temper/kept/demo/' | wc -l | tr -d ' ')"
+assert_eq "tidy: a branch checked out in a worktree stays, and a branch of the run itself is not touched" "yes|yes" \
+  "$(git show-ref --verify --quiet refs/heads/temper/demo/earlier-20200101T000000Z/T1 && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/G3 && echo yes || echo no)"
+git worktree remove --force .claude/worktrees/kept-probe
+"$TEMPER" state init demo >/dev/null 2>&1
+out="$("$TEMPER" state clear 2>&1)"
+assert_eq "tidy: a kept attempt older than 30 days is dropped, a recent one stays" "1|no|yes|yes" \
+  "$(printf '%s' "$out" | grep -c 'earlier attempt(s) kept more than 30 days dropped')|$(git show-ref --quiet refs/temper/kept/demo/replan-20200101T000000Z/G1 && echo yes || echo no)|$(git for-each-ref --format=x 'refs/temper/kept/demo/replan-*/G2' | grep -q x && echo yes || echo no)|$(git show-ref --quiet refs/temper/kept/demo/earlier-20200101T000000Z/T1 && echo yes || echo no)"
+printf 'build:\n  grouped:\n    keep-days: 0\n' >> .claude/temper.config
+git update-ref refs/temper/kept/demo/replan-20200101T000000Z/G9 HEAD
+"$TEMPER" state init demo >/dev/null 2>&1; "$TEMPER" state clear >/dev/null 2>&1
+assert_eq "tidy: keep-days 0 keeps every kept attempt" "yes" "$(git show-ref --quiet refs/temper/kept/demo/replan-20200101T000000Z/G9 && echo yes || echo no)"
+setup; [[ "$PWD" == "$WORKDIR" ]] || exit 1; rm -rf .git; git init -q .

@@ -175,6 +175,11 @@ usage page.
 - **A task an earlier task built** (its RED run passes) is not retried: the person accepts it or runs it again.
 - **Manual tasks** (`**Test:** manual`) have no RED or GREEN; the person confirms them.
 - **Groups.** `build.grouped.max-groups` (default 2) bounds the groups working at once; a plan with tasks and no groups stops Build.
+- **An earlier attempt's work** (a loop back to Plan, or a run started again under the same name) is kept out of `git branch`:
+  `group start`, `task start` and the re-plan move its clean worktree away and its branch to
+  `refs/temper/kept/{slug}/{earlier or replan}-{time}/{G or Tn}`, with its commits; `git branch NAME REF` brings one back. A
+  leftover worktree with uncommitted work is never removed. `temper state clear` (the end of a run, and Start over) moves such
+  branches of older versions there too, and drops what was kept longer than `build.grouped.keep-days` (30; 0 keeps it all).
 - **Timeouts.** The group gate takes `--timeout-s`; the integration suite has its own limit (`TEMPER_INTEGRATION_TIMEOUT_S`).
 - **Maven.** `scripts/maven_loop.py` runs the declared test classes offline and needs a new surefire report per class; a Maven group
   validates with `mvn verify` and JaCoCo.

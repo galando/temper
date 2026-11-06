@@ -124,6 +124,7 @@ loops:
 #     escalation-model: sonnet         # the one retry after two failed attempts
 #     max-parallel: 4                  # tasks running at once
 #     max-groups: 2                    # groups working at once (a whole number, at least 1)
+#     keep-days: 30                    # days an earlier attempt's work is kept in refs/temper/kept/ (0: always)
 
 # ============================================================
 # Autonomous Continuation: armed by a human at the PLAN GATE, never at

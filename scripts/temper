@@ -1172,8 +1172,8 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
 }
 
 _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.json goes to .temper/archive/, a clean
-                  # group or task worktree is removed and its branch renamed to temper/{slug}/replan-{ts}/{G} (its commits are
-                  # kept); a worktree with uncommitted work is left where it is and named, so nothing is lost
+                  # group or task worktree is removed and its branch moved to refs/temper/kept/{slug}/replan-{ts}/{G} (its
+                  # commits are kept); a worktree with uncommitted work is left where it is and named, so nothing is lost
   local ts; ts="$(date -u +%Y%m%dT%H%M%SZ)"
   local g wt branch slug
   while IFS=$'\t' read -r slug g wt branch; do
@@ -1187,8 +1187,8 @@ _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.js
       git worktree remove --force "$wt" >/dev/null 2>&1 || { echo "WARN: could not remove $wt; kept" >&2; continue; }
     fi
     if [[ -n "$branch" ]] && git show-ref --verify --quiet "refs/heads/$branch"; then
-      git branch -m "$branch" "temper/$slug/replan-$ts/$g" >/dev/null 2>&1 \
-        || echo "WARN: could not rename $branch; delete it before the re-planned run starts $g" >&2
+      _task_py keep "$slug" replan "$ts" "$g" "$branch" >/dev/null \
+        || echo "WARN: could not move $branch aside; delete it before the re-planned run starts $g" >&2
     fi
   done < <(python3 -I -c "
 import json, sys
@@ -1324,6 +1324,8 @@ cmd_state_clear() {
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
   rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json
   rm -rf .temper/evidence
+  # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
+  _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
 
@@ -2164,7 +2166,8 @@ _default_branch() { # the remote's default branch when one is recorded, else ""
 
 # _wt_prep <worktree> <branch> <own 0|1> <slug> <G or Tn>: 0 = reuse this run's worktree; 1 = make it; 3 = refused. Clears
 # what an earlier attempt of the same run name left: a record whose folder is gone, a clean worktree on the branch, and
-# a branch this run did not make (moved aside to temper/{slug}/earlier-{ts}/{G}, its commits kept). Uncommitted work stays.
+# a branch this run did not make (moved aside to refs/temper/kept/{slug}/earlier-{ts}/{G}, its commits kept). Uncommitted
+# work stays.
 _wt_prep() {
   local reg; reg="$(git worktree list --porcelain 2>/dev/null | awk -v p="$(pwd -P)/$1" '
     $1 == "worktree" { w = $2; if (w == p) r = "-" } $1 == "branch" && w == p { r = $2 } END { print r }')"
@@ -2182,9 +2185,9 @@ _wt_prep() {
     return 3
   fi
   if [[ $3 != 1 ]] && git show-ref --verify --quiet "refs/heads/$2"; then
-    local to; to="temper/$4/earlier-$(date -u +%Y%m%dT%H%M%SZ)/$5"
-    git branch -m "$2" "$to" >/dev/null 2>&1 || { echo "FAIL: branch $2 is left by an earlier attempt; delete it (git branch -D $2), then run this again" >&2; return 3; }
-    echo "NOTE: branch $2, left by an earlier attempt, moved aside to $to (its commits are kept)" >&2
+    local to; to="$(_task_py keep "$4" earlier "$(date -u +%Y%m%dT%H%M%SZ)" "$5" "$2")" \
+      || { echo "FAIL: branch $2 is left by an earlier attempt; delete it (git branch -D $2), then run this again" >&2; return 3; }
+    echo "NOTE: branch $2, left by an earlier attempt, moved aside to $to (its commits are kept; git branch $2 $to brings it back)" >&2
   fi
   return 1
 }
@@ -3412,131 +3415,7 @@ cmd_task() {
 # Grouped plan-gate rows: one JSON requirement object per line (same shape _req emits).
 _grouped_plan_reqs() { # _grouped_plan_reqs <tasks.md> <max-blast-radius>
   local model; model="$(_grouped_parse "$1")"
-  python3 -I - "$2" "$GROUP_CONTEXT_MAX_BYTES" "$TASK_BLOCK_MAX_BYTES" "$model" "$PWD" <<'PY'
-import json, os, shlex, sys
-max_blast, ctx_max, blk_max = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
-m = json.loads(sys.argv[4])
-groups, tasks = m['groups'], m['tasks']
-def row(name, bad, ok_detail):
-    print(json.dumps({'name': name, 'pass': not bad, 'detail': '; '.join(bad) if bad else ok_detail}))
-by_n = {}
-bad = []
-if not groups: bad.append('no "## Group G<n>: title" heading')
-for t in tasks:
-    if t['n'] in by_n: bad.append('duplicate Task %d' % t['n'])
-    by_n.setdefault(t['n'], t)
-    if not t['group']: bad.append('Task %d is outside any group' % t['n'])
-row('grouped plan', bad, '%d groups: %s' % (len(groups), ', '.join('%s (%d tasks)' % (g['id'], len(g['tasks'])) for g in groups)))
-row('declared files', ['Task %d: no declared files' % t['n'] for t in tasks if not t['files']],
-    'every task declares its files')
-row('exact file paths', ['Task %d: **File:** %s is a glob (declare exact paths)' % (t['n'], f)
-                         for t in tasks for f in t['files'] if any(c in f for c in '*?[')],
-    'every **File:** is an exact path')
-def test_path(cmd):  # the first path-like argument of a test command, else ''
-    try: parts = shlex.split(cmd)
-    except ValueError: return ''
-    for a in parts[1:]:
-        if a.startswith('-') or any(c in a for c in '$*?[{`'): continue
-        if '/' in a or os.path.splitext(a)[1] in ('.sh', '.py', '.js', '.ts', '.bats', '.rb'): return a
-    return ''
-def undeclared_test(t):
-    p = test_path(t['test'])
-    if not p: return None
-    q = p[2:] if p.startswith('./') else p
-    if q in {f.strip()[2:] if f.strip().startswith('./') else f.strip() for f in t['files']}: return None
-    if os.path.exists(os.path.join(sys.argv[5], q)): return None
-    return 'Task %d: test path %s is not declared in **File:** and does not exist yet' % (t['n'], q)
-row('task test command', ['Task %d: no test command' % t['n'] for t in tasks if not t['test']]
-    + [m for m in map(undeclared_test, tasks) if m],
-    'every task declares its own scoped test command')
-row('task test cases', ['Task %d: %d case(s) under **Cases:** (need 2 or more: the normal result and an edge or error case)' % (t['n'], t['cases'])
-                        for t in tasks if t['cases'] < 2],
-    'every task lists the concrete cases its test must check')
-row('group context', ['%s: no group context' % g['id'] for g in groups if not g['context']],
-    'every group has a context block')
-row('context budget', ['%s: context %d bytes > %d' % (g['id'], g['context_bytes'], ctx_max)
-                       for g in groups if g['context_bytes'] > ctx_max], 'every context within %d bytes' % ctx_max)
-row('task block budget', ['Task %d: block %d bytes > %d' % (t['n'], t['block_bytes'], blk_max)
-                          for t in tasks if t['block_bytes'] > blk_max], 'every task block within %d bytes' % blk_max)
-gids = {g['id'] for g in groups}
-dep_bad = []
-for t in tasks:
-    for d in t['depends']:
-        if d not in by_n: dep_bad.append('Task %d depends on unknown Task %d' % (t['n'], d))
-for g in groups:
-    for d in g['depends']:
-        if d not in gids: dep_bad.append('%s depends on unknown %s' % (g['id'], d))
-def find_cycle(nodes, edges, label):
-    state = {}
-    def visit(n, path):
-        state[n] = 1
-        for d in edges.get(n, []):
-            if d not in nodes: continue
-            if state.get(d) == 1:
-                return ' -> '.join(label(x) for x in path[path.index(d):] + [d])
-            if d not in state:
-                r = visit(d, path + [d])
-                if r: return r
-        state[n] = 2
-        return None
-    for n in nodes:
-        if n not in state:
-            r = visit(n, [n])
-            if r: return r
-    return None
-c = find_cycle(list(by_n), {n: t['depends'] for n, t in by_n.items()}, lambda x: 'Task %d' % x)
-if c: dep_bad.append('Depends cycle: ' + c)
-gdeps = {g['id']: g['depends'] for g in groups}
-c = find_cycle(list(gids), gdeps, str)
-if c: dep_bad.append('Depends cycle: ' + c)
-# F3: a group's worktree starts from the feature branch plus the groups it depends on, so a task that depends on a
-# task of another group needs its own group to depend (transitively) on that group, or it runs without that work
-def gclosure(g):
-    seen, stack = set(), list(gdeps.get(g, []))
-    while stack:
-        x = stack.pop()
-        if x in seen: continue
-        seen.add(x); stack.extend(gdeps.get(x, []))
-    return seen
-for n, t in sorted(by_n.items()):
-    for d in t['depends']:
-        dg = (by_n.get(d) or {}).get('group')
-        if dg and t['group'] and dg != t['group'] and dg not in gclosure(t['group']):
-            dep_bad.append('Task %d (%s) depends on Task %d (%s) but %s does not depend on %s' % (n, t['group'], d, dg, t['group'], dg))
-row('dependencies', dep_bad, 'no cycles, no unknown dependencies')
-# A precedes B when A is a transitive task ancestor of B, or B's group transitively depends on A's group.
-def closure(start, edges, ok):
-    seen, stack = set(), list(edges.get(start, []))
-    while stack:
-        x = stack.pop()
-        if x in seen or not ok(x): continue
-        seen.add(x); stack.extend(edges.get(x, []))
-    return seen
-tdeps = {n: t['depends'] for n, t in by_n.items()}
-ordered = set()
-for n, t in by_n.items():
-    for a in closure(n, tdeps, lambda x: x in by_n): ordered.add((a, n))
-    if t['group']:
-        for ag in closure(t['group'], gdeps, lambda x: x in gids):
-            for o in tasks:
-                if o['group'] == ag: ordered.add((o['n'], n))
-ov = []
-ts = sorted(by_n)
-for i, a in enumerate(ts):
-    for b in ts[i + 1:]:
-        if (a, b) in ordered or (b, a) in ordered: continue
-        for f in by_n[a]['files']:
-            if f in by_n[b]['files']:
-                ov.append('file ownership overlap: %s in Task %d and Task %d' % (f, a, b))
-row('file ownership', ov, 'tasks that can run together declare disjoint files')
-big = []
-for g in groups:
-    files = {f for n in g['tasks'] for f in by_n[n]['files']}
-    if len(files) > max_blast:
-        big.append('%s declares %d files > autonomy.max-blast-radius=%d: split the group' % (g['id'], len(files), max_blast))
-row('group blast radius', big, 'every group within autonomy.max-blast-radius=%d' % max_blast)
-row('integration command', [] if m['integration'] else ['no **Integration:** line'], 'integration command declared')
-PY
+  python3 -I "$SCRIPTS_DIR/plan_rows.py" "$2" "$GROUP_CONTEXT_MAX_BYTES" "$TASK_BLOCK_MAX_BYTES" "$model" "$PWD" </dev/null
 }
 
 gate_plan() {
@@ -5021,104 +4900,7 @@ cmd_bands() {
   t2="$(_cfg_get bands.tiers.2sigma diagnose)"
   t3="$(_cfg_get bands.tiers.3sigma propose)"
   local out rc
-  out=$(python3 -I - "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" <<'PY'
-import json, math, sys
-metrics_path, out_path, window, min_points, drift_run, metrics_sep, t1, t2, t3, ts = sys.argv[1:11]
-# Clamp config to sane floors, never crash on it (spine degradation contract): a
-# non-integer or out-of-range window/min-points/drift-run falls back to its default
-# rather than raising. window>=2 and min-points>=2 keep the baseline slice and the
-# variance non-empty; drift-run>=2 keeps the run rule meaningful.
-def _cfg_int(raw, default, floor):
-    try:
-        n = int(float(raw))
-    except (ValueError, TypeError):
-        return default
-    return n if n >= floor else floor
-window = _cfg_int(window, 10, 2)
-min_points = _cfg_int(min_points, 4, 2)
-drift_run = _cfg_int(drift_run, 6, 2)
-# Two friendly aliases; beyond them, ANY <name>_history array in metrics.json is
-# band-able by name — `temper metrics append <name> <value>` is how a series
-# (including external ones: CI failure rate, 5xx counts) gets points.
-ALIASES = {'coverage': 'coverage_history', 'tests': 'test_count_history'}
-try:
-    m = json.load(open(metrics_path))
-    if not isinstance(m, dict):
-        m = {}
-except Exception:
-    m = {}   # malformed metrics == absent; never a crash, never a breach (spine contract)
-
-def numeric(v):
-    if isinstance(v, bool):
-        return None
-    if isinstance(v, (int, float)):
-        return float(v)
-    if isinstance(v, dict):
-        for k in ('value', 'coverage', 'count', 'pct'):
-            if isinstance(v.get(k), (int, float)) and not isinstance(v.get(k), bool):
-                return float(v[k])
-    return None
-
-tier_names = {0: 'ok', 1: '1sigma', 2: '2sigma', 3: '3sigma'}
-actions = {'1sigma': t1, '2sigma': t2, '3sigma': t3}
-results, lines, worst, any_data = {}, [], 0, False
-for name in [s for s in metrics_sep.split('\x1f') if s]:
-    key = ALIASES.get(name)
-    if key is None:
-        candidate = name if name.endswith('_history') else f"{name}_history"
-        if isinstance(m.get(candidate), list):
-            key = candidate
-    if key is None:
-        known = sorted(set(ALIASES) | {k[:-len('_history')] for k in m if k.endswith('_history') and isinstance(m.get(k), list)})
-        lines.append(f"  [--] {name} — unknown metric (known: {', '.join(known)}); skipped")
-        results[name] = {'tier': 'unknown-metric'}
-        continue
-    raw = m.get(key, [])
-    series = [x for x in (numeric(v) for v in (raw if isinstance(raw, list) else [])) if x is not None]
-    if len(series) < min_points:
-        lines.append(f"  [--] {name} — insufficient data ({len(series)} point(s) recorded, need {min_points})")
-        results[name] = {'tier': 'insufficient-data', 'points': len(series)}
-        continue
-    any_data = True
-    latest = series[-1]
-    base = series[max(0, len(series) - 1 - window):-1]
-    mean = sum(base) / len(base)
-    sigma = math.sqrt(sum((x - mean) ** 2 for x in base) / len(base))
-    if sigma == 0:
-        z = 0.0 if latest == mean else (3.0 if latest > mean else -3.0)
-    else:
-        z = (latest - mean) / sigma
-    level = 3 if abs(z) >= 3 else 2 if abs(z) >= 2 else 1 if abs(z) >= 1 else 0
-    run = series[-drift_run:]
-    drift = len(run) >= drift_run and (all(p > mean for p in run) or all(p < mean for p in run))
-    if drift and level < 2:
-        level = 2
-    tier = tier_names[level]
-    action = actions.get(tier)
-    worst = max(worst, level)
-    line = (f"  [{tier if level else 'ok'}] {name} — latest {latest:g} vs baseline "
-            f"{mean:.2f} ±{sigma:.2f} (z={z:+.2f}, window {len(base)})")
-    if drift:
-        line += f" [drift: {drift_run} consecutive same-side point(s)]"
-    if level >= 1:
-        line += f": action={action}"
-    lines.append(line)
-    results[name] = {'latest': latest, 'mean': round(mean, 4), 'sigma': round(sigma, 4),
-                     'z': round(z, 4), 'tier': tier, 'drift': drift,
-                     'action': action if level >= 1 else None, 'window': len(base)}
-verdict = 'BREACH' if worst >= 2 else ('OK' if any_data else 'INSUFFICIENT-DATA')
-with open(out_path, 'w') as f:
-    json.dump({'verdict': verdict, 'metrics': results, 'ts': ts}, f, indent=2)
-    f.write('\n')
-print(f"temper bands -> {verdict}")
-for l in lines:
-    print(l)
-if worst >= 2:
-    print("A 2sigma+ breach is a closing-the-loop trigger: /temper:status renders it; a "
-          "propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to run.")
-sys.exit(1 if worst >= 2 else 0)
-PY
-)
+  out=$(python3 -I "$SCRIPTS_DIR/bands.py" "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" </dev/null)
   rc=$?
   if [[ "$as_json" == "true" ]]; then
     cat "$BANDS_FILE" 2>/dev/null || echo '{}'

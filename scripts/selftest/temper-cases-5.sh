@@ -1496,9 +1496,9 @@ git checkout -q feature/demo 2>/dev/null
 old="$(git rev-parse temper/demo/G1)"
 out="$("$TEMPER" group start G1 2>&1)"; rc=$?
 assert_eq "R3: a stale branch from an earlier run is moved aside, named, and the group starts" "0|1" \
-  "$rc|$(printf '%s' "$out" | grep -c '^NOTE: branch temper/demo/G1, left by an earlier attempt, moved aside to temper/demo/earlier-')"
-assert_eq "R3: the earlier attempt's commits are kept on the moved branch" "$old" \
-  "$(git for-each-ref --format='%(objectname)' 'refs/heads/temper/demo/earlier-*/G1')"
+  "$rc|$(printf '%s' "$out" | grep -c '^NOTE: branch temper/demo/G1, left by an earlier attempt, moved aside to refs/temper/kept/demo/earlier-')"
+assert_eq "R3: the earlier attempt's commits are kept, out of git branch" "$old|0" \
+  "$(git for-each-ref --format='%(objectname)' 'refs/temper/kept/demo/earlier-*/G1')|$(git branch --list 'temper/demo/earlier-*' | wc -l | tr -d ' ')"
 assert_eq "R3: the fresh branch is not the abandoned run's (no group commits on it)" "0" \
   "$(git log --format=%s feature/demo..temper/demo/G1 | wc -l | tr -d ' ')"
 

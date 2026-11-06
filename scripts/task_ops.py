@@ -4,14 +4,14 @@
 
 The CLI's _task_py calls it with standard input closed, the project's folder from the top of its repository in
 TEMPER_PREFIX and the groups file in TEMPER_GROUPS_FILE. Modes: ctx, why and show (a task's brief and context),
-snap, grpown (whether this run made a group's branch), testrun, grouprun and integrun (run a declared command and record its row), integplan and ifcheck (the
+snap, grpown (whether this run made a group's branch), keep and tidy (an earlier attempt's branches), testrun, grouprun and integrun (run a declared command and record its row), integplan and ifcheck (the
 integration facts and the Interfaces check), gatecheck, foreigncheck, unknown and reopencheck (what a group's branch
 holds), restore (undo a task's changes) and verdict (a task's gate). It lived inside scripts/temper until 9.7.1, which
 moved it here to keep every file of the plugin under the directory's 256 KiB limit.
 
 Standard library only.
 """
-import hashlib, json, os, re, shlex, signal, subprocess, sys, time
+import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
 from run_env import run_cmd, test_env  # noqa: F401
 import scenario_ops
@@ -239,6 +239,25 @@ def unknown_commits(cwd, run, g, ref):
     kn = known_shas(run, g)
     return [x for x in rl.stdout.decode('utf-8', 'replace').split() if x not in kn]
 
+# An earlier attempt's branch (a re-plan, or a run started again under the same name) is kept out of `git branch`, under
+# refs/temper/kept/{slug}/{kind}-{ts}/{G or Tn}: `git branch NAME REF` brings one back.
+KEPT = 'refs/temper/kept/'
+KEPT_STAMP = re.compile(r'^(earlier|replan)-(\d{8}T\d{6}Z)$')
+
+def keep_branch(branch, ref):
+    """Moves refs/heads/BRANCH to REF (which must not exist yet); False, with nothing changed, when it cannot (a branch
+    checked out in a worktree cannot be deleted)."""
+    r = subprocess.run(['git', 'rev-parse', '--verify', '-q', 'refs/heads/' + branch], stdout=subprocess.PIPE,
+                       stderr=subprocess.DEVNULL)
+    sha = r.stdout.decode().strip()
+    quiet = dict(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if r.returncode != 0 or not sha or subprocess.run(['git', 'update-ref', ref, sha, ''], **quiet).returncode != 0:
+        return False
+    if subprocess.run(['git', 'branch', '-D', branch], **quiet).returncode != 0:
+        subprocess.run(['git', 'update-ref', '-d', ref, sha], **quiet)
+        return False
+    return True
+
 mode = sys.argv[1]
 
 if mode == 'ctx':
@@ -264,6 +283,36 @@ elif mode == 'why':
 
 elif mode == 'snap':
     print(json.dumps(snap(sys.argv[2])))
+
+elif mode == 'keep':
+    # keep SLUG KIND TS TAG BRANCH: an earlier attempt's branch leaves `git branch` for refs/temper/kept/, its commits kept
+    ref = KEPT + '%s/%s-%s/%s' % tuple(sys.argv[2:6])
+    if not keep_branch(sys.argv[6], ref):
+        sys.exit(1)
+    print(ref)
+
+elif mode == 'tidy':
+    # tidy DAYS (state clear, at the end of a run and at Start over): an earlier attempt's branch left as a branch
+    # (temper/{slug}/earlier-{ts}/{G} or replan-{ts}/{G}) goes to refs/temper/kept/, and a kept attempt older than DAYS
+    # days is dropped (0 keeps them all). A branch checked out in a worktree stays where it is.
+    days = int(sys.argv[2]) if re.fullmatch(r'\d{1,5}', sys.argv[2] if len(sys.argv) > 2 else '') else 30
+    r = subprocess.run(['git', 'for-each-ref', '--format=%(refname)', 'refs/heads/temper/', KEPT],
+                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    moved = dropped = 0
+    for ref in (r.stdout.decode('utf-8', 'replace').split() if r.returncode == 0 else []):
+        rest = ref.split('/')[2:]                     # temper/{slug}/{kind}-{ts}/{tag}, or kept/{slug}/{kind}-{ts}/{tag}
+        m = KEPT_STAMP.match(rest[2]) if len(rest) == 4 else None
+        if m is None:
+            continue
+        if ref.startswith('refs/heads/'):
+            moved += keep_branch('/'.join(rest), KEPT + '/'.join(rest[1:]))
+        elif days > 0 and time.time() - calendar.timegm(time.strptime(m.group(2), '%Y%m%dT%H%M%SZ')) > days * 86400:
+            dropped += subprocess.run(['git', 'update-ref', '-d', ref], stdout=subprocess.DEVNULL,
+                                      stderr=subprocess.DEVNULL).returncode == 0
+    if moved:
+        print('OK: %d branch(es) of earlier attempts moved out of git branch to %s (their commits kept)' % (moved, KEPT))
+    if dropped:
+        print('OK: %d earlier attempt(s) kept more than %d days dropped from %s' % (dropped, days, KEPT))
 
 elif mode == 'grpown':
     # exit 0 when this run made group G's branch: the same slug, the branch recorded, and its recorded base still in its
