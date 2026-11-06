@@ -2162,6 +2162,38 @@ _default_branch() { # the remote's default branch when one is recorded, else ""
   echo "${ref#refs/remotes/origin/}"
 }
 
+# _wt_prep <worktree> <branch> <own 0|1> <slug> <G or Tn>: 0 = reuse this run's worktree; 1 = make it; 3 = refused. Clears
+# what an earlier attempt of the same run name left: a record whose folder is gone, a clean worktree on the branch, and
+# a branch this run did not make (moved aside to temper/{slug}/earlier-{ts}/{G}, its commits kept). Uncommitted work stays.
+_wt_prep() {
+  local reg; reg="$(git worktree list --porcelain 2>/dev/null | awk -v p="$(pwd -P)/$1" '
+    $1 == "worktree" { w = $2; if (w == p) r = "-" } $1 == "branch" && w == p { r = $2 } END { print r }')"
+  if [[ "$reg" == "refs/heads/$2" && -d "$1" ]]; then
+    [[ $3 == 1 ]] && return 0
+    local pre; pre="$(_prefix_re)"
+    if [[ -n "$(git -C "$1" status --porcelain=v1 2>/dev/null | cut -c4- | grep -v -e "^${pre}\.temper/" -e '^\.temper/')" ]]; then
+      echo "FAIL: $1 holds uncommitted work of an earlier attempt of this run; move it away, then run this again" >&2
+      return 3
+    fi
+  fi
+  [[ -n "$reg" && ( ! -d "$1" || "$reg" == "refs/heads/$2" ) ]] && git worktree remove --force "$1" >/dev/null 2>&1
+  if [[ -e "$1" || -L "$1" ]]; then
+    echo "FAIL: $1 exists and is not the worktree of $5; move it away" >&2
+    return 3
+  fi
+  if [[ $3 != 1 ]] && git show-ref --verify --quiet "refs/heads/$2"; then
+    local to; to="temper/$4/earlier-$(date -u +%Y%m%dT%H%M%SZ)/$5"
+    git branch -m "$2" "$to" >/dev/null 2>&1 || { echo "FAIL: branch $2 is left by an earlier attempt; delete it (git branch -D $2), then run this again" >&2; return 3; }
+    echo "NOTE: branch $2, left by an earlier attempt, moved aside to $to (its commits are kept)" >&2
+  fi
+  return 1
+}
+_wt_back() { # _wt_back <worktree> <branch> <G> <slug>: this run's group worktree whose folder went comes back on its branch
+  [[ -n "$1" && ! -d "$1" ]] || return 0
+  _task_py grpown "$GROUPS_FILE" "$3" "$2" "$4" || return 1
+  git worktree remove --force "$1" >/dev/null 2>&1; git worktree add -q "$1" "$2" >/dev/null 2>&1
+}
+
 # temper group start G: one worktree per group at .claude/worktrees/temper-{slug}-{G}, branch
 # temper/{slug}/{G}, based on the feature branch HEAD with every Depends group's branch merged in.
 # Idempotent: a worktree already on the right branch is reused. Exit 3: a protected branch, or a
@@ -2236,18 +2268,13 @@ except Exception:
     fi
   done
 
-  local wt=".claude/worktrees/temper-$slug-$g" branch="temper/$slug/$g" abs
-  abs="$(pwd -P)/$wt"
-  local reuse=0
-  if git worktree list --porcelain 2>/dev/null | awk -v p="$abs" -v b="refs/heads/$branch" '
-      $1 == "worktree" { path = $2 } $1 == "branch" && path == p && $2 == b { found = 1 } END { exit !found }'; then
-    reuse=1
-  elif [[ -e "$wt" || -L "$wt" ]]; then
-    echo "FAIL: $wt exists and is not the worktree of $g; move it away" >&2
-    return 3
-  fi
+  local wt=".claude/worktrees/temper-$slug-$g" branch="temper/$slug/$g" own=0 rc
+  # R3: this run's own branch only (same name, and its recorded base still in its history); another is an earlier attempt's
+  _task_py grpown "$GROUPS_FILE" "$g" "$branch" "$slug" && own=1
+  _wt_prep "$wt" "$branch" "$own" "$slug" "$g"; rc=$?
+  [[ $rc == 3 ]] && return 3
 
-  if [[ "$reuse" == "0" ]]; then
+  if [[ $rc == 1 ]]; then
     # the worktrees folder is local to this clone: info/exclude, never .gitignore
     local ex; ex="$(git rev-parse --git-common-dir)/info/exclude"
     mkdir -p "$(dirname "$ex")"
@@ -2257,25 +2284,6 @@ except Exception:
     if git show-ref --verify --quiet "refs/heads/$branch"; then
       # L4: the group branch outlives its worktree (integrate removes worktrees before its suite runs and
       # keeps the branches on FAIL): attach a worktree to the existing branch, its base already holds the deps.
-      # R3: only a branch this run recorded (same name, and its recorded base is still in the branch's history);
-      # any other is an abandoned run's and is refused.
-      if ! python3 -I - "$GROUPS_FILE" "$g" "$branch" "$slug" <<'PY'
-import json, subprocess, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    e = (d.get('groups') or {}).get(sys.argv[2]) or {}
-    ok = d.get('slug') == sys.argv[4] and e.get('branch') == sys.argv[3] and bool(e.get('base_sha'))
-    if ok:
-        ok = subprocess.run(['git', 'merge-base', '--is-ancestor', e['base_sha'], sys.argv[3]],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-except Exception:
-    ok = False
-sys.exit(0 if ok else 1)
-PY
-      then
-        echo "FAIL: branch $branch already exists and this run did not create it (left by an earlier run); delete it with: git branch -D $branch (git worktree prune first if a worktree still names it), then temper group start $g" >&2
-        return 1
-      fi
       if ! wt_out="$(git worktree add -q "$wt" "$branch" 2>&1)"; then
         echo "FAIL: git worktree add failed: $(printf '%s' "$wt_out" | head -1)" >&2
         return 1
@@ -2311,10 +2319,10 @@ e = d['groups'].setdefault(a[2], {})
 e['status'] = 'running' if e.get('status') in (None, 'pending') else e['status']
 e['worktree'] = a[3]
 e['branch'] = a[4]
-e.setdefault('base_sha', a[5])
+e['base_sha'] = a[5] if a[8] == '0' else e.get('base_sha') or a[5]   # a new branch (not this run's own) starts here
 e.setdefault('started_at', a[6])
 e.setdefault('finished_at', None)
-" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" || return 1
+" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" "$own" || return 1
   echo "OK: group $g started ($wt on $branch)"
 }
 
@@ -2897,25 +2905,22 @@ print(1 if any(l.strip().startswith('{') and json.loads(l).get('task') == n for 
   local slug twt tb tabs snap sha
   slug="$(_jget "$_T_CTX" slug)"
   twt=".claude/worktrees/temper-$slug-T$n"; tb="temper/$slug/T$n"; tabs="$(pwd -P)/$twt"
-  if git worktree list --porcelain 2>/dev/null | awk -v p="$tabs" -v b="refs/heads/$tb" '
-      $1 == "worktree" { path = $2 } $1 == "branch" && path == p && $2 == b { found = 1 } END { exit !found }'; then
-    snap='{}'
-  else
-    if [[ -e "$twt" || -L "$twt" ]]; then
-      echo "FAIL: $twt exists and is not the worktree of Task $n; move it away" >&2
-      return 3
-    fi
-    if git show-ref --verify --quiet "refs/heads/$tb"; then
-      echo "FAIL: branch $tb already exists (left by an earlier run); delete it with: git branch -D $tb, then temper task start $n" >&2
-      return 1
-    fi
-    local wt_out
-    if ! wt_out="$(git worktree add -q -b "$tb" "$twt" "$(_jget "$_T_CTX" gbranch)" 2>&1)"; then
+  local own=0 rc wt_out; [[ "$(_jget "$_T_CTX" tbranch)" == "$tb" ]] && own=1
+  _wt_back "$wt" "$(_jget "$_T_CTX" gbranch)" "$group" "$slug" || {
+    echo "FAIL: the worktree of group $group ($wt) is gone; run temper group start $group, then temper task start $n" >&2
+    return 1
+  }
+  _wt_prep "$twt" "$tb" "$own" "$slug" "T$n"; rc=$?
+  [[ $rc == 3 ]] && return 3
+  if [[ $rc == 1 ]]; then
+    # a parked task's worktree whose folder went: its branch keeps the commits, so the worktree comes back on it
+    if [[ $own == 1 ]] && git show-ref --verify --quiet "refs/heads/$tb"; then wt_out="$(git worktree add -q "$twt" "$tb" 2>&1)"
+    else wt_out="$(git worktree add -q -b "$tb" "$twt" "$(_jget "$_T_CTX" gbranch)" 2>&1)"; fi || {
       echo "FAIL: git worktree add failed: $(printf '%s' "$wt_out" | head -1)" >&2
       return 1
-    fi
-    snap='{}'
+    }
   fi
+  snap='{}'
   sha="$(git -C "$tabs" rev-parse HEAD)" || return 1
   _groups_mutate "
 t = d.setdefault('tasks', {}).setdefault(a[0], {})
@@ -3149,6 +3154,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
   # commit); declared files are disjoint between tasks that run together, so a conflict means the plan was wrong
   local gabs tb mrg=""
   gabs="$(pwd -P)/$(_jget "$_T_CTX" gworktree)"; tb="$(_jget "$_T_CTX" tbranch)"
+  _wt_back "$(_jget "$_T_CTX" gworktree)" "$(_jget "$_T_CTX" gbranch)" "$group" "$slug"
   # the merge runs whenever the task branch holds commits the group branch lacks: the CLI's commit just made, and
   # also one kept from an earlier attempt or accepted by the human at a reopen when this attempt changed nothing more
   local tip ahead

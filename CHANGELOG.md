@@ -334,6 +334,20 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
 - **"Make a small change" says who makes it:** Claude makes one small change in the conversation, with no loop back to
   Build, and asks the person what to change when the fix is theirs ("Change the work yourself" read as the person's
   own edit).
+- **An earlier attempt of the same run name no longer blocks Build** (`scripts/temper`, group start and task start).
+  Two runs on a person's machine stopped at `task start`: an earlier attempt had left its group and task branches, and
+  git records of worktrees whose folders were gone. Group start then took such a record for this run's worktree and
+  went on with no folder, and task start failed on it, or refused the leftover branch and
+  told the person to run git. Now a record whose folder is gone is cleared, a clean leftover worktree is removed, and a
+  branch this run did not make is moved aside to `temper/{slug}/earlier-{time}/{G or Tn}` with its commits kept, all
+  said on one NOTE line; a leftover worktree with uncommitted work is never removed (exit 3, naming it). This run's own
+  group worktree whose folder went comes back on its branch at the next task start or task gate. Claude Code 2.1.318
+  deletes nothing under `.claude/worktrees/` when a session starts or ends (checked in a sandbox), so the folders went
+  by another hand.
+- **The driver starts every task before it launches any agent.** With two tasks ready, it launched Task 1's agent and
+  then handed the run back when `task start 2` failed, with Task 1's agent running and no one to follow it ("a before
+  call failed"). Now every agent's before calls run first; when one fails, the agents whose tasks started are launched
+  and followed to their gates, and the hand back names the CLI's FAIL line.
 
 **Three gaps of the last measured pass**
 - **Exempt is an item of the rules checklist, asked with Who, When and How much** (`scripts/gate_rows.py`,

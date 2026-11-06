@@ -1487,20 +1487,47 @@ assert_eq "R2: the running sibling PASSes past the reopen revert" "0|1" "$rc|$(p
 assert_eq "R2: the reverted file stays reverted (not re-applied by a restore)" "no" "$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
 assert_eq "R2: the sibling's commit holds only its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= "$(st_field 2 commit)")"
 
-# R3: an existing group branch is reused only when this run recorded it; a stale one is refused with the way out
+# R3: an existing group branch is reused only when this run recorded it; a stale one (an earlier attempt of the same run
+# name) is moved aside with its commits, and the group starts fresh (9.8.0; it was refused until then)
 gi_all
 GI_EXIT=1 "$TEMPER" integrate >/dev/null 2>&1
 rm -f .temper/groups.json
 git checkout -q feature/demo 2>/dev/null
+old="$(git rev-parse temper/demo/G1)"
 out="$("$TEMPER" group start G1 2>&1)"; rc=$?
-assert_eq "R3: a stale branch from an earlier run is refused, naming it and the way to delete it" "1|1|1" \
-  "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*temper/demo/G1')|$(printf '%s' "$out" | grep -c 'git branch -D temper/demo/G1')"
-assert_eq "R3: the refusal made no worktree and recorded no group" "no|no" \
-  "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)|$([[ -f .temper/groups.json ]] && echo yes || echo no)"
-git branch -q -D temper/demo/G1 temper/demo/G2 2>/dev/null
-assert_exit "R3: after deleting the stale branch the group starts fresh" 0 "$TEMPER" group start G1
+assert_eq "R3: a stale branch from an earlier run is moved aside, named, and the group starts" "0|1" \
+  "$rc|$(printf '%s' "$out" | grep -c '^NOTE: branch temper/demo/G1, left by an earlier attempt, moved aside to temper/demo/earlier-')"
+assert_eq "R3: the earlier attempt's commits are kept on the moved branch" "$old" \
+  "$(git for-each-ref --format='%(objectname)' 'refs/heads/temper/demo/earlier-*/G1')"
 assert_eq "R3: the fresh branch is not the abandoned run's (no group commits on it)" "0" \
   "$(git log --format=%s feature/demo..temper/demo/G1 | wc -l | tr -d ' ')"
+
+# L5 (9.8.0, from a run on a person's machine): an earlier attempt of the same run name left worktree records whose
+# folders are gone, and its group and task branches; the run started over goes past them, and git names none any more
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+rm -rf .claude/worktrees; rm -f .temper/groups.json
+assert_eq "L5: before: git names three worktrees whose folders are gone" "3" "$(git worktree list --porcelain | grep -c '^prunable')"
+assert_exit "L5: group start G1 goes past the leftovers" 0 "$TEMPER" group start G1
+assert_exit "L5: group start G2 goes past the leftovers" 0 "$TEMPER" group start G2
+out="$("$TEMPER" task start 1 2>&1)"; rc=$?
+assert_eq "L5: task start 1 goes past them, naming the branch it moved aside" "0|1" \
+  "$rc|$(printf '%s' "$out" | grep -c '^NOTE: branch temper/demo/T1, left by an earlier attempt')"
+assert_eq "L5: the task worktree is made on its branch, and no record without a folder is left" "temper/demo/T1|0" \
+  "$(git -C "$T1W" rev-parse --abbrev-ref HEAD)|$(git worktree list --porcelain | grep -c '^prunable')"
+# this run's own group worktree whose folder went comes back on its branch, at its tip, when the next task starts
+st_setup; gg_pass 1 src/a.sh
+tip="$(git rev-parse temper/demo/G1)"
+rm -rf .claude/worktrees/temper-demo-G1
+assert_exit "L5: Task 2 starts although its group's folder went" 0 "$TEMPER" task start 2
+assert_eq "L5: the group worktree is back on its branch, at its tip" "temper/demo/G1|$tip" \
+  "$(git -C "$ST_WT" rev-parse --abbrev-ref HEAD)|$(git -C "$ST_WT" rev-parse HEAD)"
+# a leftover worktree with uncommitted work is never removed: refused (exit 3), the work where it was
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; echo wip > "$T1W/wip.txt"
+rm -f .temper/groups.json; "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" group start G2 >/dev/null 2>&1
+out="$("$TEMPER" task start 1 2>&1)"; rc=$?
+assert_eq "L5: a leftover worktree with uncommitted work refuses task start (exit 3), naming it" "3|1" \
+  "$rc|$(printf '%s' "$out" | grep -c "^FAIL: $T1W holds uncommitted work")"
+assert_eq "L5: the uncommitted work is where it was" "wip" "$(cat "$T1W/wip.txt" 2>/dev/null)"
 
 # R5: group reopen refuses a plan that changed after approval, like every other grouped command
 st_setup; gg_pass 1 src/a.sh

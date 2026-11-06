@@ -263,6 +263,19 @@ function* runAll(calls: string[], fills: Record<string, string>): Steps<Ran | nu
   return last
 }
 
+// An agent's before calls: null when they all ran, else what the CLI said about the one that failed (its FAIL line), so
+// the hand back names the cause instead of "a before call failed".
+function* runBefore(calls: string[]): Steps<string | null> {
+  for (const c of calls) {
+    const r = yield* run(fill(c, {}))
+    if (r.code === 0) continue
+    const lines = r.out.split('\n').map(l => l.trim()).filter(l => l !== '')
+    const why = lines.find(l => /^FAIL\b/.test(l)) ?? lines[0] ?? `exit ${r.code}`
+    return `a before call failed: ${why.slice(0, 240)}`
+  }
+  return null
+}
+
 const handback = (why: string, args = 'next'): DriveEnd => ({ kind: 'handback', args, why })
 
 // One question of the CLI, asked as given; the option's calls run with the person's answer. Returns null when it went on,
@@ -379,14 +392,27 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
       const agents = g.agents ?? []
       let drift = false
       if (agents.length > 0) {
+        // Every agent's before calls (a Build task's `task start`) run before any agent starts. When one fails, the agents
+        // whose calls ran start and are followed to their after calls, and only then does the run go back to the
+        // conversation: a run once handed back with Task 1's agent running and nobody to follow it (9.8.0).
+        if (yield* stopped()) return { kind: 'done', text: STOPPED }
         const ids: Array<[string, GoAgent]> = []
+        const ready: GoAgent[] = []
+        let failed: string | null = null
         for (const a of agents) {
-          if (yield* stopped()) return { kind: 'done', text: STOPPED }
-          if ((yield* runAll(a.before ?? [], {})) === null) return handback('a before call failed')
+          failed = yield* runBefore(a.before ?? [])
+          if (failed !== null) break
+          ready.push(a)
+        }
+        for (const a of ready) {
           const id = (yield { k: 'spawn', agent: a }) as string | null
-          if (id === null) return handback(`the ${a.type} agent could not start`)
+          if (id === null) {
+            failed = `the ${a.type} agent could not start`
+            break
+          }
           ids.push([id, a])
         }
+        if (ids.length === 0) return handback(failed ?? 'no agent started')
         const ends = (yield { k: 'wait', ids: ids.map(([id]) => id) }) as Record<string, AgentEnd>
         for (const [id, a] of ids) {
           const end = ends[id] ?? { text: '', ms: null }
@@ -400,6 +426,7 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
             if (r.code !== 0 && !(c === a.gate && r.out.includes('-> FAIL')) && !taskVerdict(c, r.out)) return handback(`an after call of the ${a.type} agent failed`)
           }
         }
+        if (failed !== null) return handback(failed)
       }
       if (drift) return handback('an agent listed files outside the plan (DRIFT)')
       // Steps only the conversation can do (a pull request, a commit message to write): the conversation runs them all,

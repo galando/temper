@@ -211,6 +211,39 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran).toContain(`${CLI} panel task 1 2`)
   })
 
+  test('every agent\'s before calls run before any agent starts; when one fails, the started agents are followed to their gates, then the run goes back naming the CLI\'s FAIL line', async () => {
+    const t = (n: number): GoAgent => ({ ...agent('temper:temper-build-task', [`${CLI} task gate ${n} --model haiku --if-running`]), before: [`${CLI} task start ${n}`] })
+    const refused = 'FAIL: branch temper/x/T2 is left by an earlier attempt; delete it (git branch -D temper/x/T2), then run this again'
+    const { p, log } = port({
+      goes: [{ action: 'work', agents: [t(1), t(2), t(3)] }],
+      fail: c => c.endsWith('task start 2'),
+      out: c => (c.endsWith('task start 2') ? `Task 2\n${refused}\n` : ''),
+    })
+    const order: string[] = []
+    const run0 = p.run
+    const spawn0 = p.spawn
+    p.run = async c => {
+      order.push(c)
+      return run0(c)
+    }
+    p.spawn = async a => {
+      order.push(`spawn ${a.type}`)
+      return spawn0(a)
+    }
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: `a before call failed: ${refused}` })
+    expect(order.filter(c => / task (start|gate) \d|^spawn /.test(c))).toEqual([
+      `${CLI} task start 1`, `${CLI} task start 2`, 'spawn temper:temper-build-task', `${CLI} task gate 1 --model haiku --if-running`])
+    expect(log.spawned.length).toBe(1)
+  })
+
+  test('when the first agent\'s before call fails, no agent starts and the run goes back at once', async () => {
+    const t1: GoAgent = { ...agent('temper:temper-build-task', [`${CLI} task gate 1 --model haiku --if-running`]), before: [`${CLI} task start 1`] }
+    const { p, log } = port({ goes: [{ action: 'work', agents: [t1] }], fail: c => c.endsWith('task start 1') })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'a before call failed: exit 1' })
+    expect(log.spawned).toEqual([])
+    expect(log.ran.some(c => / task gate /.test(c))).toBe(false)
+  })
+
   test('a task gate verdict is told from a call that broke', () => {
     expect(taskVerdict('/p/scripts/temper task gate 3 --model haiku --if-running', 'FAIL: no green run\nNEXT: retry Task 3 on haiku')).toBe(true)
     expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'FAIL: group G1 is parked (Task 1 failed 3 attempts); task gate of Task 2 is refused')).toBe(true)

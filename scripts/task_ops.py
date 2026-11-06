@@ -4,7 +4,7 @@
 
 The CLI's _task_py calls it with standard input closed, the project's folder from the top of its repository in
 TEMPER_PREFIX and the groups file in TEMPER_GROUPS_FILE. Modes: ctx, why and show (a task's brief and context),
-snap, testrun, grouprun and integrun (run a declared command and record its row), integplan and ifcheck (the
+snap, grpown (whether this run made a group's branch), testrun, grouprun and integrun (run a declared command and record its row), integplan and ifcheck (the
 integration facts and the Interfaces check), gatecheck, foreigncheck, unknown and reopencheck (what a group's branch
 holds), restore (undo a task's changes) and verdict (a task's gate). It lived inside scripts/temper until 9.7.1, which
 moved it here to keep every file of the plugin under the directory's 256 KiB limit.
@@ -264,6 +264,16 @@ elif mode == 'why':
 
 elif mode == 'snap':
     print(json.dumps(snap(sys.argv[2])))
+
+elif mode == 'grpown':
+    # exit 0 when this run made group G's branch: the same slug, the branch recorded, and its recorded base still in its
+    # history (any other branch of that name is an earlier attempt's, which group start moves aside)
+    run, g, br = load_run(sys.argv[2]), sys.argv[3], sys.argv[4]
+    e = (run.get('groups') or {}).get(g) or {}
+    ok = run.get('slug') == sys.argv[5] and e.get('branch') == br and bool(e.get('base_sha'))
+    ok = ok and subprocess.run(['git', 'merge-base', '--is-ancestor', e['base_sha'], br],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    sys.exit(0 if ok else 1)
 
 elif mode == 'show':
     plan, run, n, project = json.loads(sys.argv[2]), load_run(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
