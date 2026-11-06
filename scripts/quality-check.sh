@@ -18,6 +18,16 @@ echo "=== Temper Quality Check ==="
 echo "Repo: $REPO_ROOT"
 echo ""
 
+# --- no tracked file over 256 KiB (the plugin directory refuses a larger file) ---
+big="$(cd "$REPO_ROOT" && git ls-files 2>/dev/null | while IFS= read -r f; do [[ -f "$f" ]] && s=$(wc -c < "$f") && (( s > 262144 )) && echo "$f ($s bytes)"; done || true)"
+if [[ -n "$big" ]]; then
+  echo "[FAIL] a file is over 256 KiB, which the plugin directory refuses: $big"
+  FAIL=$((FAIL+1))
+else
+  echo "[PASS] no file over 256 KiB"
+  PASS=$((PASS+1))
+fi
+
 # --- plugin.json validation ---
 PJ="$REPO_ROOT/.claude-plugin/plugin.json"
 if [[ ! -f "$PJ" ]]; then

@@ -8,8 +8,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      "calls": [
       "t=\"$(mktemp -d)\" && cp -R .temper/specs/pw/. \"$t\"/ && { git restore --source=HEAD --worktree -- .temper/specs/pw 2>/dev/null; git clean -fdq -- .temper/specs/pw; } ; if git checkout feature/pw; then mkdir -p .temper/specs/pw && cp -R \"$t\"/. .temper/specs/pw/ && rm -rf \"$t\"; else mkdir -p .temper/specs/pw && cp -R \"$t\"/. .temper/specs/pw/; echo \"FAIL: could not switch to feature/pw; your spec files are in $t\" >&2; exit 1; fi",
       "/plugin/scripts/temper intent accept",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(intent): accept pw\"",
+      "/plugin/scripts/temper spec commit 'docs(intent): accept pw'",
       "/plugin/scripts/temper state advance intent_complete plan"
      ],
      "description": "Switch to it (the new spec files go across), accept intent.md, commit it there, and start Plan.",
@@ -21,8 +20,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "git checkout -b feature/pw-2",
       "/plugin/scripts/temper state set branch feature/pw-2",
       "/plugin/scripts/temper intent accept",
-      "git add -- .temper/specs/pw/",
-      "git commit -m \"docs(intent): accept pw\"",
+      "/plugin/scripts/temper spec commit 'docs(intent): accept pw'",
       "/plugin/scripts/temper state advance intent_complete plan"
      ],
      "description": "Start a new branch from here, accept intent.md, commit it there, and start Plan.",
@@ -34,7 +32,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      "description": "Stress test the intent first.",
      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
      "label": "Grill Me",
-     "move": null
+     "move": null,
+     "skill": "grill-me"
     },
     {
      "calls": [],
@@ -72,6 +71,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 0
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -162,7 +162,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
@@ -177,6 +177,13 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/intent.md exactly.\nFeature: Password reset by email.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-intent"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "intent",
@@ -299,8 +306,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "calls": [
        "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
       ],
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
+      "do": "Make the small change: for a fix the person describes, ask them in one line what to change first; for the review's, take what the review asked for. Then run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
       "label": "Make a small change",
       "move": "adhoc",
       "reason": true,
@@ -310,7 +317,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
        "options": [
         {
          "description": "",
-         "label": "A small fix of my own"
+         "label": "A small fix I will describe"
         },
         {
          "description": "",
@@ -341,7 +348,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
        "label": "Commit and open stacked PRs"
       },
       {
-       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
       },
       {
@@ -399,7 +406,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Commit and open stacked PRs, Save for later",
+     "description": "Commit and open stacked PRs, Make a small change, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -422,7 +429,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "label": "Commit and open PR"
      },
      {
-      "description": "Commit and open stacked PRs, Save for later",
+      "description": "Commit and open stacked PRs, Make a small change, Save for later",
       "label": "More options"
      }
     ],
@@ -433,6 +440,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 4
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -577,7 +585,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -596,6 +604,13 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/check.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-check"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "check",
@@ -723,38 +738,26 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
  },
  "context-check": {
   "ask": {
-   "answer": "/plugin/scripts/temper plan review --answer '{text}'",
+   "answer": "/plugin/scripts/temper plan review --answer '{text}' --redo",
    "context": true,
    "gate": "/plugin/scripts/temper gate plan",
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper plan review --answer 'Right direction'",
+      "/plugin/scripts/temper plan review --answer 'As planned'",
       "/plugin/scripts/temper gate plan"
      ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Right direction",
+     "description": "The plan's context is right; check the plan again.",
+     "label": "As planned (Recommended)",
      "move": "answer",
      "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
     },
     {
-     "calls": [
-      "/plugin/scripts/temper plan review --answer 'Narrow the focus'",
-      "/plugin/scripts/temper gate plan"
-     ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Narrow the focus",
-     "move": "answer",
-     "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
-    },
-    {
-     "calls": [
-      "/plugin/scripts/temper plan review --answer 'Fix the sources'",
-      "/plugin/scripts/temper gate plan"
-     ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Fix the sources",
-     "move": "answer",
+     "calls": [],
+     "description": "Type what Plan should change or read (Other); Plan revises the plan with it.",
+     "do": "Ask the person to type it in Other, then run the question's `answer` call with their text.",
+     "label": "Something else",
+     "move": null,
      "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
     },
     {
@@ -770,29 +773,26 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Right direction"
+      "description": "The plan's context is right; check the plan again.",
+      "label": "As planned (Recommended)"
      },
      {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Narrow the focus"
-     },
-     {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Fix the sources"
+      "description": "Type what Plan should change or read (Other); Plan revises the plan with it.",
+      "label": "Something else"
      },
      {
       "description": "Decide later; the plan gate keeps naming this question.",
       "label": "Carry forward"
      }
     ],
-    "question": "Is this the right context for the plan?"
+    "question": "It could not find: no rate limit policy. Is that right?"
    },
    "run_id": "run-ctx",
    "stage": "plan",
    "step": 1
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [],
    "integration": null
@@ -831,38 +831,26 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   ],
   "checks": [],
   "context_check": {
-   "answer": "/plugin/scripts/temper plan review --answer '{text}'",
+   "answer": "/plugin/scripts/temper plan review --answer '{text}' --redo",
    "gate": "/plugin/scripts/temper gate plan",
    "header": "Temper gate",
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper plan review --answer 'Right direction'",
+      "/plugin/scripts/temper plan review --answer 'As planned'",
       "/plugin/scripts/temper gate plan"
      ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Right direction",
+     "description": "The plan's context is right; check the plan again.",
+     "label": "As planned (Recommended)",
      "move": "answer",
      "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
     },
     {
-     "calls": [
-      "/plugin/scripts/temper plan review --answer 'Narrow the focus'",
-      "/plugin/scripts/temper gate plan"
-     ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Narrow the focus",
-     "move": "answer",
-     "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
-    },
-    {
-     "calls": [
-      "/plugin/scripts/temper plan review --answer 'Fix the sources'",
-      "/plugin/scripts/temper gate plan"
-     ],
-     "description": "Record this answer in the Context Map, then check the plan again.",
-     "label": "Fix the sources",
-     "move": "answer",
+     "calls": [],
+     "description": "Type what Plan should change or read (Other); Plan revises the plan with it.",
+     "do": "Ask the person to type it in Other, then run the question's `answer` call with their text.",
+     "label": "Something else",
+     "move": null,
      "preview": "Context Map\nuse     intent.md - scope\ngap     no rate limit policy"
     },
     {
@@ -878,23 +866,19 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Right direction"
+      "description": "The plan's context is right; check the plan again.",
+      "label": "As planned (Recommended)"
      },
      {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Narrow the focus"
-     },
-     {
-      "description": "Record this answer in the Context Map, then check the plan again.",
-      "label": "Fix the sources"
+      "description": "Type what Plan should change or read (Other); Plan revises the plan with it.",
+      "label": "Something else"
      },
      {
       "description": "Decide later; the plan gate keeps naming this question.",
       "label": "Carry forward"
      }
     ],
-    "question": "Is this the right context for the plan?"
+    "question": "It could not find: no rate limit policy. Is that right?"
    }
   },
   "context_map": {
@@ -964,7 +948,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
@@ -979,6 +963,13 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -1039,7 +1030,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "failed": [
      {
       "detail": "the Context check is pending: the person's answer is not recorded yet",
-      "name": "context map reviewed"
+      "name": "context map reviewed",
+      "waits": true
      }
     ],
     "id": "plan",
@@ -1094,31 +1086,11 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper task accept 1 --reason '{reason}'"
+      "/plugin/scripts/temper task accept 1 --reason 'An earlier task built it'"
      ],
-     "description": "Commit its tests, merge them and tick the task.",
-     "label": "Accept it as done",
-     "move": "accept",
-     "reason": true,
-     "reason_question": {
-      "header": "Temper gate",
-      "multiSelect": false,
-      "options": [
-       {
-        "description": "",
-        "label": "An earlier task built it"
-       },
-       {
-        "description": "",
-        "label": "I accept the risk"
-       },
-       {
-        "description": "Back to the question before.",
-        "label": "Cancel"
-       }
-      ],
-      "question": "Accept it as done. What is the reason?"
-     }
+     "description": "Commit its tests, merge them and tick the task (reason: an earlier task built it).",
+     "label": "Accept it as done (Recommended)",
+     "move": "covered"
     },
     {
      "calls": [
@@ -1165,8 +1137,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Commit its tests, merge them and tick the task.",
-      "label": "Accept it as done"
+      "description": "Commit its tests, merge them and tick the task (reason: an earlier task built it).",
+      "label": "Accept it as done (Recommended)"
      },
      {
       "description": "The kept worktree goes and a fresh attempt starts.",
@@ -1188,6 +1160,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -1326,7 +1299,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": true,
    "plan_files": [
@@ -1345,6 +1318,13 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/acceptance.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-acceptance"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -1558,6 +1538,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -1696,7 +1677,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": true,
    "plan_files": [
@@ -1715,6 +1696,13 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/acceptance.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-acceptance"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -1849,6 +1837,10 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "multiSelect": false,
       "options": [
        {
+        "description": "Type the answer in the box below; this option alone records nothing.",
+        "label": "Type it below"
+       },
+       {
         "description": "Back to the question before.",
         "label": "Cancel"
        }
@@ -1891,6 +1883,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 2
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -2029,7 +2022,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": true,
    "plan_files": [
@@ -2048,6 +2041,13 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/acceptance.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-acceptance"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "build",
@@ -2232,6 +2232,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 6
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -2376,7 +2377,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -2395,6 +2396,13 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/pipeline.md exactly.\nSpec path: .temper/specs/pw.\nRound: 1 of 2.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-pipeline"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "pipeline",
@@ -2662,10 +2670,9 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      {
       "calls": [
        "/plugin/scripts/temper override plan --reason '{reason}'",
-       "git checkout -b feature/pw",
-       "git add -- .temper/specs/pw/",
-       "git commit -m \"docs(plan): approve the plan of pw\"",
-       "/plugin/scripts/temper state advance plan_complete design"
+       "/plugin/scripts/temper spec branch",
+       "/plugin/scripts/temper spec commit 'docs(plan): approve the plan of pw'",
+       "/plugin/scripts/temper state advance plan_complete build"
       ],
       "description": "Skip this check with your reason; the report shows it.",
       "label": "Override and continue",
@@ -2696,7 +2703,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
-      "move": null
+      "move": null,
+      "skill": "grill-me"
      },
      {
       "calls": [],
@@ -2781,6 +2789,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 1
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -2941,7 +2950,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": null,
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -2960,6 +2969,23 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #5 [high] [readiness] Task 1: the Case 'expired link' names no status; #6 [high] [zoom-out] Task 2: a new mail sender where one exists.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    },
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #5 [high] [readiness] Task 1: the Case 'expired link' names no status.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    },
+    {
+     "model": "opus",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-plan"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "plan",
@@ -3040,20 +3066,14 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "failed": [
      {
       "detail": "2 open",
-      "name": "no open plan blockers"
+      "name": "no open plan blockers",
+      "waits": true
      }
     ],
     "id": "plan",
     "label": "Plan",
     "mark": "here",
     "verdict": "FAIL"
-   },
-   {
-    "failed": [],
-    "id": "design",
-    "label": "Design",
-    "mark": "todo",
-    "verdict": null
    },
    {
     "failed": [],
@@ -3215,6 +3235,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "step": 4
   },
   "blocking": [],
+  "blocking_asks": [],
   "build": {
    "groups": [
     {
@@ -3359,7 +3380,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "guard": {
    "adhoc_stage": "check",
    "armed": false,
-   "autonomy_enabled": false,
+   "autonomy_enabled": true,
    "fix_run": false,
    "grouped": false,
    "plan_files": [
@@ -3378,6 +3399,13 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "loops": [],
   "next": {
    "action": "ask",
+   "agents": [
+    {
+     "model": "sonnet",
+     "prompt": "Follow /plugin/agents/check.md exactly.\nSpec path: .temper/specs/pw.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "type": "temper:temper-check"
+    }
+   ],
    "calls": [],
    "say": null,
    "stage": "check",

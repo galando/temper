@@ -106,3 +106,16 @@ describe('the Context check: a typed answer, and what counts for nothing', () =>
     expect(answersIn(result(q.header, q.question, 'Cancel'), rv).filter(x => x.kind === 'gate')).toEqual([])
   })
 })
+
+describe('a manual task\'s name question (9.8.0)', () => {
+  test('it can be shown (two options), and only a typed name counts: not "Type it below", not Cancel', () => {
+    const v = parseRunView(JSON.stringify(EXTRA_VIEWS['manual-task']))!
+    const confirm = (v.ask?.options ?? []).find(o => o.answerQuestion !== null)
+    const nq = confirm?.answerQuestion
+    expect(nq?.options.map(o => o.label)).toEqual(['Type it below', 'Cancel'])
+    const said = (answer: string) => answersIn({ result: { questions: [{ header: nq!.header, question: nq!.question, multiSelect: false }], answers: { [nq!.question]: answer } } }, v)
+    expect(said('Type it below')).toEqual([])
+    expect(said('Cancel')).toEqual([])
+    expect(said('Gal').map(a => a.kind === 'gate' ? a.reason : '')).toEqual(['Gal'])
+  })
+})

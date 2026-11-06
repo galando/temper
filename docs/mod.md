@@ -172,7 +172,7 @@ Temper is not a sandbox. The guard keeps a cooperating Claude on the path and ma
 Claude set on getting around a gate through Bash can do it. The hard guarantees are the editing tools
 (Write, Edit, MultiEdit, NotebookEdit) and the native `pre-commit` hook for `git commit`.
 
-The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
+The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
 - **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
   step back, accepting a finding, arming autonomy, keeping an agent's commits, overriding the commit
@@ -196,6 +196,25 @@ The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-m
   command line or written with `git config` whose body skips the hook, and a command that runs git and
   sets `HOME` or `XDG_CONFIG_HOME` (git reads that folder's config, which can hold an alias or a hooks path).
 
+- **The main session relays (9.8.0, `core/session.ts`).** During a `/temper` run the conversation itself (a call
+  with no agent id) does only what the flow gives it: it runs the temper CLI and commands that only read (`cat`,
+  `grep`, `git status`, `git diff` and the like, with no redirect into a file), launches only an agent the CLI
+  listed at this stage, with its type, its model and its prompt as given, and asks only a question the CLI gives at
+  this step (its header, its question and its option labels), or a Scope drift question for a DRIFT row. It writes
+  no file with the editing tools. Two openings are the person's: a small change window they open at a question
+  (`Make a small change`) lets the session write by that stage's rules, and a skill they choose (Grill Me, Teach Me)
+  asks its own questions until the run moves on. A command the CLI wrote whole (a setup call, a commit step, the
+  calls of the person's answer) passes as written, and at the commit the pull request steps may push. The agents
+  keep their stage rules above. The benchmark showed why (`docs/evidence/bench-2026-11.md`, round 4): a session on
+  a cheaper model edited the spec files and the locked acceptance tests, worked in a task's worktree and asked
+  questions of its own, and a session once launched an agent on a cheaper model than the CLI named. A typed change
+  request now goes to the stage's agent (`temper state redo`, commands/temper.md). The run starts from the person's
+  request, word for word: the mod keeps what they typed after `/temper:temper` (in its plugin store, with one pair of
+  quotes around all of it taken off) and refuses a `temper state init` whose `--feature` differs from it, whitespace
+  aside (round 5: a session started a run of a dozen rules with a one line summary, and every agent planned from it).
+  A door (`/temper:plan "..."`) or another temper command clears what was kept. A `/temper:fix` run is left to
+  `commands/fix.md`, as before.
+
 The guard reads a Bash command as text: it splits it into statements and words and honours quotes
 (`'...'`, `"..."`, `$'...'` with its escapes, `$"..."`, a backslash), joins a line ended by a backslash,
 reads the commands inside a substitution (`$(...)` or backquotes, inside double quotes too), and
@@ -207,11 +226,14 @@ program starts, so no keyword, wrapper or variable word hides it (`then`, `copro
 `sudo`, `exec -a`, `X=1`, a full path); a name matches without regard to case and through a glob of
 some literal text (`/usr/bin/gi[t]`, `/usr/bin/[[:alpha:]]it`). The price is that a command which only
 names one as words (`echo rm .temper/gates.json`, or `ls s* .temper/gates.json`, where `s*` could be
-`sed`) is refused too. It does not follow variables, the output of a
+`sed`) is refused too. A variable the same command sets plainly to the temper script
+(`T=/p/scripts/temper` as a statement of its own, then `$T go`) is read as the script, so a call made
+through it is checked like one written out (round 5 of the benchmark: a session writes it when it runs
+several calls). Apart from that, it does not follow variables, the output of a
 substitution, `cd` or links, and it does not read the program another program runs. These are still
 possible, and listed as known limits in the mod's tests:
 
-- A call or a path in a variable, or built at run time by a program.
+- A call or a path in a variable set outside the command, or built at run time by a program.
 - A call in a string another program runs (`sh -c`, `eval`, `xargs`, `perl -e`), or in a here document
   a shell reads.
 - A link or a script that an earlier call made, or a script that is already on disk.
@@ -249,11 +271,45 @@ answer at that step or a passed check.
 A plain `git commit` goes to the native `pre-commit` hook in every stage, and the hook decides. A spec
 only commit passes it mid run, as does a Build checkpoint commit with a green test run.
 
+## The run driver (9.8.0)
+
+With the mod loaded, `/temper:temper <request>` (no run active) and `/temper:temper` with no words (a run active)
+are carried by the mod itself, with no model in the main session (`core/driver.ts`). It runs `temper go`, the
+calls the CLI gives (the action's calls, an agent's `before` and `after` calls, the CLI calls of `steps`), launches
+each agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report
+the CLI prints, asks each question the CLI gives (header, question and option labels as given; Blocking questions
+with their answer calls), records your answer as the guard does, and runs the calls of the option you picked. The dialog a mod raises
+takes labels alone; the mod's own tool call hook gives each option back its description and its preview (the Context
+check's table) from the CLI's question, so the dialog shows what each choice does. A Build task's panel is the CLI's
+(`temper panel task`, after the task gates); of the agent's answer the driver shows only a `TASK N: stopped:` line,
+which the CLI cannot know. A panel the CLI draws is shown as a few rows: its title, a row a fact and a row a section,
+with the Plan's diagram left in plan.md (a mod's log line is one row with the plugin's name before it, and a box drawn
+row by row read as forty rows of "temper:"). A stage that only waits for your answers (open Blocking questions, the
+Context check, a criterion you confirm) draws as the current stage, never red. A Temper agent's message is drawn in
+full, where the engine shows one folded line. The Blocking questions come in one dialog, four at most (each its own
+tab, then a review of the answers), as the conversation asks them without the mod. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
+model turn after it, and `/temper:temper` takes the run up again (an agent already launched may still finish). The
+guard checks the driver's questions and agents as it checks the session's: each must be the CLI's. Round 5 of the
+benchmark measured why: the main session's own model time was 8% to 10% of a feature run's wall time and 20% to
+30% of a bug run's, and it cost $0.03 to $0.09 a run on Haiku, for steps that need no model.
+
+It hands the run to the conversation (the prompt based `/temper:temper`, which goes on from the same state; the
+CLI holds the run, the driver holds nothing) for anything that needs a model or your own words: an answer you
+type (passed on as `discuss <your words>`), a skill (Grill Me, Teach Me), the HTML plan review, a small change
+window, a pull request step, an agent's DRIFT rows (the Scope drift question), a call that fails and an action it
+does not know (a manual task's name question it asks itself, and runs the confirm calls with the typed name). It says so in one line. An option you chose that only the conversation can carry out
+(a skill, the HTML review, a small change) goes over as `chose <label>`, before any of its calls runs: the
+conversation carries it out as your answer, with no second question. `/temper:fix <bug>` with no run active is carried
+the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop). A run word (`approve`,
+`next`, ...) and a request while another run is active go to the conversation as before. Without the mod, the
+conversation carries every run, as before.
+
 ## What the mod reads and writes
 
-Mods are not sandboxed, so this is the full list. The mod makes no network, `process` or `env` call,
-starts no agent, makes no tool call, sets no setting and runs no command. CI fails on a call outside
-`scripts/check-mod-calls.sh`.
+Mods are not sandboxed, so this is the full list. The mod makes no network or `env` call, makes no tool call
+of its own and sets no setting. While it carries a `/temper:temper` run (the run driver, below) it runs the
+temper CLI's calls, launches the agents the CLI names and asks the CLI's questions, and nothing else; outside a
+run it drives it runs no command and starts no agent. CI fails on a call outside `scripts/check-mod-calls.sh`.
 
 - **Reads:** `.temper/view.json`, the one file the CLI writes for it (ADR 0013; its fields are in
   [The flow](flow.md)). To find the project it stats the session folder and looks for `.temper/view.json` there

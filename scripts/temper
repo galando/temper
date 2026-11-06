@@ -67,6 +67,24 @@ SCRIPTS_DIR="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)"
 PLUGIN_ROOT="${SCRIPTS_DIR%/scripts}"
 unset _self _hops _link_dir
 ACCEPTANCE_PY="$PLUGIN_ROOT/scripts/acceptance.py"
+# 9.8.0: called from a subfolder of the project (the orchestrator after writing a file in docs/), the CLI used to start a
+# second .temper there and write run state into it. When this folder has no .temper, the nearest folder above it that has
+# one is the project, and the CLI runs from there. The search never starts in the home folder or inside the plugin folder
+# (both are refused below, as before), never goes up into the home folder, and never past the repository's top (a folder
+# holding .git, a file in a worktree). A folder with no .temper anywhere above stays as it is (temper init makes one here).
+if [[ ! -d "$REPO_ROOT/.temper" && -n "${HOME:-}" && "$REPO_ROOT" != "$HOME" ]]; then
+  _real="$(cd -P "$REPO_ROOT" 2>/dev/null && pwd)"; _plug="$(cd -P "$PLUGIN_ROOT" 2>/dev/null && pwd)"
+  _home="$(cd -P "$HOME" 2>/dev/null && pwd)"
+  if [[ -n "$_real" && "$_real/" != "$_plug/"* && "$_real" != "$_home" ]]; then
+    _up="$_real"
+    while [[ "$_up" != "/" && ! -e "$_up/.git" ]]; do
+      _up="$(dirname "$_up")"
+      [[ "$_up" == "$_home" || "$_up/" == "$_plug/"* ]] && break
+      if [[ -d "$_up/.temper" ]]; then REPO_ROOT="$_up"; cd "$REPO_ROOT" || exit 1; break; fi
+    done
+  fi
+  unset _up _real _plug _home
+fi
 # Run state always lives in this project's .temper folder: no environment variable moves
 # it, so every write and delete below stays inside the project.
 TEMPER_DIR="$REPO_ROOT/.temper"
@@ -779,14 +797,23 @@ cmd_state_set() {
     echo "FAIL: archived is kept by the CLI (state archive records it when it writes the ledger the commit carries)" >&2
     return 1
   fi
+  # 9.8.0: the risk decides whether Design runs for a medium plan, so only `temper risk` writes it: computed from the blast
+  # radius, and raised (never lowered) with a reason.
+  if [[ "$1" == "risk" || "$1" == "risk_raise" || "$1" == "risk_reasons" || "$1" == "risk_raise_reason" ]]; then
+    echo "FAIL: $1 is kept by the CLI (temper risk computes it from the blast radius; temper risk --raise L|M|H --reason R raises it)" >&2
+    return 1
+  fi
   if [[ "$1" == "enter" || "$1" == "built_before" || "$1" == "review_snapshot" || "$1" == fresh || "$1" == fresh.* ]]; then
     echo "FAIL: $1 is kept by the CLI (a door's stage, what an earlier run built, the code as Review starts and the fresh review's marks are its records)" >&2
     return 1
   fi
-  if [[ "$1" == "end_report" ]]; then
-    echo "FAIL: end_report is kept by the CLI (temper report --end, then the person's answer: report --html or report --no-html)" >&2
+  if [[ "$1" == "end_report" || "$1" == "ran_unattended" ]]; then
+    echo "FAIL: $1 is kept by the CLI (temper report --end, then the person's answer; an armed run's record of its unattended Build)" >&2
     return 1
   fi
+  # 9.8.0: an armed run is Build alone and turns interactive after it, so the CLI keeps that it ran unattended: the
+  # commit gate holds such a run to the plan's files and to park-on-touch, as it held a run still armed.
+  [[ "$1" == "run_mode" && "$2" == "autonomous" && -f "$STATE_FILE" ]] && _json_set_path "$STATE_FILE" ran_unattended true '{}' >/dev/null
   # The commit the run's diff is read against is recorded once (state advance plan_complete): a later one would hide
   # what the run changed from Review and from the commit gate.
   if [[ "$1" == "base_sha" && -f "$STATE_FILE" && -n "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
@@ -1014,6 +1041,8 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     spec="$(_json_get_path "$STATE_FILE" spec_path "")"
     files="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$spec" 2>/dev/null || echo '[]')"
     [[ -n "$spec" && -f "$spec/tasks.md" ]] && digest="$(_plan_digest "$(_grouped_parse "$spec/tasks.md")" 2>/dev/null)"
+    # The approved tasks as parsed, so a later question can name what changed (the Design question, 9.8.0)
+    [[ -n "$digest" ]] && mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$spec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
     _lock_acquire
     python3 -I -c "
 import json, os, sys
@@ -1050,6 +1079,38 @@ os.replace(tmp, p)
   if [[ "$stage" == "design_complete" ]]; then
     local dmd; dmd="$(_spec_path "")/design.md"
     [[ -f "$dmd" && ! -L "$dmd" ]] && python3 "$SCRIPTS_DIR/flow.py" design-accept "$dmd" "$(date -u +%Y-%m-%d)"
+    # 9.8.0: Design may change the plan's tasks (a case an answer added, a task split). The Design question said so, and
+    # the person's Continue approves the changed tasks with the design: Build is held to them from here on. Before, Build
+    # refused to start ("the approved plan changed") and the run had no way on but a step back to Plan.
+    local dspec; dspec="$(_spec_path "")"
+    if [[ -n "$dspec" && -f "$dspec/tasks.md" && -n "$(_json_get_path "$STATE_FILE" plan_hash "")" ]]; then
+      local ddigest; ddigest="$(_plan_digest "$(_grouped_parse "$dspec/tasks.md")" 2>/dev/null)"
+      if [[ -n "$ddigest" && "$ddigest" != "$(_json_get_path "$STATE_FILE" plan_hash "")" ]]; then
+        local dfiles; dfiles="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$dspec" 2>/dev/null || echo '[]')"
+        _lock_acquire
+        python3 -I -c "
+import json, os, sys
+p = sys.argv[1]
+d = json.load(open(p))
+try:
+    files = json.loads(sys.argv[2])
+except ValueError:
+    files = []
+if isinstance(files, list):
+    d['approved_files'] = files
+d['plan_hash'] = sys.argv[3]
+d['tasks_changed_by_design'] = True
+tmp = '%s.tmp.%d' % (p, os.getpid())
+with open(tmp, 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\\n')
+os.replace(tmp, p)
+" "$STATE_FILE" "$dfiles" "$ddigest"
+        _lock_release
+        mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$dspec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
+        echo "OK: the tasks Design changed are approved with the design"
+      fi
+    fi
   fi
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
   # A commit verdict written before the run reached Commit (the hook of a spec commit) is not the commit gate's: the
@@ -1080,53 +1141,7 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
     max_per_type="$(_cfg_get fix.max-loops "$max_per_type")"
   fi
   local result
-  result=$(python3 -I -c "
-import json, sys
-f, frm, to, reason, max_per_type, ts = sys.argv[1:7]
-max_per_type = int(max_per_type)
-d = json.load(open(f))
-active = d.get('active_loops', [])
-loop = next((l for l in active if l['from_stage'] == frm and l['to_stage'] == to), None)
-if loop is None:
-    loop = {'id': f'loop-{len(active) + len(d.get(\"history\", [])) + 1}', 'from_stage': frm,
-             'to_stage': to, 'reason': reason, 'iteration': 0, 'max_iterations': max_per_type,
-             'started': ts}
-    active.append(loop)
-if loop['iteration'] >= max_per_type:
-    print('BLOCKED: max iterations (%d) reached for %s->%s' % (max_per_type, frm, to))
-    d['active_loops'] = active
-    json.dump(d, open(f, 'w'), indent=2)
-    sys.exit(1)
-loop['iteration'] += 1
-loop['reason'] = reason or loop['reason']
-loop['at'] = ts      # each step writes when it ran: readers order by at, so the latest reason is the one a fix pass reads
-try:                 # an older Run Build again no longer speaks for the stage
-    st = json.load(open(sys.argv[8]))
-    if st.pop('redo', None) is not None:
-        json.dump(st, open(sys.argv[8], 'w'), indent=2)
-except Exception:
-    pass
-# What the stage left open goes with the loop, since the loop clears that stage's ledger: Review's open findings, Check's
-# failed runs. The fix pass reads them (temper next names them in its prompt).
-try:
-    rows = json.load(open(sys.argv[7])) if len(sys.argv) > 7 and sys.argv[7] else []
-except Exception:
-    rows = []
-def open_row(e):
-    if not isinstance(e, dict) or e.get('resolved') or e.get('accepted'):
-        return False
-    if frm == 'review':
-        return bool(e.get('severity'))
-    return isinstance(e.get('exit_code'), int) and e.get('exit_code') != 0
-left = [('[%s] ' % e['severity'] if e.get('severity') else '') + str(e.get('claim', ''))[:300] for e in rows if open_row(e)]
-if left:
-    loop['findings'] = left[:20]
-else:
-    loop.pop('findings', None)
-d['active_loops'] = active
-json.dump(d, open(f, 'w'), indent=2)
-print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_type))
-" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE")
+  result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
   local rc=$?
   echo "$result"
   # A loop means "we are going backwards" — evidence is append-only, so a stale row
@@ -1157,8 +1172,8 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
 }
 
 _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.json goes to .temper/archive/, a clean
-                  # group or task worktree is removed and its branch renamed to temper/{slug}/replan-{ts}/{G} (its commits are
-                  # kept); a worktree with uncommitted work is left where it is and named, so nothing is lost
+                  # group or task worktree is removed and its branch moved to refs/temper/kept/{slug}/replan-{ts}/{G} (its
+                  # commits are kept); a worktree with uncommitted work is left where it is and named, so nothing is lost
   local ts; ts="$(date -u +%Y%m%dT%H%M%SZ)"
   local g wt branch slug
   while IFS=$'\t' read -r slug g wt branch; do
@@ -1172,8 +1187,8 @@ _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.js
       git worktree remove --force "$wt" >/dev/null 2>&1 || { echo "WARN: could not remove $wt; kept" >&2; continue; }
     fi
     if [[ -n "$branch" ]] && git show-ref --verify --quiet "refs/heads/$branch"; then
-      git branch -m "$branch" "temper/$slug/replan-$ts/$g" >/dev/null 2>&1 \
-        || echo "WARN: could not rename $branch; delete it before the re-planned run starts $g" >&2
+      _task_py keep "$slug" replan "$ts" "$g" "$branch" >/dev/null \
+        || echo "WARN: could not move $branch aside; delete it before the re-planned run starts $g" >&2
     fi
   done < <(python3 -I -c "
 import json, sys
@@ -1309,6 +1324,8 @@ cmd_state_clear() {
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
   rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json
   rm -rf .temper/evidence
+  # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
+  _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
 
@@ -1782,6 +1799,32 @@ print(vals[-1] if vals else '')
 " "$file" "$keyword"
 }
 
+_ev_last_claim() { # _ev_last_claim <stage> <regex> -> the claim of the last row whose claim matches, or ""
+  local file; file="$(_evidence_file "$1")"
+  [[ -f "$file" ]] || { echo ""; return; }
+  python3 -I -c "
+import json, re, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+hits = [str(r.get('claim')) for r in rows if isinstance(r, dict) and re.search(sys.argv[2], str(r.get('claim') or ''))]
+print(hits[-1] if hits else '')" "$file" "$2" 2>/dev/null
+}
+
+_ev_last_row() { # _ev_last_row <stage> <regex> -> "<exit>|<output, one line>" of the last row whose claim matches, or ""
+  local file; file="$(_evidence_file "$1")"
+  [[ -f "$file" ]] || { echo ""; return; }
+  python3 -I -c "
+import json, re, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+hits = [r for r in rows if isinstance(r, dict) and re.search(sys.argv[2], str(r.get('claim') or ''))]
+print('%s|%s' % (hits[-1].get('exit_code'), ' '.join(str(hits[-1].get('output') or '').split())[:300]) if hits else '')" "$file" "$2" 2>/dev/null
+}
+
 _ev_count_severity_in() { # _ev_count_severity_in <stage> <comma-separated severities>
   local stage="$1" sev_csv="$2"
   local file; file="$(_evidence_file "$stage")"
@@ -1876,285 +1919,12 @@ print(json.dumps({'name': sys.argv[1], 'pass': sys.argv[2] == '1', 'detail': sys
 # scripts/acceptance.py so the gate and the acceptance checker can never drift.
 _intent_draft_reqs() { # _intent_draft_reqs <intent.md>
   # acceptance.py is loaded from its one full path, never by adding a folder to sys.path.
-  python3 -I - "$ACCEPTANCE_PY" "$1" <<'PY'
-import importlib.util, json, os, re, sys
-_spec = importlib.util.spec_from_file_location('acceptance', sys.argv[1])
-A = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(A)
-
-lines = open(sys.argv[2]).read().splitlines()
-reqs = []
-def add(name, ok, detail):
-    reqs.append({'name': name, 'pass': ok, 'detail': detail})
-
-m = re.search(r'^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$', "\n".join(lines), re.I | re.M)
-status = m.group(1).lower() if m else None   # None: missing or unknown Status header
-if status != 'draft':
-    d = ("skipped — intent is %s; this check applies to drafts only "
-         "(a recorded acceptance is never revisited)") % status
-    if status is None:
-        # A missing or unknown Status header is reported by the gate's own status header
-        # row; these rows say why they skipped instead of printing Python's None.
-        d = ("skipped: no recognized Status header (draft, accepted or completed); this check "
-             "applies to drafts only, and the status header requirement reports the missing header")
-    for name in ('task context recorded', 'criteria why', 'target users action chain',
-                 'criteria ids', 'criteria priority', 'criteria validate',
-                 'open questions labeled', 'no duplicate question', 'header fields',
-                 'no scenarios in draft', 'no soft words'):
-        add(name, True, d)
-    print("\n".join(json.dumps(r) for r in reqs))
-    sys.exit(0)
-
-def sec(name):
-    return A.section_lines(lines, name)
-
-def bullets_with_blocks(sec_lines):
-    """Real (non-placeholder) bullets with their continuation blocks."""
-    out, cur = [], None
-    for l in sec_lines:
-        if A.BULLET_RE.match(l):
-            if cur: out.append(cur)
-            content = A.strip_checkbox(l)
-            cur = {'first': content, 'block': [l], 'placeholder': content.startswith('{')}
-        elif cur is not None:
-            cur['block'].append(l)
-    if cur: out.append(cur)
-    return [b for b in out if not b['placeholder']]
-
-# --- task context recorded -------------------------------------------------
-ctx = sec('Source Traceability')
-ctx_lines = [l for l in ctx if re.match(r'^\s*-\s*(consulted|unavailable|none):', l, re.I)]
-unaccounted = []
-if ctx_lines:
-    ctx_text = "\n".join(ctx_lines)
-    tk = re.search(r'^\*\*Ticket:\*\*\s*(.+?)\s*$', "\n".join(lines), re.I | re.M)
-    raw = A.blank_placeholders(tk.group(1)).strip() if tk else ''
-    keys = re.findall(r'[A-Z][A-Z0-9]+-[0-9]+|#[0-9]+|![0-9]+', raw) if raw else []
-    for k in keys:
-        # whole-token match: no alnum may sit immediately before or after the
-        # key — a recorded PROJ-12 must not satisfy a linked PROJ-1.
-        if not re.search(r'(?<![A-Za-z0-9])' + re.escape(k) + r'(?![A-Za-z0-9])', ctx_text):
-            unaccounted.append(k)
-if not ctx_lines or unaccounted:
-    if not ctx_lines:
-        add('task context recorded', False,
-            'no consulted/unavailable/none line under ## Source Traceability — record every linked source')
-    else:
-        add('task context recorded', False,
-            'ticket key(s) never accounted for on a consulted/unavailable line: ' + ' | '.join(unaccounted))
-else:
-    add('task context recorded', True, '%d source line(s) recorded under Source Traceability' % len(ctx_lines))
-
-# --- criteria family -------------------------------------------------------
-crits = [c for c in A.parse_criteria(sec('Success Criteria')) if not c.get('placeholder')]
-
-no_id = [c['first_line'][:40] for c in crits if not c.get('id')]
-seen, dups = set(), []
-for c in crits:
-    if c.get('id') and c['id'] in seen and c['id'] not in dups:
-        dups.append(c['id'])
-    elif c.get('id'):
-        seen.add(c['id'])
-if no_id or dups:
-    parts = (['duplicate id: ' + d for d in dups] + ['no AC-NN id: ' + s for s in no_id])
-    add('criteria ids', False, ' | '.join(parts))
-elif not crits:
-    add('criteria ids', False, 'no real criteria found')
-else:
-    add('criteria ids', True, '%d criterion id(s), all unique' % len(crits))
-
-def label(c):
-    return c.get('id') or c['first_line'][:40]
-
-no_prio = [label(c) for c in crits if not c.get('priority')]
-add('criteria priority', not no_prio,
-    'every criterion carries [required]/[optional]' if not no_prio
-    else 'no [required]/[optional] on first line of: ' + ' | '.join(no_prio))
-
-bad_v = [label(c) for c in crits if not c['has_validate'] or c['vtype'] not in A.VALIDATE_TYPES]
-add('criteria validate', not bad_v,
-    'every criterion has a Validate: type' if not bad_v
-    else 'missing/unknown Validate: type on: ' + ' | '.join(bad_v))
-
-no_why = [label(c) for c in crits if not c['why']]
-add('criteria why', not no_why,
-    'every criterion states the outcome or risk it serves' if not no_why
-    else 'no Why: line with real text on: ' + ' | '.join(no_why))
-
-# --- target users action chain --------------------------------------------
-tusers = bullets_with_blocks(sec('Target Users'))
-bad_u = [' '.join(b['block'])[:60] for b in tusers
-         if not any(('→' in l or '->' in l) for l in b['block'])]
-add('target users action chain', not bad_u,
-    'every Target Users bullet is an action chain (user: does -> next)' if not bad_u
-    else 'no action chain (→ or ->) on: ' + ' | '.join(bad_u))
-
-# --- open questions --------------------------------------------------------
-def norm_q(text):
-    t = A.BULLET_RE.sub('', text)
-    t = re.sub(r'^\s*\|', '', t)
-    t = re.sub(r'^\s*(\[[^\]]*\]|Blocking:|Deferred:)', '', t, flags=re.I)
-    t = t.replace('**', '').lower()
-    t = re.sub(r'[^a-z0-9 ]', ' ', t)
-    return [w for w in t.split()][:8]
-
-oq = bullets_with_blocks(sec('Open Questions'))
-unlabeled = [b['first'][:50] for b in oq
-             if not re.search(r'\b(blocking|deferred)\b', ' '.join(b['block']), re.I)]
-add('open questions labeled', not unlabeled,
-    'every open question is labeled Blocking or Deferred' if not unlabeled
-    else 'neither blocking nor deferred on: ' + ' | '.join(unlabeled))
-
-dup_q = []
-if oq:
-    topics = []
-    for l in sec('Decisions'):
-        d = A.BULLET_RE.sub('', l)
-        if '->' in d:
-            topics.append(norm_q(d.split('->', 1)[0]))
-    for b in oq:
-        q = norm_q(b['first'])
-        for t in topics:
-            if not q or not t:
-                continue
-            shorter, longer = (q, t) if len(q) <= len(t) else (t, q)
-            if len(shorter) >= 4 and longer[:len(shorter)] == shorter:
-                dup_q.append(b['first'][:50])
-                break
-add('no duplicate question', not dup_q,
-    'no open question re-asks something already decided' if not dup_q
-    else 'already answered in ### Decisions: ' + ' | '.join(dup_q))
-
-# --- header fields ---------------------------------------------------------
-missing_h = []
-for f in ('Author', 'Created', 'Reviewer'):
-    hm = re.search(r'^\*\*' + f + r':\*\*\s*(.+?)\s*$', "\n".join(lines), re.I | re.M)
-    val = A.blank_placeholders(hm.group(1)).strip() if hm else ''
-    if not val:
-        missing_h.append(f)
-add('header fields', not missing_h,
-    'Author, Created, Reviewer all present' if not missing_h
-    else 'missing, empty, or placeholder: ' + ' | '.join(missing_h))
-
-# --- no scenarios in draft -------------------------------------------------
-scen = A.scenario_lines(lines)
-add('no scenarios in draft', not scen,
-    'no Scenario: lines — Plan writes the scenarios' if not scen
-    else 'Scenario: line(s) at ' + ' | '.join(str(n) for _, n in scen))
-
-# --- no soft words ---------------------------------------------------------
-# A criterion or constraint states what is required. should/may/might/possibly leave
-# the reader to guess. A statement that carries a (source: ...) marker is exempt: the
-# hedge word belongs to the originator, and ### Decisions records what it means.
-SOFT_RE = re.compile(r'\b(should|may|might|possibly)\b', re.I)
-META_RE = re.compile(r'^\s*(Why|Validate|Deferred|Blocking):', re.I)
-
-def statements(sec_lines):
-    """(label, statement text) per real bullet. The statement is the bullet line plus
-    its wrapped continuation lines, up to the first Why:/Validate:/Deferred: line."""
-    out, cur = [], None
-    in_fence = False
-    for l in sec_lines:
-        if re.match(r'^\s*(`{3,}|~{3,})', l):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        if A.BULLET_RE.match(l):
-            if cur: out.append(cur)
-            content = A.strip_checkbox(l)
-            if content.startswith('{'):
-                cur = None
-                continue
-            m = re.match(r'^(AC-\d+)\b', content)
-            cur = {'label': m.group(1) if m else '"%s"' % content[:30], 'text': [content], 'open': True}
-        elif cur is not None and cur['open']:
-            if META_RE.match(l):
-                cur['open'] = False
-            elif l.strip():
-                cur['text'].append(l.strip())
-    if cur: out.append(cur)
-    return [(c['label'], ' '.join(c['text'])) for c in out]
-
-soft = []
-for kind, sname in (('criterion', 'Success Criteria'), ('constraint', 'Constraints')):
-    for lab, text in statements(sec(sname)):
-        if re.search(r'\(source:', text, re.I):
-            continue
-        body = re.sub(r'`[^`]*`', ' ', text)
-        words = []
-        for w in SOFT_RE.findall(body):
-            if w.lower() not in words:
-                words.append(w.lower())
-        if words:
-            soft.append('%s %s uses %s' % (kind, lab, ', '.join(words)))
-add('no soft words', not soft,
-    'no should/may/might/possibly in a criterion or constraint without a (source: ...) marker' if not soft
-    else 'soft word in: ' + ' | '.join(soft))
-
-print("\n".join(json.dumps(r) for r in reqs))
-PY
+  python3 -I "$SCRIPTS_DIR/intent_draft_rows.py" "$ACCEPTANCE_PY" "$1"
 }
 
 _intent_closure_reqs() { # _intent_closure_reqs <intent.md> -> JSON rows: "out of scope stated"
                          # and "open questions resolved" (both apply to drafts only; the second is informational)
-  python3 -I - "$ACCEPTANCE_PY" "$1" <<'PY'
-import importlib.util, json, re, sys
-_spec = importlib.util.spec_from_file_location('acceptance', sys.argv[1])
-A = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(A)
-
-lines = open(sys.argv[2]).read().splitlines()
-reqs = []
-def add(name, ok, detail):
-    reqs.append({'name': name, 'pass': ok, 'detail': detail})
-
-m = re.search(r'^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$', "\n".join(lines), re.I | re.M)
-status = m.group(1).lower() if m else None   # None: missing or unknown Status header
-
-# Both requirements apply only while the intent is a draft: a recorded acceptance is never
-# revisited, so an accepted or completed intent skips them with a PASS.
-SKIP = ('skipped \u2014 intent is %s; this check applies to drafts only (a recorded acceptance is never revisited)' % status
-        if status else
-        'skipped: no recognized Status header (draft, accepted or completed); this check applies to drafts only, and the status header requirement reports the missing header')
-
-# --- out of scope stated: a '- Out of scope:' bullet with non-placeholder text ----------
-scope = A.section_lines(lines, 'Scope and Non-goals') or A.section_lines(lines, 'Scope')
-found = False
-for l in scope:
-    om = re.match(r'^\s*-\s*Out of scope:\s*(.*?)\s*$', l, re.I)
-    if om and re.search(r'[A-Za-z0-9]', A.blank_placeholders(om.group(1))):
-        found = True
-        break
-if status != 'draft':   # explicitly draft only
-    add('out of scope stated', True, SKIP)
-else:
-    add('out of scope stated', found,
-        'Scope states what is out of scope' if found
-        else 'no "- Out of scope:" bullet with real text under ### Scope and Non-goals')
-
-# --- open questions resolved: a draft reports its Blocking questions (informational) -------
-# Drafts legitimately carry Blocking questions (the shipped example does), so this never fails
-# a draft; it names what is still open so the person answers it before accepting.
-if status != 'draft':
-    add('open questions resolved', True, SKIP)
-else:
-    blocking = []
-    cur = None
-    for l in A.section_lines(lines, 'Open Questions'):
-        if A.BULLET_RE.match(l):
-            cur = [l]
-            blocking.append(cur)
-        elif cur is not None:
-            cur.append(l)
-    blocking = [' '.join(b).strip()[:60] for b in blocking
-                if not A.strip_checkbox(b[0]).startswith('{')
-                and re.match(r'^\W*blocking\b', A.strip_checkbox(b[0]), re.I)]
-    add('open questions resolved', True,
-        'no Blocking question remains' if not blocking
-        else '%d Blocking question(s) still open on the draft; answer them into ### Decisions before accepting: %s' % (len(blocking), ' | '.join(blocking)))
-print("\n".join(json.dumps(r) for r in reqs))
-PY
+  python3 -I "$SCRIPTS_DIR/intent_closure_rows.py" "$ACCEPTANCE_PY" "$1"
 }
 
 gate_intent() {
@@ -2228,6 +1998,10 @@ gate_intent() {
     done < <(_intent_closure_reqs "$spec_path/intent.md")
     # A Blocking question still open in a draft (F10, scripts/gate_rows.py): the person answers it before the plan.
     draft_line="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" intent-blocking "$spec_path/intent.md")"
+    reqs+=("$draft_line")
+    # 9.8.0: a run whose Intent asked the person something is not fully specified; Design reads this (flow.py has_design)
+    grep -q '"pass": false' <<<"$draft_line" && { all_pass=0; _json_set_path "$STATE_FILE" intent_asked true '{}' >/dev/null 2>&1; }
+    draft_line="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" intent-rules "$spec_path/intent.md")"
     reqs+=("$draft_line")
     grep -q '"pass": false' <<<"$draft_line" && all_pass=0
   fi
@@ -2390,6 +2164,39 @@ _default_branch() { # the remote's default branch when one is recorded, else ""
   echo "${ref#refs/remotes/origin/}"
 }
 
+# _wt_prep <worktree> <branch> <own 0|1> <slug> <G or Tn>: 0 = reuse this run's worktree; 1 = make it; 3 = refused. Clears
+# what an earlier attempt of the same run name left: a record whose folder is gone, a clean worktree on the branch, and
+# a branch this run did not make (moved aside to refs/temper/kept/{slug}/earlier-{ts}/{G}, its commits kept). Uncommitted
+# work stays.
+_wt_prep() {
+  local reg; reg="$(git worktree list --porcelain 2>/dev/null | awk -v p="$(pwd -P)/$1" '
+    $1 == "worktree" { w = $2; if (w == p) r = "-" } $1 == "branch" && w == p { r = $2 } END { print r }')"
+  if [[ "$reg" == "refs/heads/$2" && -d "$1" ]]; then
+    [[ $3 == 1 ]] && return 0
+    local pre; pre="$(_prefix_re)"
+    if [[ -n "$(git -C "$1" status --porcelain=v1 2>/dev/null | cut -c4- | grep -v -e "^${pre}\.temper/" -e '^\.temper/')" ]]; then
+      echo "FAIL: $1 holds uncommitted work of an earlier attempt of this run; move it away, then run this again" >&2
+      return 3
+    fi
+  fi
+  [[ -n "$reg" && ( ! -d "$1" || "$reg" == "refs/heads/$2" ) ]] && git worktree remove --force "$1" >/dev/null 2>&1
+  if [[ -e "$1" || -L "$1" ]]; then
+    echo "FAIL: $1 exists and is not the worktree of $5; move it away" >&2
+    return 3
+  fi
+  if [[ $3 != 1 ]] && git show-ref --verify --quiet "refs/heads/$2"; then
+    local to; to="$(_task_py keep "$4" earlier "$(date -u +%Y%m%dT%H%M%SZ)" "$5" "$2")" \
+      || { echo "FAIL: branch $2 is left by an earlier attempt; delete it (git branch -D $2), then run this again" >&2; return 3; }
+    echo "NOTE: branch $2, left by an earlier attempt, moved aside to $to (its commits are kept; git branch $2 $to brings it back)" >&2
+  fi
+  return 1
+}
+_wt_back() { # _wt_back <worktree> <branch> <G> <slug>: this run's group worktree whose folder went comes back on its branch
+  [[ -n "$1" && ! -d "$1" ]] || return 0
+  _task_py grpown "$GROUPS_FILE" "$3" "$2" "$4" || return 1
+  git worktree remove --force "$1" >/dev/null 2>&1; git worktree add -q "$1" "$2" >/dev/null 2>&1
+}
+
 # temper group start G: one worktree per group at .claude/worktrees/temper-{slug}-{G}, branch
 # temper/{slug}/{G}, based on the feature branch HEAD with every Depends group's branch merged in.
 # Idempotent: a worktree already on the right branch is reused. Exit 3: a protected branch, or a
@@ -2464,18 +2271,13 @@ except Exception:
     fi
   done
 
-  local wt=".claude/worktrees/temper-$slug-$g" branch="temper/$slug/$g" abs
-  abs="$(pwd -P)/$wt"
-  local reuse=0
-  if git worktree list --porcelain 2>/dev/null | awk -v p="$abs" -v b="refs/heads/$branch" '
-      $1 == "worktree" { path = $2 } $1 == "branch" && path == p && $2 == b { found = 1 } END { exit !found }'; then
-    reuse=1
-  elif [[ -e "$wt" || -L "$wt" ]]; then
-    echo "FAIL: $wt exists and is not the worktree of $g; move it away" >&2
-    return 3
-  fi
+  local wt=".claude/worktrees/temper-$slug-$g" branch="temper/$slug/$g" own=0 rc
+  # R3: this run's own branch only (same name, and its recorded base still in its history); another is an earlier attempt's
+  _task_py grpown "$GROUPS_FILE" "$g" "$branch" "$slug" && own=1
+  _wt_prep "$wt" "$branch" "$own" "$slug" "$g"; rc=$?
+  [[ $rc == 3 ]] && return 3
 
-  if [[ "$reuse" == "0" ]]; then
+  if [[ $rc == 1 ]]; then
     # the worktrees folder is local to this clone: info/exclude, never .gitignore
     local ex; ex="$(git rev-parse --git-common-dir)/info/exclude"
     mkdir -p "$(dirname "$ex")"
@@ -2485,25 +2287,6 @@ except Exception:
     if git show-ref --verify --quiet "refs/heads/$branch"; then
       # L4: the group branch outlives its worktree (integrate removes worktrees before its suite runs and
       # keeps the branches on FAIL): attach a worktree to the existing branch, its base already holds the deps.
-      # R3: only a branch this run recorded (same name, and its recorded base is still in the branch's history);
-      # any other is an abandoned run's and is refused.
-      if ! python3 -I - "$GROUPS_FILE" "$g" "$branch" "$slug" <<'PY'
-import json, subprocess, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    e = (d.get('groups') or {}).get(sys.argv[2]) or {}
-    ok = d.get('slug') == sys.argv[4] and e.get('branch') == sys.argv[3] and bool(e.get('base_sha'))
-    if ok:
-        ok = subprocess.run(['git', 'merge-base', '--is-ancestor', e['base_sha'], sys.argv[3]],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-except Exception:
-    ok = False
-sys.exit(0 if ok else 1)
-PY
-      then
-        echo "FAIL: branch $branch already exists and this run did not create it (left by an earlier run); delete it with: git branch -D $branch (git worktree prune first if a worktree still names it), then temper group start $g" >&2
-        return 1
-      fi
       if ! wt_out="$(git worktree add -q "$wt" "$branch" 2>&1)"; then
         echo "FAIL: git worktree add failed: $(printf '%s' "$wt_out" | head -1)" >&2
         return 1
@@ -2539,10 +2322,10 @@ e = d['groups'].setdefault(a[2], {})
 e['status'] = 'running' if e.get('status') in (None, 'pending') else e['status']
 e['worktree'] = a[3]
 e['branch'] = a[4]
-e.setdefault('base_sha', a[5])
+e['base_sha'] = a[5] if a[8] == '0' else e.get('base_sha') or a[5]   # a new branch (not this run's own) starts here
 e.setdefault('started_at', a[6])
 e.setdefault('finished_at', None)
-" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" || return 1
+" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" "$own" || return 1
   echo "OK: group $g started ($wt on $branch)"
 }
 
@@ -3125,25 +2908,22 @@ print(1 if any(l.strip().startswith('{') and json.loads(l).get('task') == n for 
   local slug twt tb tabs snap sha
   slug="$(_jget "$_T_CTX" slug)"
   twt=".claude/worktrees/temper-$slug-T$n"; tb="temper/$slug/T$n"; tabs="$(pwd -P)/$twt"
-  if git worktree list --porcelain 2>/dev/null | awk -v p="$tabs" -v b="refs/heads/$tb" '
-      $1 == "worktree" { path = $2 } $1 == "branch" && path == p && $2 == b { found = 1 } END { exit !found }'; then
-    snap='{}'
-  else
-    if [[ -e "$twt" || -L "$twt" ]]; then
-      echo "FAIL: $twt exists and is not the worktree of Task $n; move it away" >&2
-      return 3
-    fi
-    if git show-ref --verify --quiet "refs/heads/$tb"; then
-      echo "FAIL: branch $tb already exists (left by an earlier run); delete it with: git branch -D $tb, then temper task start $n" >&2
-      return 1
-    fi
-    local wt_out
-    if ! wt_out="$(git worktree add -q -b "$tb" "$twt" "$(_jget "$_T_CTX" gbranch)" 2>&1)"; then
+  local own=0 rc wt_out; [[ "$(_jget "$_T_CTX" tbranch)" == "$tb" ]] && own=1
+  _wt_back "$wt" "$(_jget "$_T_CTX" gbranch)" "$group" "$slug" || {
+    echo "FAIL: the worktree of group $group ($wt) is gone; run temper group start $group, then temper task start $n" >&2
+    return 1
+  }
+  _wt_prep "$twt" "$tb" "$own" "$slug" "T$n"; rc=$?
+  [[ $rc == 3 ]] && return 3
+  if [[ $rc == 1 ]]; then
+    # a parked task's worktree whose folder went: its branch keeps the commits, so the worktree comes back on it
+    if [[ $own == 1 ]] && git show-ref --verify --quiet "refs/heads/$tb"; then wt_out="$(git worktree add -q "$twt" "$tb" 2>&1)"
+    else wt_out="$(git worktree add -q -b "$tb" "$twt" "$(_jget "$_T_CTX" gbranch)" 2>&1)"; fi || {
       echo "FAIL: git worktree add failed: $(printf '%s' "$wt_out" | head -1)" >&2
       return 1
-    fi
-    snap='{}'
+    }
   fi
+  snap='{}'
   sha="$(git -C "$tabs" rev-parse HEAD)" || return 1
   _groups_mutate "
 t = d.setdefault('tasks', {}).setdefault(a[0], {})
@@ -3253,11 +3033,13 @@ cmd_task_gate() {
 
 _task_gate_body() {
   local n="${1:-}"; shift || true
-  local model="" ms=""
+  local model="" ms="" if_running=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model) model="${2:-}"; shift 2 || true ;;
       --ms) ms="${2:-}"; shift 2 || true ;;
+      # 9.8.0: a chain agent gates each task itself; the after call gates only a task it left running, else does nothing.
+      --if-running) if_running=1; shift ;;
       # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
       --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
@@ -3270,8 +3052,13 @@ _task_gate_body() {
     return 1
   fi
   _task_load "$n" || return 1
-  _task_parked_refuse "$n" gate || return 1
   local status; status="$(_jget "$_T_CTX" status)"
+  # A task the chain never started has nothing to gate, also in a group a sibling's third failure just parked.
+  if [[ "$status" != "running" && $if_running -eq 1 ]]; then
+    echo "OK: Task $n is $status; nothing to gate"
+    return 0
+  fi
+  _task_parked_refuse "$n" gate || return 1
   if [[ "$status" != "running" ]]; then
     echo "FAIL: Task $n is not running (status: $status)" >&2
     return 1
@@ -3370,6 +3157,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
   # commit); declared files are disjoint between tasks that run together, so a conflict means the plan was wrong
   local gabs tb mrg=""
   gabs="$(pwd -P)/$(_jget "$_T_CTX" gworktree)"; tb="$(_jget "$_T_CTX" tbranch)"
+  _wt_back "$(_jget "$_T_CTX" gworktree)" "$(_jget "$_T_CTX" gbranch)" "$group" "$slug"
   # the merge runs whenever the task branch holds commits the group branch lacks: the CLI's commit just made, and
   # also one kept from an earlier attempt or accepted by the human at a reopen when this attempt changed nothing more
   local tip ahead
@@ -3627,131 +3415,7 @@ cmd_task() {
 # Grouped plan-gate rows: one JSON requirement object per line (same shape _req emits).
 _grouped_plan_reqs() { # _grouped_plan_reqs <tasks.md> <max-blast-radius>
   local model; model="$(_grouped_parse "$1")"
-  python3 -I - "$2" "$GROUP_CONTEXT_MAX_BYTES" "$TASK_BLOCK_MAX_BYTES" "$model" "$PWD" <<'PY'
-import json, os, shlex, sys
-max_blast, ctx_max, blk_max = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
-m = json.loads(sys.argv[4])
-groups, tasks = m['groups'], m['tasks']
-def row(name, bad, ok_detail):
-    print(json.dumps({'name': name, 'pass': not bad, 'detail': '; '.join(bad) if bad else ok_detail}))
-by_n = {}
-bad = []
-if not groups: bad.append('no "## Group G<n>: title" heading')
-for t in tasks:
-    if t['n'] in by_n: bad.append('duplicate Task %d' % t['n'])
-    by_n.setdefault(t['n'], t)
-    if not t['group']: bad.append('Task %d is outside any group' % t['n'])
-row('grouped plan', bad, '%d groups: %s' % (len(groups), ', '.join('%s (%d tasks)' % (g['id'], len(g['tasks'])) for g in groups)))
-row('declared files', ['Task %d: no declared files' % t['n'] for t in tasks if not t['files']],
-    'every task declares its files')
-row('exact file paths', ['Task %d: **File:** %s is a glob (declare exact paths)' % (t['n'], f)
-                         for t in tasks for f in t['files'] if any(c in f for c in '*?[')],
-    'every **File:** is an exact path')
-def test_path(cmd):  # the first path-like argument of a test command, else ''
-    try: parts = shlex.split(cmd)
-    except ValueError: return ''
-    for a in parts[1:]:
-        if a.startswith('-') or any(c in a for c in '$*?[{`'): continue
-        if '/' in a or os.path.splitext(a)[1] in ('.sh', '.py', '.js', '.ts', '.bats', '.rb'): return a
-    return ''
-def undeclared_test(t):
-    p = test_path(t['test'])
-    if not p: return None
-    q = p[2:] if p.startswith('./') else p
-    if q in {f.strip()[2:] if f.strip().startswith('./') else f.strip() for f in t['files']}: return None
-    if os.path.exists(os.path.join(sys.argv[5], q)): return None
-    return 'Task %d: test path %s is not declared in **File:** and does not exist yet' % (t['n'], q)
-row('task test command', ['Task %d: no test command' % t['n'] for t in tasks if not t['test']]
-    + [m for m in map(undeclared_test, tasks) if m],
-    'every task declares its own scoped test command')
-row('task test cases', ['Task %d: %d case(s) under **Cases:** (need 2 or more: the normal result and an edge or error case)' % (t['n'], t['cases'])
-                        for t in tasks if t['cases'] < 2],
-    'every task lists the concrete cases its test must check')
-row('group context', ['%s: no group context' % g['id'] for g in groups if not g['context']],
-    'every group has a context block')
-row('context budget', ['%s: context %d bytes > %d' % (g['id'], g['context_bytes'], ctx_max)
-                       for g in groups if g['context_bytes'] > ctx_max], 'every context within %d bytes' % ctx_max)
-row('task block budget', ['Task %d: block %d bytes > %d' % (t['n'], t['block_bytes'], blk_max)
-                          for t in tasks if t['block_bytes'] > blk_max], 'every task block within %d bytes' % blk_max)
-gids = {g['id'] for g in groups}
-dep_bad = []
-for t in tasks:
-    for d in t['depends']:
-        if d not in by_n: dep_bad.append('Task %d depends on unknown Task %d' % (t['n'], d))
-for g in groups:
-    for d in g['depends']:
-        if d not in gids: dep_bad.append('%s depends on unknown %s' % (g['id'], d))
-def find_cycle(nodes, edges, label):
-    state = {}
-    def visit(n, path):
-        state[n] = 1
-        for d in edges.get(n, []):
-            if d not in nodes: continue
-            if state.get(d) == 1:
-                return ' -> '.join(label(x) for x in path[path.index(d):] + [d])
-            if d not in state:
-                r = visit(d, path + [d])
-                if r: return r
-        state[n] = 2
-        return None
-    for n in nodes:
-        if n not in state:
-            r = visit(n, [n])
-            if r: return r
-    return None
-c = find_cycle(list(by_n), {n: t['depends'] for n, t in by_n.items()}, lambda x: 'Task %d' % x)
-if c: dep_bad.append('Depends cycle: ' + c)
-gdeps = {g['id']: g['depends'] for g in groups}
-c = find_cycle(list(gids), gdeps, str)
-if c: dep_bad.append('Depends cycle: ' + c)
-# F3: a group's worktree starts from the feature branch plus the groups it depends on, so a task that depends on a
-# task of another group needs its own group to depend (transitively) on that group, or it runs without that work
-def gclosure(g):
-    seen, stack = set(), list(gdeps.get(g, []))
-    while stack:
-        x = stack.pop()
-        if x in seen: continue
-        seen.add(x); stack.extend(gdeps.get(x, []))
-    return seen
-for n, t in sorted(by_n.items()):
-    for d in t['depends']:
-        dg = (by_n.get(d) or {}).get('group')
-        if dg and t['group'] and dg != t['group'] and dg not in gclosure(t['group']):
-            dep_bad.append('Task %d (%s) depends on Task %d (%s) but %s does not depend on %s' % (n, t['group'], d, dg, t['group'], dg))
-row('dependencies', dep_bad, 'no cycles, no unknown dependencies')
-# A precedes B when A is a transitive task ancestor of B, or B's group transitively depends on A's group.
-def closure(start, edges, ok):
-    seen, stack = set(), list(edges.get(start, []))
-    while stack:
-        x = stack.pop()
-        if x in seen or not ok(x): continue
-        seen.add(x); stack.extend(edges.get(x, []))
-    return seen
-tdeps = {n: t['depends'] for n, t in by_n.items()}
-ordered = set()
-for n, t in by_n.items():
-    for a in closure(n, tdeps, lambda x: x in by_n): ordered.add((a, n))
-    if t['group']:
-        for ag in closure(t['group'], gdeps, lambda x: x in gids):
-            for o in tasks:
-                if o['group'] == ag: ordered.add((o['n'], n))
-ov = []
-ts = sorted(by_n)
-for i, a in enumerate(ts):
-    for b in ts[i + 1:]:
-        if (a, b) in ordered or (b, a) in ordered: continue
-        for f in by_n[a]['files']:
-            if f in by_n[b]['files']:
-                ov.append('file ownership overlap: %s in Task %d and Task %d' % (f, a, b))
-row('file ownership', ov, 'tasks that can run together declare disjoint files')
-big = []
-for g in groups:
-    files = {f for n in g['tasks'] for f in by_n[n]['files']}
-    if len(files) > max_blast:
-        big.append('%s declares %d files > autonomy.max-blast-radius=%d: split the group' % (g['id'], len(files), max_blast))
-row('group blast radius', big, 'every group within autonomy.max-blast-radius=%d' % max_blast)
-row('integration command', [] if m['integration'] else ['no **Integration:** line'], 'integration command declared')
-PY
+  python3 -I "$SCRIPTS_DIR/plan_rows.py" "$2" "$GROUP_CONTEXT_MAX_BYTES" "$TASK_BLOCK_MAX_BYTES" "$model" "$PWD" </dev/null
 }
 
 gate_plan() {
@@ -4188,8 +3852,9 @@ try:
     rows = json.load(open(sys.argv[1]))
 except Exception:
     rows = []
+# the acceptance run has a row of its own (a correction names its tests: 'corrected after the lock: test_...')
 runs = [r for r in rows if isinstance(r, dict) and not r.get('scenario') and isinstance(r.get('exit_code'), int)
-        and re.search('test', r.get('claim') or '', re.I)]
+        and re.search('test', r.get('claim') or '', re.I) and not (r.get('claim') or '').startswith('acceptance (written before Build)')]
 last = {}
 for r in runs:
     last[' '.join(str(r.get('claim')).lower().split())] = r
@@ -4229,14 +3894,59 @@ print('%d|%s' % (sum(1 for r in runs if r.get('exit_code') == 0), '; '.join(red)
       all_pass=0
     fi
   fi
-  local cov_val; cov_val=$(_ev_last_value check coverage)
+  local cov_val; cov_val=$(_ev_last_value check 'coverage(?! tool missing)')
   # Both values cross as argv, never as Python source: the threshold comes from the
   # project config and the value from the ledger. A value that is not a number FAILs.
   if [[ -n "$cov_val" ]] && python3 -I -c "import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)" "$cov_val" "$threshold" 2>/dev/null; then
     reqs+=("$(_req "coverage >= threshold" 1 "$cov_val% >= $threshold% threshold")")
   else
-    reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%")")
+    # 9.8.0: when the CLI ran Check and found no coverage tool, the row says what to install.
+    local cov_hint; cov_hint="$(_ev_last_claim check '^coverage tool missing: ')"
+    reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%${cov_hint:+ (${cov_hint#coverage tool missing: })}")")
     all_pass=0
+  fi
+  # 9.8.0: the mutation score of the tests on the lines this run changed (scripts/check_run.py, when the CLI ran Check;
+  # Python by syntax tree, the C-style languages by text).
+  # Coverage says a line ran; this says a test would notice it break. No row when Check did not measure it.
+  local mut_val mut_note mthr; mthr="$(_cfg_get check.mutation-threshold 70)"
+  mut_val=$(_ev_last_value check '^mutation score$'); mut_note="$(_ev_last_claim check '^mutation: not measured')"
+  if [[ -n "$mut_val" ]]; then
+    if python3 -I -c "import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)" "$mut_val" "$mthr" 2>/dev/null; then
+      reqs+=("$(_req "mutation score >= threshold" 1 "$mut_val% of planted bugs caught >= $mthr%")")
+    else
+      # The surviving mutants are named here (the row a step back carries to Build), so the fix pass knows which lines to test.
+      local mut_row; mut_row="$(_ev_last_row check '^mutation score$')"
+      reqs+=("$(_req "mutation score >= threshold" 0 "$mut_val% of planted bugs caught < $mthr%: no test notices these changes to the new code: ${mut_row#*|}")")
+      all_pass=0
+    fi
+  elif [[ -n "$mut_note" ]]; then
+    reqs+=("$(_req "mutation score >= threshold" 1 "${mut_note#mutation: }")")
+  fi
+  # 9.8.0: the acceptance tests written from the intent before Build (agents/acceptance.md), run as they were locked.
+  local acc; acc="$(_ev_last_row check '^acceptance \(written before Build\)')"
+  if [[ -n "$acc" ]]; then
+    local acc_claim; acc_claim="$(_ev_last_claim check '^acceptance \(written before Build\)')"
+    if [[ "${acc%%|*}" == "0" ]]; then
+      local acc_ok="they pass, unchanged since they were locked"
+      [[ "$acc_claim" == *", corrected after the lock: "* ]] && acc_ok="they pass, as the person corrected them after the lock (${acc_claim#*, corrected after the lock: })"
+      [[ "$acc_claim" == *skipped ]] && acc_ok="skipped: ${acc#*|}"
+      reqs+=("$(_req "acceptance tests written before Build" 1 "$acc_ok")")
+    else
+      reqs+=("$(_req "acceptance tests written before Build" 0 "${acc#*|}")")
+      all_pass=0
+    fi
+  fi
+  # 9.8.0: a fix's regression proof: the tests it added or changed fail on the code before the fix (scripts/check_run.py).
+  if [[ "$(cmd_state_get command temper)" == "fix" ]]; then
+    local reg; reg="$(_ev_last_row check '^regression proof$')"
+    if [[ -n "$reg" ]]; then
+      if [[ "${reg%%|*}" == "0" ]]; then
+        reqs+=("$(_req "regression proof" 1 "${reg#*|}")")
+      else
+        reqs+=("$(_req "regression proof" 0 "${reg#*|}")")
+        all_pass=0
+      fi
+    fi
   fi
   if [[ -f "$spec_path/intent.md" ]]; then
     # Every criterion has explicit, SUPPORTED passing evidence — the same checker
@@ -4418,69 +4128,78 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
       all_pass=0
     fi
   done
-  if [[ "$run_mode" == "autonomous" ]]; then
-    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius 15)"
-    # Checkpoint commits land before Review/Check run, so a plain status diff
-    # returns nothing. When the run recorded a base_sha, the changed set is
-    # base_sha..HEAD plus still-uncommitted paths; without one, the working tree.
-    local base_sha changed_n
-    base_sha="$(cmd_state_get base_sha "")"
-    if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-      changed_n=$( { git -C "$REPO_ROOT" diff --name-only "$base_sha" 2>/dev/null
-                     git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
-                   } | _project_names | sort -u | grep -c . )
-    else
-      changed_n=$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //' | _project_names | sort -u | grep -c .)
-    fi
-    if [[ -f "$(_spec_path "")/tasks.md" ]]; then
-      # D-01: in grouped mode a group may legitimately exceed the count, so the row compares the
-      # changed set (base_sha-relative plus uncommitted) with the union of declared files instead.
-      local gspec; gspec="$(_spec_path "")"
-      local gverdict
-      gverdict="$( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-                       git -C "$REPO_ROOT" diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
-                     git -C "$REPO_ROOT" -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
-                   } | _project_names | sort -u | python3 -I -c "
-import json, sys
+  # 9.8.0: the scope row is checked in every run with a plan, not only an unattended one: each changed file is one
+  # tasks.md declares, a test file, the run's spec folder or Temper's own state, or one the person allowed at a Scope drift
+  # question (Add to plan, Allow once: the `drift {path}: {choice}` rows of the Build ledger). Before 9.8.0 an
+  # interactive run could commit files nobody planned (an ADR, run state written in docs/); now the person sees them.
+  local base_sha; base_sha="$(cmd_state_get base_sha "")"
+  _changed_since_base() {
+    { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
+        git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
+      git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
+    } | _project_names | sort -u
+  }
+  local gspec; gspec="$(_spec_path "")"
+  local plan_json='{"tasks": []}'
+  [[ -n "$gspec" && -f "$gspec/tasks.md" ]] && plan_json="$(_grouped_parse "$gspec/tasks.md")"
+  if [[ -n "$gspec" && -f "$gspec/tasks.md" ]]; then
+    local gverdict
+    gverdict="$(_changed_since_base | python3 -I -c "
+import json, os, re, sys
 plan = json.loads(sys.argv[1]); spec = sys.argv[2].rstrip('/')
-declared = sorted({f for t in plan['tasks'] for f in t['files']})
+declared = {f for t in plan.get('tasks', []) for f in t.get('files', [])}
+try:
+    rows = json.load(open(sys.argv[3]))
+except Exception:
+    rows = []
+allowed = set()
+for r in rows if isinstance(rows, list) else []:
+    m = re.match(r'^drift (\\S+): (Add to plan|Allow once)\\b', str(r.get('claim') or ''), re.I)
+    if m:
+        allowed.add(m.group(1))
+test = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\\.py$|_test\\.(py|go)$|\\.(test|spec)\\.[cm]?[jt]sx?$|Tests?\\.(java|kt|cs)$|_spec\\.rb$')
 def ok(p):
     if spec and (p == spec or p.startswith(spec + '/')): return True
     if p.startswith('.temper/') or p.startswith('.claude/worktrees/'): return True   # run state the CLI owns
-    return any(p == d for d in declared)   # H4: exact paths
+    return p in declared or p in allowed or bool(test.search(p))
 changed = [l.strip() for l in sys.stdin if l.strip()]
 bad = [c for c in changed if not ok(c)]
-if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]))
+if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]) + (' (and %d more)' % (len(bad) - 5) if len(bad) > 5 else ''))
 else: print('PASS %d changed, all declared' % len(changed))
-" "$(_grouped_parse "$gspec/tasks.md")" "${gspec#"$REPO_ROOT"/}")"
-      if [[ "$gverdict" == PASS* ]]; then
-        reqs+=("$(_req "blast radius" 1 "${gverdict#PASS }")")
-      else
-        reqs+=("$(_req "blast radius" 0 "${gverdict#FAIL }")")
-        all_pass=0
-      fi
-    elif [[ "$changed_n" -le "$max_blast" ]]; then
-      reqs+=("$(_req "blast radius" 1 "$changed_n file(s) <= $max_blast")")
+" "$plan_json" "${gspec#"$REPO_ROOT"/}" "$(_evidence_file build)")"
+    if [[ "$gverdict" == PASS* ]]; then
+      reqs+=("$(_req "blast radius" 1 "${gverdict#PASS }")")
     else
-      reqs+=("$(_req "blast radius" 0 "$changed_n file(s) exceeds autonomy.max-blast-radius=$max_blast")")
+      reqs+=("$(_req "blast radius" 0 "${gverdict#FAIL }")")
       all_pass=0
     fi
+  fi
+  if [[ "$run_mode" == "autonomous" || "$(cmd_state_get ran_unattended "")" == "true" ]]; then
+    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius 15)"
+    if [[ -z "$gspec" || ! -f "$gspec/tasks.md" ]]; then
+      local changed_n; changed_n=$(_changed_since_base | grep -c .)
+      if [[ "$changed_n" -le "$max_blast" ]]; then
+        reqs+=("$(_req "blast radius" 1 "$changed_n file(s) <= $max_blast")")
+      else
+        reqs+=("$(_req "blast radius" 0 "$changed_n file(s) exceeds autonomy.max-blast-radius=$max_blast")")
+        all_pass=0
+      fi
+    fi
+    # 9.8.0: a park-on-touch path parks an unattended run only when the change to it is not in the plan. Before 9.8.0 any
+    # change to such a path parked, so a billing feature parked at once and the unattended option was of no use there.
     local patterns; patterns="$(_cfg_get autonomy.park-on-touch "")"
     local touched=""
     if [[ -n "$patterns" ]]; then
-      local pats=()
+      local pats=() declared_list
+      declared_list="$(python3 -I -c "import json,sys; print('\\n'.join(sorted({f for t in json.loads(sys.argv[1]).get('tasks', []) for f in t.get('files', [])})))" "$plan_json")"
       IFS=$'\x1f' read -r -a pats <<< "$patterns"
       while IFS= read -r f; do
         [[ -z "$f" ]] && continue
+        grep -qxF -- "$f" <<<"$declared_list" && continue
         for p in "${pats[@]}"; do
-          if _glob_touch_match "$f" "$p"; then touched="$f matches $p"; fi
+          if _glob_touch_match "$f" "$p"; then touched="$f matches $p and is not in the plan"; fi
         done
-      # The changed set the blast radius row reads: what changed since base_sha (grouped Build commits its work), and
-      # what is still uncommitted; a rename by both its names, so a file moved out of a parked path still parks.
-      done < <( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-                    git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
-                  git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
-                } | _project_names | sort -u)
+      done < <(_changed_since_base)
     fi
     if [[ -z "$touched" ]]; then
       reqs+=("$(_req "park-on-touch paths" 1 "no changed file matches a park-on-touch pattern")")
@@ -4496,9 +4215,9 @@ else: print('PASS %d changed, all declared' % len(changed))
 cmd_gate() {
   _state_migrate_legacy
   local stage="${1:-}"; shift || true
-  local spec_path_override="" from_hook=0
+  local spec_path_override="" from_hook=0 brief=0
   while [[ $# -gt 0 ]]; do
-    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; --from-hook) from_hook=1; shift ;; *) shift ;; esac
+    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; --from-hook) from_hook=1; shift ;; --brief) brief=1; shift ;; *) shift ;; esac
   done
   _ensure_dirs
   local ok=false
@@ -4588,12 +4307,16 @@ try:
 except Exception:
     pass" "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
   fi
+  # --brief (9.8.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
+  # passed row was context the session read again on every later turn.
   python3 -I -c "
 import json, sys
 for r in json.loads(sys.argv[1]):
+    if r['pass'] and sys.argv[2] == '1':
+        continue
     mark = 'v' if r['pass'] else 'x'
     print(f\"  [{mark}] {r['name']} — {r['detail']}\")
-" "$reqs_json"
+" "$reqs_json" "$brief"
 
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
 }
@@ -4680,7 +4403,10 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 }
 
 # ---------------------------------------------------------------------------
-# intent accept|complete: the header of the run's intent.md, written by the CLI (ADR 0013).
+# intent accept|complete|carry: the header of the run's intent.md, written by the CLI (ADR 0013).
+# carry '<question>': the person's Carry forward on a Blocking question (9.8.0): its label turns to
+# `Deferred: (carried forward at the Intent gate)`, so the question stays on record, later gates name it, and it no
+# longer fails the Intent gate (before 9.8.0 Carry forward recorded nothing and the gate stayed red: a dead end).
 # accept: **Status:** accepted plus **Accepted-by:** the person (their Continue at the Intent gate
 # is the acceptance; Temper reads no name or email from git). complete: **Status:** completed plus
 # **Completed:** today.
@@ -4689,9 +4415,41 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 
 cmd_intent() {
   local sub="${1:-}"
-  case "$sub" in accept|complete) ;; *) echo "FAIL: usage: temper intent accept|complete" >&2; return 1 ;; esac
+  case "$sub" in accept|complete|carry|answer) ;; *) echo "FAIL: usage: temper intent accept|complete|carry '<question>'|answer '<question>' '<answer>'" >&2; return 1 ;; esac
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -f "$spec/intent.md" ]] || { echo "FAIL: no intent.md for the active run" >&2; return 1; }
+  # 9.8.0: the person's answer to a Blocking question, written by the CLI (scripts/answer_ops.py).
+  [[ "$sub" == "answer" ]] && { python3 -E -s "$SCRIPTS_DIR/answer_ops.py" "$spec" "${@:2}"; return; }
+  if [[ "$sub" == "carry" ]]; then
+    [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper intent carry '<question>'" >&2; return 1; }
+    python3 -I - "$spec/intent.md" "$2" <<'PY'
+import os, re, sys
+path, q = sys.argv[1:3]
+norm = lambda t: re.sub(r'\W+', ' ', t).strip().lower()
+want = norm(q)[:60]
+lines = open(path, encoding='utf-8').read().split('\n')
+active, hit = False, None
+for i, l in enumerate(lines):
+    h = re.match(r'^#{1,6}\s+(.*)$', l)
+    if h:
+        active = bool(re.match(r'open questions', h.group(1).strip(), re.I))
+        continue
+    m = re.match(r'^(\s*[-*]\s+(?:\[[ xX]\]\s+)?)Blocking:\s*(.+)$', l) if active else None
+    if m and want and (norm(m.group(2)).startswith(want) or want.startswith(norm(m.group(2))[:60])):
+        lines[i] = '%sDeferred: (carried forward at the Intent gate) %s' % (m.group(1), m.group(2).strip())
+        hit = m.group(2).strip()
+        break
+if hit is None:
+    print('FAIL: no Blocking open question starts with: %s' % q[:80], file=sys.stderr)
+    sys.exit(1)
+tmp = '%s.tmp.%d' % (path, os.getpid())
+with open(tmp, 'w', encoding='utf-8') as f:
+    f.write('\n'.join(lines))
+os.replace(tmp, path)
+print('OK: carried forward: %s' % hit[:80])
+PY
+    return
+  fi
   python3 -I - "$spec/intent.md" "$sub" "the person at the Intent gate" "$(date -u +%Y-%m-%d)" <<'PY'
 import os, re, sys
 path, sub, who, day = sys.argv[1:5]
@@ -4772,8 +4530,9 @@ _setup_calls() {
   fi
 }
 
-# temper plan review --answer '<text>' [--focus '<area>']...: the person's answer to the Context check, written into plan.md's
-# Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand.
+# temper plan review --answer '<text>' [--focus '<area>']... [--redo]: the person's answer to the Context check, written into
+# plan.md's Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand. --redo (9.8.0): the answer
+# changes the plan: it is recorded as the person's note for Plan, and Plan runs again with it.
 cmd_plan() {
   _state_migrate_legacy
   if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
@@ -4785,16 +4544,22 @@ cmd_plan() {
   shift
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
-  local args=() answer=0
+  local args=() answer=0 redo=0 text=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --answer) args+=("--answer" "${2:-}"); answer=1; shift 2 || true ;;
+      --answer) args+=("--answer" "${2:-}"); text="${2:-}"; answer=1; shift 2 || true ;;
       --focus) args+=("--focus" "${2:-}"); shift 2 || true ;;
+      --redo) redo=1; shift ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
   [[ $answer -eq 1 ]] || { echo "FAIL: temper plan review needs --answer '<text>'" >&2; return 1; }
-  python3 -E -s "$SCRIPTS_DIR/plan_ops.py" review "$spec" "${args[@]}"
+  python3 -E -s "$SCRIPTS_DIR/plan_ops.py" review "$spec" "${args[@]}" || return 1
+  # 9.8.0: --redo: the person's answer changes the plan. It becomes a note Plan reads, and Plan runs again with it.
+  if [[ $redo -eq 1 ]]; then
+    cmd_evidence_add --stage plan --phase note --kind input --claim "Context check: ${text}" >/dev/null || return 1
+    cmd_state_redo plan --reason "the Context check: ${text:0:200}"
+  fi
 }
 
 # temper adhoc open --stage S --reason R | temper adhoc close: the small-change window (scripts/adhoc_ops.py, F14).
@@ -4852,7 +4617,7 @@ cmd_next() {
 # Fail open: a view that cannot be written never changes what the command did.
 _view_write() {
   [[ -d "$TEMPER_DIR" && ! -L "$TEMPER_DIR" ]] || return 0
-  python3 "$SCRIPTS_DIR/flow.py" view --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
+  python3 "$SCRIPTS_DIR/cli_ctx.py" view --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
     --config-file "$CONFIG_FILE" --now "$(_now)" >/dev/null 2>&1 || true
 }
 
@@ -5135,104 +4900,7 @@ cmd_bands() {
   t2="$(_cfg_get bands.tiers.2sigma diagnose)"
   t3="$(_cfg_get bands.tiers.3sigma propose)"
   local out rc
-  out=$(python3 -I - "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" <<'PY'
-import json, math, sys
-metrics_path, out_path, window, min_points, drift_run, metrics_sep, t1, t2, t3, ts = sys.argv[1:11]
-# Clamp config to sane floors, never crash on it (spine degradation contract): a
-# non-integer or out-of-range window/min-points/drift-run falls back to its default
-# rather than raising. window>=2 and min-points>=2 keep the baseline slice and the
-# variance non-empty; drift-run>=2 keeps the run rule meaningful.
-def _cfg_int(raw, default, floor):
-    try:
-        n = int(float(raw))
-    except (ValueError, TypeError):
-        return default
-    return n if n >= floor else floor
-window = _cfg_int(window, 10, 2)
-min_points = _cfg_int(min_points, 4, 2)
-drift_run = _cfg_int(drift_run, 6, 2)
-# Two friendly aliases; beyond them, ANY <name>_history array in metrics.json is
-# band-able by name — `temper metrics append <name> <value>` is how a series
-# (including external ones: CI failure rate, 5xx counts) gets points.
-ALIASES = {'coverage': 'coverage_history', 'tests': 'test_count_history'}
-try:
-    m = json.load(open(metrics_path))
-    if not isinstance(m, dict):
-        m = {}
-except Exception:
-    m = {}   # malformed metrics == absent; never a crash, never a breach (spine contract)
-
-def numeric(v):
-    if isinstance(v, bool):
-        return None
-    if isinstance(v, (int, float)):
-        return float(v)
-    if isinstance(v, dict):
-        for k in ('value', 'coverage', 'count', 'pct'):
-            if isinstance(v.get(k), (int, float)) and not isinstance(v.get(k), bool):
-                return float(v[k])
-    return None
-
-tier_names = {0: 'ok', 1: '1sigma', 2: '2sigma', 3: '3sigma'}
-actions = {'1sigma': t1, '2sigma': t2, '3sigma': t3}
-results, lines, worst, any_data = {}, [], 0, False
-for name in [s for s in metrics_sep.split('\x1f') if s]:
-    key = ALIASES.get(name)
-    if key is None:
-        candidate = name if name.endswith('_history') else f"{name}_history"
-        if isinstance(m.get(candidate), list):
-            key = candidate
-    if key is None:
-        known = sorted(set(ALIASES) | {k[:-len('_history')] for k in m if k.endswith('_history') and isinstance(m.get(k), list)})
-        lines.append(f"  [--] {name} — unknown metric (known: {', '.join(known)}); skipped")
-        results[name] = {'tier': 'unknown-metric'}
-        continue
-    raw = m.get(key, [])
-    series = [x for x in (numeric(v) for v in (raw if isinstance(raw, list) else [])) if x is not None]
-    if len(series) < min_points:
-        lines.append(f"  [--] {name} — insufficient data ({len(series)} point(s) recorded, need {min_points})")
-        results[name] = {'tier': 'insufficient-data', 'points': len(series)}
-        continue
-    any_data = True
-    latest = series[-1]
-    base = series[max(0, len(series) - 1 - window):-1]
-    mean = sum(base) / len(base)
-    sigma = math.sqrt(sum((x - mean) ** 2 for x in base) / len(base))
-    if sigma == 0:
-        z = 0.0 if latest == mean else (3.0 if latest > mean else -3.0)
-    else:
-        z = (latest - mean) / sigma
-    level = 3 if abs(z) >= 3 else 2 if abs(z) >= 2 else 1 if abs(z) >= 1 else 0
-    run = series[-drift_run:]
-    drift = len(run) >= drift_run and (all(p > mean for p in run) or all(p < mean for p in run))
-    if drift and level < 2:
-        level = 2
-    tier = tier_names[level]
-    action = actions.get(tier)
-    worst = max(worst, level)
-    line = (f"  [{tier if level else 'ok'}] {name} — latest {latest:g} vs baseline "
-            f"{mean:.2f} ±{sigma:.2f} (z={z:+.2f}, window {len(base)})")
-    if drift:
-        line += f" [drift: {drift_run} consecutive same-side point(s)]"
-    if level >= 1:
-        line += f": action={action}"
-    lines.append(line)
-    results[name] = {'latest': latest, 'mean': round(mean, 4), 'sigma': round(sigma, 4),
-                     'z': round(z, 4), 'tier': tier, 'drift': drift,
-                     'action': action if level >= 1 else None, 'window': len(base)}
-verdict = 'BREACH' if worst >= 2 else ('OK' if any_data else 'INSUFFICIENT-DATA')
-with open(out_path, 'w') as f:
-    json.dump({'verdict': verdict, 'metrics': results, 'ts': ts}, f, indent=2)
-    f.write('\n')
-print(f"temper bands -> {verdict}")
-for l in lines:
-    print(l)
-if worst >= 2:
-    print("A 2sigma+ breach is a closing-the-loop trigger: /temper:status renders it; a "
-          "propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to run.")
-sys.exit(1 if worst >= 2 else 0)
-PY
-)
+  out=$(python3 -I "$SCRIPTS_DIR/bands.py" "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" </dev/null)
   rc=$?
   if [[ "$as_json" == "true" ]]; then
     cat "$BANDS_FILE" 2>/dev/null || echo '{}'
@@ -5245,6 +4913,55 @@ PY
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+
+# check run | check detect (9.8.0): Check, run by the CLI (scripts/check_run.py). `run` runs the suite with coverage, each
+# scenario's Test: command, the mutation score of the changed lines and, for a fix, the regression proof, and records a
+# row for each in the Check ledger (executed_by: cli). Exit 3: the CLI found no test command for this project (set
+# check.commands.test); the Check agent then runs Check as before.
+cmd_check() {
+  local sub="${1:-}"
+  local tcmd ccmd; tcmd="$(_cfg_get check.commands.test "")"; ccmd="$(_cfg_get check.commands.coverage "")"
+  case "$sub" in
+    detect) python3 -E -s "$SCRIPTS_DIR/check_run.py" detect "$REPO_ROOT" "$tcmd" "$ccmd" ;;
+    run)
+      local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
+      base="$(cmd_state_get base_sha "")"
+      [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+      mkdir -p "$TEMPER_DIR/evidence"
+      local ledger; ledger="$(_evidence_file check)"; [[ -f "$ledger" ]] || echo '[]' > "$ledger"
+      python3 -E -s "$SCRIPTS_DIR/check_run.py" run "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$REPO_ROOT/$ledger" "$base" "$cmd" "$tcmd" "$ccmd" ;;
+    ahead)
+      # 9.8.0: Check's run, started in the background while the Review agent reads the change (Review writes no code).
+      # `check run` adopts it when the tree is unchanged, else runs again; it fails open (no run, nothing adopted).
+      local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
+      base="$(cmd_state_get base_sha "")"
+      [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+      mkdir -p "$TEMPER_DIR/check"
+      nohup python3 -E -s "$SCRIPTS_DIR/check_run.py" ahead "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$base" "$cmd" "$tcmd" "$ccmd" >/dev/null 2>&1 &
+      echo "OK: Check's run started in the background; check run adopts it if the tree is unchanged" ;;
+    *) echo "FAIL: usage: temper check run|ahead|detect" >&2; return 1 ;;
+  esac
+}
+
+# acceptance start|lock --cmd C|skip --reason R (9.8.0): the acceptance tests an agent writes from the approved intent
+# before Build (agents/acceptance.md), in the spec folder's acceptance/ folder. `lock` keeps their digest and the command
+# that runs them (.temper/evidence/acceptance-lock.json, which only the CLI writes); Check runs them as they were locked,
+# and a change to them after the lock fails the gate. `skip` records why a run has none; `start` counts a launch (the
+# flow launches the writer at most twice). A lock is taken once: `reopen` (only the person, at the Check question) opens it
+# for one correction, which the writer locks again; `restore` puts back the files as they were locked.
+cmd_acceptance() {
+  local sub="${1:-}"; shift || true
+  local spec; spec="$(_spec_path "")"
+  [[ -n "$spec" ]] || { echo "FAIL: no active run" >&2; return 1; }
+  local text=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --cmd|--reason) text="${2:-}"; shift 2 ;; *) shift ;; esac
+  done
+  case "$sub" in
+    lock|skip|start|reopen|restore|triage|triaged) python3 -E -s "$SCRIPTS_DIR/check_run.py" acceptance "$REPO_ROOT" "$spec" "$sub" "$text" ;;
+    *) echo "FAIL: usage: temper acceptance lock --cmd '<command>' | skip --reason '<why>' | start | reopen --reason '<why>' | restore | triage --reason 'code|test: <why>'" >&2; return 1 ;;
+  esac
+}
 
 main() {
   _require_python
@@ -5294,6 +5011,22 @@ main() {
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
     drift) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/drift.py" .temper/specs "$@") ;;
+    check) cmd_check "$@" ;;
+    acceptance) cmd_acceptance "$@" ;;
+    go) python3 -E -s "$SCRIPTS_DIR/go.py" "$PLUGIN_ROOT/scripts/temper" "$REPO_ROOT" ;;
+    spec) case "${1:-}" in   # 9.8.0: the git steps of leaving a stage (scripts/spec_ops.py)
+            branch) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" branch "$(cmd_state_get branch)") ;;
+            commit|deviations) local _sp; _sp="$(_spec_path "")"; [[ -n "$_sp" ]] || { echo "FAIL: no active run" >&2; return 1; }
+                    (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" "$1" "$_sp" "${@:2}") ;;
+            *) echo "FAIL: usage: temper spec branch | deviations | commit '<message>' [-- FILE...]" >&2; false ;;
+          esac ;;
+    brief) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/brief.py" "$REPO_ROOT" .temper/brief.md "$@") ;;   # 9.8.0: the project brief
+    panel) case "${1:-}" in   # 9.8.0: a stage's panel, drawn from the files it wrote (scripts/panel.py)
+            plan|design) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" "$1" "$(_spec_path "")" "$REPO_ROOT") ;;
+            rca) [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper panel rca <rca.md>" >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" rca "$2") ;;
+            task) shift; [[ $# -gt 0 ]] || { echo "FAIL: usage: temper panel task <N>..." >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" task "$(_spec_path "")" "$REPO_ROOT" "$@") ;;
+            *) echo "FAIL: usage: temper panel plan | design | rca <rca.md> | task <N>..." >&2; false ;;
+          esac ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -5302,7 +5035,9 @@ Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
-  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]
+  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
+  temper panel plan | design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
+  temper brief [--text TEXT | --stdin]   (.temper/brief.md: the code the request reaches, for Plan, Design, RCA)
   temper model <intent|plan|design|build|review|check|rca|fix> | --all
   temper override <stage> --reason "..."
   temper report [--json]
@@ -5321,6 +5056,8 @@ Usage:
   temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
   temper report --end | --no-html (at the commit: the report for the person, then their No to the page)
   temper intent accept|complete   (the Status header of the run's intent.md)
+  temper intent carry '<question>' (the person's Carry forward: a Blocking open question becomes Deferred)
+  temper intent answer '<question>' '<answer>' [...]  (the person's answers: into Decisions, out of Open Questions)
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)
@@ -5328,6 +5065,11 @@ Usage:
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
+  temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
+  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
+  temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
+  temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
+                                                             (the acceptance tests written from the intent before Build)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)
   temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
 EOF

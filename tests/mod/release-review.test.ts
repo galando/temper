@@ -200,7 +200,7 @@ describe('release review 24: the TRIVIAL exit clears a run that has nothing to l
       },
     })
     // At Intent the intent may be rewritten, and removed: the world's rm is a stub, so the test removes the file.
-    expect(await sh(api, `rm ${SPEC}/intent.md`)).toBeUndefined()
+    expect((await api.tool.call({ tool: 'Bash', command: `rm ${SPEC}/intent.md`, agentId: 'intent' } as never)).deny).toBeUndefined()
     w.files.delete(`${SPEC}/intent.md`)
     expect(await sh(api, CLEAR)).toMatch(/do not clear or archive/)
     expect(await sh(api, 'scripts/temper state clear')).toMatch(/do not clear or archive/)

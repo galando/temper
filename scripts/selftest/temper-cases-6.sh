@@ -325,7 +325,7 @@ assert_eq "F1: the CLI recorded the feedback-resolved row, so gate build has not
   "$(python3 -c "import json; print(sum(1 for r in json.load(open('.temper/evidence/build.json')) if r.get('phase')=='feedback-resolved' and r['claim'].startswith('feedback #1:')))")|$("$TEMPER" gate build 2>&1 | grep -c 'unanswered')"
 assert_eq "F1: once answered, task show no longer prints the feedback" "0" "$("$TEMPER" task show 2 | grep -c '^--- FEEDBACK')"
 
-# F2: a loop back to Plan ends the grouped run: groups.json archived, clean worktrees removed, branches renamed, work kept
+# F2: a loop back to Plan ends the grouped run: groups.json archived, clean worktrees removed, branches kept out of git branch, work kept
 gg_setup; gg_pass 1 src/a.sh
 echo wip > .claude/worktrees/temper-demo-G2/wip.txt
 G1SHA="$(git rev-parse temper/demo/G1)"
@@ -333,8 +333,8 @@ _at build   # a loop goes back from the stage the run is at
 out="$("$TEMPER" state loop build plan --reason "the plan was wrong" 2>&1)"
 assert_eq "F2: groups.json is archived and the reset is reported" "no|1|1" \
   "$([[ -e .temper/groups.json ]] && echo yes || echo no)|$(ls .temper/archive/groups-*.json 2>/dev/null | wc -l | tr -d ' ')|$(printf '%s' "$out" | grep -c 'grouped run reset')"
-assert_eq "F2: the clean G1 worktree is removed and its branch renamed with its commits" "no|no|$G1SHA" \
-  "$([[ -d $ST_WT ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/G1 && echo yes || echo no)|$(git rev-parse "$(git for-each-ref --format='%(refname)' 'refs/heads/temper/demo/replan-*/G1')")"
+assert_eq "F2: the clean G1 worktree is removed and its branch kept out of git branch with its commits" "no|no|$G1SHA" \
+  "$([[ -d $ST_WT ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/G1 && echo yes || echo no)|$(git rev-parse "$(git for-each-ref --format='%(refname)' 'refs/temper/kept/demo/replan-*/G1')")"
 assert_eq "F2: a worktree with uncommitted work is kept and named" "yes|1" \
   "$([[ -e .claude/worktrees/temper-demo-G2/wip.txt ]] && echo yes || echo no)|$(printf '%s' "$out" | grep -c 'temper-demo-G2 has uncommitted work')"
 assert_exit "F2: the re-planned run starts G1 again" 0 "$TEMPER" group start G1
@@ -451,7 +451,7 @@ out="$("$TEMPER" task gate 1 --model m 2>&1)"; rc=$?
 assert_eq "merge park: the rerun passes and merges the kept commit" "0|yes|work src/a.sh" "$rc|$(d_on_g1 "$TSHA")|$(d_gfile src/a.sh)"
 # Blocking questions are asked with AskUserQuestion in every stage, with the mod or without it
 assert_eq "orchestrator: Blocking questions go to one AskUserQuestion before the gate question" "1|1" \
-  "$(grep -c '^- \*\*Blocking questions\*\* (the `blocking` list): ask them in one AskUserQuestion call' "$REPO_ROOT/commands/temper.md")|$(grep -c 'Never list them as text to answer' "$REPO_ROOT/commands/temper.md")"
+  "$(grep -c '^- \*\*Blocking questions\*\* (the `blocking` list): ask the `question` of each, exactly as given (the CLI writes three at most' "$REPO_ROOT/commands/temper.md")|$(grep -c 'Never list them as text to answer' "$REPO_ROOT/commands/temper.md")"
 # --- Better tests from small task agents: Plan writes the cases, task show adds a pattern test ---
 gp_setup
 assert_exit "cases: the fixture plan with 2 cases per task passes" 0 "$TEMPER" gate plan

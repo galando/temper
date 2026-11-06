@@ -16,6 +16,19 @@ PY
 nx() { _ev "$1" "$("$TEMPER" next --json 2>/dev/null)"; }   # one value of `temper next --json`
 vw() { _ev "$1" "$(cat .temper/view.json 2>/dev/null)"; }      # one value of .temper/view.json
 labels() { nx "'|'.join(o['label'] for o in d['ask']['question']['options'])"; }
+second_group() { # second_group: append a second group to the run's tasks.md (9.8.0: one group goes on by itself, so the group
+                #                question is asked only in a plan with two or more)
+  printf '\n## Group G2: Later\n**Depends:** G1\n**Validate:** `true`\n**Context:**\nThe later work.\n\n### Task 9: later\n**File:** `src/z9.sh`\n**Depends:** none\n**Test:** `true`\n**Cases:**\n- z holds\n- [ ] done\n' >> .temper/specs/demo/tasks.md
+}
+
+riskH() { # riskH: the run's plan is rated risk H, as `temper risk` writes it (9.8.0: a medium plan runs Design only at risk H)
+  python3 -c "
+import json
+p = '.temper/build-state.json'
+d = json.load(open(p)); d['risk'] = 'H'
+json.dump(d, open(p, 'w'), indent=2)"
+}
+
 gpass() { # gpass <stage>...: record a PASS verdict for each stage, as a gate run would
   python3 - "$@" <<'PY'
 import json, sys

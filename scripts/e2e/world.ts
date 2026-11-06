@@ -8,6 +8,7 @@ import path from 'node:path'
 
 import { answersIn } from '../../hooks/temper-mod/core/answers'
 import { evaluate } from '../../hooks/temper-mod/core/rules'
+import { evaluateSession, factsOf } from '../../hooks/temper-mod/core/session'
 import type { RuleContext, RunFacts } from '../../hooks/temper-mod/core/rules'
 import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import { cliStage } from '../../hooks/temper-mod/core/stages'
@@ -16,7 +17,7 @@ export const ROOT = path.resolve(import.meta.dir, '../..')
 export const TEMPER = path.join(ROOT, 'scripts/temper')
 
 export type Json = Record<string, any>
-export type Mode = 'mod' | 'plain'
+export type Mode = 'mod' | 'plain' | 'driver'   // driver: the mod loaded, and its run driver carries the run
 export type Agent = (w: World, agent: Json) => void
 export type Person = (ask: Json, w: World) => string | { label: string; note?: string } | null
 
@@ -84,8 +85,27 @@ export class World {
   guardWrite(rel: string): void {
     this.guard({ tool: 'Write', input: { file_path: path.join(this.dir, rel) } })
   }
+  // 9.8.0: a call of the orchestrator (the main session) is also held to core/session.ts: it runs the CLI and reads, launches
+  // the CLI's agent as named and asks the CLI's question.
+  // No memory between calls, as in the engine (it loads the mod again between turns): the view alone says what may run.
+  session(call: { tool: string; input: Json }): void {
+    const { ctx } = this.facts()
+    if (ctx === null) return
+    const r = evaluateSession(ctx, factsOf(parseRunView(this.read('.temper/view.json')), false), call as never) as { deny?: string }
+    if (r.deny !== undefined) {
+      this.denials.push(r.deny)
+      throw new Denied(`${r.deny} [${call.tool}: ${JSON.stringify(call.input).slice(0, 200)}]`)
+    }
+  }
   guardBash(command: string): void {
     this.guard({ tool: 'Bash', input: { command } })
+    this.session({ tool: 'Bash', input: { command } })
+  }
+  guardAgent(a: Json): void {
+    this.session({ tool: 'Agent', input: { subagent_type: a.type, model: a.model, prompt: a.prompt, description: 'stage' } })
+  }
+  guardAsk(q: Json): void {
+    this.session({ tool: 'AskUserQuestion', input: { questions: [q] } })
   }
   // The mod's check of a call, without raising: the denial text, or null when it passes.
   denies(call: { tool: string; input: Json }): string | null {
@@ -108,7 +128,7 @@ export class World {
   answer(ask: Json, label: string, note = ''): Json {
     const option = (ask.options as Json[]).find(o => o.label === label)
     if (option === undefined) throw new Error(`no option ${label} in ${ask.question.question} (${(ask.options as Json[]).map(o => o.label).join(' | ')})`)
-    if (this.mode === 'mod') {
+    if (this.mode !== 'plain') {
       const rv = parseRunView(this.read('.temper/view.json'))
       const q = ask.question
       const result = { result: { questions: [{ header: q.header, question: q.question, multiSelect: false }], answers: { [q.question]: label }, annotations: note ? { [q.question]: { notes: note } } : {} } }

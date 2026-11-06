@@ -12,6 +12,8 @@ export type World = {
   fsWrites: string[]
   reads: string[]
   store: Record<string, unknown>
+  // The conversation's id `$.session.id()` answers (a test sets another to play a later conversation).
+  sessionId: string
   // Project relative files that exist but cannot be read (chmod 000): a read answers EACCES, not ENOENT.
   unreadable?: Set<string>
   // True: every file write the plugin makes fails (a read only folder).
@@ -35,6 +37,10 @@ export type World = {
   // Questions the mod asked the person through the engine's dialog, in order, and the options of each.
   asked: string[]
   askedOptions: string[][]
+  // The description each option of those questions carried into the dialog ('' for none).
+  askedDescriptions: string[][]
+  // How many dialogs were raised (one may hold several questions).
+  dialogs: number
   // Answers the person gives, in order; empty means nobody answers (a `-p` run). An answer with a note is the person's
   // note on the option (the dialog's annotation).
   answers: Answer[]
@@ -223,7 +229,7 @@ const rel = (p: string): string => {
 }
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
-  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], askedOptions: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
+  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], askedOptions: [], askedDescriptions: [], dialogs: 0, answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) }, sessionId: 'conv-1' }
   const panes = new Map<string, boolean>()
   // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
   // The mod keeps its records (events, the report) in the store as `vf:<full path>` (see makeIo). The world
@@ -288,6 +294,7 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     return { value: names.map(k => ({ name: k.slice(prefix.length), kind: 'file' as const, size: 0, mtimeMs: 0, isLink: false })) }
   })
   on('fs.stat', ($, e) => ({ value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, realPath: opts.cwd ?? '/repo' } }))
+  on('session.id', () => ({ value: w.sessionId }))
   on('session.version', () => {
     if (opts.version === null) return { deny: 'no version' }
     const v = opts.version ?? '2.1.288'
@@ -335,14 +342,25 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   on('tool.call', ($, e) => {
     if (e.tool === 'AskUserQuestion') {
       const questions = (e as unknown as { questions?: Array<{ question: string }> }).questions ?? []
-      const question = questions[0]?.question ?? ''
-      w.asked.push(question)
-      w.askedOptions.push((questions[0] as { options?: Array<{ label?: string }> } | undefined)?.options?.map(o => o.label ?? '') ?? [])
-      const answer = w.answers.shift()
-      if (answer === undefined) return { deny: 'no one to ask' }
-      const label = typeof answer === 'string' ? answer : answer.label
-      const annotations = typeof answer === 'string' ? {} : { annotations: { [question]: { notes: answer.note } } }
-      return { result: { questions, answers: { [question]: label }, ...annotations }, text: label } as never
+      w.dialogs += 1
+      // Each question of the dialog takes the next answer, as the person answers every tab of one dialog.
+      const answers: Record<string, string> = {}
+      const notes: Record<string, { notes: string }> = {}
+      let first = ''
+      for (const q of questions.length > 0 ? questions : [{ question: '' }]) {
+        const question = q.question ?? ''
+        w.asked.push(question)
+        w.askedOptions.push((q as { options?: Array<{ label?: string }> }).options?.map(o => o.label ?? '') ?? [])
+        w.askedDescriptions.push((q as { options?: Array<{ description?: string }> }).options?.map(o => o.description ?? '') ?? [])
+        const answer = w.answers.shift()
+        if (answer === undefined) return { deny: 'no one to ask' }
+        const label = typeof answer === 'string' ? answer : answer.label
+        answers[question] = label
+        if (typeof answer !== 'string') notes[question] = { notes: answer.note }
+        if (first === '') first = label
+      }
+      const annotations = Object.keys(notes).length > 0 ? { annotations: notes } : {}
+      return { result: { questions, answers, ...annotations }, text: first } as never
     }
     if (opts.fakeCli && e.tool === 'Bash') {
       const out = fakeCli(w, String((e as unknown as { command?: string }).command ?? ''))

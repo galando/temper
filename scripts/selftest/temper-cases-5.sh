@@ -1025,7 +1025,7 @@ gc_out="$(gc_row)"
 assert_eq "a run without tasks.md keeps the count rule (changed entries > 1 fail) [$gc_out]" "1|0" \
   "$(printf '%s\n' "$gc_out" | grep -c 'exceeds autonomy.max-blast-radius=1')|$(printf '%s\n' "$gc_out" | grep -c 'all declared')"
 gc_setup grouped; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
-assert_eq "grouped commit gate: a non-autonomous run has no blast radius row" "0" "$(gc_row | wc -l | tr -d ' ')"
+assert_eq "9.8.0: a non-autonomous run with a plan has the scope row too (before 9.8.0 it had none)" "1" "$(gc_row | grep -c 'all declared')"
 setup
 
 # --- Grouped Build (9.7.0): measurement report and ledger archive (AC-12) ---
@@ -1173,8 +1173,8 @@ assert_eq "task brief: frontmatter name and model" "temper-build-task|claude-hai
 assert_eq "model task reads the brief frontmatter as the default" "claude-haiku-5-5" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
 assert_eq "plugin.json lists ./agents/build-task.md" "1" "$(python3 -c "import json; print(int('./agents/build-task.md' in json.load(open('$REPO_ROOT/.claude-plugin/plugin.json'))['agents']))")"
 # Scenario: Grouped logic stays in the briefs and the CLI [AC-05]
-assert_eq "task brief: states the panel rule and the plugin folder rule" "1|1" \
-  "$(grep -ciE 'exactly one closed panel' "$TB" 2>/dev/null | head -1 | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Plugin folder' "$TB" 2>/dev/null | sed 's/^[1-9][0-9]*$/1/')"
+assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plugin folder rule" "1|1" \
+  "$(grep -c 'Your panel is drawn by the CLI.*temper panel task' "$TB" 2>/dev/null | head -1 | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Plugin folder' "$TB" 2>/dev/null | sed 's/^[1-9][0-9]*$/1/')"
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
@@ -1203,8 +1203,8 @@ setup
 OT="$REPO_ROOT/commands/temper.md"
 OF="$REPO_ROOT/commands/fix.md"
 # /temper:build is a door into the orchestrator (ADR 0012): it reads commands/temper.md and enters at Build.
-assert_eq "orchestrator: the loop runs temper next, and /temper:build is a door into it" "1|1" \
-  "$(grep -c 'scripts/temper next --json` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
+assert_eq "orchestrator: the loop runs temper go (9.8.0), and /temper:build is a door into it" "1|1" \
+  "$(grep -c 'scripts/temper go` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "orchestrator: an agent's after calls run with its time filled in, and no agent id or token count" "yes|0|0" \
@@ -1487,20 +1487,47 @@ assert_eq "R2: the running sibling PASSes past the reopen revert" "0|1" "$rc|$(p
 assert_eq "R2: the reverted file stays reverted (not re-applied by a restore)" "no" "$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
 assert_eq "R2: the sibling's commit holds only its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= "$(st_field 2 commit)")"
 
-# R3: an existing group branch is reused only when this run recorded it; a stale one is refused with the way out
+# R3: an existing group branch is reused only when this run recorded it; a stale one (an earlier attempt of the same run
+# name) is moved aside with its commits, and the group starts fresh (9.8.0; it was refused until then)
 gi_all
 GI_EXIT=1 "$TEMPER" integrate >/dev/null 2>&1
 rm -f .temper/groups.json
 git checkout -q feature/demo 2>/dev/null
+old="$(git rev-parse temper/demo/G1)"
 out="$("$TEMPER" group start G1 2>&1)"; rc=$?
-assert_eq "R3: a stale branch from an earlier run is refused, naming it and the way to delete it" "1|1|1" \
-  "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*temper/demo/G1')|$(printf '%s' "$out" | grep -c 'git branch -D temper/demo/G1')"
-assert_eq "R3: the refusal made no worktree and recorded no group" "no|no" \
-  "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)|$([[ -f .temper/groups.json ]] && echo yes || echo no)"
-git branch -q -D temper/demo/G1 temper/demo/G2 2>/dev/null
-assert_exit "R3: after deleting the stale branch the group starts fresh" 0 "$TEMPER" group start G1
+assert_eq "R3: a stale branch from an earlier run is moved aside, named, and the group starts" "0|1" \
+  "$rc|$(printf '%s' "$out" | grep -c '^NOTE: branch temper/demo/G1, left by an earlier attempt, moved aside to refs/temper/kept/demo/earlier-')"
+assert_eq "R3: the earlier attempt's commits are kept, out of git branch" "$old|0" \
+  "$(git for-each-ref --format='%(objectname)' 'refs/temper/kept/demo/earlier-*/G1')|$(git branch --list 'temper/demo/earlier-*' | wc -l | tr -d ' ')"
 assert_eq "R3: the fresh branch is not the abandoned run's (no group commits on it)" "0" \
   "$(git log --format=%s feature/demo..temper/demo/G1 | wc -l | tr -d ' ')"
+
+# L5 (9.8.0, from a run on a person's machine): an earlier attempt of the same run name left worktree records whose
+# folders are gone, and its group and task branches; the run started over goes past them, and git names none any more
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+rm -rf .claude/worktrees; rm -f .temper/groups.json
+assert_eq "L5: before: git names three worktrees whose folders are gone" "3" "$(git worktree list --porcelain | grep -c '^prunable')"
+assert_exit "L5: group start G1 goes past the leftovers" 0 "$TEMPER" group start G1
+assert_exit "L5: group start G2 goes past the leftovers" 0 "$TEMPER" group start G2
+out="$("$TEMPER" task start 1 2>&1)"; rc=$?
+assert_eq "L5: task start 1 goes past them, naming the branch it moved aside" "0|1" \
+  "$rc|$(printf '%s' "$out" | grep -c '^NOTE: branch temper/demo/T1, left by an earlier attempt')"
+assert_eq "L5: the task worktree is made on its branch, and no record without a folder is left" "temper/demo/T1|0" \
+  "$(git -C "$T1W" rev-parse --abbrev-ref HEAD)|$(git worktree list --porcelain | grep -c '^prunable')"
+# this run's own group worktree whose folder went comes back on its branch, at its tip, when the next task starts
+st_setup; gg_pass 1 src/a.sh
+tip="$(git rev-parse temper/demo/G1)"
+rm -rf .claude/worktrees/temper-demo-G1
+assert_exit "L5: Task 2 starts although its group's folder went" 0 "$TEMPER" task start 2
+assert_eq "L5: the group worktree is back on its branch, at its tip" "temper/demo/G1|$tip" \
+  "$(git -C "$ST_WT" rev-parse --abbrev-ref HEAD)|$(git -C "$ST_WT" rev-parse HEAD)"
+# a leftover worktree with uncommitted work is never removed: refused (exit 3), the work where it was
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; echo wip > "$T1W/wip.txt"
+rm -f .temper/groups.json; "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" group start G2 >/dev/null 2>&1
+out="$("$TEMPER" task start 1 2>&1)"; rc=$?
+assert_eq "L5: a leftover worktree with uncommitted work refuses task start (exit 3), naming it" "3|1" \
+  "$rc|$(printf '%s' "$out" | grep -c "^FAIL: $T1W holds uncommitted work")"
+assert_eq "L5: the uncommitted work is where it was" "wip" "$(cat "$T1W/wip.txt" 2>/dev/null)"
 
 # R5: group reopen refuses a plan that changed after approval, like every other grouped command
 st_setup; gg_pass 1 src/a.sh

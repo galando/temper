@@ -1,0 +1,1 @@
+{"size": "large", "kind": "feature", "language": "typescript", "runner": "node", "code_dir": "src", "suite_dir": "test", "expected_paths": ["src/", "test/"], "hidden_count": 11, "suite_cmd": "npm test --silent"}

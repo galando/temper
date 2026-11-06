@@ -69,7 +69,9 @@ Quoted from the plan gate in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temp
 (`gap`), one line per source and never per code file. The plan gate row `context map reviewed` needs at least one entry, at most 12,
 each line at most 100 characters, and a `- reviewed: human|auto` line. Plan writes `- reviewed: pending`; the CLI replaces it.
 `plan.context-check` is `auto` (ask only when the map has an `ignore` or a `gap`), `always` (ask every run) or `off` (never ask;
-the map is still written and gated). The question is the CLI's own (`temper next` and `view.json` carry `context_map` and
+the map is still written and gated). 9.8.0: the question names what the plan leaves out and could not find (the `ignore` and
+`gap` lines, so write each as the decision it is: "refunds in the CSV export are out of scope"); any answer but "As planned"
+sends Plan back with the person's words as a note (`temper plan review --answer '...' --redo`). The question is the CLI's own (`temper next` and `view.json` carry `context_map` and
 `context_check`); the person's choice runs `temper plan review --answer '<choice>'`, then `temper gate plan`. Plan never asks it and
 never writes `reviewed: human`. Auto mode may refuse an edit of that line, which is why the CLI writes it
 ([auto mode](../docs/auto-mode.md)).
@@ -121,11 +123,19 @@ How the CLI counts it:
 - Three plan gate rows: `fresh review ran` (a completion row for each lens and reviewer; the readiness row must name as
   many tasks as tasks.md has), `fresh reader's paraphrase` (two parts of 6 words or more) and `no open plan blockers`
   (no `high` or `critical` finding open). A lens with no completion row is `not run`, never a lens with no findings.
+- The plan gate row `request routes kept` (9.8.0): every `METHOD /path` the request names (the run's feature text) is in
+  plan.md or tasks.md, method and shape unchanged (a parameter may be renamed). A route the intent's Decisions name, or
+  a plan route of the same method they name, is the person's change and passes. A request that names no route passes.
 
 ## Answering the fresh review
 
+A finding below high passes the plan gate, but stays the person's call: the plan question names the open findings
+and offers Revise the plan, recommended when one is medium (9.8.0).
+
+
 When the person chooses **Revise the plan**, you run again with a `Fresh review findings to answer`
-line. Answer each finding in one of four ways, and say which in your panel's DECISIONS:
+line. Answer each finding in one of four ways, and say which in the lines you return (`#{id}: fixed`, `contested`,
+`escalated` or `left`):
 
 - **Fix it** in tasks.md or plan.md (the usual answer). The changed tasks.md makes the review run
   again on the new text.
@@ -285,10 +295,10 @@ practice and which alternative it beat. Mirror each as one line in the summary b
 Generate a mermaid diagram in `plan.md`'s `## Diagram` section (flowchart for component/
 data flow, `stateDiagram-v2` for lifecycles, `sequenceDiagram` for cross-boundary calls,
 `classDiagram` for type hierarchies) — under 30 nodes, `classDef` color-coding new vs.
-existing vs. modified when it helps. Render the diagram as ASCII box-drawing art right
-after the terminal summary panel too, as the one drawing allowed beside that panel (the
-terminal can't render mermaid); keep the mermaid block in
-plan.md for GitHub/tool rendering.
+existing vs. modified when it helps. Right after the mermaid block, write the same diagram as
+ASCII box-drawing art in a fenced `text` block (under 80 columns): the terminal cannot render
+mermaid, and `temper panel plan` prints that block after the Plan panel. Keep the mermaid block
+for GitHub and tool rendering.
 
 ## Grouped tasks
 
@@ -368,7 +378,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan
 `temper risk` computes the rating from the blast radius, so the same blast radius always gives the same rating:
 production files (declared files that are not tests or docs) up to 3 is L, up to 10 is M, more is H; a CRITICAL entry
 in `.temper/security-map.json` is H; a HIGH entry, or a `[CROSS-REPO]` row in the Blast Radius section, moves it up one
-tier. The panel's RISK field is the letter it printed. To raise it, `temper risk --raise L|M|H --reason '<why>'`: a
+tier. The panel's RISK field is the letter it printed (the CLI reads it from the run state). To raise it, `temper risk --raise L|M|H --reason '<why>'`: a
 raise needs a reason and never lowers the rating.
 
 If a security-hot-path scan ran, also persist `.temper/security-map.json` (one entry per
@@ -377,14 +387,10 @@ CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `ro
 
 ## Summary Panel
 
-The panel format is owned by the plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) — render exactly the panel it defines
-(76 columns, fact rows then titled sections, one row per item, empty sections
-omitted), appending a `SECURITY: {N} CRITICAL, {N} HIGH hot paths` fact row when the
-security scan found any. Never carry a second, different box here: whichever box a
-clean-context stage reads first is the one that renders, and two shapes means two
-different reviews.
-
-Trivial: a one-line box, no gate. Simple: `Files: {N} create, {N} modify` / `Risk: {L/M}`.
+The CLI draws the Plan panel (`temper panel plan`, 9.8.0) from intent.md, plan.md, tasks.md, the run state and
+`.temper/security-map.json` (a `SECURITY: {N} CRITICAL, {N} HIGH hot paths` row when the scan found any), and prints
+the `text` block of plan.md's Diagram section after it. This stage draws no box: it returns `PLAN DONE {spec path}`,
+and after a fresh review one line per finding it answered.
 
 ## Approval
 

@@ -1,0 +1,230 @@
+// 9.8.0: the main session's own calls during a run (core/session.ts). It relays the CLI and the person: it runs the temper
+// CLI and commands that only read, launches the agent the CLI names (type, model, prompt) and asks the question the CLI
+// gives; the agents and the CLI write. Round 4 of the benchmark is the reason: a Haiku session edited the spec files and the
+// locked acceptance tests and asked a question of its own; a Sonnet session once launched an agent on a cheaper model.
+import { describe, expect, test } from 'claude-code/testing'
+
+import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
+import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
+import { FEATURE_DENY, SESSION_AGENT_DENY, SESSION_ASK_DENY, SESSION_WRITE_DENY, bashWhy, evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from '../../hooks/temper-mod/core/session'
+import type { SessionFacts } from '../../hooks/temper-mod/core/session'
+import { parseRunView } from '../../hooks/temper-mod/core/runview'
+import type { Stage } from '../../hooks/temper-mod/core/stages'
+import { stateAt } from './helpers'
+
+const CLI = '/plugin/scripts/temper'
+const isDeny = (r: RuleResult): r is Extract<RuleResult, { deny: string }> => 'deny' in r
+
+function ctx(stage: Stage | null, o: { allowed?: string[]; adhoc?: string } = {}): RuleContext {
+  return {
+    run: stage === null ? null : stateAt(stage, o.adhoc ? { adhocStage: o.adhoc } : {}),
+    allowed: o.allowed ?? [],
+    restart: false,
+    drift: { added: [], allowOnce: [] },
+  }
+}
+
+const PLAN_AGENT = { type: 'temper:temper-plan', model: 'opus', prompt: 'Follow /plugin/agents/plan.md exactly.\nSpec path: .temper/specs/pw.' }
+const GATE = { header: 'Temper gate', question: 'Plan: the check passed. Continue to Design?', labels: ['Continue to Design (Recommended)', 'Grill Me', 'Save for later'] }
+const facts = (o: Partial<SessionFacts> = {}): SessionFacts => ({ agents: [PLAN_AGENT], questions: [GATE], skill: false, ...o })
+
+const call = (c: RuleContext, tool: string, input: Record<string, unknown>, f = facts()) => evaluateSession(c, f, { tool, input })
+const bash = (c: RuleContext, command: string) => call(c, 'Bash', { command })
+const ask = (q: { header: string; question: string; labels: string[] }, f = facts(), c = ctx('plan')) =>
+  call(c, 'AskUserQuestion', { questions: [{ header: q.header, question: q.question, multiSelect: false, options: q.labels.map(label => ({ label, description: '' })) }] }, f)
+
+describe('writes: the session writes no file during a run', () => {
+  for (const tool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) {
+    test(`${tool} of a spec file is refused at Plan, with what to do next`, () => {
+      const r = call(ctx('plan'), tool, { file_path: '.temper/specs/pw/design.md', notebook_path: 'x.ipynb' })
+      expect(isDeny(r) && r.deny).toBe(SESSION_WRITE_DENY)
+      expect(SESSION_WRITE_DENY).toContain('Next: ')
+    })
+  }
+  test('a code file at Review and a locked acceptance test at Check are refused too', () => {
+    expect(isDeny(call(ctx('review'), 'Edit', { file_path: 'src/app.ts' }))).toBe(true)
+    expect(isDeny(call(ctx('check'), 'Write', { file_path: '.temper/specs/pw/acceptance/test_a.py' }))).toBe(true)
+  })
+  test('no run active: nothing is refused here', () => expect(isDeny(call(ctx(null), 'Write', { file_path: 'src/app.ts' }))).toBe(false))
+  test("a small change window the person opened at this stage lets the write through (the stage rules judge it)", () =>
+    expect(isDeny(call(ctx('review', { adhoc: 'review' }), 'Edit', { file_path: 'src/app.ts' }))).toBe(false))
+  test('a window opened at another stage does not', () => expect(isDeny(call(ctx('check', { adhoc: 'review' }), 'Edit', { file_path: 'src/app.ts' }))).toBe(true))
+})
+
+describe('Bash: the CLI and commands that only read', () => {
+  const OK = [
+    `${CLI} go`,
+    `${CLI} usage add --stage plan --model opus --ms 1200\n${CLI} gate plan --brief\n${CLI} go`,
+    `cd .temper/specs/pw && ${CLI} gate intent 2>&1 | grep -E 'x\\]|->'`,
+    'cat .temper/specs/pw/intent.md',
+    'ls .temper/specs 2>/dev/null; git status --short | head -20',
+    'git log --oneline -5; git diff --stat; git branch --show-current',
+    `${CLI} state set base_sha $(git rev-parse HEAD)`,
+    `for f in ledger/*.py; do echo "== $f"; head -5 "$f"; done`,
+    "sed -n 1,40p plan.md",
+    `${CLI} spec commit 'docs(intent): accept pw'`,
+    // Seen in round 5 (4 of 4 Sonnet runs): the CLI's path set in a variable, then the calls through it.
+    `T=${CLI}\n$T intent answer 'Who?' 'Admin' 'When?' '60 days'\n$T gate intent; \${T} go`,
+  ]
+  for (const c of OK) test(`allows: ${c.split('\n')[0]}`, () => expect(bashWhy(c)).toBe(null))
+  const NO: Array<[string, string]> = [
+    ["python3 - <<'E'\nopen('intent.md','w').write('x')\nE", 'python3'],
+    ['cat > .temper/specs/pw/design.md <<E\nx\nE', 'writes'],
+    ['echo x >> src/app.ts', 'writes'],
+    ["sed -i 's/a/b/' .temper/specs/pw/tasks.md", 'writes'],
+    ['git add -- src/app.ts', 'git add'],
+    ['git commit -m x', 'git commit'],
+    ['git checkout -- .temper/specs/pw/acceptance/test_a.py', 'git checkout'],
+    ['cd .claude/worktrees/temper-pw-T1 && node build.js', 'node'],
+    ['find . -name "*.pyc" -delete', 'find'],
+    ['echo $(python3 -c "print(1)")', 'python3'],
+    ['git branch new-branch', 'git branch'],
+    ['xargs rm < list.txt', 'xargs'],
+    // A program in a variable the guard cannot read: not the CLI set plainly in the same command.
+    ['T=$(ls /plugin/scripts/temper)\n$T go', 'write the CLI\'s path out in full'],
+    ['X=python3\n$X -c 1', 'write the CLI\'s path out in full'],
+    ['T=/plugin/scripts/temper\nT=python3\n$T -c 1', 'write the CLI\'s path out in full'],
+  ]
+  for (const [c, why] of NO) {
+    test(`refuses: ${c.split('\n')[0]}`, () => {
+      const w = bashWhy(c)
+      expect(w).not.toBe(null)
+      expect(w).toContain(why)
+      const r = bash(ctx('build'), c)
+      expect(isDeny(r) && r.deny.startsWith('Temper: during a run this conversation runs the temper CLI')).toBe(true)
+      expect(isDeny(r) && r.deny).toContain('Next: run temper go')
+    })
+  }
+  test('a command the CLI wrote whole (a step, the calls of an answer) passes as written', () => {
+    const switchCall = 't="$(mktemp -d)" && cp -R .temper/specs/pw/. "$t"/ && git checkout feature/pw'
+    expect(isDeny(bash(ctx('intent', { allowed: [switchCall] }), switchCall))).toBe(false)
+    expect(isDeny(bash(ctx('intent'), switchCall))).toBe(true)
+  })
+  test('at the commit, the pull request steps push and open it', () => {
+    expect(isDeny(bash(ctx('commit'), 'git push -u origin feature/pw && gh pr create --draft --fill'))).toBe(false)
+    expect(isDeny(bash(ctx('build'), 'git push -u origin feature/pw'))).toBe(true)
+  })
+  test('no run active: any command passes here', () => expect(isDeny(bash(ctx(null), "python3 -c 'print(1)'"))).toBe(false))
+})
+
+describe('Agent: only the agent the CLI names, as named', () => {
+  const launch = (o: Record<string, unknown>) => call(ctx('plan'), 'Agent', { description: 'Plan stage', subagent_type: PLAN_AGENT.type, model: PLAN_AGENT.model, prompt: PLAN_AGENT.prompt, ...o })
+  test('the CLI\'s agent, exactly as given, is launched', () => expect(isDeny(launch({}))).toBe(false))
+  test('a full model id of the same family is the same model', () => expect(isDeny(launch({ model: 'claude-opus-5-5' }))).toBe(false))
+  test('trailing spaces in the prompt do not count', () => expect(isDeny(launch({ prompt: PLAN_AGENT.prompt + '  \n' }))).toBe(false))
+  test('the general purpose agent stands in with the same model and prompt', () => expect(isDeny(launch({ subagent_type: 'general-purpose' }))).toBe(false))
+  test('a cheaper model than the CLI named is refused (round 3: the root cause agent on Sonnet), and the refusal says so', () => {
+    const r = launch({ model: 'sonnet' })
+    expect(isDeny(r) && r.deny.startsWith(SESSION_AGENT_DENY)).toBe(true)
+    expect(isDeny(r) && r.deny).toContain('the model is sonnet, the CLI names opus')
+  })
+  test('another agent type is refused', () => expect(isDeny(launch({ subagent_type: 'temper:temper-design' }))).toBe(true))
+  test('a prompt of its own is refused', () => expect(isDeny(launch({ prompt: PLAN_AGENT.prompt + '\nAlso fix the tests.' }))).toBe(true))
+  test('no agent in the CLI\'s action: none is launched', () => expect(isDeny(call(ctx('plan'), 'Agent', { subagent_type: PLAN_AGENT.type, model: 'opus', prompt: PLAN_AGENT.prompt }, facts({ agents: [] })))).toBe(true))
+  test('Task, the older name of the tool, is held to the same rule', () => expect(isDeny(call(ctx('plan'), 'Task', { subagent_type: 'x', prompt: 'y' }))).toBe(true))
+})
+
+describe('AskUserQuestion: only the CLI\'s questions', () => {
+  test('the gate question, exactly as given', () => expect(isDeny(ask(GATE))).toBe(false))
+  test('a reworded question is refused', () => expect(isDeny(ask({ ...GATE, question: 'Approve the plan?' })) && SESSION_ASK_DENY).toBe(SESSION_ASK_DENY))
+  test('an option dropped or renamed is refused', () => {
+    expect(isDeny(ask({ ...GATE, labels: GATE.labels.slice(0, 2) }))).toBe(true)
+    expect(isDeny(ask({ ...GATE, labels: ['Continue to Design', 'Grill Me', 'Save for later'] }))).toBe(true)
+  })
+  test('a question of its own is refused (round 4: one whose answer contradicted the request)', () =>
+    expect(isDeny(ask({ header: 'Refund who', question: 'Who may refund?', labels: ['Admin', 'Clerk'] }))).toBe(true))
+  test('a Scope drift question for a DRIFT row is the session\'s to build', () =>
+    expect(isDeny(ask({ header: 'Scope drift', question: 'Outside the plan: src/x.ts\nWhy: y\nChange: z', labels: ['Add to plan', 'Revert', 'Allow once'] }))).toBe(false))
+  test('while a skill the person chose runs, its own questions pass', () =>
+    expect(isDeny(ask({ header: 'Grill', question: 'What breaks first?', labels: ['A', 'B'] }, facts({ skill: true })))).toBe(false))
+  test('no run active: any question passes here', () => expect(isDeny(ask({ header: 'X', question: 'Y?', labels: ['a', 'b'] }, facts(), ctx(null)))).toBe(false))
+})
+
+describe('factsOf and skillChosen: what the view allows at this step', () => {
+  const view = parseRunView(JSON.stringify({
+    version: 1,
+    run: { id: 'r1', step: 4, slug: 'pw', stage: 'intent', command: 'temper', spec: '.temper/specs/pw' },
+    next: { action: 'ask', stage: 'intent', say: '', calls: [], steps: [], agents: [] },
+    ask: {
+      stage: 'intent', step: 4, run_id: 'r1',
+      question: { header: 'Temper gate', question: 'Intent: the check passed. Continue?', options: [{ label: 'Continue', description: '' }, { label: 'Grill Me', description: '' }, { label: 'Override', description: '' }] },
+      options: [
+        { label: 'Continue', description: '', move: 'approve', calls: [] },
+        { label: 'Grill Me', description: '', move: null, calls: [], do: 'Use the grill-me skill', skill: 'grill-me' },
+        { label: 'Override', description: '', move: 'override', calls: [], reason: true, reason_question: { header: 'Temper gate', question: 'Override. What is the reason?', options: [{ label: 'Cancel', description: '' }] } },
+      ],
+    },
+    blocking_asks: [{ question: { header: 'Question 1', question: 'Who may refund?', options: [{ label: 'Admin only', description: 'Recommended' }, { label: 'Carry forward', description: '' }] }, answer: 'x', carry: 'y' }],
+    restart: { header: 'Temper resume', question: 'A run of pw is open at Intent. Start over?', options: [{ label: 'Start over', description: '' }, { label: 'Cancel', description: '' }] },
+  }))
+  const f = factsOf(view, false)
+  test('the gate question, its reason question, the Blocking question and the resume question are all the CLI\'s', () => {
+    expect(f.questions.map(q => q.question)).toEqual(['Intent: the check passed. Continue?', 'Override. What is the reason?', 'A run of pw is open at Intent. Start over?', 'Who may refund?'])
+    expect(f.questions[3]?.labels).toEqual(['Admin only', 'Carry forward'])
+    expect(f.questions[3]?.header).toBe(null)
+  })
+  test('a view that names no agent lets none launch', () => expect(f.agents).toEqual([]))
+  test('a Blocking question matches whatever its header: its number shifts as answers are recorded (round 5, Haiku)', () => {
+    const q = { question: 'Who may refund?', labels: ['Admin only', 'Carry forward'] }
+    expect(isDeny(ask({ header: 'Question 6', ...q }, f))).toBe(false)
+    expect(isDeny(ask({ header: 'Question 6', question: 'Who may refund?', labels: ['Admin only'] }, f))).toBe(true)
+  })
+  test('the answer Grill Me is a skill; Continue is not', () => {
+    expect(skillChosen(view, { result: { questions: [], answers: { 'Intent: the check passed. Continue?': 'Grill Me' } } })).toBe('grill-me')
+    expect(skillChosen(view, { result: { questions: [], answers: { 'Intent: the check passed. Continue?': 'Continue' } } })).toBe(null)
+  })
+  test('a work action\'s agents are what may be launched', () => {
+    const w = parseRunView(JSON.stringify({ version: 1, run: { id: 'r1', step: 5, slug: 'pw', stage: 'plan', command: 'temper', spec: 's' },
+      next: { action: 'work', stage: 'plan', say: '', calls: [], steps: [], agents: [PLAN_AGENT] } }))
+    expect(factsOf(w, false).agents).toEqual([PLAN_AGENT])
+  })
+})
+
+describe('a Build task\'s start changes the view before its agent is launched', () => {
+  const TASK = { type: 'temper:temper-build-task', model: 'haiku', prompt: 'Follow /plugin/agents/build-task.md exactly.\nTask: 1.' }
+  const at = (action: string, agents: unknown[]) => parseRunView(JSON.stringify({ version: 1,
+    run: { id: 'r1', step: 7, slug: 'pw', stage: 'build', command: 'temper', spec: 's' }, next: { action, stage: 'build', say: '', calls: [], steps: [], agents } }))
+  // Round 5: the mod kept the named agents in memory, which the engine drops when it loads the mod again between turns; the
+  // Build agents were refused after `task start`. The CLI's waiting view names them now (scripts/flow.py, view).
+  test('a waiting view that names the agent lets it launch, as named', () => {
+    const f = factsOf(at('wait', [TASK]), false)
+    expect(isDeny(call(ctx('build'), 'Agent', { subagent_type: TASK.type, model: 'haiku', prompt: TASK.prompt }, f))).toBe(false)
+    expect(isDeny(call(ctx('build'), 'Agent', { subagent_type: TASK.type, model: 'sonnet', prompt: TASK.prompt }, f))).toBe(true)
+  })
+  test('a question at the same stage (a manual task\'s) keeps the agents the view names', () => expect(factsOf(at('ask', [TASK]), false).agents).toEqual([TASK]))
+})
+
+describe('the CLI set in a variable is read as the CLI, by both guards', () => {
+  test('a call only the person may cause, made through the variable, needs the person\'s answer like one written out', () => {
+    const r = evaluate(ctx('plan'), { tool: 'Bash', input: { command: `T=${CLI}\n$T state advance plan_complete build` } })
+    expect(isDeny(r) && r.deny).toBe(ONLY_USER)
+    const ok = evaluate(ctx('plan', { allowed: [`${CLI} state advance plan_complete build`] }), { tool: 'Bash', input: { command: `T=${CLI}\n$T state advance plan_complete build` } })
+    expect(isDeny(ok)).toBe(false)
+  })
+})
+
+describe('the run starts from the person\'s request, word for word', () => {
+  const REQ = "Build partial payments. - `POST /invoices/{id}/refunds` takes {\"payment_id\": ...}; more than the balance is a 409 conflict."
+  test('what the person typed after /temper:temper is the request; a run word is not', () => {
+    expect(requestOf(`  ${REQ}\n`)).toBe(REQ)
+    for (const w of ['', 'status', 'approve', 'discuss why 409?', 'report']) expect(requestOf(w)).toBe(null)
+  })
+  test('state init with the request whole passes (whitespace aside); a summary is refused (round 5: a Haiku session)', () => {
+    const q = REQ.replace(/'/g, "'\\''")
+    expect(featureWhy(`${CLI} state init pp --feature '${q}'`, requestOf(REQ))).toBe(null)
+    expect(featureWhy(`${CLI} state init pp --feature '${q.replace(/ /g, '  ')}'`, requestOf(REQ))).toBe(null)
+    expect(featureWhy(`${CLI} state init pp --feature 'Partial payments and refunds for invoices'`, requestOf(REQ))).toBe(FEATURE_DENY)
+    expect(FEATURE_DENY).toContain('Next: ')
+  })
+  test('a request typed in quotes: the session may pass it with the quotes or without them', () => {
+    const typed = '"Add refunds to invoices"'
+    expect(requestOf(typed)).toBe('Add refunds to invoices')
+    expect(featureWhy(`${CLI} state init r --feature 'Add refunds to invoices'`, requestOf(typed))).toBe(null)
+    expect(featureWhy(`${CLI} state init r --feature '"Add refunds to invoices"'`, requestOf(typed))).toBe(null)
+    expect(featureWhy(`${CLI} state init r --feature 'Add refunds'`, requestOf(typed))).toBe(FEATURE_DENY)
+    expect(requestOf('\u201cExport the ledger\u201d')).toBe('Export the ledger')
+  })
+  test('no request kept (a door, a new conversation): nothing to compare', () =>
+    expect(featureWhy(`${CLI} state init pp --feature 'anything'`, null)).toBe(null))
+  test('other calls are not judged here', () => expect(featureWhy(`${CLI} go`, requestOf(REQ))).toBe(null))
+})

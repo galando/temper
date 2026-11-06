@@ -18,6 +18,8 @@ export type Option = {
   reasonQuestion: Question | null
   // The move needs a typed answer (the name of the person who confirms a manual task): this question asks it.
   answerQuestion: Question | null
+  // 9.8.0: the skill the option carries out (Grill Me, Teach Me), whose own questions the session then asks; null for any other.
+  skill: string | null
 }
 
 export type Ask = { stage: string; step: number; runId: string; question: Question; options: Option[]; more: Ask | null; accept: Ask | null }
@@ -40,10 +42,14 @@ export type RunView = {
     spec: string
     parked: string | null
   } | null
-  stages: Array<{ id: string; label: string; mark: StageMark; verdict: 'PASS' | 'FAIL' | null; failed: Array<{ name: string; detail: string }>; skipped: { reason: string; by: string } | null }>
+  stages: Array<{ id: string; label: string; mark: StageMark; verdict: 'PASS' | 'FAIL' | null; failed: Array<{ name: string; detail: string; waits?: boolean }>; skipped: { reason: string; by: string } | null }>
   status: string
-  next: { action: string; stage: string; say: string; calls: string[]; steps: string[] }
+  // 9.8.0: `agents` are the agents the session may launch, each as it is to be launched: a work action's, and while the run
+  // waits on them at the same stage, the ones it named (the session launches only these).
+  next: { action: string; stage: string; say: string; calls: string[]; steps: string[]; agents: Array<{ type: string; model: string; prompt: string }> }
   ask: Ask | null
+  // 9.8.0: the Blocking open questions as the session asks them (header, question, options), before the gate question.
+  blockingAsks: Question[]
   // The Context check of Plan (a question of the CLI's own), while the Context Map is not reviewed: its choices run `plan review --answer`.
   contextCheck: { ask: Ask; answer: string } | null
   restart: { header: string; question: string; options: Option[] } | null
@@ -111,6 +117,7 @@ function option(v: unknown): Option {
     steps: strs(o.steps),
     reasonQuestion: o.reason === true ? question(o.reason_question) : null,
     answerQuestion: o.answer_question === undefined ? null : question(o.answer_question),
+    skill: strOrNull(o.skill),
   }
 }
 
@@ -174,13 +181,21 @@ export function parseRunView(text: string): RunView | null {
         label: str(s.label, str(s.id)),
         mark: oneOf(s.mark, ['passed', 'failed', 'skipped', 'here', 'todo'] as const, 'todo'),
         verdict: s.verdict === 'PASS' || s.verdict === 'FAIL' ? s.verdict : null,
-        failed: arr(s.failed).map(f => ({ name: str(obj(f).name), detail: str(obj(f).detail) })),
+        failed: arr(s.failed).map(f => ({ name: str(obj(f).name), detail: str(obj(f).detail), ...(obj(f).waits === true ? { waits: true } : {}) })),
         skipped: s.skipped === undefined || s.skipped === null ? null : { reason: str(sk.reason), by: str(sk.by) },
       }
     }),
     status: str(v.status),
-    next: { action: str(n.action, 'none'), stage: str(n.stage), say: str(n.say), calls: strs(n.calls), steps: strs(n.steps) },
+    next: {
+      action: str(n.action, 'none'),
+      stage: str(n.stage),
+      say: str(n.say),
+      calls: strs(n.calls),
+      steps: strs(n.steps),
+      agents: arr(n.agents).map(x => ({ type: str(obj(x).type), model: str(obj(x).model), prompt: str(obj(x).prompt) })),
+    },
     ask: ask(v.ask),
+    blockingAsks: arr(v.blocking_asks).map(x => question(obj(x).question)).filter((q): q is Question => q !== null),
     contextCheck: contextCheck(v.context_check, str(obj(v.run).id), num(obj(v.run).step, -1)),
     restart: restart === null ? null : { header: restart.header, question: restart.question, options: arr(obj(v.restart).options).map(option) },
     drift: { header: str(drift.header, 'Scope drift'), prefix: str(drift.prefix, 'Outside the plan:'), options: strs(drift.options) },

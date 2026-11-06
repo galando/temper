@@ -18,7 +18,7 @@ present. The run is on its feature branch already: leaving Intent creates it (or
 ## Execute Tasks in Order
 
 **Who runs this.** Build runs in groups, and the temper CLI runs the group loop (`temper next`
-starts the groups, hands out the ready tasks and gates them): each task is one task agent following `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md`,
+starts the groups, hands out the ready tasks and gates them): each chain of tasks is one task agent following `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md` (9.8.0: tasks that run in order anyway, by a dependency or a shared file, go to one agent, which starts and gates each; independent tasks keep agents of their own, launched together),
 which carries its own short method and reads nothing else (the CLI records its RED and GREEN runs and
 makes its commits). This page is the method of the fix pass, and the background of that brief. The Build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) runs it as a
 fix pass when Review or Check loops back to Build: every task is already done, so it fixes what

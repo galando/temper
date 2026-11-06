@@ -44,9 +44,9 @@ PY
 # --- 1. ask (the default): the plan question offers it; it applies only once the person asks ---
 _fr_plan
 assert_exit "ask: a medium plan passes the plan gate when nobody asked for a fresh review" 0 "$TEMPER" gate plan
-assert_eq "ask: the plan question offers Fresh review first as its second option" "Continue to Design (Recommended)|Fresh review first|Open HTML review|More options" "$(labels)"
+assert_eq "ask: the plan question offers Fresh review first after the two ways on (9.8.0: no Design below risk H)" "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
 assert_eq "ask: the option asks for it; next then launches the reviewer, whose gate call follows it" "plan fresh request" \
-  "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][1]['calls'])")"
+  "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][2]['calls'])")"
 "$TEMPER" plan fresh request >/dev/null 2>&1
 assert_eq "ask: once asked, the gate fails until the reviewer ran" "False|not run yet: the CLI launches it (temper plan fresh start)" "$(_fr_row 'fresh review ran')"
 assert_eq "ask: next launches one reviewer with no context, on the brief's model, every lens, round 1 of 3, the launch marked first" \
@@ -54,7 +54,7 @@ assert_eq "ask: next launches one reviewer with no context, on the brief's model
   "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], a['model'], str(int('Lenses: readiness, zoom-out, comprehension.' in a['prompt'])), str(int('Round: 1 of 3.' in a['prompt'])), a['before'][0].split('temper ', 1)[1]])")"
 assert_eq "ask: after the request the plan question no longer offers it" "0" "$(_fr_all >/dev/null; "$TEMPER" plan fresh start >/dev/null 2>&1; nx "sum(1 for o in d.get('ask', {}).get('options', []) if o['label'] == 'Fresh review first')")"
 setup
-assert_eq "ask: a simple plan is offered it too" "Fresh review first" "$("$TEMPER" state init demo >/dev/null 2>&1; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; nx "d['ask']['options'][1]['label']")"
+assert_eq "ask: a simple plan is offered it too" "Fresh review first" "$("$TEMPER" state init demo >/dev/null 2>&1; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; nx "d['ask']['options'][2]['label']")"
 assert_exit "state set fresh is refused: the fresh review's marks are the CLI's" 1 "$TEMPER" state set fresh.requested true
 
 # --- 2. auto, always, off ---
@@ -93,6 +93,18 @@ assert_eq "a plan question that failed on another row still carries the paraphra
 assert_eq "a launched review that did not finish is asked about, never launched again by itself" "ask" \
   "$("$TEMPER" plan fresh again >/dev/null 2>&1; "$TEMPER" plan fresh start >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1; nx "d['action']")"
 
+# --- 3b. Findings below high pass the gate and are the person's call (9.8.0: two medium findings went on unseen) ---
+_fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all
+_fr_find medium "[comprehension] a joke with a newline breaks one joke per line"; _fr_find low "[readiness] Task 1: wording only"
+assert_exit "a medium and a low finding pass the plan gate" 0 "$TEMPER" gate plan
+assert_eq "the plan question names the open findings, and Revise the plan comes first, recommended" "1|Revise the plan (Recommended)|Stage by stage|Autonomous Build: run Build unattended" \
+  "$(nx "q = d['ask']; str(int('The fresh review left 2 finding(s) open: #' in q['question']['question'] and '[medium] [comprehension] a joke with a newline' in q['question']['question'])) + '|' + '|'.join(o['label'] for o in q['options'][:3])")"
+assert_eq "Revise the plan sends Plan back with the findings to answer" "state redo plan --reason|1" \
+  "$(nx "c = d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]; ' '.join(c.split()[:4]) + '|' + str(int('a joke with a newline' in c))")"
+_fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all; _fr_find low "[readiness] Task 1: wording only"; "$TEMPER" gate plan >/dev/null 2>&1
+assert_eq "a low finding alone: Stage by stage stays recommended, and Revise the plan is offered after the ways on" "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Revise the plan" \
+  "$(nx "'|'.join(o['label'] for o in d['ask']['options'][:3])")"
+
 # --- 4. A blocker; Revise the plan; any of the three files edited makes the review stale ---
 _fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all
 _fr_find high "[readiness] Task 1: the case names no expected value"; _fr_find low "[zoom-out] a helper the code has"
@@ -123,7 +135,7 @@ echo "an edit" >> .temper/specs/demo/tasks.md; "$TEMPER" gate plan >/dev/null 2>
 assert_eq "rounds: a stale review at the limit is not launched again" "ask" "$(nx "d['action']")"
 
 # --- 6. Risk H: two independent reviewers ---
-_fr_plan auto; "$TEMPER" state set risk H >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1
+_fr_plan auto; riskH; "$TEMPER" gate plan >/dev/null 2>&1
 assert_eq "risk H: next launches A and B in one action; only the first marks the launch" "2|1|1|1|0" \
   "$(nx "a = d['agents']; '|'.join(map(str, [len(a), int('Instance: A.' in a[0]['prompt']), int('Instance: B.' in a[1]['prompt']), len(a[0].get('before', [])), len(a[1].get('before', []))]))")"
 "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all

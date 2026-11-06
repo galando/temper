@@ -14,9 +14,9 @@
 | `/temper:status` | Quality + observability dashboard |
 | `/temper:init` | Seed a project's `.claude/temper.config` (idempotent) |
 
-**Autonomous Continuation (opt-in):** after approving the plan, `/temper` can run the
-remaining stages unattended and park before commit. Armed at the plan gate (never at
-invocation); never pushes/merges. With the `autonomy:` block absent or `enabled: false`,
+**Autonomous Build (opt-in):** after approving the plan, `/temper` can run Build
+unattended; Review, Check and the commit keep their questions. Armed at the last question
+before Build (never at invocation); never pushes/merges. With the `autonomy:` block absent or `enabled: false`,
 every gate is the ordinary interactive one. Config: `.claude/temper.config` → `autonomy:`.
 
 **The deterministic spine (v7):** every gate verdict is computed by `scripts/temper`
@@ -29,10 +29,12 @@ with each gate's exact question and options; `commands/temper.md` is a loop over
 `.temper/view.json` after every change, the one file of the CLI's the mod reads. The person decides
 each gate only in the `Temper gate` question, with the mod or without it, in every mode; the mod
 counts an answer only on an exact match for the CLI's run and step, guards, and draws the run (its
-bar decides nothing). The guard is not a sandbox (`docs/trust.md`). The stage commands above are
+bar decides nothing). With the mod loaded, the mod also carries a run itself (the run driver,
+`hooks/temper-mod/core/driver.ts`): it runs the CLI's calls, launches its agents and asks its questions, and hands
+the run to the conversation for whatever needs a model. The guard is not a sandbox (`docs/trust.md`). The stage commands above are
 doors into `/temper`.
 
-**Version:** 9.7.6 (history: `CHANGELOG.md`).
+**Version:** 9.8.0 (history: `CHANGELOG.md`).
 Config: `.claude/temper.config` | Docs: `reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 

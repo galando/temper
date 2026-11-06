@@ -1,7 +1,8 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-import { orchestrate, runCalls } from './loop'
+import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
 import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, TASKS_MD } from './project'
 import { ROOT, TEMPER, World } from './world'
@@ -23,7 +24,11 @@ export function startProject(w: World, config = '', before?: (w: World) => void)
   }
   w.sh('git add -A && git commit -qm base')
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
-  if (config) fs.appendFileSync(path.join(w.dir, '.claude/temper.config'), `\n${config}\n`)
+  // 9.8.0: Check is run by the CLI. The driver names its commands (the suite, with a coverage total it prints) and turns
+  // the mutation gate off, so a run gives the same verdict on every machine.
+  const cfg = path.join(w.dir, '.claude/temper.config')
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80', "  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: python3 -m unittest discover -s unit -t .\n    coverage: python3 -m unittest discover -s unit -t . && echo 'TOTAL 100 10 90%'"))
+  if (config) fs.appendFileSync(cfg, `\n${config}\n`)
   w.sh('git add -A && git commit -qm config')
   before?.(w)
   w.sh(`${TEMPER} init`)
@@ -32,8 +37,22 @@ export function startProject(w: World, config = '', before?: (w: World) => void)
 
 export const worktreeOf = (show: string): string => /^WORKTREE:\s*(\S+)/m.exec(show)?.[1] ?? ''
 
-export function buildTask(w: World, a: Json): void {
-  const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
+// 9.8.0: a build agent gets one task (`Task: N`) or a chain (`Tasks: N, M`) and its `Model:`; it starts each next task,
+// builds it, and gates it itself, stopping at the first refusal (agents/build-task.md).
+export const tasksOf = (a: Json): number[] => {
+  const m = /Tasks?:\s*([\d, ]+)/.exec(String(a.prompt))
+  return m ? m[1]!.split(',').map(x => Number(x.trim())).filter(Boolean) : []
+}
+export const chained = (one: (w: World, n: number, a: Json) => void): Agent => (w, a) => {
+  const model = /\nModel:\s*(\S+?)\.?\s*$/m.exec(String(a.prompt))?.[1] ?? 'haiku'
+  tasksOf(a).every((n, i) => {
+    if (i > 0 && t(w, `task start ${n}`).code !== 0) return false
+    one(w, n, a)
+    return t(w, `task gate ${n} --model ${model}`).code === 0
+  })
+}
+
+export function buildOne(w: World, n: number): void {
   const show = t(w, `task show ${n}`).out
   const wt = path.relative(w.dir, worktreeOf(show))
   const [testFile, srcFile, stub, code, test] = n === 1
@@ -47,6 +66,8 @@ export function buildTask(w: World, a: Json): void {
   const green = t(w, `task test ${n} --phase green`)
   if (green.code !== 0) throw new Error(`GREEN failed: ${green.out}`)
 }
+
+export const buildTask: Agent = chained(buildOne)
 
 // The fresh reviewer of the plan (agents/plan-review.md): each lens of its launch prompt records its findings, then its completion,
 // then (comprehension) the paraphrase, every row against the tasks.md it read.
@@ -76,6 +97,8 @@ export const AGENTS: Record<string, Agent> = {
     t(w, 'risk')
   },
   'temper:temper-plan-review': (w, a) => freshReviewer(w, a, []),
+  // 9.8.0: the acceptance writer: no test framework of its own in the driver, so it records why there are none.
+  'temper:temper-acceptance': w => { t(w, "acceptance skip --reason 'the e2e driver writes no acceptance tests'") },
   'temper:temper-build-task': buildTask,
   'temper:temper-review': w => {
     t(w, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`)
@@ -121,11 +144,11 @@ export const modGuards = (w: World): void => {
   expect(n.action === 'ask', 'the run reached the plan question')
   const write = w.denies({ tool: 'Write', input: { file_path: `${w.dir}/src/other.py` } })
   const advance = w.denies({ tool: 'Bash', input: { command: `${TEMPER} state advance plan_complete build` } })
-  if (w.mode === 'mod') {
+  if (w.mode !== 'plain') {
     expect(write?.includes('The run ci (Plan stage) owns this folder.') && write.includes('claude --worktree'), `the write refusal names the run and the worktree (${write})`)
     expect(advance !== null, 'leaving Plan is refused without the answer')
-    const option = w.answer(n.ask as Json, 'Continue to Build (Recommended)')
-    expect(option.label === 'Continue to Build (Recommended)', 'the option exists')
+    const option = w.answer(n.ask as Json, 'Stage by stage (Recommended)')
+    expect(option.label === 'Stage by stage (Recommended)', 'the option exists')
     expect(w.denies({ tool: 'Bash', input: { command: `${TEMPER} state advance plan_complete build` } }) === null, 'leaving Plan passes as the call the answer maps to')
   } else {
     expect(write === null && advance === null, 'with no mod nothing is refused')
@@ -148,7 +171,7 @@ export const smallChange = (w: World): void => {
       return recommended(ask, wd)
     },
     instruction: (wd, text) => {
-      if (text.startsWith('Make the change, run')) {
+      if (text.startsWith('Make the small change')) {
         seen = 'changed'
         wd.write('src/ci_shape.py', SHAPE_CODE + '\n# a small change made by hand\n')
         const r = t(wd, 'adhoc close')
@@ -192,8 +215,7 @@ export const coveredAndManual = (w: World): void => {
       wd.write(`${SPEC}/tasks.md`, tasks)
       wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('| unit/test_ci_bytes.py | tests the byte order | Same ledger gives the same bytes |', '| unit/test_ci_bytes.py | tests the byte order | Same ledger gives the same bytes |\n| docs/guide.md | the guide | Infrastructure: the report needs a guide |'))
     },
-    'temper:temper-build-task': (wd, a) => {
-      const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
+    'temper:temper-build-task': chained((wd, n) => {
       if (n === 3) {
         const wt = path.relative(wd.dir, worktreeOf(t(wd, 'task show 3').out))
         const refused = t(wd, 'task test 3 --phase red')
@@ -204,8 +226,8 @@ export const coveredAndManual = (w: World): void => {
         wd.write(path.join(wt, 'unit/test_ci_bytes.py'), BYTES_TEST)
         const red = t(wd, 'task test 2 --phase red')
         expect(red.code === 0, 'the RED run passes: an earlier task built it')
-      } else buildTask(wd, a)
-    },
+      } else buildOne(wd, n)
+    }),
   }
   const asked: string[] = []
   orchestrate(w, script({
@@ -213,7 +235,7 @@ export const coveredAndManual = (w: World): void => {
     person: (ask, wd) => {
       const q = String(ask.question.question)
       asked.push(q)
-      if (q.includes('its tests already pass before any change')) return { label: 'Accept it as done', note: 'an earlier change built it' }
+      if (q.includes('its tests already pass before any change')) return { label: 'Accept it as done (Recommended)', note: 'an earlier change built it' }
       if (q.includes('is a manual task')) return { label: 'Confirm', note: 'Dana Cohen' }
       if (q.startsWith('Every gate passed. The report is above')) {
         const rows = JSON.stringify(wd.json('.temper/evidence/build.json'))
@@ -271,8 +293,11 @@ export const prAndPipeline = (w: World): void => {
         const br = wd.sh('git branch --show-current').trim()
         expect(wd.denies({ tool: 'Bash', input: { command: `gh pr create --head ${br} --base main --title 't' --body-file b` } }) !== null || wd.mode === 'plain', 'a pull request without --draft is refused by the mod')
         expect(wd.denies({ tool: 'Bash', input: { command: 'gh pr ready 7' } }) !== null || wd.mode === 'plain', 'gh pr ready is refused by the mod')
-        fs.writeFileSync(path.join(wd.dir, '.pr-body'), 'The body\n')
-        runCalls(wd, [`git push -q -u origin ${br}`, `gh pr create --head ${br} --base main --title 'feat: CI report' --body-file .pr-body --draft`])
+        // The body goes in a file from mktemp, outside the project, as reference/pr.md says (a file in the project is a
+        // change outside the plan, and the commit hook the driver installs refuses the next commit).
+        const body = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'temper-pr-')), 'body.md')
+        fs.writeFileSync(body, 'The body\n')
+        runCalls(wd, [`git push -q -u origin ${br}`, `gh pr create --head ${br} --base main --title 'feat: CI report' --body-file ${body} --draft`])
         opened.push(br)
         return true
       }
@@ -297,7 +322,9 @@ export const prAndPipeline = (w: World): void => {
   const ghLog = fs.readFileSync(log, 'utf8')
   expect(/gh pr create .*--draft/.test(ghLog) && !/gh pr ready/.test(ghLog), 'the pull request is a draft and nothing marked it ready')
   expect(round === 2, `Pipeline ran twice (${round})`)
-  expect(launches['temper:temper-review'] === 1 && launches['temper:temper-check'] === 1, `a CI fix sends no Review or Check again (review ${launches['temper:temper-review']}, check ${launches['temper:temper-check']})`)
+  // 9.8.0: Check is run by the CLI (temper check run), not an agent
+  const checks = w.trace.filter(l => l.includes('call temper check run')).length
+  expect(launches['temper:temper-review'] === 1 && checks === 1, `a CI fix sends no Review or Check again (review ${launches['temper:temper-review']}, check ${checks})`)
   expect(w.sh('git log --format=%s -n 3').includes('fix(ci): apply the Pipeline fix (CI fix round 1)'), 'the fix was committed with the agreed message')
   expect(w.sh(`git --git-dir=${origin} log --format=%s -n 1 feature/ci`).includes('fix(ci)'), 'the fix was pushed to origin')
   void refused
@@ -318,12 +345,13 @@ export const contextCheck = (w: World): void => {
   orchestrate(w, script({
     agents,
     person: (ask, wd) => {
-      if (String(ask.question.question) === 'Is this the right context for the plan?') {
+      if (String(ask.question.question) === 'It could not find: no rate limit policy was found in code, docs or the ticket. Is that right?') {
         asked += 1
-        const direct = wd.denies({ tool: 'Bash', input: { command: `${TEMPER} plan review --answer 'Right direction'` } })
+        const direct = wd.denies({ tool: 'Bash', input: { command: `${TEMPER} plan review --answer 'As planned'` } })
         expect(wd.mode === 'plain' || direct !== null, 'plan review is refused with no answer')
-        expect((ask.options as Json[]).map(o => o.label).join('|') === 'Right direction|Narrow the focus|Fix the sources|Carry forward', 'the choices are the Blocking line plus Carry forward')
-        return 'Narrow the focus'
+        // 9.8.0: the question names the gap; As planned, Something else (typed: Plan revises), Carry forward
+        expect((ask.options as Json[]).map(o => o.label).join('|') === 'As planned (Recommended)|Something else|Carry forward', 'the options are As planned, Something else and Carry forward')
+        return 'As planned (Recommended)'
       }
       return recommended(ask, wd)
     },
@@ -368,7 +396,7 @@ export const hookScope = (w: World): void => {
   expect(off.code === 0 && /removed the Temper hook/.test(off.out), `guards uninstall removes the hook (${off.out})`)
   expect(w.run(`${TEMPER} guards uninstall`).out.includes('nothing to change'), 'a second uninstall changes nothing')
   expect(!w.exists('.git/temper-gate'), 'the temper-gate folder is gone')
-  if (w.mode === 'mod') {
+  if (w.mode !== 'plain') {
     const ref = w.denies({ tool: 'Bash', input: { command: `${TEMPER} guards uninstall` } })
     expect(ref !== null && ref.includes('turning the commit gate off'), 'the mod refuses uninstall while a run is active')
   }
@@ -410,19 +438,25 @@ export const failingScenario = (w: World): void => {
 }
 
 // An armed run: the plan answer arms it, the stages go on by themselves, and it parks before the commit; nothing is pushed.
+// 9.8.0: an armed run is Build alone. Build goes on by itself; Review, Check and the commit ask the person as usual.
 export const armedRun = (w: World): void => {
   startProject(w, 'autonomy:\n  enabled: true')
-  let parkedAt = ''
+  const asked: string[] = []
   orchestrate(w, script({
     person: (ask, wd) => {
       const q = String(ask.question.question)
-      if (q.startsWith('Plan: the check passed')) return 'Autonomous: run the rest unattended'
-      if (q.includes('the armed run parked here for you')) parkedAt = q
+      asked.push(q)
+      if (q.startsWith('Plan: the check passed')) return 'Autonomous Build: run Build unattended'
       return recommended(ask, wd)
     },
   }))
-  expect(parkedAt !== '', 'the armed run parked before the commit and asked the person')
-  expect(!/git push|gh pr/.test(w.trace.join('\n')), 'an armed run never pushes')
+  const flow = w.trace.join('\n')
+  expect(!asked.some(q => q.startsWith('Build:')), 'Build asked the person nothing: it ran unattended')
+  expect(/state set run_mode interactive/.test(flow), 'after Build the run turned back to interactive')
+  expect(asked.some(q => q.startsWith('Review: the check passed')), 'Review asked the person')
+  expect(asked.some(q => q.startsWith('Check: the check passed')), 'Check asked the person')
+  expect(!asked.some(q => q.includes('the armed run parked here for you')), 'the run did not park before the commit: the person was asked')
+  expect(!/git push|gh pr/.test(flow), 'an armed run never pushes')
 }
 
 // Save for later stops the run; /temper:temper takes it up again at the same question.
@@ -443,6 +477,7 @@ export const designRun = (w: World): void => {
     'temper:temper-plan': (wd, a) => {
       AGENTS['temper:temper-plan']!(wd, a)
       t(wd, 'state set complexity medium')
+      t(wd, "risk --raise H --reason 'the scenario wants Design (9.8.0: medium runs Design at risk H)'")
     },
     'temper:temper-design': wd => wd.write(`${SPEC}/design.md`, '# Design: CI report\n\n## Architecture\n\nTwo small modules.\n\n## Areas of Concern\n\nNone flagged — the change is two new files.\n'),
   }
@@ -481,16 +516,15 @@ Plain python, standard library only.
       wd.write(`${SPEC}/tasks.md`, tasks)
       wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('## Files to Modify', '| src/ci_extra.py | an extra module | Infrastructure: a third group for the e2e |\n| unit/test_ci_extra.py | its test | Infrastructure: a third group for the e2e |\n\n## Files to Modify'))
     },
-    'temper:temper-build-task': (wd, a) => {
-      const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
-      if (n !== 3) return buildTask(wd, a)
+    'temper:temper-build-task': chained((wd, n) => {
+      if (n !== 3) return buildOne(wd, n)
       const wt = path.relative(wd.dir, worktreeOf(t(wd, 'task show 3').out))
       wd.write(path.join(wt, 'unit/test_ci_extra.py'), extraTest)
       wd.write(path.join(wt, 'src/ci_extra.py'), 'VALUE = None\n')
       expect(t(wd, 'task test 3 --phase red').code !== 0, 'RED fails')
       wd.write(path.join(wt, 'src/ci_extra.py'), 'VALUE = 1\n')
       expect(t(wd, 'task test 3 --phase green').code === 0, 'GREEN passes')
-    },
+    }),
   }
   orchestrate(w, script({ agents }))
   const starts = w.trace.filter(l => l.includes('group start'))
@@ -516,6 +550,9 @@ case "$*" in *verify*) exit 0 ;; esac
 `, { mode: 0o755 })
   w.env.PATH = `${bin}:${w.env.PATH}`
   startProject(w)
+  // 9.8.0: Check is the CLI's; this project has no Python tests, so its Check commands are mvn's
+  const cfg = path.join(w.dir, '.claude/temper.config')
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('    test: python3 -m unittest discover -s unit -t .', '    test: mvn -q verify').replace("    coverage: python3 -m unittest discover -s unit -t . && echo 'TOTAL 100 10 90%'", "    coverage: mvn -q verify && echo 'TOTAL 100 10 90%'"))
   const tasks = TASKS_MD
     .replace(/\*\*Validate:\*\* `python3 -m unittest unit\.test_ci_shape`/, '**Validate:** `mvn verify -Pjacoco`')
     .replace(/\*\*Validate:\*\* `python3 -m unittest unit\.test_ci_bytes`/, '**Validate:** `mvn verify -Pjacoco`')
@@ -534,8 +571,7 @@ case "$*" in *verify*) exit 0 ;; esac
       // the scenario Test: commands are Maven ones too
       wd.write(`${SPEC}/intent.md`, wd.read(`${SPEC}/intent.md`).replace(/Test: python3 -m unittest unit\.test_ci_\w+/g, 'Test: mvn test'))
     },
-    'temper:temper-build-task': (wd, a) => {
-      const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
+    'temper:temper-build-task': chained((wd, n) => {
       const [main, test] = n === 1 ? ['Shape', 'ShapeTest'] : ['Bytes', 'BytesTest']
       const wt = path.relative(wd.dir, worktreeOf(t(wd, `task show ${n}`).out))
       fs.rmSync(green, { force: true })
@@ -545,7 +581,7 @@ case "$*" in *verify*) exit 0 ;; esac
       fs.writeFileSync(green, '')
       const g = t(wd, `task test ${n} --phase green`)
       expect(g.code === 0, `GREEN passes with a new report for the class (${g.out.slice(0, 200)})`)
-    },
+    }),
   }
   orchestrate(w, script({ agents }))
   const calls = fs.readFileSync(log, 'utf8')
@@ -560,7 +596,8 @@ export const fixRun = (w: World): void => {
     wd.sh('git add -A && git commit -qm "a shape with a bug"')
   })
   t(w, 'state clear')
-  w.sh(`${TEMPER} state init bug --command fix`)
+  // 9.8.0: with the mod's run driver, the driver starts the fix itself (the root cause agent, the panel, the state).
+  if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix`)
   const bug = '.temper/specs/bug'
   const agents: Record<string, Agent> = {
     'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
@@ -579,10 +616,8 @@ export const fixRun = (w: World): void => {
       t(wd, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
     },
   }
-  // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question
-  agents['temper:temper-rca']!(w, {})
   const asked: string[] = []
-  orchestrate(w, script({
+  const fixScript = script({
     agents,
     person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) },
     instruction: (wd, text) => {
@@ -592,7 +627,16 @@ export const fixRun = (w: World): void => {
       }
       return /each file the run changed|^Copy what|^When .* records deviations/.test(text)
     },
-  }))
+  })
+  if (w.mode === 'driver') {
+    orchestrateFix(w, fixScript, 'the shape drops the verdict', 'bug')
+  } else {
+    // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question
+    agents['temper:temper-rca']!(w, {})
+    // 9.8.0 (round 5): the CLI draws the RCA panel from the file the agent wrote; commands/fix.md prints it
+    expect(w.sh(`${TEMPER} panel rca ${bug}/rca.md`).includes('| RCA: the shape drops the verdict'), 'the CLI drew the RCA panel from rca.md')
+    orchestrate(w, fixScript)
+  }
   expect(asked.some(q => q.startsWith('RCA: the root cause is in')), 'the RCA question was asked')
   expect(w.sh('git log --format=%s -n 1').length > 0 && !w.exists('.temper/build-state.json'), 'the fix run ended with its commit')
 }

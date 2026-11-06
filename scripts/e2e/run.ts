@@ -1,4 +1,4 @@
-// bun scripts/e2e/run.ts [mod|plain|both] [scenario...]  (a live model smoke is not part of this: it stays off, and out of CI)
+// bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...]  (all: plain, mod and the mod's run driver)  (a live model smoke is not part of this: it stays off, and out of CI)
 import { freshAsk, freshContest, freshNotRun, freshReview, armedRun, branchClash, branchClashCarry, contextCheck, designRun, failingScenario, fixRun, mavenRun, threeGroups, coveredAndManual, fullRun, hookScope, modGuards, prAndPipeline, saveAndResume, smallChange } from './scenarios'
 import { Denied, World } from './world'
 import type { Mode } from './world'
@@ -6,7 +6,7 @@ import type { Mode } from './world'
 const SCENARIOS: Record<string, (w: World) => void> = { 'full-run': fullRun, 'mod-guards': modGuards, 'small-change': smallChange, 'covered-and-manual': coveredAndManual, 'pr-and-pipeline': prAndPipeline, 'context-check': contextCheck, 'branch-clash': branchClash, 'branch-clash-carry': branchClashCarry, 'hook-scope': hookScope, 'failing-scenario': failingScenario, 'armed-run': armedRun, 'save-and-resume': saveAndResume, design: designRun, 'three-groups': threeGroups, maven: mavenRun, fix: fixRun, 'fresh-review': freshReview, 'fresh-not-run': freshNotRun, 'fresh-contest': freshContest, 'fresh-ask': freshAsk }
 
 const want = process.argv[2] ?? 'both'
-const modes: Mode[] = want === 'both' ? ['plain', 'mod'] : [want as Mode]
+const modes: Mode[] = want === 'both' ? ['plain', 'mod'] : want === 'all' ? ['plain', 'mod', 'driver'] : [want as Mode]
 const names = process.argv.slice(3).length > 0 ? process.argv.slice(3) : Object.keys(SCENARIOS)
 let failed = 0
 const traces: Record<string, string[]> = {}
@@ -24,7 +24,7 @@ for (const name of names) {
       console.log(w.trace.slice(-12).join('\n'))
     }
   }
-  if (modes.length === 2 && traces[`${name}:plain`] && traces[`${name}:mod`]) {
+  if (modes.includes('plain') && modes.includes('mod') && traces[`${name}:plain`] && traces[`${name}:mod`]) {
     const same = JSON.stringify(traces[`${name}:plain`]) === JSON.stringify(traces[`${name}:mod`])
     console.log(`${same ? 'PASS' : 'FAIL'} ${name}: the flow is identical with the mod and without it`)
     if (!same) failed++

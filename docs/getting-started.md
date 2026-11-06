@@ -151,7 +151,7 @@ Temper will analyze the blast radius:
 📋 Plan: 7 steps with test gates
 ```
 
-**A fresh review of the plan (9.7.6).** At the plan question, **Fresh review first** has a reviewer with no context read
+**A fresh review of the plan (v9.8.0).** At the plan question, **Fresh review first** has a reviewer with no context read
 `intent.md`, `plan.md` and `tasks.md` before you approve the plan. It checks that each task can be built from its own block
 with no guess, that nothing unneeded or already in the code is planned, and it writes a short summary of the plan that the
 question shows you to compare with the intent. A blocker fails the plan gate; **Revise the plan** sends the findings back to

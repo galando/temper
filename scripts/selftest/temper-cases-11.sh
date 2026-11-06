@@ -34,7 +34,20 @@ The guide.
 - the guide links the changelog
 - [ ] done
 TASKS
+"$TEMPER" group start G1 >/dev/null 2>&1
+_written="$(vw "d['next']['agents'][0]['prompt']")"   # the view group start wrote, before any next
+_named="$(nx "d['action'] + '|' + d['agents'][0]['type']")"; _prompt="$(nx "d['agents'][0]['prompt']")"
+# 9.8.0 (round 5): a view written by any command names the agent with the models next resolves. Before, group start and task
+# start wrote it without them ("Model: haiku." where next said "Model: claude-haiku-5-5."), and the mod refused the launch.
+assert_eq "9.8.0: the view a command writes names the same agent prompt as next" "same" \
+  "$([[ -n "$_written" && "$_written" == "$_prompt" ]] && echo same || echo "differs: ${_written##*$'\n'} / ${_prompt##*$'\n'}")"
 "$TEMPER" task start 1 >/dev/null 2>&1
+# 9.8.0: the agent's `before` call (task start) turns the next action into wait before the agent is launched; the mod
+# launches only an agent the view names, and it keeps no memory between turns: the view keeps naming it while the run waits
+# (first: the view keeps every agent it named at the stage, here also the acceptance agent named before the group began).
+assert_eq "9.8.0: while the run waits on a started task, the view still names the agent the CLI named before" \
+  "work|temper:temper-build-task|wait|temper:temper-build-task|same" \
+  "$_named|$(vw "d['next']['action'] + '|' + d['next']['agents'][0]['type']")|$([[ "$(vw "d['next']['agents'][0]['prompt']")" == "$_prompt" ]] && echo same || echo differs)"
 mkdir -p .claude/worktrees/temper-demo-T1/docs; echo "# Guide" > .claude/worktrees/temper-demo-T1/docs/guide.md
 assert_exit "F12: task test refuses a manual task" 1 "$TEMPER" task test 1 --phase red
 OUT="$("$TEMPER" task gate 1 --model sonnet 2>&1)"; rc=$?
@@ -45,6 +58,8 @@ assert_eq "F12: the Manual task question names the Cases, with a name question o
   "$(nx "'|'.join([d['action'], d['ask']['question']['header'], d['ask']['question']['options'][0]['label'], d['ask']['question']['options'][1]['label'], d['ask']['question']['question']])")"
 assert_eq "F12: Confirm runs task confirm with the typed name, then the task gate" "task confirm 1 --by '{answer}'|task gate 1 --model person" \
   "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][0]['calls'])")"
+assert_eq "F12: the name question can be shown: two options at least, the first only says to type (9.8.0: Cancel alone was refused by the dialog)" "2|Type it below|Cancel" \
+  "$(nx "o = d['ask']['options'][0]['answer_question']['options']; '%d|%s|%s' % (len(o), o[0]['label'], o[1]['label'])")"
 assert_exit "F12: a confirmation needs a name" 1 "$TEMPER" task confirm 1
 "$TEMPER" task confirm 1 --by "Dana Cohen" >/dev/null 2>&1
 assert_eq "F12: the confirmation is recorded with the typed name, and a ledger row says so" "Dana Cohen|1" \
@@ -199,6 +214,7 @@ assert_eq "F8: a row that exists and failed keeps the gate question" "ask" "$(nx
 # --- F16. build.grouped.max-groups, and a plan with tasks and no groups stops Build with no agent ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 _three_groups > .temper/specs/demo/tasks.md; rm -f .temper/groups.json
+"$TEMPER" acceptance skip --reason "the scheduling cases below" >/dev/null 2>&1   # 9.8.0: else the acceptance writer comes first
 assert_eq "F16: by default two groups start at once" "group start G1|group start G2" "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'] if 'group start' in c)")"
 printf 'build:\n  grouped:\n    max-groups: 3\n' > .claude/temper.config
 assert_eq "F16: max-groups 3 starts all three" "3" "$(nx "str(sum(1 for c in d['calls'] if 'group start' in c))")"
@@ -227,7 +243,7 @@ assert_eq "F17: a timed out gate offers a rerun at 1200 seconds first" "Run the 
 
 # --- F13. Change reopens the task it concerns and the tasks that must reopen with it ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
-_change_tasks > .temper/specs/demo/tasks.md
+_change_tasks > .temper/specs/demo/tasks.md; second_group
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G1"}, "4": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F13: the group question keeps Continue, Change and Stop" "Continue (Recommended)|Change|Stop" "$(nx "'|'.join(o['label'] for o in d['ask']['question']['options'])")"
 assert_eq "F13: Change asks Which task changes? with one option per task; a task shares files with the one it depends on and reopens with it" \
@@ -269,7 +285,7 @@ assert_eq "F14: a passed Check keeps Loop back to Build beside Commit, and offer
   "Commit (Recommended)|Loop back to Build|Commit and open PR|More options" "$(labels)"
 assert_eq "F14: the option opens the window with a reason question and says what to do" "adhoc|1|1|1" \
   "$(nx "o = [x for x in d['ask']['more']['options'] if x['label'] == 'Make a small change'][0]; '|'.join([o['move'], str(len(o['calls'])), str(int('adhoc open --stage check --reason' in o['calls'][0])), str(int('adhoc close' in o['do'] and o.get('reason') is True))])")"
-assert_eq "F14: the description is the agreed sentence" "Change the work yourself, with no loop back; the change re-runs only what it touches." \
+assert_eq "F14: the description says Claude makes the change (9.8.0: a person read \"yourself\" as their own edit)" "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again." \
   "$(nx "[x for x in d['ask']['more']['options'] if x['label'] == 'Make a small change'][0]['description']")"
 python3 - <<'PYT'
 import json
@@ -305,13 +321,16 @@ assert_eq "F14: a change made at Build, or of docs only, re-runs only the stage'
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {"1": {"status": "covered", "group": "G1", "attempt": 3, "covered": {"cmd": "pytest unit/test_a.py -q", "tail": "3 passed in 0.02s"}}}}\n' > .temper/groups.json
 assert_eq "F19: the covered question names the task, the RED command and its output, with the four options" \
-  "ask|Task 1 (done task): its tests already pass before any change, so an earlier task built it. The RED run pytest unit/test_a.py -q passed (exit 0): 3 passed in 0.02s. Accept it as done?|Accept it as done|Run it again|Loop back to Plan|Save for later" \
+  "ask|Task 1 (done task): its tests already pass before any change, so an earlier task built it. The RED run pytest unit/test_a.py -q passed (exit 0): 3 passed in 0.02s. Accept it as done?|Accept it as done (Recommended)|Run it again|Loop back to Plan|Save for later" \
   "$(nx "'|'.join([d['action'], d['ask']['question']['question']] + [o['label'] for o in d['ask']['options']])")"
-assert_eq "F19: Accept asks for a reason and runs task accept; Run it again runs task retry" "task accept 1 --reason '{reason}'|True|task retry 1" \
-  "$(nx "o = d['ask']['options']; o[0]['calls'][0].split('temper ', 1)[1] + '|' + str(o[0]['reason']) + '|' + o[1]['calls'][0].split('temper ', 1)[1]")"
+assert_eq "F19: Accept runs task accept with the question's own reason, no second question (9.8.0); Run it again runs task retry" "task accept 1 --reason 'An earlier task built it'|False|task retry 1" \
+  "$(nx "o = d['ask']['options']; o[0]['calls'][0].split('temper ', 1)[1] + '|' + str(o[0].get('reason', False)) + '|' + o[1]['calls'][0].split('temper ', 1)[1]")"
+assert_eq "F19: Accept it as done is the move covered, not a finding's accept (9.8.0)" "covered|redo" \
+  "$(nx "o = d['ask']['options']; o[0]['move'] + '|' + o[1]['move']")"
 assert_exit "F19: task start holds a covered task back" 1 "$TEMPER" task start 1
 printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-assert_eq "F19: an armed run parks for the person" "auto|1" "$(nx "d['action'] + '|' + str(sum(1 for c in d['calls'] if 'park' in c))")"
+assert_eq "F19: an armed run takes the covered task as done, with a reason, and does not park" "auto|1|0" \
+  "$(nx "d['action'] + '|' + str(sum(1 for c in d['calls'] if 'task accept 1 --reason' in c)) + '|' + str(sum(1 for c in d['calls'] if 'park' in c))")"
 printf 'stack: auto\n' > .claude/temper.config
 assert_exit "F19: task accept needs a reason" 1 "$TEMPER" task accept 1
 assert_exit "F19: a task that is not covered is not accepted" 1 "$TEMPER" task accept 2 --reason "x"
@@ -407,13 +426,13 @@ printf '\n### Open Questions\n\n- Blocking: Context check: is this the right con
 _cmap pending '- use: intent.md - scope' '- gap: no rate limit policy'
 gfail plan "context map reviewed" "the Context check is pending: the person's answer is not recorded yet"
 assert_eq "F6: the pending check is the plan gate's only failed row: ask is the Context check, not the failed gate question" \
-  "ask|Temper gate|Is this the right context for the plan?|Right direction|Narrow the focus|Fix the sources|Carry forward" \
+  "ask|Temper gate|It could not find: no rate limit policy. Is that right?|As planned (Recommended)|Something else|Carry forward" \
   "$(nx "'|'.join([d['action'], d['ask']['question']['header'], d['ask']['question']['question']] + [o['label'] for o in d['ask']['options']])")"
-assert_eq "F6: a choice runs plan review --answer then the plan gate; Carry forward runs nothing; each option carries the table" "plan review --answer 'Narrow the focus'|gate plan|0|1" \
-  "$(nx "o = d['ask']['options']; '|'.join([o[1]['calls'][0].split('temper ', 1)[1], o[1]['calls'][1].split('temper ', 1)[1], str(len(o[3]['calls'])), str(int('Context Map' in o[0]['preview']))])")"
-assert_eq "F6: next and the view carry context_map and context_check, and the Blocking line is not asked twice" "2|4|0" \
+assert_eq "F6: As planned runs plan review --answer then the plan gate; Carry forward runs nothing; each option carries the table" "plan review --answer 'As planned'|gate plan|0|1" \
+  "$(nx "o = d['ask']['options']; '|'.join([o[0]['calls'][0].split('temper ', 1)[1], o[0]['calls'][1].split('temper ', 1)[1], str(len(o[2]['calls'])), str(int('Context Map' in o[0]['preview']))])")"
+assert_eq "F6: next and the view carry context_map and context_check, and the Blocking line is not asked twice" "2|3|0" \
   "$(nx "str(len(d['context_map']['rows'])) + '|' + str(len(d['context_check']['options'])) + '|' + str(len(d.get('blocking', [])))")"
-assert_eq "F6: the view holds the same, and the status says the answer is not recorded yet" "4|1" \
+assert_eq "F6: the view holds the same, and the status says the answer is not recorded yet" "3|1" \
   "$(vw "str(len(d['context_check']['options'])) + '|' + str(int('not recorded yet' in d['status']))")"
 "$TEMPER" plan review --answer "Right direction" >/dev/null 2>&1
 assert_eq "F6: once reviewed there is no context_check" "None" "$(nx "d.get('context_check')")"

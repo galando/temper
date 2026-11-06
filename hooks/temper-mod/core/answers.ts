@@ -80,7 +80,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
       const text = answer.replace(/\s+/g, ' ').trim()
       if (text !== '' && text.length <= 100 && answer !== CANCEL && check.answer !== '') {
         const option: Option = {
-          label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null,
+          label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null, skill: null,
           calls: [check.answer.replace("'{text}'", quote(text)), ...(check.ask.options[0]?.calls.slice(1) ?? [])],
         }
         out.push({ kind: 'gate', stage: 'plan', question: q.question, ask: view.ask?.question.question ?? q.question, option, reason: '' })
@@ -90,7 +90,8 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
     for (const a of asks(view.ask)) {
       for (const option of a.options) {
         const nq: Question | null = option.answerQuestion
-        if (nq === null || !same(nq, q.header, q.question) || answer === CANCEL) continue
+        // Any typed text but Cancel; an option of the name question itself ("Type it below") only says to type, and is no name.
+        if (nq === null || !same(nq, q.header, q.question) || answer === CANCEL || nq.options.some(o => o.label === answer)) continue
         out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, option, reason: answer })
       }
     }

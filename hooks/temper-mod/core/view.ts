@@ -162,7 +162,9 @@ export function buildView(input: ViewInput): View {
   const here = rv.stages.find(s => s.mark === 'here')
   // While the person's answer is in and Claude carries it out (wait: chosen), no failed row shows: the failure they answered is
   // being mended. The rows come back on the next view if the check still fails.
-  const failed = wait === 'chosen' ? [] : (here?.failed ?? [])
+  // A row that only waits for the person's answer (open Blocking questions, the Context check, a criterion to confirm) is
+  // no failure: the stage is waiting for you, and draws so (9.8.0: a red Intent before its first question read as a fault).
+  const failed = (wait === 'chosen' ? [] : (here?.failed ?? [])).filter(q => q.waits !== true)
   const groups = groupsOf(rv)
   const criteria = rv.criteria.map(c => ({ id: c.id, text: c.text || c.id, status: c.status === 'passed' ? ('passed' as const) : ('open' as const), priority: c.priority, evidence: c.evidence }))
   return {
@@ -315,4 +317,11 @@ export function nextStep(v: View): string {
     default:
       return v.next.say ? `${v.next.say} Do what \`temper next --json\` says.` : 'do what `temper next --json` says'
   }
+}
+
+// A message row from one of Temper's own agents (the engine names the sender `temper-temper-plan`, the agent's type with
+// its colon made a dash). Such a row is drawn in full: the engine folds a message from another agent into one line
+// ("Message from @temper-temper-plan (ctrl+o to expand)"), and the person wants to read each one as it comes (9.8.0).
+export function isTemperAgent(sender: string): boolean {
+  return /^temper[-:]temper-[a-z-]+$/.test(sender.trim())
 }

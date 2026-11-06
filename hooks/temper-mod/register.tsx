@@ -7,12 +7,15 @@ import { HELP, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
-import { answersIn } from './core/answers'
+import { answeredResult, answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
+import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
+import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, logRows, slugOf } from './core/driver'
+import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
-import { stageToast, turnLine } from './core/view'
+import { isTemperAgent, stageToast, turnLine } from './core/view'
 import type { View } from './core/view'
 import { hintProps } from './ui/hint'
 import { renderBand } from './ui/band'
@@ -27,6 +30,8 @@ type Api = EngineInterface
 let options: PluginOptions = {}
 let current: Promise<Snapshot> | null = null
 let root = ''
+// The answer and the time of each agent the run driver launched, by agent id (from turn.complete).
+const agentEnds = new Map<string, AgentEnd>()
 let paneOpen = false
 // The person closed the pane by hand (its close mark, or /temper:temper pane): the mod does not open it for them again
 // in this session; /temper:temper pane does.
@@ -345,22 +350,209 @@ function failedGuard(tool: string): Guarded {
 // run it cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
 type Guarded = { deny: string | null; trivialExit?: boolean }
 
-async function guard($: Api, tool: string, input: Record<string, unknown>): Promise<Guarded> {
-  // A Bash call may run the CLI, so it is judged on the run as the files say now; a write on the run last read.
-  const snap = tool === 'Bash' ? await refresh($) : await ensure($)
+// 9.8.0: the run and step at which the person chose a skill option (Grill Me, Teach Me): until the run moves on, the
+// session asks the skill's own questions (core/session.ts). Kept in the plugin store, not in module state: the engine
+// loads the mod again between turns.
+const SKILL = 'skill:'
+// 9.8.0: what the person typed after /temper:temper, per project, kept in the plugin store (module state does not
+// survive the engine loading the mod again between turns), with the conversation that typed it: only that
+// conversation's state init is held to it.
+const REQUEST = 'request:'
+type Kept = { session: string; text: string }
+const keptRequest = (v: unknown): Kept | null => {
+  const k = v as Partial<Kept> | null | undefined
+  return k !== null && typeof k === 'object' && typeof k.session === 'string' && typeof k.text === 'string' ? (k as Kept) : null
+}
+
+async function skillActive(io: Io, snap: Snapshot): Promise<boolean> {
+  const at = await io.storeGet(SKILL + snap.at.run).catch(() => undefined)
+  return typeof at === 'number' && at === snap.at.step
+}
+
+async function guard($: Api, tool: string, input: Record<string, unknown>, main = false): Promise<Guarded> {
+  // A Bash call may run the CLI, so it is judged on the run as the files say now; a write on the run last read. The main
+  // session's question and agent launch are judged on the view as it is now too (an agent's own calls may have moved it).
+  const snap = tool === 'Bash' || (main && (tool === 'AskUserQuestion' || tool === 'Agent' || tool === 'Task')) ? await refresh($) : await ensure($)
   // Fail open: when the mod cannot tell where the run is, it never blocks Temper.
   if (snap.inert || snap.enforcement === 'off' || snap.failOpen) return { deny: null }
   const command = typeof input.command === 'string' ? input.command : ''
   // A `state clear` at Intent (the TRIVIAL exit), as view.json says now.
   const clearable = tool === 'Bash' && snap.run?.trivialExit === true && readShell(command).calls.some(w => w[0] === 'state' && w[1] === 'clear')
   const rootDir = await rootOf($)
-  const r = evaluate(ruleContext(snap, rootDir), { tool, input })
+  const rc = ruleContext(snap, rootDir)
+  const r = evaluate(rc, { tool, input })
   if ('deny' in r) return { deny: r.deny }
+  // The main session (no agent id) relays the CLI and the person: it runs the CLI and reads, launches the CLI's agent and
+  // asks the CLI's question (core/session.ts).
+  if (main) {
+    const s = evaluateSession(rc, factsOf(snap.view, tool === 'AskUserQuestion' && (await skillActive(makeIo($), snap))), { tool, input })
+    if ('deny' in s) return { deny: s.deny }
+    // The run's request as the person typed it (kept at /temper:temper, below): a state init carries it whole.
+    if (tool === 'Bash') {
+      const kept = keptRequest(await makeIo($).storeGet(REQUEST + root).catch(() => undefined))
+      const here = kept === null ? null : await $.session.id().catch(() => null)
+      const why = featureWhy(command, kept !== null && kept.session === here ? kept.text : null)
+      if (why !== null) return { deny: why }
+    }
+  }
   if (r.use !== undefined) {
     await spendDecision(makeIo($), r.use)
     adopt($, await refresh($))
   }
   return { deny: null, ...(clearable ? { trivialExit: true } : {}) }
+}
+
+// ---- The run driver (9.8.0, round 5) ------------------------------------------------------------
+// The mod carries a /temper:temper run itself: core/driver.ts decides, these functions reach the engine. A hook's own time
+// is bounded, a `$` call's is not, so the driver waits on its agents with `$` calls (a short sleep run by the host).
+
+const WAIT_MS = 90 * 60_000
+
+// One call of the CLI, through bash in the project. Streamed, so a long call (Check's suite and mutation score inside
+// `temper go`) has no time cap; leaving the loop at the person's interrupt ends the child.
+// At the person's interrupt the engine aborts a running child, and reading it throws ("aborted", seen in an interactive
+// terminal): that is the interrupt, answered as one (exit 130), never as a failed call the conversation should take up.
+async function hostRun($: Api, cwd: string, call: string, signal: AbortSignal | undefined): Promise<{ code: number; out: string }> {
+  let out = ''
+  try {
+    const child = $.process.spawn({ argv: ['bash', '-c', call], cwd })
+    for await (const piece of child) {
+      out += piece.text
+      if (signal?.aborted === true) return { code: 130, out }
+    }
+    const end = await child.result
+    return { code: end.code ?? 1, out }
+  } catch (x) {
+    if (signal?.aborted === true) return { code: 130, out }
+    throw x
+  }
+}
+
+// A short wait between looks at the driver's agents: a child of the host, so the hook's own time does not run.
+async function hostPause($: Api, cwd: string, seconds: number, signal?: AbortSignal): Promise<void> {
+  try {
+    const child = $.process.spawn({ argv: ['sleep', String(seconds)], cwd })
+    for await (const piece of child) void piece
+  } catch (x) {
+    if (signal?.aborted !== true) throw x
+  }
+}
+
+async function hostSpawn($: Api, a: GoAgent): Promise<string | null> {
+  const label = a.type.replace(/^temper:temper-/, '')
+  const s = await $.agent.spawn({ subagentType: a.type, prompt: a.prompt, description: `Temper ${label}`, ...(a.model ? { model: a.model } : {}) })
+  return 'agentId' in s && typeof s.agentId === 'string' ? s.agentId : null
+}
+
+// Waits until every agent of `ids` has ended (its turn.complete, or a status other than running), at most WAIT_MS, or
+// until the person interrupts.
+async function hostWait($: Api, cwd: string, ids: string[], signal: AbortSignal | undefined): Promise<Record<string, AgentEnd>> {
+  const out: Record<string, AgentEnd> = {}
+  if (ids.length === 0) {
+    await hostPause($, cwd, 5, signal)
+    return out
+  }
+  const start = await $.clock.now()
+  while ((await $.clock.now()) - start < WAIT_MS && signal?.aborted !== true) {
+    const list = await $.agent.list().catch(() => [])
+    let open = 0
+    for (const id of ids) {
+      if (id in out) continue
+      const kept = agentEnds.get(id)
+      const info = list.find(x => x.id === id)
+      if (kept !== undefined) out[id] = kept
+      else if (info !== undefined && info.status !== 'running' && info.status !== 'pending') out[id] = { text: '', ms: null }
+      else open++
+    }
+    if (open === 0) break
+    await hostPause($, cwd, 2, signal)
+  }
+  // An answer that came after the status changed is the agent's own: take it when it is there now.
+  for (const id of ids) {
+    const kept = agentEnds.get(id)
+    if (kept !== undefined) out[id] = kept
+  }
+  return out
+}
+
+// The question the driver is asking now: the tool.call hook below gives its dialog each option's description and preview,
+// which `$.ui.ask` cannot carry.
+let asking: GoQuestion | null = null
+
+async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
+  asking = q
+  try {
+    const a = await $.ui.ask(q.question, { options: q.options.map(o => o.label).slice(0, 4), header: q.header })
+    return typeof a === 'string' && a !== '' ? a : null
+  } finally {
+    asking = null
+  }
+}
+
+// Several questions in one dialog (the Blocking questions): `$.ui.ask` raises the first, the tool.call hook below puts
+// them all in and keeps every answer. When the engine kept the first question only, the rest are asked one at a time.
+let askingAll: GoQuestion[] | null = null
+let allAnswers: Record<string, string> | null = null
+
+async function hostAskAll($: Api, qs: GoQuestion[]): Promise<Array<string | null>> {
+  if (qs.length <= 1) return qs.length === 0 ? [] : [await hostAsk($, qs[0]!)]
+  askingAll = qs
+  allAnswers = null
+  let first: string | null
+  try {
+    const a = await $.ui.ask(qs[0]!.question, { options: qs[0]!.options.map(o => o.label).slice(0, 4), header: qs[0]!.header })
+    first = typeof a === 'string' && a !== '' ? a : null
+  } finally {
+    askingAll = null
+  }
+  const got = allAnswers as Record<string, string> | null
+  allAnswers = null
+  if (got === null) {
+    const rest: Array<string | null> = []
+    for (const q of qs.slice(1)) rest.push(first === null ? null : await hostAsk($, q))
+    return [first, ...rest]
+  }
+  return qs.map((q, i) => {
+    const v = got[q.question]
+    return typeof v === 'string' && v !== '' ? v : i === 0 ? first : null
+  })
+}
+
+async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
+  await recordAnswers($, { result: { questions: [{ header: q.header, question: q.question, options: q.options, multiSelect: false }], answers: { [q.question]: label } } })
+}
+
+async function driveRun($: Api, cwd: string, request: string | null, signal: AbortSignal | undefined, fix = false): Promise<DriveEnd> {
+  const port: Port = {
+    run: call => hostRun($, cwd, call, signal),
+    spawn: a => hostSpawn($, a),
+    wait: ids => hostWait($, cwd, ids, signal),
+    ask: q => hostAsk($, q),
+    askAll: qs => hostAskAll($, qs),
+    record: (q, label) => hostRecord($, q, label),
+    show: async text => {
+      // `$.ui.log` appends one line: the terminal draws a line break inside it as a mark and cuts the line at 2000
+      // characters, so a panel or a report (many rows, thousands of characters) is logged a row at a time.
+      if (text.trim() !== '') for (const row of logRows(text)) $.ui.log(row)
+      adopt($, await refresh($))
+    },
+    stopped: () => signal?.aborted === true,
+  }
+  if (fix && request !== null) return driveFix(port, pluginCli(), request)
+  return drive(port, pluginCli(), request, request === null ? null : slugOf(request))
+}
+
+// Whether the mod carries this /temper:temper: a request with no run active (a new run), or no words with a run of
+// /temper active (taking it up again). A run word, a request while another run is active (its restart question), a
+// /temper:fix run, an inert or switched off mod: the model loop of commands/temper.md, as before.
+async function drives($: Api, args: string): Promise<{ request: string | null } | null> {
+  const snap = await refresh($)
+  if (snap.inert || snap.enforcement === 'off' || snap.failOpen || snap.runCommand === 'fix') return null
+  const req = requestOf(args)
+  const active = snap.slug !== null
+  if (req !== null && !active) return { request: req }
+  if (args.trim() === '' && active) return { request: null }
+  return null
 }
 
 // ---- /temper:temper -------------------------------------------------------------------------
@@ -465,11 +657,47 @@ export const register: Register = (on, opts) => {
   // Only the words the mod answers are handled here; anything else (a feature description, a decision word, or nothing)
   // goes on to the prompt based command unchanged.
   on('command.run', async ($, e, next) => {
-    if (e.command !== 'temper' && e.command !== 'temper:temper') return next(e)
+    if (e.command !== 'temper' && e.command !== 'temper:temper') {
+      // A door (/temper:plan "...") or another command: no request is held to it.
+      if (/^temper:/.test(e.command)) await makeIo($).storeDelete(REQUEST + root).catch(() => undefined)
+      // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; what needs a model goes to fix.md.
+      if (e.command === 'temper:fix' || e.command === 'fix') {
+        const bug = requestOf(e.args)
+        const snap = bug === null ? null : await refresh($).catch(() => null)
+        if (bug !== null && snap !== null && !snap.inert && snap.enforcement !== 'off' && !snap.failOpen && snap.slug === null) {
+          const end = await driveRun($, root, bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
+          const after = await refresh($).catch(() => null)
+          if (after !== null) adopt($, after)
+          if (end.kind === 'done') return { text: end.text }
+          if (after === null || after.slug === null) return next(e)
+          $.ui.log(`Temper: the fix goes on in the conversation (${end.why}).`)
+          return next({ ...e, args: end.args })
+        }
+      }
+      return next(e)
+    }
+    const req = requestOf(e.args)
+    if (req !== null) {
+      const session = await $.session.id().catch(() => null)
+      if (session !== null) await makeIo($).storeSet(REQUEST + root, { session, text: req } satisfies Kept).catch(() => undefined)
+    }
     const parsed = parseArgs(e.args)
     if (parsed === null) {
       // The person's own run word, from the prompt box, opens the pane in full mode; any other origin opens nothing.
       if (e.origin?.kind === 'composer') await openForPerson($).catch(() => undefined)
+      // 9.8.0 (round 5): the mod carries the run itself, with no model in the main session; what needs a model goes on
+      // in the prompt based command, from the same state. Any failure hands the run to that command as well.
+      const d = await drives($, e.args).catch(() => null)
+      if (d !== null) {
+        const end = await driveRun($, root, d.request, (next as { signal?: AbortSignal }).signal).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
+        const after = await refresh($).catch(() => null)
+        if (after !== null) adopt($, after)
+        if (end.kind === 'done') return { text: end.text }
+        // No run was started: the request goes on as the person typed it, and the prompt based command starts the run.
+        if (d.request !== null && (after === null || after.slug === null)) return next(e)
+        $.ui.log(`Temper: the run goes on in the conversation (${end.why}).`)
+        return next({ ...e, args: end.args })
+      }
       return next(e)
     }
     const out = await handleTemper($, parsed).catch(() => null)
@@ -490,11 +718,16 @@ export const register: Register = (on, opts) => {
 
   // Subagent calls arrive here too (e.agentId names the loop); they are held to the same rules as the main loop.
   on('tool.call', async ($, e, next) => {
-    const g = await guard($, e.tool, { ...e }).catch(() => failedGuard(e.tool))
+    const main = (e as { agentId?: unknown }).agentId === undefined
+    const g = await guard($, e.tool, { ...e }, main).catch(() => failedGuard(e.tool))
     if (g.deny !== null) return { deny: g.deny }
+    // The driver's own question: the dialog shows what each option does (the labels alone came through `$.ui.ask`).
+    const raised = (e as { questions?: unknown }).questions
+    const many = e.tool === 'AskUserQuestion' && askingAll !== null ? dialogQuestionsAll(raised, askingAll) : null
+    const filled = many ?? (e.tool === 'AskUserQuestion' && asking !== null ? dialogQuestions(raised, asking) : null)
     let result
     try {
-      result = await next(e)
+      result = await next(filled === null ? e : ({ ...e, questions: filled } as typeof e))
     } finally {
       // After the TRIVIAL exit ran (or failed): the cleared run is no longer held, and the run is read again. When the
       // clear did not take effect, build-state.json is still there and the run reads back as it was.
@@ -504,8 +737,20 @@ export const register: Register = (on, opts) => {
       }
     }
     const errored = (result as { isError?: boolean }).isError === true
+    // Every answer of the driver's dialog of several questions, for hostAskAll.
+    if (many !== null && !errored) {
+      const r = answeredResult(result)
+      if (r !== null) allAnswers = Object.fromEntries(Object.entries(r.answers as Record<string, unknown>).filter((kv): kv is [string, string] => typeof kv[1] === 'string'))
+    }
     // A command may have moved the run (the CLI), and an answer is a decision: read the run again.
-    if (e.tool === 'AskUserQuestion' && !errored) await recordAnswers($, result).catch(() => undefined)
+    if (e.tool === 'AskUserQuestion' && !errored) {
+      // A skill option chosen (Grill Me, Teach Me): its questions are the session's to ask until the run moves on.
+      if (main) {
+        const snap = await ensure($).catch(() => null)
+        if (snap !== null && skillChosen(snap.view, result) !== null) await makeIo($).storeSet(SKILL + snap.at.run, snap.at.step).catch(() => undefined)
+      }
+      await recordAnswers($, result).catch(() => undefined)
+    }
     else if (e.tool === 'Bash') await refresh($).catch(() => undefined)
     return result
   }).catch(($, e, next) => {
@@ -571,6 +816,23 @@ export const register: Register = (on, opts) => {
     return props === null ? next(e) : next({ ...e, props })
   })
 
+  // A Temper agent's message, drawn in full where the engine draws one dim line naming its sender (core/view.ts,
+  // isTemperAgent). Other senders, the ctrl+o transcript and the mod's off mode keep the engine's drawing.
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    const p = e.props as { text: string; isExpanded: boolean; from?: { name: string } }
+    const sender = p.from?.name ?? ''
+    if (p.isExpanded || !isTemperAgent(sender) || p.text.trim() === '') return next(e)
+    const ui = await readUi($).catch(() => null)
+    if (ui !== null && ui.mode === 'off') return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{`Message from @${sender}`}</Text>
+        <Text>{p.text}</Text>
+      </Box>
+    )
+  })
+
   // One Temper line above the engine's dialog, which stays exactly once in the tree.
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     const engine = await next(e)
@@ -581,6 +843,11 @@ export const register: Register = (on, opts) => {
 
   // A line beneath the answer (stage, progress, next stage). Nothing is submitted.
   on('turn.complete', async ($, e, next) => {
+    // The answer and the time of each subagent, for the run driver that waits on it (9.8.0).
+    if (typeof e.agentId === 'string' && e.agentId !== '') {
+      agentEnds.set(e.agentId, { text: typeof e.answer === 'string' ? e.answer : '', ms: typeof e.durationMs === 'number' ? e.durationMs : null })
+      if (agentEnds.size > 200) agentEnds.delete(agentEnds.keys().next().value as string)
+    }
     const result = await next(e)
     try {
       if (e.agentId !== undefined || e.reason !== 'answer') return result

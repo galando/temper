@@ -3,6 +3,401 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.8.0: proof the CLI computes, questions the person clicks, and fewer steps
+
+Built from what a benchmark showed (`docs/evidence/bench-2026-11.md`): on complete specs, plain Claude Code was as
+correct as Temper at a tenth of the cost; on vague requests, asking before building mattered, and a one line prompt
+asked as well as Temper. 9.8.0 keeps what only Temper does (a gate the model cannot talk past, the person's decisions
+on record), proves more of it with the CLI instead of an agent, asks better questions, and takes out steps.
+
+**Check, run by the CLI**
+- **The CLI runs Check itself (`temper check run`, new `scripts/check_run.py`).** *Before:* a Sonnet agent ran the suite
+  and typed the results into the ledger; a row it forgot (coverage recorded as "none") failed the gate for no fault of
+  the code. *Now:* the CLI runs the suite with coverage, each scenario's `Test:` command and the new gates below, and
+  records each as a real run. It detects Python (pytest, unittest, coverage.py), Node (npm test; jest, vitest, c8 or
+  `node --test --experimental-test-coverage`), Go, Rust, Maven and Gradle; `check.commands.test` and
+  `check.commands.coverage` name the commands for any other stack. The Check agent runs only for a stack the CLI cannot
+  read, and for criteria validated by code or a metric.
+- **When no coverage tool is there,** the coverage row says what to install, and Check runs again once it is.
+
+**New gates, computed by the CLI**
+- **Mutation score (`mutation score >= threshold`, `check.mutation-threshold`, default 70).** Coverage says a line ran;
+  this says a test would notice it break. One small bug at a time is planted in the lines the run changed (a comparison
+  flipped, + and - swapped, a constant moved by one, `and`/`or` or `&&`/`||` swapped, `true`/`false` swapped, a `not`
+  dropped, a call deleted), and the suite must catch it. Python is read as a syntax tree; JavaScript, TypeScript, Java,
+  Kotlin, Go, C#, Rust, Swift, Scala, C, C++, PHP and Ruby as text, never inside a string or a comment. At most 40
+  mutants and a time budget (`TEMPER_MUTATION_BUDGET_S`, default 300 s).
+- **Regression proof for a fix (`regression proof`).** The tests a fix added or changed must fail on the code before the
+  fix and pass with it; the CLI checks out the old code and runs them.
+- **Acceptance tests written before Build (`acceptance tests written before Build`, new `agents/acceptance.md`).** Before
+  the first task, an agent that writes no code writes tests from the approved intent into the spec's `acceptance/` folder
+  and locks them (`temper acceptance lock`). Check runs them as locked; a change after the lock fails the gate. A builder
+  can no longer encode the same wrong guess in its code and its tests.
+- **Scope in every run.** The commit gate's declared-files row applied to unattended runs only; now every run with a plan
+  has it. Test files, the spec folder and files the person allowed at a Scope drift question count as in scope.
+- **A criterion validated by hand is confirmed by the person** at the Check question ("Confirmed"), never claimed by an
+  agent. A deferred optional criterion needs no evidence (as in the Build report).
+
+**Better questions**
+- **Intent drafts the rules, the person clicks.** It works through a checklist (who may do it, time limits, amounts,
+  states, where it shows, exceptions) and writes each open rule as a Blocking question with ready answers
+  (`choices: A | B | C`, the recommended first); what it does not ask goes under `### Assumptions`, for the person to scan.
+  Where a house rule gives a default, it asks whether the rule holds. It runs on Sonnet. It no longer asks for a reviewer
+  (the header is optional: the person who accepts at the gate is the approver).
+- **Carry forward works.** Carry forward on a Blocking question used to record nothing, leaving the Intent gate red with
+  no way out; `temper intent carry` now marks it Deferred.
+- **The Context check names what the plan leaves out.** "Is this the right context for the plan?" became a concrete
+  question from the map's `ignore` and `gap` lines ("The plan leaves out: refunds in the export. Is that right?"). Any
+  answer but "As planned" sends Plan back to revise with it (`temper plan review --redo`); before, the answer was only
+  written down.
+- **Design runs on risk:** for a complex plan, and for a medium one only at risk H (Plan raises it for a data model,
+  money, permissions or an integration). `risk` is kept by the CLI (`temper risk`), so it cannot be lowered to skip
+  Design. A concern the person must decide becomes a Blocking question with ready answers, asked before the Design
+  question. ADRs only in a project that keeps them (a `docs/decisions/` folder with one in it).
+
+**Fewer steps**
+- **Unattended, with no setting.** "Autonomous: run the rest unattended" is offered at the last question before Build
+  (the plan question, or the Design question when Design runs). `autonomy.enabled` is no longer read; it was `false` in
+  the shipped config, so most runs never saw the option. An unattended run takes a Build task an earlier task already
+  built as done, instead of parking; `auth/`, `payment/` and `billing/` changes park it only when they are outside the plan.
+- **A plan with one group goes on to the merge by itself;** the Build question gains "Change something".
+- **The report page is written without a question.**
+
+**A lighter orchestrator (measured: 127 main session turns, 87k tokens read each, for one feature)**
+- **`temper go` (new `scripts/go.py`).** The CLI runs its own steps (gates, group starts, merges, Check's run, an armed
+  run's moves) and hands the session one compact object at the next agent launch, question or steps. In the measured run
+  59 of 88 tool calls were such steps, each a turn re-reading the whole conversation. `temper next --json` stays the full
+  view; the loop in `commands/temper.md` uses `temper go`. It never runs a call only the person may cause.
+- **The loop runs on Sonnet** (`model: sonnet` on `/temper:temper` and `/temper:fix`): it relays the CLI's decisions and
+  the person's answers, and decides nothing, so it need not run on the session's model. (Ignored where the model is
+  restricted, or in auto mode for a model it does not support.) With the mod loaded, the mod carries the run itself
+  (round 5, below), and the loop runs only what is handed back to it.
+- **One build agent per chain.** Tasks that run one after another anyway (a dependency, a shared file) go to one agent,
+  which starts, builds and gates each in order (`task gate --if-running` covers a task it left running); independent
+  tasks keep agents of their own, launched together. In the measured runs every task ran alone.
+- **The commit message is drafted by the CLI:** `feat(<slug>): <the intent's title>`, and for a fix the RCA's title,
+  root cause and regression tests.
+- **"Accept it as done" records its reason itself** (an earlier task built it), with no second question.
+
+**No more loops at Check (measured: two runs at $26.91 and $38.24, against about $3 for the others)**
+- **A step back from Check carries what failed.** Build's fix pass got only the name of the failed run ("acceptance
+  (written before Build)"), passed its own tests, and Check failed again on the same test. The step back now keeps the
+  tail of each failed run's output (the failing test and its assertion) and, for a low mutation score, the surviving
+  mutants, which the mutation row also names.
+- **A wrong locked acceptance test has a way out.** In one run the test assumed customer ids were global, and the code
+  numbers them per tenant: no change to the code could pass it. Check now offers "Correct the acceptance test" with the
+  person's reason (`temper acceptance reopen`, only the person's); the writer corrects only the failing test against the
+  intent and locks it again, and the gate row shows the reason. It is the recommended option once a step back to Build
+  left the same failure.
+- **A lock is taken once.** A builder in one run edited a locked test; it could have locked it again. `acceptance lock`
+  now refuses a second lock unless the person reopened it, the lock keeps a copy, and "Restore the locked tests"
+  (`temper acceptance restore`) puts a changed test back.
+- **Design may change the tasks.** A Design answer (a fee floor) changed tasks.md, and Build refused to start ("the
+  approved plan changed"). The Design question now says what Design changed ("Task 1 gains src/floor.sh", "new Task
+  7", from a copy of the tasks the CLI keeps at the plan gate), and Continue approves them with the design; an
+  unattended run parks for the person instead. A Build agent that edits tasks.md is still refused.
+- **Files outside the plan at the commit gate:** "Add to plan" is the first option (the same record as at a Scope drift
+  question), next to Override and commit.
+
+**Shorter runs, and rules that cannot be skipped**
+- **Check runs while Review reads.** Review writes no code, so the CLI starts Check's suite, coverage and mutation score
+  in the background when the Review agent starts (`temper check ahead`); `check run` adopts that run when the tree is
+  unchanged since, and runs again otherwise. On a project with a slow suite this takes the whole Check run off the
+  clock.
+- **Design on a fully specified request is skipped.** A complex plan runs Design when Intent had to ask the person
+  something or when the risk is H; when the request settled every rule and the risk is below H, the plan goes on to
+  Build.
+- **A failing locked test is triaged before a Build round.** An agent that changes nothing reads the failing test, the
+  intent and the code, and records which looks wrong (`temper acceptance triage`); the Check question recommends
+  correcting the test or stepping back to Build from that, and says why. Before, a wrong test cost a Build and a Review
+  round first.
+- **The rules checklist is recorded.** A draft intent lists each checklist item (who, when, how much, states, where it
+  shows, exceptions) as asked, assumed or not applicable under `### Rules covered`, and the Intent gate fails one that
+  leaves an item out. Exceptions name six kinds: excluded or exempt, twice, at the edge, gone, someone else's, halfway.
+- **House rules first.** A Blocking choice marked `(house rule)` (what CONVENTIONS.md, CLAUDE.md, AGENTS.md or the code
+  already does) is listed first by the CLI, as the recommended answer, whatever order the model wrote.
+- **Every state is tested.** When intent.md lists `**States:**`, the acceptance writer brings a record into each and
+  reads it back, and tries each action in each state; `acceptance lock` refuses tests that never name a listed state.
+- **`scripts/temper` is under 256 KiB again** (it had grown past the plugin directory's limit): three Python blocks
+  moved to their own files, and `quality-check.sh` now fails any file over 256 KiB.
+
+**Fixes**
+- **"Accept it as done" looped.** A covered Build task's option shared the move `accept` with accepting a review
+  finding; it is now `covered`.
+- **The CLI called from a subfolder** (after writing a file in `docs/`) started a second `.temper` there; it now finds
+  the project's `.temper` above it (never from the home folder or inside the plugin folder).
+
+**Not done, on purpose:** small plans still build in worktrees. The benchmark showed the time in Build goes to model
+turns, not to worktrees; the one problem worktrees caused (the loop above) is fixed.
+
+**The benchmark** moved to `bench/` (no part of the CLI) and gained a TypeScript task, a mutation scorer for C-style
+languages and a Node grader. The 9.8.0 numbers are in `docs/evidence/bench-2026-11.md`.
+
+### Round 5, in the same version: a main session that only relays, and fewer turns for it
+
+Built from round 5 of the benchmark (`docs/evidence/bench-2026-11.md`), which priced every request from Claude Code's
+own logs. The main session cost $0.30 to $0.82 a run, about evenly reading the cache, writing it and writing output;
+Opus (Plan and Design) was about half of every run. A Haiku 5.5 main session is nearly free while its context stays
+under 100,000 tokens and five times dearer above it, and in round 4 it left the script. Round 5 makes the session unable
+to leave the script, and takes out the turns and the context it did not need.
+
+**The main session relays, and the mod holds it to that (`hooks/temper-mod/core/session.ts`)**
+- During a `/temper` run the conversation itself writes no file with the editing tools, runs only the temper CLI and
+  commands that only read (no redirect into a file, no interpreter, no `git add`, `git commit` or `git checkout`),
+  launches only an agent the CLI named at the run's stage with its type, its model and its prompt as given, and asks
+  only a question the CLI gives at the step (header, question and option labels) or a Scope drift question. The agents
+  keep their stage rules. A small change window the person opens, and a skill they choose (Grill Me, Teach Me), are the
+  two openings; a command the CLI wrote whole passes as written. Round 4's Haiku session edited the spec files and the
+  locked acceptance tests and asked a question of its own; a Sonnet session once launched the root cause agent on a
+  cheaper model. Each is now refused, with what to do next.
+- The CLI set in a variable in the same command (`T=/path/scripts/temper; $T go`) is read as the CLI; a program in a
+  variable set anywhere else is refused.
+- A run starts from the person's request, word for word: the mod keeps what they typed after `/temper:temper` and
+  refuses a `temper state init` whose `--feature` differs from it, in the conversation that typed it (a Haiku session
+  started a run of a dozen rules with a one line summary, and every agent planned from that line).
+- The Intent agent's prompt carries the request with one period after it (a request that ended with a period got two;
+  a Haiku session tidied them, and the guard refused the launch as another prompt).
+- A typed change request goes to the stage's agent (`temper state redo <stage> --reason`), never to the session.
+- The view carries what the guard needs: `next.agents` (every agent named at the run's stage, the current action's
+  first: a task's `task start` turns the next action into `wait` before its agent is launched), `blocking_asks` and an
+  option's `skill`. The mod keeps no memory of its own; the engine loads it again between turns.
+
+**The plan keeps the request's routes**
+- The plan gate's new row `request routes kept`: every `METHOD /path` the request names is in plan.md or tasks.md,
+  method and shape unchanged (a parameter may be renamed). A Plan once built the request's `POST /invoices/{id}/refunds`
+  as another path, and Design, the acceptance tests and Build followed it. A request that names no route passes, and so
+  does a route the person changed in the intent's Decisions.
+
+**Fewer turns, and less for each to read again**
+- **`temper intent answer '<question>' '<answer>'`** writes the person's answer to a Blocking question into Decisions
+  (and a `Design:` question's concern in design.md). The session no longer reads intent.md and edits it with a script
+  (two to four turns a stage that asks, and where a cheaper session began editing spec files). `temper go` hands each
+  Blocking question ready to ask, with its answer call; one call takes every answer of a dialog.
+- **`temper spec branch` and `temper spec commit '<message>' [-- FILE...]`**: leaving Intent, Plan or Design, and the
+  record commit, are temper calls (before: `git checkout`, `git add` and a `git commit` that had to go in a call of its
+  own). **`temper spec deviations`** writes plan.md's Deviations from build-context.json (an instruction to the session
+  before).
+- **An agent's gate call prints its failed rows only** (`temper gate <stage> --brief`): the passed rows were the
+  largest single source of the session's context (22,000 to 28,000 characters a run).
+- **`temper go`'s question is slimmer**: the question as it is asked, and per option only what the answer runs.
+- **A fix pass's findings are short** in the agent's prompt (200 characters each, with the file that holds them whole):
+  a raw traceback in a prompt was copied wrong by a cheaper session, and its launch was refused.
+- **The fix run's lesson is written by the Fix agent**, which has the root cause in hand, not by the session at the
+  commit.
+- **Every view is written by one path** (`cli_ctx.py view`), with the models `temper next` resolves: a view written by
+  `group start` once named an agent with another model than `next` did, and the guard refused the launch.
+
+**Agents**
+- Plan and Design are told never to read the plugin's scripts to learn a format (a measured Plan spent three turns in
+  the CLI's Python on the `Test:` line).
+
+**The benchmark**
+- A resumed session's result carries the session's cumulative cost; `run.mjs` added the results up, so a resumed run
+  was counted two or more times. It now takes the last result when the costs only grow.
+- The SDK stream records each message's output count at its first block, so a price from `transcript.jsonl`
+  understates output. `run.mjs` copies Claude Code's own session logs into the run folder, and the new
+  `bench/loop.py` prices every request from them (Opus $4/$20, Sonnet $2/$10, Haiku $0.10/$0.50; cache reads $0.20,
+  $0.10 and $0.01; a 5 minute write 1.25 times the input rate, a 1 hour write 2 times; a Haiku request over 100,000
+  tokens 5 times), matching the SDK's cost to the cent, and shows the main session turn by turn.
+
+**Measured** (round 5 in `docs/evidence/bench-2026-11.md`, 27 counted runs of four tasks): with the loop on Haiku 5.5
+and these guards, the main session cost $0.03 to $0.09 a run (the Sonnet loop: $0.27 to $0.85), and every run met
+every hidden test, every fact of the brief and the plan's scope (partial-payments only once the request checks were
+in: before them, 14/26 twice). A whole run was about 30% cheaper on a bug and 23% to 27% cheaper on a feature. The
+Sonnet loop on the same code was only a little cheaper. Opus (Plan, Design, the root cause agent) is now two thirds to
+four fifths of a run.
+
+**The loop stays on Sonnet** (`model: sonnet` in `commands/temper.md` and `commands/fix.md`). A guarded Haiku loop
+met every hidden test in 7 of 8 runs of a confirming pass (the eighth stopped at Build on three CLI defects, fixed
+below). Without the mod nothing guards it, and in 8 runs with no mod it left the script twice: it edited and committed
+the project's `CONVENTIONS.md`, and it started a run from a one line summary of the request (17/26). With the mod the
+mod carries the run and the loop's model matters only for what is handed back, the steps that need judgment; without
+it Sonnet is the loop that was measured safe. Against vanilla Claude Code on the same tasks the same day, Temper met
+every hidden test where vanilla did and more on the vague task (11/11 against 8/11).
+
+**Work the CLI does instead of a model**
+- **The CLI draws the Plan, Design and RCA panels** (`temper panel plan | design | rca <rca.md>`) from the files those
+  stages wrote; it counts the criteria, the scenarios and the files to create or modify itself. Each Opus agent drew
+  its own 76 column box (a Python script to pad it, then the box again as its last message: 2,000 to 3,000 output
+  tokens and 30 to 40 seconds a stage) and now returns one line. Plan writes the terminal drawing of its diagram into
+  plan.md's Diagram section; RCA writes `rca.md` as plain fields, which Fix and the fix commit message read.
+- **The project brief** (`temper brief`, `.temper/brief.md`): from the request's own words (file paths, backticked
+  names, routes, nouns) the CLI ranks the files the request reaches, lists their tests, copies the conventions and the
+  best ranked files whole, and lists the project's files. The Plan and Design actions make it; RCA makes it from the
+  bug text. They read one file first, instead of `cat` of the whole project and a second turn to read the saved output.
+  A word counts by how rare it is in the project, a file with no extension (a script) is read, and every part is
+  bounded: on a 529 file repository the brief is 57 KB in 0.3 s; on 7,810 files, 42 KB in 7 s.
+- **Intent asks Who, When and How much first.** Two measured runs skipped a refund window: one wrote "When: not
+  applicable (no time window in the request)", the other assumed "no time limit" while it asked where refunds show.
+  The Intent gate fails both: the request's silence is the reason to ask, and within its six questions the first three
+  items of the checklist come first.
+
+**The mod carries the run (the run driver, `hooks/temper-mod/core/driver.ts`)**
+- With the mod loaded, `/temper:temper <request>` (no run active) and `/temper:temper` (a run active) are carried by
+  the mod itself, with no model in the main session: it runs `temper go` and the calls the CLI gives, launches each
+  agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report,
+  asks each question the CLI gives (its Blocking questions too) and runs the calls of the answer the person picks.
+  The guard checks its questions and agents as it checks the session's.
+- It hands the run to the conversation for what needs a model or the person's words: a typed answer (as `discuss`),
+  a skill, the HTML plan review, a small change window, a pull request step, an agent's DRIFT rows, a name question,
+  a failed call. The CLI holds the run, so the conversation goes on from the same state. Without the mod, a
+  `/temper:fix` run, a run word or a second request, the conversation carries the run as before.
+- An option the conversation must carry out (a skill, the HTML plan review, a small change, a name to type) is handed
+  over as `chose <label>` before any of its calls runs, and the conversation carries it out as the answer given, with
+  no second question; a list of steps with one only the conversation can do (a pull request) is handed over whole, so
+  none is left half done. Found by the e2e driver below: a skill chosen in the dialog was asked about again, never run.
+- `/temper:fix <bug>` with no run active is carried too: the CLI's setup, the root cause agent with the prompt of
+  `commands/fix.md`, the panel from `rca.md`, the run's state, the fix branch, then the same loop.
+- The e2e driver gains a third mode, `driver` (`bun scripts/e2e/run.ts all`): the same 20 scenarios carried by the run
+  driver's core, the real CLI's setup included. It found the half done steps above, and a scenario that wrote the pull
+  request body into the project (`reference/pr.md` says `mktemp`), which the commit hook the setup installs refuses.
+- The driver's question dialog shows each option's description and its preview (the Context check's table): `$.ui.ask`
+  takes labels alone, and the mod's own tool call hook gives the AskUserQuestion it raises the CLI's descriptions and
+  previews back (a live probe confirmed the dialog receives them). An interrupt stops the driver between steps and
+  while it waits on an agent, with no model turn after it; a CLI call streams, so a long Check inside `temper go` has
+  no time cap.
+- **Checked in an interactive terminal** (Claude Code 2.1.318, tmux): `/temper:fix` held the command while the root
+  cause agent worked, the agent's permission prompts reached the person, and the gate dialog showed each option's
+  description. Two defects showed there and nowhere headless, both fixed: a panel logged in one call was drawn as one
+  row with marks for its line breaks and cut at 2000 characters (now logged a row at a time), and at Esc the read of
+  the aborted child threw, which the driver took for a failure and handed to the conversation (now it is the stop, with
+  no model turn after it). Probes in the same terminal confirmed both fixes and a hand back (`next` with new words).
+  The rest of that run was not taken further: answering a permission prompt is the person's.
+- The mod's reviewed calls gain `agent.spawn`, `ui.ask`, `ui.log`, `clock.now` and `process.spawn` (the one process
+  call, for the CLI's calls): `scripts/check-mod-calls.sh`, `docs/mod.md`, `docs/trust.md`.
+- Measured on vague-refunds (2 live runs, `docs/evidence/bench-2026-11.md`): the run the driver carried to the
+  commit cost $0.00 in the main session, with no main session turn, $1.69 and 678 s in all (the Haiku loop on the
+  same task: $2.00 to $2.31, 689 to 1,010 s). The other run handed back at the Intent gate on a driver defect, fixed
+  (the action's `gate` call after the Blocking answers), and the conversation finished it: 11/11.
+- **The final pass** (the four tasks twice on the final code, `docs/evidence/bench-2026-11.md`): against 9.8.0 before
+  round 5 a run costs 28% to 54% less and takes 15% to 45% less time, with 7 of 8 runs meeting every hidden test.
+  Against vanilla Claude Code it costs 1.3 to 1.4 times as much on a bug and 4 to 5 times on a feature.
+- **The shipped code, measured** (16 runs, the Sonnet loop, with the mod and without, `docs/evidence/bench-2026-11.md`):
+  every run met every hidden test, and every vague-refunds run met all 5 facts, its Intent agent asking the time limit
+  each time. With the mod the driver carried 7 of 8 runs with no main session turn: a bug run it carried whole cost
+  $0.45 to $0.50 in 88 to 110 s, a feature $1.93 to $2.28 in 11 to 14 minutes (means), 31% to 55% less than before
+  round 5 on three tasks. Without the mod the Sonnet loop stayed on the script in all 8 runs, at $0.28 to $0.97 of main
+  session a run.
+
+**Build: faster, from where the measured time went**
+- **The CLI draws each Build task's panel** (`temper panel task N...`, after the task gates) from what it recorded:
+  the attempt, the RED and GREEN runs of `task test`, the gate's verdict and reason, the files of the task's commit and
+  the scenarios the task owes. A Build task agent drew the 76 column box itself, with a Python script to pad it: about
+  a minute of each Haiku Build agent's three, in the 16 runs of the shipped code, and the driver never showed that box.
+  The agent now returns one line a task (`TASK N: done`, or `TASK N: stopped: why`), and the driver shows a stopped
+  line, the one thing the CLI cannot know.
+- **A command that would wait for input until the Bash timeout is refused** (`scripts/guards/block-stdin-wait.sh`, a
+  `PreToolUse` hook on Bash in the plugin's hooks, with the mod or without it). Claude Code runs a command that holds a
+  heredoc with its input left open, so a `cat > file` with no input in it waits two minutes, and the agent gets
+  nothing back. In the 16 runs, 4 commands of Build agents did this: 480 seconds, 14% to 24% of each of the 3 feature
+  runs it hit. Replayed through the guard, the 902 Bash commands of those runs had exactly those 4 refused. It acts
+  only in a folder with a `.temper` folder at or above it, and fails open.
+- **Measured** (`docs/evidence/bench-2026-11.md`, 10 runs): no command hung, and a Build task agent took 122 s on
+  average against 193 s. A whole run moved less than its run to run noise (6% to 10% faster with the mod on the two
+  feature tasks). Every hidden test passed. The same page has the seven other benchmark tasks on this code against
+  vanilla Claude Code: vanilla met all 84 hidden tests, Temper 82, at 3 to 13 times the cost.
+
+**From the first hands-on run in a terminal**
+- **Autonomous is Build alone** ("Autonomous Build: run Build unattended"): Build runs every group and task by itself
+  and parks if it stops; when its gate passes, the run goes on to Review and turns back to interactive, so Review,
+  Check and the commit ask the person as in every run. An armed Review or Check no longer loops back by itself. The CLI
+  records that Build ran unattended (`ran_unattended`, set when the person arms the run, refused to `state set`), and
+  the commit gate still holds such a run to the plan's files and to `autonomy.park-on-touch`.
+- **One answer is one decision.** With the mod carrying the run, the answer in the dialog reached both the guard's
+  hook and the driver's own record, and the pane's "Your decisions" listed it twice. The book keeps an answer once per
+  run, step and stage.
+- **A stage that waits for the person is not red.** The bar drew Intent red before its first question: its check
+  "failed" only because the Blocking questions were open. The view now marks such rows (`waits`): open Blocking
+  questions at any stage, the Context check and a fresh review at Plan, a criterion only the person confirms at Check,
+  and a criterion record the CLI writes itself at Build. The mod draws the stage as current; a real failure stays red.
+- **Panels in the mod's output are a few rows.** A panel logged a row a call read as forty rows of "temper:", and a
+  dialog's preview cannot hold one ("cannot be shown in full", seen in a terminal). The driver shows each CLI panel as
+  its title, a row a fact and a row a section, and says where the Plan's diagram is; without the mod the conversation
+  prints the whole box, which draws in markdown.
+- **A Temper agent's message is drawn in full**, where the engine folds a message from another agent into one line
+  ("Message from @temper-temper-plan (ctrl+o to expand)"). Other senders, the ctrl+o view and the mod's off mode keep
+  the engine's drawing. Written against the documented message row; not yet seen live.
+- **The Blocking questions come in one dialog**, four at most (the rest in the next), as the conversation already asked
+  them without the mod: the driver asked six in six dialogs. `$.ui.ask` raises the first question, and the mod's tool
+  call hook puts every one in and reads back each answer (checked in a terminal: one dialog, a tab a question, a review
+  before Submit, every answer returned). When the engine keeps only the first, the rest are asked one at a time.
+- **The fresh review's findings below high are the person's call at the plan question.** Only a critical or high
+  finding failed the plan gate; medium and low ones passed it, and the question offered Stage by stage as if nothing
+  were found (a person who asked for the review saw two medium findings, one a real gap, go on unseen). The question
+  now names the open findings and offers Revise the plan (the Plan agent fixes or contests each, then the plan is
+  checked again): first and recommended when one is medium, after the ways on when all are low.
+- **A manual task's name question can be shown.** It held one option (Cancel), and the question tool refuses a dialog
+  with fewer than two, so a run with a manual task stopped there, with the mod and without it (seen in a terminal: the
+  guard rightly refused the confirm call that no answer allowed). It now offers "Type it below" (it records nothing; the
+  question is asked again) and Cancel; the typed name is the answer, and the guard counts no option of the question
+  as a name. With the mod, the driver asks it itself and runs the confirm calls with the name.
+- **"Make a small change" says who makes it:** Claude makes one small change in the conversation, with no loop back to
+  Build, and asks the person what to change when the fix is theirs ("Change the work yourself" read as the person's
+  own edit).
+- **An earlier attempt of the same run name no longer blocks Build** (`scripts/temper`, group start and task start).
+  Two runs on a person's machine stopped at `task start`: an earlier attempt had left its group and task branches, and
+  git records of worktrees whose folders were gone. Group start then took such a record for this run's worktree and
+  went on with no folder, and task start failed on it, or refused the leftover branch and
+  told the person to run git. Now a record whose folder is gone is cleared, a clean leftover worktree is removed, and a
+  branch this run did not make is moved aside to `refs/temper/kept/{slug}/earlier-{time}/{G or Tn}` with its commits
+  kept, all said on one NOTE line; a leftover worktree with uncommitted work is never removed (exit 3, naming it). This run's own
+  group worktree whose folder went comes back on its branch at the next task start or task gate. Claude Code 2.1.318
+  deletes nothing under `.claude/worktrees/` when a session starts or ends (checked in a sandbox), so the folders went
+  by another hand.
+- **The driver starts every task before it launches any agent.** With two tasks ready, it launched Task 1's agent and
+  then handed the run back when `task start 2` failed, with Task 1's agent running and no one to follow it ("a before
+  call failed"). Now every agent's before calls run first; when one fails, the agents whose tasks started are launched
+  and followed to their gates, and the hand back names the CLI's FAIL line.
+- **Earlier attempts' branches leave `git branch`** (`scripts/task_ops.py`, `keep` and `tidy`). A re-plan renamed each
+  group and task branch to `temper/{slug}/replan-{time}/{G}`, and nothing ever deleted them, so repeated attempts piled up
+  in `git branch`. That work now goes to `refs/temper/kept/` with its commits, and `temper state clear` (the end of a
+  run, and Start over) moves the branches older versions left there too, and drops what was kept longer than
+  `build.grouped.keep-days` (30 days; 0 keeps everything). A branch checked out in a worktree is left where it is.
+- **Room in the CLI:** the grouped plan gate's rows and the quality bands moved from `scripts/temper` into
+  `scripts/plan_rows.py` and `scripts/bands.py`, as they ran; the CLI had 886 bytes left under the directory's
+  256 KiB limit for a file, and has 11 KiB now.
+- **The words of a question match the run** (`scripts/flow.py`), found when every question was read for the flow
+  explainer: More options named what used to be behind it once Make a small change went in or Teach Me went out
+  (it lists what is there now); in a `/temper:fix` run, a failed Review asked "Loop back to Build?" over a Loop back
+  to Fix option, Change something and Make a small change spoke of Build, Save for later named `/temper:temper`, and a
+  small change whose review failed offered no way back to Fix. The page question at Commit, asked nowhere since the
+  page is written without one, is gone, and `docs/flow.md` no longer describes it.
+
+**Three gaps of the last measured pass**
+- **Exempt is an item of the rules checklist, asked with Who, When and How much** (`scripts/gate_rows.py`,
+  `agents/intent.md`): what never gets the action (below an amount, a kind of record, a state), asked as one open
+  question that names every kind of exclusion. A vague-late-fees run spent its last questions on narrow exceptions
+  (once ever, fees on fees), never asked which invoices are exempt, and missed "invoices under 20.00 are never charged".
+  The Intent gate fails a draft with no Exempt line, or with Exempt assumed while a later item was asked.
+- **A rule the request states decides its edges** (`agents/intent.md`): an orders-pagination run asked whether a last
+  page of exactly `limit` items gets a cursor, though the request said `next_cursor` is null on the last page; the
+  click put a cursor there, and a hidden test failed.
+- **A corrected acceptance test that fails again keeps the acceptance path** (`scripts/temper`, the Check gate): the
+  "tests pass" row read the acceptance run as a suite run once a correction named it ("corrected after the lock: ..."),
+  so two rows failed, the triage and "Correct the acceptance test" were no longer offered, and a login-lockout run went
+  back to Build twice for a test that was wrong (it counted a failure 601 s old), then ended in an override. The
+  acceptance run is judged by its own row only.
+- **A Build task agent that stops before its own gate no longer hands the run back** (`core/driver.ts`,
+  `scripts/temper`): the after call `task gate N --if-running` then gates the task, and a failed verdict exits 1 with
+  its next step (a retry, a stronger model, the group parked), which the driver took for a broken call; and once a
+  sibling's third failure parked the group, `--if-running` on a task never started was refused. Both are the CLI's
+  verdict now, and `temper go` asks the person what comes next. Two measured runs handed back this way ($0.36 and
+  $0.91 of Sonnet each, both finished right).
+- **Measured** (`docs/evidence/bench-2026-11.md`, 7 runs on the three tasks and vague-refunds): every hidden test
+  passed; vague-late-fees 13/13 twice, asking "What never gets a late fee?"; orders-pagination 9/9 twice.
+- **Not done, measured:** running the acceptance writer beside Design. Design edits intent.md and plan.md in all 20
+  measured runs, so tests written beside it would miss what Design decided.
+
+**Build: three defects of a measured run**
+- **A scenario is owed by the task that writes its test file.** Plan traced API scenarios to the task that built the
+  domain module, while their test file came with the route's later task: that task's gate could never pass, and the
+  group parked again and again. A task that writes a file a scenario's `Test:` command runs is now traced too, and the
+  latest of them owes it.
+- **A group parked again after a rerun recommends Loop back to Plan** (the rerun is still offered): the same gate had
+  failed six times on every model, and the question kept recommending another rerun.
+- **`acceptance lock` runs the command once** and refuses one that cannot run here (a test runner that is not
+  installed, a program not found, no test collected). A run locked `python3 -m pytest` with pytest not installed.
+
 ## v9.7.6: a fresh reader checks the plan, contests cite evidence, a reviewer that stopped is not a clean review, spec drift
 
 Five ideas from Google's Elephant Goldfish Model (a reviewer with no context reads a design before any code), built on

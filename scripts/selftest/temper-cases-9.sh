@@ -40,12 +40,12 @@ setup; rm -f .temper/build-state.json   # the earlier run is over: its spec is c
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm "the spec of an earlier run" >/dev/null 2>&1
 _b="$(git symbolic-ref -q HEAD)"; git branch -f temper-test-other HEAD >/dev/null 2>&1; git symbolic-ref HEAD refs/heads/temper-test-other   # on another branch than the run's, at the same commit
 "$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
-assert_eq "round 4, 7: a walked Intent whose spec is committed and accepted makes no empty commit" "git checkout feature/demo|intent accept|0|state advance intent_complete plan" \
-  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0].replace('checkout -b ', 'checkout ') + '|' + c[1].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if x.startswith('git commit'))) + '|' + c[-1].split('temper ', 1)[1]")"
+assert_eq "round 4, 7: a walked Intent whose spec is committed and accepted makes no empty commit" "spec branch|intent accept|0|state advance intent_complete plan" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if ' spec commit ' in x)) + '|' + c[-1].split('temper ', 1)[1]")"
 git symbolic-ref HEAD "$_b"
 printf '\nA note.\n' >> .temper/specs/demo/intent.md
 assert_eq "round 4, 7: with a change in the spec folder the approval commits it" "1" \
-  "$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if x.startswith('git commit'))")"
+  "$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if ' spec commit ' in x)")"
 git checkout -q -- .temper/specs/demo/intent.md
 assert_eq "round 4, 7: the view holds the same calls as next" "same" \
   "$([[ "$(nx "d['ask']['options'][0]['calls']")" == "$(vw "d['ask']['options'][0]['calls']")" ]] && echo same || echo differs)"
@@ -258,7 +258,7 @@ sed -i 's/^\*\*Status:\*\* accepted$/**Status:** accepted (pending review)/' .te
 git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm "a committed spec" >/dev/null 2>&1
 "$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
 assert_eq "re-audit: a Status that is not exactly accepted is rewritten by the accept, so the approval commits it" "1" \
-  "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if c.startswith('git commit'))")"
+  "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if ' spec commit ' in c)")"
 rm -rf .git
 
 # --- live run of the release candidate: the first commit goes to the run's branch ---
@@ -268,14 +268,14 @@ sed -i 's/^\*\*Status:\*\* accepted$/**Status:** draft/' .temper/specs/demo/inte
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
 rm -f .temper/build-state.json; "$TEMPER" state init demo >/dev/null 2>&1; gpass intent
 CALLS="$(nx "'\n'.join(d['ask']['options'][0]['calls'])")"
-assert_eq "live run: Continue to Plan on main switches to the run's branch before the intent's commit" "git checkout -b feature/demo|1" \
-  "$(head -1 <<<"$CALLS")|$(grep -c '^git commit' <<<"$CALLS")"
+assert_eq "live run: Continue to Plan on main switches to the run's branch before the intent's commit" "spec branch|1" \
+  "$(head -1 <<<"$CALLS" | sed 's|.*/scripts/temper ||')|$(grep -c ' spec commit ' <<<"$CALLS")"
 while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
 assert_eq "live run: the intent's commit is on feature/demo, and main has none" "feature/demo|docs(intent): accept demo|base" \
   "$(git branch --show-current)|$(git log -1 --format=%s feature/demo)|$(git log -1 --format=%s main)"
 gpass plan
 assert_eq "live run: on the run's branch already, leaving Plan switches nothing" "0" \
-  "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if c.startswith('git checkout'))")"
+  "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if c.startswith('git checkout') or ' spec branch' in c)")"
 git checkout -q main 2>/dev/null; rm -rf .git
 
 # --- live run: a group that builds on another starts after the person's Continue of it ---
@@ -377,13 +377,13 @@ git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPa
 _walk_to_commit; gpass commit; printf '\nA note.\n' >> .temper/specs/demo/intent.md
 "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1   # the report and the page answer come first
 assert_eq "check: with only the spec folder changed, the commit message names the run's record, not a feature" "1|0" \
-  "$(nx "sum(1 for x in d['steps'] if x.startswith('git commit') and 'docs(demo): record the run' in x)")|$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
+  "$(nx "sum(1 for x in d['steps'] if ' spec commit ' in x and 'docs(demo): record the run' in x)")|$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['enter']='review'; json.dump(d, open(p, 'w'))"
 assert_eq "live run 9: the record's message says the code is in the commits before it, for a door's run too" "1" \
-  "$(nx "sum(1 for x in d['steps'] if x.startswith('git commit') and '(the code is in the commits before it)' in x)")"
+  "$(nx "sum(1 for x in d['steps'] if ' spec commit ' in x and '(the code is in the commits before it)' in x)")"
 mkdir -p src; echo x > src/new.sh
-assert_eq "check: with code changed too, the commit message is the feature's" "1" \
-  "$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
+assert_eq "check: with code changed too, the commit message is the feature's, drafted by the CLI (9.8.0)" "1" \
+  "$(nx "sum(1 for x in d['steps'] if \" spec commit 'feat(demo): \" in x)")"
 rm -rf .git src
 
 # --- live run 1: Loop back to Build keeps what Review found, so the fix pass reads it ---
@@ -446,18 +446,18 @@ git commit -qm "feat: the code" >/dev/null 2>&1
 assert_eq "live run 6: a door takes the tier from plan.md's Complexity line, not from intent.md's first guess" "medium" \
   "$("$TEMPER" state get complexity)"
 gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; riskH; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: a Review door reads its diff from before the spec's first commit, so committed work is reviewed" "$_r6b|1" \
   "$("$TEMPER" state get base_sha)|$(git diff --name-only "$("$TEMPER" state get base_sha)" | grep -cx r6-code.txt)"
 "$TEMPER" state init demo --enter build >/dev/null 2>&1; gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; riskH; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: a Build door still reads its diff from HEAD (the work is still to come)" "$(git rev-parse HEAD)" \
   "$("$TEMPER" state get base_sha)"
 git checkout -q main; git checkout -q -b feature/other; printf 'more\n' > r6-more.txt; git add r6-more.txt
 git commit -qm "feat: more" >/dev/null 2>&1
 git checkout -q feature/demo -- .temper/specs/demo; git rm -q --cached -r .temper/specs/demo >/dev/null 2>&1   # the spec, never committed here
 "$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; riskH; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: with no spec commit, a Check door reads its diff from where the branch left main" "$_r6b" \
   "$("$TEMPER" state get base_sha)"
 rm -rf .git r6-base.txt r6-code.txt r6-more.txt
@@ -571,7 +571,7 @@ assert_eq "init: the CLI names no settings file, and /temper:init offers no sett
   "$(grep -c 'settings\.json' "$TEMPER")|$(grep -c 'foreground-agents' "$REPO_ROOT/commands/init.md")"
 
 # --- live runs: the Design question names the open areas of concern, leaving Design records them, design.md is committed ---
-fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH
 for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 cat > .temper/specs/demo/design.md <<'MD'
 # Design: demo
@@ -593,8 +593,8 @@ MD
 gpass design
 assert_eq "design: the question names each open area of concern" "1|0" \
   "$(nx "int('with 1 open area(s) of concern: 1. 1. The cache can serve stale prices for a minute' in d['ask']['question']['question'])")|$(nx "int('Logs hold' in d['ask']['question']['question'])")"
-assert_eq "design: Continue leaves Design, then commits design.md" "state advance design_complete build|git add|git commit" \
-  "$(nx "c = d['ask']['options'][0]['calls']; c[0].split('temper ', 1)[1] + '|' + c[1][:7] + '|' + c[2][:10]")"
+assert_eq "design: Continue leaves Design, then commits design.md (9.8.0: one temper call)" "state advance design_complete build|spec commit|2" \
+  "$(nx "c = d['ask']['options'][0]['calls']; c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1][:11] + '|' + str(len(c))")"
 python3 -c "p='.claude/temper.config'; s=open(p).read(); open(p, 'w').write(s.replace('autonomy:\n  enabled: false', 'autonomy:\n  enabled: true'))"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='autonomous'; json.dump(d, open(p, 'w'))"
 assert_eq "design: an armed run parks at a Design with open concerns, for the person" "auto|1" \
@@ -622,7 +622,7 @@ assert_eq "isolated: a json.py in the project is never run by the CLI, and the C
 rm -f json.py PWNED
 
 # --- live run 11: the resolved line is a paragraph of its own; under a list item concern it stays in that item ---
-fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH
 for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 cat > .temper/specs/demo/design.md <<'MD'
 # Design: demo
@@ -641,7 +641,7 @@ MD
 gpass design; "$TEMPER" state advance design_complete build >/dev/null 2>&1
 assert_eq "design: below a list, the resolved line comes after a blank line, so Markdown keeps it out of the list" "|1" \
   "$(grep -B1 '^resolved: accepted as written' .temper/specs/demo/design.md | head -1)|$(grep -c '^resolved: accepted as written' .temper/specs/demo/design.md)"
-fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH
 for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 cat > .temper/specs/demo/design.md <<'MD'
 # Design: demo
@@ -713,14 +713,14 @@ assert_eq "the CLI and its Python files expand no home folder and read no transc
   "$(git -C "$REPO_ROOT" ls-files -z -- scripts/temper 'scripts/*.py' | (cd "$REPO_ROOT" && xargs -0 grep -liE 'expanduser|\.jsonl|transcript') | wc -l | tr -d ' ')|$([[ -e "$REPO_ROOT/scripts/usage_cost.py" ]] && echo yes || echo no)"
 gpass intent plan build review check commit; _at commit
 "$TEMPER" report --end >/dev/null 2>&1
-assert_eq "commit: the page question names no cost" "1|0" \
-  "$(nx "int(d['ask']['question']['question'] == 'Every gate passed. The report is above. Write it as an HTML page too, before the commit?')")|$(nx "int('\$' in d['ask']['question']['question'])")"
+assert_eq "commit: after the report the page is written with no question, and names no cost (9.8.0)" "work|report --html|0" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(int('\$' in d['say']))")"
 fresh; gpass intent plan build review check commit; _at commit
 "$TEMPER" park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed' >/dev/null 2>&1
 assert_eq "commit: a parked run's Commit answer leads to the report steps" "1" \
   "$(nx "int(any(x.endswith('report --end') for x in d['ask']['options'][0]['steps']))")"
 "$TEMPER" report --end >/dev/null 2>&1
-assert_eq "commit: once the report is printed, next asks the page question, not the park's again" "Write report.html" \
-  "$(nx "d['ask']['options'][0]['label']")"
+assert_eq "commit: once the report is printed, next writes the page, not the park's question again" "report --html" \
+  "$(nx "d['calls'][0].split('temper ', 1)[1]")"
 assert_eq "report: --end and the answer are recorded only at a passed Commit" "" \
   "$(fresh; "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" state get end_report)"

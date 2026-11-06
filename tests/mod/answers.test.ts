@@ -33,7 +33,7 @@ describe('a gate question answered exactly', () => {
 
   test('the arming answer at the plan gate, with autonomy on', () => {
     const q = asked('plan-pass-autonomy')
-    const a = gate(answersIn(result(q, 'Autonomous: run the rest unattended'), rv('plan-pass-autonomy')))
+    const a = gate(answersIn(result(q, 'Autonomous Build: run Build unattended'), rv('plan-pass-autonomy')))
     expect(a[0]?.option.move).toBe('arm')
     expect(a[0]?.option.calls.some(c => c.endsWith('temper state set run_mode autonomous'))).toBe(true)
   })

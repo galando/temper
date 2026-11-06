@@ -34,6 +34,13 @@ who owns the call. These are the points an analyst would have escalated — a hu
 resolves each one at the design gate, before Build spends anything on the wrong
 answer. Design flags; it never silently picks a side on a policy conflict.
 
+**A concern the person must decide becomes a question with ready answers (9.8.0).** Listing a concern at the gate let
+it pass unread: the person approved the list and the design stayed as it was. For each concern that needs a product
+or policy call (a cap, a role, what happens in an edge case), also add one line to intent.md's `### Open Questions`:
+`- Blocking: Design: {the concern as a concrete question} choices: {recommended} | {other} | {other}`. The CLI asks it
+before the Design question, the answer goes into intent.md's Decisions and into that concern's `resolved:` line, and
+the acceptance tests and Build read it there. A concern that is only a note for the builders stays a concern.
+
 The section is **always present** — when nothing was flagged, write
 `None flagged — {one line on why}` rather than omitting it: an absent section is
 indistinguishable from a forgotten check, and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` mechanically
@@ -46,13 +53,10 @@ Write the project's `.temper/specs/{feature}/design.md` from `${CLAUDE_PLUGIN_RO
 
 ## Step 4: Summary + Gate
 
-The panel format is owned by the design brief (`${CLAUDE_PLUGIN_ROOT}/agents/design.md`) — render exactly the panel it defines
-(76 columns, fact rows then `AREAS OF CONCERN` and `DECISIONS` titled sections; the
-concerns section is omitted entirely when design.md says "None flagged — {why}").
-Never carry a second, different box here: whichever box a clean-context stage reads
-first is the one that renders, and two shapes means two different reviews. Append
-fact rows for what the design actually has: API contracts (`+ POST /api/x — shape →
-response`), DB changes (`+ {table} — {columns}`), integration points.
+The CLI draws the Design panel (`temper panel design`, 9.8.0) from design.md: the counts of the API Contracts and
+Database Changes headings and of the open concerns, then the `AREAS OF CONCERN` (each heading, with its `resolved:`
+line or `(open)`) and `DECISIONS` (the Decision Log table's rows) sections; a "None flagged" Areas of Concern gives no
+concerns section. This stage draws no box: it returns `DESIGN DONE {path to design.md}`.
 
 Any flagged concern is presented **first** at the gate — it is the reason the human is
 here. Write each concern as its own heading under Areas of Concern (or its own list item
@@ -77,6 +81,9 @@ then re-show the same section / "Other" edits then re-shows the same section). A
 last section, ask the gate question again.
 
 ## ADR Generation
+
+**Only in a project that keeps ADRs (9.8.0):** a `docs/decisions/` folder with at least one ADR in it. Otherwise
+write none: an ADR nobody asked for is a file outside the plan, and the commit gate's scope row names it.
 
 After `design.md` is written, scan it for genuine architectural decisions — schema/
 storage technology choice, framework/library selection for a new capability, API

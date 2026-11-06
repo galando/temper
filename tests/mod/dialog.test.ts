@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { ONLY_USER } from '../../hooks/temper-mod/core/rules'
+import { FEATURE_DENY } from '../../hooks/temper-mod/core/session'
 import { SPEC, questionOf, runFiles } from './run-files'
 import { COMPOSE, viewText, world } from './world'
 import type { Answer, World } from './world'
@@ -18,7 +19,8 @@ type Api = {
   prompt: { compose: (a: unknown) => Promise<{ sections: Array<{ text: string }> }> }
 }
 const sh = async (api: Api, command: string) => (await api.tool.call({ tool: 'Bash', command })).deny
-const write = async (api: Api, path: string) => (await api.tool.call({ tool: 'Write', file_path: `/repo/${path}`, content: 'x' })).deny
+// A stage agent's write (9.8.0: the main session writes none, core/session.ts).
+const write = async (api: Api, path: string) => (await api.tool.call({ tool: 'Write', file_path: `/repo/${path}`, content: 'x', agentId: 'agent' } as never)).deny
 // The question `temper next --json` gives now, asked exactly as given (or its More options, accept, reason or resume
 // question).
 const ask = (api: Api, w: World, which: Parameters<typeof questionOf>[1] = {}) =>
@@ -70,7 +72,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('an answer in a question with another header decides nothing', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     const q = questionOf(viewText(w) ?? '')
     await askRaw(api, 'Something else', q.question, q.options.map(o => o.label))
@@ -79,7 +81,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('a question Claude reworded decides nothing, and the call stays refused', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     await askRaw(api, 'Temper gate', 'The plan looks good. Shall I go on to Build?', ['Continue to Build (Recommended)', 'Save for later'])
     expect(decisions(w)).toEqual([])
@@ -115,7 +117,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('a new run on the same spec folder starts with no decision', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     await ask(api, w)
     // Start over: the person's answer, then the new run.
@@ -159,7 +161,7 @@ describe('every wait point of the flow audit', () => {
 
   test('the Design gate: Loop back to Plan, or Override and continue', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', stage: 'plan_complete' }) }
+    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H', stage: 'plan_complete' }) }
     const w = begin(on, 'design', { plan: 'PASS', design: 'FAIL' }, [why('Override and continue', 'the platform team owns it')], extra)
     await api.session.start(START)
     expect(await sh(api, `${CLI} override design --reason x`)).toBe(ONLY_USER)
@@ -170,7 +172,7 @@ describe('every wait point of the flow audit', () => {
 
   test('the Design gate: Loop back to Plan', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium' }) }
+    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H' }) }
     const w = begin(on, 'design', { plan: 'PASS', design: 'FAIL' }, [why('Loop back to Plan', 'the API changed')], extra)
     await api.session.start(START)
     await ask(api, w)
@@ -184,7 +186,7 @@ describe('every wait point of the flow audit', () => {
   test('arming autonomy: Autonomous arms the run and approves the plan; Stage by stage only approves', async ($, on) => {
     const api = $ as unknown as Api
     const cfg = { '.claude/temper.config': 'autonomy:\n  enabled: true\n' }
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Autonomous: run the rest unattended'], cfg)
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Autonomous Build: run Build unattended'], cfg)
     await api.session.start(START)
     expect(await sh(api, `${CLI} state set run_mode autonomous`)).toContain('only the user can turn on autonomous mode')
     await ask(api, w)
@@ -193,24 +195,15 @@ describe('every wait point of the flow audit', () => {
     expect(state(w).run_mode).toBe('autonomous')
   })
 
-  test('an armed run loops back to Build by itself after a failed Check, and keeps every write rule', async ($, on) => {
+  test('an armed run is Build alone (9.8.0): a failed Check asks the person, and no loop back goes by itself', async ($, on) => {
     const api = $ as unknown as Api
     const cfg = { '.claude/temper.config': 'autonomy:\n  enabled: true\n', '.temper/build-state.json': JSON.stringify({ run_mode: 'autonomous' }) }
     const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, [], cfg)
     await api.session.start(START)
-    // The armed run's own move is the call the CLI wrote, word for word; another reason is another call.
-    const own = (JSON.parse(viewText(w) ?? '{}') as { next: { calls: string[] } }).next.calls[0] ?? ''
-    expect(own).toContain('state loop check build')
+    const next = (JSON.parse(viewText(w) ?? '{}') as { next: { action: string } }).next
+    expect(next.action).toBe('ask')
     expect(await sh(api, `${CLI} state loop check build --reason 'my own words'`)).toBeDefined()
-    expect(await sh(api, own.replace(/^\S+/, CLI))).toBeUndefined()
-    gates(w, { plan: 'PASS', build: 'PASS' })
-    expect(await sh(api, `${CLI} state advance build_complete review`)).toBeUndefined()
-    expect(await write(api, 'src/app.ts')).toContain('Review stage')
-    expect(await system(api)).not.toContain('looks reset')
-    gates(w, { plan: 'PASS', build: 'PASS', review: 'PASS' })
-    expect(await sh(api, `${CLI} state advance review_complete check`)).toBeUndefined()
     expect(await write(api, 'src/app.ts')).toContain('Check only runs checks')
-    expect(await sh(api, `${CLI} state loop check plan --reason x`)).toBeDefined()
   })
 
   test('the commit gate FAIL after the run is done: Override and commit', async ($, on) => {
@@ -266,7 +259,7 @@ describe('every wait point of the flow audit', () => {
 
   test('with enforcement off nothing is refused, and an answer is still kept for the report', { options: { enforcement: 'off' } }, async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     expect(await write(api, 'src/app.ts')).toBeUndefined()
     await ask(api, w)
@@ -286,7 +279,7 @@ describe('every wait point of the flow audit', () => {
 describe('a stage command is a door into /temper', () => {
   test('a run with Design: Plan goes on to Design, not past it', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium' }) }
+    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H' }) }
     const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Design (Recommended)'], extra)
     await api.session.start(START)
     await ask(api, w)
@@ -297,7 +290,7 @@ describe('a stage command is a door into /temper', () => {
 
   test('a door walks the earlier gates by the same answers: Intent, then Plan, then the stage', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)', 'Continue to Build (Recommended)'])
+    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)', 'Stage by stage (Recommended)'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()
@@ -313,7 +306,8 @@ describe('commits: the native hook is the commit gate', () => {
     const api = $ as unknown as Api
     begin(on, 'build', { plan: 'PASS' })
     await api.session.start(START)
-    expect(await sh(api, 'git add src/app.ts && git commit -m "feat: x"')).toBeUndefined()
+    // The Build agent's commit (an agent id: the main session commits only through the CLI).
+    expect((await api.tool.call({ tool: 'Bash', command: 'git add src/app.ts && git commit -m "feat: x"', agentId: 'agent' } as never)).deny).toBeUndefined()
     expect(await sh(api, 'git commit --no-verify -m x')).toContain('pre-commit hook')
   })
 })
@@ -344,7 +338,7 @@ describe('the system prompt: one flow in every mode', () => {
 describe('Build is judged against the plan the person approved', () => {
   test('a plan.md widened at Build does not let a file outside the approved plan through', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Stage by stage (Recommended)'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
@@ -358,7 +352,7 @@ describe('Build is judged against the plan the person approved', () => {
 
   test('a plan approved again after a loop back to Plan counts with its new files', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Build (Recommended)', why('Loop back to Plan', 'the plan misses billing'), 'Continue to Build (Recommended)'])
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Stage by stage (Recommended)', why('Loop back to Plan', 'the plan misses billing'), 'Stage by stage (Recommended)'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
@@ -372,3 +366,37 @@ describe('Build is judged against the plan the person approved', () => {
     expect(await write(api, 'src/billing.ts')).toBeUndefined()
   })
 })
+
+describe('the run starts from the request the person typed, in the conversation that typed it (9.8.0, round 5)', () => {
+  const REQ = 'Add partial refunds. POST /invoices/{id}/refunds takes a payment_id; more than the balance is a 409.'
+  const init = (feature: string) => `${CLI} state init pp --feature '${feature}'`
+  test('a summary is refused, the request whole passes, and quotes around it are the person\'s', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    await api.session.start(START)
+    await api.command.run({ command: 'temper:temper', args: `"${REQ}"`, origin: { kind: 'composer' } })
+    expect(await sh(api, init('Partial refunds for invoices'))).toBe(FEATURE_DENY)
+    expect([...w.files.keys()].filter(k => k.includes('build-state'))).toEqual([])
+    expect(await sh(api, init(REQ))).toBeUndefined()
+    expect([...w.files.keys()].filter(k => k.includes('build-state'))).toEqual(['.temper/build-state.json'])
+  })
+  test('another conversation of the same project: what this one typed holds nothing there', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    await api.session.start(START)
+    await api.command.run({ command: 'temper:temper', args: REQ, origin: { kind: 'composer' } })
+    w.sessionId = 'conv-2'
+    expect(await sh(api, init('Partial refunds for invoices'))).toBeUndefined()
+  })
+  test('a run word keeps nothing, and a door clears what was kept', async ($, on) => {
+    const api = $ as unknown as Api
+    world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    await api.session.start(START)
+    await api.command.run({ command: 'temper:temper', args: REQ, origin: { kind: 'composer' } })
+    await api.command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })
+    expect(await sh(api, init('Partial refunds'))).toBe(FEATURE_DENY)
+    await api.command.run({ command: 'temper:plan', args: 'Partial refunds', origin: { kind: 'composer' } })
+    expect(await sh(api, init('Partial refunds'))).toBeUndefined()
+  })
+})
+

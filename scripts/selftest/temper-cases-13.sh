@@ -50,10 +50,10 @@ fresh; gpass intent plan build review check commit
 git add -A >/dev/null 2>&1; git -c user.email=t@example.com -c user.name=T commit -qm "the spec is committed" >/dev/null 2>&1
 _at commit; "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
 assert_eq "F27: a committed, unchanged spec folder with no code says there is no record commit, and gives no git add" "1|0" \
-  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add')))")"
+  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add') or ' spec commit ' in s))")"
 echo "a changed line" >> .temper/specs/demo/intent.md
 assert_eq "F27: a changed spec folder gets its record commit" "0|1" \
-  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add')))")"
+  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add') or ' spec commit ' in s))")"
 git checkout -q -- . >/dev/null 2>&1
 
 # F8. The plan gate names a scenario without a Test: line; the CLI refuses a scenario name intent.md does not hold
@@ -93,7 +93,7 @@ assert_eq "F5: next --json and view.json carry the same question at a passed Bui
 # F13. Past three tasks, the rest go under More options of the Which task changes? question
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 _change_tasks > .temper/specs/demo/tasks.md
-printf '\n### Task 5: extra\n**File:** `src/e5.sh`\n**Depends:** none\n**Test:** `true`\n**Cases:**\n- e\n- [x] done\n' >> .temper/specs/demo/tasks.md
+printf '\n### Task 5: extra\n**File:** `src/e5.sh`\n**Depends:** none\n**Test:** `true`\n**Cases:**\n- e\n- [x] done\n' >> .temper/specs/demo/tasks.md; second_group
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G1"}, "4": {"status": "passed", "group": "G1"}, "5": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F13: with five tasks the question shows three and More options, which holds the rest" "Task 1 (with Task 2)|Task 2|Task 3|More options#Task 4|Task 5" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['change']['question']['options']) + '#' + '|'.join(o['label'] for o in d['ask']['change']['more']['options'])")"
@@ -104,8 +104,15 @@ f9_tasks > .temper/specs/demo/tasks.md
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": ".claude/worktrees/temper-demo-G1"}}, "tasks": {"1": {"status": "pending", "group": "G1"}}}\n' > .temper/groups.json
 "$TEMPER" evidence add --stage build --phase note --kind input --claim 'Task 1: use the retry helper' >/dev/null 2>&1
 "$TEMPER" evidence add --stage build --phase note --kind input --claim 'Task 2: leave this alone' >/dev/null 2>&1
-assert_eq "F1: the prompt of Task 1 carries its own note and not the note of Task 2" "1|0" \
-  "$(nx "str(sum(a['prompt'].count(\"Person's note: Task 1: use the retry helper\") for a in d['agents'])) + '|' + str(sum(a['prompt'].count('leave this alone') for a in d['agents']))")"
+assert_eq "F1: Task 2 depends on Task 1, so one agent builds both (9.8.0): its prompt carries each task's own note" "1|1" \
+  "$(nx "str(sum(a['prompt'].count(\"Person's note: Task 1: use the retry helper\") for a in d['agents'])) + '|' + str(sum(a['prompt'].count('Person\\'s note: Task 2: leave this alone') for a in d['agents']))")"
+python3 - <<'PYEOF'
+p = '.temper/specs/demo/tasks.md'; s = open(p).read()
+s = s.replace('**Depends:** Task 1', '**Depends:** none', 1)
+open(p, 'w').write(s)
+PYEOF
+assert_eq "F1: with Task 2 independent, the prompt of Task 1 carries its own note and not the note of Task 2" "1|0" \
+  "$(nx "a = [x for x in d['agents'] if x['tasks'] == [1]][0]['prompt']; str(a.count(\"Person's note: Task 1: use the retry helper\")) + '|' + str(a.count('leave this alone'))")"
 
 # --- Run Check again: a measurement nobody took (a missing coverage tool) is not a defect in the code ---
 fresh; gpass intent plan build review; _at check
@@ -175,5 +182,5 @@ _plctx '{"status": "green", "round": 2, "failed_jobs": [], "fix": []}'
 "$TEMPER" gate pipeline >/dev/null 2>&1
 assert_eq "Pipeline loop: the second read is green and the run may end" "Pipeline: every job passed. End the run?|End the run (Recommended)" \
   "$(nx "d['ask']['question']['question'] + '|' + d['ask']['options'][0]['label']")"
-rm -rf ../pl-origin.git
+rm -rf ../pl-origin.git .gitignore   # the ignore list was this loop's own: a later case commits .temper
 setup

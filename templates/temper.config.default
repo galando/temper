@@ -124,6 +124,7 @@ loops:
 #     escalation-model: sonnet         # the one retry after two failed attempts
 #     max-parallel: 4                  # tasks running at once
 #     max-groups: 2                    # groups working at once (a whole number, at least 1)
+#     keep-days: 30                    # days an earlier attempt's work is kept in refs/temper/kept/ (0: always)
 
 # ============================================================
 # Autonomous Continuation: armed by a human at the PLAN GATE, never at
@@ -137,7 +138,7 @@ loops:
 # the local `temper integrate` merge, both made by the CLI; NEVER re-plans unattended.
 # ============================================================
 autonomy:
-  enabled: false
+  # enabled is no longer read (9.8.0): the unattended run is offered at the last question before Build in every run.
   max-blast-radius: 15         # the plan gate splits a group that declares more files than this
   # Folder-name patterns over paths in your project only (any path before and after).
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]

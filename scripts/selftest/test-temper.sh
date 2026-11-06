@@ -37,7 +37,8 @@ assert_eq() { # assert_eq <name> <expected> <actual>
 assert_exit() { # assert_exit <name> <expected-code> <cmd...>
   local name="$1" expected="$2"; shift 2
   local actual out
-  out="$(mktemp "$WORKDIR/assert-out.XXXXXX")"
+  # Inside .git when there is one: an untracked file in the fixture would be a change outside the plan (the 9.8.0 scope row).
+  if [[ -d "$WORKDIR/.git" ]]; then out="$(mktemp "$WORKDIR/.git/assert-out.XXXXXX")"; else out="$(mktemp "$WORKDIR/assert-out.XXXXXX")"; fi
   "$@" >"$out" 2>&1; actual=$?
   if [[ "$actual" == "$expected" ]]; then
     PASS=$((PASS+1))
@@ -51,7 +52,7 @@ assert_exit() { # assert_exit <name> <expected-code> <cmd...>
 
 setup() {
   cd "$WORKDIR" || exit 1   # never run the deletes below anywhere but the throwaway folder
-  rm -rf .temper .claude
+  rm -rf .temper .claude .gitignore   # no case ignores .temper for the next one
   mkdir -p .claude .temper/specs/demo
   git init -q . 2>/dev/null || true
   cat > .claude/temper.config <<'EOF'
@@ -236,6 +237,8 @@ source "$TESTS_DIR/case-helpers.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 12 "* ]] && source "$TESTS_DIR/temper-cases-12.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 13 "* ]] && source "$TESTS_DIR/temper-cases-13.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 14 "* ]] && source "$TESTS_DIR/temper-cases-14.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 15 "* ]] && source "$TESTS_DIR/temper-cases-15.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 16 "* ]] && source "$TESTS_DIR/temper-cases-16.sh"
 
 # the suite leaves the real .temper folder as it was, and a CLI call outside its own folder is refused
 assert_eq "selftest safety: the real .temper folder is as it was" "$_REAL_TEMPER_BEFORE" "$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"

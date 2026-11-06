@@ -320,12 +320,11 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
 const PROJECT_NOTES = new Set(['CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md', '.claude/AGENTS.md'])
 
 const AUTONOMY_DENY =
-  'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
-  `Next: ${ASK} at the plan gate, exactly as \`temper next --json\` gives it. ` +
-  'It needs autonomy.enabled: true in .claude/temper.config, which only the user sets.'
+  'Temper: only the user can turn on autonomous mode, at the last question before Build. ' +
+  `Next: ${ASK} at the plan gate (or the Design gate, when Design runs), exactly as \`temper next --json\` gives it.`
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'archived', 'enter', 'built_before', 'review_snapshot'])
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +
@@ -357,7 +356,7 @@ const TOO_MANY_DENY =
   'Next: write the paths out, or split the command.'
 
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
-const PERSON_WORDS = ['override', 'group', 'reopen', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
+const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix', ...STAGES]
 
 const GLOB_DENY =
@@ -464,6 +463,8 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   if (a === 'plan' && b === 'review') return true
   if (a === 'task' && (b === 'confirm' || b === 'accept')) return true
   if (a === 'adhoc' && b === 'open') return true
+  // 9.8.0: reopening the locked acceptance tests (a test the person says is wrong) is the person's; restoring them is not.
+  if (a === 'acceptance' && b === 'reopen') return true
   if (a === 'state' && b === 'set' && c === 'branch') return true
   if (a === 'group' && b === 'reopen') return w.some(x => x === '--accept-foreign' || x.startsWith('--accept-foreign='))
   // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's.

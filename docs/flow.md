@@ -5,8 +5,15 @@ Two outputs of the `temper` CLI carry the whole flow of a run ([ADR 0013](decisi
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 Both are computed by `scripts/flow.py` from the run's own files; nothing else decides what comes next.
 
-- `temper next --json` prints the next action. The orchestrator (`commands/temper.md`) does what it
-  says, then asks again.
+- `temper next --json` prints the next action, with the full view. The orchestrator runs
+  `temper go` instead (9.8.0, `scripts/go.py`): it runs the CLI's own steps itself (an `auto` action's
+  calls, a `work` action's calls) and prints one compact object at the first agent launch, question,
+  steps, wait or end: `{action, stage, say, ran, agents | ask, blocking, gate | steps | tasks}`. It
+  never runs an option's calls (the person's answer); a failed call stops it with `action: error`.
+  9.8.0, to shrink what every later turn reads again: an agent's gate call is `temper gate <stage> --brief`
+  (its failed rows only; the question after it names them); `ask` keeps `question` as it is and, per option,
+  only what the answer runs (`label`, `calls`, `steps`, `do`, `stop`, `reason`, `reason_question`,
+  `answer_question`); `blocking` is the list of `{question, answer, carry}` below.
 - `.temper/view.json` is written by the CLI after every command that may change the run, and by
   `temper next`. The mod reads this file and nothing else of the CLI's, to draw the run and to check
   the person's answers.
@@ -30,9 +37,10 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `say` | one sentence for the person |
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
+| `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
 | `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
 | `context_map` | at Plan, when `plan.md` has a Context Map: `{intro, file, rows, answer, table}`, the table as plain text |
-| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`, `Is this the right context for the plan?`), the Blocking line's choices (three at most) plus `Carry forward`, each with the table as its preview; a choice runs `temper plan review --answer '<choice>'` then `temper gate plan`; `answer` is the call a typed answer fills. When the pending check is the plan gate's only failed row, `ask` is this question |
+| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
 | `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
 
@@ -61,7 +69,7 @@ commit gate (a change made at Build, or of docs only, runs only the stage's gate
   goes on; any other failure of it stops the action.
 - **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
   in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
-- **`auto`**: an armed autonomous run moves by itself: run `calls`, then ask `next` again.
+- **`auto`**: the CLI's own move: an armed autonomous run, or a step with nothing to decide (9.8.0: the one group of a plan passing, a Build task an earlier task already built in an armed run). Run `calls`, then ask `next` again.
 - **`broken`**: the run state does not fit its spec folder; ask the `restart` question.
 
 ### Questions
@@ -72,10 +80,11 @@ to the AskUserQuestion tool. Each entry of `options` is the same option with wha
 | Field | Meaning |
 |---|---|
 | `label`, `description` | as in the question |
-| `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept`, `keep`, `commitOverride`, `redo`, `pause`, `restart`, or `null` for an option that decides nothing |
+| `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept` (a review finding), `covered` (a Build task an earlier task already built), `keep`, `commitOverride`, `redo`, `pause`, `restart`, or `null` for an option that decides nothing |
 | `calls` | the CLI calls this answer makes, in order; `{reason}` is the person's reason. Every `{...}` text stands inside single quotes: put the text there with each `'` written as `'\''`, so a backquote or a `$` in it stays text |
 | `steps` | for Commit at a parked run: the commit steps |
 | `do` | for an option that decides nothing: what to do, then ask the question again |
+| `skill` | 9.8.0, with `do`: the skill the option carries out (`grill-me`, `teach-me`); the mod lets its own questions through while it runs |
 | `stop` | the run stops here (Save for later) |
 | `reason`, `reason_question` | the move needs the person's reason: their note on the option, or their answer to `reason_question` (any answer but Cancel, typed text included) |
 
@@ -95,9 +104,10 @@ question is no answer. A typed message is never a move: it is a change request o
 | `run` | `{id, step, slug, title, command, stage, mode, complexity, branch, spec, feature, parked}` or `null` |
 | `stages` | `[{id, label, mark, verdict, failed, skipped?}]`; `mark` is `passed`, `failed`, `skipped`, `here` or `todo`; `failed` is the failed rows of its last check; `skipped` is `{reason, by}` |
 | `status` | one sentence: where the run is and who it waits for |
-| `next` | `{action, stage, say, calls, steps}` of `temper next` (`action` is `error` when `next` itself failed, with the error in `say`); `calls` for a `work` or `auto` action, `steps` for a `work` action (the CLI's own moves, which the mod lets through) |
+| `next` | `{action, stage, say, calls, steps, agents}` of `temper next` (`action` is `error` when `next` itself failed, with the error in `say`); `calls` for a `work` or `auto` action, `steps` for a `work` action (the CLI's own moves, which the mod lets through); `agents` (9.8.0) for a `work` action, each `{type, model, prompt}`, and while the run stays at the same stage, every agent named there before (an agent's `before` call, a Build task's `task start`, changes the action before the agent is launched): the only agents the mod lets the session launch |
 | `ask` | the current question, as `next` gives it, or `null` |
 | `blocking` | the Blocking open questions |
+| `blocking_asks` | 9.8.0: the same questions as the session asks them (see `temper next`); the mod lets the session ask these |
 | `restart` | the `Temper resume` question |
 | `drift` | the `Scope drift` question's header, the first line prefix (`Outside the plan:`) and its three options |
 | `guard` | what the guard needs: `{stage, spec, slug, fix_run, grouped, armed, autonomy_enabled, plan_files, step, run_id, trivial_exit, prefix}`; `plan_files` are the files the person approved at the plan gate (before it, the plan's files as they are); `prefix` is the project's folder from the top of its git repository (`packages/app/`, or empty) |
@@ -124,6 +134,6 @@ the Check markers with their failing lines, the criteria with their evidence, an
 by model. Its head says Done only once the Commit
 gate has passed. By default it writes `report.html` in the run's spec folder. At a passed Commit, `temper
 next` gives three actions in turn: steps that end with `temper report --end`, which prints the report for
-the orchestrator to show; a question whether to write the page too (Write report.html runs
-`temper report --html`, Not now `temper report --no-html`); then the commit steps. The run's
-`end_report` records the first two (the CLI keeps it), and a page written then is carried by the commit. Every value is escaped, and it never writes inside the plugin's own folder.
+the orchestrator to show; `temper report --html`, which writes the page with no question (9.8.0; the run used to ask
+whether to write it); then the commit steps. The run's `end_report` records the first two (the CLI keeps it), and
+the page is carried by the commit. Every value is escaped, and it never writes inside the plugin's own folder.
