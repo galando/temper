@@ -28,15 +28,15 @@ jobs:
       # They live in one pinned commit and are restored here, so Pages serves them as video/mp4.
       - name: Restore the videos
         env:
-          MEDIA_SHA: 36ce94bd6f138f62aa0c6885d786a8901d63444d
+          MEDIA_SHA: 3690f59e939d0c5461fcaf9a159400c0068e7e2c
         run: |
           git fetch --depth 1 origin "$MEDIA_SHA"
           mkdir -p docs/media
           # Each file by its blob id in that commit: the workflow video and its poster, then the mod tour.
-          git cat-file blob 8486ef0e02ef6e0da9adbb3da1650e5e803a1ad9 > docs/media/workflow.mp4
-          git cat-file blob d221a932b4086bb03c8fbe1bf0f832fe9cbc9de0 > docs/media/workflow.jpg
-          git cat-file blob 20507b8131f0408be8c191bea13432ad7022c62b > docs/media/tour.mp4
-          git cat-file blob d35cd16a619580963e8cca74d2aaf3279d67af79 > docs/media/tour.jpg
+          git cat-file blob 35abb2ad7e9889f6a96bdf033c5753f9532c981a > docs/media/workflow.mp4
+          git cat-file blob 76d8a2fe0b63d121226e419ae0187b27eeb34d6f > docs/media/workflow.jpg
+          git cat-file blob 4941b78d60f1c72fcedaa2512e827a8d818da22e > docs/media/tour.mp4
+          git cat-file blob e45f1e72a53d47964e05c818d4448e930541445c > docs/media/tour.jpg
           # A missing or broken file fails the deploy here, instead of a page whose players stay black.
           for f in workflow tour; do
             test "$(stat -c %s "docs/media/$f.mp4")" -gt 1000000 || { echo "::error::docs/media/$f.mp4 is missing or too small"; exit 1; }
