@@ -72,6 +72,13 @@ export function dialogQuestions(questions: unknown, q: GoQuestion): unknown[] | 
   }]
 }
 
+// A Build task's gate run after its agent (`task gate N`): a failed verdict exits 1 and says what comes next (a retry,
+// a stronger model, the group parked), and a gate refused because the group is parked names the park. Both are the
+// CLI's verdict, which `temper go` turns into the next step or the person's question, never a call that broke.
+export function taskVerdict(call: string, out: string): boolean {
+  return / task gate \d+ /.test(` ${call} `) && (/^NEXT: /m.test(out) || /\bis parked\b/.test(out))
+}
+
 // A throw out of the driver. At the person's interrupt the engine aborts the child the driver was reading, and the read
 // throws: that is the stop, with no model turn after it. Any other throw hands the run to the conversation, which takes
 // it up from the CLI's state.
@@ -294,7 +301,7 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
           for (const c of a.after ?? []) {
             const r = yield* run(fill(c, { ms: end.ms === null ? 'none' : String(Math.round(end.ms)) }))
             if (/ panel [a-z]+/.test(c) && r.code === 0) yield* show(r.out)
-            if (r.code !== 0 && !(c === a.gate && r.out.includes('-> FAIL'))) return handback(`an after call of the ${a.type} agent failed`)
+            if (r.code !== 0 && !(c === a.gate && r.out.includes('-> FAIL')) && !taskVerdict(c, r.out)) return handback(`an after call of the ${a.type} agent failed`)
           }
         }
       }

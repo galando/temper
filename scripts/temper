@@ -3041,12 +3041,13 @@ _task_gate_body() {
     return 1
   fi
   _task_load "$n" || return 1
-  _task_parked_refuse "$n" gate || return 1
   local status; status="$(_jget "$_T_CTX" status)"
+  # A task the chain never started has nothing to gate, also in a group a sibling's third failure just parked.
   if [[ "$status" != "running" && $if_running -eq 1 ]]; then
     echo "OK: Task $n is $status; nothing to gate"
     return 0
   fi
+  _task_parked_refuse "$n" gate || return 1
   if [[ "$status" != "running" ]]; then
     echo "FAIL: Task $n is not running (status: $status)" >&2
     return 1

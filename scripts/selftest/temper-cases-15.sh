@@ -303,6 +303,22 @@ assert_eq "9.8.0: the chain agent's prompt names the tasks in order and its mode
 assert_exit "9.8.0: task gate --if-running on a task that is not running does nothing and succeeds" 0 "$TEMPER" task gate 2 --model haiku --if-running
 assert_exit "9.8.0: without --if-running it still refuses" 1 "$TEMPER" task gate 2 --model haiku
 python3 - <<'PYEOF'
+import json
+p = '.temper/groups.json'; d = json.load(open(p))
+d['groups']['G1']['status'] = 'parked'; d['groups']['G1']['parked_reason'] = 'Task 1 failed 3 attempts'
+json.dump(d, open(p, 'w'))
+PYEOF
+assert_eq "9.8.0: in a group a sibling's failure parked, --if-running on a task never started does nothing and succeeds" "0|1" \
+  "$("$TEMPER" task gate 2 --model haiku --if-running >/dev/null 2>&1; echo $?)|$("$TEMPER" task gate 2 --model haiku --if-running 2>&1 | grep -c 'nothing to gate')"
+assert_eq "9.8.0: without --if-running a parked group still refuses, naming the park" "1|1" \
+  "$("$TEMPER" task gate 2 --model haiku >/dev/null 2>&1; echo $?)|$("$TEMPER" task gate 2 --model haiku 2>&1 | grep -c 'is parked')"
+python3 - <<'PYEOF'
+import json
+p = '.temper/groups.json'; d = json.load(open(p))
+d['groups']['G1']['status'] = 'running'; d['groups']['G1'].pop('parked_reason', None)
+json.dump(d, open(p, 'w'))
+PYEOF
+python3 - <<'PYEOF'
 p = '.temper/specs/demo/tasks.md'; s = open(p).read()
 s = s.replace('**File:** `src/b.sh`, `unit/b_test.sh`\n**Depends:** Task 1', '**File:** `src/b.sh`, `unit/b_test.sh`\n**Depends:** none', 1)
 open(p, 'w').write(s)

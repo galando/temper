@@ -311,6 +311,14 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
   so two rows failed, the triage and "Correct the acceptance test" were no longer offered, and a login-lockout run went
   back to Build twice for a test that was wrong (it counted a failure 601 s old), then ended in an override. The
   acceptance run is judged by its own row only.
+- **A Build task agent that stops before its own gate no longer hands the run back** (`core/driver.ts`,
+  `scripts/temper`): the after call `task gate N --if-running` then gates the task, and a failed verdict exits 1 with
+  its next step (a retry, a stronger model, the group parked), which the driver took for a broken call; and once a
+  sibling's third failure parked the group, `--if-running` on a task never started was refused. Both are the CLI's
+  verdict now, and `temper go` asks the person what comes next. Two measured runs handed back this way ($0.36 and
+  $0.91 of Sonnet each, both finished right).
+- **Measured** (`docs/evidence/bench-2026-11.md`, 7 runs on the three tasks and vague-refunds): every hidden test
+  passed; vague-late-fees 13/13 twice, asking "What never gets a late fee?"; orders-pagination 9/9 twice.
 - **Not done, measured:** running the acceptance writer beside Design. Design edits intent.md and plan.md in all 20
   measured runs, so tests written beside it would miss what Design decided.
 

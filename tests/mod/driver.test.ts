@@ -1,7 +1,7 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { STOPPED, dialogQuestions, drive, driverThrew, logRows, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, dialogQuestions, drive, driverThrew, logRows, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 
 const CLI = '/p/scripts/temper'
@@ -145,6 +145,26 @@ describe('the driver carries a run from the request to the end', () => {
     expect(end).toEqual({ kind: 'done', text: 'end' })
     expect(log.ran.filter(c => / task gate | panel task /.test(c))).toEqual([`${CLI} task gate 1 --model haiku --if-running`, `${CLI} task gate 2 --model haiku --if-running`, `${CLI} panel task 1 2`])
     expect(log.shown).toEqual(['TASK 2: stopped: the RED run passed first; Task 1 built it', 'PANEL 1 2'])
+  })
+
+  test('a Build task agent that stopped before its gate: the failed verdict of the after gate is the CLI\'s, and the run goes on', async () => {
+    const b = agent('temper:temper-build-task', [`${CLI} task gate 1 --model haiku --if-running`, `${CLI} task gate 2 --model haiku --if-running`, `${CLI} panel task 1 2`])
+    const { p, log } = port({
+      goes: [{ action: 'work', agents: [b] }, { action: 'none', say: 'end' }],
+      ends: { ag1: { text: 'TASK 1: stopped: the Cases contradict each other', ms: 5 } },
+      fail: call => / task gate 1 /.test(call),
+      out: call => (/ task gate 1 /.test(call) ? 'FAIL: no green run for this task and attempt\nNEXT: park group G1' : ''),
+    })
+    const end = await drive(p, CLI, null)
+    expect(end).toEqual({ kind: 'done', text: 'end' })
+    expect(log.ran).toContain(`${CLI} panel task 1 2`)
+  })
+
+  test('a task gate verdict is told from a call that broke', () => {
+    expect(taskVerdict('/p/scripts/temper task gate 3 --model haiku --if-running', 'FAIL: no green run\nNEXT: retry Task 3 on haiku')).toBe(true)
+    expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'FAIL: group G1 is parked (Task 1 failed 3 attempts); task gate of Task 2 is refused')).toBe(true)
+    expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'Traceback (most recent call last)')).toBe(false)
+    expect(taskVerdict('/p/scripts/temper integrate', 'FAIL: interface missing\nNEXT: x')).toBe(false)
   })
 
   test('the report steps: CLI calls run and the report is shown as printed', async () => {
