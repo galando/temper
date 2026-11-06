@@ -1965,7 +1965,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Architecture Depth Review, Save for later",
+     "description": "Architecture Depth Review, Make a small change, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -1988,7 +1988,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Override and continue"
      },
      {
-      "description": "Architecture Depth Review, Save for later",
+      "description": "Architecture Depth Review, Make a small change, Save for later",
       "label": "More options"
      }
     ],
@@ -2531,7 +2531,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+     "description": "Accept a finding, Grill Me, Make a small change, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -2554,7 +2554,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Architecture Depth Review"
      },
      {
-      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+      "description": "Accept a finding, Grill Me, Make a small change, Save for later",
       "label": "More options"
      }
     ],
@@ -4641,7 +4641,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Commit and open stacked PRs, Save for later",
+     "description": "Commit and open stacked PRs, Make a small change, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -4664,7 +4664,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Commit and open PR"
      },
      {
-      "description": "Commit and open stacked PRs, Save for later",
+      "description": "Commit and open stacked PRs, Make a small change, Save for later",
       "label": "More options"
      }
     ],
@@ -8550,7 +8550,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+     "description": "Stop here. The run is saved; /temper:fix takes it up again.",
      "label": "Save for later",
      "move": "pause",
      "stop": true
@@ -8565,7 +8565,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Proceed to Fix (Recommended)"
      },
      {
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "description": "Stop here. The run is saved; /temper:fix takes it up again.",
       "label": "Save for later"
      }
     ],
@@ -11175,7 +11175,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Architecture Depth Review, Save for later",
+     "description": "Architecture Depth Review, Make a small change, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -11198,7 +11198,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Override and continue"
      },
      {
-      "description": "Architecture Depth Review, Save for later",
+      "description": "Architecture Depth Review, Make a small change, Save for later",
       "label": "More options"
      }
     ],
@@ -11741,7 +11741,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+     "description": "Accept a finding, Grill Me, Make a small change, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -11764,7 +11764,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Architecture Depth Review"
      },
      {
-      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+      "description": "Accept a finding, Grill Me, Make a small change, Save for later",
       "label": "More options"
      }
     ],

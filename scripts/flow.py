@@ -441,7 +441,8 @@ class Builder:
         return o
 
     def save(self):
-        return self.opt("Save for later", "Stop here. The run is saved; /temper:temper takes it up again.", move="pause", stop=True)
+        return self.opt("Save for later", "Stop here. The run is saved; /temper:%s takes it up again." % ("fix" if self.r.command == "fix" else "temper"),
+                        move="pause", stop=True)
 
     def skill(self, name, label, what):
         o = self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name)
@@ -690,7 +691,8 @@ class Builder:
         if stage in ("build", "fix"):
             go = [self.c("state advance %s_complete %s" % (stage, nxt))]
             if passed:
-                change = self.opt("Change something", "Say what to change; Build's fix pass makes it, and Build is checked again.", move="redo",
+                change = self.opt("Change something", ("Say what to change; Build's fix pass makes it, and Build is checked again." if stage == "build"
+                                                       else "Say what to change; the Fix agent makes it, and Fix is checked again."), move="redo",
                                   calls=[self.c("state redo %s --reason '{reason}'" % stage)], reason=["Handle a case it missed", "Simplify the change"])
                 opts = [self.opt("Continue to %s (Recommended)" % LABEL[nxt], "Start %s." % LABEL[nxt], move="advance", calls=go), change,
                         self.skill("teach-me", "Teach Me", "Walk through the changes.")]
@@ -731,7 +733,7 @@ class Builder:
                 accept = self.accept_question(opens)
                 first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question."))
             first.append(override_opt(go))
-            text = "Review: the check failed (%s). Loop back to Build?" % why
+            text = "Review: the check failed (%s). Loop back to %s?" % (why, LABEL.get(back or "build", "Build"))
             q = self.with_more(GATE_HEADER, text, stage, first[:3], first[3:] + [arch, self.save()], "Review: more options.")
             if accept:
                 q["accept"] = accept
@@ -806,7 +808,8 @@ class Builder:
 
     def adhoc_option(self, stage):
         # Claude makes it, here in the conversation (a person read "change the work yourself" as their own edit).
-        return self.opt("Make a small change", "Claude makes one small change here, with no loop back to Build: the one you describe, "
+        return self.opt("Make a small change", "Claude makes one small change here, with no loop back to %s: the one you describe, " % (
+                        "Fix" if self.r.command == "fix" else "Build") +
                         "or the one the review asked for. Only what it touches is checked again.",
                         move="adhoc", calls=[self.c("adhoc open --stage %s --reason '{reason}'" % stage)],
                         do="Make the small change: for a fix the person describes, ask them in one line what to change first; for the "
@@ -846,6 +849,9 @@ class Builder:
             more = self.question(q["question"]["header"], q["question"]["question"].split("?")[0] + "? More options.", put(rest), stage)
             q["options"] = first + [self.opt("More options", ", ".join(o["label"] for o in more["options"]), do="Ask the more question.")]
             q["more"] = more
+        for o in q["options"]:   # the description of More options lists what is behind it, as it is now
+            if o["label"] == "More options" and q.get("more"):
+                o["description"] = ", ".join(x["label"] for x in q["more"]["options"])
         q["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["options"]]
         return out
 
@@ -876,14 +882,15 @@ class Builder:
         r = self.r
         why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("review")[:3])
         opts = []
-        if r.can_loop(r.stage, "build"):
-            opts.append(self.opt("Loop back to Build (Recommended)", "Do Build again; the stages after it are redone too.", move="back",
-                                 calls=[self.c("state loop %s build --reason '{reason}'" % r.stage)], reason=["The review found a real problem"]))
+        work = "fix" if r.command == "fix" else "build"
+        if r.can_loop(r.stage, work):
+            opts.append(self.opt("Loop back to %s (Recommended)" % LABEL[work], "Do %s again; the stages after it are redone too." % LABEL[work], move="back",
+                                 calls=[self.c("state loop %s %s --reason '{reason}'" % (r.stage, work))], reason=["The review found a real problem"]))
         opts.append(self.opt("Override and continue", "Skip the Review of your change with your reason; the report shows it.", move="override",
                              calls=[self.c("override review --reason '{reason}'")], reason=["I accept the risk", "It is not a real issue"]))
         opts.append(self.save())
-        return {"action": "ask", "stage": r.stage, "ask": self.question(GATE_HEADER, "%s: Review of your small change failed (%s). Loop back to Build?" % (
-            LABEL.get(r.stage, r.stage), why), stage=r.stage, options=opts)}
+        return {"action": "ask", "stage": r.stage, "ask": self.question(GATE_HEADER, "%s: Review of your small change failed (%s). %s" % (
+            LABEL.get(r.stage, r.stage), why, "Loop back to %s?" % LABEL[work] if len(opts) > 2 else "Override it?"), stage=r.stage, options=opts)}
 
     def round_limit(self):
         """The most CI fix rounds (loops.max-per-type, 2 by default): the Pipeline question and the Pipeline agent's launch line use the same."""
@@ -1689,8 +1696,8 @@ class Builder:
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
 
     # -- the end of the run --------------------------------------------------------------------
-    # Three actions, in order: the report steps (the intent completed, the report printed for the person), the person's
-    # answer to the page question, then the record steps (the ledger archived, the commit, the state cleared). The CLI
+    # Three actions, in order: the report steps (the intent completed, the report printed for the person), the page
+    # (temper report --html, with no question since 9.8.0), then the record steps (the ledger archived, the commit, the state cleared). The CLI
     # records the first two in the run's end_report (temper report --end, then --html or --no-html).
     def report_steps(self):
         r = self.r
@@ -1729,14 +1736,6 @@ class Builder:
         if tests:
             parts.append("Regression test: " + ", ".join(tests[:5]))
         return "\n\n".join(parts)
-
-    def page_question(self):
-        r = self.r
-        return self.question(GATE_HEADER, "Every gate passed. The report is above. Write it as an HTML page too, before the commit?",
-                             stage="commit", options=[
-            self.opt("Write report.html", "%s/report.html, committed with the spec." % (r.spec or ".temper/specs/{slug}"),
-                     calls=[self.c("report --html")]),
-            self.opt("Not now", "The commit goes on; the report stays the one in the terminal.", calls=[self.c("report --no-html")])])
 
     def record_steps(self):
         r = self.r

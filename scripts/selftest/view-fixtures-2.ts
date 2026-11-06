@@ -406,7 +406,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Commit and open stacked PRs, Save for later",
+     "description": "Commit and open stacked PRs, Make a small change, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -429,7 +429,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "label": "Commit and open PR"
      },
      {
-      "description": "Commit and open stacked PRs, Save for later",
+      "description": "Commit and open stacked PRs, Make a small change, Save for later",
       "label": "More options"
      }
     ],

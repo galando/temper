@@ -532,3 +532,26 @@ assert_eq "9.8.0: the lock refuses tests that never name a listed state" "1|yes"
   "$("$TEMPER" acceptance lock --cmd "$ACMD" >/dev/null 2>&1; echo $?)|$({ "$TEMPER" acceptance lock --cmd "$ACMD" 2>&1 || true; } | grep -q 'no acceptance test names the state(s) canceled' && echo yes || echo no)"
 printf '    def test_ac02_canceled_reads_back(self):\n        self.assertEqual("canceled", "canceled")\n' >> .temper/specs/demo/acceptance/test_ac.py
 assert_exit "9.8.0: with a test for each state, it locks" 0 "$TEMPER" acceptance lock --cmd "$ACMD"
+
+# --- 9.8.0: the words of a question match the run (from the flow explainer's read of every question) ---
+# More options lists what is behind it, also after Make a small change went in or Teach Me went out
+fresh; gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+"$TEMPER" evidence add --stage review --claim "src/demo.sh:3 a name is not trimmed" --severity medium >/dev/null 2>&1
+gpass review
+assert_eq "9.8.0: More options at Review names exactly the options behind it" "same|1" \
+  "$(nx "m = [o for o in d['ask']['options'] if o['label'] == 'More options'][0]; ('same' if m['description'] == ', '.join(o['label'] for o in d['ask']['more']['options']) else m['description'])")|$(nx "str(sum(1 for o in d['ask']['more']['options'] if o['label'] == 'Make a small change'))")"
+# a fix run says Fix where a /temper:temper run says Build, and Save for later names /temper:fix
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+mkdir -p .temper/specs/demo-bug; printf '# Root cause\nx\n' > .temper/specs/demo-bug/rca.md
+_at fix; gpass build fix rca
+assert_eq "9.8.0: a fix run's Fix question: the Fix agent makes a change, and Save for later names /temper:fix" "1|1|0" \
+  "$(nx "o = {x['label']: x for x in d['ask']['options']}; '|'.join([str(int('the Fix agent makes it, and Fix is checked again' in o['Change something']['description'])), str(int('/temper:fix takes it up again' in o['Save for later']['description'])), str(int('Build' in o['Change something']['description']))])")"
+_at review; "$TEMPER" evidence add --stage review --claim "src/demo.sh:3 the input is not checked" --severity critical >/dev/null 2>&1
+gfail review "no blocking findings" "1 open finding"
+assert_eq "9.8.0: a fix run's failed Review asks to loop back to Fix, as its first option does" "1|Loop back to Fix (Recommended)" \
+  "$(nx "str(int(d['ask']['question']['question'].endswith('Loop back to Fix?'))) + '|' + d['ask']['options'][0]['label']")"
+_at check; gpass review check
+assert_eq "9.8.0: a fix run's small change says there is no loop back to Fix" "1|0" \
+  "$(nx "o = [x for x in d['ask']['options'] + d['ask'].get('more', {}).get('options', []) if x['label'] == 'Make a small change'][0]; str(int('no loop back to Fix' in o['description'])) + '|' + str(int('Build' in o['description']))")"
+assert_eq "9.8.0: the page question is gone from the CLI (the page is written with no question)" "0" "$(grep -c 'def page_question' "$REPO_ROOT/scripts/flow.py")"
+setup

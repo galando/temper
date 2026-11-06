@@ -348,6 +348,12 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
   then handed the run back when `task start 2` failed, with Task 1's agent running and no one to follow it ("a before
   call failed"). Now every agent's before calls run first; when one fails, the agents whose tasks started are launched
   and followed to their gates, and the hand back names the CLI's FAIL line.
+- **The words of a question match the run** (`scripts/flow.py`), found when every question was read for the flow
+  explainer: More options named what used to be behind it once Make a small change went in or Teach Me went out
+  (it lists what is there now); in a `/temper:fix` run, a failed Review asked "Loop back to Build?" over a Loop back
+  to Fix option, Change something and Make a small change spoke of Build, Save for later named `/temper:temper`, and a
+  small change whose review failed offered no way back to Fix. The page question at Commit, asked nowhere since the
+  page is written without one, is gone, and `docs/flow.md` no longer describes it.
 
 **Three gaps of the last measured pass**
 - **Exempt is an item of the rules checklist, asked with Who, When and How much** (`scripts/gate_rows.py`,
