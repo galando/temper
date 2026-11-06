@@ -58,6 +58,8 @@ assert_eq "F12: the Manual task question names the Cases, with a name question o
   "$(nx "'|'.join([d['action'], d['ask']['question']['header'], d['ask']['question']['options'][0]['label'], d['ask']['question']['options'][1]['label'], d['ask']['question']['question']])")"
 assert_eq "F12: Confirm runs task confirm with the typed name, then the task gate" "task confirm 1 --by '{answer}'|task gate 1 --model person" \
   "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][0]['calls'])")"
+assert_eq "F12: the name question can be shown: two options at least, the first only says to type (9.8.0: Cancel alone was refused by the dialog)" "2|Type it below|Cancel" \
+  "$(nx "o = d['ask']['options'][0]['answer_question']['options']; '%d|%s|%s' % (len(o), o[0]['label'], o[1]['label'])")"
 assert_exit "F12: a confirmation needs a name" 1 "$TEMPER" task confirm 1
 "$TEMPER" task confirm 1 --by "Dana Cohen" >/dev/null 2>&1
 assert_eq "F12: the confirmation is recorded with the typed name, and a ledger row says so" "Dana Cohen|1" \

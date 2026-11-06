@@ -7,11 +7,11 @@ import { HELP, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
-import { answersIn } from './core/answers'
+import { answeredResult, answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
-import { dialogQuestions, drive, driveFix, driverThrew, logRows, slugOf } from './core/driver'
+import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, logRows, slugOf } from './core/driver'
 import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
@@ -489,6 +489,35 @@ async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
   }
 }
 
+// Several questions in one dialog (the Blocking questions): `$.ui.ask` raises the first, the tool.call hook below puts
+// them all in and keeps every answer. When the engine kept the first question only, the rest are asked one at a time.
+let askingAll: GoQuestion[] | null = null
+let allAnswers: Record<string, string> | null = null
+
+async function hostAskAll($: Api, qs: GoQuestion[]): Promise<Array<string | null>> {
+  if (qs.length <= 1) return qs.length === 0 ? [] : [await hostAsk($, qs[0]!)]
+  askingAll = qs
+  allAnswers = null
+  let first: string | null
+  try {
+    const a = await $.ui.ask(qs[0]!.question, { options: qs[0]!.options.map(o => o.label).slice(0, 4), header: qs[0]!.header })
+    first = typeof a === 'string' && a !== '' ? a : null
+  } finally {
+    askingAll = null
+  }
+  const got = allAnswers as Record<string, string> | null
+  allAnswers = null
+  if (got === null) {
+    const rest: Array<string | null> = []
+    for (const q of qs.slice(1)) rest.push(first === null ? null : await hostAsk($, q))
+    return [first, ...rest]
+  }
+  return qs.map((q, i) => {
+    const v = got[q.question]
+    return typeof v === 'string' && v !== '' ? v : i === 0 ? first : null
+  })
+}
+
 async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
   await recordAnswers($, { result: { questions: [{ header: q.header, question: q.question, options: q.options, multiSelect: false }], answers: { [q.question]: label } } })
 }
@@ -499,6 +528,7 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
     spawn: a => hostSpawn($, a),
     wait: ids => hostWait($, cwd, ids, signal),
     ask: q => hostAsk($, q),
+    askAll: qs => hostAskAll($, qs),
     record: (q, label) => hostRecord($, q, label),
     show: async text => {
       // `$.ui.log` appends one line: the terminal draws a line break inside it as a mark and cuts the line at 2000
@@ -692,7 +722,9 @@ export const register: Register = (on, opts) => {
     const g = await guard($, e.tool, { ...e }, main).catch(() => failedGuard(e.tool))
     if (g.deny !== null) return { deny: g.deny }
     // The driver's own question: the dialog shows what each option does (the labels alone came through `$.ui.ask`).
-    const filled = e.tool === 'AskUserQuestion' && asking !== null ? dialogQuestions((e as { questions?: unknown }).questions, asking) : null
+    const raised = (e as { questions?: unknown }).questions
+    const many = e.tool === 'AskUserQuestion' && askingAll !== null ? dialogQuestionsAll(raised, askingAll) : null
+    const filled = many ?? (e.tool === 'AskUserQuestion' && asking !== null ? dialogQuestions(raised, asking) : null)
     let result
     try {
       result = await next(filled === null ? e : ({ ...e, questions: filled } as typeof e))
@@ -705,6 +737,11 @@ export const register: Register = (on, opts) => {
       }
     }
     const errored = (result as { isError?: boolean }).isError === true
+    // Every answer of the driver's dialog of several questions, for hostAskAll.
+    if (many !== null && !errored) {
+      const r = answeredResult(result)
+      if (r !== null) allAnswers = Object.fromEntries(Object.entries(r.answers as Record<string, unknown>).filter((kv): kv is [string, string] => typeof kv[1] === 'string'))
+    }
     // A command may have moved the run (the CLI), and an answer is a decision: read the run again.
     if (e.tool === 'AskUserQuestion' && !errored) {
       // A skill option chosen (Grill Me, Teach Me): its questions are the session's to ask until the run moves on.

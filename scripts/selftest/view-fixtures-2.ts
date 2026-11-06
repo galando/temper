@@ -1837,6 +1837,10 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "multiSelect": false,
       "options": [
        {
+        "description": "Type the answer in the box below; this option alone records nothing.",
+        "label": "Type it below"
+       },
+       {
         "description": "Back to the question before.",
         "label": "Cancel"
        }

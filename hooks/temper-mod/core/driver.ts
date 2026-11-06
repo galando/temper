@@ -39,6 +39,8 @@ export type Port = {
   spawn(agent: GoAgent): Promise<string | null>
   wait(ids: string[]): Promise<Record<string, AgentEnd>>
   ask(q: GoQuestion): Promise<string | null>
+  // Several questions in one dialog (up to four, as AskUserQuestion takes them); absent: asked one at a time.
+  askAll?(qs: GoQuestion[]): Promise<Array<string | null>>
   record(q: GoQuestion, answer: string): Promise<void>
   show(text: string): Promise<void>
   stopped(): boolean
@@ -154,6 +156,24 @@ export function logRows(text: string): string[] {
   return out
 }
 
+// The dialog of several questions at once: `$.ui.ask` raises the first alone, and the mod's tool.call hook puts every one
+// in, each with its options' descriptions and previews. Null when the call is not the first of them.
+export function dialogQuestionsAll(questions: unknown, qs: GoQuestion[]): unknown[] | null {
+  if (qs.length === 0 || !Array.isArray(questions) || questions.length !== 1) return null
+  const first = questions[0] as { question?: unknown }
+  if (first.question !== qs[0]!.question) return null
+  return qs.slice(0, 4).map(q => ({
+    question: q.question,
+    header: q.header,
+    multiSelect: false,
+    options: q.options.slice(0, 4).map(o => {
+      const d = (o.description ?? '').trim()
+      const p = o.preview ?? ''
+      return { label: o.label, description: d, ...(p.trim() !== '' ? { preview: p } : {}) }
+    }),
+  }))
+}
+
 // The last line of `temper go` that is a JSON object, or null.
 export function parseGo(stdout: string): GoOut | null {
   const lines = stdout.trim().split('\n').reverse()
@@ -215,6 +235,7 @@ export type Effect =
   | { k: 'spawn'; agent: GoAgent }
   | { k: 'wait'; ids: string[] }
   | { k: 'ask'; q: GoQuestion }
+  | { k: 'askAll'; qs: GoQuestion[] }
   | { k: 'record'; q: GoQuestion; answer: string }
   | { k: 'show'; text: string }
   | { k: 'stopped' }
@@ -257,8 +278,7 @@ function* answer(cli: string, q: GoAsk, depth = 0): Steps<DriveEnd | null> {
   if (/^Ask the accept question/.test(opt.do ?? '') && q.accept) return yield* answer(cli, q.accept, depth + 1)
   // An option the conversation must carry out (a skill, the HTML review, a small change, a name to type, a step only a
   // model can do): nothing of it runs here; the conversation runs it whole, as the answer the person already gave.
-  const needs = opt.answer_question ? 'the option needs the person\'s words'
-    : opt.do ? opt.do.slice(0, 160)
+  const needs = opt.do ? opt.do.slice(0, 160)
       : (opt.steps ?? []).map(st => stepPlan(st, cli)).find(sp => sp.kind === 'handback')?.kind === 'handback' ? 'a step of the option needs the conversation' : null
   if (needs !== null) return handback(needs, `chose ${opt.label}`)
   const fills: Record<string, string> = {}
@@ -269,7 +289,20 @@ function* answer(cli: string, q: GoAsk, depth = 0): Steps<DriveEnd | null> {
     yield { k: 'record', q: opt.reason_question, answer: r }
     fills.reason = r
   }
-  if ((opt.calls ?? []).some(c => /\{(?!reason\})[a-z_]+\}/.test(c))) return handback('the option needs a value the driver does not have', `chose ${opt.label}`)
+  // A name question (who confirms a manual task): the person types it in the dialog; its own options only say to type
+  // (asked again) or go back (Cancel).
+  if (opt.answer_question && (opt.calls ?? []).some(c => c.includes('{answer}'))) {
+    for (let k = 0; k < 3 && fills.answer === undefined; k++) {
+      const typed = yield* ask(opt.answer_question)
+      if (typed === null) return handback('nobody answered the name question')
+      if (typed === 'Cancel') return yield* answer(cli, q, depth + 1)
+      if (opt.answer_question.options.some(o => o.label === typed) || typed.trim() === '') continue
+      yield { k: 'record', q: opt.answer_question, answer: typed }
+      fills.answer = typed.trim()
+    }
+    if (fills.answer === undefined) return handback('no name was typed', `chose ${opt.label}`)
+  }
+  if ((opt.calls ?? []).some(c => [...c.matchAll(/\{([a-z_]+)\}/g)].some(m => !((m[1] as string) in fills)))) return handback('the option needs a value the driver does not have', `chose ${opt.label}`)
   if ((yield* runAll(opt.calls ?? [], fills)) === null) return handback('a call of the answer failed')
   for (const s of opt.steps ?? []) {
     const p = stepPlan(s, cli)
@@ -318,11 +351,19 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
     }
     waits = 0
     if (g.action === 'ask') {
-      for (const b of g.blocking ?? []) {
-        const picked = yield* ask(b.question)
-        if (picked === null) return handback('nobody answered a Blocking question')
-        const call = picked === 'Carry forward' ? b.carry : fill(b.answer, { answer: picked })
-        if ((yield* run(call)).code !== 0) return handback('the answer call failed')
+      // The Blocking questions in one dialog, four at most (the rest in the next), as the loop without the mod asks them:
+      // a person answered six in six dialogs and asked why they did not come at once.
+      const blocking = g.blocking ?? []
+      for (let i = 0; i < blocking.length; i += 4) {
+        const chunk = blocking.slice(i, i + 4)
+        const picks = (yield { k: 'askAll', qs: chunk.map(b => b.question) }) as Array<string | null>
+        for (let j = 0; j < chunk.length; j++) {
+          const b = chunk[j] as GoBlocking
+          const picked = picks[j] ?? null
+          if (picked === null) return handback('nobody answered a Blocking question')
+          const call = picked === 'Carry forward' ? b.carry : fill(b.answer, { answer: picked })
+          if ((yield* run(call)).code !== 0) return handback('the answer call failed')
+        }
       }
       if ((g.blocking ?? []).length > 0) {
         // The answers are in intent.md: the action's gate call reads them (a FAIL is a verdict, the next question's).
@@ -436,10 +477,21 @@ async function perform(port: Port, e: Effect): Promise<unknown> {
     case 'spawn': return port.spawn(e.agent)
     case 'wait': return port.wait(e.ids)
     case 'ask': return port.ask(e.q)
+    case 'askAll': return port.askAll ? port.askAll(e.qs) : askEach(port, e.qs)
     case 'record': return port.record(e.q, e.answer)
     case 'show': return port.show(e.text)
     case 'stopped': return port.stopped()
   }
+}
+
+async function askEach(port: Port, qs: GoQuestion[]): Promise<Array<string | null>> {
+  const out: Array<string | null> = []
+  for (const q of qs) {
+    const a = await port.ask(q)
+    out.push(a)
+    if (a === null) break
+  }
+  return out
 }
 
 // The mod: each step awaited on the engine.
@@ -464,6 +516,7 @@ export type SyncPort = {
   spawn(agent: GoAgent): string | null
   wait(ids: string[]): Record<string, AgentEnd>
   ask(q: GoQuestion): string | null
+  askAll?(qs: GoQuestion[]): Array<string | null>
   record(q: GoQuestion, answer: string): void
   show(text: string): void
 }
@@ -480,6 +533,7 @@ function runSync(port: SyncPort, steps: Steps<DriveEnd>): DriveEnd {
     if (next.done === true) return next.value
     const e = next.value
     input = e.k === 'run' ? port.run(e.call) : e.k === 'spawn' ? port.spawn(e.agent) : e.k === 'wait' ? port.wait(e.ids)
-      : e.k === 'ask' ? port.ask(e.q) : e.k === 'record' ? port.record(e.q, e.answer) : e.k === 'show' ? port.show(e.text) : false
+      : e.k === 'ask' ? port.ask(e.q) : e.k === 'askAll' ? (port.askAll ? port.askAll(e.qs) : e.qs.map(q => port.ask(q)))
+      : e.k === 'record' ? port.record(e.q, e.answer) : e.k === 'show' ? port.show(e.text) : false
   }
 }

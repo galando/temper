@@ -421,8 +421,11 @@ class Builder:
     def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None, answer=None):
         o = {"label": label, "description": description, "move": move, "calls": calls or []}
         if answer:  # a question whose typed answer fills {answer} in the calls (the person's name, for a manual task)
+            # Two options at least, or the question tool refuses the dialog (9.8.0: a run with a manual task stopped at
+            # its name question, which held Cancel alone). The first only says to type; the typed text is the answer.
             o["answer_question"] = {"header": answer[0], "question": answer[1], "multiSelect": False,
-                                    "options": [{"label": "Cancel", "description": "Back to the question before."}]}
+                                    "options": [{"label": "Type it below", "description": "Type the answer in the box below; this option alone records nothing."},
+                                                {"label": "Cancel", "description": "Back to the question before."}]}
         if steps:
             o["steps"] = steps
         if do:
@@ -604,14 +607,40 @@ class Builder:
                 go = self.leave_plan()
                 nl = LABEL.get(r.next_of("plan") or "build")
                 text = "Plan: %s.%s Approve the plan and continue to %s?" % (state_of, said, nl)
+                # 9.8.0: the fresh review's open findings below high pass the gate, and are the person's call: the question
+                # names them and offers Revise the plan first, recommended when one is medium. A person chose Stage by
+                # stage on a review with two medium findings, and the plan went on as if none were found.
+                lesser = [f for f in fr["findings"] if f["state"] not in ("resolved", "accepted")] if not skipped else []
+                revise = None
+                if lesser:
+                    shown = "; ".join("#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:120]) for f in lesser[:3])
+                    text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. Approve the plan and continue to %s?" % (
+                        state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", nl)
+                    medium = any(f["severity"] not in ("low", "info") for f in lesser)
+                    revise = self.opt("Revise the plan" + (" (Recommended)" if medium else ""),
+                                      "The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
+                                      move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
+                                          ("fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))[:300]))])
+                    if medium:
+                        go_label = "Stage by stage" if not r.has_design() else "Continue to %s" % nl
+                        first = [revise, self.opt(go_label, "Approve the plan as it is; the open findings stay as the review wrote them.", move="approve", calls=go)]
+                        if not r.has_design():
+                            first.append(self.opt("Autonomous Build: run Build unattended", "Approve the plan as it is; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+                                                  move="arm", calls=[self.c("state set run_mode autonomous")] + go))
+                        return self.with_more(GATE_HEADER, text, stage, first, [html, grill, teach, self.save()], "Plan: more options.")
                 # 9.8.0: the unattended run is offered at the last question before Build: here when no Design follows,
                 # at the Design question when it does (so every decision is made before the run goes on by itself).
                 if not r.has_design():
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
                              self.opt("Autonomous Build: run Build unattended", "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
                                       move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
+                    if revise is not None:   # low findings only: revising is offered, after the ways on
+                        return self.with_more(GATE_HEADER, text, stage, first[:2] + [revise], [html, grill, teach, self.save()], "Plan: more options.")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
                         return self.with_more(GATE_HEADER, text, stage, first[:2] + [self.fresh_offer()], [html, grill, teach, self.save()], "Plan: more options.")
+                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
+                if revise is not None:
+                    first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go), revise, html]
                     return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
                 if fr["offer"]:
                     first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go),

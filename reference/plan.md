@@ -129,6 +129,10 @@ How the CLI counts it:
 
 ## Answering the fresh review
 
+A finding below high passes the plan gate, but stays the person's call: the plan question names the open findings
+and offers Revise the plan, recommended when one is medium (9.8.0).
+
+
 When the person chooses **Revise the plan**, you run again with a `Fresh review findings to answer`
 line. Answer each finding in one of four ways, and say which in the lines you return (`#{id}: fixed`, `contested`,
 `escalated` or `left`):

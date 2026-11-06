@@ -1,7 +1,7 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { STOPPED, compactPanel, dialogQuestions, drive, driverThrew, logRows, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 
 const CLI = '/p/scripts/temper'
@@ -86,6 +86,57 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran).toContain(`${CLI} intent carry 'A window?'`)
     // Then the action's gate call reads the answers, before `temper go` asks again.
     expect(log.ran.slice(-2)).toEqual([`${CLI} gate intent`, `${CLI} go`])
+  })
+
+  test('Blocking questions come four to a dialog, as the loop without the mod asks them; each answer\'s call runs in order', async () => {
+    const qs = [1, 2, 3, 4, 5].map(n => ({ question: q(`Rule ${n}?`, [`Yes ${n}`, 'Carry forward'], `Question ${n}`),
+      answer: `${CLI} intent answer 'Rule ${n}?' '{answer}'`, carry: `${CLI} intent carry 'Rule ${n}?'` }))
+    const dialogs: string[][] = []
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'intent', gate: `${CLI} gate intent`, ask: { question: q('Intent?', ['Continue']), options: [] }, blocking: qs }] })
+    p.askAll = async list => {
+      dialogs.push(list.map(x => x.question))
+      return list.map(x => (x.question === 'Rule 3?' ? 'Carry forward' : `Yes ${x.question.slice(5, 6)}`))
+    }
+    await drive(p, CLI, null)
+    expect(dialogs).toEqual([['Rule 1?', 'Rule 2?', 'Rule 3?', 'Rule 4?'], ['Rule 5?']])
+    expect(log.ran.filter(c => / intent (answer|carry) /.test(c))).toEqual([
+      `${CLI} intent answer 'Rule 1?' 'Yes 1'`, `${CLI} intent answer 'Rule 2?' 'Yes 2'`, `${CLI} intent carry 'Rule 3?'`,
+      `${CLI} intent answer 'Rule 4?' 'Yes 4'`, `${CLI} intent answer 'Rule 5?' 'Yes 5'`])
+    expect(log.asked).toEqual([])
+  })
+
+  test('a dialog of several questions that nobody answers hands the run on, with no answer call run', async () => {
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'intent', ask: { question: q('Intent?', ['Continue']), options: [] }, blocking: [
+      { question: q('A?', ['x'], 'Question 1'), answer: `${CLI} intent answer 'A?' '{answer}'`, carry: `${CLI} intent carry 'A?'` },
+      { question: q('B?', ['y'], 'Question 2'), answer: `${CLI} intent answer 'B?' '{answer}'`, carry: `${CLI} intent carry 'B?'` }] }] })
+    p.askAll = async list => list.map(() => null)
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'nobody answered a Blocking question' })
+    expect(log.ran.filter(c => c.includes('intent answer'))).toEqual([])
+  })
+
+  test('a manual task\'s name question is asked by the driver: "Type it below" asks again, the typed name fills the call', async () => {
+    const nameQ = { header: 'Manual task', question: 'Task 2: what name should the confirmation carry?', options: [{ label: 'Type it below', description: '' }, { label: 'Cancel', description: '' }] }
+    const confirm = { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`, `${CLI} task gate 2 --model person`], answer_question: nameQ }
+    const { p, log } = port({
+      goes: [{ action: 'ask', stage: 'build', ask: { question: q('Task 2 is a manual task. Confirm?', ['Confirm', 'Stop']), options: [confirm, { label: 'Stop' }] } }, { action: 'none', say: 'end' }],
+      answers: ['Confirm', 'Type it below', "Gal O'Neil"],
+    })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.asked.map(x => x.question)).toEqual(['Task 2 is a manual task. Confirm?', nameQ.question, nameQ.question])
+    expect(log.ran).toContain(`${CLI} task confirm 2 --by 'Gal O'\\''Neil'`)
+    expect(log.ran).toContain(`${CLI} task gate 2 --model person`)
+  })
+
+  test('Cancel at the name question asks the manual task question again, and nothing runs', async () => {
+    const nameQ = { header: 'Manual task', question: 'Task 2: name?', options: [{ label: 'Type it below', description: '' }, { label: 'Cancel', description: '' }] }
+    const confirm = { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`], answer_question: nameQ }
+    const { p, log } = port({
+      goes: [{ action: 'ask', stage: 'build', ask: { question: q('Confirm?', ['Confirm', 'Stop']), options: [confirm, { label: 'Stop', stop: true }] } }],
+      answers: ['Confirm', 'Cancel', 'Stop'],
+    })
+    await drive(p, CLI, null)
+    expect(log.asked.map(x => x.question)).toEqual(['Confirm?', 'Task 2: name?', 'Confirm?'])
+    expect(log.ran.filter(c => c.includes('task confirm'))).toEqual([])
   })
 
   test('a typed answer goes to the conversation as the person\'s message (discuss), with nothing run', async () => {
@@ -308,6 +359,17 @@ describe('what the driver shows, as the rows the terminal draws', () => {
 })
 
 describe('the dialog of the driver\'s question', () => {
+  test('several questions: the first one raised becomes the whole dialog, each with its descriptions', () => {
+    const a = { header: 'Question 1', question: 'Who?', options: [{ label: 'Admins', description: 'Recommended' }, { label: 'Carry forward', description: ' Later. ' }] }
+    const b = { header: 'Question 2', question: 'When?', options: [{ label: '60 days', description: '' }] }
+    expect(dialogQuestionsAll([{ question: 'Who?', header: 'Question 1', options: [] }], [a, b])).toEqual([
+      { question: 'Who?', header: 'Question 1', multiSelect: false, options: [{ label: 'Admins', description: 'Recommended' }, { label: 'Carry forward', description: 'Later.' }] },
+      { question: 'When?', header: 'Question 2', multiSelect: false, options: [{ label: '60 days', description: '' }] },
+    ])
+    expect(dialogQuestionsAll([{ question: 'Other?' }], [a, b])).toBe(null)
+    expect(dialogQuestionsAll([{ question: 'Who?' }, { question: 'x' }], [a, b])).toBe(null)
+  })
+
   const q = { header: 'Temper gate', question: 'Plan: approve?', options: [
     { label: 'Approve (Recommended)', description: 'Go on to Design.', preview: '| a | b |' },
     { label: 'Save for later', description: ' Stop here. ' }] }

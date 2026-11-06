@@ -93,6 +93,18 @@ assert_eq "a plan question that failed on another row still carries the paraphra
 assert_eq "a launched review that did not finish is asked about, never launched again by itself" "ask" \
   "$("$TEMPER" plan fresh again >/dev/null 2>&1; "$TEMPER" plan fresh start >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1; nx "d['action']")"
 
+# --- 3b. Findings below high pass the gate and are the person's call (9.8.0: two medium findings went on unseen) ---
+_fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all
+_fr_find medium "[comprehension] a joke with a newline breaks one joke per line"; _fr_find low "[readiness] Task 1: wording only"
+assert_exit "a medium and a low finding pass the plan gate" 0 "$TEMPER" gate plan
+assert_eq "the plan question names the open findings, and Revise the plan comes first, recommended" "1|Revise the plan (Recommended)|Stage by stage|Autonomous Build: run Build unattended" \
+  "$(nx "q = d['ask']; str(int('The fresh review left 2 finding(s) open: #' in q['question']['question'] and '[medium] [comprehension] a joke with a newline' in q['question']['question'])) + '|' + '|'.join(o['label'] for o in q['options'][:3])")"
+assert_eq "Revise the plan sends Plan back with the findings to answer" "state redo plan --reason|1" \
+  "$(nx "c = d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]; ' '.join(c.split()[:4]) + '|' + str(int('a joke with a newline' in c))")"
+_fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all; _fr_find low "[readiness] Task 1: wording only"; "$TEMPER" gate plan >/dev/null 2>&1
+assert_eq "a low finding alone: Stage by stage stays recommended, and Revise the plan is offered after the ways on" "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Revise the plan" \
+  "$(nx "'|'.join(o['label'] for o in d['ask']['options'][:3])")"
+
 # --- 4. A blocker; Revise the plan; any of the three files edited makes the review stale ---
 _fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all
 _fr_find high "[readiness] Task 1: the case names no expected value"; _fr_find low "[zoom-out] a helper the code has"

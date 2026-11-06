@@ -87,6 +87,30 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     expect(books.map(b => b.length)).toEqual([1])
   })
 
+  test('Blocking questions come in one dialog through the mod, and each answer\'s call runs', async ($, on) => {
+    const api = $ as unknown as Api
+    const files = { ...runFiles({ gates: { plan: 'PASS' } }), '/repo/.git/HEAD': 'ref: refs/heads/feature/pw\n' }
+    const w = world(on, files, { projectRoot: '/repo', answers: ['Admins only', 'Carry forward', '60 days'] })
+    const q = questionOf(viewText(w) ?? '')
+    const b = (n: number, text: string, labels: string[]) => ({ question: { header: `Question ${n}`, question: text, options: labels.map(l => ({ label: l, description: '' })) },
+      answer: `X/scripts/temper intent answer '${text}' '{answer}'`, carry: `X/scripts/temper intent carry '${text}'` })
+    const goes = [
+      { action: 'ask', stage: 'plan', gate: 'X/scripts/temper gate plan', ask: { question: { ...q, multiSelect: false }, options: q.options.map(o => ({ label: o.label, calls: [] })) },
+        blocking: [b(1, 'Who may refund?', ['Admins only', 'Everyone', 'Carry forward']), b(2, 'Partial refunds?', ['Yes', 'Carry forward']), b(3, 'A window?', ['60 days', 'Carry forward'])] },
+      { action: 'none', say: 'The run is done.' },
+    ]
+    // The CLI lists the Blocking questions in the view (blocking_asks), the questions the guard lets a session ask.
+    const v = JSON.parse(viewText(w) ?? '{}') as Record<string, unknown>
+    w.files.set('.temper/view.json', JSON.stringify({ ...v, blocking_asks: goes[0]!.blocking!.map(x => ({ question: { ...x.question, multiSelect: false } })) }))
+    const { ran } = engine(on, w, goes)
+    await api.session.start(START)
+    await api.command.run({ command: 'temper', args: '', origin: { kind: 'composer' } })
+    expect(w.dialogs).toBe(1)
+    expect(w.asked).toEqual(['Who may refund?', 'Partial refunds?', 'A window?'])
+    expect(ran.filter(c => / intent (answer|carry) /.test(c))).toEqual([
+      "X/scripts/temper intent answer 'Who may refund?' 'Admins only'", "X/scripts/temper intent carry 'Partial refunds?'", "X/scripts/temper intent answer 'A window?' '60 days'"])
+  })
+
   test('a typed answer: the run goes on in the conversation with the person\'s words (discuss), nothing run', async ($, on) => {
     const api = $ as unknown as Api
     const files = { ...runFiles({ gates: { plan: 'PASS' } }), '/repo/.git/HEAD': 'ref: refs/heads/feature/pw\n' }

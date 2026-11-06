@@ -286,7 +286,8 @@ which the CLI cannot know. A panel the CLI draws is shown as a few rows: its tit
 with the Plan's diagram left in plan.md (a mod's log line is one row with the plugin's name before it, and a box drawn
 row by row read as forty rows of "temper:"). A stage that only waits for your answers (open Blocking questions, the
 Context check, a criterion you confirm) draws as the current stage, never red. A Temper agent's message is drawn in
-full, where the engine shows one folded line. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
+full, where the engine shows one folded line. The Blocking questions come in one dialog, four at most (each its own
+tab, then a review of the answers), as the conversation asks them without the mod. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
 model turn after it, and `/temper:temper` takes the run up again (an agent already launched may still finish). The
 guard checks the driver's questions and agents as it checks the session's: each must be the CLI's. Round 5 of the
 benchmark measured why: the main session's own model time was 8% to 10% of a feature run's wall time and 20% to

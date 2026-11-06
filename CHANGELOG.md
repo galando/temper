@@ -317,6 +317,20 @@ every hidden test where vanilla did and more on the vague task (11/11 against 8/
 - **A Temper agent's message is drawn in full**, where the engine folds a message from another agent into one line
   ("Message from @temper-temper-plan (ctrl+o to expand)"). Other senders, the ctrl+o view and the mod's off mode keep
   the engine's drawing. Written against the documented message row; not yet seen live.
+- **The Blocking questions come in one dialog**, four at most (the rest in the next), as the conversation already asked
+  them without the mod: the driver asked six in six dialogs. `$.ui.ask` raises the first question, and the mod's tool
+  call hook puts every one in and reads back each answer (checked in a terminal: one dialog, a tab a question, a review
+  before Submit, every answer returned). When the engine keeps only the first, the rest are asked one at a time.
+- **The fresh review's findings below high are the person's call at the plan question.** Only a critical or high
+  finding failed the plan gate; medium and low ones passed it, and the question offered Stage by stage as if nothing
+  were found (a person who asked for the review saw two medium findings, one a real gap, go on unseen). The question
+  now names the open findings and offers Revise the plan (the Plan agent fixes or contests each, then the plan is
+  checked again): first and recommended when one is medium, after the ways on when all are low.
+- **A manual task's name question can be shown.** It held one option (Cancel), and the question tool refuses a dialog
+  with fewer than two, so a run with a manual task stopped there, with the mod and without it (seen in a terminal: the
+  guard rightly refused the confirm call that no answer allowed). It now offers "Type it below" (it records nothing; the
+  question is asked again) and Cancel; the typed name is the answer, and the guard counts no option of the question
+  as a name. With the mod, the driver asks it itself and runs the confirm calls with the name.
 - **"Make a small change" says who makes it:** Claude makes one small change in the conversation, with no loop back to
   Build, and asks the person what to change when the fix is theirs ("Change the work yourself" read as the person's
   own edit).

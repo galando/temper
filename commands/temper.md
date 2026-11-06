@@ -137,8 +137,9 @@ Any other failure of it still stops the action.
   them, never answer a question for them, and never choose "Start over" yourself.
 - **Names.** An option with `answer_question` needs a typed answer, such as the name of the person who
   confirms a manual task: ask that question exactly as given, put the answer in place of `{answer}` as
-  "Filling a placeholder" says, and never fill it from git, the account or a guess. "Cancel" asks the
-  first question again.
+  "Filling a placeholder" says, and never fill it from git, the account or a guess. Its first option ("Type it
+  below") only says to type: when the person picks it, ask the name question again. "Cancel" asks the first question
+  again.
 - **Reasons.** An option with `reason` needs the person's reason: their note on the option, or else
   ask its `reason_question` exactly as given. Any answer to it but "Cancel" is the reason, typed text
   included; "Cancel" asks the first question again. Put the reason in place of `{reason}`, as "Filling a
