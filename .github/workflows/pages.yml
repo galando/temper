@@ -58,6 +58,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
       # The live site serves each video as video/mp4 with byte ranges (what a browser's player needs); a red run says so.
+      # The CDN may answer a range request from cache with the whole file (200, accept-ranges: bytes): that plays too.
       - name: Check the videos on the live site
         env:
           SITE: ${{ steps.deployment.outputs.page_url }}
@@ -66,7 +67,9 @@ jobs:
             ok=""
             for i in 1 2 3 4 5 6; do
               h="$(curl -sSI -H 'Range: bytes=0-1023' "${SITE%/}/media/$f" || true)"
-              if grep -qiE '^HTTP/[0-9.]+ 206' <<<"$h" && grep -qiE '^content-type: (video/mp4|image/jpeg)' <<<"$h"; then ok=1; break; fi
+              # A player needs the right type and byte ranges: a 206, or a cached 200 that says it takes ranges.
+              if grep -qiE '^content-type: (video/mp4|image/jpeg)' <<<"$h" \
+                 && { grep -qiE '^HTTP/[0-9.]+ 206' <<<"$h" || { grep -qiE '^HTTP/[0-9.]+ 200' <<<"$h" && grep -qiE '^accept-ranges: bytes' <<<"$h"; }; }; then ok=1; break; fi
               sleep 20
             done
             [ -n "$ok" ] || { echo "::error::${SITE%/}/media/$f is not served as a playable file"; echo "$h"; exit 1; }
