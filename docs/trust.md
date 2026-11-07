@@ -26,7 +26,8 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   so the `cat` would wait until the Bash timeout. It reads only the command and looks for that folder. All three
   fail open.
 - **The run driver (9.8.0).** With the mod loaded, the mod carries a `/temper:temper` run itself: it runs the temper CLI's
-  calls (`temper go` and the calls it gives, through `bash -c` in the project, as the session did), launches the agents
+  calls (`temper go` and the calls it gives: the plugin's own `scripts/temper` by its path with plain arguments, in the
+  project, never through a shell since 9.8.1), launches the agents
   the CLI names and asks its questions. It runs no command the CLI did not give, and a call of an answer only after you
   picked that answer in the question dialog. What needs a model or your words goes back to the conversation
   ([The mod](mod.md), The run driver).
