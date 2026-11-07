@@ -21,7 +21,7 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   session owes an intent gate (the other stage commands are doors into `/temper` and owe none).
   `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. `PreToolUse` on Bash runs
-  `scripts/guards/block-stdin-wait.sh` (9.8.0), which refuses, in a folder with a `.temper` folder at or above it, a
+  `scripts/guards/block_stdin_wait.py` (9.8.0; a Python file since 9.8.1, answering deny as JSON), which refuses, in a folder with a `.temper` folder at or above it, a
   command whose `cat` has no input while the command holds a heredoc: Claude Code leaves that command's input open,
   so the `cat` would wait until the Bash timeout. It reads only the command and looks for that folder. All three
   fail open.

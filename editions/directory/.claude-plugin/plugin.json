@@ -1,0 +1,54 @@
+{
+  "name": "temper",
+  "displayName": "Temper",
+  "description": "The Markdown edition of Temper: intent before code, then plan, design, TDD build, review and check, each ended by a question you answer. Gates are checklists Claude applies and asks you about, not verdicts computed by a CLI.",
+  "version": "9.8.0",
+  "author": {
+    "name": "galando",
+    "url": "https://github.com/galando"
+  },
+  "repository": "https://github.com/galando/temper",
+  "homepage": "https://github.com/galando/temper",
+  "license": "MIT",
+  "keywords": [
+    "intent-driven-development",
+    "sdlc",
+    "guardrails",
+    "tdd",
+    "code-review",
+    "quality-gates",
+    "blast-radius",
+    "workflow",
+    "enforcement",
+    "plan-mode"
+  ],
+  "commands": [
+    "./commands/temper.md",
+    "./commands/intent.md",
+    "./commands/plan.md",
+    "./commands/design.md",
+    "./commands/build.md",
+    "./commands/review.md",
+    "./commands/check.md",
+    "./commands/fix.md",
+    "./commands/status.md",
+    "./commands/init.md"
+  ],
+  "agents": [
+    "./agents/intent.md",
+    "./agents/plan.md",
+    "./agents/design.md",
+    "./agents/build.md",
+    "./agents/review.md",
+    "./agents/check.md",
+    "./agents/rca.md",
+    "./agents/fix.md"
+  ],
+  "skills": [
+    "./skills/temper-core",
+    "./skills/context-engineering",
+    "./skills/source-driven-development",
+    "./skills/grill-me",
+    "./skills/teach-me"
+  ]
+}

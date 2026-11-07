@@ -195,3 +195,16 @@ way to understand how Temper works before contributing.
 ---
 
 Thank you for helping make Temper better!
+
+## The directory edition
+
+The plugin directory accepts hooks, mods and scripts only from Verified organizations, so a Markdown edition with
+none of them lives in `editions/directory/`. It is published from the `directory` branch, whose root is that folder:
+
+```text
+git subtree split --prefix=editions/directory -b directory
+git push origin directory
+```
+
+Point the directory's tracked branch at `directory`. Keep the edition free of anything but Markdown, text, JSON,
+YAML and images, with no file that starts with `#!`, and run `claude plugin validate editions/directory` after a change.

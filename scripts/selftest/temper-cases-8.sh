@@ -42,10 +42,13 @@ assert_eq "next: a Blocking open question is listed before the gate question" "S
 
 # --- setup: next lists what the project still lacks ---
 mkdir -p "$WORKDIR/bare" && (cd "$WORKDIR/bare" && git init -q . && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base)
-assert_eq "next: a project with nothing set up lists the config, the scaffold and the commit gate" "3|1|1|1" \
-  "$(cd "$WORKDIR/bare" && _ev "s = d.get('setup', []); '|'.join([str(len(s)), str(int('templates/temper.config.default' in s[0])), str(int(s[1].endswith('temper init'))), str(int(s[2].endswith('guards/install.sh')))])" "$("$TEMPER" next --json)")"
-(cd "$WORKDIR/bare" && mkdir -p .claude && cp "$REPO_ROOT/templates/temper.config.default" .claude/temper.config && "$TEMPER" init >/dev/null 2>&1 && bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1)
-assert_eq "next: once set up, it lists nothing" "None" "$(cd "$WORKDIR/bare" && _ev "d.get('setup')" "$("$TEMPER" next --json)")"
+assert_eq "next: a project with nothing set up lists the config, the scaffold and the commit gate, each a call of the CLI" "3|1|1|1" \
+  "$(cd "$WORKDIR/bare" && _ev "s = d.get('setup', []); '|'.join([str(len(s)), str(int(s[0].endswith('scripts/temper config init'))), str(int(s[1].endswith('temper init'))), str(int(s[2].endswith('scripts/temper guards install')))])" "$("$TEMPER" next --json)")"
+# 9.8.1: each setup call is the CLI with plain words (the mod runs it with no shell): run them as listed, word by word.
+(cd "$WORKDIR/bare" && "$TEMPER" next --json | python3 -I -c 'import json,sys; [print(c) for c in json.load(sys.stdin).get("setup", [])]' \
+  | while read -r -a W; do "${W[@]}" >/dev/null 2>&1; done)
+assert_eq "next: once set up by its own calls, it lists nothing; config init leaves a config that is there" "None|1|1" \
+  "$(cd "$WORKDIR/bare" && _ev "d.get('setup')" "$("$TEMPER" next --json)")|$(cmp -s "$WORKDIR/bare/.claude/temper.config" "$REPO_ROOT/templates/temper.config.default" && echo 1)|$(cd "$WORKDIR/bare" && "$TEMPER" config init | grep -c 'already there')"
 cd "$WORKDIR" || exit 1
 
 # --- the CLI refuses to leave a stage it should not ---

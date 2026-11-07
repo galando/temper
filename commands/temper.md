@@ -23,7 +23,9 @@ gate, an option or a next stage yourself.
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 With the mod on, the mod carries a run it can by itself (the run driver, 9.8.0: `docs/mod.md`) and hands it here for
 what needs you: `next` (go on with the loop below), `discuss <the person's words>` (a typed answer) or `chose <label>`
-(an option the person chose that needs you: see Arguments). Either way the run is where the CLI says it is.
+(an option the person chose that needs you: see Arguments). The mod leaves the person's command as typed and gives
+these words in a note after it, `Temper hand back from the mod's run driver: ... : <words>`: when that note is there,
+take its words as the arguments. Either way the run is where the CLI says it is.
 
 ## Arguments
 
@@ -46,7 +48,7 @@ feature description.
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
 
 - When it lists `setup`, run those calls first, each once, and say in one line what was set up. When
-  `scripts/guards/install.sh` exits non zero, show its `FAIL` line (or its whole output in a fenced
+  `temper guards install` (which runs `scripts/guards/install.sh`) exits non zero, show its `FAIL` line (or its whole output in a fenced
   block), the lines it printed between BEGIN and END in a fenced block, and its `Hint:` line, as
   written; then go on: the commit gate is not installed, and Temper says so. A `FAIL: run temper from a
   project folder` line from any call means stop and show it.

@@ -19,7 +19,8 @@ function engine(on: On, w: ReturnType<typeof world>, goes: unknown[], opts: { ag
   const spawned: Array<{ subagent_type?: string; model?: string; prompt?: string }> = []
   on('process.spawn', async function* ($, e) {
     const argv = (e as { argv: string[] }).argv
-    const call = argv[0] === 'bash' && argv[1] === '-c' ? (argv[2] as string) : argv.join(' ')
+    // The mod runs the CLI by its path with the call's words, no shell: the call as the CLI wrote it, quoted again.
+    const call = argv.map(w => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)).join(' ')
     if (argv[0] === 'sleep') return { value: { code: 0, signal: null } }
     ran.push(call)
     if (isGo(call)) {
@@ -57,11 +58,13 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     ]
     const { ran, spawned, logged } = engine(on, w, goes)
     await api.session.start(START)
-    await api.command.run({ command: 'temper', args: 'Add refunds', origin: { kind: 'composer' } })
+    const r1 = (await api.command.run({ command: 'temper', args: 'Add refunds', origin: { kind: 'composer' } })) as { context?: string[] }
     expect(ran.some(c => /scripts\/temper state init refunds --feature 'Add refunds'$/.test(c))).toBe(true)
     expect(spawned.map(s => [s.subagent_type, s.model, s.prompt])).toEqual([['temper:temper-plan', 'opus', 'Follow plan.md exactly.']])
     expect(logged).toEqual(['Temper: the run goes on in the conversation (the temper:temper-plan agent could not start).'])
-    expect(w.commandRuns.map(c => c.args)).toEqual(['next'])
+    // The person's command goes on as typed; the hand back is a note after it (9.8.1: no rewritten arguments).
+    expect(w.commandRuns.map(c => c.args)).toEqual(['Add refunds'])
+    expect(r1.context?.at(-1)).toMatch(/^Temper hand back from the mod's run driver: .*: next$/)
   })
 
   test('taken up again at the plan gate: the question of the view asked as given, the answer recorded, its calls run', async ($, on) => {
@@ -119,8 +122,9 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     const goes = [{ action: 'ask', stage: 'plan', ask: { question: { ...q, multiSelect: false }, options: q.options.map(o => ({ label: o.label, calls: ['X/scripts/temper state advance plan_complete build'] })) } }]
     const { ran, logged } = engine(on, w, goes)
     await api.session.start(START)
-    await api.command.run({ command: 'temper', args: '', origin: { kind: 'composer' } })
-    expect([w.commandRuns.map(c => c.args), logged.at(-1)]).toEqual([['discuss make it admin only'], 'Temper: the run goes on in the conversation (the person typed an answer).'])
+    const r = (await api.command.run({ command: 'temper', args: '', origin: { kind: 'composer' } })) as { context?: string[] }
+    expect([w.commandRuns.map(c => c.args), logged.at(-1)]).toEqual([[''], 'Temper: the run goes on in the conversation (the person typed an answer).'])
+    expect(r.context?.at(-1)).toMatch(/: discuss make it admin only$/)
     // The dialog itself shows what each option does: the descriptions the CLI gave, which `$.ui.ask` cannot carry.
     expect(w.askedDescriptions[0]).toEqual(q.options.map(o => (o.description ?? '').trim()))
     expect(w.askedDescriptions[0]!.every(d => d !== '')).toBe(true)

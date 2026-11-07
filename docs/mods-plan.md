@@ -80,7 +80,7 @@ is my recommendation; say so if you want it changed.
 - The plugin's hooks file binds two classic hooks: `UserPromptSubmit` →
   `stage-marker.sh` and `Stop` → `verify-stage-gate.sh` (refuses to end a standalone
   stage session until a verdict exists; fails open after two blocks). (9.8.0 adds a third, `PreToolUse` on Bash →
-  `block-stdin-wait.sh`, which refuses a command that would wait for input until the Bash timeout.)
+  `block_stdin_wait.py` (named block-stdin-wait.sh before 9.8.1), which refuses a command that would wait for input until the Bash timeout.)
 - Opt in pack `packs/guardrails/settings-guardrails.json` adds `PreToolUse` guards for secrets,
   protected paths, the regression test, and `block-uncommitted-gate.sh` (runs
   `temper gate commit` before a Bash `git commit`).
