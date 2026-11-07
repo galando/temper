@@ -71,7 +71,4 @@ and neither reads a credential. In detail ([more](docs/mod.md#what-the-mod-reads
   terminal) to read the checks of your pull request. It reads them only: it never pushes and never marks a draft
   ready. Neither the hooks nor the mod read it.
 
-A Markdown edition with no hooks, no mod and no scripts is published from the `directory` branch: the same flow,
-with every gate asked by Claude instead of computed by the CLI.
-
 [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Trust](docs/trust.md) · [CHANGELOG](CHANGELOG.md) · [Privacy](https://galando.github.io/temper/privacy.html) · MIT © [Gal Naor](https://github.com/galando)
