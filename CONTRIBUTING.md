@@ -201,9 +201,13 @@ Thank you for helping make Temper better!
 The plugin directory accepts hooks, mods and scripts only from Verified organizations, so a Markdown edition with
 none of them lives in `editions/directory/`. It is published from the `directory` branch, whose root is that folder:
 
+The workflow `.github/workflows/directory-branch.yml` cuts and replaces that branch on every push to `main` that
+changes the edition (and on demand, from the Actions tab), after checking that the edition holds only allowed files.
+Never edit the `directory` branch by hand. By hand, the same is:
+
 ```text
 git subtree split --prefix=editions/directory -b directory
-git push origin directory
+git push --force origin directory
 ```
 
 Point the directory's tracked branch at `directory`. Keep the edition free of anything but Markdown, text, JSON,

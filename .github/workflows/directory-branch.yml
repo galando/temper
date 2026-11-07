@@ -1,0 +1,54 @@
+# Publishes the Markdown edition (editions/directory/) to the `directory` branch, whose root is that folder.
+#
+# The plugin directory reads a whole branch, and it accepts hooks, mods and scripts only from Verified
+# organizations, so it tracks `directory` (the edition alone) instead of `main` (the full plugin). The branch
+# is generated: every push to main that changes the edition cuts it again and replaces it. Never edit it by hand.
+name: Directory branch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'editions/directory/**'
+      - '.github/workflows/directory-branch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: directory-branch
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The edition must hold only what the directory accepts from any publisher: Markdown, text, JSON, YAML
+      # and images, no file that starts with #!, no hooks file. A bad edition is never published.
+      - name: Check the edition
+        run: |
+          set -euo pipefail
+          bad="$(find editions/directory -type f | grep -vE '\.(md|txt|json|ya?ml|png|jpe?g|gif|webp|ico)$' | grep -vE '/(LICENSE|\.gitignore)$' || true)"
+          [[ -z "$bad" ]] || { echo "FAIL: files of a type the directory refuses:"; echo "$bad"; exit 1; }
+          shebang="$(grep -rlE '^#!' editions/directory || true)"
+          [[ -z "$shebang" ]] || { echo "FAIL: files that start with #!:"; echo "$shebang"; exit 1; }
+          manifests="$(find editions/directory -name '*.json' -path '*ooks*' || true)"
+          [[ -z "$manifests" ]] || { echo "FAIL: the edition ships a hook manifest:"; echo "$manifests"; exit 1; }
+          for f in editions/directory/.claude-plugin/plugin.json editions/directory/.claude-plugin/marketplace.json; do
+            python3 -m json.tool "$f" >/dev/null
+          done
+
+      - name: Cut and push the directory branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git subtree split --prefix=editions/directory -b directory-publish
+          # The branch is generated from main's history, so it replaces whatever was there.
+          git push --force origin directory-publish:refs/heads/directory
+          echo "Published editions/directory at $(git rev-parse --short directory-publish) to the directory branch."
