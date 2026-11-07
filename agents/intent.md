@@ -33,8 +33,8 @@ person's instruction for this pass: follow it.
    passes, change nothing and return the panel.
 
 4. **Otherwise write `intent.md`** from `{plugin folder}/templates/intent.md`:
-   - Header: `**Author:**` (a name the person typed, else `the person`; never ask git or the
-     system for a name or email), `**Status:** draft`, `**Created:**`, `**Ticket:**` when one
+   - Header: `**Author:**` (a name the person typed, else `the person`; never look
+     one up), `**Status:** draft`, `**Created:**`, `**Ticket:**` when one
      was given, `**Reviewer:**` only when the request names one, `**Complexity:**` (a first
      guess; Plan records the real tier).
    - **Problem**: who is affected, current and desired behavior with one concrete example, why

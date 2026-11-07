@@ -20,10 +20,9 @@ computes the verdicts with its CLI and blocks a commit with a hook.
 4. Load `.claude/packs/stacks/{stack}.md`, else the plugin's `packs/stacks/{stack}.md`
 
 ## Pack Resolution
-Three tiers: project, then global, then built-in. Read live by every stage (plan, design, build,
+Two tiers: project, then built-in. Read live by every stage (plan, design, build,
 review, check, fix), keeping the rules whose `phases` is `all` or names the stage.
 - `.claude/packs/{name}/rules.md` (project)
-- `~/.claude/packs/{name}/rules.md` (global)
 - built-in, in the plugin's `packs` folder: `quality`, `tdd`, `security`, `git`, `performance`,
   `api-design`, `architecture-depth`
 

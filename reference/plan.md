@@ -58,7 +58,7 @@ at the Plan question.
 Read the repository yourself: stack, structure, patterns, similar code, tests. A nested
 Explore agent is an escape hatch for a repository too large to read directly. Read
 `.claude/temper.config` and the enabled packs' `rules.md` (project `.claude/packs/` first,
-then `~/.claude/packs/`, then the plugin's `packs/` folder), keeping rules whose `phases` is
+then the plugin's `packs/` folder), keeping rules whose `phases` is
 `all` or names `plan` or `build`.
 
 ## Cross-Repo Search

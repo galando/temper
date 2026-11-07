@@ -14,9 +14,8 @@ hook that refuses a commit while a gate is red) is part of the full edition on G
 
 ## Steps
 
-1. **The project folder.** When the current folder is the home folder, stop and say: "The
-   project folder is your home folder, which holds Claude Code's own files and is never a
-   project. Run /temper:init from a project folder." When it is inside the plugin folder
+1. **The project folder.** When the current folder is the home folder, stop and say: "This
+   folder is not a project folder. Run /temper:init from a project folder." When it is inside the plugin folder
    (`${CLAUDE_PLUGIN_ROOT}`), stop the same way. Write nothing in either case.
 
 2. **Config, `.claude/temper.config`.**
