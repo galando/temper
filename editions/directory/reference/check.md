@@ -24,7 +24,7 @@ level whose optional tool is missing is skipped and named, never failed.
 
 | # | Level | On failure | Skip when |
 |---|---|---|---|
-| 0 | Environment: the top folder holds a file named `.env.production` or `.env.prod`, or `check.environment` is `production`. Never open a `.env` file. | stop and name it | `check.environment` is set to anything else |
+| 0 | Environment: `check.environment` in `.claude/temper.config` is `production` | stop and name it | `check.environment` is unset or set to anything else |
 | 1 | Compile or build | BLOCK | never |
 | 2 | Tests, with coverage on in the same run | BLOCK | never |
 | 3 | Coverage against `check.coverage-threshold` (default 80) | the checklist fails | never; with no coverage tool it fails until the tool is installed |

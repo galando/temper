@@ -21,7 +21,9 @@ The plugin directory refused 9.8.0. These changes answer its findings that apply
 - **An icon** (`.claude-plugin/icon.png`), and the README says what the hooks and the mod run, start, read and change,
   and where `gh` uses your GitHub login.
 - **A Markdown edition** (`editions/directory/`, published from the `directory` branch): the same flow with no hooks,
-  no mod and no scripts, for the directory.
+  no mod and no scripts, for the directory. It reads nothing outside the project and the plugin: no packs from the
+  home folder, no `.env` file names, no identity looked up from git (the directory held its first scan as "uses a
+  credential from the user's machine"). `.github/workflows/directory-branch.yml` publishes it on each push to main.
 
 ## v9.8.0: proof the CLI computes, questions the person clicks, and fewer steps
 
