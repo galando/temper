@@ -88,7 +88,7 @@ def gate_row(spec, mode):
         return row(False, "the Context Map has %d entries; keep it to %d, one line per source (group an area: src/auth/ (12 files))" % (len(m["entries"]), MAX_ENTRIES))
     if m["long"]:
         return row(False, "a Context Map line is over %d characters; shorten: %s" % (MAX_LINE, m["long"][0][:60]))
-    if m["reviewed"] not in ("human", "auto"):
+    if m["reviewed"] not in ("human", "auto") and not (mode == "off" and m["reviewed"] == "pending"):
         return row(False, "the Context check is pending: the person's answer is not recorded yet (it is asked as the Is this the right context for the plan? question)"
                    if m["reviewed"] == "pending" else "the Context Map has no `- reviewed: human|auto` line")
     if m["reviewed"] == "auto" and mode != "off":

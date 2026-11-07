@@ -406,6 +406,7 @@ _cmap auto '- use: intent.md - scope'
 assert_eq "F6: always refuses every reviewed: auto, and off accepts a gap" "False|True" "$(_crow always | cut -d'|' -f1)|$(_cmap auto '- gap: x'; _crow off | cut -d'|' -f1)"
 _cmap pending '- use: intent.md - scope'
 assert_eq "F6: pending fails and says the answer is not recorded yet" "False|1" "$(_crow auto | cut -d'|' -f1)|$(_crow auto | grep -c 'answer is not recorded yet')"
+assert_eq "F6: off mode passes pending — nobody is asked" "True" "$(_crow off | cut -d'|' -f1)"
 _cmap human
 assert_eq "F6: a map with no use, ignore or gap entry fails" "False" "$(_crow auto | cut -d'|' -f1)"
 { printf '# Plan\n\n## Context Map\n'; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13; do printf -- '- use: source %s\n' "$i"; done; printf -- '- reviewed: human\n'; } > .temper/specs/demo/plan.md

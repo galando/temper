@@ -3,6 +3,13 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.8.2: plan.context-check off finally means nobody is asked
+
+- **`off` passes a pending review.** *Before:* the Plan agent always writes `- reviewed: pending`, and `plan_ops.py` failed
+  that row in every mode, so `plan.context-check: off` had no effect and unattended runs parked at the Plan gate. *Now:*
+  in `off` mode a pending review passes the row (`scripts/plan_ops.py`), and `temper next` does not ask the Context check
+  question (`scripts/flow.py`). A missing `- reviewed:` line still fails in every mode, and `auto`/`always` are unchanged.
+
 ## v9.8.1: what the plugin directory asks of a plugin
 
 The plugin directory refused 9.8.0. These changes answer its findings that apply to every publisher; the rest

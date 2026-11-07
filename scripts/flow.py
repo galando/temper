@@ -1891,7 +1891,7 @@ class Builder:
             cm = r.context()
             if cm:
                 out["context_map"] = {k: cm[k] for k in ("intro", "file", "rows", "answer", "table")}
-                if cm["reviewed"] not in ("human", "auto"):
+                if cm["reviewed"] not in ("human", "auto") and self.cfg("plan.context-check", "auto").lower() != "off":
                     q = self.context_question(cm)
                     out["context_check"] = {k: q[k] for k in ("question", "options", "answer", "gate")}
                     out["context_check"]["header"] = GATE_HEADER
