@@ -34,7 +34,7 @@ bar decides nothing). With the mod loaded, the mod also carries a run itself (th
 the run to the conversation for whatever needs a model. The guard is not a sandbox (`docs/trust.md`). The stage commands above are
 doors into `/temper`.
 
-**Version:** 9.8.0 (history: `CHANGELOG.md`).
+**Version:** 9.8.1 (history: `CHANGELOG.md`).
 Config: `.claude/temper.config` | Docs: `reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 

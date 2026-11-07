@@ -3,7 +3,7 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## Unreleased: what the plugin directory asks of a plugin
+## v9.8.1: what the plugin directory asks of a plugin
 
 The plugin directory refused 9.8.0. These changes answer its findings that apply to every publisher; the rest
 (hooks, mods and scripts) it accepts only from Verified organizations.
