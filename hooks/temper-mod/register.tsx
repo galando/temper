@@ -2,6 +2,7 @@ import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 
 
 import { FIX_RUN, VIEW_PATH, composeText, idleSnapshot, keepDecision, keptReport, live, loadSnapshot, publish, reportText, settingsFrom, spendDecision, statusText, timelineText, viewOf, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
+import { cliArgv } from './core/argv'
 import { pluginCliFrom } from './core/cli'
 import { HELP, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
@@ -408,14 +409,19 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
 
 const WAIT_MS = 90 * 60_000
 
-// One call of the CLI, through bash in the project. Streamed, so a long call (Check's suite and mutation score inside
-// `temper go`) has no time cap; leaving the loop at the person's interrupt ends the child.
+// One call of the CLI in the project: the plugin's own scripts/temper, run by its path with the call's words as its
+// arguments, never through a shell (core/argv.ts). A call that is not one (another program, or a line that needs a
+// shell) is not run here: it fails with exit 126, and the run goes on in the conversation. Streamed, so a long call
+// (Check's suite and mutation score inside `temper go`) has no time cap; leaving the loop at the person's interrupt ends
+// the child.
 // At the person's interrupt the engine aborts a running child, and reading it throws ("aborted", seen in an interactive
 // terminal): that is the interrupt, answered as one (exit 130), never as a failed call the conversation should take up.
 async function hostRun($: Api, cwd: string, call: string, signal: AbortSignal | undefined): Promise<{ code: number; out: string }> {
+  const argv = cliArgv(call, pluginCli())
+  if (argv === null) return { code: 126, out: `Temper: the mod runs only the plugin's own CLI with plain arguments; this call goes to the conversation: ${call.slice(0, 200)}` }
   let out = ''
   try {
-    const child = $.process.spawn({ argv: ['bash', '-c', call], cwd })
+    const child = $.process.spawn({ argv, cwd })
     for await (const piece of child) {
       out += piece.text
       if (signal?.aborted === true) return { code: 130, out }
@@ -520,6 +526,14 @@ async function hostAskAll($: Api, qs: GoQuestion[]): Promise<Array<string | null
 
 async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
   await recordAnswers($, { result: { questions: [{ header: q.header, question: q.question, options: q.options, multiSelect: false }], answers: { [q.question]: label } } })
+}
+
+// The run driver hands a run to the prompt based command (9.8.1): the command's event goes on unchanged, as the person
+// typed it, and the hand back is one note the model reads after the command's text (its `context`), the words the page
+// takes (`next`, `discuss <text>`, `chose <label>`: commands/temper.md, "Arguments"). The person's words are not rewritten.
+function handBack(result: CommandRunResult, args: string): CommandRunResult {
+  const note = `Temper hand back from the mod's run driver: take these as the arguments of this command in place of the ones typed: ${args}`
+  return { ...result, context: [...(result.context ?? []), note] }
 }
 
 async function driveRun($: Api, cwd: string, request: string | null, signal: AbortSignal | undefined, fix = false): Promise<DriveEnd> {
@@ -671,7 +685,7 @@ export const register: Register = (on, opts) => {
           if (end.kind === 'done') return { text: end.text }
           if (after === null || after.slug === null) return next(e)
           $.ui.log(`Temper: the fix goes on in the conversation (${end.why}).`)
-          return next({ ...e, args: end.args })
+          return handBack(await next(e), end.args)
         }
       }
       return next(e)
@@ -696,7 +710,7 @@ export const register: Register = (on, opts) => {
         // No run was started: the request goes on as the person typed it, and the prompt based command starts the run.
         if (d.request !== null && (after === null || after.slug === null)) return next(e)
         $.ui.log(`Temper: the run goes on in the conversation (${end.why}).`)
-        return next({ ...e, args: end.args })
+        return handBack(await next(e), end.args)
       }
       return next(e)
     }

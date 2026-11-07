@@ -311,6 +311,14 @@ of its own and sets no setting. While it carries a `/temper:temper` run (the run
 temper CLI's calls, launches the agents the CLI names and asks the CLI's questions, and nothing else; outside a
 run it drives it runs no command and starts no agent. CI fails on a call outside `scripts/check-mod-calls.sh`.
 
+- **Programs it runs (the run driver):** the plugin's own `scripts/temper`, by its path, with the words of the call
+  the CLI wrote as plain arguments and never through a shell (9.8.1; before, `bash -c`). A call that needs a shell
+  or names another program is not run: the run goes on in the conversation, where your permission settings apply.
+  Between looks at its agents it runs `sleep <seconds>`. It reads their output and shows the panels the CLI prints.
+- **Agents it starts (the run driver):** the Temper stage agent `temper go` names, with the type, model and prompt the
+  CLI wrote. The prompt holds the stage brief to follow, your feature request and the run file paths under
+  `.temper/`; nothing else of the conversation. It sets no permission mode, so the agent runs under yours.
+
 - **Reads:** `.temper/view.json`, the one file the CLI writes for it (ADR 0013; its fields are in
   [The flow](flow.md)). To find the project it stats the session folder and looks for `.temper/view.json` there
   and in up to 11 folders above it. It reads its
@@ -337,7 +345,8 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
   - `tool.call` sees every tool call, a subagent's too. It reads the path of Write, Edit, MultiEdit and NotebookEdit
     and the text of Bash, then refuses the call with a fixed reason and next step for Claude (a next step that runs
     `scripts/temper` gives the plugin folder's path), or passes it on and returns its result unchanged; it never
-    answers for a tool. After an AskUserQuestion call it reads your answer from the dialog's result, matched exactly
+    answers for a tool. On the AskUserQuestion call of its own run driver (and only that one) it puts back each option's
+    description and preview from the CLI's question, which `$.ui.ask` cannot carry; no other tool's input is changed. After an AskUserQuestion call it reads your answer from the dialog's result, matched exactly
     against the question view.json holds: a `Temper gate` option (with your reason, your note or your answer to the
     reason question, when the option needs one), a `Temper resume` Start over, or a `Scope drift` answer (Add to plan,
     Revert or Allow once). It keeps it, with the calls the option maps to, for the run and the step the CLI is at.
@@ -345,7 +354,9 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
     `mode`, `enforcement` and `pane`. Of those, only `pane` changes something (it opens or closes the pane, in full
     mode) and `report` keeps the run report in its store; `mode` and `enforcement` only say what is set. Every other word (`approve`, `back`, `override`
     and the rest) and any other command pass on unchanged, and the mod records nothing from them; in full mode, such
-    a word typed in your prompt box opens the pane first.
+    a word typed in your prompt box opens the pane first. When the run driver hands a run to the conversation, the
+    command still passes on unchanged (9.8.1; before, its arguments were replaced); the words the run continues with
+    (`next`, `discuss <text>`, `chose <label>`) come as one note the model reads after the command, its `context`.
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
     `session.start` also opens the pane during a run, as the first read that finds a run started later in the
     session does. Both return what the engine gives them: no context, instruction or setting is added.

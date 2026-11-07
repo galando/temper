@@ -1687,7 +1687,11 @@ cmd_config() {
     get) [[ -n "${1:-}" ]] || { echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1; }
          # fix.max-loops prints the limit `state loop check fix` keeps: the key, else loops.max-per-type, else 2
          if [[ "$1" == "fix.max-loops" ]]; then _cfg_get "$1" "${2:-$(_cfg_get loops.max-per-type 2)}"; else _cfg_get "$1" "${2:-}"; fi ;;
-    *) echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1 ;;
+    # 9.8.1: the project's config from the plugin's default, when it has none (a setup call; idempotent).
+    init) local own="$REPO_ROOT/.claude/temper.config"
+          [[ -f "$own" ]] && { echo "OK: $own is already there"; return 0; }
+          mkdir -p "$REPO_ROOT/.claude" && cp "$PLUGIN_ROOT/templates/temper.config.default" "$own" && echo "OK: wrote $own" ;;
+    *) echo "FAIL: usage: temper config get <dot.path> [default] | temper config init" >&2; return 1 ;;
   esac
 }
 
@@ -4516,7 +4520,7 @@ cmd_park() {
 # project the commit touches, reading a rename by both its names, and runs its Python isolated from the project's
 # files). Prints one call per line.
 _setup_calls() {
-  [[ -f "$CONFIG_FILE" ]] || echo "mkdir -p .claude && cp $PLUGIN_ROOT/templates/temper.config.default .claude/temper.config"
+  [[ -f "$CONFIG_FILE" ]] || echo "$PLUGIN_ROOT/scripts/temper config init"
   # the scaffold, and the run files kept out of git status (a run's end removes gates.json, so that file is no sign)
   { [[ -d "$TEMPER_DIR" ]] && _excludes_current; } || echo "$PLUGIN_ROOT/scripts/temper init"
   git rev-parse --git-dir >/dev/null 2>&1 || return 0
@@ -4526,7 +4530,7 @@ _setup_calls() {
      || ! grep -qF "$PLUGIN_ROOT/scripts/temper" "$hook" 2>/dev/null \
      || ! grep -qF '"--cached", "--name-only", "--no-renames"' "$hook" 2>/dev/null \
      || ! grep -qF 'python3 -I ' "$hook" 2>/dev/null; then
-    echo "bash $PLUGIN_ROOT/scripts/guards/install.sh"
+    echo "$PLUGIN_ROOT/scripts/temper guards install"
   fi
 }
 
@@ -5007,7 +5011,11 @@ main() {
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
     plan) cmd_plan "$@" ;;
-    guards) [[ "${1:-}" == "uninstall" ]] && python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall || { echo "FAIL: usage: temper guards uninstall" >&2; false; } ;;
+    guards) case "${1:-}" in
+              uninstall) python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall ;;
+              install) bash "$SCRIPTS_DIR/guards/install.sh" ;;   # 9.8.1: the commit gate, as a setup call of the CLI
+              *) echo "FAIL: usage: temper guards install|uninstall" >&2; false ;;
+            esac ;;
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
     drift) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/drift.py" .temper/specs "$@") ;;
@@ -5045,6 +5053,7 @@ Usage:
   temper bands [--json]
   temper metrics append <series> <value>
   temper config get <dot.path> [default]
+  temper config init                      (write .claude/temper.config from the plugin's default, when it is missing)
   temper model task | task-escalation   (grouped Build: the task agent's model and its escalation model)
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
   temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)
@@ -5071,6 +5080,7 @@ Usage:
   temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
                                                              (the acceptance tests written from the intent before Build)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)
+  temper guards install                   (install the Temper commit hook: scripts/guards/install.sh)
   temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
 EOF
       ;;

@@ -3,6 +3,24 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.8.1: what the plugin directory asks of a plugin
+
+The plugin directory refused 9.8.0. These changes answer its findings that apply to every publisher; the rest
+(hooks, mods and scripts) it accepts only from Verified organizations.
+
+- **The mod runs one program, the plugin's own CLI, with no shell.** *Before:* the run driver ran each call the CLI
+  wrote through `bash -c`. *Now:* it runs `scripts/temper` by its path with the call's words as plain arguments
+  (`hooks/temper-mod/core/argv.ts`); a call that needs a shell goes to the conversation. The CLI's setup calls are its
+  own subcommands for this: `temper config init` (in place of `mkdir -p .claude && cp ...`) and `temper guards install`
+  (in place of `bash .../install.sh`).
+- **`/temper:temper` and `/temper:fix` pass on unchanged.** *Before:* when the run driver handed a run to the
+  conversation, it replaced the command's arguments with `next`, `discuss <text>` or `chose <label>`. *Now:* the
+  command goes on as typed, and those words come as one note the model reads after it (`commands/temper.md` says so).
+- **The PreToolUse hook only denies.** `scripts/guards/block-stdin-wait.sh` is now `scripts/guards/block_stdin_wait.py`:
+  on a hit it prints one JSON answer, `permissionDecision: deny`, and prints nothing otherwise.
+- **An icon** (`.claude-plugin/icon.png`), and the README says what the hooks and the mod run, start, read and change,
+  and where `gh` uses your GitHub login.
+
 ## v9.8.0: proof the CLI computes, questions the person clicks, and fewer steps
 
 Built from what a benchmark showed (`docs/evidence/bench-2026-11.md`): on complete specs, plain Claude Code was as

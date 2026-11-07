@@ -1,5 +1,5 @@
 {
-  "description": "Temper plugin hooks: deterministic gate guarantee for /temper:intent. stage-marker.sh (UserPromptSubmit) records that a /temper:intent session owes an intent gate (the other stage commands are doors into /temper and owe none); verify-stage-gate.sh (Stop) refuses to end the session until the project's .temper/gates.json carries a verdict for it (any verdict, PASS or FAIL). block-stdin-wait.sh (PreToolUse, Bash) refuses, in a Temper project, a command whose `cat` has no input while the command holds a heredoc: Claude Code leaves such a command's input open, so it would wait until the Bash timeout. All three fail open on every path except the one detected violation. See ADR 0005, deterministic stage gate enforcement, and ADR 0012 in the plugin's docs.",
+  "description": "Temper plugin hooks: deterministic gate guarantee for /temper:intent. stage-marker.sh (UserPromptSubmit) records that a /temper:intent session owes an intent gate (the other stage commands are doors into /temper and owe none); verify-stage-gate.sh (Stop) refuses to end the session until the project's .temper/gates.json carries a verdict for it (any verdict, PASS or FAIL). block_stdin_wait.py (PreToolUse, Bash) refuses, in a Temper project, a command whose `cat` has no input while the command holds a heredoc: Claude Code leaves such a command's input open, so it would wait until the Bash timeout. All three fail open on every path except the one detected violation; block_stdin_wait.py only ever answers deny (one JSON answer on standard output), never approves a call and never changes its input. See ADR 0005, deterministic stage gate enforcement, and ADR 0012 in the plugin's docs.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-stdin-wait.sh\""
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/scripts/guards/block_stdin_wait.py\""
           }
         ]
       }

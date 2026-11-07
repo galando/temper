@@ -92,7 +92,7 @@ def setup_calls(plugin, config_file, run_files):
     """The setup a project still lacks, as the calls that make it, one per entry (the same checks the shell made)."""
     calls = []
     if not os.path.isfile(config_file):
-        calls.append("mkdir -p .claude && cp %s/templates/temper.config.default .claude/temper.config" % plugin)
+        calls.append("%s/scripts/temper config init" % plugin)
     if not (os.path.isdir(os.path.join(os.getcwd(), ".temper")) and excludes_current(run_files)):
         calls.append("%s/scripts/temper init" % plugin)
     if git_out("rev-parse", "--git-dir") is None:
@@ -111,7 +111,7 @@ def setup_calls(plugin, config_file, run_files):
               and '"--cached", "--name-only", "--no-renames"' in text and "python3 -I " in text
               and "gate commit --from-hook" in text)
     if not ok:
-        calls.append("bash %s/scripts/guards/install.sh" % plugin)
+        calls.append("%s/scripts/temper guards install" % plugin)
     return calls
 
 

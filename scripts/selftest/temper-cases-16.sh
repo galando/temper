@@ -304,10 +304,12 @@ assert_eq "9.8.0: Exempt assumed while narrower exceptions were asked fails: wha
 _rc16 '- Who: asked\n- When: asked\n- How much: asked\n- States: asked\n- Where it shows: assumed\n- Exceptions: asked'
 assert_eq "9.8.0: a draft with no Exempt line fails the row, naming it" "FAIL|1" "$(_rcr | cut -d'|' -f1)|$(_rcr | grep -c 'line for: Exempt$')"
 
-# --- 9. A command that would wait for input until the Bash timeout is refused (block-stdin-wait.sh) ---
-_sw() { # _sw <cwd> <command>: the guard's exit code for this Bash call
-  python3 -I -c 'import json,sys; print(json.dumps({"tool_name": "Bash", "cwd": sys.argv[1], "tool_input": {"command": sys.argv[2]}}))' "$1" "$2" \
-    | bash "$REPO_ROOT/scripts/guards/block-stdin-wait.sh" >/dev/null 2>&1; echo $?
+# --- 9. A command that would wait for input until the Bash timeout is refused (block_stdin_wait.py) ---
+_sw() { # _sw <cwd> <command>: 2 when the guard denies this Bash call (its one JSON answer), else its exit code
+  local out rc
+  out="$(python3 -I -c 'import json,sys; print(json.dumps({"tool_name": "Bash", "cwd": sys.argv[1], "tool_input": {"command": sys.argv[2]}}))' "$1" "$2" \
+    | python3 -I "$REPO_ROOT/scripts/guards/block_stdin_wait.py" 2>/dev/null)"; rc=$?
+  if [[ "$(printf '%s' "$out" | python3 -I -c 'import json,sys; t=sys.stdin.read(); print(json.loads(t)["hookSpecificOutput"]["permissionDecision"] if t.strip() else "")' 2>/dev/null)" == "deny" ]]; then echo 2; else echo "$rc"; fi
 }
 fresh; mkdir -p deep/er
 _SW_HANG=$'cat > /tmp/x 2>/dev/null; python3 - <<\'EOF\'\nprint(1)\nEOF'
@@ -319,7 +321,7 @@ assert_eq "9.8.0: a bare cat inside a heredoc body, in quotes, or outside a Temp
   "$(_sw "$WORKDIR" $'python3 - <<\'EOF\'\ncat > x\nEOF')|$(_sw "$WORKDIR" $'echo \'cat > x\'; python3 - <<EOF\nEOF')|$(_sw / "$_SW_HANG")"
 assert_eq "9.8.0: the refusal says why and what to do instead" "1" \
   "$(python3 -I -c 'import json,sys; print(json.dumps({"cwd": sys.argv[1], "tool_input": {"command": sys.argv[2]}}))' "$WORKDIR" "$_SW_HANG" \
-     | bash "$REPO_ROOT/scripts/guards/block-stdin-wait.sh" 2>&1 >/dev/null | grep -c 'Write the file with its own heredoc')"
+     | python3 -I "$REPO_ROOT/scripts/guards/block_stdin_wait.py" 2>/dev/null | grep -c 'Write the file with its own heredoc')"
 rm -rf deep
 
 # --- 10. The CLI draws each Build task's panel from what it recorded; the agent draws none ---

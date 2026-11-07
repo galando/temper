@@ -26,7 +26,7 @@ ALLOWED='
 agent.list       the reviewerModel option: tells whether a subagent step belongs to the Temper review agent (read only; the spawn is never changed); the run driver: whether an agent it launched has ended
 agent.spawn      the run driver launches the agent `temper go` names, with its type, model and prompt as given
 clock.now        the run driver bounds how long it waits on its agents
-process.spawn    the run driver runs `temper go`, the calls the CLI gives and the calls of the answer the person picks (bash -c, in the project, streamed so a long Check has no cap), and sleeps between looks at its agents
+process.spawn    the run driver runs the plugin scripts/temper by its path with plain arguments (`temper go`, the calls the CLI gives, the calls of the answer the person picks; no shell; in the project, streamed so a long Check has no cap), and runs `sleep <seconds>` between looks at its agents
 ui.ask           the run driver asks the question the CLI gives, header and labels as given; the person answers it
 ui.log           the run driver shows the panels and the report the CLI prints, and says when the conversation takes the run on
 fs.read          reads .temper/view.json, the one file the mod reads of the CLI (ADR 0013)
