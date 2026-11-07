@@ -2,7 +2,7 @@
   "name": "temper",
   "displayName": "Temper",
   "description": "The Markdown edition of Temper: intent before code, then plan, design, TDD build, review and check, each ended by a question you answer. Gates are checklists Claude applies and asks you about, not verdicts computed by a CLI.",
-  "version": "9.8.0",
+  "version": "9.8.1",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando"
