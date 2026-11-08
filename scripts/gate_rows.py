@@ -14,6 +14,7 @@ import re
 import sys
 
 import acceptance
+import intent_parse
 import tasks_md
 import maven_loop
 import plan_ops
@@ -30,19 +31,10 @@ def intent_blocking(path):
         text = open(path, encoding="utf-8").read()
     except OSError:
         return row("blocking question open", True, "intent.md unreadable; the other rows report it")
-    m = re.search(r"^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$", text, re.I | re.M)
-    status = m.group(1).lower() if m else None
+    status = intent_parse.status(text)
     if status != "draft":
         return row("blocking question open", True, "skipped: the intent is %s; this check applies to drafts only" % (status or "of no known status"))
-    open_q, active = [], False
-    for line in text.splitlines():
-        h = re.match(r"^#{1,6}\s+(.*)$", line)
-        if h:
-            active = bool(re.match(r"open questions", h.group(1).strip(), re.I))
-            continue
-        b = re.match(r"^\s*[-*]\s+Blocking:\s*(.+)$", line) if active else None
-        if b:
-            open_q.append(b.group(1).strip())
+    open_q = intent_parse.blocking(text)
     if open_q:
         return row("blocking question open", False, "%d Blocking question(s) open: %s%s; answer them before the plan" % (
             len(open_q), open_q[0][:80], "" if len(open_q) == 1 else " and %d more" % (len(open_q) - 1)))
@@ -67,8 +59,7 @@ def intent_rules(path):
         text = open(path, encoding="utf-8").read()
     except OSError:
         return row("rules checklist covered", True, "intent.md unreadable; the other rows report it")
-    m = re.search(r"^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$", text, re.I | re.M)
-    status = m.group(1).lower() if m else None
+    status = intent_parse.status(text)
     if status != "draft":
         return row("rules checklist covered", True, "skipped: the intent is %s; this check applies to drafts only" % (status or "of no known status"))
     seen, why, active = {}, {}, False

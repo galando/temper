@@ -21,11 +21,15 @@ import subprocess
 import sys
 import tempfile
 
+import adhoc_ops
 import check_run
 import config_yaml
 import fresh_review
+import intent_parse
 import plan_ops
 import tasks_md
+# STATE-GLUE: `from findings import finding_state` once the CLI's findings.py has it (A20); fresh_review's is the same reading.
+from fresh_review import state_of as finding_state
 
 VERSION = 1
 
@@ -46,11 +50,18 @@ GATE_OF = {"fix": "build", "rca": None}
 # The stages a step back goes to, from a failed stage.
 BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "review": "build", "check": "build"},
            "fix": {"review": "fix", "check": "fix"}}
-# The moves only the person may make; the mod lets their CLI calls through only for the person's answer.
-PERSON_MOVES = {"approve", "arm", "override", "back", "accept", "covered", "keep", "commitOverride", "restart", "confirm"}
+# Every move an option of a question may carry (the `move` of view.json's options): each is the person's answer, and
+# the mod lets an option's CLI calls through only on that answer. opt() refuses any other, so this list is the checked one.
+MOVES = {"advance", "approve", "arm", "override", "back", "redo", "accept", "covered", "keep", "commitOverride", "restart",
+         "confirm", "drift", "answer", "pause", "adhoc"}
 
 
 # ---- reading the run -----------------------------------------------------------------------
+
+def loop_at(l):
+    """When a step back last ran: each step writes `at` (loop_step.py); a loop written before that has only `started`."""
+    return str(l.get("at") or l.get("started") or "")
+
 
 def read_json(path, default):
     try:
@@ -279,13 +290,17 @@ class Run:
         # autonomy.enabled is no longer read (it was false in the shipped config, so most runs never saw the option).
         return self.state.get("run_mode") == "autonomous"
 
+    def active_loops(self):
+        return [l for l in (self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []) if isinstance(l, dict)]
+
     def loop_count(self, frm, to):
-        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
+        for l in self.active_loops():
             if l.get("from_stage") == frm and l.get("to_stage") == to:
                 return int(l.get("iteration") or 0)
         return 0
 
     def loop_budget(self, frm, to):
+        # STATE-GLUE: loop_step.budget(frm, to, self.cfg) (A17) is the one rule the CLI uses too; this body goes then.
         if frm == "build" and to == "plan":
             return 1
         mx = self.cfg("loops.max-per-type", "2")
@@ -304,23 +319,23 @@ class Run:
     def loop_into(self, stage):
         """The latest active step back to `stage`, or None."""
         best, at = None, ""
-        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
-            if isinstance(l, dict) and l.get("to_stage") == stage and str(l.get("at") or l.get("started", "")) >= at:
-                best, at = l, str(l.get("at") or l.get("started", ""))
+        for l in self.active_loops():
+            if l.get("to_stage") == stage and loop_at(l) >= at:
+                best, at = l, loop_at(l)
         return best
 
     def latest_loop(self):
         """The latest step back to Build (or Fix), or None."""
         best, at = None, ""
-        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
-            if isinstance(l, dict) and l.get("to_stage") in ("build", "fix") and str(l.get("at") or l.get("started", "")) >= at:
-                best, at = l, str(l.get("at") or l.get("started", ""))
+        for l in self.active_loops():
+            if l.get("to_stage") in ("build", "fix") and loop_at(l) >= at:
+                best, at = l, loop_at(l)
         return best
 
     def latest_feedback(self):
         """The reason of the latest step back to Build (or Fix), or of a "Run Build again"."""
         loop = self.latest_loop() or {}
-        best, at = loop.get("reason") or "", str(loop.get("at") or loop.get("started", ""))
+        best, at = loop.get("reason") or "", loop_at(loop)
         redo = self.state.get("redo") or {}
         if isinstance(redo, dict) and str(redo.get("ts", "")) >= at and redo.get("reason"):
             best = redo.get("reason")
@@ -336,16 +351,8 @@ class Run:
         return m.group(1).strip() if m else self.slug
 
     def blocking(self):
-        out, active = [], False
-        for line in self.intent.splitlines():
-            h = re.match(r"^#{1,6}\s+(.*)$", line)
-            if h:
-                active = bool(re.match(r"open questions", h.group(1).strip(), re.I))
-                continue
-            m = re.match(r"^\s*[-*]\s+Blocking:\s*(.+)$", line) if active else None
-            if m and not m.group(1).strip().lower().startswith("context check:"):   # the CLI asks the Context check itself
-                out.append(self.house_rule_first(m.group(1).strip()))
-        return out
+        # the Blocking questions the gate counts (intent_parse.py), but the Context check: the CLI asks that one itself
+        return [self.house_rule_first(q) for q in intent_parse.blocking(self.intent, context_check=False)]
 
     @staticmethod
     def house_rule_first(q):
@@ -378,13 +385,15 @@ class Run:
                 continue
             claim = str(r.get("claim") or "")
             m = re.match(r"^\s*([\w./@-]+\.\w+):(\d+)", claim)
-            state = "accepted" if r.get("accepted_reason") or r.get("accepted") else (
-                "resolved" if r.get("resolved") or r.get("fixed_by") or r.get("resolved_by") else "open")
+            # the one reading of a finding's state (the CLI writes nested `resolved` and `accepted`, and a contest or an
+            # escalation keeps the finding open: the gate still counts it, the question shows the answer)
+            fs = finding_state(r)
+            state = fs if fs in ("resolved", "accepted") else "open"
             conf = r.get("confidence")
             out.append({"id": i, "severity": str(r.get("severity")).lower(), "claim": claim,
                         "file": m.group(1) if m else None, "line": int(m.group(2)) if m else None,
                         "state": state, "label": r.get("label"),
-                        "answer": "contested" if r.get("contested") else ("escalated" if r.get("escalated") else None),
+                        "answer": fs if fs in ("contested", "escalated") else None,
                         "cite": (r.get("contested") or {}).get("cite"), "quote": (r.get("contested") or {}).get("quote"),
                         "confidence": conf if isinstance(conf, (int, float)) and not isinstance(conf, bool) else None})
         return out
@@ -419,6 +428,8 @@ class Builder:
 
     # -- options ---------------------------------------------------------------------------
     def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None, answer=None):
+        if move is not None and move not in MOVES:
+            raise ValueError("flow.py: the move %r is not in MOVES" % move)
         o = {"label": label, "description": description, "move": move, "calls": calls or []}
         if answer:  # a question whose typed answer fills {answer} in the calls (the person's name, for a manual task)
             # Two options at least, or the question tool refuses the dialog (9.8.0: a run with a manual task stopped at
@@ -513,9 +524,8 @@ class Builder:
         it), commit, advance."""
         r = self.r
         has = bool(r.intent)
-        # The whole value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
-        m = re.search(r"^\*\*Status:\*\*(.*)$", r.intent, re.M)
-        accepts = has and not (m and m.group(1).strip().lower() in ("accepted", "completed"))
+        # The first Status line's value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
+        accepts = has and intent_parse.status(r.intent) not in ("accepted", "completed")
         return (self.to_branch() if switch else []) + ([self.c("intent accept")] if has else []) + \
             self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + [self.c("state advance intent_complete plan")]
 
@@ -804,7 +814,12 @@ class Builder:
         return [self.opt("Commit and open %s" % label, "Commit, then Temper opens %s itself (reference/pr.md); every one is a draft." % what,
                          move="advance", calls=[self.c("state set pr %s" % kind)] + go) for kind, label, what in kinds]
 
-    ADHOC_STAGES = ("build", "review", "check", "commit")
+    # The stages a small change window may open at are adhoc_ops.py's, the one list (the CLI refuses any other).
+    # STATE-GLUE: adhoc_ops.ADHOC_STAGES once the CLI names it so.
+    ADHOC_STAGES = tuple(adhoc_ops.STAGES)
+    # The gate question offers Make a small change at each of them but Pipeline, whose question opens the window itself:
+    # its "Apply the fix and push" opens one for the CI fix (pipeline_question).
+    ADHOC_OPTION_STAGES = tuple(s for s in ADHOC_STAGES if s != "pipeline")
 
     def adhoc_option(self, stage):
         # Claude makes it, here in the conversation (a person read "change the work yourself" as their own edit).
@@ -821,7 +836,7 @@ class Builder:
         at most: when the question is full it goes under More options. Not offered while a window is open, nor at a fix
         run's Fix stage (its change is the fix itself)."""
         r = self.r
-        if stage not in self.ADHOC_STAGES or r.state.get("adhoc") or (r.command == "fix" and r.stage == "fix"):
+        if stage not in self.ADHOC_OPTION_STAGES or r.state.get("adhoc") or (r.command == "fix" and r.stage == "fix"):
             return out
         q = out.get("ask") if "ask" in out else out
         if not isinstance(q, dict) or "options" not in q or any(o["label"] == "Make a small change" for o in q["options"]):
@@ -1155,15 +1170,20 @@ class Builder:
     def acceptance_work(self):
         """9.8.0: before the first Build task, an agent that writes no code writes the acceptance tests from the approved
         intent (agents/acceptance.md) and locks them. Only for a /temper:temper run with an intent, before any group starts,
-        and at most two launches (a writer that cannot lock does not hold Build up)."""
+        and at most check_run.ACC_MAX_LAUNCHES launches: a writer that cannot lock does not hold Build up, and the CLI
+        records the skip (Check shows it as a skipped acceptance row, the report too) instead of going on in silence."""
         r = self.r
         if r.command != "temper" or not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
             return None
         if r.state.get("built_before") or (r.groups.get("groups") or {}):
             return None
         d = self.acceptance()
-        if d.get("cmd") or d.get("skipped") or int(d.get("launches") or 0) >= 2:
+        if d.get("cmd") or d.get("skipped"):
             return None
+        if int(d.get("launches") or 0) >= check_run.ACC_MAX_LAUNCHES:
+            why = "the acceptance writer locked no tests in %d launches" % int(d.get("launches") or 0)
+            return {"action": "work", "stage": "build", "calls": [self.c("acceptance skip --reason %s" % shlex.quote(why))],
+                    "agents": [], "say": "Build: %s; the skip is recorded and Build goes on without them." % why}
         model = r.cfg("models.acceptance", "")
         if not model:
             import cli_ctx
@@ -1254,10 +1274,13 @@ class Builder:
 
     def acceptance_fix_work(self):
         """The person reopened the locked acceptance tests at the Check question: the writer corrects the test the failure
-        names, against the intent, and locks it again; Check runs again."""
+        names, against the intent, and locks it again; Check runs again. At most check_run.ACC_MAX_CORRECTIONS launches
+        for one reopen (its `before` call counts them): then the Check question is the person's again."""
         r = self.r
         d = self.acceptance()
-        if not d.get("reopened") or r.stage != "check":
+        if not isinstance(d.get("reopened"), dict) or r.stage != "check":
+            return None
+        if int(d["reopened"].get("launches") or 0) >= check_run.ACC_MAX_CORRECTIONS:
             return None
         model = r.cfg("models.acceptance", "")
         if not model:
@@ -1270,6 +1293,7 @@ class Builder:
                                    "Correction: the person says a locked test is wrong (%s)." % d["reopened"].get("reason", ""),
                                    "The failure: %s" % (fail or "see the acceptance row of the Check ledger"),
                                    "Lock command: %s" % d.get("cmd", ""), self.plugin_line()]),
+             "before": [self.c("acceptance start")],
              "after": [self.c("usage add --stage check --model %s --ms {ms}" % (model or "unknown")),
                        self.c("state redo check --reason 'the person corrected a locked acceptance test'")]}
         return {"action": "work", "stage": "check", "calls": [], "agents": [a],
@@ -1302,6 +1326,8 @@ class Builder:
         files = {t["n"]: {f.strip().lstrip("./") for f in t.get("files", [])} for t in plan.get("tasks", [])}
         deps = {t["n"]: set(t.get("depends", [])) for t in plan.get("tasks", [])}
         status = lambda n: (rt.get(str(n)) or {}).get("status", "pending")
+        # Only a pending task joins a chain: a failed one (also STARTABLE in tasks_md) is retried alone, on the model its
+        # attempt number gives, never on the chain's.
         others = {x["task"] for x in ready if x["task"] != first["task"]} | {int(n) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"}
         chain = [first["task"]]
         grew = True
@@ -1445,7 +1471,7 @@ class Builder:
             gidx = g["id"]
             ginfo = rg.get(gidx) or {}
             tasks = g.get("tasks", [])
-            done = tasks and all((rt.get(str(n)) or {}).get("status") == "passed" for n in tasks)
+            done = tasks and all(tasks_md.task_done(t, r.groups) for t in plan.get("tasks", []) if t.get("n") in tasks)
             gate = (ginfo.get("gate") or {}).get("verdict")
             if done and not gate:
                 return {"action": "work", "stage": "build", "calls": [self.c("group gate %s" % gidx)], "agents": [], "say": "Group %s is checked." % gidx}
@@ -2195,7 +2221,14 @@ def stage_marks(run, nxt):
         if here not in seq:
             mark = "todo"
         elif seq.index(s) < seq.index(here):
-            mark = "skipped" if sk and v != "PASS" else ("failed" if v == "FAIL" else "passed")
+            # An earlier stage shows what it has: a skip, its verdict, or (a stage with no gate, RCA) passed. One with no
+            # verdict and no skip did not pass: it shows as not done, never as passed.
+            if sk and v != "PASS":
+                mark = "skipped"
+            elif v in ("PASS", "FAIL"):
+                mark = "passed" if v == "PASS" else "failed"
+            else:
+                mark = "passed" if run.gate_of(s) is None else "todo"
         elif s == here:
             mark = "here"
         else:
@@ -2241,16 +2274,8 @@ def build_view(run):
         for n in g.get("tasks", []):
             t = next((x for x in plan.get("tasks", []) if x.get("n") == n), {})
             info = rt.get(str(n)) or {}
-            st = info.get("status", "pending")
             phases = [str(r.get("phase")) for r in ev if isinstance(r, dict) and r.get("task") == n]
-            if st == "passed":
-                state = "pass"
-            elif st == "failed":
-                state = "parked" if ginfo.get("status") == "parked" else "fail"
-            elif st == "running":
-                state = "green" if "green" in phases else ("red" if "red" in phases else "running")
-            else:
-                state = "waiting"
+            state = tasks_md.display_state(info, ginfo, phases)
             attempts = info.get("attempts") or []
             tasks.append({"n": n, "title": t.get("title", ""), "files": t.get("files", []), "state": state,
                           "model": (attempts[-1].get("model") if attempts and isinstance(attempts[-1], dict) else None) or info.get("model"),
@@ -2304,10 +2329,13 @@ def usage(run):
 
 
 def loops(run):
+    """The run's steps back, each with its live budget (the one can_loop decides with, not the max_iterations stored at
+    its first step) and the time of its latest step (the time every reader orders loops by)."""
     out = []
-    for l in (run.loops.get("active_loops", []) if isinstance(run.loops, dict) else []):
-        out.append({"from": l.get("from_stage"), "to": l.get("to_stage"), "reason": l.get("reason"),
-                    "iteration": l.get("iteration"), "max": l.get("max_iterations"), "at": l.get("started")})
+    for l in run.active_loops():
+        frm, to = l.get("from_stage"), l.get("to_stage")
+        out.append({"from": frm, "to": to, "reason": l.get("reason"),
+                    "iteration": l.get("iteration"), "max": run.loop_budget(frm, to), "at": loop_at(l) or None})
     return out
 
 

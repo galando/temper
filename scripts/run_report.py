@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plan_review import output_refusal, to_artifact_fragment  # noqa: E402
 
 TASK = {"waiting": ("○", "waiting", "muted"), "running": ("◐", "running", "info"), "red": ("●", "RED", "bad"),
-        "green": ("●", "GREEN", "good"), "pass": ("✓", "PASS", "good"), "fail": ("✗", "FAIL", "bad"),
+        "green": ("●", "GREEN", "good"), "covered": ("◑", "covered", "warn"), "pass": ("✓", "PASS", "good"), "fail": ("✗", "FAIL", "bad"),
         "parked": ("⏸", "parked", "warn")}
 MARK = {"passed": ("✓", "good"), "failed": ("✗", "bad"), "skipped": ("↷", "warn"), "here": ("●", "info"), "todo": ("○", "muted")}
 MARKER = {"pass": ("✓", "good"), "fail": ("✗", "bad"), "info": ("•", "info"), "none": ("○", "muted")}
