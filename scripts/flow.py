@@ -914,11 +914,24 @@ class Builder:
         except ValueError:
             return 2
 
+    def pipeline_round(self):
+        """The CI fix round the run is on (1 before any fix). The flow alone moves it, by one, in the fix steps; a value it
+        cannot read as a round (not a whole number of at least 1) counts as past the limit, so it never opens the rounds
+        again (the CLI validates what `state set` writes, too)."""
+        v = self.r.state.get("pipeline_round")
+        if v in (None, ""):
+            return 1
+        try:
+            n = int(str(v).strip())
+        except ValueError:
+            return self.round_limit() + 1
+        return n if n >= 1 else self.round_limit() + 1
+
     def pipeline_question(self, passed, why):
         r = self.r
         ctx = read_json(os.path.join(r.spec, "pipeline-context.json"), {}) if r.spec else {}
         status = ctx.get("status") if ctx else None
-        rnd = int(r.state.get("pipeline_round") or 1)
+        rnd = self.pipeline_round()
         mx = self.round_limit()
         end = self.opt("End the run" + (" (Recommended)" if passed or rnd > mx else ""), "Finish here; the run state is cleared.", move="advance", calls=[self.c("state clear")])
         if passed:
@@ -1113,7 +1126,7 @@ class Builder:
             elif stage == "fix":
                 extra = self.feedback_lines()
         if stage == "pipeline":
-            extra = ["Round: %s of %s." % (r.state.get("pipeline_round") or 1, self.round_limit())]
+            extra = ["Round: %s of %s." % (self.pipeline_round(), self.round_limit())]
         if stage == "plan":
             opens = [f for f in r.fresh()["findings"] if f["state"] not in ("resolved", "accepted")]
             if opens:
@@ -1386,6 +1399,9 @@ class Builder:
         integ = (r.groups.get("integration") or {}).get("verdict")
         gid = [g["id"] for g in plan.get("groups", [])]
 
+        # A group passed is its gate's PASS, the CLI's verdict; its `status` is the CLI's record of the same (passed iff
+        # the gate is PASS) and is read here only for `parked`, which no gate sets. So a status left behind by an older
+        # write never decides what comes next (tasks_md.schedule reads the gate the same way).
         def gpass(g):
             return ((rg.get(g) or {}).get("gate") or {}).get("verdict") == "PASS"
 

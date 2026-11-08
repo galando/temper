@@ -156,3 +156,39 @@ print('|'.join(str(P.status(t)) for t in ['**Status:** Accepted \n', '**Status:*
 fresh; gpass intent; _at review; "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "B10: Intent passed; Plan and Build, with no verdict and no skip, show as not done; Review is here" "passed|todo|todo|here" \
   "$(vw "'|'.join(s['mark'] for s in d['stages'] if s['id'] in ('intent', 'plan', 'build', 'review'))")"
+
+# --- B11: the CI fix round is bounded by the flow, whatever value the run state holds ---
+b11_round() { # b11_round <value>: a red Pipeline at that pipeline_round, as written into the run state
+  _pl; _plctx '{"status": "red", "failed_jobs": [{"name": "unit", "stage": "test", "id": "1", "error": "boom"}], "fix": ["unit/a.sh: 4"], "round": 1}'
+  "$TEMPER" gate pipeline >/dev/null 2>&1
+  python3 -c "
+import json, sys
+p = '.temper/build-state.json'; d = json.load(open(p)); d['pipeline_round'] = json.loads(sys.argv[1]); json.dump(d, open(p, 'w'))" "$1"
+}
+for v in '"x"' '-1' '0'; do
+  b11_round "$v"
+  assert_eq "B11: a pipeline_round of $v is past the limit: the question offers no fix round" "End the run (Recommended)|Save for later" "$(labels)"
+done
+b11_round '"2"'
+assert_eq "B11: a round written as text is read as its number" "Apply the fix and push (Recommended)" "$(labels | cut -d'|' -f1)"
+
+# --- B12 (pinned, not a defect): the flow's sequence is the CLI's in the same order, less the stages the run does not visit ---
+assert_eq "B12: flow.SEQ (and Pipeline last) is the CLI's _run_seq order" "intent plan design build review check commit pipeline|rca fix review check commit" \
+  "$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import flow; print(' '.join(flow.SEQ['temper'] + ['pipeline']) + '|' + ' '.join(flow.SEQ['fix']))" "$REPO_ROOT/scripts")"
+assert_eq "B12: and the CLI's own lists say the same" "intent plan design build review check commit pipeline|rca fix review check commit" \
+  "$(sed -n 's/^STAGE_SEQ_TEMPER="\(.*\)"$/\1 commit pipeline/p' "$TEMPER")|$(sed -n 's/^STAGE_SEQ_FIX="\(.*\)"$/\1 commit/p' "$TEMPER")"
+fresh; gpass intent plan; _at design; "$TEMPER" next --json >/dev/null 2>&1
+assert_eq "B12: a run at Design keeps Design in its sequence when nothing else asks for it (the current stage is always in it)" "passed|passed|here" \
+  "$(vw "'|'.join(s['mark'] for s in d['stages'] if s['id'] in ('intent', 'plan', 'design'))")"
+
+# --- B13 (pinned): the flow decides a group by its gate; a status left at passed beside a FAIL gate does not pass it ---
+m_setup < <(f9_tasks)
+python3 - <<'PY'
+import json
+p = '.temper/groups.json'; d = json.load(open(p))
+d['tasks'] = {'1': {'status': 'passed', 'group': 'G1'}, '2': {'status': 'passed', 'group': 'G1'}}
+d['groups']['G1'].update({'status': 'passed', 'gate': {'verdict': 'FAIL', 'reason': 'the group check failed', 'ts': 't'}})
+json.dump(d, open(p, 'w'))
+PY
+assert_eq "B13: a group whose gate FAILed is asked about as failed, whatever its status says" "ask|Group G1 failed its check (the group check failed). Run its tasks again?" \
+  "$(nx "d['action'] + '|' + d['ask']['question']['question']")"
