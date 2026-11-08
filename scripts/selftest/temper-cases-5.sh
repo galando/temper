@@ -1398,10 +1398,14 @@ assert_eq "L2: evidence accept waits on the lock (WARN after the wait)" "1" "$(p
 out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" gate review 2>&1)"
 assert_eq "L2: the gate verdict write waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
 rmdir .temper/.lock
-for i in 3 4 5 6 7 8; do "$TEMPER" evidence resolve --stage review --id "$i" --fixed-by "fix $i" >/dev/null 2>&1 & done
+L2_LOCK_BEFORE="$([[ -e .temper/.lock ]] && echo held || echo free)"
+for i in 3 4 5 6 7 8; do "$TEMPER" evidence resolve --stage review --id "$i" --fixed-by "fix $i" > ".temper/l2.$i.out" 2>&1 & done
 wait
-assert_eq "L2: six parallel resolves lose none" "6" \
-  "$(python3 -c "import json; print(len([e for e in json.load(open('.temper/evidence/review.json')) if e.get('resolved') and e['claim'] != 'finding 1']))")"
+l2_n="$(python3 -c "import json; print(len([e for e in json.load(open('.temper/evidence/review.json')) if e.get('resolved') and e['claim'] != 'finding 1']))")"
+# a miss prints what each writer said and whether the lock was free before they started (an intermittent loss is read, not guessed)
+[[ "$l2_n" == "6" ]] || l2_n="$l2_n (lock before: $L2_LOCK_BEFORE; $(cat .temper/l2.*.out | tr '\n' ' ' | cut -c1-600))"
+rm -f .temper/l2.*.out
+assert_eq "L2: six parallel resolves lose none" "6" "$l2_n"
 assert_eq "L2: the lock is released and no temp file is left" "no|0" "$([[ -e .temper/.lock ]] && echo yes || echo no)|$(find .temper -name '*.tmp*' | wc -l | tr -d ' ')"
 
 # L3: the ready check and the start write share one lock, so a start never overwrites a state that changed
