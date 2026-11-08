@@ -387,6 +387,13 @@ _lock_acquire() {
       continue
     fi
     if (( $(date +%s) >= deadline )); then
+      # A holder that is alive is working (on a loaded machine many writers queue for longer than the wait): wait on for it,
+      # up to TEMPER_LOCK_MAX_S, rather than write beside it and lose a row. A holder that is gone or unknown, or one past that
+      # bound, is written past as before (fail open: a stuck holder never wedges a run).
+      local holder; holder="$(cat "$_LOCK_DIR/owner" 2>/dev/null)"; holder="${holder%%.*}"
+      if [[ "$holder" =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )); then
+        python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
+      fi
       echo "WARN: could not take $_LOCK_DIR within ${TEMPER_LOCK_WAIT_S:-10}s; writing without the lock" >&2
       return 0
     fi

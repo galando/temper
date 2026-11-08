@@ -201,3 +201,19 @@ print('|'.join(finding_state(r) for r in [{'resolved': {'fixed_by': 'a'}}, {'acc
 fresh; mkdir -p .temper/evidence
 printf '[{"claim": "a", "severity": "critical", "label": "PROVEN", "contested": {"cite": "x", "quote": "q", "reason": "r"}}, {"claim": "review completed", "exit_code": 0}]\n' > .temper/evidence/review.json
 assert_eq "A20: a contested finding still counts against the Review gate" "1" "$("$TEMPER" gate review 2>&1 | grep -c 'contested: x')"
+
+# --- A16: a writer waits on for a lock holder that is alive (up to TEMPER_LOCK_MAX_S), and writes past only a gone or stuck one ---
+setup; mkdir -p .temper/evidence .temper/.lock
+sleep 30 & HOLDER=$!
+printf '%s.1' "$HOLDER" > .temper/.lock/owner
+( sleep 2.5; rm -rf .temper/.lock ) & FREE=$!
+out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "after a live holder" 2>&1)"; rc=$?
+wait "$FREE"
+assert_eq "A16: a holder that is alive is waited for past the wait: the row lands under the lock, with no WARN" "0|0|1" \
+  "$rc|$(printf '%s' "$out" | grep -c WARN)|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")"
+mkdir -p .temper/.lock; printf '%s.1' "$HOLDER" > .temper/.lock/owner
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence add --stage build --claim "past a stuck holder" 2>&1)"; rc=$?
+assert_eq "A16: a live holder past TEMPER_LOCK_MAX_S is written past with a WARN (a stuck holder never wedges a run)" "0|1|yes" \
+  "$rc|$(printf '%s' "$out" | grep -c 'WARN.*lock')|$([[ -d .temper/.lock ]] && echo yes || echo no)"
+kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
+rm -rf .temper/.lock
