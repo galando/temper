@@ -28,8 +28,8 @@ import fresh_review
 import intent_parse
 import plan_ops
 import tasks_md
-# STATE-GLUE: `from findings import finding_state` once the CLI's findings.py has it (A20); fresh_review's is the same reading.
-from fresh_review import state_of as finding_state
+from findings import finding_state  # the one state of a finding row, the CLI's own reading (A20)
+import loop_step
 
 VERSION = 1
 
@@ -281,8 +281,13 @@ class Run:
         return [r for r in self.rows(stage) if isinstance(r, dict) and not r.get("pass")]
 
     def skip(self, stage):
+        # the CLI's rule (_override_covers): a skip covers the verdict the person saw, recorded at or before it (or no
+        # verdict); a verdict computed again after it is not covered. A skip or verdict with no time is matched by stage.
         gate = self.gate_of(stage)
-        hits = [o for o in self.overrides if isinstance(o, dict) and o.get("stage") == gate]
+        g = self.gates.get(gate or "")
+        vts = str(g.get("ts") or "") if isinstance(g, dict) else ""
+        hits = [o for o in self.overrides if isinstance(o, dict) and o.get("stage") == gate
+                and (not vts or not o.get("ts") or str(o.get("ts")) >= vts)]
         return hits[-1] if hits else None
 
     def armed(self):
@@ -300,16 +305,8 @@ class Run:
         return 0
 
     def loop_budget(self, frm, to):
-        # STATE-GLUE: loop_step.budget(frm, to, self.cfg) (A17) is the one rule the CLI uses too; this body goes then.
-        if frm == "build" and to == "plan":
-            return 1
-        mx = self.cfg("loops.max-per-type", "2")
-        if frm == "check" and to in ("build", "fix"):
-            mx = self.cfg("fix.max-loops", mx)
-        try:
-            return int(mx)
-        except ValueError:
-            return 2
+        # the one rule, the CLI's own (loop_step.budget): Build to Plan once per run, the rest by the config
+        return loop_step.budget(frm, to, self.cfg)
 
     def can_loop(self, frm, to):
         if not self.on("feedback.enabled", True):
@@ -815,8 +812,7 @@ class Builder:
                          move="advance", calls=[self.c("state set pr %s" % kind)] + go) for kind, label, what in kinds]
 
     # The stages a small change window may open at are adhoc_ops.py's, the one list (the CLI refuses any other).
-    # STATE-GLUE: adhoc_ops.ADHOC_STAGES once the CLI names it so.
-    ADHOC_STAGES = tuple(adhoc_ops.STAGES)
+    ADHOC_STAGES = tuple(adhoc_ops.ADHOC_STAGES)   # the stages a small change window may open at: adhoc_ops.py's own list
     # The gate question offers Make a small change at each of them but Pipeline, whose question opens the window itself:
     # its "Apply the fix and push" opens one for the CI fix (pipeline_question).
     ADHOC_OPTION_STAGES = tuple(s for s in ADHOC_STAGES if s != "pipeline")
@@ -1745,7 +1741,10 @@ class Builder:
         r = self.r
         steps = []
         if r.command == "temper":
-            steps.append(self.c("intent complete"))
+            # the CLI completes only an accepted intent (a draft is never marked completed): a run whose intent nobody
+            # accepted, or one completed already, has no completion step
+            if intent_parse.status(r.intent) == "accepted":
+                steps.append(self.c("intent complete"))
             steps.append(self.c("spec deviations"))   # 9.8.0: by the CLI, from build-context.json
         steps.append(self.c("report --end"))
         steps.append("Copy what temper report printed into your reply, as it printed it, in a code block: the person does not "
@@ -2363,18 +2362,17 @@ def view(run, nxt):
     # call (a Build task's `task start`) changes the next action before the agent is launched: to `wait`, to a `work`
     # that names only the other tasks of the same launch (and a chain shortened by the task now running), or to the
     # question a manual task asks. While the run
-    # stays at the same stage, the view keeps naming every agent it named there. The view written last is that memory;
-    # the mod keeps none (it is loaded again between turns).
+    # stays at the same stage, the view keeps naming every agent it named there. That memory is .temper/agents-named.json
+    # ({run, stage, agents}, written with the view): a view lost, written again, or written for an error mid-stage does not
+    # forget it (the view written last was the memory before, and an older run's view still serves as one). The mod keeps
+    # none (it is loaded again between turns).
     agents = [{"type": a.get("type") or "", "model": a.get("model") or "", "prompt": a.get("prompt") or ""}
               for a in (nxt.get("agents") or [])] if nxt.get("action") == "work" else []
     if nxt.get("action") in ("work", "wait", "ask", "auto"):
-        prev = read_json(os.path.join(TEMPER, "view.json"), {})
-        pr = prev.get("run") if isinstance(prev.get("run"), dict) else {}
-        if pr.get("id") == r.state.get("run_id") and pr.get("stage") == r.stage:
-            for a in (prev.get("next") or {}).get("agents") or []:
-                if isinstance(a, dict) and a not in agents:
-                    agents.append(a)
-            agents = agents[:16]   # the current action's first
+        for a in named_before(r):
+            if isinstance(a, dict) and a not in agents:
+                agents.append(a)
+        agents = agents[:AGENTS_NAMED_MAX]   # the current action's first
     out = {
         "version": VERSION,
         "run": {"id": r.state.get("run_id"), "step": r.state.get("step"), "slug": r.slug, "title": r.title(),
@@ -2420,8 +2418,43 @@ def drift_info():
     return {"header": DRIFT_HEADER, "prefix": DRIFT_PREFIX, "options": DRIFT_OPTIONS}
 
 
+AGENTS_NAMED = "agents-named.json"
+AGENTS_NAMED_MAX = 64   # a grouped Build names one agent per task (a chain counts once); more than a plan holds
+
+
+def named_before(r):
+    """The agents the run named at its current stage, from the record written with the view (or, for a run whose record
+    predates it, the view written last)."""
+    for name in (AGENTS_NAMED, "view.json"):
+        d = read_json(os.path.join(TEMPER, name), {})
+        if name == AGENTS_NAMED:
+            run_id, stage, agents = d.get("run"), d.get("stage"), d.get("agents")
+        else:
+            pr = d.get("run") if isinstance(d.get("run"), dict) else {}
+            run_id, stage, agents = pr.get("id"), pr.get("stage"), (d.get("next") or {}).get("agents") if isinstance(d.get("next"), dict) else None
+        if run_id is not None and run_id == r.state.get("run_id") and stage == r.stage and isinstance(agents, list):
+            return agents
+    return []
+
+
+def write_named(doc):
+    """Keep the agents a view names at its stage (named_before reads them): only a view that names some writes the record,
+    so a view of an error or of a question mid-stage leaves the memory as it was."""
+    run, agents = doc.get("run"), (doc.get("next") or {}).get("agents") or []
+    if not isinstance(run, dict) or not agents:
+        return
+    fd, tmp = tempfile.mkstemp(dir=TEMPER, prefix=".named.", suffix=".tmp")
+    with os.fdopen(fd, "w") as f:
+        json.dump({"run": run.get("id"), "stage": run.get("stage"), "agents": agents}, f, indent=1)
+    os.replace(tmp, os.path.join(TEMPER, AGENTS_NAMED))
+
+
 def write_view(doc):
     os.makedirs(TEMPER, exist_ok=True)
+    try:
+        write_named(doc)
+    except OSError:
+        pass   # the record is a memory for the mod's guard: a launch it forgets is refused, never let through
     fd, tmp = tempfile.mkstemp(dir=TEMPER, prefix=".view.", suffix=".tmp")
     os.chmod(tmp, 0o644)
     with os.fdopen(fd, "w") as f:

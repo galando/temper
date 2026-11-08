@@ -192,3 +192,66 @@ json.dump(d, open(p, 'w'))
 PY
 assert_eq "B13: a group whose gate FAILed is asked about as failed, whatever its status says" "ask|Group G1 failed its check (the group check failed). Run its tasks again?" \
   "$(nx "d['action'] + '|' + d['ask']['question']['question']")"
+
+# --- The joins with the CLI: the flow reads the CLI's own rules (loop budget, small change window stages, finding state,
+# the skip that covers a verdict, the intent the CLI completes) ---
+assert_eq "glue: the flow's loop budget, small change window stages and finding state are the CLI's own" "ok" \
+  "$(python3 - "$REPO_ROOT/scripts" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import flow, loop_step, adhoc_ops, findings, fresh_review
+cfgs = [{}, {"loops.max-per-type": "3"}, {"loops.max-per-type": "3", "fix.max-loops": "5"}, {"loops.max-per-type": "x"}]
+pairs = [("build", "plan"), ("check", "build"), ("check", "fix"), ("review", "build"), ("plan", "intent")]
+bad = []
+for c in cfgs:
+    r = flow.Run.__new__(flow.Run)
+    r.cfg = lambda k, d, c=c: c.get(k, d)
+    for f, t in pairs:
+        if flow.Run.loop_budget(r, f, t) != loop_step.budget(f, t, r.cfg):
+            bad.append((c, f, t))
+rows = [{}, {"resolved": {"fixed_by": "x"}}, {"accepted": {"reason": "r"}}, {"contested": {"reason": "c"}}, {"escalated": {"reason": "e"}},
+        {"accepted_reason": "never written"}]
+bad += [r for r in rows if fresh_review.state_of(r) != findings.finding_state(r)]
+print("ok" if not bad and flow.Builder.ADHOC_STAGES == tuple(adhoc_ops.ADHOC_STAGES) else bad)
+PY
+)"
+fresh; gpass intent
+"$TEMPER" override intent --reason "the person skipped it" >/dev/null 2>&1
+python3 - <<'PY'
+import json
+g = json.load(open('.temper/gates.json')); g['intent']['ts'] = '2999-01-01T00:00:00Z'; json.dump(g, open('.temper/gates.json', 'w'))
+PY
+flow_skip() { python3 -c "
+import sys; sys.path.insert(0, sys.argv[1]); import flow
+print('none' if flow.Run({}).skip('intent') is None else 'skipped')" "$REPO_ROOT/scripts" 2>&1; }
+newer="$(flow_skip)"
+python3 - <<'PY'
+import json
+g = json.load(open('.temper/gates.json')); g['intent']['ts'] = '2000-01-01T00:00:00Z'; json.dump(g, open('.temper/gates.json', 'w'))
+PY
+assert_eq "glue: the flow, like the CLI (A3), holds a skip to the verdict it was given for: a newer verdict is not skipped, an older one is" "none|skipped" \
+  "$newer|$(flow_skip)"
+fresh
+steps_have_complete() { python3 -c "
+import sys; sys.path.insert(0, sys.argv[1]); import flow
+print(any('intent complete' in s for s in flow.Builder(flow.Run({})).report_steps()))" "$REPO_ROOT/scripts" 2>&1; }
+sed -i 's/^\*\*Status:\*\* accepted$/**Status:** draft/' .temper/specs/demo/intent.md
+before="$(steps_have_complete)"
+"$TEMPER" intent accept >/dev/null 2>&1
+assert_eq "glue: the report steps complete only an accepted intent (the CLI refuses to complete a draft)" "False|True" \
+  "$before|$(steps_have_complete)"
+
+# --- C17: the agents the run named at its stage are a record of their own (agents-named.json), not only the view written last ---
+fresh; "$TEMPER" next --json >/dev/null 2>&1
+named="$(vw "len(d['next']['agents'])")"
+rm -f .temper/view.json
+assert_eq "C17: a view written after view.json was lost still names the agents named at the stage, with the action asking" "yes" \
+  "$(python3 -c "
+import sys; sys.path.insert(0, sys.argv[1]); import flow
+r = flow.Run({}); d = flow.view(r, {'action': 'ask', 'stage': r.stage})
+print('yes' if int(sys.argv[2]) > 0 and len(d['next']['agents']) == int(sys.argv[2]) else 'no %s %s' % (sys.argv[2], len(d['next']['agents'])))" "$REPO_ROOT/scripts" "$named" 2>&1)"
+assert_eq "C17: a view of an error mid-stage leaves the record as it was" "kept" \
+  "$(python3 -c "
+import sys, json; sys.path.insert(0, sys.argv[1]); import flow
+r = flow.Run({}); flow.write_view(flow.view(r, {'action': 'error', 'say': 'x'}))
+d = json.load(open('.temper/agents-named.json')); print('kept' if len(d['agents']) == int(sys.argv[2]) else 'lost')" "$REPO_ROOT/scripts" "$named" 2>&1)"

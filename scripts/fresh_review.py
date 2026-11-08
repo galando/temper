@@ -84,13 +84,9 @@ def instances(risk, twice="true"):
 
 
 def state_of(row):
-    """A finding's state, the one reading flow.py uses too: resolved or accepted (the CLI's nested records, which exclude
-    each other), else contested or escalated (still open for the gate), else open. Only the keys the CLI writes count.
-    STATE-GLUE: findings.finding_state(row) once the CLI has it (A20); then this is that."""
-    for k in ("resolved", "accepted", "contested", "escalated"):
-        if row.get(k):
-            return k
-    return "open"
+    """A finding's state: the one reading, findings.finding_state (the CLI's and flow.py's too)."""
+    import findings
+    return findings.finding_state(row)
 
 
 def task_count(spec):
