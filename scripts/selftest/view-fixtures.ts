@@ -6224,7 +6224,6 @@ export const VIEWS: Record<string, unknown> = {
    "say": "Every gate passed: the report first, then the commit.",
    "stage": "commit",
    "steps": [
-    "/plugin/scripts/temper intent complete",
     "/plugin/scripts/temper spec deviations",
     "/plugin/scripts/temper report --end",
     "Copy what temper report printed into your reply, as it printed it, in a code block: the person does not see the output of a Bash call."
