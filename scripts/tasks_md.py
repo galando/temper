@@ -109,18 +109,84 @@ def parse(path):
     return {'groups': groups, 'tasks': tasks, 'integration': integration}
 
 
-def schedule(plan, run, max_par, task_model, esc_model, project):
-    """The ready set of a grouped run, one dict per launchable task, then a done or waiting line."""
+# ---- the states of a Build task, one definition each -------------------------------------------------------------------
+# The CLI moves a task's status in groups.json (pending, running, passed, failed, covered). What the readers derive from it
+# is defined here once: which tasks the schedule may launch and why one waits (the schedule, `temper task start`'s reason,
+# the flow's chains), when a task is done (the flow's group check and the gate's "all tasks complete" row) and the state
+# the view, the report and the panel show.
+STARTABLE = ('pending', 'failed')   # never started, or a failed attempt to retry (a failed one goes alone, on its attempt's model)
+
+
+def status_of(run, n):
+    return (((run or {}).get('tasks') or {}).get(str(n)) or {}).get('status', 'pending')
+
+
+def task_done(task, run):
+    """A task is done when the run recorded it passed. A task the run holds no record of, in a group it never started, is
+    judged by its box in tasks.md (a run not built task by task, such as one finished before groups.json): there the box
+    is the only record. Once the run started its group, a box ticked by hand is not a pass (the CLI ticks it on one)."""
+    run = run if isinstance(run, dict) else {}
+    if str(task['n']) in (run.get('tasks') or {}) or task.get('group') in (run.get('groups') or {}):
+        return status_of(run, task['n']) == 'passed'
+    return re.search(r'^\s*- \[[xX]\]', task.get('block') or '', re.M) is not None
+
+
+def display_state(info, group_info, phases):
+    """The one state a task shows (view.json's build grid, the report, the panel): waiting, running, red, green, covered
+    (its tests passed before any change: the person decides), pass, fail, or parked (failed in a parked group)."""
+    st = (info or {}).get('status', 'pending')
+    if st == 'passed':
+        return 'pass'
+    if st == 'failed':
+        return 'parked' if (group_info or {}).get('status') == 'parked' else 'fail'
+    if st == 'covered':
+        return 'covered'
+    if st == 'running':
+        return 'green' if 'green' in phases else ('red' if 'red' in phases else 'running')
+    return 'waiting'
+
+
+def _why_waiting(plan, run, t, busy, slots_left, max_par, declared):
+    """Why a startable task t cannot launch now, or None: `busy` holds the tasks running or already in the ready set."""
+    rg = run.get('groups') or {}
+    gdep = {g['id']: g['depends'] for g in plan['groups']}
+    by_n = {x['n']: x for x in plan['tasks']}
+    def gpass(g): return ((rg.get(g) or {}).get('gate') or {}).get('verdict') == 'PASS'
+    n, g = t['n'], t['group']
+    unmet = [d for d in t['depends'] if not (task_done(by_n[d], run) if d in by_n else status_of(run, d) == 'passed')]
+    gwait = [d for d in gdep.get(g, []) if not gpass(d)]
+    if (rg.get(g) or {}).get('status') == 'parked': return 'group %s is parked' % g
+    if not (rg.get(g) or {}).get('worktree'): return 'group %s not started' % g
+    if gwait: return 'group %s depends on %s' % (g, ', '.join(gwait))
+    if unmet: return 'depends on %s' % ', '.join('Task %d' % d for d in unmet)
+    clash = [m for m in busy if declared.get(m, set()) & declared[n]]
+    if clash: return 'files overlap Task %d' % clash[0]
+    if slots_left <= 0: return 'max-parallel %d reached' % max_par
+    return None
+
+
+def _norm(p):
+    p = p.strip()
+    return p[2:] if p.startswith('./') else p
+
+
+def why_not_ready(plan, run, n, max_par):
+    """Why Task n is not in the ready set, as the schedule decides it ('' when it is, or is not startable)."""
+    why_of = {}
+    schedule(plan, run, max_par, '', '', '', why_of)
+    return why_of.get(n, '')
+
+
+def schedule(plan, run, max_par, task_model, esc_model, project, why_of=None):
+    """The ready set of a grouped run, one dict per launchable task, then a done or waiting line. A dict passed as why_of
+    gets the reason each startable task waits, by task number."""
     if not isinstance(run, dict):
         run = {}
     rg, rt = run.get('groups') or {}, run.get('tasks') or {}
-    def norm(p):
-        p = p.strip()
-        return p[2:] if p.startswith('./') else p
+    norm = _norm
     tasks = sorted(plan['tasks'], key=lambda t: ([g['id'] for g in plan['groups']].index(t['group']) if t['group'] in [g['id'] for g in plan['groups']] else 999, t['n']))
-    gdep = {g['id']: g['depends'] for g in plan['groups']}
     declared = {t['n']: {norm(f) for f in t['files']} for t in tasks}
-    def status(n): return (rt.get(str(n)) or {}).get('status', 'pending')
+    def status(n): return status_of(run, n)
     def agent_alias(m):  # the Agent tool's model parameter takes aliases, not full ids
         for a in ('haiku', 'sonnet', 'opus'):
             if m.startswith('claude-' + a + '-'): return a
@@ -130,24 +196,15 @@ def schedule(plan, run, max_par, task_model, esc_model, project):
     running = [t['n'] for t in tasks if status(t['n']) == 'running']
     slots = max_par - len(running)
     ready, waiting = [], []
+    why_of = {} if why_of is None else why_of
     for t in tasks:
         n, g = t['n'], t['group']
-        if status(n) not in ('pending', 'failed'):
+        if status(n) not in STARTABLE:
             continue
-        why = None
-        unmet = [d for d in t['depends'] if status(d) != 'passed']
-        gwait = [d for d in gdep.get(g, []) if not gpass(d)]
-        if gstatus(g) == 'parked': why = 'group %s is parked' % g
-        elif not (rg.get(g) or {}).get('worktree'): why = 'group %s not started' % g
-        elif gwait: why = 'group %s depends on %s' % (g, ', '.join(gwait))
-        elif unmet: why = 'depends on %s' % ', '.join('Task %d' % d for d in unmet)
-        else:
-            clash = [m for m in list(running) + [r['task'] for r in ready]
-                     if declared[m] & declared[n]]
-            if clash: why = 'files overlap Task %d' % clash[0]
-            elif slots <= len(ready): why = 'max-parallel %d reached' % max_par
+        why = _why_waiting(plan, run, t, list(running) + [r['task'] for r in ready], slots - len(ready), max_par, declared)
         if why:
             waiting.append('Task %d (%s)' % (n, why))
+            why_of[n] = why
             continue
         attempt = len((rt.get(str(n)) or {}).get('attempts') or []) + 1
         mdl = task_model if attempt <= 2 else esc_model

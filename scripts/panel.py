@@ -256,8 +256,12 @@ def task(spec, project, ns):
                 and r.get("executed_by") == "cli"]
         red = next((r.get("exit_code") for r in mine if r.get("phase") == "red"), None)
         green = next((r.get("exit_code") for r in reversed(mine) if r.get("phase") == "green"), None)
-        verdict = {"passed": "PASS", "covered": "COVERED (an earlier task built it)", "running": "not judged yet"}.get(
-            status, last.get("outcome") or status.upper())
+        phases = [str(r.get("phase")) for r in rows if isinstance(r, dict) and r.get("task") == n]
+        state = tasks_md.display_state(rt, ((run.get("groups") if isinstance(run, dict) else None) or {}).get(rt.get("group")) or {}, phases)
+        verdict = {"pass": "PASS", "covered": "COVERED (an earlier task built it)", "running": "not judged yet",
+                   "red": "not judged yet", "green": "not judged yet"}.get(state, last.get("outcome") or status.upper())
+        if state == "pass" and rt.get("accepted_covered"):   # the person accepted it as covered (task accept), with a reason
+            verdict += " (accepted: %s)" % plain(rt["accepted_covered"])
         changed = []
         if rt.get("commit"):
             r = subprocess.run(["git", "-C", project, "show", "--name-only", "--format=", rt["commit"]],

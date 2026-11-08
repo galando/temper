@@ -6,14 +6,17 @@ import importlib.util, json, os, re, sys
 _spec = importlib.util.spec_from_file_location('acceptance', sys.argv[1])
 A = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(A)
+# the intent's status and Blocking questions, read as flow.py and gate_rows.py read them (next to acceptance.py)
+_spec = importlib.util.spec_from_file_location('intent_parse', os.path.join(os.path.dirname(sys.argv[1]), 'intent_parse.py'))
+IP = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(IP)
 
 lines = open(sys.argv[2]).read().splitlines()
 reqs = []
 def add(name, ok, detail):
     reqs.append({'name': name, 'pass': ok, 'detail': detail})
 
-m = re.search(r'^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$', "\n".join(lines), re.I | re.M)
-status = m.group(1).lower() if m else None   # None: missing or unknown Status header
+status = IP.status("\n".join(lines))   # None: missing or unknown Status header
 if status != 'draft':
     d = ("skipped — intent is %s; this check applies to drafts only "
          "(a recorded acceptance is never revisited)") % status

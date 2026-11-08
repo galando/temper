@@ -264,22 +264,9 @@ if mode == 'ctx':
     print(json.dumps(ctx(json.loads(sys.argv[2]), load_run(sys.argv[3]), int(sys.argv[4]))))
 
 elif mode == 'why':
+    # the reason the schedule itself gives (tasks_md.py): a task ready to start and the reason it is not are one decision
     plan, run, n, max_par = json.loads(sys.argv[2]), load_run(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
-    c = ctx(plan, run, n)
-    t = next(x for x in plan['tasks'] if x['n'] == n)
-    rg, rt = run.get('groups') or {}, run.get('tasks') or {}
-    def st(m): return (rt.get(str(m)) or {}).get('status', 'pending')
-    g = next(x for x in plan['groups'] if x['id'] == c['group'])
-    gwait = [d for d in g['depends'] if ((rg.get(d) or {}).get('gate') or {}).get('verdict') != 'PASS']
-    unmet = [d for d in t['depends'] if st(d) != 'passed']
-    running = [x for x in plan['tasks'] if st(x['n']) == 'running']
-    clash = [x['n'] for x in running if {norm(f) for f in x['files']} & {norm(f) for f in t['files']}]
-    if (rg.get(c['group']) or {}).get('status') == 'parked': print('group %s is parked' % c['group'])
-    elif gwait: print('group %s depends on %s' % (c['group'], ', '.join(gwait)))
-    elif unmet: print('depends on %s' % ', '.join('Task %d' % d for d in unmet))
-    elif clash: print('files overlap Task %d' % clash[0])
-    elif len(running) >= max_par: print('max-parallel %d reached' % max_par)
-    else: print('')
+    print(tasks_md.why_not_ready(plan, run, n, max_par))
 
 elif mode == 'snap':
     print(json.dumps(snap(sys.argv[2])))
@@ -660,16 +647,20 @@ elif mode == 'verdict':
     if foreign:   # D-08: each foreign sha with the files it changed
         problems.append('commit not made by the CLI: ' + '; '.join('%s (%s)' % (x[:7], named(commit_files(x), 10)) for x in foreign[:10])
                         + (' (and %d more)' % (len(foreign) - 10) if len(foreign) > 10 else ''))
-    if problems and (foreign or not reason):
+    # F19: the last run of the attempt was a RED that passed, with no GREEN: an earlier task built this (covered).
+    # Only an attempt with no problem of its own is covered: an undeclared change or a foreign commit keeps it FAIL.
+    red_passed = (not c['manual'] and bool(mine) and mine[-1].get('phase') == 'red' and mine[-1].get('exit_code') == 0
+                  and green is None)
+    covered = red_passed and not problems
+    if problems and (foreign or not reason or red_passed):
         reason = '; '.join(([reason] if reason and foreign else []) + problems)
     tail = ''
     if reason:
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     verdict = 'FAIL' if reason else ('AWAIT' if c['manual'] and not c['confirmed_by'] else 'PASS')
-    # F19: the last run of the attempt was a RED that passed, with no GREEN: an earlier task built this (covered)
     red_cmd = red_tail = ''
-    if not c['manual'] and mine and mine[-1].get('phase') == 'red' and mine[-1].get('exit_code') == 0 and green is None:
+    if covered:
         verdict, red_cmd = 'COVERED', mine[-1].get('cmd') or ''
         red_tail = '\n'.join((mine[-1].get('output') or '').rstrip('\n').split('\n')[-6:])[:500]
     print(json.dumps({'verdict': verdict, 'red_cmd': red_cmd, 'red_tail': red_tail, 'reason': reason, 'commit_paths': mine_changed,
