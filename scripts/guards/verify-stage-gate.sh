@@ -23,21 +23,33 @@
 # Loop guard, two layers: after MAX_BLOCKS refusals (counted in the marker itself) the
 # hook fails open — a model that cannot satisfy the gate (broken CLI, read-only disk)
 # must not be trapped in an infinite stop loop. Independently, if the harness reports
-# stop_hook_active with the marker's counter at 0 — meaning our own count never
-# persisted — fail open rather than trust a counter that isn't counting.
+# stop_hook_active with the marker's counter at 0 — our own count never persisted, or
+# another Stop hook blocked first — this stop fails open rather than trust a counter that
+# isn't counting; the marker stays, so the debt is asked for again at the next Stop.
+#
+# Whose debt: the marker is one file for the whole project, so stage-marker.sh records the
+# session that owes the gate (session_id, from the hook's input). A marker that names
+# another session neither blocks this Stop nor is removed by it. A marker with no session
+# id (written by an older stage-marker.sh), or a Stop input with none, is judged as before.
+# A marker older than MAX_AGE_HOURS is the leftover of a session that ended without its
+# gate: it fails open and is cleared.
 #
 # DEGRADATION CONTRACT:
 #   - No marker file                        => exit 0 (nothing owed)
+#   - Marker of another session             => exit 0 (not this session's; marker kept)
+#   - Marker older than MAX_AGE_HOURS       => exit 0 (fail-open, marker cleared)
 #   - Verdict present for the stage         => exit 0 (marker cleared — debt paid)
 #   - python3 absent / marker unreadable    => exit 0 (fail-open, marker cleared)
 #   - Verdict missing, blocks < MAX_BLOCKS  => exit 2 (BLOCK: the one fail-closed path)
 #   - Verdict missing, blocks >= MAX_BLOCKS => exit 0 (fail-open, marker cleared)
+#   - stop_hook_active, blocks == 0         => exit 0 (fail-open for this stop, marker kept)
 set -uo pipefail
 # An exported CDPATH makes `cd` print the folder it enters, which would double every folder
 # worked out below with "$(cd ... && pwd)". It is never used here.
 unset CDPATH
 
 MAX_BLOCKS=2
+MAX_AGE_HOURS=24
 
 # This script's own file with every symlink followed (a link in a bin folder, or a chain of
 # links), the way scripts/temper finds itself. Its folder, resolved, is HERE; the plugin folder
@@ -111,23 +123,44 @@ _main() {
   command -v python3 >/dev/null 2>&1 || { rm -f .temper/pending-stage.json 2>/dev/null; return 0; }
 
   # One python pass: read marker + gates.json + harness input, decide, update the
-  # marker in place. Prints "CLEAR", "OPEN" (fail-open), or "BLOCK <stage>". The
-  # program is an inline `python3 -c` string (single-quoted, so it must not contain a
-  # single quote) and every input travels as argv, so the hook runs no other file.
+  # marker in place. Prints "CLEAR", "OPEN" (fail-open), "STALE" (fail-open, an old
+  # marker), "OTHER" (another session's marker), "KEEP" (fail-open for this stop, the
+  # marker kept) or "BLOCK <stage>". The program is an inline `python3 -c` string
+  # (single-quoted, so it must not contain a single quote) and every input travels as
+  # argv, so the hook runs no other file.
   local decision
   decision=$(python3 -I -c '
 import json, sys
-marker_path, gates_path, max_blocks = sys.argv[1], sys.argv[2], int(sys.argv[3])
+marker_path, gates_path, max_blocks, max_age = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[5])
 try:
-    hook_input = json.loads(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else {}
+    hook_input = json.loads(sys.argv[4]) if sys.argv[4] else {}
 except Exception:
+    hook_input = {}
+if not isinstance(hook_input, dict):
     hook_input = {}
 try:
     m = json.load(open(marker_path))
     stage, blocks = m["stage"], int(m.get("blocks", 0))
     since = m.get("since", "")
+    owner = m.get("session_id") or ""
 except Exception:
     print("OPEN"); sys.exit(0)
+# A marker older than max_age hours is the leftover of a session that ended without its
+# gate (a crash, a closed window): every Stop fires within a turn, so a live debt is never
+# that old. A since that is not a time is not read as old.
+try:
+    import datetime
+    t = datetime.datetime.strptime(since, "%Y-%m-%dT%H:%M:%SZ")
+    if datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - t > datetime.timedelta(hours=max_age):
+        print("STALE"); sys.exit(0)
+except (TypeError, ValueError):
+    pass
+# The marker is one file for the whole project: a marker that names another session is the debt of
+# that session, so this Stop is not blocked by it and leaves it as it is. A marker with no
+# session id (an older stage-marker.sh) or an input with none is judged as before.
+me = hook_input.get("session_id") or ""
+if owner and isinstance(me, str) and me and owner != me:
+    print("OTHER"); sys.exit(0)
 try:
     g = json.load(open(gates_path)).get(stage, {})
     verdict, verdict_ts = g.get("verdict"), g.get("ts", "")
@@ -143,16 +176,31 @@ if blocks >= max_blocks:
     print("OPEN"); sys.exit(0)
 if hook_input.get("stop_hook_active") and blocks == 0:
     # The harness says a stop hook is already re-blocking this session, yet our own
-    # counter never moved, so the marker is not persisting. Do not loop on a broken counter.
-    print("OPEN"); sys.exit(0)
+    # counter never moved: the marker is not persisting, or another Stop hook blocked this
+    # stop first. Do not loop on a broken counter, but keep the debt (the marker stays): the
+    # next Stop of the session asks for the gate again.
+    print("KEEP"); sys.exit(0)
 m["blocks"] = blocks + 1
 json.dump(m, open(marker_path, "w"))
 print(f"BLOCK {stage}")
-' .temper/pending-stage.json .temper/gates.json "$MAX_BLOCKS" "$stdin_json" 2>/dev/null) || decision="OPEN"
+' .temper/pending-stage.json .temper/gates.json "$MAX_BLOCKS" "$stdin_json" "$MAX_AGE_HOURS" 2>/dev/null) || decision="OPEN"
 
   case "$decision" in
     CLEAR)
       _log "cleared (verdict recorded)"
+      rm -f .temper/pending-stage.json 2>/dev/null
+      return 0
+      ;;
+    OTHER)
+      _log "skipped (the marker is another session's debt)"
+      return 0
+      ;;
+    KEEP)
+      _log "fail-open for this stop (stop_hook_active, counter at 0); marker kept"
+      return 0
+      ;;
+    STALE)
+      _log "fail-open (marker older than ${MAX_AGE_HOURS}h: a session that ended without its gate)"
       rm -f .temper/pending-stage.json 2>/dev/null
       return 0
       ;;

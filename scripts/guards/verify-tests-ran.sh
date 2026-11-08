@@ -2,9 +2,12 @@
 #
 # verify-tests-ran.sh — pre-commit check-green gate.
 #
-# Refuses a commit if the latest build state is not check_complete (i.e. /temper:check
+# Refuses a commit if the latest build state is not past Check (i.e. /temper:check
 # has not passed for the staged change). The check sentinel is the `stage` field in
-# .temper/build-state.json equal to "check_complete".
+# .temper/build-state.json: "check_complete", or "commit_complete", the one stage after it
+# (Commit opened a pull request and the run is at Pipeline, whose fix rounds commit too).
+# The CLI rewrites the field on every move of next_stage, so a loop back from Check to an
+# earlier stage no longer reads as past Check.
 #
 # DEGRADATION CONTRACT (the two paths are distinct — do not conflate):
 #   - .temper/build-state.json present AND stage not green => exit 2 (BLOCK — the one
@@ -39,8 +42,8 @@ print(d.get('stage', '__missing__'))
 " "$state" 2>/dev/null || true)
 
   case "$stage" in
-    check_complete)
-      # Green: Check has run. Allow the commit.
+    check_complete|commit_complete)
+      # Green: Check has run (and, at commit_complete, Commit after it). Allow the commit.
       return 0
       ;;
     __unreadable__|__missing__|'')
@@ -50,7 +53,7 @@ print(d.get('stage', '__missing__'))
     *)
       # State present but stage is not green (e.g. build_complete, plan_complete).
       # This is the fail-closed path.
-      echo "BLOCK: latest Temper stage is '${stage}', not check_complete." >&2
+      echo "BLOCK: latest Temper stage is '${stage}', not check_complete (or commit_complete after it)." >&2
       echo "Run /temper:check before committing." >&2
       return 2
       ;;

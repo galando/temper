@@ -253,10 +253,10 @@ The single fail-closed path for each script is documented below. Everything else
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `${CLAUDE_PLUGIN_ROOT}/scripts/temper override`: it emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records that the person decided it (`by`) |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` FAILs (in-agent mirror of the native hook, below). A CLI refusal of an unsafe `.temper` folder (exit 3) blocks while a run is active (`.temper/build-state.json` exists, as a file or a link) and says to remove the symlink; with no run active it is a one-line warning, not a block |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:intent` prompt is submitted (the stage doors may end at any gate, ADR 0005 as amended), and blocks nothing |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop (plugin hook, always on) | **BLOCK** | A `/temper:intent` session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage (see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`). Fails open after 2 refusals |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:intent` prompt is submitted (the stage doors may end at any gate, ADR 0005 as amended), naming the session that owes the gate (`session_id` from the hook's input); the same session owing it again keeps the refusals already counted. It blocks nothing |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop (plugin hook, always on) | **BLOCK** | A `/temper:intent` session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage (see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`). Fails open after 2 refusals. A marker of another session neither blocks nor is removed; a marker older than a day is cleared; `stop_hook_active` with the count at 0 opens that one stop and keeps the marker |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `${CLAUDE_PLUGIN_ROOT}/scripts/temper override` |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when the temper CLI isn't present |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json`'s `stage` is not `check_complete` (or `commit_complete`, the one stage after it) — used only when the temper CLI isn't present |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate), kept in `temper-gate` in the repository's git folder with `core.hooksPath` pointing at that folder; it never writes into a folder named `hooks` |
 
 ### block-secrets.sh
@@ -347,7 +347,8 @@ state → `exit 0` (degrade; a repo not running `/temper` for this commit is nev
 ### verify-tests-ran.sh (fallback)
 
 Used only when the temper CLI isn't present. Reads `.temper/build-state.json`; if the
-latest stage is not `check_complete` (or check failed), `exit 2` with "run /temper:check".
+latest stage is not `check_complete` (or `commit_complete`, the one stage after it: Commit
+opened a pull request and Pipeline's fix rounds commit too), `exit 2` with "run /temper:check".
 Missing/unreadable state → `exit 0` (fail-open).
 
 ## Beyond the Commit Fence: Approval Gates (example, not wired by default)
