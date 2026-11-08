@@ -828,7 +828,8 @@ export const register: Register = (on, opts) => {
     else if (e.tool === 'Bash') {
       const snap = await refresh($).catch(() => null)
       // A state init that started a run uses up the request kept for it.
-      const command = typeof (e as { command?: unknown }).command === 'string' ? (e as { command: string }).command : ''
+      const raw: unknown = (e as { command?: unknown }).command
+      const command = typeof raw === 'string' ? raw : ''
       if (main && !errored && snap !== null && snap.slug !== null && readShell(command).calls.some(w => callWords(w)[0] === 'state' && callWords(w)[1] === 'init')) await dropRequest($)
     }
     return result
