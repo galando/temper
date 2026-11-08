@@ -293,8 +293,14 @@ async function readUi($: Api): Promise<{ view: View; mode: UiMode } | null> {
 
 // The pane is open and drawn now (a pane that waits undrawn for a wider terminal is not).
 async function paneIsOpen($: Api): Promise<boolean> {
-  const panes = await $.ui.panes().catch(() => [])
-  return panes.some(p => p.id === PANE_ID && p.isPlaced)
+  // An engine without the call (older than the record) reads as no pane open: the pane is then opened, never lost.
+  let panes: Awaited<ReturnType<Api['ui']['panes']>> = []
+  try {
+    panes = await $.ui.panes()
+  } catch {
+    panes = []
+  }
+  return Array.isArray(panes) && panes.some(p => p.id === PANE_ID && p.isPlaced)
 }
 
 // The person closed the pane by hand (its close mark, or /temper:temper pane): the mod does not open it for them again

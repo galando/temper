@@ -76,7 +76,8 @@ at once — you can't tell which worked.
    With the guardrails pack enabled, `protect-regression-test.sh` now blocks any edit to that
    file for the rest of the run — fix the code, not the test. A genuinely-wrong test is a
    human's call to unlock (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state set regression_test ""`, run only
-   when the human says so), never the agent's.
+   when the human says so), never the agent's. With the Temper mod loaded, the mod refuses that call from the
+   agent during a fix run: the person runs it in their own terminal.
 
 2. **Validate the approach against enabled packs** before writing the fix (read
    `.claude/temper.config` for the pack list + the stack pack): a BLOCK-rule violation
