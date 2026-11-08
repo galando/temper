@@ -3,7 +3,7 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## Unreleased: the run's state machines made explicit
+## v9.8.3: the run's state machines made explicit
 
 Each piece of run state that several writers moved (the run's stage, a group, a task, the small change window, the
 end report, a finding, the stop marker, the mod's pane and held run) now has one table of allowed moves or one
@@ -22,6 +22,10 @@ function every writer goes through; the moves that were possible but wrong are r
   shows as covered. Task readiness, task done, intent status and Blocking questions each have one definition; finding
   state is `findings.finding_state`. The acceptance writer's launches and corrections are bounded. An earlier stage
   with no verdict shows todo, not passed. The agents a stage named are kept in `.temper/agents-named.json`.
+- **Lock.** A row is no longer lost when writers queue under load. The lock is freed in one rename, so it is never
+  seen without its owner; a waiter goes on waiting for a holder that is alive (up to `TEMPER_LOCK_MAX_S`, 60 s) or
+  that is between its mkdir and its owner line; a lock freed while a waiter looks at it is taken, not written past;
+  and a lock is broken as stale only when its owner's process is gone. (L1, L2 and F6 lost a row now and then on CI.)
 - **Guards.** The stop marker names its session and keeps its refusal count; a marker of another session, or older
   than a day, no longer blocks. The fallback commit guard accepts `commit_complete`.
 - **Mod.** The run is held when view.json is lost at any stage, Commit included; an interrupt ends the driver as
