@@ -3,6 +3,31 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## Unreleased: the run's state machines made explicit
+
+Each piece of run state that several writers moved (the run's stage, a group, a task, the small change window, the
+end report, a finding, the stop marker, the mod's pane and held run) now has one table of allowed moves or one
+function every writer goes through; the moves that were possible but wrong are refused. Tests: `temper-cases-17.sh`
+(CLI), `temper-cases-18.sh` (flow), `temper-cases-19.sh` (guards), `tests/mod/state-machines.test.ts` (mod).
+
+- **CLI.** `state loop` takes only stages of the run, backward from the stage it is at; a backward `state set
+  next_stage` goes back the same way (one `_go_back`). `override` takes only a gate of the run, and a skip covers the
+  verdict it was given for, not a newer one. Task status moves through one table (`task_cover.py` `TASK_MOVES`); a
+  group's status follows its gate, and a reopen drops its Continue and its integration. The small change window opens
+  only at the run's stage and closes on any move. `end_report`, the bookkeeping `stage` and the evidence of Commit and
+  Pipeline follow a step back. `intent complete` refuses a draft. `state set` refuses the CLI's own keys and checks
+  `run_mode`, `pipeline_round` and `regression_test`. Build to Plan is once per run in the CLI as in the flow
+  (`loop_step.budget`).
+- **Flow.** A RED that passed beside an undeclared change or a foreign commit stays FAIL (not COVERED); a covered task
+  shows as covered. Task readiness, task done, intent status and Blocking questions each have one definition; finding
+  state is `findings.finding_state`. The acceptance writer's launches and corrections are bounded. An earlier stage
+  with no verdict shows todo, not passed. The agents a stage named are kept in `.temper/agents-named.json`.
+- **Guards.** The stop marker names its session and keeps its refusal count; a marker of another session, or older
+  than a day, no longer blocks. The fallback commit guard accepts `commit_complete`.
+- **Mod.** The run is held when view.json is lost at any stage, Commit included; an interrupt ends the driver as
+  stopped; an answer is recorded once; an Allow once is spent after the call ran; the skill window and the kept
+  request end with their step and run; `regression_test` is lifted only by the person during a fix run.
+
 ## v9.8.2: plan.context-check off finally means nobody is asked
 
 - **`off` passes a pending review.** *Before:* the Plan agent always writes `- reviewed: pending`, and `plan_ops.py` failed
