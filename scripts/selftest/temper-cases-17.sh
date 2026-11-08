@@ -206,7 +206,7 @@ assert_eq "A20: a contested finding still counts against the Review gate" "1" "$
 setup; mkdir -p .temper/evidence .temper/.lock
 sleep 30 & HOLDER=$!
 printf '%s.1' "$HOLDER" > .temper/.lock/owner
-( sleep 2.5; rm -rf .temper/.lock ) & FREE=$!
+( sleep 2.5; mv .temper/.lock .temper/.lock.free.t && rm -rf .temper/.lock.free.t ) & FREE=$!   # freed as a holder frees it: one rename
 out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "after a live holder" 2>&1)"; rc=$?
 wait "$FREE"
 assert_eq "A16: a holder that is alive is waited for past the wait: the row lands under the lock, with no WARN" "0|0|1" \
@@ -221,7 +221,12 @@ rm -rf .temper/.lock
 # --- A16: the lock's windows (L2, F6 and L1 lost a row now and then on CI): a lock being taken is waited for, a lock
 # whose owner is alive is never broken as stale, and a release never leaves the folder standing without its owner ---
 setup; mkdir -p .temper/evidence .temper/.lock
-( sleep 1.6; rm -rf .temper/.lock ) & FREE=$!
+# the folder stays young (its time renewed) until it goes, so the test does not hang on how fast the writer starts
+python3 -c "
+import os, time
+for _ in range(25):
+    os.utime('.temper/.lock'); time.sleep(0.1)
+os.rmdir('.temper/.lock')" & FREE=$!
 out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "after a lock being taken" 2>&1)"; rc=$?
 wait "$FREE"
 assert_eq "A16: an ownerless lock under 2 s old (a holder between its mkdir and its owner line) is waited for, not written past" "0|0|1" \

@@ -399,10 +399,14 @@ _lock_acquire() {
       # A holder that is alive is working (on a loaded machine many writers queue for longer than the wait): wait on for it,
       # up to TEMPER_LOCK_MAX_S, rather than write beside it and lose a row. A holder that is gone or unknown, or one past that
       # bound, is written past as before (fail open: a stuck holder never wedges a run).
+      [[ -d "$_LOCK_DIR" ]] || continue   # freed since the mkdir: take it, never write past a lock that is gone
       local holder; holder="$(cat "$_LOCK_DIR/owner" 2>/dev/null)"; holder="${holder%%.*}"
+      [[ -n "$holder" || -d "$_LOCK_DIR" ]] || continue
       # an ownerless folder under 2 s old is a holder between its mkdir and its owner line: wait for it too
       if { { [[ "$holder" =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; } || { [[ -z "$holder" && -d "$_LOCK_DIR" ]] \
-           && python3 -I -c "import os,sys,time; sys.exit(time.time() - os.path.getmtime(sys.argv[1]) > 2)" "$_LOCK_DIR" 2>/dev/null; }; } \
+           && python3 -I -c "import os,sys,time
+try: sys.exit(time.time() - os.path.getmtime(sys.argv[1]) > 2)
+except OSError: pass" "$_LOCK_DIR" 2>/dev/null; }; } \
          && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )); then
         python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
       fi
