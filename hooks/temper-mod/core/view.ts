@@ -83,7 +83,6 @@ export type View = {
   line: string | null
   // What `temper next` does now (the system prompt names it).
   next: { action: string; say: string; header: string | null }
-  paneOpen: boolean
 }
 
 export type ViewInput = {
@@ -93,7 +92,6 @@ export type ViewInput = {
   answer: Extract<Decision, { kind: 'gate' }> | null
   enforcement: 'on' | 'off'
   line?: string | null
-  paneOpen?: boolean
 }
 
 const MARKS: Record<string, Mark> = { passed: 'passed', failed: 'failed', skipped: 'skipped', here: 'current', todo: 'pending' }
@@ -201,7 +199,6 @@ export function buildView(input: ViewInput): View {
           rows: rv.fresh.findings.map(f => ({ id: f.id, severity: f.severity, lens: f.lens, claim: f.claim.replace(/^\[[\w-]+\]\s*/, ''), state: f.state, cite: f.cite })),
         },
     markers: rv.markers.map(m => ({ name: m.name, state: m.state, detail: m.detail, lines: m.lines })),
-    paneOpen: input.paneOpen ?? false,
   }
 }
 

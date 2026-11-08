@@ -48,6 +48,13 @@ export type Snapshot = {
   prAttribution: 'on' | 'off'
   // view.json is of a version this mod does not read, or names a stage it does not know: it blocks nothing.
   failOpen: boolean
+  // view.json is missing, unreadable or no view at all (a delete, chmod 000, a clean of the work tree, a corrupt file):
+  // the mod read no run, and the CLI did not say there is none. A view that reads with no run (what the CLI writes
+  // after a clear or an archive) is not lost. register.tsx holds the last known run through a lost read (heldRun).
+  lost: boolean
+  // This snapshot is the last known run, held from memory because view.json was lost (register.tsx, heldRun): it is
+  // shown and enforced, never kept as the run's report.
+  held: boolean
   // The one line shown under the bar when the mod cannot read the run as it should; null when all is well.
   line: string | null
   // view.json as read; null with no run.
@@ -83,9 +90,16 @@ const str = (options: PluginOptions, key: string): string | undefined => {
   return typeof v === 'string' ? v : undefined
 }
 
-// Whether the pane is open, as the mod last placed or closed it. The mode and enforcement come only from the options,
-// which the person changes in /config (the module reloads with the new options); the mod writes no setting.
-export const live: { paneOpen?: boolean } = {}
+// The mode and enforcement come only from the options, which the person changes in /config (the module reloads with
+// the new options); the mod writes no setting.
+
+// Whether the guard acts on this snapshot at all: not inert (an old Claude Code), enforcement on, and a view.json this
+// mod can read (not fail open). Every hook that guards asks this one question.
+export const enforces = (snap: Snapshot): boolean => !snap.inert && snap.enforcement !== 'off' && !snap.failOpen
+
+// Whether a /temper run is being guarded: enforced, with a run in progress (a /temper:fix run has none here: the mod
+// stands aside for it).
+export const guardsRun = (snap: Snapshot): boolean => enforces(snap) && snap.run !== null
 
 export function settingsFrom(options: PluginOptions) {
   return {
@@ -100,6 +114,8 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     inert,
     ...settingsFrom(options),
     failOpen: false,
+    lost: false,
+    held: false,
     line: null,
     view: null,
     slug: null,
@@ -172,7 +188,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   if (!versionAtLeast(version)) return idleSnapshot(options, true)
   const idle = idleSnapshot(options, false)
   const text = await readText(io, VIEW_PATH)
-  if (text === null) return idle
+  if (text === null) return { ...idle, lost: true }
   const rv = parseRunView(text)
   if (rv === null) {
     // A view of another version is no view: fail open. Text that is not a view at all is no run (the last run read is
@@ -184,7 +200,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     } catch {
       other = false
     }
-    return other ? { ...idle, failOpen: true, line: NEWER } : idle
+    return other ? { ...idle, failOpen: true, line: NEWER } : { ...idle, lost: true }
   }
   if (rv.run === null) return idle
   // A /temper:fix run: the mod stands aside. commands/fix.md asks every gate in the conversation and the native commit
@@ -250,7 +266,7 @@ export function composeText(snap: Snapshot): string {
 const EMPTY: RunView = parseRunView(JSON.stringify({ version: VIEW_VERSION, run: null })) as RunView
 
 export const viewOf = (snap: Snapshot): View =>
-  buildView({ view: snap.view ?? EMPTY, decisions: snap.decisions, answer: snap.answer, enforcement: snap.enforcement, line: snap.line, paneOpen: live.paneOpen ?? false })
+  buildView({ view: snap.view ?? EMPTY, decisions: snap.decisions, answer: snap.answer, enforcement: snap.enforcement, line: snap.line })
 
 // Mirrors the run into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {

@@ -1,6 +1,6 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { FIX_RUN, VIEW_PATH, composeText, idleSnapshot, keepDecision, keptReport, live, loadSnapshot, publish, reportText, settingsFrom, spendDecision, statusText, timelineText, viewOf, writeReport } from './adapter'
+import { VIEW_PATH, composeText, enforces, guardsRun, idleSnapshot, keepDecision, keptReport, loadSnapshot, publish, reportText, settingsFrom, spendDecision, statusText, timelineText, viewOf, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { cliArgv } from './core/argv'
 import { pluginCliFrom } from './core/cli'
@@ -9,12 +9,13 @@ import type { Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
 import { answeredResult, answersIn } from './core/answers'
-import { evaluate } from './core/rules'
-import { readShell } from './core/shell'
+import { evaluate, trivialExit } from './core/rules'
+import { callWords, readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
-import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, logRows, slugOf } from './core/driver'
+import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, logRows, lookAtAgents, slugOf } from './core/driver'
 import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
+import type { Stage } from './core/stages'
 import { SECTION_ID } from './core/section'
 import { isTemperAgent, stageToast, turnLine } from './core/view'
 import type { View } from './core/view'
@@ -26,19 +27,21 @@ import { spinnerProps } from './ui/spinner'
 
 type Api = EngineInterface
 
-// Module state. A hot reload runs register() again and session.start fires again, so
-// nothing here has to outlive a reload.
+// Module state. The engine loads the module again mid-session (a save of its files, a change of its options in /config,
+// a hooks worker it lost and started again): register() runs again, session.start fires again, and every variable here
+// starts over, while `$.state` (the session's) and `$.store` (the machine's) stay. So what has to outlive a load lives
+// there: the project root, the last stage announced and the pane the person closed in `$.state`; the requests, skills
+// and decisions in `$.store`; whether the pane is open is the engine's own record (`$.ui.panes`). What is left here is
+// a cache of those, or a thing of one load (the run held from memory, which a reload ends: docs/mods-plan.md).
 let options: PluginOptions = {}
 let current: Promise<Snapshot> | null = null
 let root = ''
 // The answer and the time of each agent the run driver launched, by agent id (from turn.complete).
 const agentEnds = new Map<string, AgentEnd>()
-let paneOpen = false
-// The person closed the pane by hand (its close mark, or /temper:temper pane): the mod does not open it for them again
-// in this session; /temper:temper pane does.
-let paneShut = false
-// The last stage announced, so a toast goes out once per stage change and never at load.
+// The last stage announced, so a toast goes out once per stage change and never at load: undefined before the first
+// load of the session, null for none. A cache of `$.state` `seen`, read at the first load of this module (see seenStage).
 let lastStage: string | null | undefined
+let stageRead = false
 
 // One toast. Every toast of the mod goes through here.
 function showToast($: Api, text: string): void {
@@ -88,19 +91,21 @@ function makeIo($: Api): Io {
   }
 }
 // The last snapshot that held a run. Enforcement is sticky: once the mod has seen a run in progress, a view.json that
-// turns missing, unreadable or corrupt (chmod 000, a delete, a git clean) does not end it.
-// The last known state keeps applying until the file reads again, the person turns enforcement off, or the mod reloads.
+// turns missing, unreadable or corrupt (chmod 000, a delete, a clean of the work tree) does not end it, at any stage up
+// to and with Commit (rules.ts guards the run there too). The last known state keeps applying until the file reads
+// again, the person turns enforcement off, or the mod reloads. A view that reads and says there is no run (what the CLI
+// writes after a clear or an archive, the normal end at Done) ends it.
 let lastRun: Snapshot | null = null
 
 const LOST_STATE =
   'Temper state: .temper/view.json is missing or unreadable. The last known state still applies. Run temper next, which writes it again, or turn Temper enforcement off in /config.'
 
-// The last known run, when it was in progress; null when it was over (Done) or never seen.
+// The last known run, held from memory; null when none was in progress.
 function heldRun(): Snapshot | null {
   const r = lastRun
-  if (r === null || r.inert || r.failOpen || r.run === null || r.run.stage === 'commit') return null
+  if (r === null || r.inert || r.failOpen || r.run === null) return null
   // The settings are the live ones (the person may have turned enforcement off since); the run is the last known.
-  return { ...r, ...settingsFrom(options), line: LOST_STATE }
+  return { ...r, ...settingsFrom(options), line: LOST_STATE, held: true }
 }
 
 // Whether the folder the mod reads the run from has been seen to hold one (see load).
@@ -113,6 +118,13 @@ let sessionCwd = ''
 async function load($: Api): Promise<Snapshot> {
   // After a hot reload no session.start has run yet: the project root comes back from `$.state`.
   if (!root) root = await rememberedRoot($)
+  // The stage announced before this module was loaded again: a stage change across the reload still toasts, and the
+  // run that reaches Done still keeps its report.
+  if (!stageRead) {
+    stageRead = true
+    const seen = await $.state.get({ plugin: 'temper', key: 'seen' } as const).catch(() => null)
+    if (lastStage === undefined && seen?.value) lastStage = seen.value.stage
+  }
   let snap: Snapshot | null = await loadSnapshot(makeIo($), options).catch(() => null)
   if (snap !== null && snap.slug === null && !snap.inert && lastRun === null && !rootVerified && sessionCwd) {
     // No run in the folder the mod chose at the first session start. A run the CLI starts later may live in a folder
@@ -129,7 +141,8 @@ async function load($: Api): Promise<Snapshot> {
     rootVerified = true
     return snap
   }
-  const held = heldRun()
+  // Only a lost read (or a load that failed) holds the last known run; what the CLI said stands.
+  const held = snap === null || snap.lost ? heldRun() : null
   if (held !== null) {
     lastRun = held
     return held
@@ -137,6 +150,27 @@ async function load($: Api): Promise<Snapshot> {
   lastRun = null
   return snap ?? idleSnapshot(options, false)
 }
+
+// Loads one at a time, in the order they were asked for: two hooks that run at once (a subagent's call beside the main
+// session's) each read the run, and the later read is the one that stands. `loads` counts the loads asked for; a
+// snapshot is taken as the current one only when no later load was asked for since (see adopt).
+let loads = 0
+let queue: Promise<unknown> = Promise.resolve()
+const loadNo = new WeakMap<Snapshot, number>()
+
+function startLoad($: Api): Promise<Snapshot> {
+  const n = ++loads
+  const p = queue.then(() => load($)).then(snap => {
+    loadNo.set(snap, n)
+    return snap
+  })
+  queue = p.catch(() => undefined)
+  current = p
+  return p
+}
+
+// The snapshot is from the latest load asked for: nothing newer is on its way.
+const latest = (snap: Snapshot): boolean => loadNo.get(snap) === loads
 
 // ---- The project root ------------------------------------------------------------------------
 // The folder of the project is fixed once. A session folder reported later (after Claude ran `cd` into
@@ -181,8 +215,14 @@ async function settleRoot($: Api, cwd: string | undefined): Promise<void> {
 }
 
 function ensure($: Api): Promise<Snapshot> {
-  current ??= load($)
-  return current
+  return current ?? startLoad($)
+}
+
+// The stage announced, kept in `$.state` too, so a reload of the module goes on from it (see load).
+function noteStage($: Api, stage: string | null): void {
+  if (stage === lastStage) return
+  lastStage = stage
+  void $.state.set({ plugin: 'temper', key: 'seen' } as const, { stage: stage as Stage | null }).catch(() => undefined)
 }
 
 // One toast per stage change, in full mode, never at the first load.
@@ -192,17 +232,20 @@ function announce($: Api, snap: Snapshot): void {
     const toast = snap.mode === 'full' ? stageToast(stage) : null
     if (toast) showToast($, toast)
   }
-  lastStage = stage
+  if (lastStage === undefined) lastStage = null
+  noteStage($, stage)
 }
 
 // The run reached Done since the stage last announced: its report is kept, so /temper:temper report shows it after the
-// run state is gone.
+// run state is gone. A run held from memory is not kept (its state file is gone).
 function reachedDone(snap: Snapshot): boolean {
-  return snap.run?.stage === 'commit' && !snap.inert && snap.runCommand !== 'fix' && lastStage !== undefined && lastStage !== null && lastStage !== 'commit'
+  return snap.run?.stage === 'commit' && !snap.inert && !snap.held && snap.runCommand !== 'fix' && lastStage !== undefined && lastStage !== null && lastStage !== 'commit'
 }
 
-// Takes a snapshot as the current one. A run it holds is the last known run too.
+// Takes a snapshot as the current one, when no later load was asked for since (an older one is not let back over a
+// newer one). A run it holds is the last known run too.
 function adopt($: Api, snap: Snapshot): Snapshot {
+  if (!latest(snap)) return snap
   current = Promise.resolve(snap)
   if (snap.slug !== null) lastRun = snap
   if (reachedDone(snap)) void writeReport(makeIo($), snap).catch(() => undefined)
@@ -211,8 +254,8 @@ function adopt($: Api, snap: Snapshot): Snapshot {
 }
 
 async function refresh($: Api): Promise<Snapshot> {
-  current = load($)
-  const snap = await current
+  const snap = await startLoad($)
+  if (!latest(snap)) return snap
   await publish(makeIo($), snap).catch(() => undefined)
   if (reachedDone(snap)) await writeReport(makeIo($), snap).catch(() => undefined)
   const started = startedHere(snap)
@@ -245,49 +288,50 @@ async function readUi($: Api): Promise<{ view: View; mode: UiMode } | null> {
 }
 
 // ---- Pane ------------------------------------------------------------------------
+// Whether the pane is open is the engine's record (`$.ui.panes`), which a reload of the module does not lose; whether
+// the person closed it by hand is kept in `$.state` for the session.
 
-async function openPane($: Api): Promise<boolean> {
-  const placed = await $.ui.open({ id: PANE_ID, title: 'Temper' })
-  paneOpen = placed.isPlaced
-  live.paneOpen = placed.isPlaced
-  return placed.isPlaced
+// The pane is open and drawn now (a pane that waits undrawn for a wider terminal is not).
+async function paneIsOpen($: Api): Promise<boolean> {
+  const panes = await $.ui.panes().catch(() => [])
+  return panes.some(p => p.id === PANE_ID && p.isPlaced)
 }
 
-async function closePane($: Api): Promise<void> {
-  await $.ui.close({ id: PANE_ID })
-  paneOpen = false
-  live.paneOpen = false
+// The person closed the pane by hand (its close mark, or /temper:temper pane): the mod does not open it for them again
+// in this session; /temper:temper pane does.
+async function paneShut($: Api): Promise<boolean> {
+  const shut = await $.state.get({ plugin: 'temper', key: 'paneShut' } as const).catch(() => null)
+  return shut?.value === true
+}
+
+async function setPaneShut($: Api, shut: boolean): Promise<void> {
+  await $.state.set({ plugin: 'temper', key: 'paneShut' } as const, shut).catch(() => undefined)
 }
 
 async function togglePane($: Api): Promise<string> {
-  if (paneOpen) {
-    paneShut = true
-    await closePane($)
+  if (await paneIsOpen($)) {
+    await setPaneShut($, true)
+    await $.ui.close({ id: PANE_ID })
     return 'The Temper pane is closed.'
   }
-  paneShut = false
-  return (await openPane($)) ? 'The Temper pane is open.' : 'The Temper pane needs a wider terminal.'
+  await setPaneShut($, false)
+  const placed = await $.ui.open({ id: PANE_ID, title: 'Temper' })
+  return placed.isPlaced ? 'The Temper pane is open.' : 'The Temper pane needs a wider terminal.'
 }
 
 // Opens the pane where the surface places it now. Where it would only wait undrawn, it is
 // closed again so it does not pop up later.
 async function placeOrDrop($: Api): Promise<void> {
   const placed = await $.ui.open({ id: PANE_ID, title: 'Temper' })
-  if (placed.isPlaced) {
-    paneOpen = true
-    live.paneOpen = true
-  } else {
-    await $.ui.close({ id: PANE_ID })
-    paneOpen = false
-    live.paneOpen = false
-  }
+  if (!placed.isPlaced) await $.ui.close({ id: PANE_ID })
 }
 
 // Opened unasked, in full mode, for a run in progress: at a session start, and when a run
 // starts later in the session (see refresh). The engine places an unasked pane only on a
 // wide terminal.
 async function autoOpenPane($: Api, snap: Snapshot): Promise<void> {
-  if (paneOpen || paneShut || snap.mode !== 'full' || snap.run === null || snap.run.stage === 'commit') return
+  if (snap.mode !== 'full' || snap.run === null || snap.run.stage === 'commit') return
+  if ((await paneIsOpen($)) || (await paneShut($))) return
   await placeOrDrop($)
 }
 
@@ -296,7 +340,8 @@ async function autoOpenPane($: Api, snap: Snapshot): Promise<void> {
 // width. A run they start has no state yet; the pane draws it once the CLI writes it.
 async function openForPerson($: Api): Promise<void> {
   const snap = await ensure($)
-  if (paneOpen || paneShut || snap.inert || snap.mode !== 'full' || snap.runCommand === 'fix') return
+  if (snap.inert || snap.mode !== 'full' || snap.runCommand === 'fix') return
+  if ((await paneIsOpen($)) || (await paneShut($))) return
   await placeOrDrop($)
 }
 // ---- The person's answers ---------------------------------------------------------------
@@ -341,23 +386,24 @@ const GUARD_ERROR =
 // every other tool passes (the mod must not make Temper worse than without it).
 function failedGuard(tool: string): Guarded {
   const r = lastRun
-  const active = r !== null && !r.inert && r.enforcement !== 'off' && !r.failOpen && r.run !== null
-  return { deny: tool === 'Bash' && active ? GUARD_ERROR : null }
+  return { deny: tool === 'Bash' && r !== null && guardsRun(r) ? GUARD_ERROR : null }
 }
 
-// The one place this module denies. A decision the call spends (an Allow once answer) is spent here, when the call is
-// let through.
+// The one place this module denies.
+// `use`: a decision the call spends (an Allow once answer). It is spent once the call ran (the tool.call hook): a call
+// that is refused further on, or fails, leaves it for the next.
 // `trivialExit`: the call is a `state clear` of a run that never left Intent (view.json's trivial_exit). Once it ran, the
 // run it cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
-type Guarded = { deny: string | null; trivialExit?: boolean }
+type Guarded = { deny: string | null; use?: string; trivialExit?: boolean }
 
 // 9.8.0: the run and step at which the person chose a skill option (Grill Me, Teach Me): until the run moves on, the
-// session asks the skill's own questions (core/session.ts). Kept in the plugin store, not in module state: the engine
-// loads the mod again between turns.
+// session asks the skill's own questions (core/session.ts). One entry per project (`skill:<root>`), in the plugin
+// store, not in module state (a reload of the module starts that over); dropped once the run is at another step.
 const SKILL = 'skill:'
+type SkillAt = { run: string; step: number }
 // 9.8.0: what the person typed after /temper:temper, per project, kept in the plugin store (module state does not
-// survive the engine loading the mod again between turns), with the conversation that typed it: only that
-// conversation's state init is held to it.
+// survive a reload of the module), with the conversation that typed it: only that conversation's state init is held
+// to it. A state init that started the run uses it up (dropRequest).
 const REQUEST = 'request:'
 type Kept = { session: string; text: string }
 const keptRequest = (v: unknown): Kept | null => {
@@ -366,8 +412,16 @@ const keptRequest = (v: unknown): Kept | null => {
 }
 
 async function skillActive(io: Io, snap: Snapshot): Promise<boolean> {
-  const at = await io.storeGet(SKILL + snap.at.run).catch(() => undefined)
-  return typeof at === 'number' && at === snap.at.step
+  const at = (await io.storeGet(SKILL + root).catch(() => undefined)) as Partial<SkillAt> | null | undefined
+  if (at === undefined || at === null) return false
+  if (at.run === snap.at.run && at.step === snap.at.step) return true
+  // The run moved on (or another run began): the skill's window is over.
+  await io.storeDelete(SKILL + root).catch(() => undefined)
+  return false
+}
+
+async function dropRequest($: Api): Promise<void> {
+  await makeIo($).storeDelete(REQUEST + root).catch(() => undefined)
 }
 
 async function guard($: Api, tool: string, input: Record<string, unknown>, main = false): Promise<Guarded> {
@@ -375,10 +429,10 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
   // session's question and agent launch are judged on the view as it is now too (an agent's own calls may have moved it).
   const snap = tool === 'Bash' || (main && (tool === 'AskUserQuestion' || tool === 'Agent' || tool === 'Task')) ? await refresh($) : await ensure($)
   // Fail open: when the mod cannot tell where the run is, it never blocks Temper.
-  if (snap.inert || snap.enforcement === 'off' || snap.failOpen) return { deny: null }
+  if (!enforces(snap)) return { deny: null }
   const command = typeof input.command === 'string' ? input.command : ''
   // A `state clear` at Intent (the TRIVIAL exit), as view.json says now.
-  const clearable = tool === 'Bash' && snap.run?.trivialExit === true && readShell(command).calls.some(w => w[0] === 'state' && w[1] === 'clear')
+  const clearable = tool === 'Bash' && trivialExit(snap.run) && readShell(command).calls.some(w => w[0] === 'state' && w[1] === 'clear')
   const rootDir = await rootOf($)
   const rc = ruleContext(snap, rootDir)
   const r = evaluate(rc, { tool, input })
@@ -396,11 +450,7 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
       if (why !== null) return { deny: why }
     }
   }
-  if (r.use !== undefined) {
-    await spendDecision(makeIo($), r.use)
-    adopt($, await refresh($))
-  }
-  return { deny: null, ...(clearable ? { trivialExit: true } : {}) }
+  return { deny: null, ...(r.use !== undefined ? { use: r.use } : {}), ...(clearable ? { trivialExit: true } : {}) }
 }
 
 // ---- The run driver (9.8.0, round 5) ------------------------------------------------------------
@@ -459,24 +509,17 @@ async function hostWait($: Api, cwd: string, ids: string[], signal: AbortSignal 
     return out
   }
   const start = await $.clock.now()
+  const unanswered: Record<string, number> = {}
   while ((await $.clock.now()) - start < WAIT_MS && signal?.aborted !== true) {
     const list = await $.agent.list().catch(() => [])
-    let open = 0
-    for (const id of ids) {
-      if (id in out) continue
-      const kept = agentEnds.get(id)
-      const info = list.find(x => x.id === id)
-      if (kept !== undefined) out[id] = kept
-      else if (info !== undefined && info.status !== 'running' && info.status !== 'pending') out[id] = { text: '', ms: null }
-      else open++
-    }
-    if (open === 0) break
+    if (lookAtAgents(ids, agentEnds, list, unanswered, out) === 0) break
     await hostPause($, cwd, 2, signal)
   }
-  // An answer that came after the status changed is the agent's own: take it when it is there now.
+  // An answer that came after the last look is the agent's own: take it when it is there now. Each is read once.
   for (const id of ids) {
     const kept = agentEnds.get(id)
     if (kept !== undefined) out[id] = kept
+    agentEnds.delete(id)
   }
   return out
 }
@@ -561,7 +604,7 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
 // /temper:fix run, an inert or switched off mod: the model loop of commands/temper.md, as before.
 async function drives($: Api, args: string): Promise<{ request: string | null } | null> {
   const snap = await refresh($)
-  if (snap.inert || snap.enforcement === 'off' || snap.failOpen || snap.runCommand === 'fix') return null
+  if (!enforces(snap) || snap.runCommand === 'fix') return null
   const req = requestOf(args)
   const active = snap.slug !== null
   if (req !== null && !active) return { request: req }
@@ -592,7 +635,7 @@ async function handleTemper($: Api, parsed: Parsed): Promise<CommandRunResult | 
         return { text: kept === null ? 'No run is active. There is no report to show.' : `No run is active. The last report kept for this project:\n\n${kept}` }
       }
       // A run held from memory (its state file is gone) is shown but not kept.
-      if (fresh.line === LOST_STATE) return { text: `${LOST_STATE}\n\n${reportText(fresh)}` }
+      if (fresh.held) return { text: `${LOST_STATE}\n\n${reportText(fresh)}` }
       return { text: await writeReport(makeIo($), fresh) }
     }
     // The mod changes no setting: the two words say what is set and where the person changes it.
@@ -647,10 +690,10 @@ export const register: Register = (on, opts) => {
   lastRun = null
   rootVerified = false
   sessionCwd = ''
-  paneOpen = false
-  paneShut = false
   lastStage = undefined
-  live.paneOpen = undefined
+  stageRead = false
+  loads = 0
+  queue = Promise.resolve()
   reviewerIds.clear()
 
   on('session.start', async ($, e, next) => {
@@ -673,12 +716,12 @@ export const register: Register = (on, opts) => {
   on('command.run', async ($, e, next) => {
     if (e.command !== 'temper' && e.command !== 'temper:temper') {
       // A door (/temper:plan "...") or another command: no request is held to it.
-      if (/^temper:/.test(e.command)) await makeIo($).storeDelete(REQUEST + root).catch(() => undefined)
+      if (/^temper:/.test(e.command)) await dropRequest($)
       // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; what needs a model goes to fix.md.
       if (e.command === 'temper:fix' || e.command === 'fix') {
         const bug = requestOf(e.args)
         const snap = bug === null ? null : await refresh($).catch(() => null)
-        if (bug !== null && snap !== null && !snap.inert && snap.enforcement !== 'off' && !snap.failOpen && snap.slug === null) {
+        if (bug !== null && snap !== null && enforces(snap) && snap.slug === null) {
           const end = await driveRun($, root, bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
           const after = await refresh($).catch(() => null)
           if (after !== null) adopt($, after)
@@ -706,6 +749,8 @@ export const register: Register = (on, opts) => {
         const end = await driveRun($, root, d.request, (next as { signal?: AbortSignal }).signal).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
         const after = await refresh($).catch(() => null)
         if (after !== null) adopt($, after)
+        // A run is on: the request the driver started it with (or took up) is used.
+        if (after !== null && after.slug !== null) await dropRequest($)
         if (end.kind === 'done') return { text: end.text }
         // No run was started: the request goes on as the person typed it, and the prompt based command starts the run.
         if (d.request !== null && (after === null || after.slug === null)) return next(e)
@@ -739,6 +784,7 @@ export const register: Register = (on, opts) => {
     const raised = (e as { questions?: unknown }).questions
     const many = e.tool === 'AskUserQuestion' && askingAll !== null ? dialogQuestionsAll(raised, askingAll) : null
     const filled = many ?? (e.tool === 'AskUserQuestion' && asking !== null ? dialogQuestions(raised, asking) : null)
+    const driverDialog = filled !== null
     let result
     try {
       result = await next(filled === null ? e : ({ ...e, questions: filled } as typeof e))
@@ -751,6 +797,13 @@ export const register: Register = (on, opts) => {
       }
     }
     const errored = (result as { isError?: boolean }).isError === true
+    const refused = typeof (result as { deny?: unknown }).deny === 'string'
+    // The call ran: the Allow once answer it was let through on is spent (one that failed, or was refused further on, is
+    // not).
+    if (g.use !== undefined && !errored && !refused) {
+      await spendDecision(makeIo($), g.use)
+      adopt($, await refresh($))
+    }
     // Every answer of the driver's dialog of several questions, for hostAskAll.
     if (many !== null && !errored) {
       const r = answeredResult(result)
@@ -761,11 +814,17 @@ export const register: Register = (on, opts) => {
       // A skill option chosen (Grill Me, Teach Me): its questions are the session's to ask until the run moves on.
       if (main) {
         const snap = await ensure($).catch(() => null)
-        if (snap !== null && skillChosen(snap.view, result) !== null) await makeIo($).storeSet(SKILL + snap.at.run, snap.at.step).catch(() => undefined)
+        if (snap !== null && skillChosen(snap.view, result) !== null) await makeIo($).storeSet(SKILL + root, { run: snap.at.run, step: snap.at.step } satisfies SkillAt).catch(() => undefined)
       }
-      await recordAnswers($, result).catch(() => undefined)
+      // The driver's own dialog is recorded by the driver (Port.record, hostRecord), once; every other dialog here.
+      if (!driverDialog) await recordAnswers($, result).catch(() => undefined)
     }
-    else if (e.tool === 'Bash') await refresh($).catch(() => undefined)
+    else if (e.tool === 'Bash') {
+      const snap = await refresh($).catch(() => null)
+      // A state init that started a run uses up the request kept for it.
+      const command = typeof (e as { command?: unknown }).command === 'string' ? (e as { command: string }).command : ''
+      if (main && !errored && snap !== null && snap.slug !== null && readShell(command).calls.some(w => callWords(w)[0] === 'state' && callWords(w)[1] === 'init')) await dropRequest($)
+    }
     return result
   }).catch(($, e, next) => {
     // The engine skips a hook that throws or outruns its budget, and the tool would run unguarded. In its place: what the
@@ -803,11 +862,7 @@ export const register: Register = (on, opts) => {
   // A pane closed by its own mark: forget it, so the next toggle opens it again. Closed by the
   // person, it is not opened for them again in this session.
   on('ui.close', async ($, e, next) => {
-    if (e.id === PANE_ID) {
-      paneOpen = false
-      live.paneOpen = false
-      if (e.origin?.kind === 'person') paneShut = true
-    }
+    if (e.id === PANE_ID && e.origin?.kind === 'person') await setPaneShut($, true)
     return next(e)
   })
 

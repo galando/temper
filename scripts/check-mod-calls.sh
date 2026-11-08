@@ -40,6 +40,7 @@ store.get        the gate answers of the person per run (dec:<run id>) and the k
 store.set        records those (the mod writes no file)
 ui.close         closes the pane (a toggle, a pane that would not dock)
 ui.open          opens the pane
+ui.panes         whether the pane is open, read from the engine record of it, which a reload of the module does not lose (a flag of the module went stale)
 ui.resolve       the element table of the surface being drawn (Box, Text, Markdown)
 ui.toast         one toast per stage change
 '

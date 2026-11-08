@@ -36,7 +36,6 @@ export type TemperView = {
   loops: string[]
   line: string | null
   next: { action: string; say: string; header: string | null }
-  paneOpen: boolean
 }
 
 export type TemperRun = {
@@ -50,6 +49,9 @@ export type TemperRun = {
 
 declare module 'claude-code' {
   interface PluginState {
-    temper: { run: TemperRun | null; mode: UiMode | null; root: string | null }
+    // `seen`: the stage the mod last announced in this session (null: none), absent before the first load; `paneShut`:
+    // the person closed the pane by hand in this session. Both outlive a reload of the module, which starts its own
+    // variables over.
+    temper: { run: TemperRun | null; mode: UiMode | null; root: string | null; seen: { stage: StageName | null } | null; paneShut: boolean | null }
   }
 }
