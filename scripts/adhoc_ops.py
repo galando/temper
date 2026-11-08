@@ -3,12 +3,15 @@ without a loop back; the window records what changed so the run re-runs only wha
 
   python3 adhoc_ops.py open STATE STAGE REASON     start the window: the base commit and the hash of each changed file
   python3 adhoc_ops.py close STATE                 end it: record the files changed since the open, and the steps that re-run
-  python3 adhoc_ops.py step STATE NAME             an orchestrator gate for step NAME ran: mark it done
+  python3 adhoc_ops.py step STATE NAME [STAGE]     an orchestrator gate for step NAME ran: mark it done (the step `gate` is
+                                                 done only by the gate of the window's own STAGE)
 
 The run state is the JSON file the CLI keeps (STATE). Under `adhoc` while the window is open; under `adhoc_done` once
 closed, with the steps still to run. A step is `review` (the Review agent over the changed files, then its gate), `check`
 or `commit` (their gates) or `gate` (only the stage's own gate: a change of docs only, or a change made at Build).
-Standard library only.
+A window opens at the stage the run is at, and belongs to it: the CLI drops `adhoc` and `adhoc_done` when the run moves
+(state advance, loop, redo). A window opened while an earlier change at the same stage still owes steps keeps them: its
+close runs both changes' steps. Standard library only; importing it runs nothing.
 """
 import hashlib
 import json
@@ -17,7 +20,11 @@ import subprocess
 import sys
 import time
 
-STAGES = ("build", "review", "check", "commit", "pipeline")
+# The stages a small change may be made at: the one list (temper next offers the window at these, and the mod's guard
+# reads which stage a window is open at).
+ADHOC_STAGES = ("build", "review", "check", "commit", "pipeline")
+STAGES = ADHOC_STAGES
+STEP_ORDER = ("review", "check", "commit", "gate")
 DOC_DIRS = ("docs/", "doc/")
 DOC_EXT = (".md", ".rst", ".txt")
 
@@ -74,16 +81,18 @@ def is_doc(p):
 
 
 def open_window(state_path, stage, reason):
-    if stage not in STAGES:
-        raise ValueError("--stage takes one of: %s" % ", ".join(STAGES))
+    if stage not in ADHOC_STAGES:
+        raise ValueError("--stage takes one of: %s" % ", ".join(ADHOC_STAGES))
     if not reason.strip():
         raise ValueError("a small change needs a reason (--reason '<why>')")
     d = load(state_path)
     if d.get("adhoc"):
         raise ValueError("a small change is open already (at %s); run temper adhoc close first" % d["adhoc"].get("stage"))
+    if stage != d.get("next_stage"):
+        raise ValueError("a small change is made at the stage the run is at (%s), not at %s" % (d.get("next_stage") or "none", stage))
     d["adhoc"] = {"stage": stage, "reason": reason.strip(), "base": git("rev-parse", "HEAD").strip(), "files": dirty(),
                   "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    d.pop("adhoc_done", None)
+    # adhoc_done, the steps an earlier change at this stage still owes, stays: the close adds this change's steps to them
     save(state_path, d)
     return d["adhoc"]
 
@@ -118,8 +127,15 @@ def close_window(state_path):
     if w.get("base"):                        # committed since the open
         changed |= {p for p in git("diff", "--name-only", "--no-renames", w["base"], "HEAD").split("\n") if p and not internal(p)}
     files = sorted(changed)
+    steps = steps_for(w["stage"], files)
+    owed = d.get("adhoc_done") if isinstance(d.get("adhoc_done"), dict) and d["adhoc_done"].get("stage") == w["stage"] else {}
+    if owed.get("steps"):   # an earlier change here still owes these: both changes' steps run, in their order
+        steps = [s for s in STEP_ORDER if s in steps or s in owed["steps"]]
+        if w["stage"] in steps:
+            steps = [s for s in steps if s != "gate"]   # the stage's own gate is a step already
+        files = sorted(set(files) | set(owed.get("files") or []))
     done = {"stage": w["stage"], "reason": w["reason"], "files": files, "doc_only": bool(files) and all(is_doc(f) for f in files),
-            "steps": steps_for(w["stage"], files), "closed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            "steps": steps, "closed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     d.pop("adhoc", None)
     if done["steps"]:
         d["adhoc_done"] = done
@@ -129,10 +145,13 @@ def close_window(state_path):
     return done
 
 
-def mark_step(state_path, name):
+def mark_step(state_path, name, stage=None):
+    """A gate ran: its step is done. The step `gate` is the window's own stage's gate, so only that gate marks it."""
     d = load(state_path)
     done = d.get("adhoc_done")
     if not done or name not in done.get("steps", []):
+        return False
+    if name == "gate" and stage != done.get("stage"):
         return False
     done["steps"] = [s for s in done["steps"] if s != name]
     if not done["steps"]:
@@ -152,8 +171,8 @@ def main(argv):
             print("OK: small change closed: %d file(s) changed%s; still to run: %s" % (
                 len(done["files"]), " (docs only)" if done["doc_only"] else "", ", ".join(done["steps"]) or "nothing here (the Pipeline stage reads the checks again)"))
             return 0
-        if len(argv) == 4 and argv[1] == "step":
-            mark_step(argv[2], argv[3])
+        if len(argv) in (4, 5) and argv[1] == "step":
+            mark_step(argv[2], argv[3], argv[4] if len(argv) == 5 else None)
             return 0
     except ValueError as e:
         print("FAIL: %s" % e, file=sys.stderr)

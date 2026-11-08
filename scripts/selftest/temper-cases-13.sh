@@ -71,7 +71,7 @@ assert_eq "F12: a manual task's ready line carries manual true" "true" \
   "$("$TEMPER" schedule 2>/dev/null | head -1 | python3 -c "import json,sys; print(str(json.loads(sys.stdin.readline())['manual']).lower())")"
 
 # F14. A gate run from the commit hook neither marks the small change's step nor closes its window
-fresh; gpass intent plan build review check
+fresh; gpass intent plan build review check; _at check
 "$TEMPER" adhoc open --stage check --reason 'a small fix' >/dev/null 2>&1
 "$TEMPER" gate commit --from-hook >/dev/null 2>&1
 assert_eq "F14: the window is still open after a gate run from the hook" "check" \

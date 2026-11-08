@@ -811,9 +811,43 @@ cmd_state_set() {
     echo "FAIL: $1 is kept by the CLI (temper report --end, then the person's answer; an armed run's record of its unattended Build)" >&2
     return 1
   fi
-  # 9.8.0: an armed run is Build alone and turns interactive after it, so the CLI keeps that it ran unattended: the
-  # commit gate holds such a run to the plan's files and to park-on-touch, as it held a run still armed.
-  [[ "$1" == "run_mode" && "$2" == "autonomous" && -f "$STATE_FILE" ]] && _json_set_path "$STATE_FILE" ran_unattended true '{}' >/dev/null
+  # The run's lifecycle records each have the one command that moves them; a dotted path below one of them is the
+  # record too (state set stage.x would turn the stage into an object).
+  local top="${1%%.*}"
+  case "$top" in
+    stage) echo "FAIL: stage is kept by the CLI (state advance records the stage the run left; a step back rewrites it)" >&2; return 1 ;;
+    command) echo "FAIL: command is kept by the CLI (state init --command temper|fix starts a run of that command)" >&2; return 1 ;;
+    parked) echo "FAIL: parked is kept by the CLI (temper park parks an armed run; the run's next move ends the park)" >&2; return 1 ;;
+    adhoc|adhoc_done) echo "FAIL: $top is kept by the CLI (temper adhoc open|close; the gates mark the steps a small change owes)" >&2; return 1 ;;
+    redo) echo "FAIL: redo is kept by the CLI (temper state redo <stage> --reason R)" >&2; return 1 ;;
+    run_mode|pipeline_round|regression_test)
+      [[ "$1" == "$top" ]] || { echo "FAIL: $top takes a value, not a path below it; got '$1'" >&2; return 1; } ;;
+  esac
+  case "$1" in
+    run_mode)
+      [[ "$2" == "interactive" || "$2" == "autonomous" ]] || { echo "FAIL: run_mode is interactive or autonomous; got '$2'" >&2; return 1; } ;;
+    pipeline_round)
+      # 9.8.0, F26: a round is counted once, after its fix is pushed (the steps of the Pipeline question): one up at a time
+      local pr; pr="$( [[ -f "$STATE_FILE" ]] && _json_get_path "$STATE_FILE" pipeline_round "" )"; [[ "$pr" =~ ^[0-9]+$ ]] || pr=1
+      if [[ ! "$2" =~ ^[0-9]+$ || "$2" -ne $(( pr + 1 )) ]]; then
+        echo "FAIL: pipeline_round counts the CI fix rounds one at a time: the next is $(( pr + 1 )); got '$2'" >&2
+        return 1
+      fi ;;
+    regression_test)
+      # the fix run's shield (guards/protect-regression-test.sh): a test file of the project, or "" to lift it. A shield in
+      # place moves to another file only once it is lifted.
+      if [[ -n "$2" ]]; then
+        if [[ "$2" == /* || "/$2/" == *"/../"* || ! -f "$2" ]]; then
+          echo "FAIL: regression_test names the regression test, a file in the project (a relative path); got '$2'" >&2
+          return 1
+        fi
+        local held; held="$( [[ -f "$STATE_FILE" ]] && _json_get_path "$STATE_FILE" regression_test "" )"
+        if [[ -n "$held" && "$held" != "$2" ]]; then
+          echo "FAIL: regression_test already shields $held; lifting it is the person's: temper state set regression_test \"\"" >&2
+          return 1
+        fi
+      fi ;;
+  esac
   # The commit the run's diff is read against is recorded once (state advance plan_complete): a later one would hide
   # what the run changed from Review and from the commit gate.
   if [[ "$1" == "base_sha" && -f "$STATE_FILE" && -n "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
@@ -821,6 +855,10 @@ cmd_state_set() {
     return 1
   fi
   [[ -f "$STATE_FILE" ]] || { echo '{}' > "$STATE_FILE"; }
+  # 9.8.0: an armed run is Build alone and turns interactive after it, so the CLI keeps that it ran unattended: the
+  # commit gate holds such a run to the plan's files and to park-on-touch, as it held a run still armed. Written once
+  # the state file is there, so a run_mode set before any run state still records it.
+  [[ "$1" == "run_mode" && "$2" == "autonomous" ]] && _json_set_path "$STATE_FILE" ran_unattended true '{}' >/dev/null
   if [[ "$1" == "next_stage" ]]; then
     # The stage the run is already at changes nothing. A stage earlier in the run's sequence redoes the stages from it,
     # as a loop does.
@@ -840,8 +878,7 @@ cmd_state_set() {
       echo "FAIL: next_stage moves forward only by state advance ${cur}_complete $2 (the CLI's own step)" >&2
       return 1
     fi
-    _stage_before "$2" "$cur" && _redo_from "$2"
-    _state_next "$2" >/dev/null || return 1
+    _go_back "$2" || return 1
     echo "OK: $1 = $2"
     return 0
   fi
@@ -907,9 +944,10 @@ _stage_before() { # _stage_before <a> <b>: 0 when stage a comes before stage b i
 _state_next() { # _state_next <next_stage>: sets next_stage; a change counts one step (ADR 0012). Prints moved or same.
   local next="$1" rc
   _lock_acquire
-  python3 -I - "$STATE_FILE" "$next" "$(_now)" <<'PY'
+  python3 -I - "$STATE_FILE" "$next" "$(_now)" $(_run_seq) <<'PY'
 import json, os, sys
 p, nxt, ts = sys.argv[1:4]
+seq = sys.argv[4:]
 try:
     d = json.load(open(p))
     if not isinstance(d, dict):
@@ -918,8 +956,18 @@ except Exception:
     d = {}
 same = d.get('next_stage') == nxt
 if not same:
+    cur = d.get('next_stage')
+    if nxt in seq and cur in seq and seq.index(nxt) < seq.index(cur):
+        # Going back: the bookkeeping stage (the last stage left, which guards/verify-tests-ran.sh reads) is the one
+        # before the stage the run is at again, so a run sent back from Check no longer reads check_complete.
+        i = seq.index(nxt)
+        d['stage'] = (seq[i - 1] + '_complete') if i else 'started'
+        d.pop('end_report', None)   # a run sent back from Commit shows its report again when it gets there
     d['next_stage'] = nxt
     d.pop('parked', None)   # a park ends when the run moves on
+    # a small change belongs to the stage it was made at: a window open there, or the steps it still owed, end with it
+    d.pop('adhoc', None)
+    d.pop('adhoc_done', None)
     try:
         d['step'] = int(d.get('step') or 0) + 1
     except (TypeError, ValueError):
@@ -1122,53 +1170,71 @@ os.replace(tmp, p)
 
 cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   _state_migrate_legacy
-  local from="$1" to="$2"; shift 2 || true
-  _stage_ok "$to" || { _stage_refuse "$to"; return 1; }
-  # A loop goes back, never forward past a gate: its stage is not after the one the run is at.
+  local from="${1:-}" to="${2:-}"; shift 2 || true
+  [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state — run 'temper state init' first" >&2; return 1; }
+  # A loop goes from a stage of the run's own sequence back to an earlier one: never to a stage of another command's run
+  # (rca in a /temper run), never forward past a gate, and never from a stage the run has not reached.
+  local s seq known_from=0 known_to=0; seq="$(_run_seq)"
+  for s in $seq; do [[ "$s" == "$from" ]] && known_from=1; [[ "$s" == "$to" ]] && known_to=1; done
+  if [[ $known_to -eq 0 ]]; then
+    _stage_ok "$to" || { _stage_refuse "$to"; return 1; }
+    echo "FAIL: $to is not a stage of this run ($seq)" >&2
+    return 1
+  fi
+  [[ $known_from -eq 1 ]] || { echo "FAIL: a loop goes from a stage of this run ($seq); got '$from'" >&2; return 1; }
+  _stage_before "$to" "$from" || { echo "FAIL: a loop goes back; $to does not come before $from" >&2; return 1; }
   local cur; cur="$(_json_get_path "$STATE_FILE" next_stage "")"
   if [[ -n "$cur" ]] && _stage_before "$cur" "$to"; then
     echo "FAIL: a loop goes back; $to comes after $cur, the stage the run is at (leave a stage with state advance)" >&2
     return 1
   fi
+  if [[ -n "$cur" ]] && _stage_before "$cur" "$from"; then
+    echo "FAIL: a loop goes back from a stage the run has reached; $from comes after $cur, the stage the run is at" >&2
+    return 1
+  fi
   local reason=""
   while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="$2"; shift 2 ;; *) shift ;; esac; done
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
-  local max_per_type
-  max_per_type="$(_cfg_get loops.max-per-type 2)"
-  # fix.max-loops bounds the check->fix/build pair only when the key is set (Decision 5);
-  # every other pair, and an install without the key, keep loops.max-per-type.
-  if [[ "$from" == "check" && ( "$to" == "fix" || "$to" == "build" ) ]]; then
-    max_per_type="$(_cfg_get fix.max-loops "$max_per_type")"
-  fi
+  # The budget is loop_step.budget, the rule temper next offers the step back by: it reads these config values
+  # (fix.max-loops only when the key is set, Decision 5).
+  local cfgjson
+  cfgjson="$(python3 -I -c "
+import json, sys
+print(json.dumps({k: v for k, v in zip(sys.argv[1::2], sys.argv[2::2]) if v != ''}))" \
+    loops.max-per-type "$(_cfg_get loops.max-per-type "")" fix.max-loops "$(_cfg_get fix.max-loops "")")"
   local result
-  result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
+  result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$cfgjson" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
   local rc=$?
   echo "$result"
-  # A loop means "we are going backwards" — evidence is append-only, so a stale row
-  # from a stage that's being redone (or, in the parallel-Review+Check window, an
-  # abandoned background Check run) must not survive to inflate the next gate's count.
-  # Belt-and-suspenders with the orchestrator's kill-before-clear ordering, not a
-  # substitute for it: this is the backstop for standalone CLI users with no
-  # orchestrator to do the kill.
-  [[ $rc -eq 0 ]] && _clear_evidence_downstream "$to"
-  # F2: going back before Build re-plans the tasks, so the grouped run starts over
-  if [[ $rc -eq 0 && -f "$GROUPS_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]]; then
+  [[ $rc -eq 0 ]] || return $rc
+  _go_back "$to"
+}
+
+_go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state loop, a state set next_stage to an earlier
+             # stage). One function, so every way back leaves the same run behind (ADR 0012, point 3):
+  local to="$1"
+  # - evidence is append-only, so a stale row of a stage that is redone (or, in the parallel-Review+Check window, an
+  #   abandoned background Check run) must not survive to inflate the next gate's count. Belt-and-suspenders with the
+  #   orchestrator's kill-before-clear ordering: the backstop for standalone CLI users with no orchestrator to do the kill.
+  _clear_evidence_downstream "$to"
+  # - F2: going back before Build re-plans the tasks, so the grouped run starts over
+  if [[ -f "$GROUPS_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]]; then
     _groups_reset
   fi
-  # and the code an earlier run built no longer stands for the plan: Build builds the plan, not a fix pass of it
-  if [[ $rc -eq 0 && -f "$STATE_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]] \
+  # - and the code an earlier run built no longer stands for the plan: Build builds the plan, not a fix pass of it
+  if [[ -f "$STATE_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]] \
      && [[ -n "$(cmd_state_get built_before "")" ]]; then
     _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
   fi
-  # P1: the run goes back to the loop's target stage, so the build-checkpoint commit carve-out applies to it
-  if [[ $rc -eq 0 && -f "$STATE_FILE" ]]; then
-    _redo_from "$to"
-    _state_next "$to" >/dev/null
-    # A run a door started at a later stage runs the stage it loops back to, and every stage after it
-    local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
-    if [[ -n "$enter" ]] && _stage_before "$to" "$enter"; then _json_set_path "$STATE_FILE" enter "$to" '{}' >/dev/null; fi
-  fi
-  return $rc
+  [[ -f "$STATE_FILE" ]] || return 0
+  # - the verdicts and skips of <stage> and every later stage go; P1: the run is at <stage> again, so the
+  #   build-checkpoint commit carve-out applies to it (_state_next also rewrites the bookkeeping `stage`)
+  _redo_from "$to"
+  _state_next "$to" >/dev/null
+  # - a run a door started at a later stage runs the stage it goes back to, and every stage after it
+  local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
+  if [[ -n "$enter" ]] && _stage_before "$to" "$enter"; then _json_set_path "$STATE_FILE" enter "$to" '{}' >/dev/null; fi
+  return 0
 }
 
 _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.json goes to .temper/archive/, a clean
@@ -1354,6 +1420,11 @@ d = json.load(open(p))
 if enter:
     d['enter'] = stage
 d['redo'] = {'stage': stage, 'reason': reason, 'ts': ts}
+# the stage runs again from the start: a small change made at it, and the steps it still owed, end here
+d.pop('adhoc', None)
+d.pop('adhoc_done', None)
+if stage == 'commit':
+    d.pop('end_report', None)   # the commit gate runs again, and the report is shown again after it
 tmp = '%s.tmp.%d' % (p, os.getpid())
 with open(tmp, 'w') as f:
     json.dump(d, f, indent=2); f.write('\n')
@@ -1742,7 +1813,8 @@ _evidence_file() { # <stage> -> its ledger file, each path written out in full r
 }
 
 _clear_evidence_downstream() { # _clear_evidence_downstream <to> — truncates evidence for
-                                # <to> and every gate stage after it in the run's own sequence
+                                # <to> and every stage after it in the run's own sequence, Commit
+                                # and Pipeline included (their rows belong to the pass that is redone)
   local to="$1" seen=false s
   _ensure_dirs
   # A /temper:fix run records its RED/GREEN under the `build` gate and has no plan or
@@ -1750,10 +1822,10 @@ _clear_evidence_downstream() { # _clear_evidence_downstream <to> — truncates e
   # `rca` or `fix` must clear from `build`. Walking STAGE_SEQ_TEMPER here cleared nothing
   # for a fix run, which left a self-fixed review finding inflating the gate for ever
   # (woningscout #984).
-  local seq="$STAGE_SEQ_TEMPER" command="temper"
+  local seq="$STAGE_SEQ_TEMPER commit pipeline" command="temper"
   [[ -f "$STATE_FILE" ]] && command="$(_json_get_path "$STATE_FILE" command temper)"
   if [[ "$command" == "fix" ]]; then
-    seq="build review check"
+    seq="build review check commit"
     case "$to" in rca|fix) to="build" ;; esac
   fi
   for s in $seq; do
@@ -1835,39 +1907,22 @@ _ev_count_severity_in() { # _ev_count_severity_in <stage> <comma-separated sever
   [[ -f "$file" ]] || { echo 0; return; }
   # A finding marked resolved (temper evidence resolve) stays in the ledger as the record
   # of what was found and fixed, but no longer counts against the gate (woningscout #984).
-  python3 -I -c "
-import json, sys
-file, sev_csv = sys.argv[1:3]
-sevs = set(s for s in sev_csv.split(',') if s)
-entries = json.load(open(file))
-print(sum(1 for e in entries if e.get('severity') in sevs and not e.get('resolved') and not e.get('accepted')))
-" "$file" "$sev_csv"
+  # A finding's state is findings.finding_state, the one reading of it.
+  python3 -I "$SCRIPTS_DIR/findings.py" count "$file" "$sev_csv" open
 }
 
 _ev_count_resolved_in() { # _ev_count_resolved_in <stage> <comma-separated severities>
   local stage="$1" sev_csv="$2"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo 0; return; }
-  python3 -I -c "
-import json, sys
-file, sev_csv = sys.argv[1:3]
-sevs = set(s for s in sev_csv.split(',') if s)
-entries = json.load(open(file))
-print(sum(1 for e in entries if e.get('severity') in sevs and e.get('resolved')))
-" "$file" "$sev_csv"
+  python3 -I "$SCRIPTS_DIR/findings.py" count "$file" "$sev_csv" resolved
 }
 
 _ev_count_accepted_in() { # _ev_count_accepted_in <stage> <comma-separated severities>
   local stage="$1" sev_csv="$2"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo 0; return; }
-  python3 -I -c "
-import json, sys
-file, sev_csv = sys.argv[1:3]
-sevs = set(s for s in sev_csv.split(',') if s)
-entries = json.load(open(file))
-print(sum(1 for e in entries if e.get('severity') in sevs and e.get('accepted')))
-" "$file" "$sev_csv"
+  python3 -I "$SCRIPTS_DIR/findings.py" count "$file" "$sev_csv" accepted
 }
 
 _ev_scenarios_covered() { # _ev_scenarios_covered <stage> -> count of DISTINCT scenarios
@@ -2120,19 +2175,28 @@ cmd_schedule() { # temper schedule [--json]
 # is held around the read-modify-write, the file is replaced atomically, and the python body only
 # sees `d` (the whole document) and `a` (the extra arguments). A body that calls sys.exit(n) writes
 # nothing and returns n.
-_groups_mutate() { # _groups_mutate <python-body> [args...]
+_groups_mutate() { # _groups_mutate <python-body> [args...]: the body changes d (groups.json); a task's status changes only
+                   # through task_status(t, new) (task_cover.py's table of moves), and a move it refuses writes nothing
   local body="$1" rc; shift
   _lock_acquire
-  python3 -I - "$GROUPS_FILE" "$body" "$@" <<'PY'
-import json, os, sys
-f, body, a = sys.argv[1], sys.argv[2], sys.argv[3:]
+  python3 -I - "$SCRIPTS_DIR/task_cover.py" "$GROUPS_FILE" "$body" "$@" <<'PY'
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location('task_cover', sys.argv[1])   # by its one full path, no folder on sys.path
+task_cover = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(task_cover)
+task_status = task_cover.set_status
+f, body, a = sys.argv[2], sys.argv[3], sys.argv[4:]
 try:
     d = json.load(open(f))
 except Exception:
     d = {}
 if not isinstance(d, dict):
     d = {}
-exec(body)
+try:
+    exec(body)
+except ValueError as e:
+    print('FAIL: %s' % e, file=sys.stderr)
+    sys.exit(1)
 tmp = '%s.tmp.%d' % (f, os.getpid())
 with open(tmp, 'w') as fh:
     json.dump(d, fh, indent=2)
@@ -2405,21 +2469,30 @@ except Exception:
     [[ -n "$reason" ]] && reason="group $g: $reason"
   fi
   if [[ -n "$reason" ]]; then
-    _groups_mutate "
-g = d.setdefault('groups', {}).setdefault(a[0], {})
-g['gate'] = {'verdict': 'FAIL', 'reason': a[1], 'ts': a[2]}
-if a[3]: g['gate']['timeout_s'] = int(a[3])
-" "$g" "$reason" "$(_now)" "$timed_out" || return 1
+    _group_gate_record "$g" FAIL "$reason" "$timed_out" || return 1
     echo "FAIL: $reason"
     return 1
   fi
+  _group_gate_record "$g" PASS "" "" || return 1
+  echo "PASS: group $g"
+}
+
+_group_gate_record() { # _group_gate_record <G> <PASS|FAIL> <reason> <timeout-s|"">: the group's gate and its status, in one
+                       # write: a group is passed exactly while its gate says PASS (finished_at is when it passed). A gate that
+                       # fails again after a PASS takes the group back to running; a parked group stays parked.
   _groups_mutate "
 g = d.setdefault('groups', {}).setdefault(a[0], {})
-g['gate'] = {'verdict': 'PASS', 'ts': a[1]}
-g['status'] = 'passed'
-g['finished_at'] = a[1]
-" "$g" "$(_now)" || return 1
-  echo "PASS: group $g"
+g['gate'] = {'verdict': a[1], 'ts': a[4]}
+if a[1] == 'PASS':
+    g['status'] = 'passed'
+    g['finished_at'] = a[4]
+else:
+    g['gate']['reason'] = a[2]
+    if a[3]: g['gate']['timeout_s'] = int(a[3])
+    if g.get('status') != 'parked':
+        g['status'] = 'running'
+    g['finished_at'] = None
+" "$1" "$2" "$3" "$4" "$(_now)"
 }
 
 # D-08: what a human does about a parked foreign commit; printed by the task gate that parks the group and by a refused reopen.
@@ -2649,7 +2722,7 @@ d.setdefault('cli_commits', []).append(a[0])
 t = d.setdefault('tasks', {}).setdefault(a[0], {})
 t.setdefault('attempts_prior', []).extend(t.get('attempts') or [])
 t['attempts'] = []
-t['status'] = 'pending'
+task_status(t, 'pending')
 t['attempt'] = 1
 for k in ('commit', 'passed_at', 'snapshot', 'start_sha', 'started_at'):
     t.pop(k, None)
@@ -2658,6 +2731,8 @@ g = d.setdefault('groups', {}).setdefault(a[3], {})
 g.pop('parked_foreign', None)   # D-08: off the branch or accepted (checked above); no other group's list is touched
 g.pop('gate', None)
 g.pop('finished_at', None)
+g.pop('confirmed', None)        # the person's Continue was for the group as it passed; it is asked again once it passes again
+d.pop('integration', None)      # and the merge of the groups no longer holds this group's work: integrate runs again
 if g.get('status') in ('parked', 'passed'):
     g['status'] = 'running'
     g.pop('parked_reason', None)
@@ -2936,7 +3011,7 @@ if t.get('status') == 'running':
     sys.exit(1)
 t.setdefault('attempts', [])
 t['group'] = a[1]
-t['status'] = 'running'
+task_status(t, 'running')
 t['attempt'] = len(t['attempts']) + 1
 t['start_sha'] = a[2]
 t['snapshot'] = json.loads(a[3])
@@ -3076,7 +3151,7 @@ _task_gate_body() {
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
   _usage_append task "$model" "$ms" "$n" "$group" || true
   if [[ "$verdict" == "COVERED" ]]; then   # F19: its tests pass before any change; the person decides, no attempt is spent
-    _groups_mutate "d['tasks'][a[0]]['status'] = 'covered'; d['tasks'][a[0]]['covered'] = {'cmd': a[1], 'tail': a[2], 'ts': a[3]}" "$n" "$(_jget "$v" red_cmd)" "$(_jget "$v" red_tail)" "$(_now)" || return 1
+    _groups_mutate "task_status(d['tasks'][a[0]], 'covered'); d['tasks'][a[0]]['covered'] = {'cmd': a[1], 'tail': a[2], 'ts': a[3]}" "$n" "$(_jget "$v" red_cmd)" "$(_jget "$v" red_tail)" "$(_now)" || return 1
     echo "COVERED: Task $n's tests already pass before any change; the worktree is kept with the tests"
     echo "NEXT: temper next asks the person"
     return 0
@@ -3105,7 +3180,7 @@ t = d['tasks'][a[0]]
 def num(x): return int(x) if x.isdigit() else None
 t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3],
     'ms': num(a[4]), 'ts': a[5], 'output': a[6]})
-t['status'] = 'failed'
+task_status(t, 'failed')
 if int(a[1]) >= 3 or a[8]:
     g = d.setdefault('groups', {}).setdefault(a[7], {})
     g.setdefault('parked_foreign', []).extend(x for x in json.loads(a[9] or '[]') if x not in g.get('parked_foreign', []))
@@ -3178,7 +3253,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
       _groups_mutate "
 t = d['tasks'][a[0]]
 t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3], 'ts': a[4]})
-t['status'] = 'failed'
+task_status(t, 'failed')
 g = d.setdefault('groups', {}).setdefault(a[5], {})
 g['status'] = 'parked'
 g['parked_reason'] = a[3]
@@ -3199,7 +3274,7 @@ t = d['tasks'][a[0]]
 def num(x): return int(x) if x.isdigit() else None
 t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'PASS', 'reason': '',
     'ms': num(a[3]), 'ts': a[4]})
-t['status'] = 'passed'
+task_status(t, 'passed')
 t['passed_at'] = a[4]
 t['commit'] = a[7] or None
 for x in (a[5], a[6]):
@@ -3719,15 +3794,7 @@ _ev_open_findings() { # _ev_open_findings <stage> <comma-separated severities>
   local stage="$1" sev_csv="$2"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, sys
-file, sev_csv = sys.argv[1:3]
-sevs = set(s for s in sev_csv.split(',') if s)
-entries = json.load(open(file))
-claims = [(e.get('claim') or '(no claim)') + (' (contested: %s)' % e['contested'].get('cite') if e.get('contested') else ' (escalated: only the person knows)' if e.get('escalated') else '')
-          for e in entries if e.get('severity') in sevs and not e.get('resolved') and not e.get('accepted')]
-print('\x1f'.join(claims))
-" "$file" "$sev_csv"
+  python3 -I "$SCRIPTS_DIR/findings.py" open-claims "$file" "$sev_csv"
 }
 
 _ev_latest_claim_exit() { # _ev_latest_claim_exit <stage> <keyword-regex>
@@ -3969,17 +4036,32 @@ print('%d|%s' % (sum(1 for r in runs if r.get('exit_code') == 0), '; '.join(red)
 }
 
 _stage_satisfied() { # _stage_satisfied <stage> -> 0 when gates.json says PASS or a human
-                     # override covers the stage (the same standard the full loop applies)
+                     # override covers the stage: the one rule, which the commit gate applies too
   local verdict; verdict="$(_json_get_path "$GATES_FILE" "$1.verdict" "MISSING")"
   [[ "$verdict" == "PASS" ]] && return 0
+  _override_covers "$1"
+}
+
+_override_covers() { # _override_covers <stage> -> 0 when a skip of the person covers the stage's verdict. A skip is given
+                     # for the verdict the person saw: it covers a verdict recorded at or before it (gates.json's ts), and no
+                     # verdict at all. A verdict computed again after the skip is one the person has not seen, so the old
+                     # skip does not cover it. The flow never runs a gate again after its skip (it gates a stage only while
+                     # nobody skipped it), and a step back moves the skip out (_redo_from). A skip or verdict written without
+                     # a time (an older run) is compared by stage alone.
   python3 -I -c "
 import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    d = []
-sys.exit(0 if any(o.get('stage') == sys.argv[2] for o in d) else 1)
-" "$OVERRIDES_FILE" "$1" 2>/dev/null
+def load(p, default):
+    try:
+        d = json.load(open(p))
+        return d if isinstance(d, type(default)) else default
+    except Exception:
+        return default
+over, gates, stage = load(sys.argv[1], []), load(sys.argv[2], {}), sys.argv[3]
+v = gates.get(stage)
+vts = str(v.get('ts') or '') if isinstance(v, dict) else ''
+sys.exit(0 if any(isinstance(o, dict) and o.get('stage') == stage and (not vts or not o.get('ts') or str(o.get('ts')) >= vts)
+                  for o in over) else 1)
+" "$OVERRIDES_FILE" "$GATES_FILE" "$1" 2>/dev/null
 }
 
 _project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder,
@@ -4117,15 +4199,7 @@ PY
       reqs+=("$(_req "$s gate" 1 "PASS")")
       continue
     fi
-    local override; override="$(python3 -I -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    d = []
-print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
-" "$OVERRIDES_FILE" "$s" 2>/dev/null || echo no)"
-    if [[ "$override" == "yes" ]]; then
+    if _override_covers "$s"; then
       reqs+=("$(_req "$s gate" 1 "$verdict, overridden by human")")
     else
       reqs+=("$(_req "$s gate" 0 "$verdict, no override recorded")")
@@ -4295,7 +4369,7 @@ cmd_gate() {
     # A gate the orchestrator runs marks the small change's step done; one the commit hook runs neither marks nor closes it.
     if [[ "$from_hook" != "1" && -f "$STATE_FILE" ]]; then
       python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" step "$STATE_FILE" "$stage" || true
-      python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" step "$STATE_FILE" gate || true
+      python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" step "$STATE_FILE" gate "$stage" || true
     fi
   fi
 
@@ -4391,6 +4465,13 @@ cmd_override() {
   local reason=""
   while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="$2"; shift 2 ;; *) shift ;; esac; done
   [[ -n "$stage" && -n "$reason" ]] || { echo "FAIL: usage: temper override <stage> --reason \"...\"" >&2; return 1; }
+  # A skip names a gate of the run (a typo such as biuld would be stored and never match), or one commit the person keeps
+  # on a group's branch (foreign-commit:G<n>:<sha>, as group reopen --accept-foreign records it).
+  local gates="$STAGES" g ok=0
+  [[ -f "$STATE_FILE" && "$(_json_get_path "$STATE_FILE" command temper)" == "fix" ]] && gates="build review check commit"
+  for g in $gates; do [[ "$stage" == "$g" ]] && ok=1; done
+  [[ "$stage" =~ ^foreign-commit:G[0-9]+:[0-9a-f]{4,40}$ ]] && ok=1
+  [[ $ok -eq 1 ]] || { echo "FAIL: override takes a gate of this run ($gates); got '$stage'" >&2; return 1; }
   _ensure_dirs
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
   # An override is a human decision, made at the gate: record that, and why. Temper reads no
@@ -4461,14 +4542,20 @@ text = open(path, encoding='utf-8').read()
 lines = text.split('\n')
 idx = next((i for i, l in enumerate(lines) if re.match(r'^\*\*Status:\*\*', l)), None)
 want = 'accepted' if sub == 'accept' else 'completed'
+cur = re.sub(r'^\*\*Status:\*\*\s*', '', lines[idx]).strip().lower() if idx is not None else ''
+if cur == want or (sub == 'accept' and cur == 'completed'):
+    print('OK: intent.md is already %s' % cur)
+    sys.exit(0)
+# An intent moves draft -> accepted -> completed: a draft nobody accepted at the Intent gate never turns completed, which
+# would read as finished work with no Accepted-by.
+if sub == 'complete' and cur != 'accepted':
+    print('FAIL: intent.md is %s, not accepted; temper intent accept comes first (the person, at the Intent gate)' % (
+        cur or 'without a Status'), file=sys.stderr)
+    sys.exit(1)
 if idx is None:
     lines.insert(0, '**Status:** %s' % want)
     idx = 0
 else:
-    cur = re.sub(r'^\*\*Status:\*\*\s*', '', lines[idx]).strip().lower()
-    if sub == 'accept' and cur in ('accepted', 'completed'):
-        print('OK: intent.md is already %s' % cur)
-        sys.exit(0)
     lines[idx] = '**Status:** %s' % want
 key, value = ('Accepted-by', who) if sub == 'accept' else ('Completed', day)
 if not any(re.match(r'^\*\*%s:\*\*' % re.escape(key), l) for l in lines):
