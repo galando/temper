@@ -28,7 +28,7 @@ export type TemperView = {
   clock: { minutes: number | null }
   loopMarks: Array<{ from: string; to: string; iteration: number; max: number; reason: string }>
   planTree: { approved: boolean; groups: Array<{ id: string; title: string; files: string[] }>; other: string[] } | null
-  grid: Array<{ id: string; title: string; status: string; tasks: Array<{ n: number; title: string; state: 'waiting' | 'running' | 'red' | 'green' | 'pass' | 'fail' | 'parked'; model: string | null; retries: number }> }> | null
+  grid: Array<{ id: string; title: string; status: string; tasks: Array<{ n: number; title: string; state: 'waiting' | 'running' | 'red' | 'green' | 'covered' | 'pass' | 'fail' | 'parked'; model: string | null; retries: number }> }> | null
   findingRows: Array<{ id: number; severity: string; confidence: number | null; where: string | null; claim: string; state: 'open' | 'resolved' | 'accepted' }>
   fresh: { summary: string | null; notRun: string[]; stale: boolean; rows: Array<{ id: number; severity: string; lens: string; claim: string; state: string; cite: string | null }> } | null
   markers: Array<{ name: string; state: 'pass' | 'fail' | 'info' | 'none'; detail: string; lines: string[] }>

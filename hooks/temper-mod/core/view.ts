@@ -30,7 +30,7 @@ export type GroupRow = { id: string; title: string; state: 'waiting' | 'running'
 
 // A task in the Build grid: its state as the CLI's ledger shows it (RED and GREEN from the task's own evidence), the
 // model it ran on, and how many times it ran again.
-export type GridTask = { n: number; title: string; state: 'waiting' | 'running' | 'red' | 'green' | 'pass' | 'fail' | 'parked'; model: string | null; retries: number }
+export type GridTask = { n: number; title: string; state: 'waiting' | 'running' | 'red' | 'green' | 'covered' | 'pass' | 'fail' | 'parked'; model: string | null; retries: number }
 
 export type GridGroup = { id: string; title: string; status: string; tasks: GridTask[] }
 
@@ -96,7 +96,8 @@ export type ViewInput = {
 
 const MARKS: Record<string, Mark> = { passed: 'passed', failed: 'failed', skipped: 'skipped', here: 'current', todo: 'pending' }
 
-const TASK_CELL: Record<string, TaskCell['state']> = { waiting: 'waiting', running: 'running', red: 'running', green: 'running', pass: 'passed', fail: 'failed', parked: 'parked' }
+// A covered task waits on the person (its tests passed before any change): no agent works on it.
+const TASK_CELL: Record<string, TaskCell['state']> = { waiting: 'waiting', running: 'running', red: 'running', green: 'running', covered: 'waiting', pass: 'passed', fail: 'failed', parked: 'parked' }
 
 function groupsOf(rv: RunView): GroupRow[] | null {
   if (rv.build.groups.length === 0) return null
@@ -230,6 +231,8 @@ export const TASK_STATE: Record<GridTask['state'], [string, string]> = {
   running: ['◐', 'running'],
   red: ['●', 'RED'],
   green: ['●', 'GREEN'],
+  // The task's tests passed before any change was made: the person decides whether it is done.
+  covered: ['◇', 'COVERED'],
   pass: ['✓', 'PASS'],
   fail: ['✗', 'FAIL'],
   parked: ['⏸', 'parked'],
