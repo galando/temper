@@ -265,7 +265,7 @@ OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "no Source Traceability FAILs task context recorded" "yes" "$(echo "$OUT" | grep -q 'no consulted/unavailable/none line' && echo yes || echo no)"
 
 setup; good_draft
-printf '**Ticket:** PROJ-1\n' | cat - .temper/specs/demo/intent.md > /tmp/ti && mv /tmp/ti .temper/specs/demo/intent.md
+printf '**Ticket:** PROJ-1\n' | cat - .temper/specs/demo/intent.md > "$WORKDIR/ti.md" && mv "$WORKDIR/ti.md" .temper/specs/demo/intent.md
 python3 - <<'EOF'
 s = open('.temper/specs/demo/intent.md').read().replace('- none: description only', '- consulted: PROJ-12 notes — background')
 open('.temper/specs/demo/intent.md','w').write(s)
