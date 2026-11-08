@@ -1175,7 +1175,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
        ],
        "model": null,
        "n": 1,
-       "state": "waiting",
+       "state": "covered",
        "title": "Issue a token"
       },
       {
