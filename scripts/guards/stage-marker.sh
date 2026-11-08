@@ -18,6 +18,10 @@
 # /temper:fix is not marked either — its RCA phase can legitimately end a session
 # before any build evidence exists.
 #
+# The marker names the session that owes the gate (session_id, from the hook's input), so
+# the Stop half acts only on its own session's marker; the same session owing the same stage
+# again keeps the refusals already counted, so the loop guard's budget is not reset.
+#
 # The marker is a fixed name in the project's .temper folder: the hook changes into the
 # project folder first. A project folder that lies inside this plugin's own folder is
 # skipped (exit 0): the hook never writes inside the plugin. The plugin folder itself is a
@@ -98,14 +102,22 @@ _project_dir() { # prints the resolved project folder; fails when it lies inside
 _main() {
   command -v python3 >/dev/null 2>&1 || return 0
 
-  local prompt=""
-  prompt=$(python3 -I -c "
+  # The hook's input gives the prompt and the session it was typed in. The first line printed is
+  # the session id as JSON text (one line whatever it holds), the rest is the prompt.
+  local parsed="" prompt="" sid_json='""'
+  parsed=$(python3 -I -c "
 import json, sys
 try:
-    print(json.load(sys.stdin).get('prompt', ''))
+    d = json.load(sys.stdin)
+    sid = d.get('session_id') or ''
+    print(json.dumps(sid if isinstance(sid, str) else ''))
+    print(d.get('prompt', ''))
 except Exception:
+    print('\"\"')
     print('')
 " 2>/dev/null) || return 0
+  sid_json="${parsed%%$'\n'*}"
+  prompt="${parsed#*$'\n'}"
 
   # Match only at the start of the prompt: a *mention* of a command mid-sentence is
   # not an invocation.
@@ -130,9 +142,28 @@ except Exception:
   # "since" scopes the debt in time: verify-stage-gate.sh accepts only a verdict whose
   # ts is >= this moment, so a verdict left in gates.json by a PREVIOUS run cannot
   # satisfy THIS session's guarantee. Same format as scripts/temper's _now.
+  # "session_id" names the session that owes the gate: the marker is one file for the whole
+  # project, and verify-stage-gate.sh acts only on its own session's marker. The same session
+  # owing the same stage again keeps the refusals already counted ("blocks"), so a new prompt
+  # does not give the loop guard a fresh budget; any other marker starts at 0. The program is
+  # single-quoted, so it holds no single quote, and every input travels as argv.
   local now; now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || now=""
-  printf '{"stage": "%s", "blocks": 0, "since": "%s"}\n' "$stage" "$now" \
-    > .temper/pending-stage.json 2>/dev/null || true
+  python3 -I -c '
+import json, sys
+path, stage, now, sid = sys.argv[1], sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
+blocks = 0
+try:
+    old = json.load(open(path))
+    if old.get("stage") == stage and (old.get("session_id") or "") == sid:
+        blocks = max(0, int(old.get("blocks", 0)))
+except Exception:
+    pass
+m = {"stage": stage, "blocks": blocks, "since": now}
+if sid:
+    m["session_id"] = sid
+with open(path, "w") as f:
+    f.write(json.dumps(m) + "\n")
+' .temper/pending-stage.json "$stage" "$now" "$sid_json" 2>/dev/null || true
   return 0
 }
 
