@@ -694,15 +694,21 @@ assert_eq "config get fix.max-loops prints 3 when set to 3" "3" "$("$TEMPER" con
 # fix.max-loops bounds the check->fix pair only when set; loops.max-per-type stays 2 elsewhere.
 "$TEMPER" state init demo --command fix >/dev/null; _at check
 assert_exit "state loop check fix iteration 1 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason a
+_at check
 assert_exit "state loop check fix iteration 2 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason b
+_at check
 assert_exit "state loop check fix iteration 3 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason c
+_at check
 assert_exit "state loop check fix iteration 4 is blocked by fix.max-loops 3" 1 "$TEMPER" state loop check fix --reason d
-assert_exit "state loop review build still stops at loops.max-per-type 2 (key unset for that pair)" 0 "$TEMPER" state loop review build --reason a
-assert_exit "state loop review build second iteration passes" 0 "$TEMPER" state loop review build --reason b
-assert_exit "state loop review build third iteration is blocked" 1 "$TEMPER" state loop review build --reason c
+_at review
+assert_exit "state loop review fix still stops at loops.max-per-type 2 (key unset for that pair)" 0 "$TEMPER" state loop review fix --reason a
+_at review
+assert_exit "state loop review fix second iteration passes" 0 "$TEMPER" state loop review fix --reason b
+_at review
+assert_exit "state loop review fix third iteration is blocked" 1 "$TEMPER" state loop review fix --reason c
 setup
 "$TEMPER" state init demo --command fix >/dev/null; _at check
-"$TEMPER" state loop check fix --reason a >/dev/null; "$TEMPER" state loop check fix --reason b >/dev/null
+"$TEMPER" state loop check fix --reason a >/dev/null; _at check; "$TEMPER" state loop check fix --reason b >/dev/null; _at check
 assert_exit "with fix.max-loops unset, check fix keeps loops.max-per-type 2" 1 "$TEMPER" state loop check fix --reason c
 
 # --- mods: evidence accept stops the review gate counting a finding (with a reason) ---

@@ -15,8 +15,10 @@ session started editing spec files of its own accord. Now one call per answer:
     leaves that section;
   - `### Decisions` gains `- {question} -> {answer} (the person, {date})`, the template's row; a placeholder row there
     (`(none yet)`, `none`) goes;
-  - a question that starts with `Design:` names an area of concern in design.md: the open concern that shares the most
-    words with it gets a `resolved: {answer}` line (when none shares enough, the Design question resolves it as written).
+  - a question that starts with `Design:` names an area of concern in design.md: the open concern whose title it names
+    (the title, as written, is the question or a part of it), else the one open concern that shares the most words with
+    it, gets a `resolved: {answer}` line. When none shares enough, or two share as many, nothing is resolved here: the
+    Design question resolves it as written, so an answer never lands on the wrong concern.
 
 It changes nothing when no Blocking question matches (exit 1). Standard library only.
 """
@@ -98,17 +100,20 @@ def resolve_concern(spec, asked, answer):
         return None
     lines = open(path, encoding="utf-8", errors="replace").read().split("\n")
     words = lambda t: {w for w in norm(t).split() if len(w) > 2}
-    want = words(re.sub(r"^\s*design:\s*", "", asked, flags=re.I))
-    best, score = None, 0.0
-    for b in flow.concern_blocks(lines):
-        if b["resolved"]:
-            continue
-        have = words(" ".join(lines[b["start"]:b["end"]]))
-        s = len(want & have) / max(1, len(want))
-        if s > score:
-            best, score = b, s
-    if best is None or score < 0.4:
-        return None
+    q = re.sub(r"^\s*design:\s*", "", asked, flags=re.I)
+    blocks = [b for b in flow.concern_blocks(lines) if not b["resolved"]]
+    # The title named: the question is the concern's title, or holds it (one concern only; two would be a guess)
+    named = [b for b in blocks if norm(b["title"]) and (norm(b["title"]) == norm(q) or " %s " % norm(b["title"]) in " %s " % norm(q))]
+    if len(named) == 1:
+        best = named[0]
+    else:
+        want = words(q)
+        scored = sorted(((len(want & words(" ".join(lines[b["start"]:b["end"]]))) / max(1, len(want)), i) for i, b in enumerate(blocks)),
+                        reverse=True)
+        # the best concern shares enough words, and strictly more than the next: a tie names no concern
+        if not scored or scored[0][0] < 0.4 or (len(scored) > 1 and scored[1][0] == scored[0][0]):
+            return None
+        best = blocks[scored[0][1]]
     m = re.match(r"^(?:[-*]|\d+[.)])\s+", lines[best["start"]]) if best["item"] else None
     lines[best["end"]:best["end"]] = ["", "%sresolved: %s" % (" " * len(m.group(0)) if m else "", " ".join(answer.split()))]
     write(path, lines)

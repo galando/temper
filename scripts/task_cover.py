@@ -14,6 +14,29 @@ import sys
 import time
 
 
+# A task's status and the moves between them, the one table every writer goes through (set_status): the CLI's task start,
+# task gate and group reopen, and the person's answer about a covered task here. "awaiting" (a manual task waiting on the
+# person's confirm) is a mark beside running, not a status.
+TASK_MOVES = {
+    "pending": ("running",),                       # task start
+    "running": ("covered", "failed", "passed"),    # its task gate (a merge that fails is a failed attempt)
+    "covered": ("running", "pending"),             # the person accepts it (its gate then passes it) or has it run again
+    "failed": ("running", "pending"),              # the next attempt starts, or a group reopen
+    "passed": ("pending",),                        # a group reopen
+}
+
+
+def set_status(t, new):
+    """Move task record T to status NEW, or raise ValueError when the table has no such move. A task with no record yet
+    is pending; staying where it is changes nothing. A running task is never reopened: let it finish or fail first."""
+    old = t.get("status") or "pending"
+    if new not in TASK_MOVES:
+        raise ValueError("unknown task status %r" % new)
+    if new != old and new not in TASK_MOVES.get(old, ()):
+        raise ValueError("a task does not move from %s to %s" % (old, new))
+    t["status"] = new
+
+
 def load(path, default):
     try:
         d = json.load(open(path, encoding="utf-8"))
@@ -43,8 +66,8 @@ def accept(groups_path, ledger_path, n, reason):
                  "artifact": None, "sha256": None, "value": None, "severity": None, "phase": "covered", "scenario": None,
                  "criterion": None, "label": "PROVEN", "task": int(n), "executed_by": "person", "reason": reason.strip(),
                  "output": c.get("tail", ""), "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    set_status(t, "running")
     save(ledger_path, rows)
-    t["status"] = "running"
     t["accepted_covered"] = reason.strip()
     run["tasks"][str(n)] = t
     save(groups_path, run)
@@ -55,7 +78,7 @@ def retry(groups_path, n):
     t = (run.get("tasks") or {}).get(str(n)) or {}
     if t.get("status") != "covered":
         raise ValueError("Task %s is not waiting on a decision about covered tests (status: %s)" % (n, t.get("status", "none")))
-    t["status"] = "pending"
+    set_status(t, "pending")
     t.pop("covered", None)
     run["tasks"][str(n)] = t
     save(groups_path, run)
