@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { LATER, SPEC, questionOf, runFiles } from './run-files'
-import { viewText, world } from './world'
+import { NO_RUN_VIEW, viewText, world } from './world'
 import type { Answer, World } from './world'
 
 type Api = {
@@ -194,7 +194,9 @@ describe('finding 2: the run state cannot be switched off by hiding build-state.
 
   test('legit: a finished run (Done) whose state is archived is no run any more', async ($, on) => {
     const { w, api } = await begin($, on, { next: 'commit', gates: ['intent', 'plan', 'build', 'review', 'check'], head: 'main' })
+    // `state archive` removes the state and writes a view that says there is no run (not a missing view).
     w.files.delete(STATE)
+    w.files.set('.temper/view.json', NO_RUN_VIEW)
     const text = (await refresh(api)).text ?? ''
     expect(text).toContain('No Temper run is active')
     expect(await wr(api, 'src/app.ts')).toBeUndefined()

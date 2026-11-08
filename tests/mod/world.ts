@@ -3,6 +3,7 @@
 // from; a file write records back into it.
 import type { On } from 'claude-code'
 
+import { VIEW_VERSION } from '../../hooks/temper-mod/core/runview'
 import { deriveView, planFiles } from './run-files'
 
 export type World = {
@@ -57,6 +58,11 @@ export type World = {
   configSets: Array<{ key: string; value: unknown }>
   // The props the engine's own drawing received after the plugins' hooks, per component.
   rendered: Array<{ component: string; props: Record<string, unknown> }>
+  // A read of view.json goes through this when set: it gets the text as the file holds it at the read, and answers
+  // when it likes (a test holds a read back to play two reads at once).
+  viewRead?: (text: string | null) => Promise<string | null>
+  // How many of the next tool calls (other than the question dialog) the engine's tool answers with an error.
+  toolErrors?: number
 }
 
 export type Answer = string | { label: string; note: string }
@@ -95,6 +101,10 @@ export function cliTo(w: World, next: string): void {
   w.files.set('.temper/build-state.json', JSON.stringify({ ...d, next_stage: next }))
   w.files.delete('.temper/view.json')
 }
+
+// The view the CLI writes once there is no run (after `state clear` or `state archive`, as cmd_state_clear then
+// _view_write): it reads, and says there is none. A view.json that is missing or unreadable is a lost one instead.
+export const NO_RUN_VIEW = JSON.stringify({ version: VIEW_VERSION, run: null, status: 'No run is active.' })
 
 // The view the CLI wrote for the run in the world: a view.json the test set, else the one the world makes from the CLI's
 // state (deriveView).
@@ -202,6 +212,7 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   if (/scripts\/temper["']?\s+state\s+(?:clear|archive)\b/.test(command)) {
     for (const name of ['build-state.json', 'feedback-loops.json', 'gates.json', 'overrides.json', 'view.json']) w.files.delete(`.temper/${name}`)
     for (const key of [...w.files.keys()]) if (key.startsWith('.temper/evidence/')) w.files.delete(key)
+    w.files.set('.temper/view.json', NO_RUN_VIEW)
     return ok('OK: run state cleared')
   }
   // `state init <slug>`: a new run, at step 0, with a new run id.
@@ -261,7 +272,7 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   }
   // With `runAt` set, `.temper/` and `.claude/` exist only directly under it.
   const elsewhere = (path: string): boolean => !!opts.runAt && path.startsWith('/') && /\/\.(?:temper|claude)\//.test(path) && !new RegExp(`^${opts.runAt}/\\.(?:temper|claude)/`).test(path)
-  on('fs.read', ($, e) => {
+  on('fs.read', async ($, e) => {
     w.rawPaths.push(e.path)
     w.reads.push(rel(e.path))
     if (outside(e.path) || elsewhere(e.path)) return { deny: `ENOENT: ${e.path}` }
@@ -270,7 +281,8 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     // unreadable run state stands for a view that cannot be read either.
     if (rel(e.path) === '.temper/view.json') {
       if (w.unreadable?.has('.temper/build-state.json')) return { deny: `EACCES: ${e.path}` }
-      const text = viewText(w)
+      const now = viewText(w)
+      const text = w.viewRead ? await w.viewRead(now) : now
       return text === null ? { deny: `ENOENT: ${e.path}` } : { value: text }
     }
     const text = w.files.get(rel(e.path))
@@ -361,6 +373,10 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
       }
       const annotations = Object.keys(notes).length > 0 ? { annotations: notes } : {}
       return { result: { questions, answers, ...annotations }, text: first } as never
+    }
+    if ((w.toolErrors ?? 0) > 0) {
+      w.toolErrors = (w.toolErrors ?? 0) - 1
+      return { result: 'the tool failed', text: 'the tool failed', isError: true } as never
     }
     if (opts.fakeCli && e.tool === 'Bash') {
       const out = fakeCli(w, String((e as unknown as { command?: string }).command ?? ''))

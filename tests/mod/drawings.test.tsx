@@ -112,13 +112,13 @@ describe('the pane: the whole run, read only', () => {
   test('each task state of the grid has its own mark', async ($, on) => {
     const v = richView()
     const tasks = (v.build as { groups: Array<{ tasks: J[] }> }).groups.flatMap(g => g.tasks)
-    const all = ['waiting', 'running', 'red', 'green', 'pass', 'fail', 'parked']
+    const all = ['waiting', 'running', 'red', 'green', 'covered', 'pass', 'fail', 'parked']
     const g0 = (v.build as { groups: Array<{ tasks: J[] }> }).groups[0] as { tasks: J[] }
     g0.tasks = all.map((state, i) => ({ ...(tasks[0] as J), n: i + 1, title: state, state, attempts: 1 }))
     runWith(on, v)
     await $.session.start(START)
     const text = JSON.stringify(await (await mount($, 'Pane', PANE(), 'temper')).drawn())
-    for (const word of ['○ waiting', '◐ running', '● RED', '● GREEN', '✓ PASS', '✗ FAIL', '⏸ parked']) expect(text, word).toContain(word)
+    for (const word of ['○ waiting', '◐ running', '● RED', '● GREEN', '◇ COVERED', '✓ PASS', '✗ FAIL', '⏸ parked']) expect(text, word).toContain(word)
   })
 
   test('an inline pane keeps each section short', async ($, on) => {

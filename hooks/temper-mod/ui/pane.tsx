@@ -9,7 +9,7 @@ export const PANE_ID = 'temper'
 
 // Explicit colours only, never a dim: see ui/palette.ts. Stages to come are muted, not dimmed.
 const MARK_COLOR = { passed: GREEN, failed: ORANGE, skipped: YELLOW, current: BLUE, pending: MUTED } as const
-const TASK_COLOR: Record<GridTask['state'], string> = { waiting: MUTED, running: BLUE, red: ORANGE, green: GREEN, pass: GREEN, fail: ORANGE, parked: YELLOW }
+const TASK_COLOR: Record<GridTask['state'], string> = { waiting: MUTED, running: BLUE, red: ORANGE, green: GREEN, covered: YELLOW, pass: GREEN, fail: ORANGE, parked: YELLOW }
 const MARKER: Record<Marker['state'], [string, string]> = { pass: ['✓', GREEN], fail: ['✗', ORANGE], info: ['•', BLUE], none: ['○', MUTED] }
 const SEVERE = new Set(['critical', 'high'])
 // A fresh review finding the person still has to answer: open, or answered by the author and waiting for them.
