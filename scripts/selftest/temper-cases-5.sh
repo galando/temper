@@ -1406,7 +1406,9 @@ l2_n="$(python3 -c "import json; print(len([e for e in json.load(open('.temper/e
 [[ "$l2_n" == "6" ]] || l2_n="$l2_n (lock before: $L2_LOCK_BEFORE; $(cat .temper/l2.*.out | tr '\n' ' ' | cut -c1-600))"
 rm -f .temper/l2.*.out
 assert_eq "L2: six parallel resolves lose none" "6" "$l2_n"
-assert_eq "L2: the lock is released and no temp file is left" "no|0" "$([[ -e .temper/.lock ]] && echo yes || echo no)|$(find .temper -name '*.tmp*' | wc -l | tr -d ' ')"
+l2_left="$([[ -e .temper/.lock ]] && echo yes || echo no)"
+[[ "$l2_left" == "no" ]] || l2_left="yes (owner: $(cat .temper/.lock/owner 2>/dev/null || echo none); $(ls -la .temper/.lock 2>&1 | tr '\n' ' ' | cut -c1-300))"
+assert_eq "L2: the lock is released and no temp file is left" "no|0" "$l2_left|$(find .temper -name '*.tmp*' | wc -l | tr -d ' ')"
 
 # L3: the ready check and the start write share one lock, so a start never overwrites a state that changed
 # while it waited for the lock (here: another process finished Task 2 in the meantime)

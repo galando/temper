@@ -331,17 +331,24 @@ _LOCK_DIR=".temper/.lock"
 _LOCK_DEPTH=0
 _LOCK_OWNED=0
 _LOCK_TOKEN=""
-_lock_older_than_30s() { # _lock_older_than_30s <path>: 0 only when it exists, is older than 30 s and names no live owner
+_lock_older_than_30s() { # _lock_older_than_30s <path>: 0 when the lock is stale: its owner's process is gone, or it names
+                         # no owner and is older than 30 s (a live owner's lock is never stale)
   python3 -I -c "
 import os, sys, time
 try:
-    if time.time() - os.path.getmtime(sys.argv[1]) <= 30: sys.exit(1)
-except OSError:
-    sys.exit(1)   # gone between the mkdir and here: not stale, retry the mkdir
-try:
-    os.kill(int(open(sys.argv[1] + '/owner').read().split('.')[0]), 0); sys.exit(1)   # its owner is alive: held, not stale
+    o = int(open(sys.argv[1] + '/owner').read().split('.')[0])
 except (OSError, ValueError, IndexError):
-    pass" "$1" 2>/dev/null
+    o = 0
+try:
+    if o: os.kill(o, 0); sys.exit(1)
+except ProcessLookupError:
+    sys.exit(0)
+except OSError:
+    sys.exit(1)
+try:
+    sys.exit(0 if time.time() - os.path.getmtime(sys.argv[1]) > 30 else 1)
+except OSError:
+    sys.exit(1)   # gone between the mkdir and here: not stale, retry the mkdir" "$1" 2>/dev/null
 }
 _lock_break_stale() {
   local br="$_LOCK_DIR.break"
@@ -356,18 +363,28 @@ _lock_break_stale() {
   python3 -I -c "
 import os, sys, time
 try:
-    if time.time() - os.path.getmtime(sys.argv[1]) > 30:   # re-checked while no other waiter can break it
+    try:   # re-checked while no other waiter can break it: an owner gone, or none and older than 30 s
+        o = int(open(sys.argv[1] + '/owner').read().split('.')[0])
+    except (OSError, ValueError, IndexError):
+        o = 0
+    gone = False
+    if o:
         try:
-            os.kill(int(open(sys.argv[1] + '/owner').read().split('.')[0]), 0); sys.exit(0)   # a live owner: held
-        except (OSError, ValueError, IndexError):
-            os.rename(sys.argv[1], sys.argv[2])
+            os.kill(o, 0)
+        except ProcessLookupError:
+            gone = True
+        except OSError:
+            pass
+    if gone or (not o and time.time() - os.path.getmtime(sys.argv[1]) > 30):
+        os.rename(sys.argv[1], sys.argv[2])
 except OSError:
     pass" "$_LOCK_DIR" "$dead" 2>/dev/null
   rm -rf "$dead" 2>/dev/null
   rmdir "$br" 2>/dev/null || true
 }
 _lock_cleanup() { # free the lock this process still owns (EXIT/INT/TERM/HUP)
-  if [[ "$_LOCK_OWNED" == "1" && -f "$_LOCK_DIR/owner" && "$(cat "$_LOCK_DIR/owner" 2>/dev/null)" == "$_LOCK_TOKEN" ]]; then
+  local cur=""; read -r cur < "$_LOCK_DIR/owner" 2>/dev/null   # a builtin: no process to start to free it
+  if [[ "$_LOCK_OWNED" == "1" && "$cur" == "$_LOCK_TOKEN" ]]; then
     # one rename frees it: the folder is never seen without its owner (a waiter would read that as nobody's)
     local gone="$_LOCK_DIR.free.$$"; rm -rf "$gone" 2>/dev/null
     mv "$_LOCK_DIR" "$gone" 2>/dev/null && rm -rf "$gone" 2>/dev/null
@@ -409,6 +426,10 @@ try: sys.exit(time.time() - os.path.getmtime(sys.argv[1]) > 2)
 except OSError: pass" "$_LOCK_DIR" 2>/dev/null; }; } \
          && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )); then
         python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
+      fi
+      # its owner is gone: break it and take it (within the same bound as a live holder)
+      if (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )) && _lock_older_than_30s "$_LOCK_DIR"; then
+        _lock_break_stale; python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
       fi
       echo "WARN: could not take $_LOCK_DIR within ${TEMPER_LOCK_WAIT_S:-10}s; writing without the lock" >&2
       return 0

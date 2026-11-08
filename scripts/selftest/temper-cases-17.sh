@@ -242,3 +242,11 @@ rm -rf .temper/.lock
 for i in 1 2 3 4 5 6; do "$TEMPER" evidence add --stage build --claim "release $i" >/dev/null 2>&1 & done; wait
 assert_eq "A16: releases leave no lock and no folder moved aside" "no|0" \
   "$([[ -e .temper/.lock ]] && echo yes || echo no)|$(find .temper -maxdepth 1 -name '.lock.*' | wc -l | tr -d ' ')"
+
+# --- A16: a lock whose owner's process is gone is broken and taken at once, young or old, never written past ---
+setup; mkdir -p .temper/evidence .temper/.lock
+bash -c 'exit 0' & GONE=$!; wait "$GONE"
+printf '%s.1' "$GONE" > .temper/.lock/owner
+out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "after a gone holder" 2>&1)"; rc=$?
+assert_eq "A16: a fresh lock whose owner's process is gone is taken (no WARN), and freed after" "0|0|1|no" \
+  "$rc|$(printf '%s' "$out" | grep -c WARN)|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$([[ -e .temper/.lock ]] && echo yes || echo no)"
