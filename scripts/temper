@@ -321,8 +321,9 @@ else:
 # check and the rename run in one process, so the window in which a lock that was released and re-taken
 # between the two could still be moved aside is narrowed to a few microseconds, not closed (a directory rename
 # cannot be made conditional on its age); it needs a holder that was past 30 s and released at that very moment.
-# A lock still held after TEMPER_LOCK_WAIT_S (default 10)
-# seconds is written past with a WARN (fail open), so a stuck holder never wedges a run. A lock this call
+# A lock is stale only when its owner's process is gone; it is freed by one rename, never seen without its owner.
+# A lock still held after TEMPER_LOCK_WAIT_S (default 10) seconds by an owner that is gone or unknown, or by a live
+# one past TEMPER_LOCK_MAX_S (60), is written past with a WARN (fail open), so a stuck holder never wedges a run. A lock this call
 # did not take is never released. Calls nest (a depth count: only the outermost release frees the folder),
 # and a trap frees a held lock on EXIT/INT/TERM/HUP. Held around a file write, or a short git commit plus
 # the writes that record it, never while a test runs.
@@ -330,13 +331,17 @@ _LOCK_DIR=".temper/.lock"
 _LOCK_DEPTH=0
 _LOCK_OWNED=0
 _LOCK_TOKEN=""
-_lock_older_than_30s() { # _lock_older_than_30s <path>: 0 only when it exists and is older than 30 s
+_lock_older_than_30s() { # _lock_older_than_30s <path>: 0 only when it exists, is older than 30 s and names no live owner
   python3 -I -c "
 import os, sys, time
 try:
-    sys.exit(0 if time.time() - os.path.getmtime(sys.argv[1]) > 30 else 1)
+    if time.time() - os.path.getmtime(sys.argv[1]) <= 30: sys.exit(1)
 except OSError:
-    sys.exit(1)   # gone between the mkdir and here: not stale, retry the mkdir" "$1" 2>/dev/null
+    sys.exit(1)   # gone between the mkdir and here: not stale, retry the mkdir
+try:
+    os.kill(int(open(sys.argv[1] + '/owner').read().split('.')[0]), 0); sys.exit(1)   # its owner is alive: held, not stale
+except (OSError, ValueError, IndexError):
+    pass" "$1" 2>/dev/null
 }
 _lock_break_stale() {
   local br="$_LOCK_DIR.break"
@@ -352,7 +357,10 @@ _lock_break_stale() {
 import os, sys, time
 try:
     if time.time() - os.path.getmtime(sys.argv[1]) > 30:   # re-checked while no other waiter can break it
-        os.rename(sys.argv[1], sys.argv[2])
+        try:
+            os.kill(int(open(sys.argv[1] + '/owner').read().split('.')[0]), 0); sys.exit(0)   # a live owner: held
+        except (OSError, ValueError, IndexError):
+            os.rename(sys.argv[1], sys.argv[2])
 except OSError:
     pass" "$_LOCK_DIR" "$dead" 2>/dev/null
   rm -rf "$dead" 2>/dev/null
@@ -360,8 +368,9 @@ except OSError:
 }
 _lock_cleanup() { # free the lock this process still owns (EXIT/INT/TERM/HUP)
   if [[ "$_LOCK_OWNED" == "1" && -f "$_LOCK_DIR/owner" && "$(cat "$_LOCK_DIR/owner" 2>/dev/null)" == "$_LOCK_TOKEN" ]]; then
-    rm -f "$_LOCK_DIR/owner" 2>/dev/null
-    rmdir "$_LOCK_DIR" 2>/dev/null || true
+    # one rename frees it: the folder is never seen without its owner (a waiter would read that as nobody's)
+    local gone="$_LOCK_DIR.free.$$"; rm -rf "$gone" 2>/dev/null
+    mv "$_LOCK_DIR" "$gone" 2>/dev/null && rm -rf "$gone" 2>/dev/null
   fi
   _LOCK_OWNED=0
 }
@@ -371,8 +380,8 @@ _lock_acquire() {
   [[ -d .temper ]] || return 0                 # nothing to lock before a run has a folder
   local i=0 deadline=$(( $(date +%s) + ${TEMPER_LOCK_WAIT_S:-10} ))   # wall clock, not loop counts
   while :; do
+    _LOCK_TOKEN="$$.$RANDOM$RANDOM$i"   # made before the mkdir: the owner is written the moment the folder exists
     if mkdir "$_LOCK_DIR" 2>/dev/null; then
-      _LOCK_TOKEN="$$.$RANDOM$RANDOM$(date +%s)"
       printf '%s' "$_LOCK_TOKEN" > "$_LOCK_DIR/owner" 2>/dev/null || true
       _LOCK_OWNED=1
       trap '_lock_cleanup' EXIT
@@ -391,7 +400,10 @@ _lock_acquire() {
       # up to TEMPER_LOCK_MAX_S, rather than write beside it and lose a row. A holder that is gone or unknown, or one past that
       # bound, is written past as before (fail open: a stuck holder never wedges a run).
       local holder; holder="$(cat "$_LOCK_DIR/owner" 2>/dev/null)"; holder="${holder%%.*}"
-      if [[ "$holder" =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )); then
+      # an ownerless folder under 2 s old is a holder between its mkdir and its owner line: wait for it too
+      if { { [[ "$holder" =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; } || { [[ -z "$holder" && -d "$_LOCK_DIR" ]] \
+           && python3 -I -c "import os,sys,time; sys.exit(time.time() - os.path.getmtime(sys.argv[1]) > 2)" "$_LOCK_DIR" 2>/dev/null; }; } \
+         && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )); then
         python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
       fi
       echo "WARN: could not take $_LOCK_DIR within ${TEMPER_LOCK_WAIT_S:-10}s; writing without the lock" >&2

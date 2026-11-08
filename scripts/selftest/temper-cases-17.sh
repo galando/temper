@@ -217,3 +217,23 @@ assert_eq "A16: a live holder past TEMPER_LOCK_MAX_S is written past with a WARN
   "$rc|$(printf '%s' "$out" | grep -c 'WARN.*lock')|$([[ -d .temper/.lock ]] && echo yes || echo no)"
 kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
 rm -rf .temper/.lock
+
+# --- A16: the lock's windows (L2, F6 and L1 lost a row now and then on CI): a lock being taken is waited for, a lock
+# whose owner is alive is never broken as stale, and a release never leaves the folder standing without its owner ---
+setup; mkdir -p .temper/evidence .temper/.lock
+( sleep 1.6; rm -rf .temper/.lock ) & FREE=$!
+out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "after a lock being taken" 2>&1)"; rc=$?
+wait "$FREE"
+assert_eq "A16: an ownerless lock under 2 s old (a holder between its mkdir and its owner line) is waited for, not written past" "0|0|1" \
+  "$rc|$(printf '%s' "$out" | grep -c WARN)|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")"
+sleep 60 & LIVE=$!
+mkdir -p .temper/.lock; printf '%s.1' "$LIVE" > .temper/.lock/owner
+python3 -c "import os,time; t=time.time()-120; os.utime('.temper/.lock',(t,t))"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence add --stage build --claim "beside an old live holder" 2>&1)"
+assert_eq "A16: a lock older than 30 s whose owner is alive is not broken as stale (the holder keeps it)" "$LIVE.1|1" \
+  "$(cat .temper/.lock/owner 2>/dev/null)|$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+kill "$LIVE" 2>/dev/null; wait "$LIVE" 2>/dev/null
+rm -rf .temper/.lock
+for i in 1 2 3 4 5 6; do "$TEMPER" evidence add --stage build --claim "release $i" >/dev/null 2>&1 & done; wait
+assert_eq "A16: releases leave no lock and no folder moved aside" "no|0" \
+  "$([[ -e .temper/.lock ]] && echo yes || echo no)|$(find .temper -maxdepth 1 -name '.lock.*' | wc -l | tr -d ' ')"
