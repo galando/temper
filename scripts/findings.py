@@ -5,6 +5,11 @@
                                                                is the text there that shows the finding is wrong
   python3 findings.py escalate LEDGER.json ID REASON TS        the evidence is outside every file (a team rule, a spoken
                                                                decision): the person decides, with what only they know
+  python3 findings.py count LEDGER.json SEVS open|resolved|accepted
+                                                               how many findings of those severities (comma separated) are
+                                                               in that state (open: neither resolved nor accepted)
+  python3 findings.py open-claims LEDGER.json SEVS             the claims of those open findings, \x1f-joined, each with
+                                                               its contest or escalation
 
 Both keep the finding open: the gate still counts it, and the gate question shows the contest or the escalation, so the
 person accepts it or sends it back. A contest with no readable citation is refused: "This was intentional" is not
@@ -17,6 +22,19 @@ import json
 import os
 import re
 import sys
+
+
+def finding_state(row):
+    """The one state of a finding row, from the shape the CLI writes: 'resolved' (evidence resolve wrote `resolved`
+    {fixed_by, ts}), 'accepted' (evidence accept wrote `accepted` {reason, author, ts}), else 'contested' or 'escalated'
+    (this file wrote `contested` {cite, quote, reason, ts} or `escalated` {reason, ts}; the finding still counts), else
+    'open'. The CLI refuses a second decision on a resolved or accepted finding, so at most one of the two is there."""
+    if not isinstance(row, dict):
+        return "open"
+    for key in ("resolved", "accepted", "contested", "escalated"):
+        if row.get(key):
+            return key
+    return "open"
 
 
 def fail(msg):
@@ -72,9 +90,8 @@ def mark(ledger, id_s, key, value):
     if str(e.get("claim") or "").lstrip().lower().startswith("[comprehension]"):
         return fail("finding #%s is a comprehension finding: a reader with no context could not follow the plan, so the plan is "
                     "missing context. Fix the plan; it is never contested or escalated" % id_s)
-    for k in ("resolved", "accepted"):
-        if e.get(k):
-            return fail("finding #%s is already %s" % (id_s, k))
+    if finding_state(e) in ("resolved", "accepted"):
+        return fail("finding #%s is already %s" % (id_s, finding_state(e)))
     e.pop("contested", None)
     e.pop("escalated", None)
     e[key] = value
@@ -86,7 +103,24 @@ def mark(ledger, id_s, key, value):
     return 0
 
 
+def rows_in(ledger, sevs_csv):
+    sevs = {x for x in sevs_csv.split(",") if x}
+    rows = json.load(open(ledger))   # an unreadable ledger fails here, as the gate's own read did: it never counts as none
+    return [e for e in rows if isinstance(e, dict) and e.get("severity") in sevs]
+
+
 def main(argv):
+    if len(argv) == 5 and argv[1] == "count":
+        want = argv[4]
+        print(sum(1 for e in rows_in(argv[2], argv[3])
+                  if (finding_state(e) not in ("resolved", "accepted") if want == "open" else finding_state(e) == want)))
+        return 0
+    if len(argv) == 4 and argv[1] == "open-claims":
+        print("\x1f".join((e.get("claim") or "(no claim)") + {
+            "contested": " (contested: %s)" % (e.get("contested") or {}).get("cite"),
+            "escalated": " (escalated: only the person knows)"}.get(finding_state(e), "")
+            for e in rows_in(argv[2], argv[3]) if finding_state(e) not in ("resolved", "accepted")))
+        return 0
     if len(argv) == 8 and argv[1] == "contest":
         _, _, ledger, id_s, cite, quote, reason, ts = argv
         if not reason.strip():

@@ -4,8 +4,9 @@
   python3 task_rows.py all-manual TASKS.md          exit 0 when every task is manual
 
 all-tasks counts every task tasks.md parses (a task with no checkbox too: the old count of unchecked boxes passed a plan
-with one task ticked of eight). A task is done when its box is ticked, or the run recorded it passed (groups.json). A
-tasks.md with no parsable task (an old flat list) is counted by its boxes, as before. Standard library only.
+with one task ticked of eight). A task is done as tasks_md.task_done says, the one definition the flow reads too: the run
+recorded it passed (groups.json), or, for a task the run holds no record of in a group it never started, its box is ticked.
+A tasks.md with no parsable task (an old flat list) is counted by its boxes, as before. Standard library only.
 """
 import json
 import os
@@ -25,8 +26,6 @@ def all_tasks(path, groups_path):
         run = json.load(open(groups_path, encoding="utf-8"))
     except (OSError, ValueError):
         run = {}
-    passed = {str(n) for n, v in ((run.get("tasks") or {}) if isinstance(run, dict) else {}).items()
-              if isinstance(v, dict) and v.get("status") == "passed"}
     if not plan["tasks"]:
         try:
             text = open(path, encoding="utf-8").read()
@@ -34,11 +33,7 @@ def all_tasks(path, groups_path):
             text = ""
         left = len(re.findall(r"^\s*- \[ \]", text, re.M))
         return row(left == 0, "no unchecked tasks in tasks.md" if left == 0 else "%d unchecked task(s) remain in tasks.md" % left)
-    open_tasks = []
-    for t in plan["tasks"]:
-        ticked = re.search(r"^\s*- \[[xX]\]", t["block"], re.M) is not None
-        if not ticked and str(t["n"]) not in passed:
-            open_tasks.append(t["n"])
+    open_tasks = [t["n"] for t in plan["tasks"] if not tasks_md.task_done(t, run)]
     total = len(plan["tasks"])
     if open_tasks:
         return row(False, "%d of %d task(s) not done in tasks.md (Task %s)" % (

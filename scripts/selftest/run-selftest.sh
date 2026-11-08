@@ -4,7 +4,7 @@
 #   bash scripts/selftest/run-selftest.sh [--jobs N] [--fast | --slow | --changed [REV]]
 #
 #   (default)        every case file, N at a time (TEMPER_SELFTEST_JOBS, default the number of CPUs, at most 12)
-#   --fast           the case files the 9.7.5, 9.7.6 and 9.8.0 work added (10 to 15): a minute or two
+#   --fast           the case files the 9.7.5, 9.7.6, 9.8.0 and state machine work added (10 to 19): a minute or two
 #   --slow           the whole self test, one case file after another, as test-temper.sh runs it (what CI runs)
 #   --changed [REV]  the case files that the files changed since REV (default HEAD) point at, plus the 9.7.5 and 9.7.6 ones
 #
@@ -31,10 +31,10 @@ done
 if [[ "$TIER" == "slow" ]]; then exec bash "$HERE/test-temper.sh"; fi
 
 # Case files that use what an earlier file defines run in one process with it, in order: 2 with 3, 5 with 6, 8 with 9.
-ALL="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16"
+ALL="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19"
 group_of() { case "$1" in 3) echo "2 3" ;; 2) echo "2 3" ;; 5|6) echo "5 6" ;; 8|9) echo "8 9" ;; *) echo "$1" ;; esac; }
 case "$TIER" in
-  fast) FILES="10 11 12 13 14 15 16" ;;
+  fast) FILES="10 11 12 13 14 15 16 17 18 19" ;;
   changed)
     FILES=""
     while IFS= read -r f; do
@@ -46,7 +46,7 @@ case "$TIER" in
         scripts/*|templates/*|agents/*|commands/*|reference/*) FILES="$ALL" ;;
       esac
     done < <(git -C "$ROOT" diff --name-only "$REV" 2>/dev/null; git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null)
-    FILES="$(printf '%s\n' $FILES 10 11 12 13 14 15 16 | sort -n | uniq | tr '\n' ' ')"
+    FILES="$(printf '%s\n' $FILES 10 11 12 13 14 15 16 17 18 19 | sort -n | uniq | tr '\n' ' ')"
     ;;
   *) FILES="$ALL" ;;
 esac

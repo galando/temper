@@ -12,7 +12,7 @@
 // Like the rest of the guard this is not a sandbox (docs/trust.md): it reads what a command names, not what it does.
 
 import type { RuleContext, RuleResult, ToolCall } from './rules'
-import { DRIFT_HEADER, DRIFT_PREFIX } from './rules'
+import { DRIFT_HEADER, DRIFT_PREFIX, adhocOpen } from './rules'
 import type { Ask, Option, Question, RunView } from './runview'
 import { isScript, noteScriptVar, readShell, scriptViaVar, statements } from './shell'
 
@@ -33,7 +33,7 @@ export type SessionFacts = {
 // Blocking questions). `skill`: the person chose a skill option at this step (register.tsx keeps that).
 // The view names the agents the session may launch: a work action's, and while the run waits on them at the same stage,
 // the ones it named before (a Build task's `task start` turns the action into `wait` before the launch). The mod keeps no
-// memory of its own for this: it is loaded again between turns.
+// memory of its own for this: its variables start over whenever the engine loads it again (register.tsx).
 export function factsOf(view: RunView | null, skill: boolean): SessionFacts {
   if (view === null) return { agents: [], questions: [], skill }
   const qs: Array<{ header: string | null; question: string; labels: string[] }> = []
@@ -242,7 +242,7 @@ export function featureWhy(command: string, request: string | null): string | nu
 export function evaluateSession(ctx: RuleContext, facts: SessionFacts, call: ToolCall): RuleResult {
   const r = ctx.run
   if (r === null) return ALLOW
-  const adhoc = r.adhocStage != null && r.adhocStage === r.stage
+  const adhoc = adhocOpen(r)
   if (WRITE_TOOLS.has(call.tool)) return adhoc ? ALLOW : { deny: SESSION_WRITE_DENY }
   if (call.tool === 'Bash') {
     const command = typeof call.input.command === 'string' ? call.input.command : ''

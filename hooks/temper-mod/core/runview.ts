@@ -26,7 +26,8 @@ export type Ask = { stage: string; step: number; runId: string; question: Questi
 
 export type StageMark = 'passed' | 'failed' | 'skipped' | 'here' | 'todo'
 
-export type TaskState = 'waiting' | 'running' | 'red' | 'green' | 'pass' | 'fail' | 'parked'
+// `covered`: the task's tests passed before any change was made (scripts/tasks_md.py display_state); the person decides.
+export type TaskState = 'waiting' | 'running' | 'red' | 'green' | 'covered' | 'pass' | 'fail' | 'parked'
 
 export type RunView = {
   run: {
@@ -135,7 +136,7 @@ function contextCheck(v: unknown, runId: string, step: number): { ask: Ask; answ
   return { ask: { stage: 'plan', step, runId, question: q, options: arr(c.options).map(option), more: null, accept: null }, answer: str(c.answer) }
 }
 
-const TASK_STATES: readonly TaskState[] = ['waiting', 'running', 'red', 'green', 'pass', 'fail', 'parked']
+const TASK_STATES: readonly TaskState[] = ['waiting', 'running', 'red', 'green', 'covered', 'pass', 'fail', 'parked']
 
 // The view in `text`, or null when it is not a view.json of a version this file knows.
 export function parseRunView(text: string): RunView | null {

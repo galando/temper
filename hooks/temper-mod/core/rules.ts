@@ -15,7 +15,7 @@ import type { DriftState } from './decisions'
 import { CLI } from './cli'
 import { matchesPlan, normalizePath } from './paths'
 import type { Stage } from './stages'
-import { STAGES, isStage, stageIndex, stageLabel } from './stages'
+import { ADHOC_STAGES, STAGES, isStage, stageIndex, stageLabel } from './stages'
 
 export const DRIFT_HEADER = 'Scope drift'
 export const DRIFT_PREFIX = 'Outside the plan:'
@@ -40,6 +40,14 @@ export type RunFacts = {
   // The stage a small change window was opened at (`temper adhoc open`), or null/absent when none is open.
   adhocStage?: string | null
 }
+
+// A small change window is open at the stage the run is at, and that stage is one a window may be opened at
+// (ADHOC_STAGES). The one rule: the stage write rule here and the main session's rule (core/session.ts) both ask it.
+export const adhocOpen = (r: RunFacts): boolean => r.adhocStage != null && r.adhocStage === r.stage && ADHOC_STAGES.includes(r.stage)
+
+// The TRIVIAL exit: a `state clear` of a run that never left Intent loses nothing (view.json's trivial_exit, at Intent,
+// before any step). The guard lets that clear through, and register.tsx stops holding the run it cleared: both ask this.
+export const trivialExit = (r: RunFacts | null): boolean => r !== null && r.trivialExit && r.stage === 'intent' && r.step <= 0
 
 export type RuleContext = {
   // The run, or null when no /temper run is active (the mod then guards only what needs no run).
@@ -241,7 +249,7 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
   const specFile = (name: string) => path === `${spec}/${name}`
   const label = stageLabel(r.stage)
   // A small change window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only there.
-  if (r.adhocStage != null && r.adhocStage === r.stage && r.stage !== 'intent' && r.stage !== 'plan' && r.stage !== 'design') return ALLOW
+  if (adhocOpen(r)) return ALLOW
 
   switch (r.stage) {
     case 'intent':
@@ -351,6 +359,10 @@ const HOOKS_DENY =
   'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
   'Next: commit without them. If the hook blocks the commit, finish the stages it names.'
 
+const SHIELD_DENY = (cli: string): string =>
+  'Temper: the regression test of this fix is the proof of the bug, and only the user lifts its shield (the test itself was wrong). ' +
+  `Next: fix the code, not the test. If the test is wrong, ask the user; they run ${cli} state set regression_test "" themselves, in a terminal.`
+
 const TOO_MANY_DENY =
   'Temper: a word of this command expands to more words (a brace list) than the guard reads, so what it writes is not known. ' +
   'Next: write the paths out, or split the command.'
@@ -415,6 +427,12 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
   }
 
+  // A /temper:fix run: the regression test written at RED is shielded (scripts/guards/protect-regression-test.sh), and
+  // only the person lifts the shield. The fix agent records the test's path; an empty value is the lift.
+  if (ctx.fixRun === true && c.calls.some(call => { const [a, b, key, value] = callWords(call); return a === 'state' && b === 'set' && key === 'regression_test' && (value ?? '').trim() === '' })) {
+    return { deny: SHIELD_DENY(cli) }
+  }
+
   if (!active) return ALLOW
   // Every pull request is a draft, and Temper never marks one ready (reference/pr.md).
   if (/\bgh\s+pr\s+ready\b/.test(command) || (/\bgh\s+pr\s+create\b/.test(command) && !/--draft\b/.test(command))) return { deny: DRAFT_DENY }
@@ -443,7 +461,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     if (ctx.allowed.some(written => sameCall(written, w))) continue
     const resets = a === 'state' && (b === 'clear' || b === 'archive' || b === 'init')
     // The TRIVIAL exit of the orchestrator: a clear of a run that never left Intent loses nothing.
-    if (a === 'state' && b === 'clear' && r.trivialExit && r.stage === 'intent' && r.step <= 0) continue
+    if (a === 'state' && b === 'clear' && trivialExit(r)) continue
     // Start over: the saved run state goes, and a run of the same command begins (never a fix run, which the mod stands
     // aside for).
     if (resets && ctx.restart && !w.some((x, i) => (x === '--command' && w[i + 1] === 'fix') || x === '--command=fix')) continue

@@ -603,10 +603,34 @@ def acc_skip(spec, lockfile, reason):
     return 0
 
 
+# The launches of the acceptance writer a run allows: to write the tests before Build (a writer that cannot lock does not
+# hold Build up: the flow records the skip), and to correct a test each time the person reopens the lock (then the
+# Check question is the person's again). flow.py reads both.
+ACC_MAX_LAUNCHES = 2
+ACC_MAX_CORRECTIONS = 2
+
+
 def acc_start(spec, lockfile):
+    """One launch of the acceptance writer (its agent's `before` call): of the writer before Build, or, while the person's
+    reopen stands, of the correction. Past the limit it is refused, and nothing is counted."""
     d = acc_read(lockfile)
     if d.get("spec") != spec:
         d = {"spec": spec, "launches": 0}
+    if isinstance(d.get("reopened"), dict):
+        n = int(d["reopened"].get("launches", 0))
+        if n >= ACC_MAX_CORRECTIONS:
+            print("FAIL: the acceptance writer was launched %d times for this correction; the Check question is the person's" % n, file=sys.stderr)
+            return 1
+        d["reopened"]["launches"] = n + 1
+        acc_write(lockfile, d)
+        print("OK: acceptance correction launch %d" % (n + 1))
+        return 0
+    if d.get("cmd") or d.get("skipped"):
+        print("FAIL: the acceptance tests are %s already; no writer is launched" % ("locked" if d.get("cmd") else "skipped"), file=sys.stderr)
+        return 1
+    if int(d.get("launches", 0)) >= ACC_MAX_LAUNCHES:
+        print("FAIL: the acceptance writer was launched %d times and locked no test; skip them (temper acceptance skip --reason)" % int(d.get("launches", 0)), file=sys.stderr)
+        return 1
     d["launches"] = int(d.get("launches", 0)) + 1
     acc_write(lockfile, d)
     print("OK: acceptance launch %d" % d["launches"])

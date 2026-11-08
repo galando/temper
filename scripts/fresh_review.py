@@ -84,10 +84,9 @@ def instances(risk, twice="true"):
 
 
 def state_of(row):
-    for k in ("resolved", "accepted", "contested", "escalated"):
-        if row.get(k):
-            return k
-    return "open"
+    """A finding's state: the one reading, findings.finding_state (the CLI's and flow.py's too)."""
+    import findings
+    return findings.finding_state(row)
 
 
 def task_count(spec):

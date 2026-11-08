@@ -166,7 +166,9 @@ assert_exit "state advance rejects an unknown stage name" 1 "$TEMPER" state adva
 _at build build
 assert_exit "state advance accepts a known stage" 0 "$TEMPER" state advance build_complete review
 assert_exit "state loop allows iterations up to max-per-type" 0 "$TEMPER" state loop review build --reason r1
+_at review
 assert_exit "state loop allows the second iteration" 0 "$TEMPER" state loop review build --reason r2
+_at review
 assert_exit "state loop blocks the third iteration (max-per-type: 2)" 1 "$TEMPER" state loop review build --reason r3
 
 # --- state loop: a /temper run clears the temper sequence from the target stage down ---

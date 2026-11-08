@@ -21,11 +21,15 @@ import subprocess
 import sys
 import tempfile
 
+import adhoc_ops
 import check_run
 import config_yaml
 import fresh_review
+import intent_parse
 import plan_ops
 import tasks_md
+from findings import finding_state  # the one state of a finding row, the CLI's own reading (A20)
+import loop_step
 
 VERSION = 1
 
@@ -46,11 +50,18 @@ GATE_OF = {"fix": "build", "rca": None}
 # The stages a step back goes to, from a failed stage.
 BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "review": "build", "check": "build"},
            "fix": {"review": "fix", "check": "fix"}}
-# The moves only the person may make; the mod lets their CLI calls through only for the person's answer.
-PERSON_MOVES = {"approve", "arm", "override", "back", "accept", "covered", "keep", "commitOverride", "restart", "confirm"}
+# Every move an option of a question may carry (the `move` of view.json's options): each is the person's answer, and
+# the mod lets an option's CLI calls through only on that answer. opt() refuses any other, so this list is the checked one.
+MOVES = {"advance", "approve", "arm", "override", "back", "redo", "accept", "covered", "keep", "commitOverride", "restart",
+         "confirm", "drift", "answer", "pause", "adhoc"}
 
 
 # ---- reading the run -----------------------------------------------------------------------
+
+def loop_at(l):
+    """When a step back last ran: each step writes `at` (loop_step.py); a loop written before that has only `started`."""
+    return str(l.get("at") or l.get("started") or "")
+
 
 def read_json(path, default):
     try:
@@ -270,8 +281,13 @@ class Run:
         return [r for r in self.rows(stage) if isinstance(r, dict) and not r.get("pass")]
 
     def skip(self, stage):
+        # the CLI's rule (_override_covers): a skip covers the verdict the person saw, recorded at or before it (or no
+        # verdict); a verdict computed again after it is not covered. A skip or verdict with no time is matched by stage.
         gate = self.gate_of(stage)
-        hits = [o for o in self.overrides if isinstance(o, dict) and o.get("stage") == gate]
+        g = self.gates.get(gate or "")
+        vts = str(g.get("ts") or "") if isinstance(g, dict) else ""
+        hits = [o for o in self.overrides if isinstance(o, dict) and o.get("stage") == gate
+                and (not vts or not o.get("ts") or str(o.get("ts")) >= vts)]
         return hits[-1] if hits else None
 
     def armed(self):
@@ -279,22 +295,18 @@ class Run:
         # autonomy.enabled is no longer read (it was false in the shipped config, so most runs never saw the option).
         return self.state.get("run_mode") == "autonomous"
 
+    def active_loops(self):
+        return [l for l in (self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []) if isinstance(l, dict)]
+
     def loop_count(self, frm, to):
-        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
+        for l in self.active_loops():
             if l.get("from_stage") == frm and l.get("to_stage") == to:
                 return int(l.get("iteration") or 0)
         return 0
 
     def loop_budget(self, frm, to):
-        if frm == "build" and to == "plan":
-            return 1
-        mx = self.cfg("loops.max-per-type", "2")
-        if frm == "check" and to in ("build", "fix"):
-            mx = self.cfg("fix.max-loops", mx)
-        try:
-            return int(mx)
-        except ValueError:
-            return 2
+        # the one rule, the CLI's own (loop_step.budget): Build to Plan once per run, the rest by the config
+        return loop_step.budget(frm, to, self.cfg)
 
     def can_loop(self, frm, to):
         if not self.on("feedback.enabled", True):
@@ -304,23 +316,23 @@ class Run:
     def loop_into(self, stage):
         """The latest active step back to `stage`, or None."""
         best, at = None, ""
-        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
-            if isinstance(l, dict) and l.get("to_stage") == stage and str(l.get("at") or l.get("started", "")) >= at:
-                best, at = l, str(l.get("at") or l.get("started", ""))
+        for l in self.active_loops():
+            if l.get("to_stage") == stage and loop_at(l) >= at:
+                best, at = l, loop_at(l)
         return best
 
     def latest_loop(self):
         """The latest step back to Build (or Fix), or None."""
         best, at = None, ""
-        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
-            if isinstance(l, dict) and l.get("to_stage") in ("build", "fix") and str(l.get("at") or l.get("started", "")) >= at:
-                best, at = l, str(l.get("at") or l.get("started", ""))
+        for l in self.active_loops():
+            if l.get("to_stage") in ("build", "fix") and loop_at(l) >= at:
+                best, at = l, loop_at(l)
         return best
 
     def latest_feedback(self):
         """The reason of the latest step back to Build (or Fix), or of a "Run Build again"."""
         loop = self.latest_loop() or {}
-        best, at = loop.get("reason") or "", str(loop.get("at") or loop.get("started", ""))
+        best, at = loop.get("reason") or "", loop_at(loop)
         redo = self.state.get("redo") or {}
         if isinstance(redo, dict) and str(redo.get("ts", "")) >= at and redo.get("reason"):
             best = redo.get("reason")
@@ -336,16 +348,8 @@ class Run:
         return m.group(1).strip() if m else self.slug
 
     def blocking(self):
-        out, active = [], False
-        for line in self.intent.splitlines():
-            h = re.match(r"^#{1,6}\s+(.*)$", line)
-            if h:
-                active = bool(re.match(r"open questions", h.group(1).strip(), re.I))
-                continue
-            m = re.match(r"^\s*[-*]\s+Blocking:\s*(.+)$", line) if active else None
-            if m and not m.group(1).strip().lower().startswith("context check:"):   # the CLI asks the Context check itself
-                out.append(self.house_rule_first(m.group(1).strip()))
-        return out
+        # the Blocking questions the gate counts (intent_parse.py), but the Context check: the CLI asks that one itself
+        return [self.house_rule_first(q) for q in intent_parse.blocking(self.intent, context_check=False)]
 
     @staticmethod
     def house_rule_first(q):
@@ -378,13 +382,15 @@ class Run:
                 continue
             claim = str(r.get("claim") or "")
             m = re.match(r"^\s*([\w./@-]+\.\w+):(\d+)", claim)
-            state = "accepted" if r.get("accepted_reason") or r.get("accepted") else (
-                "resolved" if r.get("resolved") or r.get("fixed_by") or r.get("resolved_by") else "open")
+            # the one reading of a finding's state (the CLI writes nested `resolved` and `accepted`, and a contest or an
+            # escalation keeps the finding open: the gate still counts it, the question shows the answer)
+            fs = finding_state(r)
+            state = fs if fs in ("resolved", "accepted") else "open"
             conf = r.get("confidence")
             out.append({"id": i, "severity": str(r.get("severity")).lower(), "claim": claim,
                         "file": m.group(1) if m else None, "line": int(m.group(2)) if m else None,
                         "state": state, "label": r.get("label"),
-                        "answer": "contested" if r.get("contested") else ("escalated" if r.get("escalated") else None),
+                        "answer": fs if fs in ("contested", "escalated") else None,
                         "cite": (r.get("contested") or {}).get("cite"), "quote": (r.get("contested") or {}).get("quote"),
                         "confidence": conf if isinstance(conf, (int, float)) and not isinstance(conf, bool) else None})
         return out
@@ -419,6 +425,8 @@ class Builder:
 
     # -- options ---------------------------------------------------------------------------
     def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None, answer=None):
+        if move is not None and move not in MOVES:
+            raise ValueError("flow.py: the move %r is not in MOVES" % move)
         o = {"label": label, "description": description, "move": move, "calls": calls or []}
         if answer:  # a question whose typed answer fills {answer} in the calls (the person's name, for a manual task)
             # Two options at least, or the question tool refuses the dialog (9.8.0: a run with a manual task stopped at
@@ -513,9 +521,8 @@ class Builder:
         it), commit, advance."""
         r = self.r
         has = bool(r.intent)
-        # The whole value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
-        m = re.search(r"^\*\*Status:\*\*(.*)$", r.intent, re.M)
-        accepts = has and not (m and m.group(1).strip().lower() in ("accepted", "completed"))
+        # The first Status line's value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
+        accepts = has and intent_parse.status(r.intent) not in ("accepted", "completed")
         return (self.to_branch() if switch else []) + ([self.c("intent accept")] if has else []) + \
             self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + [self.c("state advance intent_complete plan")]
 
@@ -804,7 +811,11 @@ class Builder:
         return [self.opt("Commit and open %s" % label, "Commit, then Temper opens %s itself (reference/pr.md); every one is a draft." % what,
                          move="advance", calls=[self.c("state set pr %s" % kind)] + go) for kind, label, what in kinds]
 
-    ADHOC_STAGES = ("build", "review", "check", "commit")
+    # The stages a small change window may open at are adhoc_ops.py's, the one list (the CLI refuses any other).
+    ADHOC_STAGES = tuple(adhoc_ops.ADHOC_STAGES)   # the stages a small change window may open at: adhoc_ops.py's own list
+    # The gate question offers Make a small change at each of them but Pipeline, whose question opens the window itself:
+    # its "Apply the fix and push" opens one for the CI fix (pipeline_question).
+    ADHOC_OPTION_STAGES = tuple(s for s in ADHOC_STAGES if s != "pipeline")
 
     def adhoc_option(self, stage):
         # Claude makes it, here in the conversation (a person read "change the work yourself" as their own edit).
@@ -821,7 +832,7 @@ class Builder:
         at most: when the question is full it goes under More options. Not offered while a window is open, nor at a fix
         run's Fix stage (its change is the fix itself)."""
         r = self.r
-        if stage not in self.ADHOC_STAGES or r.state.get("adhoc") or (r.command == "fix" and r.stage == "fix"):
+        if stage not in self.ADHOC_OPTION_STAGES or r.state.get("adhoc") or (r.command == "fix" and r.stage == "fix"):
             return out
         q = out.get("ask") if "ask" in out else out
         if not isinstance(q, dict) or "options" not in q or any(o["label"] == "Make a small change" for o in q["options"]):
@@ -899,11 +910,24 @@ class Builder:
         except ValueError:
             return 2
 
+    def pipeline_round(self):
+        """The CI fix round the run is on (1 before any fix). The flow alone moves it, by one, in the fix steps; a value it
+        cannot read as a round (not a whole number of at least 1) counts as past the limit, so it never opens the rounds
+        again (the CLI validates what `state set` writes, too)."""
+        v = self.r.state.get("pipeline_round")
+        if v in (None, ""):
+            return 1
+        try:
+            n = int(str(v).strip())
+        except ValueError:
+            return self.round_limit() + 1
+        return n if n >= 1 else self.round_limit() + 1
+
     def pipeline_question(self, passed, why):
         r = self.r
         ctx = read_json(os.path.join(r.spec, "pipeline-context.json"), {}) if r.spec else {}
         status = ctx.get("status") if ctx else None
-        rnd = int(r.state.get("pipeline_round") or 1)
+        rnd = self.pipeline_round()
         mx = self.round_limit()
         end = self.opt("End the run" + (" (Recommended)" if passed or rnd > mx else ""), "Finish here; the run state is cleared.", move="advance", calls=[self.c("state clear")])
         if passed:
@@ -1098,7 +1122,7 @@ class Builder:
             elif stage == "fix":
                 extra = self.feedback_lines()
         if stage == "pipeline":
-            extra = ["Round: %s of %s." % (r.state.get("pipeline_round") or 1, self.round_limit())]
+            extra = ["Round: %s of %s." % (self.pipeline_round(), self.round_limit())]
         if stage == "plan":
             opens = [f for f in r.fresh()["findings"] if f["state"] not in ("resolved", "accepted")]
             if opens:
@@ -1155,15 +1179,20 @@ class Builder:
     def acceptance_work(self):
         """9.8.0: before the first Build task, an agent that writes no code writes the acceptance tests from the approved
         intent (agents/acceptance.md) and locks them. Only for a /temper:temper run with an intent, before any group starts,
-        and at most two launches (a writer that cannot lock does not hold Build up)."""
+        and at most check_run.ACC_MAX_LAUNCHES launches: a writer that cannot lock does not hold Build up, and the CLI
+        records the skip (Check shows it as a skipped acceptance row, the report too) instead of going on in silence."""
         r = self.r
         if r.command != "temper" or not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
             return None
         if r.state.get("built_before") or (r.groups.get("groups") or {}):
             return None
         d = self.acceptance()
-        if d.get("cmd") or d.get("skipped") or int(d.get("launches") or 0) >= 2:
+        if d.get("cmd") or d.get("skipped"):
             return None
+        if int(d.get("launches") or 0) >= check_run.ACC_MAX_LAUNCHES:
+            why = "the acceptance writer locked no tests in %d launches" % int(d.get("launches") or 0)
+            return {"action": "work", "stage": "build", "calls": [self.c("acceptance skip --reason %s" % shlex.quote(why))],
+                    "agents": [], "say": "Build: %s; the skip is recorded and Build goes on without them." % why}
         model = r.cfg("models.acceptance", "")
         if not model:
             import cli_ctx
@@ -1254,10 +1283,13 @@ class Builder:
 
     def acceptance_fix_work(self):
         """The person reopened the locked acceptance tests at the Check question: the writer corrects the test the failure
-        names, against the intent, and locks it again; Check runs again."""
+        names, against the intent, and locks it again; Check runs again. At most check_run.ACC_MAX_CORRECTIONS launches
+        for one reopen (its `before` call counts them): then the Check question is the person's again."""
         r = self.r
         d = self.acceptance()
-        if not d.get("reopened") or r.stage != "check":
+        if not isinstance(d.get("reopened"), dict) or r.stage != "check":
+            return None
+        if int(d["reopened"].get("launches") or 0) >= check_run.ACC_MAX_CORRECTIONS:
             return None
         model = r.cfg("models.acceptance", "")
         if not model:
@@ -1270,6 +1302,7 @@ class Builder:
                                    "Correction: the person says a locked test is wrong (%s)." % d["reopened"].get("reason", ""),
                                    "The failure: %s" % (fail or "see the acceptance row of the Check ledger"),
                                    "Lock command: %s" % d.get("cmd", ""), self.plugin_line()]),
+             "before": [self.c("acceptance start")],
              "after": [self.c("usage add --stage check --model %s --ms {ms}" % (model or "unknown")),
                        self.c("state redo check --reason 'the person corrected a locked acceptance test'")]}
         return {"action": "work", "stage": "check", "calls": [], "agents": [a],
@@ -1302,6 +1335,8 @@ class Builder:
         files = {t["n"]: {f.strip().lstrip("./") for f in t.get("files", [])} for t in plan.get("tasks", [])}
         deps = {t["n"]: set(t.get("depends", [])) for t in plan.get("tasks", [])}
         status = lambda n: (rt.get(str(n)) or {}).get("status", "pending")
+        # Only a pending task joins a chain: a failed one (also STARTABLE in tasks_md) is retried alone, on the model its
+        # attempt number gives, never on the chain's.
         others = {x["task"] for x in ready if x["task"] != first["task"]} | {int(n) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"}
         chain = [first["task"]]
         grew = True
@@ -1360,6 +1395,9 @@ class Builder:
         integ = (r.groups.get("integration") or {}).get("verdict")
         gid = [g["id"] for g in plan.get("groups", [])]
 
+        # A group passed is its gate's PASS, the CLI's verdict; its `status` is the CLI's record of the same (passed iff
+        # the gate is PASS) and is read here only for `parked`, which no gate sets. So a status left behind by an older
+        # write never decides what comes next (tasks_md.schedule reads the gate the same way).
         def gpass(g):
             return ((rg.get(g) or {}).get("gate") or {}).get("verdict") == "PASS"
 
@@ -1445,7 +1483,7 @@ class Builder:
             gidx = g["id"]
             ginfo = rg.get(gidx) or {}
             tasks = g.get("tasks", [])
-            done = tasks and all((rt.get(str(n)) or {}).get("status") == "passed" for n in tasks)
+            done = tasks and all(tasks_md.task_done(t, r.groups) for t in plan.get("tasks", []) if t.get("n") in tasks)
             gate = (ginfo.get("gate") or {}).get("verdict")
             if done and not gate:
                 return {"action": "work", "stage": "build", "calls": [self.c("group gate %s" % gidx)], "agents": [], "say": "Group %s is checked." % gidx}
@@ -1703,7 +1741,10 @@ class Builder:
         r = self.r
         steps = []
         if r.command == "temper":
-            steps.append(self.c("intent complete"))
+            # the CLI completes only an accepted intent (a draft is never marked completed): a run whose intent nobody
+            # accepted, or one completed already, has no completion step
+            if intent_parse.status(r.intent) == "accepted":
+                steps.append(self.c("intent complete"))
             steps.append(self.c("spec deviations"))   # 9.8.0: by the CLI, from build-context.json
         steps.append(self.c("report --end"))
         steps.append("Copy what temper report printed into your reply, as it printed it, in a code block: the person does not "
@@ -2195,7 +2236,14 @@ def stage_marks(run, nxt):
         if here not in seq:
             mark = "todo"
         elif seq.index(s) < seq.index(here):
-            mark = "skipped" if sk and v != "PASS" else ("failed" if v == "FAIL" else "passed")
+            # An earlier stage shows what it has: a skip, its verdict, or (a stage with no gate, RCA) passed. One with no
+            # verdict and no skip did not pass: it shows as not done, never as passed.
+            if sk and v != "PASS":
+                mark = "skipped"
+            elif v in ("PASS", "FAIL"):
+                mark = "passed" if v == "PASS" else "failed"
+            else:
+                mark = "passed" if run.gate_of(s) is None else "todo"
         elif s == here:
             mark = "here"
         else:
@@ -2241,16 +2289,8 @@ def build_view(run):
         for n in g.get("tasks", []):
             t = next((x for x in plan.get("tasks", []) if x.get("n") == n), {})
             info = rt.get(str(n)) or {}
-            st = info.get("status", "pending")
             phases = [str(r.get("phase")) for r in ev if isinstance(r, dict) and r.get("task") == n]
-            if st == "passed":
-                state = "pass"
-            elif st == "failed":
-                state = "parked" if ginfo.get("status") == "parked" else "fail"
-            elif st == "running":
-                state = "green" if "green" in phases else ("red" if "red" in phases else "running")
-            else:
-                state = "waiting"
+            state = tasks_md.display_state(info, ginfo, phases)
             attempts = info.get("attempts") or []
             tasks.append({"n": n, "title": t.get("title", ""), "files": t.get("files", []), "state": state,
                           "model": (attempts[-1].get("model") if attempts and isinstance(attempts[-1], dict) else None) or info.get("model"),
@@ -2304,10 +2344,13 @@ def usage(run):
 
 
 def loops(run):
+    """The run's steps back, each with its live budget (the one can_loop decides with, not the max_iterations stored at
+    its first step) and the time of its latest step (the time every reader orders loops by)."""
     out = []
-    for l in (run.loops.get("active_loops", []) if isinstance(run.loops, dict) else []):
-        out.append({"from": l.get("from_stage"), "to": l.get("to_stage"), "reason": l.get("reason"),
-                    "iteration": l.get("iteration"), "max": l.get("max_iterations"), "at": l.get("started")})
+    for l in run.active_loops():
+        frm, to = l.get("from_stage"), l.get("to_stage")
+        out.append({"from": frm, "to": to, "reason": l.get("reason"),
+                    "iteration": l.get("iteration"), "max": run.loop_budget(frm, to), "at": loop_at(l) or None})
     return out
 
 
@@ -2319,18 +2362,17 @@ def view(run, nxt):
     # call (a Build task's `task start`) changes the next action before the agent is launched: to `wait`, to a `work`
     # that names only the other tasks of the same launch (and a chain shortened by the task now running), or to the
     # question a manual task asks. While the run
-    # stays at the same stage, the view keeps naming every agent it named there. The view written last is that memory;
-    # the mod keeps none (it is loaded again between turns).
+    # stays at the same stage, the view keeps naming every agent it named there. That memory is .temper/agents-named.json
+    # ({run, stage, agents}, written with the view): a view lost, written again, or written for an error mid-stage does not
+    # forget it (the view written last was the memory before, and an older run's view still serves as one). The mod keeps
+    # none (it is loaded again between turns).
     agents = [{"type": a.get("type") or "", "model": a.get("model") or "", "prompt": a.get("prompt") or ""}
               for a in (nxt.get("agents") or [])] if nxt.get("action") == "work" else []
     if nxt.get("action") in ("work", "wait", "ask", "auto"):
-        prev = read_json(os.path.join(TEMPER, "view.json"), {})
-        pr = prev.get("run") if isinstance(prev.get("run"), dict) else {}
-        if pr.get("id") == r.state.get("run_id") and pr.get("stage") == r.stage:
-            for a in (prev.get("next") or {}).get("agents") or []:
-                if isinstance(a, dict) and a not in agents:
-                    agents.append(a)
-            agents = agents[:16]   # the current action's first
+        for a in named_before(r):
+            if isinstance(a, dict) and a not in agents:
+                agents.append(a)
+        agents = agents[:AGENTS_NAMED_MAX]   # the current action's first
     out = {
         "version": VERSION,
         "run": {"id": r.state.get("run_id"), "step": r.state.get("step"), "slug": r.slug, "title": r.title(),
@@ -2376,8 +2418,43 @@ def drift_info():
     return {"header": DRIFT_HEADER, "prefix": DRIFT_PREFIX, "options": DRIFT_OPTIONS}
 
 
+AGENTS_NAMED = "agents-named.json"
+AGENTS_NAMED_MAX = 64   # a grouped Build names one agent per task (a chain counts once); more than a plan holds
+
+
+def named_before(r):
+    """The agents the run named at its current stage, from the record written with the view (or, for a run whose record
+    predates it, the view written last)."""
+    for name in (AGENTS_NAMED, "view.json"):
+        d = read_json(os.path.join(TEMPER, name), {})
+        if name == AGENTS_NAMED:
+            run_id, stage, agents = d.get("run"), d.get("stage"), d.get("agents")
+        else:
+            pr = d.get("run") if isinstance(d.get("run"), dict) else {}
+            run_id, stage, agents = pr.get("id"), pr.get("stage"), (d.get("next") or {}).get("agents") if isinstance(d.get("next"), dict) else None
+        if run_id is not None and run_id == r.state.get("run_id") and stage == r.stage and isinstance(agents, list):
+            return agents
+    return []
+
+
+def write_named(doc):
+    """Keep the agents a view names at its stage (named_before reads them): only a view that names some writes the record,
+    so a view of an error or of a question mid-stage leaves the memory as it was."""
+    run, agents = doc.get("run"), (doc.get("next") or {}).get("agents") or []
+    if not isinstance(run, dict) or not agents:
+        return
+    fd, tmp = tempfile.mkstemp(dir=TEMPER, prefix=".named.", suffix=".tmp")
+    with os.fdopen(fd, "w") as f:
+        json.dump({"run": run.get("id"), "stage": run.get("stage"), "agents": agents}, f, indent=1)
+    os.replace(tmp, os.path.join(TEMPER, AGENTS_NAMED))
+
+
 def write_view(doc):
     os.makedirs(TEMPER, exist_ok=True)
+    try:
+        write_named(doc)
+    except OSError:
+        pass   # the record is a memory for the mod's guard: a launch it forgets is refused, never let through
     fd, tmp = tempfile.mkstemp(dir=TEMPER, prefix=".view.", suffix=".tmp")
     os.chmod(tmp, 0o644)
     with os.fdopen(fd, "w") as f:

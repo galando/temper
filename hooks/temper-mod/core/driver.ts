@@ -330,6 +330,7 @@ function* answer(cli: string, q: GoAsk, depth = 0): Steps<DriveEnd | null> {
 export function* driveSteps(cli: string, request: string | null, slug: string | null = null): Steps<DriveEnd> {
   let started = false
   let waits = 0
+  let lastAfter = ''
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     // The person interrupted: stop here, with no model turn they did not ask for. The CLI holds the run.
     if (yield* stopped()) return { kind: 'done', text: STOPPED }
@@ -353,16 +354,21 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
     if (g.action === 'wait') {
       // Tasks started in an earlier conversation (the driver waits on its own agents before it asks again): their after
       // calls run now, as the command page says. With none to run, wait a little and ask again, up to ten minutes.
+      // Each look counts toward the same bound; the same after calls asked for again changed nothing, and are not run twice.
       const after = (g.tasks ?? []).flatMap(t => t.after ?? [])
+      if (++waits > 120) return handback('the run waited too long')
       if (after.length > 0) {
+        const key = after.join('\n')
+        if (key === lastAfter) return handback('the after calls of the waiting tasks changed nothing')
+        lastAfter = key
         for (const c of after) yield* run(fill(c, { ms: 'none' }))
         continue
       }
-      if (++waits > 120) return handback('the run waited too long')
       yield { k: 'wait', ids: [] }
       continue
     }
     waits = 0
+    lastAfter = ''
     if (g.action === 'ask') {
       // The Blocking questions in one dialog, four at most (the rest in the next), as the loop without the mod asks them:
       // a person answered six in six dialogs and asked why they did not come at once.
@@ -497,6 +503,27 @@ export function* fixSteps(cli: string, bug: string, slug: string | null = null):
   return yield* driveSteps(cli, null)
 }
 
+// The looks (two seconds apart) an ended agent's answer is waited for before the driver goes on without it.
+export const ANSWER_LOOKS = 3
+
+// One look at the agents the driver waits on: an agent whose answer is recorded (its turn.complete) is done with it; one
+// whose status says it ended with no answer recorded yet is looked at again, ANSWER_LOOKS times, before it is done
+// with no answer (its status can change before its turn.complete reaches the mod, and that answer is what the driver
+// reads: a DRIFT row, a stopped task). Fills `out`, counts the looks in `unanswered`; returns how many are still open.
+export function lookAtAgents(ids: readonly string[], ends: ReadonlyMap<string, AgentEnd>, list: ReadonlyArray<{ id: string; status: string }>,
+  unanswered: Record<string, number>, out: Record<string, AgentEnd>): number {
+  let open = 0
+  for (const id of ids) {
+    if (id in out) continue
+    const kept = ends.get(id)
+    const info = list.find(x => x.id === id)
+    if (kept !== undefined) out[id] = kept
+    else if (info !== undefined && info.status !== 'running' && info.status !== 'pending' && (unanswered[id] = (unanswered[id] ?? 0) + 1) > ANSWER_LOOKS) out[id] = { text: '', ms: null }
+    else open++
+  }
+  return open
+}
+
 // The engine's side of one step: what it gives back to the core.
 async function perform(port: Port, e: Effect): Promise<unknown> {
   switch (e.k) {
@@ -528,12 +555,16 @@ export async function drive(port: Port, cli: string, request: string | null, slu
 export async function driveFix(port: Port, cli: string, bug: string, slug: string | null = null): Promise<DriveEnd> {
   return driveAll(port, fixSteps(cli, bug, slug))
 }
+// At the person's interrupt every step ends STOPPED, whichever step saw it: a call the engine aborted reads as exit 130,
+// and a dialog closed by it as no answer, and neither is a call that failed or a question nobody answered, which would
+// hand the run to a model turn the person did not ask for.
 async function driveAll(port: Port, steps: Steps<DriveEnd>): Promise<DriveEnd> {
   let input: unknown = undefined
   for (;;) {
     const next = steps.next(input)
     if (next.done === true) return next.value
     input = await perform(port, next.value)
+    if (port.stopped()) return { kind: 'done', text: STOPPED }
   }
 }
 

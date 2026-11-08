@@ -79,9 +79,9 @@ assert_eq "F26: red asks Apply the fix and push?, and the steps are the agreed o
   "Apply the fix and push?|adhoc open --stage pipeline --reason 'CI fix round 1'|git push|adhoc close|state set pipeline_round 2|state redo pipeline --reason 'CI fix round 1 pushed; CI runs again'" \
   "$(nx "q = d['ask']; s = q['options'][0]['steps']; q['question']['question'].split('). ', 1)[1] + '|' + '|'.join([s[0].split('temper ', 1)[1], s[4], s[5].split('temper ', 1)[1], s[6].split('temper ', 1)[1], s[7].split('temper ', 1)[1]])")"
 assert_eq "F26: the commit step stages by name and never with -A" "0" "$(nx "str(sum(1 for s in d['ask']['options'][0]['steps'] if 'git add -A' in s or 'git add .' == s.strip()))")"
-"$TEMPER" state set pipeline_round 3 >/dev/null 2>&1
+"$TEMPER" state set pipeline_round 2 >/dev/null 2>&1; "$TEMPER" state set pipeline_round 3 >/dev/null 2>&1   # one round at a time
 assert_eq "F26: past loops.max-per-type rounds the question says the fix limit is reached" "Pipeline: the fix limit is reached (round 3 of 2). End the run?" "$(nx "d['ask']['question']['question']")"
-"$TEMPER" state set pipeline_round 1 >/dev/null 2>&1
+python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['pipeline_round']=1; json.dump(d, open(p,'w'))"   # back to round 1 (the CLI counts only up)
 "$TEMPER" state redo pipeline --reason "CI fix round 1 pushed; CI runs again" >/dev/null 2>&1
 assert_eq "F26: a redo removes the old verdict and the context file, so CI is read again" "none|no|work" \
   "$(python3 -c "import json; print(json.load(open('.temper/gates.json')).get('pipeline', {}).get('verdict', 'none'))")|$([[ -f .temper/specs/demo/pipeline-context.json ]] && echo yes || echo no)|$(nx "d['action']")"

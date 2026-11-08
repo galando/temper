@@ -27,3 +27,7 @@ export function cliStage(next: string | null): Stage | null {
   if (next === 'done') return 'commit'
   return next !== null && isStage(next) ? next : null
 }
+
+// The stages a small change window (`temper adhoc open`) may be opened at: scripts/adhoc_ops.py STAGES, the one list.
+// Intent, Plan and Design have their own files to write, so a window there opens nothing.
+export const ADHOC_STAGES: readonly Stage[] = ['build', 'review', 'check', 'commit', 'pipeline']
