@@ -58,6 +58,9 @@ Skip it for a quick script, a one line fix, or a change whose rules are already 
 as correct there and far cheaper. `/temper:fix` is the cheapest way to try Temper: one bug, a regression test that
 fails first, a minimal fix.
 
+How it differs from Superpowers, Spec Kit, OpenSpec and BMAD Method, and where they are ahead:
+[the comparison](docs/evidence/comparison.md).
+
 ## Commands
 
 | Command | Purpose |
