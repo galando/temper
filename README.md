@@ -35,8 +35,28 @@ Intent, Plan, Build, Review, Check, then commit. You decide each gate by clickin
 - **Review and Check:** the CLI runs the suite, coverage, a mutation score and the acceptance tests. A red gate blocks
   `git commit`.
 
-On vague requests it met 98% of what the person wanted, against 73% for plain Claude Code, at about 7 times the cost
-per run ([the evidence](docs/evidence/bench-2026-11.md)).
+## What you get and what it costs
+
+Measured on 11 tasks against plain Claude Code ([the evidence](docs/evidence/bench-2026-11.md)):
+
+- **A vague request:** Temper met 98% of the rules the person had in mind. Plain Claude Code met 73%, and 85% when
+  told to ask before building.
+- **A request that states every rule:** plain Claude Code is as correct. Temper's gain there is the tests it leaves
+  behind: they caught 93% of planted bugs, against 79%.
+- **The price:** a bug fix costs about 1.3 times as much with the mod (2.3 times without it). A feature costs 3 to 13
+  times as much and takes 5 to 18 times as long: minutes, where plain Claude Code takes about one.
+
+Temper's author wrote the tasks, and each ran a few times on a code base under 1,000 lines, so read this as a
+first measure.
+
+## When to use it, and when not
+
+Use it when a wrong guess is expensive: the request leaves rules out, the change touches money, access or data, or
+you need a record of who approved what.
+
+Skip it for a quick script, a one line fix, or a change whose rules are already written down. Plain Claude Code is
+as correct there and far cheaper. `/temper:fix` is the cheapest way to try Temper: one bug, a regression test that
+fails first, a minimal fix.
 
 ## Commands
 
