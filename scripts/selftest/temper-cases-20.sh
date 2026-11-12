@@ -77,3 +77,59 @@ head = subprocess.run(['git', '-C', g['worktree'], 'rev-parse', 'HEAD'], capture
 print('%s|%s' % (head in d.get('cli_commits', []), 'fix' in g))")|$(git -C "$WT" status --porcelain | grep -vc '^?? .temper/' )"
 assert_exit "9.8.4 2b: the group gate passes on the fixed tree" 0 "$TEMPER" group gate G1
 assert_exit "9.8.4 2b: group fix is refused on a group whose gate did not fail" 1 "$TEMPER" group fix G1
+
+# --- 1. The plan gate fails when a test file a group's Validate runs is edited by a task of a later group ---
+setup
+mkdir -p tests scripts/selftest
+printf 'def test_a():\n    assert True\n' > tests/test_core.py
+printf 'source "$(dirname "$0")/cases-8.sh"\n' > scripts/selftest/run.sh; printf 'true\n' > scripts/selftest/cases-8.sh
+_p1() { # _p1 <tasks.md>: the plan gate rows of that plan, as plan_rows.py prints them, for the row named group validate order
+  printf '%s\n' "$1" > p1-tasks.md
+  python3 -I "$REPO_ROOT/scripts/plan_rows.py" 15 4096 4096 "$(python3 -c "import sys, json; sys.path.insert(0, sys.argv[1]); import tasks_md; print(json.dumps(tasks_md.parse(sys.argv[2])))" "$REPO_ROOT/scripts" p1-tasks.md)" "$PWD" \
+    | python3 -c "import json, sys; r = [json.loads(l) for l in sys.stdin if '\"group validate order\"' in l]; print('%s|%s' % (r[0]['pass'], r[0]['detail']) if r else 'no row')"
+}
+_p1tasks() { cat <<TASKS
+**Integration:** \`true\`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** \`$1\`
+**Context:**
+The core.
+
+### Task 1: core
+**File:** \`src/core.py\`
+**Depends:** none
+**Test:** \`true\`
+**Cases:**
+- a
+- b
+- [ ] done
+
+## Group G2: Tests
+**Depends:** G1
+**Validate:** \`true\`
+**Context:**
+The tests.
+
+### Task 2: update the tests
+**File:** \`$2\`
+**Depends:** none
+**Test:** \`true\`
+**Cases:**
+- a
+- b
+- [ ] done
+TASKS
+}
+assert_eq "9.8.4 1: a test file G1's Validate runs, edited by a task of the later G2, fails the row and names the file and both groups" \
+  "False|G1's Validate runs tests/test_core.py, which Task 2 of G2 edits" \
+  "$(_p1 "$(_p1tasks "python3 -m pytest tests/test_core.py -q" tests/test_core.py)" | cut -d: -f1)"
+assert_eq "9.8.4 1: a folder the Validate runs counts (pytest tests/)" "False" "$(_p1 "$(_p1tasks "pytest tests/" tests/test_core.py)" | cut -d'|' -f1)"
+assert_eq "9.8.4 1: a file the Validate's own script sources counts (a selftest that runs case files)" \
+  "False|G1's Validate runs scripts/selftest/cases-8.sh, which Task 2 of G2 edits" \
+  "$(_p1 "$(_p1tasks "bash scripts/selftest/run.sh" scripts/selftest/cases-8.sh)" | cut -d: -f1)"
+assert_eq "9.8.4 1: a new test file a later group writes is no conflict (G1 cannot run a file that does not exist yet)" "True" \
+  "$(_p1 "$(_p1tasks "pytest tests/" tests/test_new.py)" | cut -d'|' -f1)"
+assert_eq "9.8.4 1: a Validate that runs other files passes" "True" "$(_p1 "$(_p1tasks "pytest tests/test_other.py" tests/test_core.py)" | cut -d'|' -f1)"
+rm -rf tests scripts p1-tasks.md

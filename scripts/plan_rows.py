@@ -5,7 +5,7 @@
 Called by _grouped_plan_reqs in scripts/temper; it lived inside the CLI until 9.8.0, which moved it here to keep the CLI
 under the plugin directory's 256 KiB limit for a file. Standard library only.
 """
-import json, os, shlex, sys
+import json, os, re, shlex, sys
 max_blast, ctx_max, blk_max = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
 m = json.loads(sys.argv[4])
 groups, tasks = m['groups'], m['tasks']
@@ -127,4 +127,46 @@ for g in groups:
     if len(files) > max_blast:
         big.append('%s declares %d files > autonomy.max-blast-radius=%d: split the group' % (g['id'], len(files), max_blast))
 row('group blast radius', big, 'every group within autonomy.max-blast-radius=%d' % max_blast)
+# 9.8.4: a group must be able to pass its own Validate. Its worktree holds its own work and the groups it depends on, so a
+# test file its Validate runs (named in the command, inside a folder it names, or named by a script it runs from that script's
+# folder) that a task of any other group edits is not there yet: the group fails its check every time (a measured run ran
+# the selftest cases a later group updated, five times). Only a file that exists now counts; a new file is no conflict.
+def run_paths(cmd, depth=0):
+    try: words = shlex.split(cmd)
+    except ValueError: words = cmd.split()
+    out = []
+    for w in words:
+        if ' ' in w.strip() and depth < 2:           # bash -c '...': the inner command's words
+            out += run_paths(w, depth + 1); continue
+        w = w.split('=', 1)[1] if re.match(r'^[A-Za-z_]\w*=', w) else w
+        w = w.split('::', 1)[0]
+        if not w or w.startswith('-') or any(c in w for c in '$*?[{`|;&<>'): continue
+        if '/' in w or os.path.splitext(w)[1]:
+            out.append(w[2:] if w.startswith('./') else w)
+    return list(dict.fromkeys(out))
+def runs(path, f):
+    """True when running `path` (a word of a Validate command) runs file f."""
+    p = path.rstrip('/')
+    if f == p: return True
+    full = os.path.join(sys.argv[5], p)
+    if os.path.isdir(full): return f.startswith(p + '/')
+    if os.path.isfile(full) and os.path.dirname(f).startswith(os.path.dirname(p)):
+        try: text = open(full, encoding='utf-8', errors='replace').read(512 * 1024)
+        except OSError: return False
+        return re.search(r'(^|[^\w.-])' + re.escape(os.path.basename(f)) + r'($|[^\w.-])', text, re.M) is not None
+    return False
+vo = []
+for g in groups:
+    paths = run_paths(g.get('validate') or '')
+    if not paths: continue
+    before = gclosure(g['id']) | {g['id']}
+    own = {f for n in g['tasks'] for f in by_n[n]['files']}
+    for t in tasks:
+        if t['group'] in before or not t['group']: continue
+        for f in t['files']:
+            if f in own or not os.path.isfile(os.path.join(sys.argv[5], f)): continue
+            if any(runs(p, f) for p in paths):
+                vo.append("%s's Validate runs %s, which Task %d of %s edits: %s cannot pass its own check before %s; move the task into %s or "
+                          "take the file out of %s's Validate" % (g['id'], f, t['n'], t['group'], g['id'], t['group'], g['id'], g['id']))
+row('group validate order', vo, "no group's Validate runs a file a task of another group edits")
 row('integration command', [] if m['integration'] else ['no **Integration:** line'], 'integration command declared')
