@@ -60,6 +60,10 @@ To compare models of the Build task agents, run the `temper` arm with `--task-mo
 into folders named `<task>__temper-<model>__<rep>` (`--out`), grade each, then `python3 compare_models.py <results folder>`.
 The last comparison is in `docs/evidence/haiku-sonnet-task-agents.md`.
 
+`run.mjs` also takes `--config-yaml 'plan:\n  fresh-review: always'` (more lines for the project's config) and
+`--task-dir DIR` (a task folder outside `tasks/`; `grade.py` reads it from `run.json`). A task's `meta.json` may name a
+`command` (for example `/temper:build`), so a prepared plan in its `repo/.temper/specs` is entered at that door.
+
 ## Rules that keep it honest
 
 - Write the hidden tests before any arm runs, from `task.md` alone, and check that a reference solution passes

@@ -97,7 +97,7 @@ def git(cwd, *a):
 def main():
     run_dir = os.path.abspath(sys.argv[1])
     run = json.load(open(os.path.join(run_dir, "run.json")))
-    task_dir = os.path.join(HERE, "tasks", run["task"])
+    task_dir = run.get("task_dir") or os.path.join(HERE, "tasks", run["task"])   # run.mjs --task-dir records its folder
     meta = json.load(open(os.path.join(task_dir, "meta.json")))
     work = os.path.join(run_dir, "work")
     g = os.path.join(run_dir, "grade")
