@@ -144,6 +144,9 @@ assert_eq "9.8.4 1: a folder the Validate runs counts (pytest test/)" "False" "$
 assert_eq "9.8.4 1: a file the Validate's own script sources counts (a selftest that runs case files)" \
   "False|G1's Validate runs scripts/selftest/cases-8.sh, which Task 2 of G2 edits" \
   "$(_p1 "$(_p1tasks "bash scripts/selftest/run.sh" scripts/selftest/cases-8.sh)" | cut -d: -f1)"
+assert_eq "9.8.4 1: a test module named the dotted way (python3 -m unittest test.test_core) counts" \
+  "False|G1's Validate runs test/test_core.py, which Task 2 of G2 edits" \
+  "$(_p1 "$(_p1tasks "python3 -m unittest test.test_core" test/test_core.py)" | cut -d: -f1)"
 assert_eq "9.8.4 1: a new test file a later group writes is no conflict (G1 cannot run a file that does not exist yet)" "True" \
   "$(_p1 "$(_p1tasks "pytest test/" test/test_new.py)" | cut -d'|' -f1)"
 assert_eq "9.8.4 1: a Validate that runs other files passes" "True" "$(_p1 "$(_p1tasks "pytest test/test_other.py" test/test_core.py)" | cut -d'|' -f1)"

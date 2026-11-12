@@ -128,8 +128,8 @@ for g in groups:
         big.append('%s declares %d files > autonomy.max-blast-radius=%d: split the group' % (g['id'], len(files), max_blast))
 row('group blast radius', big, 'every group within autonomy.max-blast-radius=%d' % max_blast)
 # 9.8.4: a group must be able to pass its own Validate. Its worktree holds its own work and the groups it depends on, so a
-# test file its Validate runs (named in the command, inside a folder it names, or named by a script it runs from that script's
-# folder) that a task of any other group edits is not there yet: the group fails its check every time (a measured run ran
+# test file its Validate runs (named in the command as a path or a dotted Python module, inside a folder it names, or named by
+# a script it runs from that script's folder) that a task of any other group edits is not there yet: the group fails its check every time (a measured run ran
 # the selftest cases a later group updated, five times). Only a file that exists now counts; a new file is no conflict.
 def run_paths(cmd, depth=0):
     try: words = shlex.split(cmd)
@@ -141,7 +141,11 @@ def run_paths(cmd, depth=0):
         w = w.split('=', 1)[1] if re.match(r'^[A-Za-z_]\w*=', w) else w
         w = w.split('::', 1)[0]
         if not w or w.startswith('-') or any(c in w for c in '$*?[{`|;&<>'): continue
-        if '/' in w or os.path.splitext(w)[1]:
+        if re.fullmatch(r'[A-Za-z_]\w*(\.[A-Za-z_]\w*)+', w) and not os.path.exists(os.path.join(sys.argv[5], w)):
+            # a Python module named the dotted way (python3 -m unittest pkg.test_x): its file, or its package folder
+            m = w.replace('.', '/')
+            out.append(m + '.py' if os.path.isfile(os.path.join(sys.argv[5], m + '.py')) else m)
+        elif '/' in w or os.path.splitext(w)[1]:
             out.append(w[2:] if w.startswith('./') else w)
     return list(dict.fromkeys(out))
 def runs(path, f):

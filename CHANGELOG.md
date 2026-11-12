@@ -11,7 +11,8 @@ passed its own gate each time; the group check failed each time. Each fault is f
 `temper-cases-20.sh` (CLI) and `temper-cases-8.sh` (flow).
 
 - **1. A group must be able to pass its own Validate.** New plan gate row `group validate order`: it fails when an existing
-  test file a group's Validate runs (named in the command, inside a folder it names, or named by a script it runs) is
+  test file a group's Validate runs (named in the command as a path or a dotted Python module, inside a folder it names,
+  or named by a script it runs) is
   edited by a task of a group that is not on that group's worktree, and names the file and both groups. G1's Validate
   ran selftest cases 8 and 9 while the task that updated them was in G2.
 - **2. A failed group check stops recommending a blind retry.** The group gate keeps the FAIL lines of its Validate output
