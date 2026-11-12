@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One benchmark run: one task, one arm, one repetition.
 //
-//   node bench/run.mjs --task login-lockout --arm temper --rep 1 [--model M] [--timeout-min 60] [--out DIR]
+//   node bench/run.mjs --task login-lockout --arm temper --rep 1 [--model M] [--task-model M] [--timeout-min 60] [--out DIR]
 //
 // Arms (the task text is the same, word for word, in every arm):
 //   vanilla  Claude Code with the task as the prompt. No plugin, no extra words.
@@ -52,7 +52,7 @@ function args() {
   const v = process.argv.slice(2);
   for (let i = 0; i < v.length; i++) if (v[i].startsWith("--")) a[v[i].slice(2)] = v[++i];
   if (!a.task || !["vanilla", "careful", "careful-ask", "temper"].includes(a.arm)) {
-    console.error("usage: run.mjs --task ID --arm vanilla|careful|careful-ask|temper [--rep N] [--model M] [--timeout-min N] [--out DIR]");
+    console.error("usage: run.mjs --task ID --arm vanilla|careful|careful-ask|temper [--rep N] [--model M] [--task-model M] [--timeout-min N] [--out DIR]");
     process.exit(2);
   }
   return a;
@@ -115,7 +115,18 @@ async function main() {
   const out = path.resolve(a.out || path.join(RESULTS, `${a.task}__${a.arm}__${a.rep}`));
   fs.mkdirSync(out, { recursive: true });
   const work = path.join(out, "work");
-  const base = seed(taskDir, work);
+  // --task-model M: the project's config pins the Build task agents' model (an explicit task-model wins over every default),
+  // committed with the base, so a Haiku and a Sonnet arm differ in that one line
+  if (a["task-model"]) {
+    seed(taskDir, work);
+    fs.mkdirSync(path.join(work, ".claude"), { recursive: true });
+    const cfg = fs.readFileSync(path.join(PLUGIN, "templates", "temper.config.default"), "utf8") +
+      `\nbuild:\n  grouped:\n    task-model: ${a["task-model"]}\n`;
+    fs.writeFileSync(path.join(work, ".claude", "temper.config"), cfg);
+    sh("git", ["add", "-A"], work);
+    sh("git", ["commit", "-qm", "base: the task model"], work);
+  }
+  const base = a["task-model"] ? sh("git", ["rev-parse", "HEAD"], work).trim() : seed(taskDir, work);
   const tx = fs.createWriteStream(path.join(out, "transcript.jsonl"));
   const px = fs.createWriteStream(path.join(out, "person.jsonl"));
 
