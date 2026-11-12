@@ -250,3 +250,23 @@ printf '%s.1' "$GONE" > .temper/.lock/owner
 out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "after a gone holder" 2>&1)"; rc=$?
 assert_eq "A16: a fresh lock whose owner's process is gone is taken (no WARN), and freed after" "0|0|1|no" \
   "$rc|$(printf '%s' "$out" | grep -c WARN)|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$([[ -e .temper/.lock ]] && echo yes || echo no)"
+
+# --- A16: a Temper holder's lock is never seen without its owner line (L1 and M4 lost a row on CI): the lock appears with
+# its owner inside, so a waiter never takes a live holder's lock for a foreign one and writes past it ---
+setup; mkdir -p .temper/evidence .temper/a16-bin; rm -f .temper/evidence/build.json
+# a mkdir that stalls 2.5 s after it makes a lock folder: a holder stalled between creating its lock and writing its owner
+cat > .temper/a16-bin/mkdir <<'SHIM'
+#!/bin/bash
+/bin/mkdir "$@"; rc=$?
+case "$*" in *.temper/.lock|*.temper/.lock.new.*) sleep 2.5 ;; esac
+exit $rc
+SHIM
+chmod +x .temper/a16-bin/mkdir
+PATH="$PWD/.temper/a16-bin:$PATH" "$TEMPER" evidence add --stage build --claim "the stalled holder" >/dev/null 2>&1 & _A16=$!
+sleep 0.3
+out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "the waiter" 2>&1)"
+wait "$_A16"
+assert_eq "A16: a waiter never writes past a holder that is between its lock and its owner line (no WARN), and both rows land" "0|2|no" \
+  "$(printf '%s' "$out" | grep -c WARN)|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))" 2>/dev/null || echo 0)|$([[ -e .temper/.lock ]] && echo yes || echo no)"
+assert_eq "A16: and no half made lock is left behind" "0" "$(find .temper -maxdepth 1 -name '.lock.new.*' | wc -l | tr -d ' ')"
+rm -rf .temper/a16-bin
