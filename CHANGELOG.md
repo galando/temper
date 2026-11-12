@@ -78,6 +78,16 @@ passed its own gate each time; the group check failed each time. Each fault is f
 - **8. A request that arrives as a spec.** A proposal only: `docs/decisions/0017-a-request-that-arrives-as-a-spec.md`
   drafts a lighter route for a request that already states its rules, files, tests and done condition. Nothing of it is
   built.
+- **The lock is never seen without its owner** (galando/temper#114, merged with this release). The lock folder was made
+  first and its owner line written after, so a waiter past its wait could find it with no owner, take it for a foreign
+  lock and write past a live holder: a ledger row was lost now and then on CI (L1, M4). The lock is now made under another
+  name with its owner inside and renamed into place. A foreign lock with no owner line is still written past after the
+  wait with a WARN (fail open). Case A16 in `temper-cases-17.sh` stalls mkdir to show the race.
+- **The pyjokes runs in CI.** `scripts/e2e/pyjokes.ts` adds three end to end scenarios on a mock pyjokes project, run in
+  every mode by `bun scripts/e2e/run.ts all`: `pyjokes` (faults 1, 2, 3a, 4, 5, 7c and 7d in one run), `pyjokes-full`
+  (risk H with two fresh reviewers and a recheck, Design, a Review finding sent back to Build, then `/temper:fix`) and
+  `pyjokes-blocked` (`temper task blocked` parks a task at once and the loop back to Plan is recommended). The e2e job's
+  time limit goes from 45 to 60 minutes.
 - **Housekeeping.** The embedded Python of `_earlier_build` and of the usage summary moved to `scripts/earlier_build.py` and
   `scripts/usage_ops.py`, and `group fix` and `output` live in `scripts/group_fix.py` and `scripts/output_ops.py`, keeping
   the CLI under the plugin directory's 256 KiB limit for a file.

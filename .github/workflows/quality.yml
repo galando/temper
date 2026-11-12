@@ -82,10 +82,11 @@ jobs:
     # The whole flow of a run on a throwaway mock project, with the real CLI: Intent, Plan, Design, the grouped Build,
     # Review, Check, Commit, the pull request and Pipeline, a fix run and the small change window. Each scenario runs
     # without the mod (plain), with the mod's rule engine guarding every call (mod), and carried by the mod's run
-    # driver (driver); a scenario fails when the flow with the mod differs from the flow without it.
+    # driver (driver); a scenario fails when the flow with the mod differs from the flow without it. The pyjokes scenarios
+    # (scripts/e2e/pyjokes.ts) replay the faults of 9.8.4 on a second mock project.
     name: End to end (plain, mod, driver)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
