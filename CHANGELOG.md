@@ -58,7 +58,8 @@ passed its own gate each time; the group check failed each time. Each fault is f
   recommendation had relaunched the fix pass forty times on one failure). The same holds at Check for a measurement the
   run still cannot take after "Run Check again" (a benchmark run without coverage.py ran Check again 52 times).
 - **Haiku or Sonnet for the Build task agents, measured** (`docs/evidence/haiku-sonnet-task-agents.md`, 18 benchmark runs):
-  the same quality (every run passed every hidden test), Haiku about 9% cheaper a run and 13% slower with more retries.
+  the same quality (every run passed every hidden test), Haiku about 9% cheaper a run and 13% slower; its one run with
+  retries was a plan defect no model could build.
   The default stays as above: Haiku for simple and medium plans, Sonnet for complex or risk H. `bench/run.mjs
   --task-model` and `bench/compare_models.py` run and tabulate such a comparison.
 - **8. A request that arrives as a spec.** A proposal only: `docs/decisions/0017-a-request-that-arrives-as-a-spec.md`

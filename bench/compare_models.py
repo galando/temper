@@ -71,7 +71,17 @@ def agents(run):
             prompt = c if isinstance(c, str) else " ".join(x.get("text", "") for x in c or [] if isinstance(x, dict))
         except Exception:
             pass
-        out.append({"type": mt.get("agentType", ""), "model": mt.get("model", ""), "prompt": prompt})
+        last = ""
+        try:
+            for line in open(meta.replace(".meta.json", ".jsonl")):
+                m = json.loads(line)
+                if m.get("type") == "assistant":
+                    t = " ".join(x.get("text", "") for x in (m.get("message") or {}).get("content") or []
+                                 if isinstance(x, dict) and x.get("type") == "text").strip()
+                    last = t or last
+        except Exception:
+            pass
+        out.append({"type": mt.get("agentType", ""), "model": mt.get("model", ""), "prompt": prompt, "last": last})
     return out
 
 
@@ -110,28 +120,32 @@ for d in listed(R):
                 if os.path.isfile(os.path.join(x, "tasks.md"))]
     ntasks = len(re.findall(r"^### Task \d+", open(tasks_md[0]).read(), re.M)) if tasks_md else 0
     bt = [a for a in ag if a["type"].endswith("build-task")]
-    chained = sum(len(re.findall(r"\d+", (re.search(r"Tasks?: ([\d, ]+)", a["prompt"]) or [None, ""])[1])) or 1 for a in bt)
+    # a task run is a task an agent reports as done or stopped (TASK N: done | stopped: ...): a chain the agent stopped part way
+    # does not count the tasks it never reached
+    reports = [re.findall(r"TASK (\d+): (done|stopped)(.*?)(?=TASK \d+:|$)", a["last"], re.S) for a in bt]
+    chained = sum(len(r) for r in reports)
+    outside = sum(1 for r in reports for _, kind, why in r if kind == "stopped" and re.search(r"outside (my|the|its) declared files|not (in|inside) (my|this task's|the) declared files|isn't in this task's declared files", why))
     rows.append({
         "task": task, "arm": arm, "rep": int(rep),
         "hidden": "%s/%s" % (g.get("hidden_pass"), g.get("hidden_total")), "all": bool(g.get("hidden_all")),
-        "suite": bool(g.get("suite_ok")), "outside": len(g.get("outside_expected") or []),
+        "suite": bool(g.get("suite_ok")), "outside_files": len(g.get("outside_expected") or []),
         "cost": r.get("cost_usd") or 0, "by_model": r.get("models_cost_usd") or {}, "wall": r.get("wall_s") or 0,
         "questions": r.get("questions"), "ended": r.get("ended"),
         "tasks": ntasks, "task_launches": len(bt), "task_runs": chained, "task_models": sorted({a["model"] for a in bt}),
         "build_secs": round(subagent_secs(d, "build-task")), "task_cost": kind_cost(d, "build-task"),
         "fix_passes": sum(1 for a in ag if a["type"].endswith("temper-build")),
-        "escalated": sum(1 for a in bt if "sonnet" in a["model"]) if arm == "haiku" else 0,
+        "escalated": sum(1 for a in bt if "sonnet" in a["model"]) if arm == "haiku" else 0, "outside": outside,
         "no_coverage": any("recorded coverage 'none'" in l for l in open(os.path.join(d, "person.jsonl"))),
         "reviews": sum(1 for a in ag if a["type"].endswith("temper-review")),
     })
 
-print("| task | arm | rep | hidden | suite | outside | cost $ | task agents $ | wall s | Build task s | tasks | task launches | task runs | escalated | fix passes | reviews | questions | coverage missing |")
-print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+print("| task | arm | rep | hidden | suite | outside | cost $ | task agents $ | wall s | Build task s | tasks | task launches | task runs | escalated | stopped: file outside the task | fix passes | reviews | questions | coverage missing |")
+print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 for x in rows:
     tm = x["task_cost"]
-    print("| %s | %s | %d | %s | %s | %d | %.2f | %.3f | %d | %d | %d | %d | %d | %d | %d | %d | %s | %s |" % (
-        x["task"], x["arm"], x["rep"], x["hidden"], "ok" if x["suite"] else "BROKEN", x["outside"], x["cost"], tm, x["wall"],
-        x["build_secs"], x["tasks"], x["task_launches"], x["task_runs"], x["escalated"], x["fix_passes"], x["reviews"], x["questions"],
+    print("| %s | %s | %d | %s | %s | %d | %.2f | %.3f | %d | %d | %d | %d | %d | %d | %d | %d | %d | %s | %s |" % (
+        x["task"], x["arm"], x["rep"], x["hidden"], "ok" if x["suite"] else "BROKEN", x["outside_files"], x["cost"], tm, x["wall"],
+        x["build_secs"], x["tasks"], x["task_launches"], x["task_runs"], x["escalated"], x["outside"], x["fix_passes"], x["reviews"], x["questions"],
         "yes" if x["no_coverage"] else ""))
 
 print("\nPer task and arm (means):")

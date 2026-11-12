@@ -25,36 +25,39 @@ This is that evaluation on Temper's own benchmark.
 
 ## Every run
 
-| task | arm | rep | hidden | suite | outside | cost $ | task agents $ | wall s | Build task s | tasks | task launches | task runs | escalated | fix passes | reviews | questions | coverage missing |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| partial-payments | haiku | 1 | 26/26 | ok | 0 | 2.72 | 0.056 | 883 | 261 | 6 | 1 | 6 | 0 | 1 | 2 | 14 |  |
-| partial-payments | haiku | 2 | 26/26 | ok | 0 | 1.99 | 0.055 | 679 | 191 | 6 | 1 | 6 | 0 | 0 | 1 | 10 |  |
-| partial-payments | haiku | 3 | 26/26 | ok | 0 | 3.19 | 0.199 | 1109 | 484 | 6 | 7 | 17 | 2 | 0 | 1 | 16 |  |
-| partial-payments | sonnet | 1 | 26/26 | ok | 0 | 2.42 | 0.325 | 657 | 129 | 6 | 2 | 7 | 0 | 1 | 1 | 11 |  |
-| partial-payments | sonnet | 2 | 26/26 | ok | 0 | 2.98 | 0.326 | 831 | 133 | 5 | 1 | 5 | 0 | 3 | 2 | 14 |  |
-| partial-payments | sonnet | 3 | 26/26 | ok | 0 | 2.55 | 0.258 | 661 | 103 | 5 | 1 | 5 | 0 | 1 | 2 | 14 |  |
-| subscriptions | haiku | 1 | 25/25 | ok | 0 | 3.60 | 0.062 | 1283 | 322 | 6 | 4 | 6 | 0 | 3 | 2 | 18 |  |
-| subscriptions | haiku | 2 | 25/25 | ok | 0 | 2.75 | 0.075 | 1062 | 296 | 6 | 3 | 6 | 0 | 1 | 1 | 13 |  |
-| subscriptions | haiku | 3 | 25/25 | ok | 0 | 3.48 | 0.106 | 1196 | 310 | 6 | 3 | 6 | 0 | 3 | 2 | 14 |  |
-| subscriptions | sonnet | 1 | 25/25 | ok | 0 | 3.32 | 0.444 | 923 | 177 | 7 | 4 | 7 | 0 | 1 | 1 | 13 |  |
-| subscriptions | sonnet | 2 | 25/25 | ok | 0 | 5.43 | 0.437 | 1534 | 183 | 7 | 4 | 7 | 0 | 6 | 3 | 26 |  |
-| subscriptions | sonnet | 3 | 25/25 | ok | 0 | 2.96 | 0.519 | 874 | 211 | 6 | 4 | 6 | 0 | 1 | 1 | 12 |  |
-| ts-seat-holds | haiku | 1 | 11/11 | ok | 0 | 1.85 | 0.036 | 619 | 180 | 5 | 1 | 5 | 0 | 1 | 1 | 9 |  |
-| ts-seat-holds | haiku | 2 | 11/11 | ok | 0 | 2.09 | 0.030 | 713 | 173 | 5 | 1 | 5 | 0 | 2 | 2 | 14 |  |
-| ts-seat-holds | haiku | 3 | 11/11 | ok | 0 | 1.58 | 0.022 | 469 | 110 | 3 | 1 | 3 | 0 | 1 | 1 | 8 |  |
-| ts-seat-holds | sonnet | 1 | 11/11 | ok | 0 | 1.74 | 0.157 | 466 | 66 | 3 | 1 | 3 | 0 | 1 | 1 | 9 |  |
-| ts-seat-holds | sonnet | 2 | 11/11 | ok | 0 | 2.30 | 0.297 | 674 | 124 | 4 | 1 | 4 | 0 | 1 | 1 | 11 |  |
-| ts-seat-holds | sonnet | 3 | 11/11 | ok | 0 | 1.73 | 0.170 | 488 | 82 | 4 | 1 | 4 | 0 | 1 | 1 | 9 |  |
+| task | arm | rep | hidden | suite | outside | cost $ | task agents $ | wall s | Build task s | tasks | task launches | task runs | escalated | stopped: file outside the task | fix passes | reviews | questions | coverage missing |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| partial-payments | haiku | 1 | 26/26 | ok | 0 | 2.72 | 0.056 | 883 | 261 | 6 | 1 | 6 | 0 | 0 | 1 | 2 | 14 |  |
+| partial-payments | haiku | 2 | 26/26 | ok | 0 | 1.99 | 0.055 | 679 | 191 | 6 | 1 | 6 | 0 | 0 | 0 | 1 | 10 |  |
+| partial-payments | haiku | 3 | 26/26 | ok | 0 | 3.19 | 0.199 | 1109 | 484 | 6 | 7 | 17 | 2 | 3 | 0 | 1 | 16 |  |
+| partial-payments | sonnet | 1 | 26/26 | ok | 0 | 2.42 | 0.325 | 657 | 129 | 6 | 2 | 6 | 0 | 0 | 1 | 1 | 11 |  |
+| partial-payments | sonnet | 2 | 26/26 | ok | 0 | 2.98 | 0.326 | 831 | 133 | 5 | 1 | 5 | 0 | 0 | 3 | 2 | 14 |  |
+| partial-payments | sonnet | 3 | 26/26 | ok | 0 | 2.55 | 0.258 | 661 | 103 | 5 | 1 | 5 | 0 | 0 | 1 | 2 | 14 |  |
+| subscriptions | haiku | 1 | 25/25 | ok | 0 | 3.60 | 0.062 | 1283 | 322 | 6 | 4 | 6 | 0 | 0 | 3 | 2 | 18 |  |
+| subscriptions | haiku | 2 | 25/25 | ok | 0 | 2.75 | 0.075 | 1062 | 296 | 6 | 3 | 6 | 0 | 0 | 1 | 1 | 13 |  |
+| subscriptions | haiku | 3 | 25/25 | ok | 0 | 3.48 | 0.106 | 1196 | 310 | 6 | 3 | 6 | 0 | 0 | 3 | 2 | 14 |  |
+| subscriptions | sonnet | 1 | 25/25 | ok | 0 | 3.32 | 0.444 | 923 | 177 | 7 | 4 | 7 | 0 | 0 | 1 | 1 | 13 |  |
+| subscriptions | sonnet | 2 | 25/25 | ok | 0 | 5.43 | 0.437 | 1534 | 183 | 7 | 4 | 7 | 0 | 0 | 6 | 3 | 26 |  |
+| subscriptions | sonnet | 3 | 25/25 | ok | 0 | 2.96 | 0.519 | 874 | 211 | 6 | 4 | 6 | 0 | 0 | 1 | 1 | 12 |  |
+| ts-seat-holds | haiku | 1 | 11/11 | ok | 0 | 1.85 | 0.036 | 619 | 180 | 5 | 1 | 5 | 0 | 0 | 1 | 1 | 9 |  |
+| ts-seat-holds | haiku | 2 | 11/11 | ok | 0 | 2.09 | 0.030 | 713 | 173 | 5 | 1 | 5 | 0 | 0 | 2 | 2 | 14 |  |
+| ts-seat-holds | haiku | 3 | 11/11 | ok | 0 | 1.58 | 0.022 | 469 | 110 | 3 | 1 | 3 | 0 | 0 | 1 | 1 | 8 |  |
+| ts-seat-holds | sonnet | 1 | 11/11 | ok | 0 | 1.74 | 0.157 | 466 | 66 | 3 | 1 | 3 | 0 | 0 | 1 | 1 | 9 |  |
+| ts-seat-holds | sonnet | 2 | 11/11 | ok | 0 | 2.30 | 0.297 | 674 | 124 | 4 | 1 | 4 | 0 | 0 | 1 | 1 | 11 |  |
+| ts-seat-holds | sonnet | 3 | 11/11 | ok | 0 | 1.73 | 0.170 | 488 | 82 | 4 | 1 | 4 | 0 | 0 | 1 | 1 | 9 |  |
 
-"task runs" counts each task an agent built, retries included; "escalated" counts task agents launched on Sonnet in the
-Haiku arm (the third attempt of a task that failed twice on Haiku). "fix passes" are Build fix agents after a step back.
+"task runs" counts each task an agent reported as done or stopped (`TASK N: done | stopped`), retries included; a chain the
+agent stopped part way does not count the tasks it never reached. "escalated" counts task agents launched on Sonnet in the
+Haiku arm (the third attempt of a task that failed twice on Haiku). "stopped: file outside the task" counts attempts that
+stopped because the task's test needs a change in a file the task does not declare. "fix passes" are Build fix agents
+after a step back.
 
 ## Per task (means)
 
 | task | arm | runs | all hidden | hidden pass rate | cost $ | task agents $ | wall s | Build task s | task runs per task | fix passes | reviews |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | partial-payments | haiku | 3 | 3/3 | 100% | 2.63 | 0.104 | 890 | 312 | 1.61 | 0.3 | 1.3 |
-| partial-payments | sonnet | 3 | 3/3 | 100% | 2.65 | 0.303 | 716 | 122 | 1.06 | 1.7 | 1.7 |
+| partial-payments | sonnet | 3 | 3/3 | 100% | 2.65 | 0.303 | 716 | 122 | 1.00 | 1.7 | 1.7 |
 | subscriptions | haiku | 3 | 3/3 | 100% | 3.28 | 0.081 | 1180 | 309 | 1.00 | 2.3 | 1.7 |
 | subscriptions | sonnet | 3 | 3/3 | 100% | 3.90 | 0.467 | 1110 | 190 | 1.00 | 2.7 | 1.7 |
 | ts-seat-holds | haiku | 3 | 3/3 | 100% | 1.84 | 0.029 | 600 | 154 | 1.00 | 1.3 | 1.3 |
@@ -70,8 +73,9 @@ Haiku arm (the third attempt of a task that failed twice on Haiku). "fix passes"
 | cost of the task agents in a run, mean | $0.07 | $0.33 |
 | wall time of a run, mean | 890 s | 790 s |
 | time of the task agents in a run, mean | 259 s | 134 s |
-| task retries (extra task runs) in 9 runs | 11 | 1 |
-| escalations to Sonnet in 9 runs | 2 | 0 |
+| extra task runs in 9 runs | 11, all in one run, from one plan defect | 0 |
+| extra task runs the model caused | 0 | 0 |
+| escalations to Sonnet in 9 runs | 2, the same plan defect | 0 |
 | Build fix passes after a step back, in 9 runs | 12 | 16 |
 | Review rounds in 9 runs | 13 | 13 |
 
@@ -83,10 +87,15 @@ Haiku arm (the third attempt of a task that failed twice on Haiku). "fix passes"
 2. **Haiku is cheaper, by little.** The task agents cost about a fifth on Haiku ($0.07 against $0.33), but they are 3% to
    12% of a run; Opus planning dominates. A run was about $0.25 cheaper on Haiku (9%), well within the spread between
    runs of the same arm ($1.99 to $3.19 for one task).
-3. **Haiku is slower.** The task agents took about twice as long (259 s against 134 s) and a run about 100 s longer
-   (13%). Most of it is retries: 11 extra task runs and 2 escalations on Haiku against 1 extra run on Sonnet, and one
-   Haiku run (`partial-payments` 3) needed 17 task runs for 6 tasks.
-4. **The 9.8.4 rule (Sonnet for complex or risk H plans) is not a quality fix on this evidence.** Most of these plans
+3. **Haiku is slower.** The task agents took about twice as long (259 s against 134 s; 230 s without the run below) and a
+   run about 100 s longer (13%).
+4. **The retries were a plan defect, not Haiku.** All 11 extra task runs and both escalations are one run
+   (`partial-payments`, Haiku, run 3) and one task: Task 6's test needed `payment_id` in an audit event written in
+   `ledger/payments.py`, a file Task 3 declares and Task 6 does not. Every attempt stopped and said so, the two Haiku
+   attempts and the two Sonnet ones alike; then the run looped back to Plan, the chain was rebuilt, and Task 6's tests
+   passed. No model could have built that task as planned. (An earlier count said 11 against 1: it counted every task
+   of a chain the agent stopped part way. The Sonnet arm has no retry.)
+5. **The 9.8.4 rule (Sonnet for complex or risk H plans) is not a quality fix on this evidence.** Most of these plans
    were complex, and Haiku built them as well as Sonnet. The rule buys speed and fewer retries for about $0.25 a run.
 
 ## Limits
@@ -99,5 +108,5 @@ and always takes the recommended option. No vague task was run.
 
 Keep the 9.8.4 default: Build task agents run on Haiku for simple and medium plans, and on Sonnet for complex or risk H
 plans, unless `build.grouped.task-model` names a model. The rule costs about $0.25 on those runs and halves the time of
-the task agents, with almost no retries; the plans it covers can be larger than any measured here, where retries grow.
+the task agents; the plans it covers can be larger than any measured here.
 To revisit with more data: the vague tasks and a plan with 10 or more tasks, 3 runs per arm (`bench/compare_models.py`).
