@@ -1487,6 +1487,8 @@ class Builder:
             gate = (ginfo.get("gate") or {}).get("verdict")
             if done and not gate:
                 return {"action": "work", "stage": "build", "calls": [self.c("group gate %s" % gidx)], "agents": [], "say": "Group %s is checked." % gidx}
+            if gate == "FAIL" and ginfo.get("fix") and not r.armed():
+                return self.group_fix_work(g, ginfo)
             if gate == "FAIL":
                 return self.group_failed(g, ginfo)
             if gate == "PASS" and not ginfo.get("confirmed"):
@@ -1667,26 +1669,71 @@ class Builder:
             extra={"change": which})
         return q
 
+    @staticmethod
+    def fail_text(ginfo, n=3):
+        """9.8.4: the first FAIL lines of the group's Validate output, as the gate kept them ('' when none)."""
+        lines = [str(x) for x in ((ginfo.get("gate") or {}).get("fail_lines") or []) if str(x).strip()][:n]
+        return "; ".join(x if len(x) <= 160 else x[:157] + "..." for x in lines)
+
     def group_failed(self, g, ginfo):
         gid = g["id"]
-        why = str((ginfo.get("gate") or {}).get("reason", ""))[:200]
+        gate = ginfo.get("gate") or {}
+        reason = " ".join(str(gate.get("reason", "")).split())
+        reason = reason if len(reason) <= 300 else reason[:297] + "..."
+        fl = self.fail_text(ginfo)
         if self.r.armed():  # nobody is there to answer: an armed run parks, as on every stop
+            why = (reason[:200] + (" | " + fl if fl else ""))[:400]
             return {"action": "auto", "stage": "build",
                     "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],
                     "say": "Group %s failed its check; the armed run parks for you." % gid}
+        plan = self.r.plan or {"tasks": []}
+        # 9.8.4: how many times the group's check failed, and whether the whole failed while every part passed. A blind
+        # rerun of every task was always the recommended answer; a measured run reran a group of 12 tasks five times.
+        fails = int(ginfo.get("fails") or 1)
+        all_passed = bool(g.get("tasks")) and all(tasks_md.task_done(t, self.r.groups) for t in plan.get("tasks", []) if t.get("n") in g.get("tasks", []))
+        fixable = all_passed and bool(gate.get("ran"))
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = []
-        limit = int((ginfo.get("gate") or {}).get("timeout_s") or 0)
+        limit = int(gate.get("timeout_s") or 0)
         if limit:  # the gate ran out of time, not out of luck: the same checks again with twice the limit
             opts.append(self.opt("Run the gate again with twice the time (Recommended)", "Group %s's checks run again, limit %d seconds." % (gid, 2 * limit),
                                  move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * limit))]))
-        opts.append(self.opt("Run the group's tasks again" + ("" if limit else " (Recommended)"), "Each task of %s runs again." % gid, move="redo", calls=reopen))
-        if self.r.can_loop("build", "plan"):
-            opts.append(self.opt("Loop back to Plan", "The plan cannot be built as written.", move="back",
-                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
+        if fixable:
+            opts.append(self.opt("Fix the group's merged work" + ("" if limit else " (Recommended)"),
+                                 "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
+                                 move="redo", calls=[self.c("group fix %s" % gid)]))
+        back = self.r.can_loop("build", "plan")
+        rerun_rec = not limit and not fixable and fails < 2
+        rerun = self.opt("Run the group's tasks again" + (" (Recommended)" if rerun_rec else ""), "Each task of %s runs again." % gid, move="redo", calls=reopen)
+        plan_rec = not limit and not fixable and not rerun_rec and back
+        loop = self.opt("Loop back to Plan" + (" (Recommended)" if plan_rec else ""), "The plan cannot be built as written.", move="back",
+                        calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]) if back else None
+        opts += [o for o in ([loop, rerun] if plan_rec else [rerun, loop]) if o]
         opts.append(self.save())
-        return {"action": "ask", "stage": "build", "ask": self.question(
-            GATE_HEADER, "Group %s failed its check (%s). Run its tasks again?" % (gid, (ginfo.get("gate") or {}).get("reason", "")), stage="build", options=opts)}
+        text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
+        if fl:
+            text += " What failed: %s." % fl
+        text += (" Fix its merged work?" if fixable and not limit else
+                 " Loop back to Plan?" if plan_rec else " Run its tasks again?")
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+
+    def group_fix_work(self, g, ginfo):
+        """9.8.4: the person chose to fix a group whose check failed after every task passed: one Build fix agent works on the
+        group's merged tree; the CLI commits what it changed on the group's branch and checks the group again."""
+        gid = g["id"]
+        gate = ginfo.get("gate") or {}
+        fl = [str(x) for x in gate.get("fail_lines") or []][:8]
+        lines = ["Group fix: group %s's check failed after every one of its tasks passed. Work only in its worktree %s (the merged "
+                 "work of the group, on branch %s); do not commit, the CLI commits what you change. Make its Validate command pass: %s." % (
+                     gid, ginfo.get("worktree", ""), ginfo.get("branch", ""), g.get("validate") or "(none declared)"),
+                 "Why the check failed: %s." % " ".join(str(gate.get("reason", "")).split())]
+        if fl:
+            lines.append("What failed (the first FAIL lines of its output): %s." % "; ".join(fl))
+        a = self.agent("build", lines)
+        a["after"] += [self.c("group fix %s --commit" % gid), self.c("group gate %s" % gid)]
+        a["gate"] = a["after"][-1]
+        return {"action": "work", "stage": "build", "calls": [], "agents": [a],
+                "say": "Build: one fix agent works on group %s's merged tree%s. %s" % (gid, on_model([a]), goes_on(False))}
 
     def parked(self, gid):
         r = self.r

@@ -2444,7 +2444,7 @@ e.setdefault('finished_at', None)
 # temper group gate G: PASS when every task of G passed and the group's own Validate command, run by the
 # CLI in the group worktree, exits 0. Recorded as a build row tagged with the group (phase 'group').
 cmd_group_gate() {
-  local g="${1:-}" tmo="${TEMPER_TASK_TEST_TIMEOUT_S:-600}" timed_out=""; shift || true
+  local g="${1:-}" tmo="${TEMPER_TASK_TEST_TIMEOUT_S:-600}" timed_out="" flines=""; shift || true
   while [[ $# -gt 0 ]]; do   # --timeout-s N: the limit of the group's own runs (a rerun after a timeout doubles it)
     case "$1" in
       --timeout-s) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "FAIL: --timeout-s takes a whole number of seconds" >&2; return 1; }; tmo="$2"; shift 2 ;;
@@ -2503,7 +2503,7 @@ except Exception:
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
-    rm -f "$rowfile"
+    flines="$(_task_py faillines "$rowfile")"; rm -f "$rowfile"   # 9.8.4: the check ran; its FAIL lines go with the verdict
     if [[ "$rc" -eq 124 ]]; then timed_out="$tmo"; reason="group $g Validate timed out after ${tmo}s: $validate"
     elif [[ "$rc" -ne 0 ]]; then reason="group $g Validate failed (exit $rc): $validate"; fi
   fi
@@ -2513,7 +2513,7 @@ except Exception:
     [[ -n "$reason" ]] && reason="group $g: $reason"
   fi
   if [[ -n "$reason" ]]; then
-    _group_gate_record "$g" FAIL "$reason" "$timed_out" || return 1
+    _group_gate_record "$g" FAIL "$reason" "$timed_out" "$flines" || return 1
     echo "FAIL: $reason"
     return 1
   fi
@@ -2533,10 +2533,12 @@ if a[1] == 'PASS':
 else:
     g['gate']['reason'] = a[2]
     if a[3]: g['gate']['timeout_s'] = int(a[3])
+    if a[5]: g['gate'].update(ran=True, fail_lines=json.loads(a[5]))   # 9.8.4: the check ran; what failed in it
+    g['fails'] = int(g.get('fails') or 0) + 1                          # and how many times the group's check failed
     if g.get('status') != 'parked':
         g['status'] = 'running'
     g['finished_at'] = None
-" "$1" "$2" "$3" "$4" "$(_now)"
+" "$1" "$2" "$3" "$4" "$(_now)" "${5:-}"
 }
 
 # D-08: what a human does about a parked foreign commit; printed by the task gate that parks the group and by a refused reopen.
@@ -2773,7 +2775,7 @@ for k in ('commit', 'passed_at', 'snapshot', 'start_sha', 'started_at'):
 t.setdefault('reopened', []).append({'ts': a[1], 'feedback': a[2] or None})
 g = d.setdefault('groups', {}).setdefault(a[3], {})
 g.pop('parked_foreign', None)   # D-08: off the branch or accepted (checked above); no other group's list is touched
-g.pop('gate', None)
+g.pop('gate', None); g.pop('fix', None)
 g.pop('finished_at', None)
 g.pop('confirmed', None)        # the person's Continue was for the group as it passed; it is asked again once it passes again
 d.pop('integration', None)      # and the merge of the groups no longer holds this group's work: integrate runs again
@@ -2914,7 +2916,9 @@ cmd_group() {
     gate) cmd_group_gate "$@" ;;
     reopen) cmd_group_reopen "$@" ;;
     report) cmd_group_report "$@" ;;
-    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report> ..." >&2; return 1 ;;
+    fix) _lock_acquire; TEMPER_PREFIX="$(_prefix)" python3 -E -s "$SCRIPTS_DIR/group_fix.py" "$GROUPS_FILE" "$(_now)" "$(_spec_slug "$(_spec_path "")")" "$@"
+         local rc=$?; _lock_release; return $rc ;;   # 9.8.4: one fix agent on a failed group's merged tree
+    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|fix> ..." >&2; return 1 ;;
   esac
 }
 
@@ -3655,43 +3659,7 @@ gate_plan() {
 _earlier_build() { # _earlier_build <spec_path>: prints the commit of the spec folder's newest committed gate-ledger.json that
                    # records Build PASS (not skipped); exit 0 when no file of the plan changed since, exit 2 (the commit, a
                    # tab, and what changed) when one did, exit 1 (why) when no such ledger is committed
-  python3 -I - "$1" "$(_grouped_parse "$1/tasks.md" 2>/dev/null)" <<'PY'
-import json, subprocess, sys
-spec = sys.argv[1].rstrip('/')
-def git(*a):
-    r = subprocess.run(['git', '--literal-pathspecs', '-c', 'core.quotePath=false'] + list(a), capture_output=True, text=True)
-    return r.returncode, r.stdout
-led = spec + '/gate-ledger.json'
-rc, shas = git('log', '-n', '20', '--format=%H', '--', led)
-shas = shas.split() if rc == 0 else []
-if not shas:
-    print('the spec folder holds no committed gate-ledger.json of an earlier run'); sys.exit(1)
-def built(sha):
-    # the ledger as that commit holds it records a Build PASS of its own (not a skip)
-    rc, text = git('show', '%s:./%s' % (sha, led))
-    try:
-        d = json.loads(text) if rc == 0 else {}
-    except ValueError:
-        return False
-    b = (d.get('gates') or {}).get('build') or {} if isinstance(d, dict) else {}
-    return b.get('verdict') == 'PASS' and not any(isinstance(o, dict) and o.get('stage') == 'build' for o in d.get('overrides') or [])
-# the newest ledger that does: a later door run that skipped Build (or a run left without one) hides no earlier Build PASS
-sha = next((x for x in shas if built(x)), None)
-if not sha:
-    print('no committed gate-ledger.json of the spec folder records a Build PASS of its own'); sys.exit(1)
-try:
-    files = sorted({f for t in json.loads(sys.argv[2]).get('tasks', []) for f in t.get('files', [])})
-except ValueError:
-    files = []
-if not files:
-    print('tasks.md declares no files'); sys.exit(1)
-rc, out = git('diff', '--name-only', sha, '--', *files)
-if rc or out.strip():
-    print('%s\tthe ledger committed in %s records Build PASS, but a file of the plan changed since: %s' % (
-        sha, sha[:7], ', '.join(out.split()[:3]) or 'git diff failed'))
-    sys.exit(2)
-print(sha)
-PY
+  python3 -I "$SCRIPTS_DIR/earlier_build.py" "$1" "$(_grouped_parse "$1/tasks.md" 2>/dev/null)"
 }
 
 gate_build() {
@@ -5189,6 +5157,7 @@ Usage:
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
   temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)
   temper group report [--json]    (grouped Build: the measurement report)
+  temper group fix G<n> [--commit] (a failed group: one fix agent on its merged tree; --commit commits its work)
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
   temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)

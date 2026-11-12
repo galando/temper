@@ -119,6 +119,17 @@ def show(out, rc, keep=12):
     sys.stdout.write(''.join(lines))
     sys.stdout.flush()
 
+FAIL_LINE = re.compile(r'\bFAIL(?:ED|URE|S)?\b|\bERROR\b|^not ok\b|^E\s+\S|Error:|Traceback \(most recent')
+
+def fail_lines(out, keep=8):
+    """9.8.4: the lines of a failing run that say what failed (FAIL, FAILED, ERROR, not ok, an exception), first ones first,
+    read from the whole output; when none matches, the last three lines. A question shows the first few, so the person
+    reads the failure, not the tail of whatever the runner printed last."""
+    lines = [' '.join(l.split()) for l in out.decode('utf-8', 'replace').splitlines()]
+    lines = [l[:240] for l in lines if l]
+    hits = list(dict.fromkeys(l for l in lines if FAIL_LINE.search(l)))
+    return hits[:keep] if hits else lines[-3:]
+
 def red_why(r):
     """Why a failing RED run is not evidence ('' when it is): the command never ran the tests."""
     rc, cmd = r.get('exit_code'), r.get('cmd') or ''
@@ -389,8 +400,17 @@ elif mode == 'grouprun':
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
            'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
            'output': out[-4096:].decode('utf-8', 'replace')}
+    if rc != 0:
+        row['fail_lines'] = fail_lines(out)
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
+
+elif mode == 'faillines':
+    # faillines <rowfile>: the FAIL lines a group's Validate row kept, as one JSON list ([] when the file has none)
+    try:
+        print(json.dumps(json.load(open(sys.argv[2])).get('fail_lines') or []))
+    except Exception:
+        print('[]')
 
 elif mode == 'integrun':
     # the full suite, run by the CLI in the project folder after the merges; phase 'integration' keeps it

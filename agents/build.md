@@ -24,6 +24,16 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    branch: a test that fails because of the defect (RED), then the fix (GREEN). Do not re-run the
    tasks and do not touch the boxes.
 
+   **A group fix.** When the prompt has a `Group fix:` line, one group's check failed after every
+   task of it passed: the parts work and the whole does not. Work only in the worktree that line
+   names (the group's merged work on its branch), never in the project folder. Run the group's
+   Validate command there, read what failed (the prompt gives the first FAIL lines), and fix the
+   cause: production code, or a test the group's own tasks should have updated. Run the Validate
+   command again until it passes. Do not commit, do not touch the boxes in `tasks.md` and record no
+   build row: the CLI commits what you changed (`temper group fix G<n> --commit`) and its group gate
+   is the evidence. If the fix needs a file of a later group, or a change to the plan, stop and say
+   so in your panel; the person decides at the next question.
+
    **A record pass.** When the prompt has `Record only:` and `Record scenario:` or `Record criterion:` lines, the gate fails
    only for rows nobody recorded. Write them and change nothing else: for each scenario, find the scoped command that
    proves it and run `TEMPER evidence run --stage build --scenario '<name>' --claim 'scenario test' -- <command>`; for each

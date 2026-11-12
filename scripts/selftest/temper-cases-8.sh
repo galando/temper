@@ -510,4 +510,29 @@ cat > .temper/specs/demo/plan.md <<'PEOF'
 PEOF
 assert_eq "9.8.4 7a: the Include call carries the whole text, the second left out source and its last word included" "yes" \
   "$(nx "c = d['context_check']['options'][1]['calls'][0]; 'yes' if 'reads the same rows' in c and c.endswith('--redo') else c")"
+
+# --- 9.8.4 fault 2: a failed group check names what failed, and stops recommending a blind retry ---
+_g2() { # _g2 <gate JSON>: a run at Build with group G1 (Task 1 passed) whose gate is the JSON given
+  fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", %s}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' "$1" > .temper/groups.json
+}
+_g2 '"fails": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a", "FAIL: test_b", "FAIL: test_c", "FAIL: test_d"]}'
+assert_eq "9.8.4 2b: every task passed and the group check failed: one fix agent on the merged tree is first and recommended" \
+  "Fix the group's merged work (Recommended)|group fix G1|Run the group's tasks again" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[0]['calls'][0].split('temper ', 1)[1] + '|' + o[1]['label']")"
+assert_eq "9.8.4 2a: the question shows the first FAIL lines of the group's Validate output, not all of them" "1|1|0" \
+  "$(nx "q = d['ask']['question']['question']; '%d|%d|%d' % ('FAIL: test_a' in q, 'FAIL: test_c' in q, 'FAIL: test_d' in q)")"
+_g2 '"fails": 2, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}'
+assert_eq "9.8.4 2c: the second failure says how many times the group failed, and never recommends running the tasks again" "1|0" \
+  "$(nx "q = d['ask']['question']; '%d|%d' % ('failed its check 2 times' in q['question'], any(o['label'] == \"Run the group's tasks again (Recommended)\" for o in q['options']))")"
+_g2 '"fails": 2, "gate": {"verdict": "FAIL", "reason": "uncommitted changes in the group worktree, not on its branch: src/a.sh"}'
+assert_eq "9.8.4 2c: a second failure that ran no check recommends the loop back to Plan, not the tasks again" "Loop back to Plan (Recommended)|Run the group's tasks again" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label']")"
+_g2 '"fails": 1, "gate": {"verdict": "FAIL", "reason": "uncommitted changes in the group worktree, not on its branch: src/a.sh"}'
+assert_eq "9.8.4 2c: the first failure that ran no check still recommends running the tasks again" "Run the group's tasks again (Recommended)" \
+  "$(nx "d['ask']['options'][0]['label']")"
+_g2 '"fails": 1, "fix": {"requested": "2026-01-01T00:00:00Z"}, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}'
+assert_eq "9.8.4 2b: the fix asked for launches one Build fix agent on the group's worktree; the CLI commits its work, then gates the group" \
+  "work|temper:temper-build|1|1|1|group fix G1 --commit|group gate G1" \
+  "$(nx "a = d['agents']; p = a[0]['prompt']; '|'.join([d['action'], a[0]['type'], str(len(a)), str(int('Group fix: group G1' in p)), str(int('FAIL: test_a' in p)), a[0]['after'][-2].split('temper ', 1)[1], a[0]['gate'].split('temper ', 1)[1]])")"
 setup
