@@ -397,9 +397,13 @@ _lock_acquire() {
   [[ -d .temper ]] || return 0                 # nothing to lock before a run has a folder
   local i=0 deadline=$(( $(date +%s) + ${TEMPER_LOCK_WAIT_S:-10} ))   # wall clock, not loop counts
   while :; do
-    _LOCK_TOKEN="$$.$RANDOM$RANDOM$i"   # made before the mkdir: the owner is written the moment the folder exists
-    if mkdir "$_LOCK_DIR" 2>/dev/null; then
-      printf '%s' "$_LOCK_TOKEN" > "$_LOCK_DIR/owner" 2>/dev/null || true
+    _LOCK_TOKEN="$$.$RANDOM$RANDOM$i"
+    # The lock appears with its owner inside: made under another name, then renamed into place, so a waiter never sees a
+    # live holder's lock without its owner and writes past it as a foreign one (a row lost on CI). A rename onto a lock
+    # that appeared meanwhile moves the folder inside it instead: the owner read back says whose the lock is.
+    local nw="$_LOCK_DIR.new.$_LOCK_TOKEN"
+    if [[ ! -e "$_LOCK_DIR" ]] && mkdir "$nw" 2>/dev/null && printf '%s' "$_LOCK_TOKEN" > "$nw/owner" 2>/dev/null \
+       && mv "$nw" "$_LOCK_DIR" 2>/dev/null && [[ "$(cat "$_LOCK_DIR/owner" 2>/dev/null)" == "$_LOCK_TOKEN" ]]; then
       _LOCK_OWNED=1
       trap '_lock_cleanup' EXIT
       trap '_lock_cleanup; exit 130' INT
@@ -407,6 +411,7 @@ _lock_acquire() {
       trap '_lock_cleanup; exit 129' HUP
       return 0
     fi
+    rm -rf "$nw" 2>/dev/null
     if (( i % 50 == 0 )) && _lock_older_than_30s "$_LOCK_DIR"; then
       _lock_break_stale
       i=$(( i + 1 ))
