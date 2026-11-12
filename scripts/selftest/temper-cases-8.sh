@@ -573,4 +573,15 @@ assert_eq "9.8.4 2c: after a fix of the merged tree that did not pass, Loop back
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", "fails": 3, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "9.8.4 2c: with the step back to Plan spent, Save for later is recommended: no retry is" "Save for later (Recommended)|0" \
   "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + str(sum(1 for x in o if '(Recommended)' in x['label'] and x['label'] != 'Save for later (Recommended)'))")"
+
+# --- 9.8.4 reverify: the fix pass ends with the CLI's scenario run; Build that fails the same way after running again is not run again ---
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+assert_eq "9.8.4 reverify: the fix pass of an integrated run reruns the scenario tests before the Build gate" "integrate|gate build" \
+  "$(nx "a = d['agents'][0]['after']; a[-2].split('temper ', 1)[1] + '|' + a[-1].split('temper ', 1)[1]")"
+gfail build "tests pass" "the last test run failed"
+assert_eq "9.8.4 reverify: a first failure recommends running Build again" "Run Build again (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+"$TEMPER" state redo build --reason "tests pass: the last test run failed" >/dev/null 2>&1; gfail build "tests pass" "the last test run failed"
+assert_eq "9.8.4 reverify: the same failure after running again recommends Save for later, and says so" "Save for later (Recommended)|Run Build again|1" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('failed the same way after it ran again' in d['ask']['question']['question']))")"
 setup

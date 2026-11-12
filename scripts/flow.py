@@ -712,8 +712,17 @@ class Builder:
                         self.skill("teach-me", "Teach Me", "Walk through the changes.")]
                 return self.question(GATE_HEADER, "%s: %s. Continue to %s?" % (label, state_of, LABEL[nxt]), stage=stage,
                                      options=opts + back_opt() + [self.save()])
-            again = self.opt("Run %s again (Recommended)" % label, "Mend what the failed rows name, then check %s again." % label,
+            # 9.8.4: the same failure after a Run again is not run again by the recommendation: the run converges on the
+            # person (an e2e run that followed it relaunched Build's fix pass forty times on one failure)
+            redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+            same = redo.get("stage") == stage and str(redo.get("reason") or "") == why[:300]
+            again = self.opt("Run %s again" % label + ("" if same else " (Recommended)"), "Mend what the failed rows name, then check %s again." % label,
                              move="redo", calls=[self.c('state redo %s --reason %s' % (stage, shlex.quote(why[:300])))])
+            if same:
+                save = self.save()
+                save["label"] += " (Recommended)"
+                return self.question(GATE_HEADER, "%s: the check failed (%s). It failed the same way after it ran again. Save the run for later?" % (label, why), stage=stage,
+                                     options=[save, again] + back_opt() + [override_opt(go)])
             return self.question(GATE_HEADER, "%s: the check failed (%s). Run %s again?" % (label, why, label), stage=stage,
                                  options=[again] + back_opt() + [override_opt(go), self.save()])
 
@@ -1455,7 +1464,9 @@ class Builder:
         before = r.state.get("built_before") and not rg
         if (integ and gid and all(gpass(g) for g in gid)) or before:
             a = self.agent("build", self.feedback_lines())
-            if integ != "PASS" and not before:
+            # 9.8.4: the CLI runs the scenario tests on the fixed tree (integrate does when the groups are merged already),
+            # so no record pass of a model is needed after a step back that cleared Build's rows
+            if integ and not before:
                 a["after"].append(self.c("integrate"))
             a["after"].append(self.c("gate build"))
             a["gate"] = a["after"][-1]

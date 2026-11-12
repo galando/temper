@@ -278,3 +278,10 @@ assert_eq "9.8.4 7d: the usage summary the report reads counts the filled time (
   "$(python3 "$REPO_ROOT/scripts/usage_ops.py" json .temper/usage.json | python3 -c "import json, sys; d = json.load(sys.stdin)['by_stage']; print('%s|%s' % (d['design']['ms'], d['build']['ms']))")"
 assert_exit "9.8.4 7d: --fill with no row recorded with none adds the row" 0 "$TEMPER" usage add --stage check --model sonnet --ms 11 --fill
 assert_eq "9.8.4 7d: (one row added)" "4" "$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"
+
+# --- 9.8.4 reverify: after a loop back to Build, the CLI reruns the scenario tests on the fixed tree ---
+setup
+_scen_rows() { python3 -c "import json; print(sum(1 for r in json.load(open('.temper/evidence/build.json')) if r.get('scenario') and r.get('executed_by') == 'cli'))" 2>/dev/null || echo 0; }
+rm -f .temper/evidence/build.json
+assert_exit "9.8.4 reverify: integrate on an integrated run reruns the scenario tests and succeeds" 0 "$TEMPER" integrate
+assert_eq "9.8.4 reverify: one CLI-run row for each scenario of the intent" "2" "$(_scen_rows)"

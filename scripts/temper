@@ -3392,7 +3392,9 @@ try:
     print((json.load(open(sys.argv[1])).get('integration') or {}).get('verdict', ''))
 except Exception:
     print('')" "$GROUPS_FILE")" == "PASS" ]]; then
-    echo "OK: already integrated"
+    # 9.8.4: after a fix pass, the scenario tests run again on the fixed tree (a step back cleared Build's rows)
+    [[ -f "$spec_path/intent.md" ]] && python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" integrate "$spec_path/intent.md" "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$(_evidence_file build)"
+    echo "OK: already integrated; the scenario tests ran again"
     return 0
   fi
   feature="$(cmd_state_get branch "")"

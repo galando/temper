@@ -49,6 +49,13 @@ passed its own gate each time; the group check failed each time. Each fault is f
   `info/exclude`. c: `temper output <stage>|G<n>` prints the last output of a gate or a group gate, read only (with the mod
   on, the session cannot run `printenv` or a test runner). d: `temper usage add ... --fill` puts a background agent's time,
   from its completion notice, into the row recorded without one (the report showed "-" for Design and Build).
+- **Found by the full SDLC run** (a mock pyjokes project through Intent, Plan with two fresh reviewers and a recheck,
+  Design, grouped Build, a Review finding sent back to Build, Check, the commit, then a `/temper:fix` run; plain, with the
+  mod and with its driver). After a step back to Build, the fix pass now ends with `temper integrate`, which on a run
+  integrated already reruns the scenario tests on the fixed tree: the step back had cleared Build's scenario rows, and a
+  model's record pass was asked to record rows the CLI can run. And Build failing the same way after "Run Build again"
+  no longer recommends running it again: Save for later is recommended, and the question says so (following the
+  recommendation had relaunched the fix pass forty times on one failure).
 - **8. A request that arrives as a spec.** A proposal only: `docs/decisions/0017-a-request-that-arrives-as-a-spec.md`
   drafts a lighter route for a request that already states its rules, files, tests and done condition. Nothing of it is
   built.
