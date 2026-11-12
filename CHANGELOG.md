@@ -3,16 +3,6 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## Unreleased
-
-- **A Temper holder's lock is never seen without its owner line.** The lock folder was made first and its owner line
-  written after; a waiter past its wait that found the folder without an owner took it for a foreign lock and wrote past
-  it while the holder was alive and writing, and a ledger row was lost (L1 and M4 now and then on CI). The lock is now
-  made under another name with its owner inside and renamed into place; a rename onto a lock that appeared meanwhile
-  moves the folder inside that one, and the owner read back says whose the lock is. A truly foreign lock (one with no
-  owner line) is still written past after the wait with a WARN and never released (fail open, as before). Case:
-  `temper-cases-17.sh`, A16, with a `mkdir` that stalls 2.5 s after it makes a lock folder.
-
 ## v9.8.3: the run's state machines made explicit
 
 Each piece of run state that several writers moved (the run's stage, a group, a task, the small change window, the
