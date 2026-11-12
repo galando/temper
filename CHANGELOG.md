@@ -18,8 +18,10 @@ passed its own gate each time; the group check failed each time. Each fault is f
   (read from the whole output) and counts the group's failed checks; the question shows the first three lines and the
   count, and the reason is no longer cut to 200 characters. When every task passed and the group check fails, the first
   and recommended option is one Build fix agent on the group's merged tree (`temper group fix G<n>`, then
-  `group fix G<n> --commit`, which commits the agent's work on the group branch as the CLI's own commit). From the second
-  failure on, "Run the group's tasks again" is never recommended.
+  `group fix G<n> --commit`, which commits the agent's work on the group branch as the CLI's own commit and clears the
+  group's gate, so the next action checks the group again as an ordinary call). From the second failure on, "Run the
+  group's tasks again" is never recommended. A FAIL line is what failed (FAIL, ERROR, an `...Error:` line), not a
+  traceback's header.
 - **3. Loop backs carry what was learned.** a: a step back from Plan keeps Plan's open fresh review findings, and the reason
   and findings of a step back reach every stage the run comes through again (the Plan agent after a loop to Intent); the
   Intent brief revises an accepted intent on a loop back instead of changing nothing. b: the fresh review round limit no

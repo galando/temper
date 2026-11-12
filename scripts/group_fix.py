@@ -4,7 +4,8 @@
                                                          `temper next` launches one Build fix agent on the group's worktree
   python3 group_fix.py GROUPS.json NOW SLUG G --commit   after that agent: the CLI commits what it changed in the worktree on
                                                          the group's branch, records the commit as its own (cli_commits, so
-                                                         the foreign commit check never parks on it) and clears the request
+                                                         the foreign commit check never parks on it), clears the request and
+                                                         the group's gate, so the next action checks the group again
 
 The fix works on the merged tree of the group (every task's work, on the group's branch), so the whole is mended once
 instead of every task running again. The agent commits nothing itself; the CLI does, and `temper group gate G` checks the
@@ -73,8 +74,10 @@ def main(argv):
     rc, out = git(wt, "add", "-A", "--", ".", *EXCLUDE)
     if rc != 0:
         return fail("git add in %s failed: %s" % (wt, out.splitlines()[-1] if out else "no output"))
+    # the group is checked again by the next action, as an ordinary call of the CLI: its gate goes (the count stays)
     if git(wt, "diff", "--cached", "--quiet")[0] == 0:
         g.pop("fix", None)
+        g.pop("gate", None)
         save(path, d)
         print("OK: group %s: the fix agent changed nothing; the group is checked again as it is" % gid)
         return 0
@@ -84,6 +87,7 @@ def main(argv):
     sha = git(wt, "rev-parse", "HEAD")[1]
     d.setdefault("cli_commits", []).append(sha)
     g.pop("fix", None)
+    g.pop("gate", None)
     g.setdefault("fix_commits", []).append(sha)
     save(path, d)
     print("OK: group %s: the fix is committed on its branch (%s)" % (gid, sha[:7]))

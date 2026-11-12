@@ -532,9 +532,13 @@ _g2 '"fails": 1, "gate": {"verdict": "FAIL", "reason": "uncommitted changes in t
 assert_eq "9.8.4 2c: the first failure that ran no check still recommends running the tasks again" "Run the group's tasks again (Recommended)" \
   "$(nx "d['ask']['options'][0]['label']")"
 _g2 '"fails": 1, "fix": {"requested": "2026-01-01T00:00:00Z"}, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}'
-assert_eq "9.8.4 2b: the fix asked for launches one Build fix agent on the group's worktree; the CLI commits its work, then gates the group" \
-  "work|temper:temper-build|1|1|1|group fix G1 --commit|group gate G1" \
-  "$(nx "a = d['agents']; p = a[0]['prompt']; '|'.join([d['action'], a[0]['type'], str(len(a)), str(int('Group fix: group G1' in p)), str(int('FAIL: test_a' in p)), a[0]['after'][-2].split('temper ', 1)[1], a[0]['gate'].split('temper ', 1)[1]])")"
+assert_eq "9.8.4 2b: the fix asked for launches one Build fix agent on the group's worktree; the CLI commits its work after it" \
+  "work|temper:temper-build|1|1|1|group fix G1 --commit|none" \
+  "$(nx "a = d['agents']; p = a[0]['prompt']; '|'.join([d['action'], a[0]['type'], str(len(a)), str(int('Group fix: group G1' in p)), str(int('FAIL: test_a' in p)), a[0]['after'][-1].split('temper ', 1)[1], str(a[0].get('gate') or 'none')])")"
+# the commit clears the gate, so the group is checked again as an ordinary call of the CLI (a FAIL there asks the question again)
+_g2 '"fails": 1, "gate": null'
+assert_eq "9.8.4 2b: after the fix's commit the next action checks the group again" "work|group gate G1" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 
 # --- 9.8.4 fault 3: a loop back carries what was learned ---
 # 3a: a loop from Plan back to Intent keeps the open fresh review finding and the person's reason, and the next Plan agent gets both

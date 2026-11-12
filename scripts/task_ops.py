@@ -119,7 +119,7 @@ def show(out, rc, keep=12):
     sys.stdout.write(''.join(lines))
     sys.stdout.flush()
 
-FAIL_LINE = re.compile(r'\bFAIL(?:ED|URE|S)?\b|\bERROR\b|^not ok\b|^E\s+\S|Error:|Traceback \(most recent')
+FAIL_LINE = re.compile(r'\bFAIL(?:ED|URE|S)?\b|\bERROR\b|^not ok\b|^E\s+\S|Error:')
 
 def fail_lines(out, keep=8):
     """9.8.4: the lines of a failing run that say what failed (FAIL, FAILED, ERROR, not ok, an exception), first ones first,

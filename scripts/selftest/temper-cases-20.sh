@@ -73,14 +73,25 @@ assert_exit "9.8.4 2b: group fix asks for the fix agent on a failed group" 0 "$T
 assert_eq "9.8.4 2b: and records the request" "True" "$(_g1 "bool((g.get('fix') or {}).get('requested'))")"
 WT="$(_g1 "g['worktree']")"; mkdir -p "$WT/src"; echo ok > "$WT/src/ok.txt"
 assert_exit "9.8.4 2b: group fix --commit commits the fix agent's work on the group branch as the CLI's own commit" 0 "$TEMPER" group fix G1 --commit
-assert_eq "9.8.4 2b: the commit is recorded as the CLI's, the request is done, and the worktree is clean" "True|False|0" \
+assert_eq "9.8.4 2b: the commit is recorded as the CLI's, the request is done, the gate is cleared to run again, and the worktree is clean" "True|False|False|2|0" \
   "$(python3 -c "
 import json, subprocess
 d = json.load(open('.temper/groups.json')); g = d['groups']['G1']
 head = subprocess.run(['git', '-C', g['worktree'], 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
-print('%s|%s' % (head in d.get('cli_commits', []), 'fix' in g))")|$(git -C "$WT" status --porcelain | grep -vc '^?? .temper/' )"
+print('%s|%s|%s|%s' % (head in d.get('cli_commits', []), 'fix' in g, 'gate' in g, g.get('fails')))")|$(git -C "$WT" status --porcelain | grep -vc '^?? .temper/' )"
 assert_exit "9.8.4 2b: the group gate passes on the fixed tree" 0 "$TEMPER" group gate G1
 assert_exit "9.8.4 2b: group fix is refused on a group whose gate did not fail" 1 "$TEMPER" group fix G1
+
+assert_eq "9.8.4 2a: a FAIL line is what failed, not a traceback's header" "['FAIL: test_x (t.T.test_x)', 'AssertionError: 1 != 2', 'FAILED (failures=1)']" \
+  "$(python3 - "$REPO_ROOT/scripts" <<'PYF'
+import sys
+src = open(sys.argv[1] + '/task_ops.py').read()   # task_ops.py runs a mode on import: read fail_lines out of it
+ns = {}
+exec('import re\n' + src[src.index('FAIL_LINE ='):src.index('def red_why')], ns)
+out = b'..F\n=====\nFAIL: test_x (t.T.test_x)\n-----\nTraceback (most recent call last):\n  File \"t.py\", line 3\nAssertionError: 1 != 2\n\nFAILED (failures=1)\n'
+print(ns['fail_lines'](out))
+PYF
+)"
 
 # --- 1. The plan gate fails when a test file a group's Validate runs is edited by a task of a later group ---
 setup

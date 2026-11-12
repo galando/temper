@@ -1770,7 +1770,7 @@ class Builder:
 
     def group_fix_work(self, g, ginfo):
         """9.8.4: the person chose to fix a group whose check failed after every task passed: one Build fix agent works on the
-        group's merged tree; the CLI commits what it changed on the group's branch and checks the group again."""
+        group's merged tree; the CLI commits what it changed on the group's branch, and the next action checks the group."""
         gid = g["id"]
         gate = ginfo.get("gate") or {}
         fl = [str(x) for x in gate.get("fail_lines") or []][:8]
@@ -1781,8 +1781,9 @@ class Builder:
         if fl:
             lines.append("What failed (the first FAIL lines of its output): %s." % "; ".join(fl))
         a = self.agent("build", lines)
-        a["after"] += [self.c("group fix %s --commit" % gid), self.c("group gate %s" % gid)]
-        a["gate"] = a["after"][-1]
+        # the commit clears the group's gate: the next action checks the group as an ordinary call, and a FAIL there asks
+        # the group question again (a group gate prints no `-> FAIL`, so as an agent's gate call a FAIL would stop the run)
+        a["after"].append(self.c("group fix %s --commit" % gid))
         return {"action": "work", "stage": "build", "calls": [], "agents": [a],
                 "say": "Build: one fix agent works on group %s's merged tree%s. %s" % (gid, on_model([a]), goes_on(False))}
 

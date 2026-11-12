@@ -118,7 +118,8 @@ The group gate keeps the first FAIL lines of its Validate output and counts its 
 (`groups.json`: `gate.fail_lines`, `gate.ran`, `fails`). The question shows the first three lines. When
 every task of the group passed and its check ran and failed, the first and recommended option is one Build
 fix agent on the group's merged tree (`temper group fix G<n>`; the agent's work is committed by
-`temper group fix G<n> --commit`, then the group is checked again). From the second failure on, "Run the
+`temper group fix G<n> --commit`, which also clears the group's gate, so the next action checks the group
+again as an ordinary CLI call and a FAIL there asks the question again). From the second failure on, "Run the
 group's tasks again" is never recommended.
 
 To read a failure, the session runs `temper output G<n>` (the group's last Validate run: its command, exit,
