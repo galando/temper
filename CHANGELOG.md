@@ -92,6 +92,10 @@ passed its own gate each time; the group check failed each time. Each fault is f
   `scripts/earlier_build.py`, `scripts/usage_ops.py` and `scripts/group_report.py`, and `group fix` and `output` live in
   `scripts/group_fix.py` and `scripts/output_ops.py`, keeping the CLI under the plugin directory's 256 KiB limit for a
   file with the lock fix of galando/temper#114 merged as well (the two together were 172 bytes over it).
+- **The mod's tests type check on Claude Code 2.1.323.** That release (out the day of this one) has no MultiEdit tool in
+  its types and adds `isCollapsed` to the band's props, so `claude plugin validate --strict`, which CI runs on the latest
+  Claude Code, failed on three test files, on main as well. The tests now type check on 2.1.287, 2.1.322 and 2.1.323; the
+  guard still refuses a MultiEdit from an older host.
 
 ## v9.8.3: the run's state machines made explicit
 
