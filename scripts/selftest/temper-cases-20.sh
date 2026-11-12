@@ -84,8 +84,8 @@ assert_exit "9.8.4 2b: group fix is refused on a group whose gate did not fail" 
 
 # --- 1. The plan gate fails when a test file a group's Validate runs is edited by a task of a later group ---
 setup
-mkdir -p tests scripts/selftest
-printf 'def test_a():\n    assert True\n' > tests/test_core.py
+mkdir -p test scripts/selftest
+printf 'def test_a():\n    assert True\n' > test/test_core.py
 printf 'source "$(dirname "$0")/cases-8.sh"\n' > scripts/selftest/run.sh; printf 'true\n' > scripts/selftest/cases-8.sh
 _p1() { # _p1 <tasks.md>: the plan gate rows of that plan, as plan_rows.py prints them, for the row named group validate order
   printf '%s\n' "$1" > p1-tasks.md
@@ -127,16 +127,16 @@ The tests.
 TASKS
 }
 assert_eq "9.8.4 1: a test file G1's Validate runs, edited by a task of the later G2, fails the row and names the file and both groups" \
-  "False|G1's Validate runs tests/test_core.py, which Task 2 of G2 edits" \
-  "$(_p1 "$(_p1tasks "python3 -m pytest tests/test_core.py -q" tests/test_core.py)" | cut -d: -f1)"
-assert_eq "9.8.4 1: a folder the Validate runs counts (pytest tests/)" "False" "$(_p1 "$(_p1tasks "pytest tests/" tests/test_core.py)" | cut -d'|' -f1)"
+  "False|G1's Validate runs test/test_core.py, which Task 2 of G2 edits" \
+  "$(_p1 "$(_p1tasks "python3 -m pytest test/test_core.py -q" test/test_core.py)" | cut -d: -f1)"
+assert_eq "9.8.4 1: a folder the Validate runs counts (pytest test/)" "False" "$(_p1 "$(_p1tasks "pytest test/" test/test_core.py)" | cut -d'|' -f1)"
 assert_eq "9.8.4 1: a file the Validate's own script sources counts (a selftest that runs case files)" \
   "False|G1's Validate runs scripts/selftest/cases-8.sh, which Task 2 of G2 edits" \
   "$(_p1 "$(_p1tasks "bash scripts/selftest/run.sh" scripts/selftest/cases-8.sh)" | cut -d: -f1)"
 assert_eq "9.8.4 1: a new test file a later group writes is no conflict (G1 cannot run a file that does not exist yet)" "True" \
-  "$(_p1 "$(_p1tasks "pytest tests/" tests/test_new.py)" | cut -d'|' -f1)"
-assert_eq "9.8.4 1: a Validate that runs other files passes" "True" "$(_p1 "$(_p1tasks "pytest tests/test_other.py" tests/test_core.py)" | cut -d'|' -f1)"
-rm -rf tests scripts p1-tasks.md
+  "$(_p1 "$(_p1tasks "pytest test/" test/test_new.py)" | cut -d'|' -f1)"
+assert_eq "9.8.4 1: a Validate that runs other files passes" "True" "$(_p1 "$(_p1tasks "pytest test/test_other.py" test/test_core.py)" | cut -d'|' -f1)"
+rm -rf test scripts p1-tasks.md
 
 # --- 3b. After a loop back that changes plan.md or tasks.md, the fresh review gets one more round past its cap ---
 setup
@@ -182,7 +182,7 @@ _p5() { # _p5 <tasks.md>: pass|detail of the row "shared production files"
   python3 -I "$REPO_ROOT/scripts/plan_rows.py" 15 4096 4096 "$(python3 -c "import sys, json; sys.path.insert(0, sys.argv[1]); import tasks_md; print(json.dumps(tasks_md.parse(sys.argv[2])))" "$REPO_ROOT/scripts" p5-tasks.md)" "$PWD" \
     | python3 -c "import json, sys; r = [json.loads(l) for l in sys.stdin if '\"shared production files\"' in l]; print('%s|%s' % (r[0]['pass'], r[0]['detail']) if r else 'no row')"
 }
-_p5task() { printf '### Task %s: step %s\n**File:** `%s`, `tests/test_%s.py`\n**Depends:** %s\n**Test:** `true`\n**Cases:**\n- a\n- b\n- [ ] done\n\n' "$1" "$1" "$2" "$1" "$3"; }
+_p5task() { printf '### Task %s: step %s\n**File:** `%s`, `test/test_%s.py`\n**Depends:** %s\n**Test:** `true`\n**Cases:**\n- a\n- b\n- [ ] done\n\n' "$1" "$1" "$2" "$1" "$3"; }
 _p5plan() { printf '**Integration:** `true`\n\n## Group G1: Core\n**Depends:** none\n**Validate:** `true`\n**Context:**\nThe core.\n\n'; }
 assert_eq "9.8.4 5: three tasks of one group on the same production file fail the row, with a detail that says to merge them" \
   "False|G1: Task 1, Task 2 and Task 3 all declare src/core.py; merge them into one task" \
@@ -190,7 +190,7 @@ assert_eq "9.8.4 5: three tasks of one group on the same production file fail th
 assert_eq "9.8.4 5: two tasks on one file pass (they are ordered by Depends)" "True" \
   "$(_p5 "$(_p5plan; _p5task 1 src/core.py none; _p5task 2 src/core.py "Task 1")" | cut -d'|' -f1)"
 assert_eq "9.8.4 5: a shared test file is not a production file" "True" \
-  "$(_p5 "$(_p5plan; _p5task 1 tests/test_x.py none; _p5task 2 tests/test_x.py "Task 1"; _p5task 3 tests/test_x.py "Task 2")" | cut -d'|' -f1)"
+  "$(_p5 "$(_p5plan; _p5task 1 test/test_x.py none; _p5task 2 test/test_x.py "Task 1"; _p5task 3 test/test_x.py "Task 2")" | cut -d'|' -f1)"
 rm -f p5-tasks.md
 
 # --- 4. The fresh review converges: a first round with a tests lens, then rechecks of the earlier findings only ---
