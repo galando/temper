@@ -88,9 +88,10 @@ passed its own gate each time; the group check failed each time. Each fault is f
   (risk H with two fresh reviewers and a recheck, Design, a Review finding sent back to Build, then `/temper:fix`) and
   `pyjokes-blocked` (`temper task blocked` parks a task at once and the loop back to Plan is recommended). The e2e job's
   time limit goes from 45 to 60 minutes.
-- **Housekeeping.** The embedded Python of `_earlier_build` and of the usage summary moved to `scripts/earlier_build.py` and
-  `scripts/usage_ops.py`, and `group fix` and `output` live in `scripts/group_fix.py` and `scripts/output_ops.py`, keeping
-  the CLI under the plugin directory's 256 KiB limit for a file.
+- **Housekeeping.** The embedded Python of `_earlier_build`, of the usage summary and of the grouped Build report moved to
+  `scripts/earlier_build.py`, `scripts/usage_ops.py` and `scripts/group_report.py`, and `group fix` and `output` live in
+  `scripts/group_fix.py` and `scripts/output_ops.py`, keeping the CLI under the plugin directory's 256 KiB limit for a
+  file with the lock fix of galando/temper#114 merged as well (the two together were 172 bytes over it).
 
 ## v9.8.3: the run's state machines made explicit
 
