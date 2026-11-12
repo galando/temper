@@ -495,3 +495,109 @@ assert_eq "report --html: Done once the Commit gate passed, In progress before" 
 assert_eq "report --html: a loop back reads with the stage names and its reason" "1" \
   "$(python3 "$REPO_ROOT/scripts/run_report.py" render --view commit-passed.json -o - | grep -c '↺ Review to Build (1 of 2): a real bug')"
 setup
+
+# --- 9.8.4 7a: "Include what is left out" passes the whole list to Plan, never the first 100 characters ---
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state set complexity simple >/dev/null 2>&1
+cat > .temper/specs/demo/plan.md <<'PEOF'
+## Context Map
+- use: src/ (3 files)
+- ignore: ledger/export.py: refunds in exports are out of scope for this change and stay as they are
+- ignore: ledger/report.py: the monthly report is already correct and reads the same rows
+- reviewed: pending
+
+## Plan
+PEOF
+assert_eq "9.8.4 7a: the Include call carries the whole text, the second left out source and its last word included" "yes" \
+  "$(nx "c = d['context_check']['options'][1]['calls'][0]; 'yes' if 'reads the same rows' in c and c.endswith('--redo') else c")"
+
+# --- 9.8.4 fault 2: a failed group check names what failed, and stops recommending a blind retry ---
+_g2() { # _g2 <gate JSON>: a run at Build with group G1 (Task 1 passed) whose gate is the JSON given
+  fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", %s}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' "$1" > .temper/groups.json
+}
+_g2 '"fails": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a", "FAIL: test_b", "FAIL: test_c", "FAIL: test_d"]}'
+assert_eq "9.8.4 2b: every task passed and the group check failed: one fix agent on the merged tree is first and recommended" \
+  "Fix the group's merged work (Recommended)|group fix G1|Run the group's tasks again" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[0]['calls'][0].split('temper ', 1)[1] + '|' + o[1]['label']")"
+assert_eq "9.8.4 2a: the question shows the first FAIL lines of the group's Validate output, not all of them" "1|1|0" \
+  "$(nx "q = d['ask']['question']['question']; '%d|%d|%d' % ('FAIL: test_a' in q, 'FAIL: test_c' in q, 'FAIL: test_d' in q)")"
+_g2 '"fails": 2, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}'
+assert_eq "9.8.4 2c: the second failure says how many times the group failed, and never recommends running the tasks again" "1|0" \
+  "$(nx "q = d['ask']['question']; '%d|%d' % ('failed its check 2 times' in q['question'], any(o['label'] == \"Run the group's tasks again (Recommended)\" for o in q['options']))")"
+_g2 '"fails": 2, "gate": {"verdict": "FAIL", "reason": "uncommitted changes in the group worktree, not on its branch: src/a.sh"}'
+assert_eq "9.8.4 2c: a second failure that ran no check recommends the loop back to Plan, not the tasks again" "Loop back to Plan (Recommended)|Run the group's tasks again" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label']")"
+_g2 '"fails": 1, "gate": {"verdict": "FAIL", "reason": "uncommitted changes in the group worktree, not on its branch: src/a.sh"}'
+assert_eq "9.8.4 2c: the first failure that ran no check still recommends running the tasks again" "Run the group's tasks again (Recommended)" \
+  "$(nx "d['ask']['options'][0]['label']")"
+_g2 '"fails": 1, "fix": {"requested": "2026-01-01T00:00:00Z"}, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}'
+assert_eq "9.8.4 2b: the fix asked for launches one Build fix agent on the group's worktree; the CLI commits its work after it" \
+  "work|temper:temper-build|1|1|1|group fix G1 --commit|none" \
+  "$(nx "a = d['agents']; p = a[0]['prompt']; '|'.join([d['action'], a[0]['type'], str(len(a)), str(int('Group fix: group G1' in p)), str(int('FAIL: test_a' in p)), a[0]['after'][-1].split('temper ', 1)[1], str(a[0].get('gate') or 'none')])")"
+# the commit clears the gate, so the group is checked again as an ordinary call of the CLI (a FAIL there asks the question again)
+_g2 '"fails": 1, "gate": null'
+assert_eq "9.8.4 2b: after the fix's commit the next action checks the group again" "work|group gate G1" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
+
+# --- 9.8.4 fault 3: a loop back carries what was learned ---
+# 3a: a loop from Plan back to Intent keeps the open fresh review finding and the person's reason, and the next Plan agent gets both
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" evidence add --stage plan --phase fresh --severity high --claim "[readiness] Task 2: AC-03 has no test that can fail" >/dev/null 2>&1
+"$TEMPER" state loop plan intent --reason "AC-03 must be measurable" >/dev/null 2>&1
+assert_eq "9.8.4 3a: the Intent agent after the loop back gets the reason and the open fresh review finding" "1|1" \
+  "$(nx "p = d['agents'][0]['prompt']; '%d|%d' % ('AC-03 must be measurable' in p, 'AC-03 has no test that can fail' in p)")"
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+assert_eq "9.8.4 3a: the Plan agent after Intent gets the reason and the open fresh review finding too" "temper:temper-plan|1|1" \
+  "$(nx "a = d['agents'][0]; p = a['prompt']; '%s|%d|%d' % (a['type'], 'AC-03 must be measurable' in p, 'AC-03 has no test that can fail' in p)")"
+# 3c: a loop from Build to Plan puts the group gate's reason and FAIL lines first, and never the expected RED runs of the tasks
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22; do
+  "$TEMPER" evidence add --stage build --phase red --claim "Task $n unit test red" --cmd "pytest t$n" --exit 1 >/dev/null 2>&1
+done
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "fails": 3, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: cases 8 expect the old message"]}}}, "tasks": {}}\n' > .temper/groups.json
+"$TEMPER" state loop build plan --reason "G1 cannot pass" >/dev/null 2>&1
+assert_eq "9.8.4 3c: the Plan prompt after a loop from Build names the group gate's reason and FAIL lines first, and no RED run" "1|1|0" \
+  "$(nx "p = d['agents'][0]['prompt']; i = p.find('What Build left open'); '%d|%d|%d' % (p.find('1. group G1', i) > 0, 'FAIL: cases 8 expect the old message' in p, 'unit test red' in p)")"
+
+# --- 9.8.4 fault 2: the group question converges: a fix that did not make the group pass is not recommended again ---
+_g2c() { # _g2c <gate JSON>: as _g2, with group G1's fields given
+  fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", %s}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' "$1" > .temper/groups.json
+}
+_g2c '"fails": 2, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}'
+assert_eq "9.8.4 2c: after a fix of the merged tree that did not pass, Loop back to Plan is recommended and the fix is still offered" \
+  "Loop back to Plan (Recommended)|Fix the group's merged work|1" \
+  "$(nx "o = d['ask']['options']; q = d['ask']['question']['question']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('A fix of its merged work did not make it pass' in q))")"
+"$TEMPER" state loop build plan --reason "x" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", "fails": 3, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "9.8.4 2c: with the step back to Plan spent, Save for later is recommended: no retry is" "Save for later (Recommended)|0" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + str(sum(1 for x in o if '(Recommended)' in x['label'] and x['label'] != 'Save for later (Recommended)'))")"
+
+# --- 9.8.4 reverify: the fix pass ends with the CLI's scenario run; Build that fails the same way after running again is not run again ---
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+assert_eq "9.8.4 reverify: the fix pass of an integrated run reruns the scenario tests before the Build gate" "integrate|gate build" \
+  "$(nx "a = d['agents'][0]['after']; a[-2].split('temper ', 1)[1] + '|' + a[-1].split('temper ', 1)[1]")"
+gfail build "tests pass" "the last test run failed"
+assert_eq "9.8.4 reverify: a first failure recommends running Build again" "Run Build again (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+"$TEMPER" state redo build --reason "tests pass: the last test run failed" >/dev/null 2>&1; gfail build "tests pass" "the last test run failed"
+assert_eq "9.8.4 reverify: the same failure after running again recommends Save for later, and says so" "Save for later (Recommended)|Run Build again|1" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('failed the same way after it ran again' in d['ask']['question']['question']))")"
+
+# --- 9.8.4 bench: Check that misses the same measurement after running again is not run again by the recommendation ---
+fresh; gpass intent plan build review
+for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"
+assert_eq "9.8.4 bench: a missing measurement first recommends running Check again" "Run Check again (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+"$TEMPER" state redo check --reason "$(nx "d['ask']['options'][0]['calls'][0].split('--reason ', 1)[1]" | python3 -c "import shlex, sys; print(shlex.split(sys.stdin.read())[0])")" >/dev/null 2>&1
+gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"
+assert_eq "9.8.4 bench: the same gap after running again recommends Save for later, and says so" "Save for later (Recommended)|Run Check again|1" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('failed the same way after it ran again' in d['ask']['question']['question']))")"
+
+# --- 9.8.4 bench: a group parked on a blocked task asks for the plan first, naming the file and the task that declares it ---
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_reason": "Task 1 needs src/b.sh, outside its declared files"}}, "tasks": {"1": {"status": "failed", "group": "G1", "blocked": {"needs": "src/b.sh", "owners": [2], "reason": "the test needs the b event"}}}}\n' > .temper/groups.json
+assert_eq "9.8.4 blocked: Loop back to Plan is recommended at once, and the question names the file, its task and why" "Loop back to Plan (Recommended)|Run the task again|1" \
+  "$(nx "o = d['ask']['options']; q = d['ask']['question']['question']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('Task 1 needs src/b.sh, which Task 2 declares' in q and 'the test needs the b event' in q))")"
+setup

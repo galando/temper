@@ -3,6 +3,100 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.8.4: the faults one failed run exposed
+
+A `/temper:temper` run of a complex feature (8 criteria, about 30 files, risk H) used 5 Plan passes, 6 fresh reviewers over
+3 rounds and 5 Build attempts of a group of 12 tasks, asked about 30 questions and put nothing on the branch. Every task
+passed its own gate each time; the group check failed each time. Each fault is fixed with a failing test first, mostly in
+`temper-cases-20.sh` (CLI) and `temper-cases-8.sh` (flow).
+
+- **1. A group must be able to pass its own Validate.** New plan gate row `group validate order`: it fails when an existing
+  test file a group's Validate runs (named in the command as a path or a dotted Python module, inside a folder it names,
+  or named by a script it runs) is
+  edited by a task of a group that is not on that group's worktree, and names the file and both groups. G1's Validate
+  ran selftest cases 8 and 9 while the task that updated them was in G2.
+- **2. A failed group check stops recommending a blind retry.** The group gate keeps the FAIL lines of its Validate output
+  (read from the whole output) and counts the group's failed checks; the question shows the first three lines and the
+  count, and the reason is no longer cut to 200 characters. When every task passed and the group check fails, the first
+  and recommended option is one Build fix agent on the group's merged tree (`temper group fix G<n>`, then
+  `group fix G<n> --commit`, which commits the agent's work on the group branch as the CLI's own commit and clears the
+  group's gate, so the next action checks the group again as an ordinary call). From the second failure on, "Run the
+  group's tasks again" is never recommended, and once a fix of the merged tree did not make the group pass, the fix is
+  not recommended again either: the loop back to Plan is, or, with that step spent, Save for later (an end to end run
+  on a mock project looped on the recommended fix 131 times before this). A FAIL line is what failed (FAIL, ERROR, an `...Error:` line), not a
+  traceback's header.
+- **3. Loop backs carry what was learned.** a: a step back from Plan keeps Plan's open fresh review findings, and the reason
+  and findings of a step back reach every stage the run comes through again (the Plan agent after a loop to Intent); the
+  Intent brief revises an accepted intent on a loop back instead of changing nothing. b: the fresh review round limit no
+  longer dead ends after a loop back: a loop back to Intent, Plan or Design, or a replan, earns one more round once
+  `plan.md` or `tasks.md` changes (the choice is stated in `docs/flow.md`). c: a step back from Build carries each failed
+  group check first, with its reason, count and FAIL lines, and no task's RED run.
+- **4. The fresh review converges.** The first round runs a fourth lens, `tests` (which existing tests the change breaks,
+  and which task updates them). Each later round is a `recheck`: it gets the earlier findings and the changed task blocks,
+  checks only whether each finding is fixed, and keeps the earlier paraphrase. Only high findings block; medium and low
+  ones are no longer a recommended revision and reach the builder of the task they name as a `Plan review note`.
+- **5. Build model by risk.** With no `build.grouped.task-model`, a plan whose complexity is complex or whose risk is H
+  builds its tasks on sonnet (`temper model --all --source` says `task=sonnet (risk)`); an explicit task model still wins.
+  New plan gate row `shared production files`: it fails when more than two tasks of one group declare the same production
+  file, and says to merge them.
+- **6. Selftest isolation.** a: `run_env.py` keeps git's `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`
+  family together (`_KEY_` read as a credential stripped the keys and kept the count, so every git call under the CLI's
+  runs failed with "unable to parse command-line config" in Claude Code cloud sessions); a family with a credential key
+  (an extra header, a helper) is left out whole. b: each case file of `test-temper.sh` starts from an emptied work folder
+  (files 3, 6 and 9 still go on from 2, 5 and 8).
+- **7. Small frictions.** a: "Include what is left out" passes the whole text to Plan (it was cut to 100 characters, and
+  Plan was told "already co"). b: `.temper/brief.md` is in the run files `temper init` lists in the clone's
+  `info/exclude`. c: `temper output <stage>|G<n>` prints the last output of a gate or a group gate, read only (with the mod
+  on, the session cannot run `printenv` or a test runner). d: `temper usage add ... --fill` puts a background agent's time,
+  from its completion notice, into the row recorded without one (the report showed "-" for Design and Build).
+- **Found by the full SDLC run** (a mock pyjokes project through Intent, Plan with two fresh reviewers and a recheck,
+  Design, grouped Build, a Review finding sent back to Build, Check, the commit, then a `/temper:fix` run; plain, with the
+  mod and with its driver). After a step back to Build, the fix pass now ends with `temper integrate`, which on a run
+  integrated already reruns the scenario tests on the fixed tree: the step back had cleared Build's scenario rows, and a
+  model's record pass was asked to record rows the CLI can run. And Build failing the same way after "Run Build again"
+  no longer recommends running it again: Save for later is recommended, and the question says so (following the
+  recommendation had relaunched the fix pass forty times on one failure). The same holds at Check for a measurement the
+  run still cannot take after "Run Check again" (a benchmark run without coverage.py ran Check again 52 times).
+- **Haiku or Sonnet for the Build task agents, measured** (`docs/evidence/haiku-sonnet-task-agents.md`, 18 benchmark runs):
+  the same quality (every run passed every hidden test), Haiku about 9% cheaper a run and 13% slower; its one run with
+  retries was a plan defect no model could build.
+  The default stays as above: Haiku for simple and medium plans, Sonnet for complex or risk H. `bench/run.mjs
+  --task-model` and `bench/compare_models.py` run and tabulate such a comparison.
+- **A task its plan cannot build is not retried.** When a Build task's test needs a change in a file the task does not
+  declare, its agent records `temper task blocked N --needs <path> --reason '<why>'` (the CLI checks the path is outside
+  the task and names the tasks that declare it). The task's gate then fails once and parks the group, with no retry and
+  no escalation, and the question recommends the loop back to Plan, naming the file and its task. In the benchmark one
+  such task took two Haiku and two Sonnet attempts, each stopping for the same reason, before the loop back.
+- **Live checks of the new brief instructions** (`docs/evidence/live-brief-checks.md`): real Sonnet reviewers ran the
+  `tests` lens and the recheck rounds as written, a real Haiku task agent recorded `temper task blocked`, and the group fix
+  agent fixed a failed group. They found one waste, now fixed: the person's Context check answer, written into plan.md's
+  Context Map, made the fresh review stale and launched a recheck round with nothing to check; the review's digest now
+  leaves the Context Map out. A second pass reached the rest: a Haiku agent that could not dodge its block recorded it in
+  both runs, and the live Intent agent revised an accepted intent on a loop back by setting it back to draft and
+  leaving the scenarios to Plan, which the Intent brief now asks for (the person accepts the revision at the Intent
+  question).
+- **8. A request that arrives as a spec.** A proposal only: `docs/decisions/0017-a-request-that-arrives-as-a-spec.md`
+  drafts a lighter route for a request that already states its rules, files, tests and done condition. Nothing of it is
+  built.
+- **The lock is never seen without its owner** (galando/temper#114, merged with this release). The lock folder was made
+  first and its owner line written after, so a waiter past its wait could find it with no owner, take it for a foreign
+  lock and write past a live holder: a ledger row was lost now and then on CI (L1, M4). The lock is now made under another
+  name with its owner inside and renamed into place. A foreign lock with no owner line is still written past after the
+  wait with a WARN (fail open). Case A16 in `temper-cases-17.sh` stalls mkdir to show the race.
+- **The pyjokes runs in CI.** `scripts/e2e/pyjokes.ts` adds three end to end scenarios on a mock pyjokes project, run in
+  every mode by `bun scripts/e2e/run.ts all`: `pyjokes` (faults 1, 2, 3a, 4, 5, 7c and 7d in one run), `pyjokes-full`
+  (risk H with two fresh reviewers and a recheck, Design, a Review finding sent back to Build, then `/temper:fix`) and
+  `pyjokes-blocked` (`temper task blocked` parks a task at once and the loop back to Plan is recommended). The e2e job's
+  time limit goes from 45 to 60 minutes.
+- **Housekeeping.** The embedded Python of `_earlier_build`, of the usage summary and of the grouped Build report moved to
+  `scripts/earlier_build.py`, `scripts/usage_ops.py` and `scripts/group_report.py`, and `group fix` and `output` live in
+  `scripts/group_fix.py` and `scripts/output_ops.py`, keeping the CLI under the plugin directory's 256 KiB limit for a
+  file with the lock fix of galando/temper#114 merged as well (the two together were 172 bytes over it).
+- **The mod's tests type check on Claude Code 2.1.323.** That release (out the day of this one) has no MultiEdit tool in
+  its types and adds `isCollapsed` to the band's props, so `claude plugin validate --strict`, which CI runs on the latest
+  Claude Code, failed on three test files, on main as well. The tests now type check on 2.1.287, 2.1.322 and 2.1.323; the
+  guard still refuses a MultiEdit from an older host.
+
 ## v9.8.3: the run's state machines made explicit
 
 Each piece of run state that several writers moved (the run's stage, a group, a task, the small change window, the

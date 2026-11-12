@@ -283,8 +283,9 @@ describe('reading the hook stays allowed while a run is active', () => {
 
 // Through the real hook, with the world standing in for the engine.
 describe('through tool.call', () => {
-  const edit = (path: string) => ({ tool: 'Edit', file_path: path, old_string: 'exit 1', new_string: 'exit 0' })
-  const multi = (path: string) => ({ tool: 'MultiEdit', file_path: path, edits: [{ old_string: 'exit 1', new_string: 'exit 0' }] })
+  const edit = (path: string) => ({ tool: 'Edit' as const, file_path: path, old_string: 'exit 1', new_string: 'exit 0' })
+  // Claude Code 2.1.323 has no MultiEdit tool in its types; an older host still sends one, and the guard still refuses it.
+  const multi = (path: string) => ({ tool: 'MultiEdit', file_path: path, edits: [{ old_string: 'exit 1', new_string: 'exit 0' }] }) as never
   const START = { cwd: '/repo', surface: null, isInteractive: false } as const
   test('a run in Build: Write, Edit, MultiEdit and Bash are refused; a read passes', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }), { projectRoot: '/repo' })

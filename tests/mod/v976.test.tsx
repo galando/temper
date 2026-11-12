@@ -23,7 +23,7 @@ describe('9.7.6: the fresh review in the run view', () => {
     expect(rv.fresh).not.toBeNull()
     expect(rv.fresh!.paraphrase).toBe('a reset link by email, valid for one hour | the app has users and a mail helper')
     expect(rv.fresh!.missing).toEqual([])
-    expect(rv.fresh!.findings.map(f => `${f.id}|${f.lens}|${f.state}|${f.cite}`)).toEqual(['5|readiness|open|null', '6|zoom-out|contested|src/mail.ts:sendMail'])
+    expect(rv.fresh!.findings.map(f => `${f.id}|${f.lens}|${f.state}|${f.cite}`)).toEqual(['6|readiness|open|null', '7|zoom-out|contested|src/mail.ts:sendMail'])
   })
 
   test('a simple plan has no fresh review: the field is null and the view has none', () => {
@@ -44,7 +44,7 @@ describe('9.7.6: the fresh review in the run view', () => {
   test('the view drops the lens tag from the claim and keeps the lens apart', () => {
     const fv = viewOf(EXTRA_VIEWS['plan-fresh-blocker'] as J).fresh!
     expect(fv.summary).toBe('a reset link by email, valid for one hour | the app has users and a mail helper')
-    expect(fv.rows[0]).toEqual({ id: 5, severity: 'high', lens: 'readiness', claim: "Task 1: the Case 'expired link' names no status", state: 'open', cite: null })
+    expect(fv.rows[0]).toEqual({ id: 6, severity: 'high', lens: 'readiness', claim: "Task 1: the Case 'expired link' names no status", state: 'open', cite: null })
   })
 })
 
@@ -56,8 +56,8 @@ describe('9.7.6: the pane shows the fresh review at Plan, with no button', () =>
     const text = JSON.stringify(await pane.drawn())
     expect(text).toContain('Fresh review of the plan · 2 open blockers')
     expect(text).toContain('A reader with no context: a reset link by email, valid for one hour')
-    expect(text).toContain("#5 high [readiness] Task 1: the Case 'expired link' names no status · open")
-    expect(text).toContain('#6 high [zoom-out] Task 2: a new mail sender where one exists · contested (src/mail.ts:sendMail)')
+    expect(text).toContain("#6 high [readiness] Task 1: the Case 'expired link' names no status · open")
+    expect(text).toContain('#7 high [zoom-out] Task 2: a new mail sender where one exists · contested (src/mail.ts:sendMail)')
     expect(await pane.findAll({ type: 'Button' })).toEqual([])
   })
 

@@ -61,8 +61,8 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
   run counts as evidence, and a RED that never failed is rejected.
 - Never edit outside the worktree, and never touch a file another task declares.
 - Never run `temper group reopen` (or any `temper group` command); reopening is the orchestrator's alone.
-- If the task cannot be done within its declared files, stop and give the reason in its
-  `stopped:` line instead of widening scope.
+- If GREEN needs a change in a file the task does not declare, never widen scope: run
+  `TEMPER task blocked N --needs <path> --reason '<why>'`, gate the task (no retry) and stop.
 
 **Your panel is drawn by the CLI** (`temper panel task`, after your gates) from what it recorded: the attempt, the RED and
 GREEN runs of `task test`, the gate's verdict and the files of the task's commit. Draw no box and write no script for

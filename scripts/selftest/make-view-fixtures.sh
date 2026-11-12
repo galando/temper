@@ -311,13 +311,13 @@ art = ("--artifact", ".temper/specs/pw/tasks.md")
 cli(fr, "plan", "fresh", "request")
 cli(fr, "plan", "fresh", "start")
 ntasks = str(TASKS.count("\n### Task "))
-for lens in ("readiness", "zoom-out", "comprehension"):
+for lens in ("readiness", "zoom-out", "comprehension", "tests"):
     cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--exit", "0", "--label", "PROVEN", "--claim", "fresh review completed: %s A" % lens,
         *(("--value", ntasks) if lens == "readiness" else ()), *art)
 cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--claim", "paraphrase: a reset link by email, valid for one hour | the app has users and a mail helper", *art)
 cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--severity", "high", "--claim", "[readiness] Task 1: the Case 'expired link' names no status", *art)
 cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--severity", "high", "--claim", "[zoom-out] Task 2: a new mail sender where one exists", *art)
-cli(fr, "evidence", "contest", "--stage", "plan", "--id", "6", "--cite", "src/mail.ts:sendMail", "--quote", "export function sendMail", "--reason", "the task calls sendMail")
+cli(fr, "evidence", "contest", "--stage", "plan", "--id", "7", "--cite", "src/mail.ts:sendMail", "--quote", "export function sendMail", "--reason", "the task calls sendMail")
 verdict(fr, "plan", False, "no open plan blockers", "2 open")
 snap2(fr, "plan-fresh-blocker", "run-fresh")
 

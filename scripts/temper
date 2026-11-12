@@ -573,6 +573,8 @@ _resolve_model() { # <stage> -> config override, else frontmatter default, else 
 _resolve_task_model() { # grouped task agent: config, else agents/build-task.md frontmatter, else the constant
   local m; m="$(_cfg_get build.grouped.task-model "")"
   [[ -n "$m" ]] && { echo "$m"; return; }
+  # 9.8.4: a complex or risk H plan builds on sonnet (cli_ctx.py risky_run, RISK_TASK_MODEL)
+  [[ -f "$STATE_FILE" ]] && [[ "$(_json_get_path "$STATE_FILE" complexity "")" == complex || "$(_json_get_path "$STATE_FILE" risk "")" == H ]] && { echo sonnet; return; }
   local f="$PLUGIN_ROOT/agents/build-task.md"
   [[ -f "$f" ]] && m="$(awk '
     /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
@@ -629,7 +631,7 @@ cmd_model() {
 # older project that lacks a newer one)
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
-security-map.json test-gap-report.json view.json agents-named.json evidence/ index/ reviews/ archive/ check/ .lock/"
+security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/"
 
 _excludes_current() { # 0 when the clone's info/exclude lists every run file init writes (or this is no git repository)
   local ex pre p
@@ -1259,6 +1261,11 @@ print(json.dumps({k: v for k, v in zip(sys.argv[1::2], sys.argv[2::2]) if v != '
   _go_back "$to"
 }
 
+_fresh_grant() { # 9.8.4: a loop back or a replan to <stage>: one more fresh review round once plan.md or tasks.md changes (fresh_review.py cap_of)
+  [[ "$1" =~ ^(intent|plan|design)$ && -f "$STATE_FILE" ]] || return 0
+  python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark loop "$STATE_FILE" "$(_spec_path "")" 1 "$(_now)" "" >/dev/null 2>&1 || true
+}
+
 _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state loop, a state set next_stage to an earlier
              # stage). One function, so every way back leaves the same run behind (ADR 0012, point 3):
   local to="$1"
@@ -1270,6 +1277,7 @@ _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state 
   if [[ -f "$GROUPS_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]]; then
     _groups_reset
   fi
+  _fresh_grant "$to"
   # - and the code an earlier run built no longer stands for the plan: Build builds the plan, not a fix pass of it
   if [[ -f "$STATE_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]] \
      && [[ -n "$(cmd_state_get built_before "")" ]]; then
@@ -1456,6 +1464,7 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
     return 1
   fi
   _redo_from "$stage" || return 1
+  _fresh_grant "$stage"
   [[ "$stage" == "pipeline" ]] && rm -f "$(_json_get_path "$STATE_FILE" spec_path "")/pipeline-context.json"   # CI is read again
   [[ "$stage" == "review" ]] && _review_code save
   # A run a door started at a later stage checks the stages before it instead of running them: one run again is run,
@@ -2449,7 +2458,7 @@ e.setdefault('finished_at', None)
 # temper group gate G: PASS when every task of G passed and the group's own Validate command, run by the
 # CLI in the group worktree, exits 0. Recorded as a build row tagged with the group (phase 'group').
 cmd_group_gate() {
-  local g="${1:-}" tmo="${TEMPER_TASK_TEST_TIMEOUT_S:-600}" timed_out=""; shift || true
+  local g="${1:-}" tmo="${TEMPER_TASK_TEST_TIMEOUT_S:-600}" timed_out="" flines=""; shift || true
   while [[ $# -gt 0 ]]; do   # --timeout-s N: the limit of the group's own runs (a rerun after a timeout doubles it)
     case "$1" in
       --timeout-s) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "FAIL: --timeout-s takes a whole number of seconds" >&2; return 1; }; tmo="$2"; shift 2 ;;
@@ -2508,7 +2517,7 @@ except Exception:
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
-    rm -f "$rowfile"
+    flines="$(_task_py faillines "$rowfile")"; rm -f "$rowfile"   # 9.8.4: the check ran; its FAIL lines go with the verdict
     if [[ "$rc" -eq 124 ]]; then timed_out="$tmo"; reason="group $g Validate timed out after ${tmo}s: $validate"
     elif [[ "$rc" -ne 0 ]]; then reason="group $g Validate failed (exit $rc): $validate"; fi
   fi
@@ -2518,7 +2527,7 @@ except Exception:
     [[ -n "$reason" ]] && reason="group $g: $reason"
   fi
   if [[ -n "$reason" ]]; then
-    _group_gate_record "$g" FAIL "$reason" "$timed_out" || return 1
+    _group_gate_record "$g" FAIL "$reason" "$timed_out" "$flines" || return 1
     echo "FAIL: $reason"
     return 1
   fi
@@ -2538,10 +2547,12 @@ if a[1] == 'PASS':
 else:
     g['gate']['reason'] = a[2]
     if a[3]: g['gate']['timeout_s'] = int(a[3])
+    if a[5]: g['gate'].update(ran=True, fail_lines=json.loads(a[5]))   # 9.8.4: the check ran; what failed in it
+    g['fails'] = int(g.get('fails') or 0) + 1                          # and how many times the group's check failed
     if g.get('status') != 'parked':
         g['status'] = 'running'
     g['finished_at'] = None
-" "$1" "$2" "$3" "$4" "$(_now)"
+" "$1" "$2" "$3" "$4" "$(_now)" "${5:-}"
 }
 
 # D-08: what a human does about a parked foreign commit; printed by the task gate that parks the group and by a refused reopen.
@@ -2770,7 +2781,7 @@ d.setdefault('cli_commits', []).append(a[0])
     _groups_mutate "
 t = d.setdefault('tasks', {}).setdefault(a[0], {})
 t.setdefault('attempts_prior', []).extend(t.get('attempts') or [])
-t['attempts'] = []
+t['attempts'] = []; t.pop('blocked', None)
 task_status(t, 'pending')
 t['attempt'] = 1
 for k in ('commit', 'passed_at', 'snapshot', 'start_sha', 'started_at'):
@@ -2778,7 +2789,7 @@ for k in ('commit', 'passed_at', 'snapshot', 'start_sha', 'started_at'):
 t.setdefault('reopened', []).append({'ts': a[1], 'feedback': a[2] or None})
 g = d.setdefault('groups', {}).setdefault(a[3], {})
 g.pop('parked_foreign', None)   # D-08: off the branch or accepted (checked above); no other group's list is touched
-g.pop('gate', None)
+g.pop('gate', None); g.pop('fix', None)
 g.pop('finished_at', None)
 g.pop('confirmed', None)        # the person's Continue was for the group as it passed; it is asked again once it passes again
 d.pop('integration', None)      # and the merge of the groups no longer holds this group's work: integrate runs again
@@ -2809,87 +2820,13 @@ print(' '.join(sorted((k for k, v in (d.get('tasks') or {}).items() if v.get('gr
 # started_at (first `group start`) to the group gate PASS (finished_at); the total spans the earliest
 # start to the latest finish.
 _group_report_json() {
-  python3 -I - "$GROUPS_FILE" "$(_evidence_file review)" <<'PY'
-import calendar, json, sys, time
-def load(p, default):
-    try:
-        return json.load(open(p))
-    except Exception:
-        return default
-run = load(sys.argv[1], {})
-rev = load(sys.argv[2], [])
-def secs(s):
-    try:
-        return calendar.timegm(time.strptime(s, '%Y-%m-%dT%H:%M:%SZ'))
-    except Exception:
-        return None
-spent, attempts, esc = {}, {}, 0
-for n, t in sorted((run.get('tasks') or {}).items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0):
-    rows = list(t.get('attempts_prior') or []) + list(t.get('attempts') or [])
-    attempts[n] = rows
-    for r in rows:
-        if isinstance(r.get('ms'), int):
-            spent[r.get('model') or 'unknown'] = spent.get(r.get('model') or 'unknown', 0) + r['ms']
-        if isinstance(r.get('n'), int) and r['n'] >= 3:
-            esc += 1
-groups = run.get('groups') or {}
-wall, starts, ends = {}, [], []
-for g, v in sorted(groups.items()):
-    a, b = secs(v.get('started_at') or ''), secs(v.get('finished_at') or '')
-    if a is not None:
-        starts.append(a)
-    if a is not None and b is not None and (v.get('gate') or {}).get('verdict') == 'PASS':
-        wall[g] = (b - a) * 1000
-        ends.append(b)
-total = (max(ends) - min(starts)) * 1000 if starts and ends else 0
-openf = sum(1 for e in rev if isinstance(e, dict) and e.get('severity') and not e.get('resolved') and not e.get('accepted'))
-task_groups = {n: (t or {}).get('group') for n, t in (run.get('tasks') or {}).items() if (t or {}).get('group')}
-print(json.dumps({'ms_by_model': spent, 'attempts': attempts, 'escalations': esc, 'task_groups': task_groups,
-                  'parked': sorted(g for g, v in groups.items() if v.get('status') == 'parked'),
-                  'wall_ms_by_group': wall, 'build_wall_ms': total, 'review_findings_open': openf},
-                 sort_keys=True))
-PY
+  python3 -I "$SCRIPTS_DIR/group_report.py" json "$GROUPS_FILE" "$(_evidence_file review)"
 }
 
 cmd_group_report() { # temper group report [--json]
   local j; j="$(_group_report_json)"
   if [[ "${1:-}" == "--json" ]]; then echo "$j"; return 0; fi
-  python3 -I - "$j" <<'PY'
-import json, sys
-r = json.loads(sys.argv[1])
-def dur(ms):
-    s = int(ms or 0) // 1000
-    return '%d min %d s' % (s // 60, s % 60) if s >= 60 else '%d s' % s
-tasks = sorted(r['attempts'].items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0)
-groups = r.get('task_groups') or {}
-total = sum(r['ms_by_model'].values())
-print('Grouped Build report')
-print('  Tasks: %d, in %d group(s). Build time: %s.' % (len(tasks), len(r['wall_ms_by_group']) or len(set(groups.values())), dur(r['build_wall_ms'])))
-print('  Time the task agents ran: %s%s' % (dur(total), (' (' + ', '.join('%s %s' % (m, dur(n)) for m, n in sorted(r['ms_by_model'].items())) + ')') if r['ms_by_model'] else ''))
-for g, ms in sorted(r['wall_ms_by_group'].items()):
-    print('  Group %s: passed its group gate after %s.' % (g, dur(ms)))
-print('  Groups stopped for you (parked): %s' % (', '.join(r['parked']) or 'none'))
-print('  Tasks that moved to the stronger model after two failed attempts: %d' % r['escalations'])
-print('  Open review findings: %d' % r['review_findings_open'])
-for n, rows in tasks:
-    if not rows:
-        print('  Task %s: not run yet' % n)
-        continue
-    last = rows[-1]
-    head = 'passed' if last.get('outcome') == 'PASS' else 'failed'
-    print('  Task %s: %s after %d attempt(s)' % (n, head, len(rows)))
-    for i, a in enumerate(rows, 1):
-        what = 'passed' if a.get('outcome') == 'PASS' else 'failed'
-        model = a.get('model') or 'no model given to task gate'
-        extra = []
-        if isinstance(a.get('ms'), int):
-            extra.append(dur(a['ms']))
-        line = '    attempt %d: %s (%s%s)' % (i, what, model, ''.join(', ' + x for x in extra))
-        reason = (a.get('reason') or '').strip().split('\n')[0]
-        if what == 'failed' and reason:
-            line += ': ' + (reason if len(reason) <= 160 else reason[:157] + '...')
-        print(line)
-PY
+  python3 -I "$SCRIPTS_DIR/group_report.py" text "$j"
 }
 
 # temper group continue G: the person's Continue at the group question (ADR 0013), recorded so `temper next` knows
@@ -2919,7 +2856,9 @@ cmd_group() {
     gate) cmd_group_gate "$@" ;;
     reopen) cmd_group_reopen "$@" ;;
     report) cmd_group_report "$@" ;;
-    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report> ..." >&2; return 1 ;;
+    fix) _lock_acquire; TEMPER_PREFIX="$(_prefix)" python3 -E -s "$SCRIPTS_DIR/group_fix.py" "$GROUPS_FILE" "$(_now)" "$(_spec_slug "$(_spec_path "")")" "$@"
+         local rc=$?; _lock_release; return $rc ;;   # 9.8.4: one fix agent on a failed group's merged tree
+    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|fix> ..." >&2; return 1 ;;
   esac
 }
 
@@ -3219,6 +3158,9 @@ _task_gate_body() {
       # rule violation, not a test failure) and the task's worktree is kept as it is for the human. The worktree is
       # this task's alone, so the commit is this task's: no sibling is touched.
       park="Task $n holds commit(s) not made by the CLI"
+    elif [[ "$(_jget "$_T_CTX" blocked)" == *needs* ]]; then   # 9.8.4: task blocked: no attempt can build it, park now
+      park="Task $n needs $(_jget "$(_jget "$_T_CTX" blocked)" needs), outside its declared files"
+      _task_wt_discard "$n" "$wtrel" "$(_jget "$_T_CTX" tbranch)" || return 1
     else
       # D-03: attempt 1 retries on the task model, attempt 2 escalates once, attempt 3 parks the group. The attempt's
       # worktree is discarded; the next attempt starts a fresh one from the group branch.
@@ -3384,7 +3326,9 @@ try:
     print((json.load(open(sys.argv[1])).get('integration') or {}).get('verdict', ''))
 except Exception:
     print('')" "$GROUPS_FILE")" == "PASS" ]]; then
-    echo "OK: already integrated"
+    # 9.8.4: after a fix pass, the scenario tests run again on the fixed tree (a step back cleared Build's rows)
+    [[ -f "$spec_path/intent.md" ]] && python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" integrate "$spec_path/intent.md" "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$(_evidence_file build)"
+    echo "OK: already integrated; the scenario tests ran again"
     return 0
   fi
   feature="$(cmd_state_get branch "")"
@@ -3536,7 +3480,9 @@ cmd_task() {
     gate) cmd_task_gate "$@" ;;
     confirm) cmd_task_confirm "$@" ;;
     accept|retry) cmd_task_cover "$sub" "$@" ;;
-    *) echo "FAIL: usage: temper task <start|show|test|gate|confirm|accept|retry> ..." >&2; return 1 ;;
+    blocked) _lock_acquire; python3 -E -s "$SCRIPTS_DIR/task_blocked.py" "$GROUPS_FILE" "$(_grouped_parse "$(_spec_path "")/tasks.md")" "$(_now)" "$@"
+             local rc=$?; _lock_release; return $rc ;;   # 9.8.4: its test needs a file outside the task: no retry
+    *) echo "FAIL: usage: temper task <start|show|test|gate|confirm|accept|retry|blocked> ..." >&2; return 1 ;;
   esac
 }
 
@@ -3660,43 +3606,7 @@ gate_plan() {
 _earlier_build() { # _earlier_build <spec_path>: prints the commit of the spec folder's newest committed gate-ledger.json that
                    # records Build PASS (not skipped); exit 0 when no file of the plan changed since, exit 2 (the commit, a
                    # tab, and what changed) when one did, exit 1 (why) when no such ledger is committed
-  python3 -I - "$1" "$(_grouped_parse "$1/tasks.md" 2>/dev/null)" <<'PY'
-import json, subprocess, sys
-spec = sys.argv[1].rstrip('/')
-def git(*a):
-    r = subprocess.run(['git', '--literal-pathspecs', '-c', 'core.quotePath=false'] + list(a), capture_output=True, text=True)
-    return r.returncode, r.stdout
-led = spec + '/gate-ledger.json'
-rc, shas = git('log', '-n', '20', '--format=%H', '--', led)
-shas = shas.split() if rc == 0 else []
-if not shas:
-    print('the spec folder holds no committed gate-ledger.json of an earlier run'); sys.exit(1)
-def built(sha):
-    # the ledger as that commit holds it records a Build PASS of its own (not a skip)
-    rc, text = git('show', '%s:./%s' % (sha, led))
-    try:
-        d = json.loads(text) if rc == 0 else {}
-    except ValueError:
-        return False
-    b = (d.get('gates') or {}).get('build') or {} if isinstance(d, dict) else {}
-    return b.get('verdict') == 'PASS' and not any(isinstance(o, dict) and o.get('stage') == 'build' for o in d.get('overrides') or [])
-# the newest ledger that does: a later door run that skipped Build (or a run left without one) hides no earlier Build PASS
-sha = next((x for x in shas if built(x)), None)
-if not sha:
-    print('no committed gate-ledger.json of the spec folder records a Build PASS of its own'); sys.exit(1)
-try:
-    files = sorted({f for t in json.loads(sys.argv[2]).get('tasks', []) for f in t.get('files', [])})
-except ValueError:
-    files = []
-if not files:
-    print('tasks.md declares no files'); sys.exit(1)
-rc, out = git('diff', '--name-only', sha, '--', *files)
-if rc or out.strip():
-    print('%s\tthe ledger committed in %s records Build PASS, but a file of the plan changed since: %s' % (
-        sha, sha[:7], ', '.join(out.split()[:3]) or 'git diff failed'))
-    sys.exit(2)
-print(sha)
-PY
+  python3 -I "$SCRIPTS_DIR/earlier_build.py" "$1" "$(_grouped_parse "$1/tasks.md" 2>/dev/null)"
 }
 
 gate_build() {
@@ -4698,7 +4608,7 @@ cmd_plan() {
   # 9.8.0: --redo: the person's answer changes the plan. It becomes a note Plan reads, and Plan runs again with it.
   if [[ $redo -eq 1 ]]; then
     cmd_evidence_add --stage plan --phase note --kind input --claim "Context check: ${text}" >/dev/null || return 1
-    cmd_state_redo plan --reason "the Context check: ${text:0:200}"
+    cmd_state_redo plan --reason "the Context check: ${text}"
   fi
 }
 
@@ -4884,42 +4794,18 @@ print(json.dumps({'stage': a[0], 'model': a[1] or None, 'ms': num(a[2]),
   _json_append "$USAGE_FILE" "$row"
 }
 
-_usage_json() { # prints the usage summary as one JSON line, or nothing when no row was recorded
+_usage_json() { # prints the usage summary as one JSON line, or nothing when no row was recorded (scripts/usage_ops.py)
   [[ -f "$USAGE_FILE" ]] || return 0
-  python3 -I - "$USAGE_FILE" <<'PY'
-import json, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
-if not rows:
-    sys.exit(0)
-def add(acc, r):
-    acc['rows'] += 1
-    if isinstance(r.get('ms'), int):
-        acc['ms'] = (acc['ms'] or 0) + r['ms']
-fresh = lambda: {'rows': 0, 'ms': None}
-by_stage, by_model, total = {}, {}, fresh()
-for r in rows:
-    st = by_stage.setdefault(r.get('stage') or 'unknown', fresh())
-    add(st, r)
-    # the models a stage's rows name (what the orchestrator launched it on)
-    if r.get('model') and r.get('model') not in st.setdefault('models', []):
-        st['models'].append(r.get('model'))
-    add(by_model.setdefault(r.get('model') or 'unknown', fresh()), r)
-    add(total, r)
-print(json.dumps({'by_stage': by_stage, 'by_model': by_model, 'total': total}, sort_keys=True))
-PY
+  python3 -I "$SCRIPTS_DIR/usage_ops.py" json "$USAGE_FILE"
 }
 
-cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]
+cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--group G] [--fill]
   local sub="${1:-}"; shift || true
   if [[ "$sub" != "add" ]]; then
     echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--ms D] [--task N] [--group G]" >&2
     return 1
   fi
-  local stage="" model="" ms="" task="" group=""
+  local stage="" model="" ms="" task="" group="" fill=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="${2:-}"; shift 2 || true ;;
@@ -4927,6 +4813,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
       --ms) ms="${2:-}"; shift 2 || true ;;
       --task) task="${2:-}"; shift 2 || true ;;
       --group) group="${2:-}"; shift 2 || true ;;
+      --fill) fill=1; shift ;;   # 9.8.4: the time of a background agent, from its completion notice (usage_ops.py fill)
       # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
       --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
@@ -4939,6 +4826,10 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
   [[ -z "$ms" || "$ms" == "none" || "$ms" =~ ^[0-9]+$ ]] || { echo "FAIL: --ms takes a whole number, or none (got '$ms')" >&2; return 1; }
   [[ -z "$task" || "$task" =~ ^[0-9]+$ ]] || { echo "FAIL: --task takes a whole number (got '$task')" >&2; return 1; }
   [[ -z "$group" || "$group" =~ ^G[0-9]+$ ]] || { echo "FAIL: --group takes G<n> (got '$group')" >&2; return 1; }
+  if [[ -n "$fill" && "$ms" =~ ^[0-9]+$ && -f "$USAGE_FILE" ]]; then
+    _lock_acquire; python3 -I "$SCRIPTS_DIR/usage_ops.py" fill "$USAGE_FILE" "$stage" "$ms" "$task" "$model"; local rc=$?; _lock_release
+    [[ $rc -eq 0 ]] && { echo "OK: usage time filled ($stage)"; return 0; }
+  fi
   _usage_append "$stage" "$model" "$ms" "$task" "$group" || return 1
   echo "OK: usage recorded ($stage)"
 }
@@ -5165,6 +5056,7 @@ main() {
             *) echo "FAIL: usage: temper spec branch | deviations | commit '<message>' [-- FILE...]" >&2; false ;;
           esac ;;
     brief) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/brief.py" "$REPO_ROOT" .temper/brief.md "$@") ;;   # 9.8.0: the project brief
+    output) python3 -E -s "$SCRIPTS_DIR/output_ops.py" "$TEMPER_DIR" "$@" ;;   # 9.8.4: the last output of a gate or a group gate
     panel) case "${1:-}" in   # 9.8.0: a stage's panel, drawn from the files it wrote (scripts/panel.py)
             plan|design) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" "$1" "$(_spec_path "")" "$REPO_ROOT") ;;
             rca) [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper panel rca <rca.md>" >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" rca "$2") ;;
@@ -5194,7 +5086,9 @@ Usage:
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
   temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)
   temper group report [--json]    (grouped Build: the measurement report)
-  temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
+  temper group fix G<n> [--commit] (a failed group: one fix agent on its merged tree; --commit commits its work)
+  temper output <stage>|G<n>      (read only: the gate's failed rows and its last run's output, or a group's last Validate)
+  temper task <start|show|test|gate|blocked> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
   temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
   temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)

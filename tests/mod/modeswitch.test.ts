@@ -9,7 +9,7 @@ import { world } from './world'
 const run = (args: string) => ({ command: 'temper', args, origin: { kind: 'composer' } }) as never
 const START = { cwd: '/repo', surface: null, isInteractive: false } as const
 const INTERACTIVE = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
-const BAND = { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
 const MODE_WHERE = 'Change it in /config: Temper UI mode (full, minimal or off).'
 const ENFORCEMENT_WHERE = 'Change it in /config: Temper enforcement (on or off).'
 const COMPOSE = { model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] }

@@ -5,7 +5,7 @@
 A Claude Code plugin that runs AI written code through gates you approve. A small CLI computes each gate from
 recorded evidence; the model never decides a verdict.
 
-[![Version](https://img.shields.io/badge/version-v9.8.3-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.8.4-blue)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Install

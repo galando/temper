@@ -95,6 +95,39 @@ The person decides only by choosing an option. The mod counts an answer only whe
 question and its label match exactly what `next` gave for the run and step it is at, so a reworded
 question is no answer. A typed message is never a move: it is a change request or a question.
 
+### Loop backs and replans (9.8.4)
+
+A step back carries what was learned. `temper state loop` keeps what the stage it leaves left open
+(`scripts/loop_step.py`): Review's open findings, Check's failed runs, Plan's open fresh review findings, and
+from Build each failed group check first (its reason, how many times it failed, its first FAIL lines),
+never a task's RED run, which fails by design. The stage the run goes back to gets the reason and those
+items (`Loop back from`), and so does each later stage the run comes through again (`Earlier loop back
+from`): a loop from Plan to Intent reaches the Intent agent and then the Plan agent.
+
+The fresh review's round limit (`plan.fresh-review-rounds`) survives a step back, so a loop back that
+cleared the plan ledger could leave the gate failing on "fresh review ran: not run yet" while the limit
+forbade a new round. The choice made: a loop back to Intent, Plan or Design, or a replan
+(`temper state redo plan`), earns **one more round**, granted once `plan.md` or `tasks.md` changes after it.
+A loop back that changes neither earns nothing (the plan the earlier rounds read stands), and a second
+loop back before that round is taken earns no second one. The round is counted in the run state
+(`fresh.grant`, then `fresh.extra`), and the question names the limit with it.
+
+### A failed group check (9.8.4)
+
+The group gate keeps the first FAIL lines of its Validate output and counts its failures
+(`groups.json`: `gate.fail_lines`, `gate.ran`, `fails`). The question shows the first three lines. When
+every task of the group passed and its check ran and failed, the first and recommended option is one Build
+fix agent on the group's merged tree (`temper group fix G<n>`; the agent's work is committed by
+`temper group fix G<n> --commit`, which also clears the group's gate, so the next action checks the group
+again as an ordinary CLI call and a FAIL there asks the question again). From the second failure on, "Run the
+group's tasks again" is never recommended. The fix is recommended once (`fix_tries`): when it did not make the group
+pass, the loop back to Plan is recommended, or Save for later when that step is spent, so following the
+recommendation always ends.
+
+To read a failure, the session runs `temper output G<n>` (the group's last Validate run: its command, exit,
+FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed
+run). It is read only; with the mod on, the session may run the CLI but not `printenv` or a test runner.
+
 ## `.temper/view.json`
 
 | Field | Meaning |

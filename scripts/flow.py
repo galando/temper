@@ -321,6 +321,20 @@ class Run:
                 best, at = l, loop_at(l)
         return best
 
+    def loop_through(self, stage):
+        """9.8.4: the latest active step back that went from `stage` (or a later stage) to an earlier one, or None: the run
+        comes through `stage` again for the same reason (Plan to Intent, then Plan again)."""
+        seq = SEQ.get(self.command, SEQ["temper"])
+        if stage not in seq:
+            return None
+        i = seq.index(stage)
+        best, at = None, ""
+        for l in self.active_loops():
+            f, t = l.get("from_stage"), l.get("to_stage")
+            if f in seq and t in seq and seq.index(t) < i <= seq.index(f) and loop_at(l) >= at:
+                best, at = l, loop_at(l)
+        return best
+
     def latest_loop(self):
         """The latest step back to Build (or Fix), or None."""
         best, at = None, ""
@@ -616,33 +630,26 @@ class Builder:
                 nl = LABEL.get(r.next_of("plan") or "build")
                 text = "Plan: %s.%s Approve the plan and continue to %s?" % (state_of, said, nl)
                 # 9.8.0: the fresh review's open findings below high pass the gate, and are the person's call: the question
-                # names them and offers Revise the plan first, recommended when one is medium. A person chose Stage by
-                # stage on a review with two medium findings, and the plan went on as if none were found.
+                # names them and offers Revise the plan (9.8.4: never recommended; they go to the builder as notes).
                 lesser = [f for f in fr["findings"] if f["state"] not in ("resolved", "accepted")] if not skipped else []
                 revise = None
                 if lesser:
                     shown = "; ".join("#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:120]) for f in lesser[:3])
-                    text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. Approve the plan and continue to %s?" % (
+                    # 9.8.4: only a high finding blocks; a medium or low one goes to the builder as a note (in the task's
+                    # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
+                    text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. Approve the plan and continue to %s?" % (
                         state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", nl)
-                    medium = any(f["severity"] not in ("low", "info") for f in lesser)
-                    revise = self.opt("Revise the plan" + (" (Recommended)" if medium else ""),
+                    revise = self.opt("Revise the plan",
                                       "The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                       move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
                                           ("fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))[:300]))])
-                    if medium:
-                        go_label = "Stage by stage" if not r.has_design() else "Continue to %s" % nl
-                        first = [revise, self.opt(go_label, "Approve the plan as it is; the open findings stay as the review wrote them.", move="approve", calls=go)]
-                        if not r.has_design():
-                            first.append(self.opt("Autonomous Build: run Build unattended", "Approve the plan as it is; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
-                                                  move="arm", calls=[self.c("state set run_mode autonomous")] + go))
-                        return self.with_more(GATE_HEADER, text, stage, first, [html, grill, teach, self.save()], "Plan: more options.")
                 # 9.8.0: the unattended run is offered at the last question before Build: here when no Design follows,
                 # at the Design question when it does (so every decision is made before the run goes on by itself).
                 if not r.has_design():
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
                              self.opt("Autonomous Build: run Build unattended", "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
                                       move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
-                    if revise is not None:   # low findings only: revising is offered, after the ways on
+                    if revise is not None:   # findings below high: revising is offered, after the ways on
                         return self.with_more(GATE_HEADER, text, stage, first[:2] + [revise], [html, grill, teach, self.save()], "Plan: more options.")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
                         return self.with_more(GATE_HEADER, text, stage, first[:2] + [self.fresh_offer()], [html, grill, teach, self.save()], "Plan: more options.")
@@ -705,8 +712,17 @@ class Builder:
                         self.skill("teach-me", "Teach Me", "Walk through the changes.")]
                 return self.question(GATE_HEADER, "%s: %s. Continue to %s?" % (label, state_of, LABEL[nxt]), stage=stage,
                                      options=opts + back_opt() + [self.save()])
-            again = self.opt("Run %s again (Recommended)" % label, "Mend what the failed rows name, then check %s again." % label,
+            # 9.8.4: the same failure after a Run again is not run again by the recommendation: the run converges on the
+            # person (an e2e run that followed it relaunched Build's fix pass forty times on one failure)
+            redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+            same = redo.get("stage") == stage and str(redo.get("reason") or "") == why[:300]
+            again = self.opt("Run %s again" % label + ("" if same else " (Recommended)"), "Mend what the failed rows name, then check %s again." % label,
                              move="redo", calls=[self.c('state redo %s --reason %s' % (stage, shlex.quote(why[:300])))])
+            if same:
+                save = self.save()
+                save["label"] += " (Recommended)"
+                return self.question(GATE_HEADER, "%s: the check failed (%s). It failed the same way after it ran again. Save the run for later?" % (label, why), stage=stage,
+                                     options=[save, again] + back_opt() + [override_opt(go)])
             return self.question(GATE_HEADER, "%s: the check failed (%s). Run %s again?" % (label, why, label), stage=stage,
                                  options=[again] + back_opt() + [override_opt(go), self.save()])
 
@@ -774,8 +790,17 @@ class Builder:
                     self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls)]
                     + back_opt() + [self.save()])
             gap = self.measurement_gap(r.failed_rows("check"))
-            again = [self.opt("Run Check again (Recommended)", "Install what the failed row names, then Check measures again; Build is not redone.",
+            # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
+            # recommendation: a benchmark run without coverage.py ran Check again 52 times
+            redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+            same = gap and redo.get("stage") == "check" and str(redo.get("reason") or "") == ("the measurement was missing: " + why)[:300]
+            again = [self.opt("Run Check again" + ("" if same else " (Recommended)"), "Install what the failed row names, then Check measures again; Build is not redone.",
                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))])] if gap else []
+            if same:
+                save = self.save()
+                save["label"] += " (Recommended)"
+                return self.question(GATE_HEADER, "Check: the check failed (%s). It failed the same way after it ran again: install what it names, or save the run for later?" % why,
+                                     stage=stage, options=[save] + again + back_opt(rec=False) + [override_opt(go)])
             acc = self.acceptance_options(r.failed_rows("check"))
             if acc:
                 first = acc[0]
@@ -1096,6 +1121,15 @@ class Builder:
             lines = ["Follow %s/agents/plan-review.md exactly." % self.plugin, "Spec path: %s." % r.spec, "Instance: %s." % inst,
                      "Lenses: %s." % ", ".join(n.split()[0] for n in fr["need"] if n.split()[1] == inst),
                      "Round: %d of %d." % (fr["rounds"] + 1, fr["cap"])]
+            rc = fr.get("recheck")
+            if rc:
+                # 9.8.4: a later round re-checks the round before it: each earlier finding, and the changed task blocks only
+                ch = rc.get("changed") or []
+                lines += ["Re-check: this round checks only whether each earlier finding below is fixed, and reads only the changed task blocks; "
+                          "it runs no other lens.",
+                          "Earlier findings (%d): %s." % (len(rc.get("findings") or []), "; ".join(
+                              "#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:200]) for f in rc.get("findings") or []) or "none"),
+                          "Changed task blocks: %s." % (", ".join("Task %d" % n for n in ch) if ch else "none")]
             lines += ["Earlier contest: %s; its evidence: %s (%s). Read that evidence before you raise it again." % (
                 c["claim"][:160], c.get("cite"), (c.get("why") or "")[:160]) for c in fr["contests"]]
             lines.append(self.plugin_line())
@@ -1131,6 +1165,17 @@ class Builder:
         # A step back to this stage (from Design to Plan, from Review to Intent): the agent runs again for the person's
         # reason, and with what the stage it came from left open.
         back = r.loop_into(stage) if stage not in ("build", "fix") else None
+        # 9.8.4: a step back to an earlier stage (Plan to Intent) comes through this stage again: its reason and what it left
+        # open reach this stage's agent too, unless a later step back into this stage speaks for it.
+        through = r.loop_through(stage) if stage not in ("build", "fix") else None
+        if through and (not back or loop_at(through) > loop_at(back)):
+            extra = extra + ["Earlier loop back from %s to %s: %s. Take it into account, keeping what still holds." % (
+                LABEL.get(through.get("from_stage"), through.get("from_stage")), LABEL.get(through.get("to_stage"), through.get("to_stage")),
+                through.get("reason") or "no reason given")]
+            if through.get("findings"):
+                extra.append("What %s left open: %s." % (LABEL.get(through.get("from_stage"), through.get("from_stage")),
+                                                          "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(through["findings"]))))
+            back = None
         if back:
             extra = extra + ["Loop back from %s: %s. Do this stage again for it, keeping what still holds." % (
                 LABEL.get(back.get("from_stage"), back.get("from_stage")), back.get("reason") or "no reason given")]
@@ -1358,12 +1403,34 @@ class Builder:
                 break
         return chain
 
+    def review_notes(self):
+        """9.8.4: the fresh review's open medium and low findings, as notes for the task each names ({task: [claim]}). They
+        do not block the plan gate; the builder of the task reads them."""
+        out = {}
+        try:
+            found = self.r.fresh().get("findings") or []
+        except Exception:
+            return out
+        for f in found:
+            if f.get("severity") in fresh_review.BLOCKING or f.get("state") in ("resolved", "accepted"):
+                continue
+            for n in {int(x) for x in re.findall(r"\bTask\s+(\d+)\b", f.get("claim") or "")}:
+                out.setdefault(n, []).append(" ".join(str(f["claim"]).split())[:240])
+        return out
+
+    def task_model(self):
+        """The model of a Build task: the one `temper next` resolved (cli_ctx.resolve: the config, else sonnet for a complex
+        or risk H plan, else the brief's), and the same rule when it resolved none (9.8.4: it was haiku for any plan)."""
+        import cli_ctx
+        return self.r.ctx.get("task_model") or (cli_ctx.RISK_TASK_MODEL if (
+            str(self.r.state.get("complexity") or "").lower() == "complex" or str(self.r.state.get("risk") or "").upper() == "H") else "haiku")
+
     def ran_on(self, task):
         """The model of the running attempt: the one task start recorded, else (a run started before it did) the one the
         attempt number gives, the task model for the first two attempts and the escalation model after."""
         if task.get("model"):
             return task["model"]
-        task_model = self.r.ctx.get("task_model") or "haiku"
+        task_model = self.task_model()
         esc = self.r.ctx.get("escalation_model") or "sonnet"
         return task_model if int(task.get("attempt") or 1) <= 2 else esc
 
@@ -1406,7 +1473,9 @@ class Builder:
         before = r.state.get("built_before") and not rg
         if (integ and gid and all(gpass(g) for g in gid)) or before:
             a = self.agent("build", self.feedback_lines())
-            if integ != "PASS" and not before:
+            # 9.8.4: the CLI runs the scenario tests on the fixed tree (integrate does when the groups are merged already),
+            # so no record pass of a model is needed after a step back that cleared Build's rows
+            if integ and not before:
                 a["after"].append(self.c("integrate"))
             a["after"].append(self.c("gate build"))
             a["gate"] = a["after"][-1]
@@ -1433,7 +1502,7 @@ class Builder:
             mx = int(r.cfg("build.grouped.max-parallel", "4"))
         except ValueError:
             mx = 4
-        sched = tasks_md.schedule(plan, r.groups, mx if mx > 0 else 4, r.ctx.get("task_model") or "haiku",
+        sched = tasks_md.schedule(plan, r.groups, mx if mx > 0 else 4, self.task_model(),
                                   r.ctx.get("escalation_model") or "sonnet", os.getcwd()) if plan.get("tasks") else []
         ready = [x for x in sched if "task" in x]
         if ready:
@@ -1443,12 +1512,14 @@ class Builder:
             # or shares a file with it) go to one agent, which starts, builds and gates each in order (agents/build-task.md);
             # independent tasks still get agents of their own, launched at once. Each task keeps its worktree, its RED run,
             # its CLI gate and its retry. In measured runs every task ran alone, each paying a launch and its orchestration.
+            review_notes = self.review_notes()
             for t in ready:
                 chain = self.chain_of(plan, rt, t, ready)
                 said = "".join("\nPerson's note: %s" % x for n in chain for x in scoped_notes(build_notes, n, t.get("group")))
+                said += "".join("\nPlan review note: %s" % x for n in chain for x in review_notes.get(n, []))
                 tasks_line = ("Task: %d." % t["task"]) if len(chain) == 1 else (
                     "Tasks: %s (a chain: do them in this order; start, build and gate each before the next)." % ", ".join(str(n) for n in chain))
-                agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
+                agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or self.task_model(),
                                "before": [self.c("task start %d" % t["task"])],
                                "prompt": "Follow %s/agents/build-task.md exactly.\n%s\n%s%s%s\nModel: %s." % (
                                    self.plugin, self.plugin_line(), tasks_line, said, self.acceptance_line(), t.get("model")),
@@ -1487,6 +1558,8 @@ class Builder:
             gate = (ginfo.get("gate") or {}).get("verdict")
             if done and not gate:
                 return {"action": "work", "stage": "build", "calls": [self.c("group gate %s" % gidx)], "agents": [], "say": "Group %s is checked." % gidx}
+            if gate == "FAIL" and ginfo.get("fix") and not r.armed():
+                return self.group_fix_work(g, ginfo)
             if gate == "FAIL":
                 return self.group_failed(g, ginfo)
             if gate == "PASS" and not ginfo.get("confirmed"):
@@ -1667,26 +1740,90 @@ class Builder:
             extra={"change": which})
         return q
 
+    @staticmethod
+    def fail_text(ginfo, n=3):
+        """9.8.4: the first FAIL lines of the group's Validate output, as the gate kept them ('' when none)."""
+        lines = [str(x) for x in ((ginfo.get("gate") or {}).get("fail_lines") or []) if str(x).strip()][:n]
+        return "; ".join(x if len(x) <= 160 else x[:157] + "..." for x in lines)
+
     def group_failed(self, g, ginfo):
         gid = g["id"]
-        why = str((ginfo.get("gate") or {}).get("reason", ""))[:200]
+        gate = ginfo.get("gate") or {}
+        reason = " ".join(str(gate.get("reason", "")).split())
+        reason = reason if len(reason) <= 300 else reason[:297] + "..."
+        fl = self.fail_text(ginfo)
         if self.r.armed():  # nobody is there to answer: an armed run parks, as on every stop
+            why = (reason[:200] + (" | " + fl if fl else ""))[:400]
             return {"action": "auto", "stage": "build",
                     "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],
                     "say": "Group %s failed its check; the armed run parks for you." % gid}
+        plan = self.r.plan or {"tasks": []}
+        # 9.8.4: how many times the group's check failed, and whether the whole failed while every part passed. A blind
+        # rerun of every task was always the recommended answer; a measured run reran a group of 12 tasks five times.
+        fails = int(ginfo.get("fails") or 1)
+        all_passed = bool(g.get("tasks")) and all(tasks_md.task_done(t, self.r.groups) for t in plan.get("tasks", []) if t.get("n") in g.get("tasks", []))
+        fixable = all_passed and bool(gate.get("ran"))
+        # a fix of the merged tree that did not make the group pass is not recommended again: the run converges on the plan
+        # (a step back) or on the person (Save for later), never on the same retry (an e2e run looped on it 131 times)
+        tried = int(ginfo.get("fix_tries") or 0)
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = []
-        limit = int((ginfo.get("gate") or {}).get("timeout_s") or 0)
+        limit = int(gate.get("timeout_s") or 0)
         if limit:  # the gate ran out of time, not out of luck: the same checks again with twice the limit
             opts.append(self.opt("Run the gate again with twice the time (Recommended)", "Group %s's checks run again, limit %d seconds." % (gid, 2 * limit),
                                  move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * limit))]))
-        opts.append(self.opt("Run the group's tasks again" + ("" if limit else " (Recommended)"), "Each task of %s runs again." % gid, move="redo", calls=reopen))
-        if self.r.can_loop("build", "plan"):
-            opts.append(self.opt("Loop back to Plan", "The plan cannot be built as written.", move="back",
-                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
-        opts.append(self.save())
-        return {"action": "ask", "stage": "build", "ask": self.question(
-            GATE_HEADER, "Group %s failed its check (%s). Run its tasks again?" % (gid, (ginfo.get("gate") or {}).get("reason", "")), stage="build", options=opts)}
+        fix_rec = fixable and not limit and not tried
+        fix = self.opt("Fix the group's merged work" + (" (Recommended)" if fix_rec else ""),
+                       "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
+                       move="redo", calls=[self.c("group fix %s" % gid)]) if fixable else None
+        back = self.r.can_loop("build", "plan")
+        rerun_rec = not limit and not fixable and fails < 2
+        rerun = self.opt("Run the group's tasks again" + (" (Recommended)" if rerun_rec else ""), "Each task of %s runs again." % gid, move="redo", calls=reopen)
+        plan_rec = not limit and not fix_rec and not rerun_rec and back
+        loop = self.opt("Loop back to Plan" + (" (Recommended)" if plan_rec else ""), "The plan cannot be built as written.", move="back",
+                        calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]) if back else None
+        save_rec = not limit and not fix_rec and not rerun_rec and not plan_rec
+        save = self.save()
+        if save_rec:
+            save["label"] += " (Recommended)"
+        if fix_rec or limit:
+            rest = [fix, rerun, loop]
+        elif plan_rec:
+            rest = [loop, fix, rerun]
+        elif save_rec:
+            rest = [save, fix, rerun]
+        else:
+            rest = [rerun, fix, loop]
+        opts += [o for o in rest if o]
+        if not save_rec:
+            opts.append(save)
+        text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
+        if fl:
+            text += " What failed: %s." % fl
+        if tried and fixable:
+            text += " A fix of its merged work did not make it pass" + (": the plan is the likelier cause." if back else ".")
+        text += (" Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
+                 " Save the run for later?" if save_rec else " Run its tasks again?")
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+
+    def group_fix_work(self, g, ginfo):
+        """9.8.4: the person chose to fix a group whose check failed after every task passed: one Build fix agent works on the
+        group's merged tree; the CLI commits what it changed on the group's branch, and the next action checks the group."""
+        gid = g["id"]
+        gate = ginfo.get("gate") or {}
+        fl = [str(x) for x in gate.get("fail_lines") or []][:8]
+        lines = ["Group fix: group %s's check failed after every one of its tasks passed. Work only in its worktree %s (the merged "
+                 "work of the group, on branch %s); do not commit, the CLI commits what you change. Make its Validate command pass: %s." % (
+                     gid, ginfo.get("worktree", ""), ginfo.get("branch", ""), g.get("validate") or "(none declared)"),
+                 "Why the check failed: %s." % " ".join(str(gate.get("reason", "")).split())]
+        if fl:
+            lines.append("What failed (the first FAIL lines of its output): %s." % "; ".join(fl))
+        a = self.agent("build", lines)
+        # the commit clears the group's gate: the next action checks the group as an ordinary call, and a FAIL there asks
+        # the group question again (a group gate prints no `-> FAIL`, so as an agent's gate call a FAIL would stop the run)
+        a["after"].append(self.c("group fix %s --commit" % gid))
+        return {"action": "work", "stage": "build", "calls": [], "agents": [a],
+                "say": "Build: one fix agent works on group %s's merged tree%s. %s" % (gid, on_model([a]), goes_on(False))}
 
     def parked(self, gid):
         r = self.r
@@ -1715,6 +1852,25 @@ class Builder:
                              reason=["The commits are right", "I accept the risk"]),
                     self.save()]
             text = "Group %s is parked: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
+        elif any(isinstance((r.groups.get("tasks", {}).get(str(n)) or {}).get("blocked"), dict) for n in tasks):
+            # 9.8.4: a task whose test needs a file it does not declare: no attempt on any model can build it as planned
+            # (a benchmark run spent two Haiku and two Sonnet attempts on one), so the plan comes first
+            b = [((r.groups.get("tasks", {}).get(str(n)) or {}).get("blocked"), n) for n in tasks]
+            b = [(x, n) for x, n in b if isinstance(x, dict)]
+            what = "; ".join("Task %d needs %s, which %s (%s)" % (
+                n, x.get("needs"), ("Task %s declares" % ", ".join(str(o) for o in x.get("owners") or []) if x.get("owners") else "no task declares"),
+                x.get("reason") or "no reason given") for x, n in b)
+            back = r.can_loop("build", "plan")
+            rerun = self.opt("Run the task again", "The blocked tasks run again as planned.", move="redo", calls=[self.c("group reopen %s %s" % (gid, targs))])
+            save = self.save()
+            if back:
+                opts = [self.opt("Loop back to Plan (Recommended)", "Plan moves the change or the test into the task that owns the file.", move="back",
+                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]), rerun, save]
+            else:
+                save["label"] += " (Recommended)"
+                opts = [save, rerun]
+            text = "Group %s is parked: %s. No attempt can build it as planned. %s" % (
+                gid, what, "Loop back to Plan?" if back else "Save the run for later?")
         else:
             # 9.8.0 (round 5): a group that parks again after the person ran it again failed every model twice over: the
             # plan is the likelier cause, so Loop back to Plan is the recommended answer then (a measured run reran a
@@ -1910,9 +2066,12 @@ class Builder:
         opts = [self.opt("As planned (Recommended)", "The plan's context is right; check the plan again.", move="answer",
                          calls=[self.c("plan review --answer 'As planned'"), self.c("gate plan")])]
         if left:
-            what = "Include what is left out: %s" % "; ".join(left)
+            # 9.8.4: Plan gets the whole text of what is left out (the question shows each cut to fit); a cut at 100
+            # characters told the Plan agent "already co".
+            full = [x["text"] for x in (cm.get("rows") or []) if x.get("kind") == "ignore"][:3]
+            what = "Include what is left out: %s" % "; ".join(full)
             opts.append(self.opt("Include what is left out", "Plan revises the plan to cover: %s." % "; ".join(left), move="answer",
-                                 calls=[self.c("plan review --answer %s --redo" % shlex.quote(what[:100]))]))
+                                 calls=[self.c("plan review --answer %s --redo" % shlex.quote(what))]))
         opts.append(self.opt("Something else", "Type what Plan should change or read (Other); Plan revises the plan with it.",
                              do="Ask the person to type it in Other, then run the question's `answer` call with their text."))
         carry = self.opt("Carry forward", "Decide later; the plan gate keeps naming this question.", move=None, calls=[])

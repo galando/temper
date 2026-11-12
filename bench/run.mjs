@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One benchmark run: one task, one arm, one repetition.
 //
-//   node bench/run.mjs --task login-lockout --arm temper --rep 1 [--model M] [--timeout-min 60] [--out DIR]
+//   node bench/run.mjs --task login-lockout --arm temper --rep 1 [--model M] [--task-model M] [--config-yaml TEXT] [--task-dir DIR] [--timeout-min 60] [--out DIR]
 //
 // Arms (the task text is the same, word for word, in every arm):
 //   vanilla  Claude Code with the task as the prompt. No plugin, no extra words.
@@ -52,7 +52,7 @@ function args() {
   const v = process.argv.slice(2);
   for (let i = 0; i < v.length; i++) if (v[i].startsWith("--")) a[v[i].slice(2)] = v[++i];
   if (!a.task || !["vanilla", "careful", "careful-ask", "temper"].includes(a.arm)) {
-    console.error("usage: run.mjs --task ID --arm vanilla|careful|careful-ask|temper [--rep N] [--model M] [--timeout-min N] [--out DIR]");
+    console.error("usage: run.mjs --task ID --arm vanilla|careful|careful-ask|temper [--rep N] [--model M] [--task-model M] [--config-yaml TEXT] [--task-dir DIR] [--timeout-min N] [--out DIR]");
     process.exit(2);
   }
   return a;
@@ -107,15 +107,30 @@ function copySessionLog(sessionId, dest) {
 
 async function main() {
   const a = args();
-  const taskDir = path.join(HERE, "tasks", a.task);
+  const taskDir = a["task-dir"] ? path.resolve(a["task-dir"]) : path.join(HERE, "tasks", a.task);
   const taskText = fs.readFileSync(path.join(taskDir, "task.md"), "utf8").trim();
   // A bug task goes through Temper's bug flow (/temper:fix); a feature through the whole pipeline.
   const meta = JSON.parse(fs.readFileSync(path.join(taskDir, "meta.json"), "utf8"));
-  const temperCmd = meta.kind === "bug" ? "/temper:fix" : "/temper:temper";
+  // meta.command: a task that starts at a door (a prepared plan entered with /temper:build) names it
+  const temperCmd = meta.command || (meta.kind === "bug" ? "/temper:fix" : "/temper:temper");
   const out = path.resolve(a.out || path.join(RESULTS, `${a.task}__${a.arm}__${a.rep}`));
   fs.mkdirSync(out, { recursive: true });
   const work = path.join(out, "work");
-  const base = seed(taskDir, work);
+  // --task-model M: the project's config pins the Build task agents' model (an explicit task-model wins over every default),
+  // committed with the base, so a Haiku and a Sonnet arm differ in that one line
+  // --config-yaml TEXT: more lines for that config (\n for a new line), e.g. "plan:\n  fresh-review: always"
+  const pinned = a["task-model"] || a["config-yaml"];
+  if (pinned) {
+    seed(taskDir, work);
+    fs.mkdirSync(path.join(work, ".claude"), { recursive: true });
+    const cfg = fs.readFileSync(path.join(PLUGIN, "templates", "temper.config.default"), "utf8") +
+      (a["task-model"] ? `\nbuild:\n  grouped:\n    task-model: ${a["task-model"]}\n` : "") +
+      (a["config-yaml"] ? `\n${a["config-yaml"].replace(/\\n/g, "\n")}\n` : "");
+    fs.writeFileSync(path.join(work, ".claude", "temper.config"), cfg);
+    sh("git", ["add", "-A"], work);
+    sh("git", ["commit", "-qm", "base: the task model"], work);
+  }
+  const base = pinned ? sh("git", ["rev-parse", "HEAD"], work).trim() : seed(taskDir, work);
   const tx = fs.createWriteStream(path.join(out, "transcript.jsonl"));
   const px = fs.createWriteStream(path.join(out, "person.jsonl"));
 
@@ -231,7 +246,7 @@ async function main() {
   else for (const r of results) for (const [k, c] of Object.entries(usageOf(r))) models[k] = (models[k] || 0) + c;
   const totalCost = cumulative ? Number(results.at(-1).total_cost_usd) || 0 : sum("total_cost_usd");
   const run = {
-    task: a.task, arm: a.arm, rep: Number(a.rep), base,
+    task: a.task, arm: a.arm, rep: Number(a.rep), base, ...(a["task-dir"] ? { task_dir: taskDir } : {}),
     model_requested: a.model || "default",
     models_cost_usd: models,
     cost_usd: Number(totalCost.toFixed(4)),

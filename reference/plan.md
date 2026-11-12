@@ -129,8 +129,11 @@ How the CLI counts it:
 
 ## Answering the fresh review
 
-A finding below high passes the plan gate, but stays the person's call: the plan question names the open findings
-and offers Revise the plan, recommended when one is medium (9.8.0).
+A finding below high passes the plan gate: the plan question names the open findings and offers Revise the plan, never
+recommended (9.8.4); an open `medium` or `low` finding that names a task reaches that task's builder as a note. The
+first round of the fresh review runs four lenses (`tests` among them: which existing tests the change breaks, and which
+task updates them); each later round is a recheck that reads only the changed task blocks and checks only whether each
+earlier finding is fixed, so the rounds converge instead of reading the whole plan again.
 
 
 When the person chooses **Revise the plan**, you run again with a `Fresh review findings to answer`
@@ -331,6 +334,14 @@ at the group's `**Validate:**` and at `**Integration:**`. The test file a task c
 task's `**File:**`: the plan gate fails a task whose `**Test:**` command names a path (its first path
 argument) that is neither declared by the task nor already in the project, because the task's commit check
 would otherwise reject the new test file as an undeclared change.
+
+**A group passes its own Validate.** A group's worktree holds its own work and the work of the groups it
+depends on, nothing else. So the task that updates an existing test file a group's `**Validate:**` runs
+(named in the command as a path or a dotted Python module, inside a folder it names, or named by a script it runs) belongs to that group or to
+one it depends on. The plan gate's `group validate order` row fails when a task of another group edits
+such a file, and names the file and both groups: move the task, or take the file out of that Validate.
+When a change breaks existing tests, the task that changes the code and the task that updates those tests
+go in the same group.
 
 **Cases: write the test cases, not just the test file.** Under `**Cases:**`, one bullet per case the
 task's test must check, each a concrete input and its exact expected result (a value, an output line, an

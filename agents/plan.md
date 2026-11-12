@@ -68,6 +68,11 @@ orchestrator's conversation carries over except the prompt you were launched wit
    `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`, "Answering the fresh review", says: fix it, contest it
    with a citation the CLI checks, or escalate it. Write each task so a builder who sees only that
    block needs no guess: named files, signatures, error behavior, and an expected value per Case.
+   **A loop back.** When the prompt has a `Loop back from` or `Earlier loop back from` line, the run came back
+   for that reason, and a `What ... left open` line lists what the stage it came from found, in order. Answer
+   each item before anything else; the first ones are the ones that stopped the run. After a loop from Build,
+   the first item is a group's failed check with its FAIL lines: change the plan so that group can pass its own
+   Validate (a test a later group updates moves into the group whose change breaks it).
 10. Do NOT show an `AskUserQuestion` gate — you run headless. Return the line below to the
    orchestrator; it owns the human-facing gate.
 

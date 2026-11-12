@@ -91,6 +91,8 @@ describe('the palette of the card', () => {
 })
 
 describe('what has no background keeps the theme colours', () => {
+  // A const, not a literal at the call: Claude Code 2.1.323 adds isCollapsed to the band's props, and older types do not know it.
+  const WORKING_BAND = { hasSurvey: false, isCollapsed: false, isWorking: true, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} }
   test('the band, the hint tail and the question header set no background of their own', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START('terminal'))
@@ -98,7 +100,7 @@ describe('what has no background keeps the theme colours', () => {
       plugin: 'temper',
       surface: 'terminal',
       component: 'AbovePrompt',
-      props: { hasSurvey: false, isWorking: true, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
+      props: WORKING_BAND,
     })
     // The only background in the band is the chip of the phase you are in. Its text sets its own colour.
     const withBg = texts(await band.drawn()).filter(t => t.props.backgroundColor !== undefined)
