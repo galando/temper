@@ -3,6 +3,54 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.8.4: the faults one failed run exposed
+
+A `/temper:temper` run of a complex feature (8 criteria, about 30 files, risk H) used 5 Plan passes, 6 fresh reviewers over
+3 rounds and 5 Build attempts of a group of 12 tasks, asked about 30 questions and put nothing on the branch. Every task
+passed its own gate each time; the group check failed each time. Each fault is fixed with a failing test first, mostly in
+`temper-cases-20.sh` (CLI) and `temper-cases-8.sh` (flow).
+
+- **1. A group must be able to pass its own Validate.** New plan gate row `group validate order`: it fails when an existing
+  test file a group's Validate runs (named in the command, inside a folder it names, or named by a script it runs) is
+  edited by a task of a group that is not on that group's worktree, and names the file and both groups. G1's Validate
+  ran selftest cases 8 and 9 while the task that updated them was in G2.
+- **2. A failed group check stops recommending a blind retry.** The group gate keeps the FAIL lines of its Validate output
+  (read from the whole output) and counts the group's failed checks; the question shows the first three lines and the
+  count, and the reason is no longer cut to 200 characters. When every task passed and the group check fails, the first
+  and recommended option is one Build fix agent on the group's merged tree (`temper group fix G<n>`, then
+  `group fix G<n> --commit`, which commits the agent's work on the group branch as the CLI's own commit). From the second
+  failure on, "Run the group's tasks again" is never recommended.
+- **3. Loop backs carry what was learned.** a: a step back from Plan keeps Plan's open fresh review findings, and the reason
+  and findings of a step back reach every stage the run comes through again (the Plan agent after a loop to Intent); the
+  Intent brief revises an accepted intent on a loop back instead of changing nothing. b: the fresh review round limit no
+  longer dead ends after a loop back: a loop back to Intent, Plan or Design, or a replan, earns one more round once
+  `plan.md` or `tasks.md` changes (the choice is stated in `docs/flow.md`). c: a step back from Build carries each failed
+  group check first, with its reason, count and FAIL lines, and no task's RED run.
+- **4. The fresh review converges.** The first round runs a fourth lens, `tests` (which existing tests the change breaks,
+  and which task updates them). Each later round is a `recheck`: it gets the earlier findings and the changed task blocks,
+  checks only whether each finding is fixed, and keeps the earlier paraphrase. Only high findings block; medium and low
+  ones are no longer a recommended revision and reach the builder of the task they name as a `Plan review note`.
+- **5. Build model by risk.** With no `build.grouped.task-model`, a plan whose complexity is complex or whose risk is H
+  builds its tasks on sonnet (`temper model --all --source` says `task=sonnet (risk)`); an explicit task model still wins.
+  New plan gate row `shared production files`: it fails when more than two tasks of one group declare the same production
+  file, and says to merge them.
+- **6. Selftest isolation.** a: `run_env.py` keeps git's `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`
+  family together (`_KEY_` read as a credential stripped the keys and kept the count, so every git call under the CLI's
+  runs failed with "unable to parse command-line config" in Claude Code cloud sessions); a family with a credential key
+  (an extra header, a helper) is left out whole. b: each case file of `test-temper.sh` starts from an emptied work folder
+  (files 3, 6 and 9 still go on from 2, 5 and 8).
+- **7. Small frictions.** a: "Include what is left out" passes the whole text to Plan (it was cut to 100 characters, and
+  Plan was told "already co"). b: `.temper/brief.md` is in the run files `temper init` lists in the clone's
+  `info/exclude`. c: `temper output <stage>|G<n>` prints the last output of a gate or a group gate, read only (with the mod
+  on, the session cannot run `printenv` or a test runner). d: `temper usage add ... --fill` puts a background agent's time,
+  from its completion notice, into the row recorded without one (the report showed "-" for Design and Build).
+- **8. A request that arrives as a spec.** A proposal only: `docs/decisions/0017-a-request-that-arrives-as-a-spec.md`
+  drafts a lighter route for a request that already states its rules, files, tests and done condition. Nothing of it is
+  built.
+- **Housekeeping.** The embedded Python of `_earlier_build` and of the usage summary moved to `scripts/earlier_build.py` and
+  `scripts/usage_ops.py`, and `group fix` and `output` live in `scripts/group_fix.py` and `scripts/output_ops.py`, keeping
+  the CLI under the plugin directory's 256 KiB limit for a file.
+
 ## v9.8.3: the run's state machines made explicit
 
 Each piece of run state that several writers moved (the run's stage, a group, a task, the small change window, the
