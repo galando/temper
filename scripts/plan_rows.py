@@ -169,4 +169,23 @@ for g in groups:
                 vo.append("%s's Validate runs %s, which Task %d of %s edits: %s cannot pass its own check before %s; move the task into %s or "
                           "take the file out of %s's Validate" % (g['id'], f, t['n'], t['group'], g['id'], t['group'], g['id'], g['id']))
 row('group validate order', vo, "no group's Validate runs a file a task of another group edits")
+# 9.8.4: more than two tasks of one group on the same production file is one task cut in pieces: each piece passes its own
+# gate on its own slice while the file as a whole is never checked until the group's Validate (a measured run had twelve
+# tasks on a few files). Two tasks on one file, ordered by Depends, stay allowed; a shared test file does not count.
+def is_test(f):
+    parts = f.lower().split('/')
+    base = parts[-1]
+    return (any(p in ('test', 'tests', 'spec', 'specs', '__tests__', 'selftest', 'testing') for p in parts[:-1])
+            or base.startswith(('test_', 'test-')) or re.search(r'[._-](test|tests|spec)\.[\w]+$', base) is not None)
+shared = []
+for g in groups:
+    owners = {}
+    for n in g['tasks']:
+        for f in by_n[n]['files']:
+            if not is_test(f): owners.setdefault(f, []).append(n)
+    for f, ns in sorted(owners.items()):
+        if len(ns) > 2:
+            names = ['Task %d' % n for n in ns]
+            shared.append('%s: %s and %s all declare %s; merge them into one task' % (g['id'], ', '.join(names[:-1]), names[-1], f))
+row('shared production files', shared, 'no production file is declared by more than two tasks of one group')
 row('integration command', [] if m['integration'] else ['no **Integration:** line'], 'integration command declared')

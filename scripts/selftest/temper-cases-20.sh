@@ -157,3 +157,34 @@ assert_exit "9.8.4 3b: one more round only: a third launch is refused" 1 "$TEMPE
 gfail plan "fresh review ran" "x"; "$TEMPER" state redo plan --reason "the Context check: include the export" >/dev/null 2>&1
 echo "- a replanned step" >> .temper/specs/demo/tasks.md
 assert_exit "9.8.4 3b: a replan (state redo plan) that changes tasks.md earns one more round as well" 0 "$TEMPER" plan fresh start
+
+# --- 5. Build model by risk: a complex or risk H plan builds its tasks on sonnet; an explicit task-model still wins ---
+fresh
+_tm() { echo "$("$TEMPER" model task)|$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config | sed -n 's/^task=//p')"; }
+assert_eq "9.8.4 5: a simple plan keeps the brief's model for its tasks (the CLI and the flow agree)" "claude-haiku-5-5|claude-haiku-5-5" "$(_tm)"
+"$TEMPER" state set complexity complex >/dev/null 2>&1
+assert_eq "9.8.4 5: a complex plan builds its tasks on sonnet" "sonnet|sonnet" "$(_tm)"
+"$TEMPER" state set complexity medium >/dev/null 2>&1; riskH
+assert_eq "9.8.4 5: a risk H plan builds its tasks on sonnet" "sonnet|sonnet" "$(_tm)"
+assert_eq "9.8.4 5: and says where the model comes from" "task=sonnet (risk)" \
+  "$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config --source | grep '^task=')"
+printf 'build:\n  grouped:\n    task-model: haiku\n' >> .claude/temper.config
+assert_eq "9.8.4 5: an explicit build.grouped.task-model still wins" "haiku|haiku" "$(_tm)"
+
+# --- 5. The plan gate fails when more than two tasks of one group declare the same production file ---
+setup
+_p5() { # _p5 <tasks.md>: pass|detail of the row "shared production files"
+  printf '%s\n' "$1" > p5-tasks.md
+  python3 -I "$REPO_ROOT/scripts/plan_rows.py" 15 4096 4096 "$(python3 -c "import sys, json; sys.path.insert(0, sys.argv[1]); import tasks_md; print(json.dumps(tasks_md.parse(sys.argv[2])))" "$REPO_ROOT/scripts" p5-tasks.md)" "$PWD" \
+    | python3 -c "import json, sys; r = [json.loads(l) for l in sys.stdin if '\"shared production files\"' in l]; print('%s|%s' % (r[0]['pass'], r[0]['detail']) if r else 'no row')"
+}
+_p5task() { printf '### Task %s: step %s\n**File:** `%s`, `tests/test_%s.py`\n**Depends:** %s\n**Test:** `true`\n**Cases:**\n- a\n- b\n- [ ] done\n\n' "$1" "$1" "$2" "$1" "$3"; }
+_p5plan() { printf '**Integration:** `true`\n\n## Group G1: Core\n**Depends:** none\n**Validate:** `true`\n**Context:**\nThe core.\n\n'; }
+assert_eq "9.8.4 5: three tasks of one group on the same production file fail the row, with a detail that says to merge them" \
+  "False|G1: Task 1, Task 2 and Task 3 all declare src/core.py; merge them into one task" \
+  "$(_p5 "$(_p5plan; _p5task 1 src/core.py none; _p5task 2 src/core.py "Task 1"; _p5task 3 src/core.py "Task 2")")"
+assert_eq "9.8.4 5: two tasks on one file pass (they are ordered by Depends)" "True" \
+  "$(_p5 "$(_p5plan; _p5task 1 src/core.py none; _p5task 2 src/core.py "Task 1")" | cut -d'|' -f1)"
+assert_eq "9.8.4 5: a shared test file is not a production file" "True" \
+  "$(_p5 "$(_p5plan; _p5task 1 tests/test_x.py none; _p5task 2 tests/test_x.py "Task 1"; _p5task 3 tests/test_x.py "Task 2")" | cut -d'|' -f1)"
+rm -f p5-tasks.md

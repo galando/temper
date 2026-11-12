@@ -568,6 +568,8 @@ _resolve_model() { # <stage> -> config override, else frontmatter default, else 
 _resolve_task_model() { # grouped task agent: config, else agents/build-task.md frontmatter, else the constant
   local m; m="$(_cfg_get build.grouped.task-model "")"
   [[ -n "$m" ]] && { echo "$m"; return; }
+  # 9.8.4: a complex or risk H plan builds on sonnet (cli_ctx.py risky_run, RISK_TASK_MODEL)
+  [[ -f "$STATE_FILE" ]] && [[ "$(_json_get_path "$STATE_FILE" complexity "")" == complex || "$(_json_get_path "$STATE_FILE" risk "")" == H ]] && { echo sonnet; return; }
   local f="$PLUGIN_ROOT/agents/build-task.md"
   [[ -f "$f" ]] && m="$(awk '
     /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }

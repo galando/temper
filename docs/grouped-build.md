@@ -32,7 +32,7 @@ In `.claude/temper.config` (all optional; the defaults are shown):
 ```yaml
 build:
   grouped:
-    task-model: claude-haiku-5-5     # the task agents
+    task-model: claude-haiku-5-5     # the task agents (unset: haiku, or sonnet for a complex or risk H plan)
     escalation-model: sonnet         # the third attempt after two failed ones
     max-parallel: 4                  # tasks running at once
 ```
@@ -40,6 +40,11 @@ build:
 `temper model --all` prints the stage lines plus `task=` and `task-escalation=`.
 
 To keep groups but run the tasks on another model (no Haiku), set `task-model: sonnet`.
+
+9.8.4: when `task-model` is not set, a plan whose complexity is `complex` or whose risk is `H` builds its
+tasks on sonnet (`temper model --all --source` prints `task=sonnet (risk)`); an explicit `task-model` still
+wins. The plan gate's `shared production files` row fails when more than two tasks of one group declare the
+same production file (a test file does not count): merge them into one task.
 
 ## What a run looks like
 

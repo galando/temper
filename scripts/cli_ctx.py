@@ -10,6 +10,7 @@ processes (the action, then the view). It starts one now: the models and the set
 here, the action is printed, and .temper/view.json is written from the same process. The output is the
 same, byte for byte (a self test case compares both for every view fixture state). Standard library only.
 """
+import json
 import os
 import re
 import subprocess
@@ -20,6 +21,7 @@ import config_yaml
 AGENT_STAGES = ["intent", "plan", "design", "build", "review", "check", "pipeline", "rca", "fix"]
 TASK_DEFAULT = "claude-haiku-5-5"
 ESCALATION_DEFAULT = "sonnet"
+RISK_TASK_MODEL = "sonnet"   # 9.8.4: the task model of a complex or risk H plan (the same as the CLI's _resolve_task_model)
 
 
 def frontmatter_model(path):
@@ -41,6 +43,17 @@ def frontmatter_model(path):
     return ""
 
 
+def risky_run(state_file=os.path.join(".temper", "build-state.json")):
+    """9.8.4: the active run's plan is complex or rated risk H. Its tasks are built on RISK_TASK_MODEL unless the config
+    names a task model: a measured complex run built 12 tasks on haiku five times, each passing its own gate."""
+    try:
+        with open(state_file, encoding="utf-8") as fh:
+            st = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    return isinstance(st, dict) and (str(st.get("complexity") or "").lower() == "complex" or str(st.get("risk") or "").upper() == "H")
+
+
 def resolve(plugin, cfg):
     """{name: (model, source)} for every stage, the task and its escalation. source is `config` (an override in
     .claude/temper.config) or `brief` (the model: line of the stage's own brief); a stage with no model is left out."""
@@ -56,6 +69,8 @@ def resolve(plugin, cfg):
     over = str(config_yaml.get(cfg, "build.grouped.task-model", "") or "")
     if over:
         out["task"] = (over, "config")
+    elif risky_run():
+        out["task"] = (RISK_TASK_MODEL, "risk")
     else:
         m = frontmatter_model(os.path.join(plugin, "agents", "build-task.md"))
         out["task"] = (m, "brief") if m else (TASK_DEFAULT, "default")

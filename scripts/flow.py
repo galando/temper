@@ -1383,12 +1383,19 @@ class Builder:
                 break
         return chain
 
+    def task_model(self):
+        """The model of a Build task: the one `temper next` resolved (cli_ctx.resolve: the config, else sonnet for a complex
+        or risk H plan, else the brief's), and the same rule when it resolved none (9.8.4: it was haiku for any plan)."""
+        import cli_ctx
+        return self.r.ctx.get("task_model") or (cli_ctx.RISK_TASK_MODEL if (
+            str(self.r.state.get("complexity") or "").lower() == "complex" or str(self.r.state.get("risk") or "").upper() == "H") else "haiku")
+
     def ran_on(self, task):
         """The model of the running attempt: the one task start recorded, else (a run started before it did) the one the
         attempt number gives, the task model for the first two attempts and the escalation model after."""
         if task.get("model"):
             return task["model"]
-        task_model = self.r.ctx.get("task_model") or "haiku"
+        task_model = self.task_model()
         esc = self.r.ctx.get("escalation_model") or "sonnet"
         return task_model if int(task.get("attempt") or 1) <= 2 else esc
 
@@ -1458,7 +1465,7 @@ class Builder:
             mx = int(r.cfg("build.grouped.max-parallel", "4"))
         except ValueError:
             mx = 4
-        sched = tasks_md.schedule(plan, r.groups, mx if mx > 0 else 4, r.ctx.get("task_model") or "haiku",
+        sched = tasks_md.schedule(plan, r.groups, mx if mx > 0 else 4, self.task_model(),
                                   r.ctx.get("escalation_model") or "sonnet", os.getcwd()) if plan.get("tasks") else []
         ready = [x for x in sched if "task" in x]
         if ready:
@@ -1473,7 +1480,7 @@ class Builder:
                 said = "".join("\nPerson's note: %s" % x for n in chain for x in scoped_notes(build_notes, n, t.get("group")))
                 tasks_line = ("Task: %d." % t["task"]) if len(chain) == 1 else (
                     "Tasks: %s (a chain: do them in this order; start, build and gate each before the next)." % ", ".join(str(n) for n in chain))
-                agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
+                agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or self.task_model(),
                                "before": [self.c("task start %d" % t["task"])],
                                "prompt": "Follow %s/agents/build-task.md exactly.\n%s\n%s%s%s\nModel: %s." % (
                                    self.plugin, self.plugin_line(), tasks_line, said, self.acceptance_line(), t.get("model")),
