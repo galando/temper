@@ -4856,42 +4856,18 @@ print(json.dumps({'stage': a[0], 'model': a[1] or None, 'ms': num(a[2]),
   _json_append "$USAGE_FILE" "$row"
 }
 
-_usage_json() { # prints the usage summary as one JSON line, or nothing when no row was recorded
+_usage_json() { # prints the usage summary as one JSON line, or nothing when no row was recorded (scripts/usage_ops.py)
   [[ -f "$USAGE_FILE" ]] || return 0
-  python3 -I - "$USAGE_FILE" <<'PY'
-import json, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
-if not rows:
-    sys.exit(0)
-def add(acc, r):
-    acc['rows'] += 1
-    if isinstance(r.get('ms'), int):
-        acc['ms'] = (acc['ms'] or 0) + r['ms']
-fresh = lambda: {'rows': 0, 'ms': None}
-by_stage, by_model, total = {}, {}, fresh()
-for r in rows:
-    st = by_stage.setdefault(r.get('stage') or 'unknown', fresh())
-    add(st, r)
-    # the models a stage's rows name (what the orchestrator launched it on)
-    if r.get('model') and r.get('model') not in st.setdefault('models', []):
-        st['models'].append(r.get('model'))
-    add(by_model.setdefault(r.get('model') or 'unknown', fresh()), r)
-    add(total, r)
-print(json.dumps({'by_stage': by_stage, 'by_model': by_model, 'total': total}, sort_keys=True))
-PY
+  python3 -I "$SCRIPTS_DIR/usage_ops.py" json "$USAGE_FILE"
 }
 
-cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]
+cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--group G] [--fill]
   local sub="${1:-}"; shift || true
   if [[ "$sub" != "add" ]]; then
     echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--ms D] [--task N] [--group G]" >&2
     return 1
   fi
-  local stage="" model="" ms="" task="" group=""
+  local stage="" model="" ms="" task="" group="" fill=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="${2:-}"; shift 2 || true ;;
@@ -4899,6 +4875,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
       --ms) ms="${2:-}"; shift 2 || true ;;
       --task) task="${2:-}"; shift 2 || true ;;
       --group) group="${2:-}"; shift 2 || true ;;
+      --fill) fill=1; shift ;;   # 9.8.4: the time of a background agent, from its completion notice (usage_ops.py fill)
       # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
       --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
@@ -4911,6 +4888,10 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
   [[ -z "$ms" || "$ms" == "none" || "$ms" =~ ^[0-9]+$ ]] || { echo "FAIL: --ms takes a whole number, or none (got '$ms')" >&2; return 1; }
   [[ -z "$task" || "$task" =~ ^[0-9]+$ ]] || { echo "FAIL: --task takes a whole number (got '$task')" >&2; return 1; }
   [[ -z "$group" || "$group" =~ ^G[0-9]+$ ]] || { echo "FAIL: --group takes G<n> (got '$group')" >&2; return 1; }
+  if [[ -n "$fill" && "$ms" =~ ^[0-9]+$ && -f "$USAGE_FILE" ]]; then
+    _lock_acquire; python3 -I "$SCRIPTS_DIR/usage_ops.py" fill "$USAGE_FILE" "$stage" "$ms" "$task" "$model"; local rc=$?; _lock_release
+    [[ $rc -eq 0 ]] && { echo "OK: usage time filled ($stage)"; return 0; }
+  fi
   _usage_append "$stage" "$model" "$ms" "$task" "$group" || return 1
   echo "OK: usage recorded ($stage)"
 }

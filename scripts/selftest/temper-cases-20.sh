@@ -246,3 +246,17 @@ assert_eq "9.8.4 7c: temper output build prints the gate's failed rows and the s
 assert_exit "9.8.4 7c: a group with no recorded run says so and exits 1" 1 "$TEMPER" output G9
 assert_eq "9.8.4 7c: temper output changes nothing" "same" \
   "$(a=$(cksum .temper/gates.json .temper/evidence/build.json); "$TEMPER" output build >/dev/null 2>&1; [[ "$a" == "$(cksum .temper/gates.json .temper/evidence/build.json)" ]] && echo same || echo changed)"
+
+# --- 7d. An agent the tool ran in the background: its time is filled in when its completion notice arrives ---
+setup; "$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" usage add --stage plan --model opus --ms 1000 >/dev/null 2>&1
+"$TEMPER" usage add --stage design --model opus --ms none >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model haiku --ms none --task 3 >/dev/null 2>&1
+assert_exit "9.8.4 7d: usage add --fill puts the notice's time into the row recorded with none" 0 "$TEMPER" usage add --stage design --model opus --ms 5000 --fill
+"$TEMPER" usage add --stage build --model haiku --ms 7000 --task 3 --fill >/dev/null 2>&1
+assert_eq "9.8.4 7d: no row is added, each row recorded with none now has its time" "3|1000,5000,7000" \
+  "$(python3 -c "import json; r = json.load(open('.temper/usage.json')); print('%d|%s' % (len(r), ','.join(str(x['ms']) for x in r)))")"
+assert_eq "9.8.4 7d: the usage summary the report reads counts the filled time (it showed - for Design and Build)" "5000|7000" \
+  "$(python3 "$REPO_ROOT/scripts/usage_ops.py" json .temper/usage.json | python3 -c "import json, sys; d = json.load(sys.stdin)['by_stage']; print('%s|%s' % (d['design']['ms'], d['build']['ms']))")"
+assert_exit "9.8.4 7d: --fill with no row recorded with none adds the row" 0 "$TEMPER" usage add --stage check --model sonnet --ms 11 --fill
+assert_eq "9.8.4 7d: (one row added)" "4" "$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"

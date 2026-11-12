@@ -92,7 +92,9 @@ chose are yours to run, as below. When it prints `action: error`, say its `say` 
     that `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, which the person sets, keeps agents in the foreground.
     Its return is the first of its report (a message from the agent) and its completion notice: in the
     turn that starts, print its box, run its `after` calls and go on with the loop. At the report, fill
-    `{ms}` from the notice when it came first, else with `none`. Never wait for the notice;
+    `{ms}` from the notice when it came first, else with `none`. When the notice comes after that, run the
+    agent's `usage add` call again with the notice's `duration_ms` in place of `none` and ` --fill` at its end:
+    the CLI puts the time into the row it recorded without one. Never wait for the notice;
     Claude Code may start no turn for it. Never end a turn with an agent's `after` calls not run: nothing
     else moves the run.
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it
