@@ -584,4 +584,14 @@ assert_eq "9.8.4 reverify: a first failure recommends running Build again" "Run 
 "$TEMPER" state redo build --reason "tests pass: the last test run failed" >/dev/null 2>&1; gfail build "tests pass" "the last test run failed"
 assert_eq "9.8.4 reverify: the same failure after running again recommends Save for later, and says so" "Save for later (Recommended)|Run Build again|1" \
   "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('failed the same way after it ran again' in d['ask']['question']['question']))")"
+
+# --- 9.8.4 bench: Check that misses the same measurement after running again is not run again by the recommendation ---
+fresh; gpass intent plan build review
+for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"
+assert_eq "9.8.4 bench: a missing measurement first recommends running Check again" "Run Check again (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+"$TEMPER" state redo check --reason "$(nx "d['ask']['options'][0]['calls'][0].split('--reason ', 1)[1]" | python3 -c "import shlex, sys; print(shlex.split(sys.stdin.read())[0])")" >/dev/null 2>&1
+gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"
+assert_eq "9.8.4 bench: the same gap after running again recommends Save for later, and says so" "Save for later (Recommended)|Run Check again|1" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('failed the same way after it ran again' in d['ask']['question']['question']))")"
 setup

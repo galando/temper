@@ -790,8 +790,17 @@ class Builder:
                     self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls)]
                     + back_opt() + [self.save()])
             gap = self.measurement_gap(r.failed_rows("check"))
-            again = [self.opt("Run Check again (Recommended)", "Install what the failed row names, then Check measures again; Build is not redone.",
+            # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
+            # recommendation: a benchmark run without coverage.py ran Check again 52 times
+            redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+            same = gap and redo.get("stage") == "check" and str(redo.get("reason") or "") == ("the measurement was missing: " + why)[:300]
+            again = [self.opt("Run Check again" + ("" if same else " (Recommended)"), "Install what the failed row names, then Check measures again; Build is not redone.",
                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))])] if gap else []
+            if same:
+                save = self.save()
+                save["label"] += " (Recommended)"
+                return self.question(GATE_HEADER, "Check: the check failed (%s). It failed the same way after it ran again: install what it names, or save the run for later?" % why,
+                                     stage=stage, options=[save] + again + back_opt(rec=False) + [override_opt(go)])
             acc = self.acceptance_options(r.failed_rows("check"))
             if acc:
                 first = acc[0]

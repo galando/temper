@@ -55,7 +55,8 @@ passed its own gate each time; the group check failed each time. Each fault is f
   integrated already reruns the scenario tests on the fixed tree: the step back had cleared Build's scenario rows, and a
   model's record pass was asked to record rows the CLI can run. And Build failing the same way after "Run Build again"
   no longer recommends running it again: Save for later is recommended, and the question says so (following the
-  recommendation had relaunched the fix pass forty times on one failure).
+  recommendation had relaunched the fix pass forty times on one failure). The same holds at Check for a measurement the
+  run still cannot take after "Run Check again" (a benchmark run without coverage.py ran Check again 52 times).
 - **8. A request that arrives as a spec.** A proposal only: `docs/decisions/0017-a-request-that-arrives-as-a-spec.md`
   drafts a lighter route for a request that already states its rules, files, tests and done condition. Nothing of it is
   built.
