@@ -44,9 +44,11 @@ folder.
    read the file, change nothing, ask nothing, and return the summary panel. A recorded acceptance is never
    revisited on its own. **A loop back is the exception:** when the prompt has a `Loop back from` line, a later
    stage sent the run back here for that reason (and, on a `What ... left open` line, its open findings). Revise
-   the accepted intent for exactly that: change the criteria, constraints or scope the reason names, keep
-   everything else, leave the `**Status:**` line as it is (the person accepts the revision at the Intent
-   question), and list each change in your panel. Changing nothing on a loop back sends the run round again.
+   the accepted intent for exactly that: change the criteria, constraints or scope the reason names, record the
+   change under Decisions, and keep everything else. Set `**Status:** draft` and remove the `**Accepted-by:**`
+   line: the person accepted other wording, and accepts this revision at the Intent question. A draft holds no
+   scenarios, so remove the `Scenario:` blocks; Plan writes them again for the revised criteria. List each change
+   in your panel. Changing nothing on a loop back sends the run round again.
 
 5. **Otherwise derive the intent** from the feature description in your launch prompt,
    with at most a quick look at the repo for naming and context. Write

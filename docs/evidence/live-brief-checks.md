@@ -39,7 +39,28 @@ human` and the answer into plan.md's Context Map, and that changed the digest th
 digest leaves out plan.md's Context Map section (an answer that changes the plan sends Plan back, which changes the
 task blocks). Case: `temper-cases-20.sh`, "the person's Context check answer does not make the fresh review stale".
 
-## Not reached
+## A second pass: the paths the first one did not reach
 
-The Intent agent revising an accepted intent on a loop back (no run looped back to Intent), and the Haiku task agent
-on a case it cannot dodge (one of the two pyjokes runs found a legal way around the planned defect).
+- **A task that cannot dodge the block** (2 runs, Haiku): a prepared pyjokes plan whose Task 2 needs a `limit` keyword on
+  `get_jokes` in `pyjokes/core.py`, which only Task 1 declares. In both runs Task 2's Haiku agent ran `temper task
+  blocked 2 --needs pyjokes/core.py` with the reason, gated once and stopped: no retry, no escalation. The group parked,
+  the question named the file, Task 1 and the reason, and recommended Loop back to Plan; Plan replanned, Build finished,
+  and the hidden tests passed 4 of 4 in both runs.
+- **The Intent agent on a loop back** (live Sonnet, `temper:temper-intent`, the CLI's prompt after `state loop plan intent`
+  with a reason). It revised AC-01 for exactly that reason, recorded a Decision and kept the rest. It also set the Status
+  back to draft, removed the old Accepted-by line and removed Plan's scenarios (a draft holds none), where the brief said
+  to leave the Status as it was. Its way is the honest one: the old acceptance was of other wording, the person accepts
+  the revision at the Intent question (the CLI's `intent accept` then wrote a new Accepted-by), and Plan, which runs
+  again, writes the scenarios again. The brief now says so. The run then went on: the Intent question, Continue, and a
+  Plan agent prompt with `Earlier loop back from Plan to Intent` and the reason.
+
+## The lost ledger rows on CI (L1, M4)
+
+A synthetic case reproduces a way to lose a row: a lock folder with no owner line yet (a holder stalled between its
+`mkdir` and its owner line) is written past after the wait, while that holder is alive. Closing it (wait for an
+ownerless lock until it is stale) broke six cases that state the CLI's design on purpose: an ownerless lock is a
+foreign one, the CLI fails open after the wait with a WARN and never releases it, so a stuck holder never wedges a run.
+That is a decision for the owner, not for this change, so the change was reverted. Two ways out keep fail open for a
+foreign lock: write the owner line before the lock folder appears (make the folder under another name with its owner
+inside, then rename it into place), so a Temper holder is never ownerless; or wait longer than 2 s before treating an
+ownerless lock as foreign. Neither is proven to be the CI cause.
