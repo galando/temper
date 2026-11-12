@@ -2546,11 +2546,11 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [
-       "/plugin/scripts/temper evidence accept --stage plan --id 6 --reason '{reason}'",
+       "/plugin/scripts/temper evidence accept --stage plan --id 7 --reason '{reason}'",
        "/plugin/scripts/temper gate plan"
       ],
       "description": "[contested] [zoom-out] Task 2: a new mail sender where one exists",
-      "label": "Accept finding 6",
+      "label": "Accept finding 7",
       "move": "accept",
       "reason": true,
       "reason_question": {
@@ -2578,16 +2578,16 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
          "label": "Cancel"
         }
        ],
-       "question": "Accept finding 6. What is the reason?"
+       "question": "Accept finding 7. What is the reason?"
       }
      },
      {
       "calls": [
-       "/plugin/scripts/temper evidence accept --stage plan --id 5 --reason '{reason}'",
+       "/plugin/scripts/temper evidence accept --stage plan --id 6 --reason '{reason}'",
        "/plugin/scripts/temper gate plan"
       ],
       "description": "[readiness] Task 1: the Case 'expired link' names no status",
-      "label": "Accept finding 5",
+      "label": "Accept finding 6",
       "move": "accept",
       "reason": true,
       "reason_question": {
@@ -2607,7 +2607,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
          "label": "Cancel"
         }
        ],
-       "question": "Accept finding 5. What is the reason?"
+       "question": "Accept finding 6. What is the reason?"
       }
      },
      {
@@ -2624,11 +2624,11 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      "options": [
       {
        "description": "[contested] [zoom-out] Task 2: a new mail sender where one exists",
-       "label": "Accept finding 6"
+       "label": "Accept finding 7"
       },
       {
        "description": "[readiness] Task 1: the Case 'expired link' names no status",
-       "label": "Accept finding 5"
+       "label": "Accept finding 6"
       },
       {
        "description": "Back to the Plan question.",
@@ -2744,7 +2744,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state redo plan --reason 'fresh review: #6 [zoom-out] Task 2: a new mail sender where one exists (contested: src/mail.ts:sendMail); #5 [readiness] Task 1: the Case '\"'\"'expired link'\"'\"' names no status'"
+      "/plugin/scripts/temper state redo plan --reason 'fresh review: #7 [zoom-out] Task 2: a new mail sender where one exists (contested: src/mail.ts:sendMail); #6 [readiness] Task 1: the Case '\"'\"'expired link'\"'\"' names no status'"
      ],
      "description": "The Plan agent fixes or contests each finding; the fresh review runs again on the changed files.",
      "label": "Revise the plan (Recommended)",
@@ -2929,7 +2929,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     {
      "cite": null,
      "claim": "[readiness] Task 1: the Case 'expired link' names no status",
-     "id": 5,
+     "id": 6,
      "lens": "readiness",
      "severity": "high",
      "state": "open"
@@ -2937,7 +2937,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     {
      "cite": "src/mail.ts:sendMail",
      "claim": "[zoom-out] Task 2: a new mail sender where one exists",
-     "id": 6,
+     "id": 7,
      "lens": "zoom-out",
      "severity": "high",
      "state": "contested"
@@ -2972,12 +2972,12 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
    "agents": [
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #5 [high] [readiness] Task 1: the Case 'expired link' names no status; #6 [high] [zoom-out] Task 2: a new mail sender where one exists.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #6 [high] [readiness] Task 1: the Case 'expired link' names no status; #7 [high] [zoom-out] Task 2: a new mail sender where one exists.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     },
     {
      "model": "opus",
-     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #5 [high] [readiness] Task 1: the Case 'expired link' names no status.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
+     "prompt": "Follow /plugin/agents/plan.md exactly.\nProject brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).\nSpec path: .temper/specs/pw.\nFresh review findings to answer (reference/plan.md, Answering the fresh review): #6 [high] [readiness] Task 1: the Case 'expired link' names no status.\nPlugin folder: /plugin; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.",
      "type": "temper:temper-plan"
     },
     {
