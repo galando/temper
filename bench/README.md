@@ -56,6 +56,10 @@ bash run-all.sh 3                                           # every task x every
 python3 report.py                                           # the tables, also in ~/temper-bench-results/report.md
 ```
 
+To compare models of the Build task agents, run the `temper` arm with `--task-model haiku` and `--task-model sonnet`
+into folders named `<task>__temper-<model>__<rep>` (`--out`), grade each, then `python3 compare_models.py <results folder>`.
+The last comparison is in `docs/evidence/haiku-sonnet-task-agents.md`.
+
 ## Rules that keep it honest
 
 - Write the hidden tests before any arm runs, from `task.md` alone, and check that a reference solution passes
