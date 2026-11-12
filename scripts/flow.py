@@ -1852,6 +1852,25 @@ class Builder:
                              reason=["The commits are right", "I accept the risk"]),
                     self.save()]
             text = "Group %s is parked: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
+        elif any(isinstance((r.groups.get("tasks", {}).get(str(n)) or {}).get("blocked"), dict) for n in tasks):
+            # 9.8.4: a task whose test needs a file it does not declare: no attempt on any model can build it as planned
+            # (a benchmark run spent two Haiku and two Sonnet attempts on one), so the plan comes first
+            b = [((r.groups.get("tasks", {}).get(str(n)) or {}).get("blocked"), n) for n in tasks]
+            b = [(x, n) for x, n in b if isinstance(x, dict)]
+            what = "; ".join("Task %d needs %s, which %s (%s)" % (
+                n, x.get("needs"), ("Task %s declares" % ", ".join(str(o) for o in x.get("owners") or []) if x.get("owners") else "no task declares"),
+                x.get("reason") or "no reason given") for x, n in b)
+            back = r.can_loop("build", "plan")
+            rerun = self.opt("Run the task again", "The blocked tasks run again as planned.", move="redo", calls=[self.c("group reopen %s %s" % (gid, targs))])
+            save = self.save()
+            if back:
+                opts = [self.opt("Loop back to Plan (Recommended)", "Plan moves the change or the test into the task that owns the file.", move="back",
+                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]), rerun, save]
+            else:
+                save["label"] += " (Recommended)"
+                opts = [save, rerun]
+            text = "Group %s is parked: %s. No attempt can build it as planned. %s" % (
+                gid, what, "Loop back to Plan?" if back else "Save the run for later?")
         else:
             # 9.8.0 (round 5): a group that parks again after the person ran it again failed every model twice over: the
             # plan is the likelier cause, so Loop back to Plan is the recommended answer then (a measured run reran a

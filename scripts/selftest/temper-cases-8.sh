@@ -594,4 +594,10 @@ assert_eq "9.8.4 bench: a missing measurement first recommends running Check aga
 gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"
 assert_eq "9.8.4 bench: the same gap after running again recommends Save for later, and says so" "Save for later (Recommended)|Run Check again|1" \
   "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('failed the same way after it ran again' in d['ask']['question']['question']))")"
+
+# --- 9.8.4 bench: a group parked on a blocked task asks for the plan first, naming the file and the task that declares it ---
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_reason": "Task 1 needs src/b.sh, outside its declared files"}}, "tasks": {"1": {"status": "failed", "group": "G1", "blocked": {"needs": "src/b.sh", "owners": [2], "reason": "the test needs the b event"}}}}\n' > .temper/groups.json
+assert_eq "9.8.4 blocked: Loop back to Plan is recommended at once, and the question names the file, its task and why" "Loop back to Plan (Recommended)|Run the task again|1" \
+  "$(nx "o = d['ask']['options']; q = d['ask']['question']['question']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('Task 1 needs src/b.sh, which Task 2 declares' in q and 'the test needs the b event' in q))")"
 setup

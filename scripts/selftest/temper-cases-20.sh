@@ -285,3 +285,46 @@ _scen_rows() { python3 -c "import json; print(sum(1 for r in json.load(open('.te
 rm -f .temper/evidence/build.json
 assert_exit "9.8.4 reverify: integrate on an integrated run reruns the scenario tests and succeeds" 0 "$TEMPER" integrate
 assert_eq "9.8.4 reverify: one CLI-run row for each scenario of the intent" "2" "$(_scen_rows)"
+
+# --- 9.8.4 bench: a task whose test needs a file it does not declare is blocked: no retry, no escalation, the group parks ---
+m_setup <<'TASKS'
+# Tasks: demo
+
+**Integration:** `true`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** `true`
+**Context:**
+The core.
+
+### Task 1: first
+**File:** `src/a.sh`
+**Depends:** none
+**Test:** `false`
+**Cases:**
+- a holds
+- a bad input is refused
+- [ ] done
+
+### Task 2: second
+**File:** `src/b.sh`
+**Depends:** Task 1
+**Test:** `true`
+**Cases:**
+- b holds
+- a bad input is refused
+- [ ] done
+TASKS
+"$TEMPER" task start 1 >/dev/null 2>&1
+assert_exit "9.8.4 blocked: a path the task declares itself is no block (refused)" 1 "$TEMPER" task blocked 1 --needs src/a.sh --reason "x"
+assert_exit "9.8.4 blocked: the agent records the file its test needs outside the task" 0 \
+  "$TEMPER" task blocked 1 --needs ./src/b.sh --reason "the test needs the b event, written in src/b.sh"
+_bt() { python3 -c "import json,sys; d = json.load(open('.temper/groups.json')); print(eval(sys.argv[1]))" "$1"; }
+assert_eq "9.8.4 blocked: recorded with the path and the task that declares it" "src/b.sh|[2]" "$(_bt "d['tasks']['1']['blocked']['needs'] + '|' + str(d['tasks']['1']['blocked']['owners'])")"
+"$TEMPER" task test 1 --phase red >/dev/null 2>&1
+"$TEMPER" task gate 1 --model haiku >/dev/null 2>&1
+assert_eq "9.8.4 blocked: its gate fails once and the group parks at once (no retry, no escalation), naming the file" "1|parked|1" \
+  "$(_bt "'%d|%s|%d' % (len(d['tasks']['1']['attempts']), d['groups']['G1']['status'], 'needs src/b.sh' in d['groups']['G1']['parked_reason'])")"
+"$TEMPER" group reopen G1 --task 1 >/dev/null 2>&1
+assert_eq "9.8.4 blocked: running the task again clears the block" "False" "$(_bt "'blocked' in d['tasks']['1']")"

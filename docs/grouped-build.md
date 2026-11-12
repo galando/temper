@@ -46,6 +46,10 @@ tasks on sonnet (`temper model --all --source` prints `task=sonnet (risk)`); an 
 wins. The plan gate's `shared production files` row fails when more than two tasks of one group declare the
 same production file (a test file does not count): merge them into one task.
 
+A task whose test needs a change in a file it does not declare cannot be built as planned on any model. Its agent records
+`temper task blocked N --needs <path> --reason '<why>'`; the gate fails once and parks the group without a retry or an
+escalation, and the question recommends the loop back to Plan.
+
 ## What a run looks like
 
 1. **Plan** (Opus) writes the grouped `tasks.md`. `temper gate plan` checks it: every task

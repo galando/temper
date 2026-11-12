@@ -2776,7 +2776,7 @@ d.setdefault('cli_commits', []).append(a[0])
     _groups_mutate "
 t = d.setdefault('tasks', {}).setdefault(a[0], {})
 t.setdefault('attempts_prior', []).extend(t.get('attempts') or [])
-t['attempts'] = []
+t['attempts'] = []; t.pop('blocked', None)
 task_status(t, 'pending')
 t['attempt'] = 1
 for k in ('commit', 'passed_at', 'snapshot', 'start_sha', 'started_at'):
@@ -3227,6 +3227,9 @@ _task_gate_body() {
       # rule violation, not a test failure) and the task's worktree is kept as it is for the human. The worktree is
       # this task's alone, so the commit is this task's: no sibling is touched.
       park="Task $n holds commit(s) not made by the CLI"
+    elif [[ "$(_jget "$_T_CTX" blocked)" == *needs* ]]; then   # 9.8.4: task blocked: no attempt can build it, park now
+      park="Task $n needs $(_jget "$(_jget "$_T_CTX" blocked)" needs), outside its declared files"
+      _task_wt_discard "$n" "$wtrel" "$(_jget "$_T_CTX" tbranch)" || return 1
     else
       # D-03: attempt 1 retries on the task model, attempt 2 escalates once, attempt 3 parks the group. The attempt's
       # worktree is discarded; the next attempt starts a fresh one from the group branch.
@@ -3546,7 +3549,9 @@ cmd_task() {
     gate) cmd_task_gate "$@" ;;
     confirm) cmd_task_confirm "$@" ;;
     accept|retry) cmd_task_cover "$sub" "$@" ;;
-    *) echo "FAIL: usage: temper task <start|show|test|gate|confirm|accept|retry> ..." >&2; return 1 ;;
+    blocked) _lock_acquire; python3 -E -s "$SCRIPTS_DIR/task_blocked.py" "$GROUPS_FILE" "$(_grouped_parse "$(_spec_path "")/tasks.md")" "$(_now)" "$@"
+             local rc=$?; _lock_release; return $rc ;;   # 9.8.4: its test needs a file outside the task: no retry
+    *) echo "FAIL: usage: temper task <start|show|test|gate|confirm|accept|retry|blocked> ..." >&2; return 1 ;;
   esac
 }
 
@@ -5152,7 +5157,7 @@ Usage:
   temper group report [--json]    (grouped Build: the measurement report)
   temper group fix G<n> [--commit] (a failed group: one fix agent on its merged tree; --commit commits its work)
   temper output <stage>|G<n>      (read only: the gate's failed rows and its last run's output, or a group's last Validate)
-  temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
+  temper task <start|show|test|gate|blocked> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
   temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
   temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)

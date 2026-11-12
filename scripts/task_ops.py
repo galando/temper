@@ -165,7 +165,8 @@ def ctx(plan, run, n):
             'attempt': rt.get('attempt', 1) if status == 'running' else len(attempts) + 1,
             'attempts': attempts, 'start_sha': rt.get('start_sha', ''), 'started_at': rt.get('started_at', ''),
             'snapshot': rt.get('snapshot') or {}, 'slug': run.get('slug', ''),
-            'gstatus': rg.get('status', ''), 'gparked': rg.get('parked_reason', '')}
+            'gstatus': rg.get('status', ''), 'gparked': rg.get('parked_reason', ''),
+            'blocked': rt.get('blocked') or {}}   # 9.8.4: temper task blocked: its test needs a file outside the task
 
 PATTERN_MAX_BYTES = 2048
 TEST_NAME = re.compile(r'(^|/)(test_[^/]+|[^/]+_test\.[^/.]+|[^/]+\.(test|spec)\.[^/.]+|test[^/]*\.[^/.]+)$')
