@@ -495,3 +495,19 @@ assert_eq "report --html: Done once the Commit gate passed, In progress before" 
 assert_eq "report --html: a loop back reads with the stage names and its reason" "1" \
   "$(python3 "$REPO_ROOT/scripts/run_report.py" render --view commit-passed.json -o - | grep -c '↺ Review to Build (1 of 2): a real bug')"
 setup
+
+# --- 9.8.4 7a: "Include what is left out" passes the whole list to Plan, never the first 100 characters ---
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state set complexity simple >/dev/null 2>&1
+cat > .temper/specs/demo/plan.md <<'PEOF'
+## Context Map
+- use: src/ (3 files)
+- ignore: ledger/export.py: refunds in exports are out of scope for this change and stay as they are
+- ignore: ledger/report.py: the monthly report is already correct and reads the same rows
+- reviewed: pending
+
+## Plan
+PEOF
+assert_eq "9.8.4 7a: the Include call carries the whole text, the second left out source and its last word included" "yes" \
+  "$(nx "c = d['context_check']['options'][1]['calls'][0]; 'yes' if 'reads the same rows' in c and c.endswith('--redo') else c")"
+setup

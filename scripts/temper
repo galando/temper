@@ -4693,7 +4693,7 @@ cmd_plan() {
   # 9.8.0: --redo: the person's answer changes the plan. It becomes a note Plan reads, and Plan runs again with it.
   if [[ $redo -eq 1 ]]; then
     cmd_evidence_add --stage plan --phase note --kind input --claim "Context check: ${text}" >/dev/null || return 1
-    cmd_state_redo plan --reason "the Context check: ${text:0:200}"
+    cmd_state_redo plan --reason "the Context check: ${text}"
   fi
 }
 

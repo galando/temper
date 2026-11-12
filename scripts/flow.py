@@ -1910,9 +1910,12 @@ class Builder:
         opts = [self.opt("As planned (Recommended)", "The plan's context is right; check the plan again.", move="answer",
                          calls=[self.c("plan review --answer 'As planned'"), self.c("gate plan")])]
         if left:
-            what = "Include what is left out: %s" % "; ".join(left)
+            # 9.8.4: Plan gets the whole text of what is left out (the question shows each cut to fit); a cut at 100
+            # characters told the Plan agent "already co".
+            full = [x["text"] for x in (cm.get("rows") or []) if x.get("kind") == "ignore"][:3]
+            what = "Include what is left out: %s" % "; ".join(full)
             opts.append(self.opt("Include what is left out", "Plan revises the plan to cover: %s." % "; ".join(left), move="answer",
-                                 calls=[self.c("plan review --answer %s --redo" % shlex.quote(what[:100]))]))
+                                 calls=[self.c("plan review --answer %s --redo" % shlex.quote(what))]))
         opts.append(self.opt("Something else", "Type what Plan should change or read (Other); Plan revises the plan with it.",
                              do="Ask the person to type it in Other, then run the question's `answer` call with their text."))
         carry = self.opt("Carry forward", "Decide later; the plan gate keeps naming this question.", move=None, calls=[])
