@@ -32,6 +32,27 @@ def budget(frm, to, cfg):
         return 2
 
 
+def group_failures(loops_file):
+    """9.8.4: the groups whose check failed, first in what a step back from Build carries: the gate's reason, how many times
+    it failed, and the first FAIL lines of its Validate output (groups.json, beside the loops file, before the step back
+    archives it)."""
+    try:
+        d = json.load(open(os.path.join(os.path.dirname(os.path.abspath(loops_file)), 'groups.json')))
+    except Exception:
+        return []
+    out = []
+    for gid, g in sorted((d.get('groups') or {}).items()):
+        gate = (g or {}).get('gate') or {}
+        if gate.get('verdict') != 'FAIL':
+            continue
+        fails = int(g.get('fails') or 1)
+        lines = [' '.join(str(x).split())[:200] for x in gate.get('fail_lines') or []][:5]
+        out.append('group %s check failed%s: %s%s' % (gid, ' %d times' % fails if fails > 1 else '',
+                                                      ' '.join(str(gate.get('reason', '')).split())[:400],
+                                                      ('; what failed: ' + ' | '.join(lines)) if lines else ''))
+    return out
+
+
 def step(f, frm, to, reason, cfg, ts, ledger="", state="", mutation_threshold="70"):
     """One step back; returns (exit code, the line to print)."""
     max_per_type = budget(frm, to, cfg)
@@ -69,6 +90,12 @@ def step(f, frm, to, reason, cfg, ts, ledger="", state="", mutation_threshold="7
             return False
         if frm == 'review':
             return bool(e.get('severity'))
+        # 9.8.4: Plan's open fresh review findings go with a step back from Plan (they were lost with the cleared ledger)
+        if frm == 'plan' and e.get('severity'):
+            return True
+        # a task's RED run fails by design: it is no finding (a measured loop listed twenty of them and no group failure)
+        if frm == 'build' and e.get('phase') in ('red', 'group'):
+            return False
         return isinstance(e.get('exit_code'), int) and e.get('exit_code') != 0
 
     def out_of(e):
@@ -84,8 +111,9 @@ def step(f, frm, to, reason, cfg, ts, ledger="", state="", mutation_threshold="7
             return frm == 'check' and str(e.get('claim')) == 'mutation score' and float(e.get('value')) < float(mutation_threshold)
         except (TypeError, ValueError):
             return False
-    left = [('[%s] ' % e['severity'] if e.get('severity') else '') + str(e.get('claim', ''))[:300] + out_of(e) for e in rows
-            if open_row(e) or low_mutation(e)]
+    left = group_failures(f) if frm == 'build' else []
+    left += [('[%s] ' % e['severity'] if e.get('severity') else '') + str(e.get('claim', ''))[:300] + out_of(e) for e in rows
+             if open_row(e) or low_mutation(e)]
     if left:
         loop['findings'] = left[:20]
     else:

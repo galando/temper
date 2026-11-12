@@ -321,6 +321,20 @@ class Run:
                 best, at = l, loop_at(l)
         return best
 
+    def loop_through(self, stage):
+        """9.8.4: the latest active step back that went from `stage` (or a later stage) to an earlier one, or None: the run
+        comes through `stage` again for the same reason (Plan to Intent, then Plan again)."""
+        seq = SEQ.get(self.command, SEQ["temper"])
+        if stage not in seq:
+            return None
+        i = seq.index(stage)
+        best, at = None, ""
+        for l in self.active_loops():
+            f, t = l.get("from_stage"), l.get("to_stage")
+            if f in seq and t in seq and seq.index(t) < i <= seq.index(f) and loop_at(l) >= at:
+                best, at = l, loop_at(l)
+        return best
+
     def latest_loop(self):
         """The latest step back to Build (or Fix), or None."""
         best, at = None, ""
@@ -1131,6 +1145,17 @@ class Builder:
         # A step back to this stage (from Design to Plan, from Review to Intent): the agent runs again for the person's
         # reason, and with what the stage it came from left open.
         back = r.loop_into(stage) if stage not in ("build", "fix") else None
+        # 9.8.4: a step back to an earlier stage (Plan to Intent) comes through this stage again: its reason and what it left
+        # open reach this stage's agent too, unless a later step back into this stage speaks for it.
+        through = r.loop_through(stage) if stage not in ("build", "fix") else None
+        if through and (not back or loop_at(through) > loop_at(back)):
+            extra = extra + ["Earlier loop back from %s to %s: %s. Take it into account, keeping what still holds." % (
+                LABEL.get(through.get("from_stage"), through.get("from_stage")), LABEL.get(through.get("to_stage"), through.get("to_stage")),
+                through.get("reason") or "no reason given")]
+            if through.get("findings"):
+                extra.append("What %s left open: %s." % (LABEL.get(through.get("from_stage"), through.get("from_stage")),
+                                                          "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(through["findings"]))))
+            back = None
         if back:
             extra = extra + ["Loop back from %s: %s. Do this stage again for it, keeping what still holds." % (
                 LABEL.get(back.get("from_stage"), back.get("from_stage")), back.get("reason") or "no reason given")]

@@ -133,3 +133,27 @@ assert_eq "9.8.4 1: a new test file a later group writes is no conflict (G1 cann
   "$(_p1 "$(_p1tasks "pytest tests/" tests/test_new.py)" | cut -d'|' -f1)"
 assert_eq "9.8.4 1: a Validate that runs other files passes" "True" "$(_p1 "$(_p1tasks "pytest tests/test_other.py" tests/test_core.py)" | cut -d'|' -f1)"
 rm -rf tests scripts p1-tasks.md
+
+# --- 3b. After a loop back that changes plan.md or tasks.md, the fresh review gets one more round past its cap ---
+setup
+printf 'plan:\n  fresh-review: auto\n  fresh-review-rounds: 1\n' >> .claude/temper.config
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
+printf '## Context Map\n- use: intent.md - the scope\n- reviewed: auto - current\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
+"$TEMPER" plan fresh start >/dev/null 2>&1
+_frow() { "$TEMPER" gate plan >/dev/null 2>&1; python3 -c "
+import json, sys
+r = [x for x in json.load(open('.temper/gates.json'))['plan']['requirements'] if x['name'] == 'fresh review ran']
+print(('%s|%s' % (r[0]['pass'], r[0]['detail'])) if r else 'absent')"; }
+"$TEMPER" state loop plan intent --reason "the scope is wrong" >/dev/null 2>&1
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+assert_exit "9.8.4 3b: before plan.md or tasks.md changes, the cap still holds" 1 "$TEMPER" plan fresh start
+echo "- a revised step" >> .temper/specs/demo/tasks.md
+"$TEMPER" gate plan >/dev/null 2>&1
+assert_eq "9.8.4 3b: after the loop back changed tasks.md, next launches one more round instead of a dead end" "temper:temper-plan-review|1" \
+  "$(nx "a = d['agents'][0]; a['type'] + '|' + str(int('Round: 2 of 2.' in a['prompt']))")"
+assert_exit "9.8.4 3b: and the CLI takes that launch" 0 "$TEMPER" plan fresh start
+assert_exit "9.8.4 3b: one more round only: a third launch is refused" 1 "$TEMPER" plan fresh start
+gfail plan "fresh review ran" "x"; "$TEMPER" state redo plan --reason "the Context check: include the export" >/dev/null 2>&1
+echo "- a replanned step" >> .temper/specs/demo/tasks.md
+assert_exit "9.8.4 3b: a replan (state redo plan) that changes tasks.md earns one more round as well" 0 "$TEMPER" plan fresh start

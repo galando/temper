@@ -535,4 +535,24 @@ _g2 '"fails": 1, "fix": {"requested": "2026-01-01T00:00:00Z"}, "gate": {"verdict
 assert_eq "9.8.4 2b: the fix asked for launches one Build fix agent on the group's worktree; the CLI commits its work, then gates the group" \
   "work|temper:temper-build|1|1|1|group fix G1 --commit|group gate G1" \
   "$(nx "a = d['agents']; p = a[0]['prompt']; '|'.join([d['action'], a[0]['type'], str(len(a)), str(int('Group fix: group G1' in p)), str(int('FAIL: test_a' in p)), a[0]['after'][-2].split('temper ', 1)[1], a[0]['gate'].split('temper ', 1)[1]])")"
+
+# --- 9.8.4 fault 3: a loop back carries what was learned ---
+# 3a: a loop from Plan back to Intent keeps the open fresh review finding and the person's reason, and the next Plan agent gets both
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" evidence add --stage plan --phase fresh --severity high --claim "[readiness] Task 2: AC-03 has no test that can fail" >/dev/null 2>&1
+"$TEMPER" state loop plan intent --reason "AC-03 must be measurable" >/dev/null 2>&1
+assert_eq "9.8.4 3a: the Intent agent after the loop back gets the reason and the open fresh review finding" "1|1" \
+  "$(nx "p = d['agents'][0]['prompt']; '%d|%d' % ('AC-03 must be measurable' in p, 'AC-03 has no test that can fail' in p)")"
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+assert_eq "9.8.4 3a: the Plan agent after Intent gets the reason and the open fresh review finding too" "temper:temper-plan|1|1" \
+  "$(nx "a = d['agents'][0]; p = a['prompt']; '%s|%d|%d' % (a['type'], 'AC-03 must be measurable' in p, 'AC-03 has no test that can fail' in p)")"
+# 3c: a loop from Build to Plan puts the group gate's reason and FAIL lines first, and never the expected RED runs of the tasks
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22; do
+  "$TEMPER" evidence add --stage build --phase red --claim "Task $n unit test red" --cmd "pytest t$n" --exit 1 >/dev/null 2>&1
+done
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "fails": 3, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: cases 8 expect the old message"]}}}, "tasks": {}}\n' > .temper/groups.json
+"$TEMPER" state loop build plan --reason "G1 cannot pass" >/dev/null 2>&1
+assert_eq "9.8.4 3c: the Plan prompt after a loop from Build names the group gate's reason and FAIL lines first, and no RED run" "1|1|0" \
+  "$(nx "p = d['agents'][0]['prompt']; i = p.find('What Build left open'); '%d|%d|%d' % (p.find('1. group G1', i) > 0, 'FAIL: cases 8 expect the old message' in p, 'unit test red' in p)")"
 setup

@@ -1254,6 +1254,11 @@ print(json.dumps({k: v for k, v in zip(sys.argv[1::2], sys.argv[2::2]) if v != '
   _go_back "$to"
 }
 
+_fresh_grant() { # 9.8.4: a loop back or a replan to <stage>: one more fresh review round once plan.md or tasks.md changes (fresh_review.py cap_of)
+  [[ "$1" =~ ^(intent|plan|design)$ && -f "$STATE_FILE" ]] || return 0
+  python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark loop "$STATE_FILE" "$(_spec_path "")" 1 "$(_now)" "" >/dev/null 2>&1 || true
+}
+
 _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state loop, a state set next_stage to an earlier
              # stage). One function, so every way back leaves the same run behind (ADR 0012, point 3):
   local to="$1"
@@ -1265,6 +1270,7 @@ _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state 
   if [[ -f "$GROUPS_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]]; then
     _groups_reset
   fi
+  _fresh_grant "$to"
   # - and the code an earlier run built no longer stands for the plan: Build builds the plan, not a fix pass of it
   if [[ -f "$STATE_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]] \
      && [[ -n "$(cmd_state_get built_before "")" ]]; then
@@ -1451,6 +1457,7 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
     return 1
   fi
   _redo_from "$stage" || return 1
+  _fresh_grant "$stage"
   [[ "$stage" == "pipeline" ]] && rm -f "$(_json_get_path "$STATE_FILE" spec_path "")/pipeline-context.json"   # CI is read again
   [[ "$stage" == "review" ]] && _review_code save
   # A run a door started at a later stage checks the stages before it instead of running them: one run again is run,

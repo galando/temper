@@ -3,7 +3,8 @@ it counts rows a reviewer recorded and compares digests and times.
 
   python3 fresh_review.py rows SPEC_DIR EVIDENCE.json STATE.json MODE TWICE ROUNDS   the plan gate's rows, one JSON per line
   python3 fresh_review.py status SPEC_DIR EVIDENCE.json STATE.json MODE TWICE ROUNDS the state flow.py reads, one JSON
-  python3 fresh_review.py mark request|start|again STATE.json SPEC_DIR ROUNDS NOW EVIDENCE.json   the CLI's marks (temper plan fresh)
+  python3 fresh_review.py mark request|start|again|loop STATE.json SPEC_DIR ROUNDS NOW EVIDENCE.json   the CLI's marks (temper plan
+                                                                        fresh; loop: a step back to Intent, Plan or Design)
 
 A reviewer with no context (agents/plan-review.md) reads intent.md, plan.md and tasks.md as a newcomer would, through three
 lenses, and records what it finds in the plan ledger (`temper evidence add --stage plan --phase fresh`):
@@ -21,7 +22,8 @@ A lens with no completion row did not review: it is `not run`, never a lens with
 
 MODE is plan.fresh-review: ask (the default: the plan question offers it, at every tier, and it applies once the person asks
 for it), auto (medium and complex tiers), always, or off. A risk H plan gets two independent reviewers (A and B) unless TWICE
-is false. ROUNDS (plan.fresh-review-rounds, default 3) caps the launches of one run. Standard library only.
+is false. ROUNDS (plan.fresh-review-rounds, default 3) caps the launches of one run; 9.8.4: a loop back (or a replan) after
+which plan.md or tasks.md changed earns one more round (cap_of). Standard library only.
 """
 import hashlib
 import json
@@ -52,6 +54,29 @@ def digest(spec):
             h.update(b"(absent)")
         h.update(b"\0")
     return h.hexdigest()
+
+
+def plan_digest(spec):
+    """9.8.4: one digest over plan.md and tasks.md, the files a loop back must change to earn one more round."""
+    h = hashlib.sha256()
+    for name in ("plan.md", "tasks.md"):
+        try:
+            with open(os.path.join(spec, name), "rb") as fh:
+                h.update(name.encode() + b"\0" + fh.read() + b"\0")
+        except OSError:
+            h.update(name.encode() + b"\0(absent)\0")
+    return h.hexdigest()
+
+
+def cap_of(fs, spec, cap):
+    """9.8.4: the round limit of this run: plan.fresh-review-rounds, plus one round for each loop back (or replan) after which
+    plan.md or tasks.md changed. A loop back records the digest of those files (`grant`); the round it earns is taken at the
+    next launch (`extra`). Without it a loop back cleared the review while the spent rounds forbade a new one, and the gate
+    failed on "not run yet" with Override as the only way on."""
+    extra = int(fs.get("extra") or 0)
+    grant = fs.get("grant")
+    pending = isinstance(grant, str) and grant != plan_digest(spec)
+    return cap + extra + (1 if pending else 0), pending
 
 
 def load(path, default):
@@ -117,7 +142,7 @@ def status(spec, ev_path, state_path, mode, twice="true", rounds_cap="3"):
     out = {"mode": m, "applies": applies(m, complexity, fs.get("requested")) and bool(now), "digest": now,
            "offer": m == "ask" and not fs.get("requested") and bool(now) and state.get("command", "temper") == "temper",
            "need": ["%s %s" % n for n in need], "done": [], "missing": [], "stale": False, "launched": launch is not None,
-           "rounds": int(fs.get("rounds") or 0), "cap": cap, "capped": int(fs.get("rounds") or 0) >= cap,
+           "rounds": int(fs.get("rounds") or 0), "cap": cap_of(fs, spec, cap)[0], "capped": int(fs.get("rounds") or 0) >= cap_of(fs, spec, cap)[0],
            "paraphrase": "", "paraphrase_short": False, "lazy": [], "findings": [], "contests": []}
     if not out["applies"]:
         return out
@@ -236,15 +261,25 @@ def mark(what, state_path, spec, rounds_cap, now, ev_path):
         if not d:
             print("FAIL: no tasks.md in %s to review" % spec, file=sys.stderr)
             return 1
-        if int(fs.get("rounds") or 0) >= cap:
-            print("FAIL: the fresh review ran %d round(s), the limit (plan.fresh-review-rounds); the person decides at the plan question" % cap, file=sys.stderr)
+        limit, pending = cap_of(fs, spec, cap)
+        if int(fs.get("rounds") or 0) >= limit:
+            print("FAIL: the fresh review ran %d round(s), the limit (plan.fresh-review-rounds%s); the person decides at the plan question" % (
+                limit, ", and one more after each loop back that changes plan.md or tasks.md" if fs.get("grant") or fs.get("extra") else ""), file=sys.stderr)
             return 1
+        if pending and int(fs.get("rounds") or 0) >= cap + int(fs.get("extra") or 0):
+            fs["extra"] = int(fs.get("extra") or 0) + 1   # the round a loop back earned is taken now
+            fs.pop("grant", None)
         fs["launch"] = {"digest": d, "ts": now, "rows": len(load(ev_path, []))}
         fs["rounds"] = int(fs.get("rounds") or 0) + 1
         msg = "fresh review round %d of %d launched on these files" % (fs["rounds"], cap)
     elif what == "again":
         fs.pop("launch", None)
         msg = "the fresh review runs again"
+    elif what == "loop":
+        # 9.8.4: a loop back (or a replan) earns one more round once plan.md or tasks.md changes; a second loop back before
+        # that round is taken earns no second one
+        fs["grant"] = plan_digest(spec)
+        msg = "a loop back: the fresh review may run one more round once plan.md or tasks.md changes"
     else:
         print("FAIL: usage: temper plan fresh request|start|again", file=sys.stderr)
         return 1

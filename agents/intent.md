@@ -40,8 +40,13 @@ folder.
    explicitly re-carry each Open Question. Never overwrite it wholesale.
 
 4. **Accepted-intent pass.** If the draft's header says `**Status:** accepted` AND
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` passes: read the file, change nothing, ask nothing, and
-   return the summary panel. A recorded acceptance is never revisited.
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` passes AND your launch prompt has no `Loop back from` line:
+   read the file, change nothing, ask nothing, and return the summary panel. A recorded acceptance is never
+   revisited on its own. **A loop back is the exception:** when the prompt has a `Loop back from` line, a later
+   stage sent the run back here for that reason (and, on a `What ... left open` line, its open findings). Revise
+   the accepted intent for exactly that: change the criteria, constraints or scope the reason names, keep
+   everything else, leave the `**Status:**` line as it is (the person accepts the revision at the Intent
+   question), and list each change in your panel. Changing nothing on a loop back sends the run round again.
 
 5. **Otherwise derive the intent** from the feature description in your launch prompt,
    with at most a quick look at the repo for naming and context. Write
@@ -150,7 +155,7 @@ folder.
 - Do not explore the codebase beyond naming and context. Blast radius and architecture
   belong to Plan and Plan's budget.
 - An intent already marked `**Status:** accepted` that passes the gate is read, never
-  rewritten, and never re-questioned.
+  rewritten, and never re-questioned, unless a loop back names what to change (step 4).
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border), and it is the only box you print. Fact rows at the top, then titled sections
