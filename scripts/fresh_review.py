@@ -17,7 +17,7 @@ lenses, and records what it finds in the plan ledger (`temper evidence add --sta
 The CLI marks each launch (`temper plan fresh start`, run by the orchestrator just before it launches the reviewer, so after the
 Plan agent returned): the digest of intent.md, plan.md and tasks.md, the time, and how many rows the plan ledger held. Only rows
 appended after that count, so a row the Plan agent wrote itself never does (a ledger shorter than the mark was cleared: the
-review has not run on it). An edit of any of the three files after the launch makes the review stale.
+review has not run on it). An edit of any of the three files after the launch makes the review stale (in plan.md, outside its Context Map).
 A lens with no completion row did not review: it is `not run`, never a lens with no findings.
 
 MODE is plan.fresh-review: ask (the default: the plan question offers it, at every tier, and it applies once the person asks
@@ -46,8 +46,21 @@ FILES = ("intent.md", "plan.md", "tasks.md")
 MIN_WORDS = 6
 
 
+def without_context_map(data):
+    """plan.md without its `## Context Map` section: the person's Context check answer is written there (`reviewed:` and
+    the answer), and an answer changes no task. A live run launched a recheck round with nothing to check after it (9.8.4);
+    an answer that changes the plan sends Plan back, which changes the task blocks."""
+    out, skip = [], False
+    for line in data.split(b"\n"):
+        if line.startswith(b"## "):
+            skip = line.strip().lower() == b"## context map"
+        if not skip:
+            out.append(line)
+    return b"\n".join(out)
+
+
 def digest(spec):
-    """One digest over the three files a reviewer reads; '' when tasks.md is missing."""
+    """One digest over the three files a reviewer reads (plan.md without its Context Map); '' when tasks.md is missing."""
     if not os.path.isfile(os.path.join(spec, "tasks.md")):
         return ""
     h = hashlib.sha256()
@@ -55,7 +68,8 @@ def digest(spec):
         h.update(name.encode() + b"\0")
         try:
             with open(os.path.join(spec, name), "rb") as fh:
-                h.update(fh.read())
+                data = fh.read()
+            h.update(without_context_map(data) if name == "plan.md" else data)
         except OSError:
             h.update(b"(absent)")
         h.update(b"\0")

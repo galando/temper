@@ -328,3 +328,22 @@ assert_eq "9.8.4 blocked: its gate fails once and the group parks at once (no re
   "$(_bt "'%d|%s|%d' % (len(d['tasks']['1']['attempts']), d['groups']['G1']['status'], 'needs src/b.sh' in d['groups']['G1']['parked_reason'])")"
 "$TEMPER" group reopen G1 --task 1 >/dev/null 2>&1
 assert_eq "9.8.4 blocked: running the task again clears the block" "False" "$(_bt "'blocked' in d['tasks']['1']")"
+
+# --- 9.8.4 live check: the person's Context check answer does not make the fresh review stale (no empty recheck round) ---
+setup
+printf 'plan:\n  fresh-review: auto\n' >> .claude/temper.config
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
+printf '## Context Map\n- use: intent.md - the scope\n- ignore: ledger/export.py: out of scope\n- reviewed: pending\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
+"$TEMPER" plan fresh start >/dev/null 2>&1
+for l in readiness zoom-out comprehension tests; do "$TEMPER" evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim "fresh review completed: $l A" $([[ $l == readiness ]] && echo "--value 1") >/dev/null 2>&1; done
+"$TEMPER" evidence add --stage plan --phase fresh --claim "paraphrase: the demo runs twice and prints its output | a demo is one shell step run by the suite" >/dev/null 2>&1
+"$TEMPER" plan review --answer "As planned" >/dev/null 2>&1
+assert_eq "9.8.4 live: the Context check answer wrote the map" "1" "$(grep -c 'reviewed: human' .temper/specs/demo/plan.md)"
+assert_eq "9.8.4 live: after it, the fresh review still counts (not stale) and no reviewer is launched again" "True|0" \
+  "$("$TEMPER" gate plan >/dev/null 2>&1; python3 -c "
+import json; print([r for r in json.load(open('.temper/gates.json'))['plan']['requirements'] if r['name'] == 'fresh review ran'][0]['pass'])")|$(nx "sum(1 for a in d.get('agents') or [] if a['type'] == 'temper:temper-plan-review')")"
+printf '\n- a changed step\n' >> .temper/specs/demo/tasks.md
+assert_eq "9.8.4 live: a change of tasks.md still makes it stale" "False" \
+  "$("$TEMPER" gate plan >/dev/null 2>&1; python3 -c "
+import json; print([r for r in json.load(open('.temper/gates.json'))['plan']['requirements'] if r['name'] == 'fresh review ran'][0]['pass'])")"

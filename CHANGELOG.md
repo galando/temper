@@ -67,6 +67,11 @@ passed its own gate each time; the group check failed each time. Each fault is f
   the task and names the tasks that declare it). The task's gate then fails once and parks the group, with no retry and
   no escalation, and the question recommends the loop back to Plan, naming the file and its task. In the benchmark one
   such task took two Haiku and two Sonnet attempts, each stopping for the same reason, before the loop back.
+- **Live checks of the new brief instructions** (`docs/evidence/live-brief-checks.md`): real Sonnet reviewers ran the
+  `tests` lens and the recheck rounds as written, a real Haiku task agent recorded `temper task blocked`, and the group fix
+  agent fixed a failed group. They found one waste, now fixed: the person's Context check answer, written into plan.md's
+  Context Map, made the fresh review stale and launched a recheck round with nothing to check; the review's digest now
+  leaves the Context Map out.
 - **8. A request that arrives as a spec.** A proposal only: `docs/decisions/0017-a-request-that-arrives-as-a-spec.md`
   drafts a lighter route for a request that already states its rules, files, tests and done condition. Nothing of it is
   built.
