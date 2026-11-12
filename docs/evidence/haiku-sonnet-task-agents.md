@@ -94,3 +94,10 @@ Haiku arm (the third attempt of a task that failed twice on Haiku). "fix passes"
 Three tasks, three runs each: enough to see a large quality gap, not a small one. The tasks are well specified and have
 5 to 7 tasks each; the run that motivated 9.8.4 had 12 tasks in one group and about 30 files. The person is simulated
 and always takes the recommended option. No vague task was run.
+
+## Decision
+
+Keep the 9.8.4 default: Build task agents run on Haiku for simple and medium plans, and on Sonnet for complex or risk H
+plans, unless `build.grouped.task-model` names a model. The rule costs about $0.25 on those runs and halves the time of
+the task agents, with almost no retries; the plans it covers can be larger than any measured here, where retries grow.
+To revisit with more data: the vague tasks and a plan with 10 or more tasks, 3 runs per arm (`bench/compare_models.py`).
