@@ -624,7 +624,7 @@ cmd_model() {
 # older project that lacks a newer one)
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
-security-map.json test-gap-report.json view.json agents-named.json evidence/ index/ reviews/ archive/ check/ .lock/"
+security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/"
 
 _excludes_current() { # 0 when the clone's info/exclude lists every run file init writes (or this is no git repository)
   local ex pre p

@@ -30,3 +30,8 @@ print(out.decode().strip())
 PYT
 )"
 
+# --- 7b. .temper/brief.md is local run state: init lists it in the clone's info/exclude ---
+setup
+"$TEMPER" brief --text "a change" >/dev/null 2>&1 || printf '# brief\n' > .temper/brief.md
+assert_eq "9.8.4 7b: init lists .temper/brief.md in info/exclude, so it is never an untracked file" "1|0" \
+  "$(grep -cx '/.temper/brief.md' "$(git rev-parse --git-common-dir)/info/exclude")|$(git status --porcelain --untracked-files=all | grep -c 'brief.md')"
