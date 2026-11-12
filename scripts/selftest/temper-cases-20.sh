@@ -188,3 +188,40 @@ assert_eq "9.8.4 5: two tasks on one file pass (they are ordered by Depends)" "T
 assert_eq "9.8.4 5: a shared test file is not a production file" "True" \
   "$(_p5 "$(_p5plan; _p5task 1 tests/test_x.py none; _p5task 2 tests/test_x.py "Task 1"; _p5task 3 tests/test_x.py "Task 2")" | cut -d'|' -f1)"
 rm -f p5-tasks.md
+
+# --- 4. The fresh review converges: a first round with a tests lens, then rechecks of the earlier findings only ---
+setup
+printf 'plan:\n  fresh-review: auto\n' >> .claude/temper.config
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
+printf '## Context Map\n- use: intent.md - the scope\n- reviewed: auto - current\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
+"$TEMPER" gate plan >/dev/null 2>&1
+assert_eq "9.8.4 4: the first round runs four lenses, tests among them (which existing tests break, and which task updates them)" "1" \
+  "$(nx "int('Lenses: readiness, zoom-out, comprehension, tests.' in d['agents'][0]['prompt'])")"
+_f4() { "$TEMPER" evidence add --stage plan --phase fresh "$@" >/dev/null 2>&1; }
+"$TEMPER" plan fresh start >/dev/null 2>&1
+for l in readiness zoom-out comprehension tests; do _f4 --exit 0 --label PROVEN --claim "fresh review completed: $l A" $([[ $l == readiness ]] && echo "--value 1"); done
+_f4 --claim "paraphrase: the demo runs twice and prints its output | a demo is one shell step run by the suite"
+_f4 --severity high --claim "[readiness] Task 1: the case names no expected value"
+_f4 --severity medium --claim "[tests] Task 1: the existing suite checks the old output and no task updates it"
+"$TEMPER" state redo plan --reason "fresh review" >/dev/null 2>&1
+printf -- '- the case expects exit 0\n' >> .temper/specs/demo/tasks.md
+"$TEMPER" gate plan >/dev/null 2>&1
+assert_eq "9.8.4 4: round 2 is a recheck: it lists the earlier findings and the changed task blocks, and runs no other lens" "1|1|1|1" \
+  "$(nx "p = d['agents'][0]['prompt']; '%d|%d|%d|%d' % ('Lenses: recheck.' in p, 'Earlier findings (2): #' in p and 'the case names no expected value' in p, 'Changed task blocks: Task 1.' in p, 'Round: 2 of 3.' in p)")"
+"$TEMPER" plan fresh start >/dev/null 2>&1
+_f4 --exit 0 --label PROVEN --value 0 --claim "fresh review completed: recheck A"
+assert_eq "9.8.4 4: a recheck that checked fewer earlier findings than the round has did not run" "False" \
+  "$("$TEMPER" gate plan >/dev/null 2>&1; python3 -c "import json; print([r for r in json.load(open('.temper/gates.json'))['plan']['requirements'] if r['name'] == 'fresh review ran'][0]['pass'])")"
+_f4 --exit 0 --label PROVEN --value 2 --claim "fresh review completed: recheck A"
+_f4 --severity medium --claim "[tests] Task 1: the existing suite checks the old output and no task updates it"
+assert_exit "9.8.4 4: a recheck that found the high fixed passes the plan gate; it keeps the earlier paraphrase, and a medium does not block" 0 "$TEMPER" gate plan
+assert_eq "9.8.4 4: the medium finding goes to the builder of the task it names, as a note" "1" \
+  "$(python3 - "$REPO_ROOT/scripts" <<'PY'
+import sys, os
+sys.path.insert(0, sys.argv[1])
+import flow
+r = flow.Run({"plugin": sys.argv[1], "cli": "temper", "config_file": ".claude/temper.config", "models": {}, "now": "", "setup": []})
+print(int(any('no task updates it' in x for x in flow.Builder(r).review_notes().get(1, []))))
+PY
+)"

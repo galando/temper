@@ -58,7 +58,7 @@ fresh_reviewed() { # 9.7.6: a finished fresh review of the demo plan: the person
                   # rows (three lenses, the readiness row with the task count, and a paraphrase of two real sentences)
   local l n; n="$(grep -c '^### Task' .temper/specs/demo/tasks.md)"
   "$TEMPER" plan fresh request >/dev/null 2>&1; "$TEMPER" plan fresh start >/dev/null 2>&1
-  for l in readiness zoom-out comprehension; do
+  for l in readiness zoom-out comprehension tests; do
     "$TEMPER" evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim "fresh review completed: $l A" \
       $([[ $l == readiness ]] && echo "--value $n") >/dev/null 2>&1
   done

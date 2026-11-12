@@ -74,14 +74,17 @@ export const buildTask: Agent = chained(buildOne)
 export type FreshFinding = { lens: string; severity: string; claim: string }
 export function freshReviewer(w: World, a: Json, found: FreshFinding[], skip: string[] = []): void {
   const inst = /Instance:\s*(\w)/.exec(a.prompt)?.[1] ?? 'A'
-  const lenses = (/Lenses:\s*([^.]+)\./.exec(a.prompt)?.[1] ?? 'readiness, zoom-out, comprehension').split(',').map(x => x.trim())
+  const lenses = (/Lenses:\s*([^.]+)\./.exec(a.prompt)?.[1] ?? 'readiness, zoom-out, comprehension, tests').split(',').map(x => x.trim())
   const art = `--artifact ${SPEC}/tasks.md`
   const tasks = (w.read(`${SPEC}/tasks.md`).match(/^### Task \d+/gm) ?? []).length
   for (const lens of lenses) {
     for (const f of found.filter(x => x.lens === lens))
       t(w, `evidence add --stage plan --phase fresh --severity ${f.severity} --claim '[${f.lens}] ${f.claim}' ${art}`)
     if (skip.includes(lens)) continue
-    t(w, `evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim 'fresh review completed: ${lens} ${inst}'${lens === 'readiness' ? ` --value ${tasks}` : ''} ${art}`)
+    // 9.8.4: a recheck round counts the earlier findings it checked (the prompt's `Earlier findings (N)`)
+    const earlier = Number(/Earlier findings \((\d+)\)/.exec(a.prompt)?.[1] ?? 0)
+    const value = lens === 'readiness' ? ` --value ${tasks}` : lens === 'recheck' ? ` --value ${earlier}` : ''
+    t(w, `evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim 'fresh review completed: ${lens} ${inst}'${value} ${art}`)
     if (lens === 'comprehension')
       t(w, `evidence add --stage plan --phase fresh --claim 'paraphrase: two modules build a CI report from the gate ledger | the ledger is a JSON file the CLI writes' ${art}`)
   }

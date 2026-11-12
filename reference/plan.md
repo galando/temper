@@ -129,8 +129,11 @@ How the CLI counts it:
 
 ## Answering the fresh review
 
-A finding below high passes the plan gate, but stays the person's call: the plan question names the open findings
-and offers Revise the plan, recommended when one is medium (9.8.0).
+A finding below high passes the plan gate: the plan question names the open findings and offers Revise the plan, never
+recommended (9.8.4); an open `medium` or `low` finding that names a task reaches that task's builder as a note. The
+first round of the fresh review runs four lenses (`tests` among them: which existing tests the change breaks, and which
+task updates them); each later round is a recheck that reads only the changed task blocks and checks only whether each
+earlier finding is fixed, so the rounds converge instead of reading the whole plan again.
 
 
 When the person chooses **Revise the plan**, you run again with a `Fresh review findings to answer`

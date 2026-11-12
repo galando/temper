@@ -311,7 +311,7 @@ art = ("--artifact", ".temper/specs/pw/tasks.md")
 cli(fr, "plan", "fresh", "request")
 cli(fr, "plan", "fresh", "start")
 ntasks = str(TASKS.count("\n### Task "))
-for lens in ("readiness", "zoom-out", "comprehension"):
+for lens in ("readiness", "zoom-out", "comprehension", "tests"):
     cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--exit", "0", "--label", "PROVEN", "--claim", "fresh review completed: %s A" % lens,
         *(("--value", ntasks) if lens == "readiness" else ()), *art)
 cli(fr, "evidence", "add", "--stage", "plan", "--phase", "fresh", "--claim", "paraphrase: a reset link by email, valid for one hour | the app has users and a mail helper", *art)

@@ -630,33 +630,26 @@ class Builder:
                 nl = LABEL.get(r.next_of("plan") or "build")
                 text = "Plan: %s.%s Approve the plan and continue to %s?" % (state_of, said, nl)
                 # 9.8.0: the fresh review's open findings below high pass the gate, and are the person's call: the question
-                # names them and offers Revise the plan first, recommended when one is medium. A person chose Stage by
-                # stage on a review with two medium findings, and the plan went on as if none were found.
+                # names them and offers Revise the plan (9.8.4: never recommended; they go to the builder as notes).
                 lesser = [f for f in fr["findings"] if f["state"] not in ("resolved", "accepted")] if not skipped else []
                 revise = None
                 if lesser:
                     shown = "; ".join("#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:120]) for f in lesser[:3])
-                    text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. Approve the plan and continue to %s?" % (
+                    # 9.8.4: only a high finding blocks; a medium or low one goes to the builder as a note (in the task's
+                    # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
+                    text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. Approve the plan and continue to %s?" % (
                         state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", nl)
-                    medium = any(f["severity"] not in ("low", "info") for f in lesser)
-                    revise = self.opt("Revise the plan" + (" (Recommended)" if medium else ""),
+                    revise = self.opt("Revise the plan",
                                       "The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                       move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
                                           ("fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))[:300]))])
-                    if medium:
-                        go_label = "Stage by stage" if not r.has_design() else "Continue to %s" % nl
-                        first = [revise, self.opt(go_label, "Approve the plan as it is; the open findings stay as the review wrote them.", move="approve", calls=go)]
-                        if not r.has_design():
-                            first.append(self.opt("Autonomous Build: run Build unattended", "Approve the plan as it is; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
-                                                  move="arm", calls=[self.c("state set run_mode autonomous")] + go))
-                        return self.with_more(GATE_HEADER, text, stage, first, [html, grill, teach, self.save()], "Plan: more options.")
                 # 9.8.0: the unattended run is offered at the last question before Build: here when no Design follows,
                 # at the Design question when it does (so every decision is made before the run goes on by itself).
                 if not r.has_design():
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
                              self.opt("Autonomous Build: run Build unattended", "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
                                       move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
-                    if revise is not None:   # low findings only: revising is offered, after the ways on
+                    if revise is not None:   # findings below high: revising is offered, after the ways on
                         return self.with_more(GATE_HEADER, text, stage, first[:2] + [revise], [html, grill, teach, self.save()], "Plan: more options.")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
                         return self.with_more(GATE_HEADER, text, stage, first[:2] + [self.fresh_offer()], [html, grill, teach, self.save()], "Plan: more options.")
@@ -1110,6 +1103,15 @@ class Builder:
             lines = ["Follow %s/agents/plan-review.md exactly." % self.plugin, "Spec path: %s." % r.spec, "Instance: %s." % inst,
                      "Lenses: %s." % ", ".join(n.split()[0] for n in fr["need"] if n.split()[1] == inst),
                      "Round: %d of %d." % (fr["rounds"] + 1, fr["cap"])]
+            rc = fr.get("recheck")
+            if rc:
+                # 9.8.4: a later round re-checks the round before it: each earlier finding, and the changed task blocks only
+                ch = rc.get("changed") or []
+                lines += ["Re-check: this round checks only whether each earlier finding below is fixed, and reads only the changed task blocks; "
+                          "it runs no other lens.",
+                          "Earlier findings (%d): %s." % (len(rc.get("findings") or []), "; ".join(
+                              "#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:200]) for f in rc.get("findings") or []) or "none"),
+                          "Changed task blocks: %s." % (", ".join("Task %d" % n for n in ch) if ch else "none")]
             lines += ["Earlier contest: %s; its evidence: %s (%s). Read that evidence before you raise it again." % (
                 c["claim"][:160], c.get("cite"), (c.get("why") or "")[:160]) for c in fr["contests"]]
             lines.append(self.plugin_line())
@@ -1383,6 +1385,21 @@ class Builder:
                 break
         return chain
 
+    def review_notes(self):
+        """9.8.4: the fresh review's open medium and low findings, as notes for the task each names ({task: [claim]}). They
+        do not block the plan gate; the builder of the task reads them."""
+        out = {}
+        try:
+            found = self.r.fresh().get("findings") or []
+        except Exception:
+            return out
+        for f in found:
+            if f.get("severity") in fresh_review.BLOCKING or f.get("state") in ("resolved", "accepted"):
+                continue
+            for n in {int(x) for x in re.findall(r"\bTask\s+(\d+)\b", f.get("claim") or "")}:
+                out.setdefault(n, []).append(" ".join(str(f["claim"]).split())[:240])
+        return out
+
     def task_model(self):
         """The model of a Build task: the one `temper next` resolved (cli_ctx.resolve: the config, else sonnet for a complex
         or risk H plan, else the brief's), and the same rule when it resolved none (9.8.4: it was haiku for any plan)."""
@@ -1475,9 +1492,11 @@ class Builder:
             # or shares a file with it) go to one agent, which starts, builds and gates each in order (agents/build-task.md);
             # independent tasks still get agents of their own, launched at once. Each task keeps its worktree, its RED run,
             # its CLI gate and its retry. In measured runs every task ran alone, each paying a launch and its orchestration.
+            review_notes = self.review_notes()
             for t in ready:
                 chain = self.chain_of(plan, rt, t, ready)
                 said = "".join("\nPerson's note: %s" % x for n in chain for x in scoped_notes(build_notes, n, t.get("group")))
+                said += "".join("\nPlan review note: %s" % x for n in chain for x in review_notes.get(n, []))
                 tasks_line = ("Task: %d." % t["task"]) if len(chain) == 1 else (
                     "Tasks: %s (a chain: do them in this order; start, build and gate each before the next)." % ", ".join(str(n) for n in chain))
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or self.task_model(),
