@@ -5137,6 +5137,7 @@ main() {
             *) echo "FAIL: usage: temper spec branch | deviations | commit '<message>' [-- FILE...]" >&2; false ;;
           esac ;;
     brief) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/brief.py" "$REPO_ROOT" .temper/brief.md "$@") ;;   # 9.8.0: the project brief
+    output) python3 -E -s "$SCRIPTS_DIR/output_ops.py" "$TEMPER_DIR" "$@" ;;   # 9.8.4: the last output of a gate or a group gate
     panel) case "${1:-}" in   # 9.8.0: a stage's panel, drawn from the files it wrote (scripts/panel.py)
             plan|design) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" "$1" "$(_spec_path "")" "$REPO_ROOT") ;;
             rca) [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper panel rca <rca.md>" >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" rca "$2") ;;
@@ -5167,6 +5168,7 @@ Usage:
   temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)
   temper group report [--json]    (grouped Build: the measurement report)
   temper group fix G<n> [--commit] (a failed group: one fix agent on its merged tree; --commit commits its work)
+  temper output <stage>|G<n>      (read only: the gate's failed rows and its last run's output, or a group's last Validate)
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
   temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)

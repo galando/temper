@@ -225,3 +225,24 @@ r = flow.Run({"plugin": sys.argv[1], "cli": "temper", "config_file": ".claude/te
 print(int(any('no task updates it' in x for x in flow.Builder(r).review_notes().get(1, []))))
 PY
 )"
+
+# --- 7c. temper output: the last output of a gate or a group gate, read only (the mod lets the session run the CLI, not printenv) ---
+setup
+python3 -c "
+import json
+rows = [{'claim': 'Group G1 validate', 'cmd': 'make test', 'exit_code': 1, 'phase': 'group', 'group': 'G1', 'executed_by': 'cli', 'ts': 't1',
+         'output': 'collecting\nFAIL: alpha is missing\n', 'fail_lines': ['FAIL: alpha is missing']},
+        {'claim': 'unit tests', 'cmd': 'pytest -q', 'exit_code': 1, 'phase': 'green', 'executed_by': 'cli', 'ts': 't2', 'output': 'E   assert 1 == 2\n1 failed'}]
+json.dump(rows, open('.temper/evidence/build.json', 'w'))
+g = json.load(open('.temper/gates.json')) if __import__('os').path.exists('.temper/gates.json') else {}
+g['build'] = {'verdict': 'FAIL', 'requirements': [{'name': 'tests pass', 'pass': False, 'detail': 'the last test run failed'}]}
+json.dump(g, open('.temper/gates.json', 'w'))"
+OUT="$("$TEMPER" output G1 2>&1)"; RC=$?
+assert_eq "9.8.4 7c: temper output G1 prints the group's last Validate run: its command, exit and output" "0|1|1|1" \
+  "$RC|$(grep -c '^make test (exit 1)' <<<"$OUT")|$(grep -A1 '^What failed:' <<<"$OUT" | grep -c '^FAIL: alpha is missing')|$(grep -c '^collecting' <<<"$OUT")"
+OUT="$("$TEMPER" output build 2>&1)"
+assert_eq "9.8.4 7c: temper output build prints the gate's failed rows and the stage's last failed run with its output" "1|1|1" \
+  "$(grep -c 'tests pass: the last test run failed' <<<"$OUT")|$(grep -c '^pytest -q (exit 1)' <<<"$OUT")|$(grep -c 'assert 1 == 2' <<<"$OUT")"
+assert_exit "9.8.4 7c: a group with no recorded run says so and exits 1" 1 "$TEMPER" output G9
+assert_eq "9.8.4 7c: temper output changes nothing" "same" \
+  "$(a=$(cksum .temper/gates.json .temper/evidence/build.json); "$TEMPER" output build >/dev/null 2>&1; [[ "$a" == "$(cksum .temper/gates.json .temper/evidence/build.json)" ]] && echo same || echo changed)"

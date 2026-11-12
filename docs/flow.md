@@ -121,6 +121,10 @@ fix agent on the group's merged tree (`temper group fix G<n>`; the agent's work 
 `temper group fix G<n> --commit`, then the group is checked again). From the second failure on, "Run the
 group's tasks again" is never recommended.
 
+To read a failure, the session runs `temper output G<n>` (the group's last Validate run: its command, exit,
+FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed
+run). It is read only; with the mod on, the session may run the CLI but not `printenv` or a test runner.
+
 ## `.temper/view.json`
 
 | Field | Meaning |
