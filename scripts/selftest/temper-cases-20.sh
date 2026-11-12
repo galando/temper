@@ -70,7 +70,7 @@ assert_eq "9.8.4 2a: the group gate keeps the FAIL lines of its Validate output,
 "$TEMPER" group gate G1 >/dev/null 2>&1
 assert_eq "9.8.4 2c: a second failed group check counts 2" "2" "$(_g1 "g.get('fails')")"
 assert_exit "9.8.4 2b: group fix asks for the fix agent on a failed group" 0 "$TEMPER" group fix G1
-assert_eq "9.8.4 2b: and records the request" "True" "$(_g1 "bool((g.get('fix') or {}).get('requested'))")"
+assert_eq "9.8.4 2b: and records the request, and counts the attempt" "True|1" "$(_g1 "'%s|%s' % (bool((g.get('fix') or {}).get('requested')), g.get('fix_tries'))")"
 WT="$(_g1 "g['worktree']")"; mkdir -p "$WT/src"; echo ok > "$WT/src/ok.txt"
 assert_exit "9.8.4 2b: group fix --commit commits the fix agent's work on the group branch as the CLI's own commit" 0 "$TEMPER" group fix G1 --commit
 assert_eq "9.8.4 2b: the commit is recorded as the CLI's, the request is done, the gate is cleared to run again, and the worktree is clean" "True|False|False|2|0" \

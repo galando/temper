@@ -120,7 +120,9 @@ every task of the group passed and its check ran and failed, the first and recom
 fix agent on the group's merged tree (`temper group fix G<n>`; the agent's work is committed by
 `temper group fix G<n> --commit`, which also clears the group's gate, so the next action checks the group
 again as an ordinary CLI call and a FAIL there asks the question again). From the second failure on, "Run the
-group's tasks again" is never recommended.
+group's tasks again" is never recommended. The fix is recommended once (`fix_tries`): when it did not make the group
+pass, the loop back to Plan is recommended, or Save for later when that step is spent, so following the
+recommendation always ends.
 
 To read a failure, the session runs `temper output G<n>` (the group's last Validate run: its command, exit,
 FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed

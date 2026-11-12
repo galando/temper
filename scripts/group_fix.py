@@ -66,6 +66,7 @@ def main(argv):
         if gate.get("verdict") != "FAIL":
             return fail("group %s has no failed check to fix (temper group gate %s)" % (gid, gid))
         g["fix"] = {"requested": now}
+        g["fix_tries"] = int(g.get("fix_tries") or 0) + 1   # a fix that did not pass is not recommended again (flow.py)
         save(path, d)
         print("OK: group %s: one Build fix agent works on its merged tree, then the CLI commits it and checks the group again" % gid)
         return 0

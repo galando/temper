@@ -1743,29 +1743,47 @@ class Builder:
         fails = int(ginfo.get("fails") or 1)
         all_passed = bool(g.get("tasks")) and all(tasks_md.task_done(t, self.r.groups) for t in plan.get("tasks", []) if t.get("n") in g.get("tasks", []))
         fixable = all_passed and bool(gate.get("ran"))
+        # a fix of the merged tree that did not make the group pass is not recommended again: the run converges on the plan
+        # (a step back) or on the person (Save for later), never on the same retry (an e2e run looped on it 131 times)
+        tried = int(ginfo.get("fix_tries") or 0)
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = []
         limit = int(gate.get("timeout_s") or 0)
         if limit:  # the gate ran out of time, not out of luck: the same checks again with twice the limit
             opts.append(self.opt("Run the gate again with twice the time (Recommended)", "Group %s's checks run again, limit %d seconds." % (gid, 2 * limit),
                                  move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * limit))]))
-        if fixable:
-            opts.append(self.opt("Fix the group's merged work" + ("" if limit else " (Recommended)"),
-                                 "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
-                                 move="redo", calls=[self.c("group fix %s" % gid)]))
+        fix_rec = fixable and not limit and not tried
+        fix = self.opt("Fix the group's merged work" + (" (Recommended)" if fix_rec else ""),
+                       "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
+                       move="redo", calls=[self.c("group fix %s" % gid)]) if fixable else None
         back = self.r.can_loop("build", "plan")
         rerun_rec = not limit and not fixable and fails < 2
         rerun = self.opt("Run the group's tasks again" + (" (Recommended)" if rerun_rec else ""), "Each task of %s runs again." % gid, move="redo", calls=reopen)
-        plan_rec = not limit and not fixable and not rerun_rec and back
+        plan_rec = not limit and not fix_rec and not rerun_rec and back
         loop = self.opt("Loop back to Plan" + (" (Recommended)" if plan_rec else ""), "The plan cannot be built as written.", move="back",
                         calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]) if back else None
-        opts += [o for o in ([loop, rerun] if plan_rec else [rerun, loop]) if o]
-        opts.append(self.save())
+        save_rec = not limit and not fix_rec and not rerun_rec and not plan_rec
+        save = self.save()
+        if save_rec:
+            save["label"] += " (Recommended)"
+        if fix_rec or limit:
+            rest = [fix, rerun, loop]
+        elif plan_rec:
+            rest = [loop, fix, rerun]
+        elif save_rec:
+            rest = [save, fix, rerun]
+        else:
+            rest = [rerun, fix, loop]
+        opts += [o for o in rest if o]
+        if not save_rec:
+            opts.append(save)
         text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
         if fl:
             text += " What failed: %s." % fl
-        text += (" Fix its merged work?" if fixable and not limit else
-                 " Loop back to Plan?" if plan_rec else " Run its tasks again?")
+        if tried and fixable:
+            text += " A fix of its merged work did not make it pass" + (": the plan is the likelier cause." if back else ".")
+        text += (" Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
+                 " Save the run for later?" if save_rec else " Run its tasks again?")
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
 
     def group_fix_work(self, g, ginfo):
