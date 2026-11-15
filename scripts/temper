@@ -3312,10 +3312,10 @@ for r in (d['tasks'][a[0]].get('reopened') or []):
 _integ_record() { # _integ_record <verdict> <reason> [group] [files-csv] [foreign-json]
   _groups_mutate "
 d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
-                    'files': [f for f in a[3].split(',') if f], 'ts': a[4]}
+                    'files': [f for f in a[3].split(',') if f], 'ts': a[4], 'head': a[6]}
 if a[5]:
     d['integration']['foreign'] = json.loads(a[5])   # {group: [sha, newest first]}: the person takes them out or keeps them
-" "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}"
+" "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)"
 }
 
 cmd_integrate() {
@@ -3326,12 +3326,25 @@ cmd_integrate() {
     echo "FAIL: no grouped run to integrate (temper group start first)" >&2
     return 1
   fi
-  if [[ "$(python3 -I -c "
+  local iv; iv="$(python3 -I -c "
 import json, sys
 try:
-    print((json.load(open(sys.argv[1])).get('integration') or {}).get('verdict', ''))
+    i = json.load(open(sys.argv[1])).get('integration') or {}
+    print(i.get('verdict', ''), i.get('head', ''))
 except Exception:
-    print('')" "$GROUPS_FILE")" == "PASS" ]]; then
+    print('')" "$GROUPS_FILE")"
+  if [[ "${iv%% *}" == "PASS" ]]; then
+    if [[ "${iv#* }" != "$(git rev-parse HEAD 2>/dev/null)" ]]; then   # Q7: commits since the last integrate: the suite runs again
+      local s rf; s="$(_jget "$(_task_py integplan "$(_grouped_parse "$spec_path/tasks.md")" "$GROUPS_FILE")" integration)"
+      if [[ -n "$s" ]]; then
+        rf="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
+        _task_py integrun "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$rf" -- "$s"; local rc=$?
+        [[ -s "$rf" ]] && _json_append "$(_evidence_file build)" "$(cat "$rf")"; rm -f "$rf"
+        [[ $rc -eq 0 ]] || { _integ_record FAIL "integration suite failed after new commits (exit $rc): $s"; echo "FAIL: integration suite failed (exit $rc): $s" >&2; return 1; }
+      fi
+      _integ_record PASS "" || return 1
+      echo "OK: new commits since the last integrate; the Integration suite ran again and passed"
+    fi
     # 9.8.4: after a fix pass, the scenario tests run again on the fixed tree (a step back cleared Build's rows)
     [[ -f "$spec_path/intent.md" ]] && python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" integrate "$spec_path/intent.md" "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$(_evidence_file build)"
     echo "OK: already integrated; the scenario tests ran again"
@@ -3752,6 +3765,8 @@ gate_design() {
     reqs+=("$(_req "concerns flagged" 0 "design.md has no Areas of Concern section — flag conflicts, or state 'None flagged — {why}'")")
     all_pass=0
   fi
+  local d_line; d_line="$(python3 -E -s "$SCRIPTS_DIR/decisions.py" row "$(pwd -P)" "$spec_path")"   # Design answers reach tasks.md
+  reqs+=("$d_line"); grep -q '"pass": false' <<<"$d_line" && all_pass=0
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
 }
@@ -3829,7 +3844,7 @@ PY
 
 gate_review() {
   local block_on sev_csv
-  block_on="$(_cfg_get review.block-on critical)"
+  block_on="$(_cfg_get review.block-on critical,high)"
   sev_csv="$(printf '%s' "$block_on" | tr $'\x1f' ',')"
   local n; n=$(_ev_count_severity_in review "$sev_csv")
   local resolved; resolved=$(_ev_count_resolved_in review "$sev_csv")

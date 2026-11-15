@@ -24,6 +24,7 @@ import tempfile
 import adhoc_ops
 import check_run
 import config_yaml
+import decisions
 import fresh_review
 import intent_parse
 import plan_ops
@@ -411,7 +412,7 @@ class Run:
         return out
 
     def open_findings(self):
-        block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", self.cfg("review.block-on", "critical")) if s.strip()]
+        block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", self.cfg("review.block-on", "critical, high")) if s.strip()]
         return [f for f in self.findings() if f["state"] == "open" and f["severity"] in block]
 
     def spec_ignored(self):
@@ -711,6 +712,13 @@ class Builder:
                                       [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go), arm, walk],
                                       [self.skill("grill-me", "Grill Me", "Stress test the design.")] + back_opt() +
                                       [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.")
+            if any(x.get("name") == "tasks agree with decisions" for x in rows):
+                # 9.8.5 (Q1): a Design answer replaced a rule the tasks still carry. Plan updates them; or the person says no
+                # task names the old rule (an override with that reason, which the report shows).
+                ov = override_opt(go)
+                ov["reason_question"]["options"].insert(0, {"label": "The tasks already agree", "description": ""})
+                return self.question(GATE_HEADER, "Design: the check failed (%s). Loop back to Plan so the tasks follow your answers?" % why,
+                                     stage=stage, options=back_opt(rec=True) + [ov, self.save()])
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
                                  options=back_opt() + [override_opt(go), self.save()])
 
@@ -750,9 +758,15 @@ class Builder:
                 # keeps one. A typed change is no fix here, since Review writes no code.
                 grill = self.skill("grill-me", "Grill Me", "Stress test the change.")
                 keep = [self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.")] if opens else []
-                first = [self.opt("Continue to Check (Recommended)", "Start Check.", move="advance", calls=go)] + (back_opt() if opens else []) + [arch]
+                # 9.8.5 (Q2): an open finding at medium or above is repaired by default: the loop back to Build is recommended
+                repair = back_opt(rec=True) if any(f["severity"] in ("critical", "high", "medium") for f in opens) else []
+                if repair:
+                    first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go), arch]
+                else:
+                    first = [self.opt("Continue to Check (Recommended)", "Start Check.", move="advance", calls=go)] + (back_opt() if opens else []) + [arch]
                 rest = [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()]
-                q = self.with_more(GATE_HEADER, "Review: %s. Continue to Check?" % state_of, stage,
+                q = self.with_more(GATE_HEADER, "Review: %s%s. %s" % (state_of, self.finding_counts(opens),
+                                   "Loop back to Build to repair them?" if repair else "Continue to Check?"), stage,
                                    first + ([] if opens else [grill]), keep + ([grill] if opens else []) + rest, "Review: more options.")
                 if keep:
                     q["accept"] = self.accept_question(opens)
@@ -768,7 +782,8 @@ class Builder:
                 accept = self.accept_question(opens)
                 first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question."))
             first.append(override_opt(go))
-            text = "Review: the check failed (%s). Loop back to %s?" % (why, LABEL.get(back or "build", "Build"))
+            text = "Review: the check failed (%s)%s. Loop back to %s?" % (why, self.finding_counts([f for f in r.findings() if f["state"] == "open"]),
+                                                                         LABEL.get(back or "build", "Build"))
             q = self.with_more(GATE_HEADER, text, stage, first[:3], first[3:] + [arch, self.save()], "Review: more options.")
             if accept:
                 q["accept"] = accept
@@ -1261,6 +1276,20 @@ class Builder:
         return {"action": "work", "stage": "build", "calls": [], "agents": [a],
                 "say": "Build: first, an agent that writes no code writes the acceptance tests from the intent%s. %s" % (on_model([a]), goes_on(False))}
 
+    @staticmethod
+    def finding_counts(opens):
+        """", open findings: 1 high, 2 medium" (every level, most severe first), or "" with none."""
+        order = ["critical", "high", "medium", "low", "info"]
+        n = {}
+        for f in opens:
+            n[f["severity"]] = n.get(f["severity"], 0) + 1
+        parts = ["%d %s" % (n[k], k) for k in sorted(n, key=lambda k: order.index(k) if k in order else len(order))]
+        return ", open findings: " + ", ".join(parts) if parts else ""
+
+    def decisions_line(self):
+        text = decisions.prompt(self.r.spec) if self.r.spec else ""
+        return "\n" + text if text else ""
+
     def acceptance_line(self):
         d = self.acceptance()
         if not d.get("cmd"):
@@ -1533,8 +1562,8 @@ class Builder:
                     "Tasks: %s (a chain: do them in this order; start, build and gate each before the next)." % ", ".join(str(n) for n in chain))
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or self.task_model(),
                                "before": [self.c("task start %d" % t["task"])],
-                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\n%s%s%s\nModel: %s." % (
-                                   self.plugin, self.plugin_line(), tasks_line, said, self.acceptance_line(), t.get("model")),
+                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\n%s%s%s%s\nModel: %s." % (
+                                   self.plugin, self.plugin_line(), tasks_line, said, self.acceptance_line(), self.decisions_line(), t.get("model")),
                                # the first task's gate judges the agent; the others it gated itself (a task it left running is gated here)
                                "after": [self.c("usage add --stage build --model %s --ms {ms} --task %d" % (t.get("model"), t["task"]))] +
                                         [self.c("task gate %d --model %s --if-running" % (n, t.get("model"))) for n in chain] +

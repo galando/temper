@@ -158,6 +158,23 @@ and marks the task `env_fault` in `groups.json`. `temper next` then asks, in eve
 (Recommended)` (runs `task test N --phase green` and `task gate N --model M`) or `Save for later`. Here a time-out is
 the code's, as before: it spends the attempt. Any status move clears the mark.
 
+### Decisions, findings and integrate (9.8.5)
+
+**A Design answer reaches the tasks.** `temper intent answer 'Design: ...'` keeps the answer with the hash `tasks.md` has
+at that moment (`.temper/decisions.json`, `scripts/decisions.py`). The Design gate's row `tasks agree with decisions`
+fails while `tasks.md` is still that file: the answer may replace a rule a task or a scenario still carries, and the CLI
+cannot read which. The Design question then recommends `Loop back to Plan`; the person may instead override with the
+reason `The tasks already agree`, which the report shows. Each Build task prompt lists the Design answers, newest
+first, as decisions that win over `tasks.md`.
+
+**High findings block.** `review.block-on` defaults to `[critical, high]`. A passed Review with an open finding at
+medium or above recommends `Loop back to Build`; both Review questions name the open findings per level
+(`open findings: 1 high, 2 medium`).
+
+**Integrate after new commits.** `temper integrate` records the HEAD it passed on. Called again on a PASS, it runs the
+whole Integration command again when HEAD moved since (a fix pass committed), records the new verdict, then the
+scenario tests, as before.
+
 ## `.temper/view.json`
 
 | Field | Meaning |

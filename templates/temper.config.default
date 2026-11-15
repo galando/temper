@@ -28,7 +28,7 @@ tools:
     mode: off
 
 review:
-  block-on: [critical]        # severities that fail the review gate
+  block-on: [critical, high]  # severities that fail the review gate (9.8.5: high blocks by default)
 
 check:
   coverage-threshold: 80      # the check gate requires recorded coverage >= this
