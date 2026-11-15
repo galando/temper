@@ -222,6 +222,13 @@ take up a `/temper` run at their stage, so there is one flow to keep right:
 
 The mod lets it run during a run, as any CLI call. Use it when a gate says `environment fault` or `ENV:`.
 
+**`temper doctor --propose`** writes the setup block for you, from what the project's own files say: a Maven enforcer's
+JDK range or `<java.version>` with the project's `scripts/ensure-jdk*.sh --export` (else an installed JDK of that
+version), a `*POSTGRES*PORT` variable the code reads with a local Postgres cluster, an `.nvmrc` with nvm. It prints the
+block and what it found, and runs no build. `--write` adds it to `.claude/temper.config`, never over a block that is
+there. You rarely type it: when the plan gate's preflight or Check fails on the environment and the project has no
+block, the question's first option is "Add the proposed setup block", which runs it with `--write` and checks again.
+
 ### `temper plan preflight` (9.8.5)
 
 Runs every command of the plan on HEAD again and stores the result the plan gate reads (see `docs/flow.md`). Run it

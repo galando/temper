@@ -150,7 +150,9 @@ limit; every later `gate plan` reads it while that key holds, so the commands ru
 and scenario checks, integrate, Check, the preflight), prints `temper-setup: OK`, and adds the variables; a failing
 line prints `temper-setup: FAIL (exit N)` and exits 125. A variable whose name says it holds a credential is never set
 or shown. Every agent prompt ends with an `Environment setup` line that carries the run line and the variables. No
-block: every command and prompt is as before.
+block: every command and prompt is as before. The person rarely writes the block: when the preflight or Check fails on
+the environment and there is none, the question offers `Add the proposed setup block (Recommended)`, made by
+`temper doctor --propose` from the project's own files (`docs/commands.md`).
 
 **An environment fault at a task gate.** When the last run of a task's attempt is a failing GREEN, a RED came before
 it, nothing else is wrong, and the output names an environment fault, `temper task gate` prints `ENV: Task N failed on

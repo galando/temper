@@ -171,16 +171,7 @@ def coverage_value(root, det, out_text):
     return None
 
 
-# 9.8.5 (Q6): text a JVM or a runtime prints at its start, which says nothing about the run (a row's detail once was
-# `ng.disabledSchemes= WARNING: A terminally deprecated method in sun.misc.Unsafe has been called`)
-BANNER = re.compile(r"^(?:NOTE: )?Picked up (?:JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|JDK_JAVA_OPTIONS):|^WARNING: (?:A terminally deprecated method|"
-                    r"sun\.misc\.Unsafe|Please consider reporting this|A restricted method|Use --enable-native-access|"
-                    r"Restricted methods will be blocked|.*will be removed in a future release|An illegal reflective access|"
-                    r"Illegal reflective access|All illegal access operations)")
-
-
-def strip_banner(text):
-    return "\n".join(l for l in text.split("\n") if not BANNER.search(l.strip()))
+strip_banner = run_env.strip_banner
 
 
 def setup_fault(out, rc, cmd):

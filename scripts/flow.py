@@ -25,6 +25,7 @@ import adhoc_ops
 import check_run
 import config_yaml
 import decisions
+import doctor
 import fresh_review
 import intent_parse
 import plan_ops
@@ -685,6 +686,13 @@ class Builder:
             fresh_failed = [x for x in rows if x.get("name") in FRESH_ROWS]
             if fr["applies"] and fresh_failed:
                 return self.fresh_question(fr, why, said, back_opt, override_opt, grill)
+            env_opt = self.setup_offer(rows)
+            if env_opt:
+                # 9.8.5: the preflight hit the environment and the project declares none: one click adds the block that
+                # temper doctor --propose made from the project's own facts, runs the preflight again and checks the plan
+                return self.question(GATE_HEADER, "Plan: the check failed (%s).%s The project's own files say what it needs: "
+                                     "add the proposed setup block (%s) and check again?" % (why, said, env_opt["description"]), stage=stage,
+                                     options=[env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()])
             return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said), stage=stage,
                                  options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()])
 
@@ -829,9 +837,13 @@ class Builder:
                 fix = self.opt("Repair the environment and run again (Recommended)",
                                "temper doctor shows what is missing; the setup: block of .claude/temper.config makes it ready. Then Check runs again.",
                                move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))])
+                add = self.setup_offer([{"name": "preflight", "detail": "environment fault"}])   # no block, and one proposed
+                if add:
+                    fix["label"] = fix["label"].replace(" (Recommended)", "")
+                    add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
                 return self.question(GATE_HEADER, "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. "
-                                     "Repair it and run Check again?" % setup, stage=stage,
-                                     options=[fix, self.save()] + back_opt(rec=False) + [override_opt(go)])
+                                     "%s run Check again?" % (setup, "Add the proposed setup block and" if add else "Repair it and"), stage=stage,
+                                     options=([add] if add else []) + [fix, self.save()] + back_opt(rec=False) + [override_opt(go)])
             gap = self.measurement_gap(r.failed_rows("check"))
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times
@@ -1117,6 +1129,21 @@ class Builder:
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
                 "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+
+    def setup_offer(self, rows):
+        """9.8.5: the option that adds temper doctor --propose's setup block, when the preflight failed on the environment and
+        the config has no block; None when that does not hold or nothing is proposed."""
+        cfg = self.r.ctx.get("config_file") or os.path.join(".claude", "temper.config")
+        if not any(x.get("name") == "preflight" and "environment fault" in str(x.get("detail", "")) for x in rows) or run_env.load_setup(cfg):
+            return None
+        block, _ = doctor.propose(os.getcwd())
+        if not block:
+            return None
+        parts = doctor.parts(block)
+        run, env = parts["run"], ", ".join("%s=%s" % kv for kv in parts["env"].items())
+        what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
+        return self.opt("Add the proposed setup block (Recommended)", what, move="redo",
+                        calls=[self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")])
 
     def setup_fault(self):
         """9.8.5 (Q6): the reason Check's latest run hit the environment (a `setup fault:` row after its last suite row), or ""."""
