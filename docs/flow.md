@@ -209,6 +209,17 @@ says what to change instead, and `Add to plan` stays for files outside the plan.
 accepts an answer of up to 2000 characters (the `Include what is left out` option carries the whole list); plan.md
 shows its first 100.
 
+### The run policy (9.8.5)
+
+`autonomy.policy: decide` in `.claude/temper.config` (only the person writes it) extends an armed run past Build. The
+person still arms the run at the last question before Build; the option's text then says the policy applies. After
+Build passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the
+question: an open finding at medium or above loops back to Build with the findings as the reason; a clean Review goes
+on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only while
+`loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. An environment fault (SETUP), a
+missing measurement, a failed acceptance test, a spent budget and the commit park the run for the person, as an armed
+Build does. With the key absent or `ask`, every gate after Build asks, as before.
+
 ## `.temper/view.json`
 
 | Field | Meaning |

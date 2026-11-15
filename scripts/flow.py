@@ -293,6 +293,10 @@ class Run:
                 and (not vts or not o.get("ts") or str(o.get("ts")) >= vts)]
         return hits[-1] if hits else None
 
+    def policy(self):
+        """9.8.5 (U1): autonomy.policy: decide, in the person's config: an armed run decides Review and Check by fixed rules."""
+        return str(self.cfg("autonomy.policy", "ask")).strip().lower() == "decide"
+
     def armed(self):
         # 9.8.0: no setting turns the unattended run on or off; the person arms it at the last question before Build.
         # autonomy.enabled is no longer read (it was false in the shipped config, so most runs never saw the option).
@@ -667,7 +671,7 @@ class Builder:
                 # at the Design question when it does (so every decision is made before the run goes on by itself).
                 if not r.has_design():
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
-                             self.opt("Autonomous Build: run Build unattended", "Approve the plan; Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+                             self.opt("Autonomous Build: run Build unattended", "Approve the plan; " + self.armed_text(),
                                       move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
                     if revise is not None:   # findings below high: revising is offered, after the ways on
                         return self.with_more(GATE_HEADER, text, stage, first[:2] + [revise], [html, grill, teach, self.save()], "Plan: more options.")
@@ -720,7 +724,7 @@ class Builder:
                         ": " + "; ".join(what[:4]) + ("; and %d more" % (len(what) - 4) if len(what) > 4 else "") if what else "")
                     cont = cont[:-1] + "; the changed tasks are approved with the design."
                 arm = self.opt("Autonomous Build: run Build unattended", ("Accept the open concerns as written; " if opens else "") +
-                               "Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual.",
+                               self.armed_text(),
                                move="arm", calls=[self.c("state set run_mode autonomous")] + go)
                 return self.with_more(GATE_HEADER, text, stage,
                                       [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go), arm, walk],
@@ -1129,6 +1133,51 @@ class Builder:
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
                 "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+
+    def armed_text(self):
+        if self.r.policy():
+            return ("Build, Review and Check run by themselves under your policy (autonomy.policy: decide): a failed check loops "
+                    "back within the loop budget, findings at medium or above are repaired, nothing is overridden; the commit asks you.")
+        return "Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual."
+
+    def policy_move(self, stage, verdict):
+        """9.8.5 (U1): an armed run under autonomy.policy: decide goes on through Review and Check by fixed rules, the
+        person's once for the run: a failed check loops back to Build while the loop budget lasts, findings at medium or
+        above are repaired, nothing is overridden or accepted. Anything else parks for the person (an environment fault, a
+        missing measurement, the acceptance tests, a spent budget); the commit always asks (commit() parks an armed run)."""
+        r = self.r
+        rows = r.failed_rows(stage)
+        why = "; ".join("%s: %s" % (x.get("name"), " ".join(str(x.get("detail", "")).split())) for x in rows)[:300]
+
+        def park(reason):
+            return {"action": "auto", "stage": stage, "say": "%s: the policy does not decide this; the armed run parks for you." % LABEL[stage],
+                    "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(("%s: %s" % (LABEL[stage], reason))[:1200]))]}
+
+        def loop(reason):
+            if not r.can_loop(stage, "build"):
+                return park("the loop budget is spent: " + reason)
+            return {"action": "auto", "stage": stage, "say": "%s: the policy loops back to Build (%s)." % (LABEL[stage], reason[:120]),
+                    "calls": [self.c("state loop %s build --reason %s" % (stage, shlex.quote(("policy: " + reason)[:300])))]}
+
+        nxt = r.next_of(stage)
+        go = {"action": "auto", "stage": stage, "say": "%s passed; the policy goes on to %s." % (LABEL[stage], LABEL.get(nxt, nxt)),
+              "calls": [self.c("state advance %s_complete %s" % (stage, nxt))]}
+        if stage == "review":
+            opens = [f for f in r.findings() if f["state"] == "open" and f["severity"] in ("critical", "high", "medium")]
+            if opens:
+                return loop("repair %d open finding(s): %s" % (len(opens), "; ".join(f["claim"][:100] for f in opens[:3])))
+            if verdict == "PASS":
+                return go
+            return park(why or "the check failed")
+        if stage == "check":
+            if verdict == "PASS":
+                return go
+            if self.setup_fault():
+                return park("SETUP: " + self.setup_fault())
+            if self.measurement_gap(rows) or any(str(x.get("name", "")).startswith("acceptance tests written before Build") for x in rows):
+                return park(why)
+            return loop(why or "the check failed")
+        return None
 
     def setup_offer(self, rows):
         """9.8.5: the option that adds temper doctor --propose's setup block, when the preflight failed on the environment and
@@ -2333,15 +2382,22 @@ class Builder:
             if verdict == "PASS" or skipped:
                 calls = [self.c("state advance %s_complete %s" % (stage, nxt))]
                 say = "%s passed; the armed run goes on." % LABEL[stage]
-                if stage == "build":
+                if stage == "build" and not r.policy():
                     calls.append(self.c("state set run_mode interactive"))
                     say = "Build passed; the unattended part ends here, and %s asks you as usual." % LABEL.get(nxt, nxt)
+                elif stage == "build":
+                    say = "Build passed; the policy run goes on to %s." % LABEL.get(nxt, nxt)
                 out.update({"action": "auto", "stage": stage, "calls": calls, "say": say})
                 return out
             why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows(stage))[:200]
             out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("%s failed: %s" % (LABEL[stage], why)))],
                         "say": "%s failed; the armed run parks for you." % LABEL[stage]})
             return out
+        if r.armed() and r.policy() and stage in ("review", "check") and verdict is not None and not skipped:
+            mv = self.policy_move(stage, verdict)
+            if mv:
+                out.update(mv)
+                return out
         q = self.ask(stage)
         out.update({"action": "ask", "stage": stage, "ask": q})
         self.add_adhoc(out, stage)
