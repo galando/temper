@@ -391,6 +391,19 @@ assert_eq "F22: a Maven group that does not verify with JaCoCo is named by the p
 sed -i 's/^\*\*Validate:\*\* `mvn test`$/**Validate:** `mvn verify -Pjacoco`/' .temper/specs/demo/tasks.md
 assert_eq "F22: mvn verify with JaCoCo passes the row" "True" \
   "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; print(json.load(sys.stdin)['pass'])")"
+sed -i 's/^\*\*Validate:\*\* `mvn verify -Pjacoco`$/**Validate:** `cd backend \&\& mvn test`/' .temper/specs/demo/tasks.md
+assert_eq "F22: a Validate that changes folder before mvn is a Maven group the row names" "False|1" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+str(d['detail'].count('G1')))")"
+sed -i 's/^\*\*Validate:\*\* `cd backend && mvn test`$/**Validate:** `cd backend \&\& mvn verify -Djacoco.skip=true`/' .temper/specs/demo/tasks.md
+assert_eq "F22: mvn verify with JaCoCo switched off fails the group row too" "False|1" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+str(d['detail'].count('G1')))")"
+assert_eq "maven_parts: env words and a cd before mvnw are read; no Maven command gives none" "[{'dir': 'backend', 'args': ['./mvnw', '-q', 'verify']}]|[]|True|False" \
+  "$(python3 -I - "$REPO_ROOT/scripts" <<'PYT'
+import sys; sys.path.insert(0, sys.argv[1])
+import maven_loop as m
+print('|'.join([str(m.maven_parts('FOO=1 cd backend && ./mvnw -q verify')), str(m.maven_parts('true')), str(m.is_maven('mvn test')), str(m.is_maven('cd b && mvn test'))]))
+PYT
+)"
 
 # --- F6. The Context Map: the plan gate row, the Context check as the CLI's own question, and plan review ---
 _cmap() { # _cmap <reviewed line> [entry lines...]: plan.md with a Context Map at the top

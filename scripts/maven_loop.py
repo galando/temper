@@ -28,6 +28,28 @@ def is_maven(cmd):
     return bool(MAVEN.match(cmd))
 
 
+SEGMENT = re.compile(r"&&|\|\||;")
+ENV_WORD = re.compile(r"^[A-Za-z_]\w*=")
+MAVEN_WORD = re.compile(r"^(\./)?(mvnd?|mvnw)$")
+
+
+def maven_parts(cmd):
+    """[{'dir', 'args'}] for each Maven call of a shell line (a cd before it sets 'dir'; env words are skipped)."""
+    out, cwd = [], ""
+    for seg in SEGMENT.split(cmd):
+        try:
+            toks = shlex.split(seg)
+        except ValueError:
+            continue
+        while toks and ENV_WORD.match(toks[0]):
+            toks.pop(0)
+        if len(toks) >= 2 and toks[0] == "cd":
+            cwd = os.path.normpath(os.path.join(cwd, toks[1])) if cwd else toks[1]
+        elif toks and MAVEN_WORD.match(toks[0]):
+            out.append({"dir": cwd, "args": toks})
+    return out
+
+
 def classes_of(files):
     """[(fully qualified name, simple name)] for each declared test file under src/test/java."""
     out = []
