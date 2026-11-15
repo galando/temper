@@ -230,6 +230,25 @@ on to Check; a failed Check loops back to Build; a passed Check goes on to the c
 missing measurement, a failed acceptance test, a spent budget and the commit park the run for the person, as an armed
 Build does. With the key absent or `ask`, every gate after Build asks, as before.
 
+### Evidence, the lock, a backup push and a note (9.8.5)
+
+- **A reused pass.** A group check or the Integration suite that passed with the same command and setup on the same
+  clean tree (`git rev-parse HEAD^{tree}`, no change outside `.temper/`) passes again without running; its row says
+  `reused` and when it ran. Kept in the git folder (`temper-results.json`), shared by every worktree. A failure always
+  runs again.
+- **The lock.** A write waits for a live holder of `.temper/.lock` up to `TEMPER_LOCK_MAX_S` (120 s) and breaks a gone
+  holder's old lock. Past that it fails with exit 75 and writes nothing; it never writes past the lock.
+- **The failing-first proof.** A task's RED run records the hash of each declared code file (not its tests). A RED whose
+  code files are byte for byte the final code at the gate does not count: the gate says the RED was made on the final
+  code.
+- **Interfaces.** The integrate check finds a planned signature as written, or with the same shape once type names are
+  unqualified (an imported `AgencyHealth` for a planned `MonitoringSummary.AgencyHealth`, and the reverse).
+- **The person's note** (`evidence add --phase note --kind input`) is labelled `PERSON`, not `HEURISTIC`.
+- **A backup push.** During a run the mod lets the session push the run's work to a `temper-backup/` branch
+  (`git push origin HEAD:temper-backup/<name>`); no force, delete, mirror, all or tags. Any other push stays refused.
+- **A note in the question.** `temper state set ask_note '<step>: <text>'` adds the orchestrator's note to the question
+  of that step, marked `Note from Claude (not from Temper)`; the options stay the CLI's.
+
 ## `.temper/view.json`
 
 | Field | Meaning |

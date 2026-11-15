@@ -2300,7 +2300,20 @@ class Builder:
                     rows = r.failed_rows("plan")
                     if out.get("action") == "ask" and len(rows) == 1 and rows[0].get("name") == "context map reviewed":
                         out["ask"] = q    # the only failed row is the pending check: ask the check itself, so a refused call can be answered again
+        self.add_note(out)
         return out
+
+    def add_note(self, out):
+        """9.8.5 (U2): the orchestrator's note for the question of this step (`temper state set ask_note '<step>: <text>'`),
+        added to the CLI's own question text and marked as Claude's, so the person reads the facts above the dialog in it.
+        A note of another step is not shown. It changes no option."""
+        r = self.r
+        m = re.match(r"^\s*(\d+):\s*(\S.*)$", str(r.state.get("ask_note") or ""), re.S)
+        q = (out.get("ask") or {}).get("question") if out.get("action") == "ask" else None
+        if not m or not isinstance(q, dict) or int(m.group(1)) != r.state.get("step"):
+            return
+        note = " ".join(m.group(2).split())[:600]
+        q["question"] = "%s\n\nNote from Claude (not from Temper): %s" % (q["question"], note)
 
     def core_next(self):
         r = self.r

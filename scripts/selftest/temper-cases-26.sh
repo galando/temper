@@ -22,8 +22,8 @@ _g3() { # _g3 <group G1 fields>: a run at Build whose group G1 failed its check
   printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", %s}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' "$1" > .temper/groups.json
 }
 _g3 '"fails": 1, "fix_tries": 1, "fix_empty": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "ran": true, "timeout_s": 600, "fail_lines": ["x"]}'
-assert_eq "9.8.5 S8: after an empty fix, Loop back to Plan is recommended and first, and the question says the code is not the cause" \
-  "Loop back to Plan (Recommended)|True|False" \
+assert_eq "9.8.5 S8: after an empty fix, the command change is recommended and first (S6), and the question says the code is not the cause" \
+  "Change the group's command (Recommended)|True|False" \
   "$(nx "q = d['ask']; o = q['question']['options']; '|'.join([o[0]['label'], str('the cause is not in the group' in q['question']['question']), str(any(x['label'] == 'Run the gate again with twice the time (Recommended)' for x in o))])")"
 _g3 '"fails": 2, "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "ran": true, "timeout_s": 600, "fail_lines": ["x"]}'
 assert_eq "9.8.5 S8: a second time-out still offers twice the time, but does not recommend it" "False|True" \

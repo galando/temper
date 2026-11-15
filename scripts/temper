@@ -1532,6 +1532,7 @@ cmd_evidence_add() {
   done
   case "$kind" in ""|input|edit) ;; *) echo "FAIL: --kind takes input or edit (a note for the next agent, or a change made for the person)" >&2; return 1 ;; esac
   [[ -z "$kind" || "$phase" == "note" ]] || { echo "FAIL: --kind goes with --phase note" >&2; return 1; }
+  [[ "$kind" == input ]] && label=PERSON   # 9.8.5 (U5): the person's own words, not a heuristic
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
