@@ -60,6 +60,10 @@ limit, three fix agents that changed nothing) showed most of them again. Each ch
 - **The policy** also takes the recommended option at a failed group check when no person is needed for it.
 - **`doctor --propose`** reads Gradle toolchains, `.java-version`, `.tool-versions`, Docker Compose services (Postgres,
   MySQL, MariaDB, Redis; only when a Docker daemon answers) and Python virtual environments too.
+- **A setup for any project.** Three sources: the rules above, the project's CI and devcontainer files (the JDK and
+  Node versions, the database services and the variables that point at them), and an environment agent
+  (`agents/env.md`) when neither describes the project. One check: a block is written only after the CLI reran the
+  commands that failed on the environment with it, and they passed. The person still makes one click.
 - **The selftest.** Case file 6 runs on its own (`case-helpers-5.sh`, made by `make-helpers-5.sh`), so the parallel
   runner no longer runs 5 and 6 as one pair.
 

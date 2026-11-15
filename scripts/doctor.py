@@ -2,17 +2,21 @@
 
   python3 doctor.py PROJECT CONFIG                     the report (below)
   python3 doctor.py PROJECT CONFIG --propose           a setup block made from what the project says it needs, printed
-  python3 doctor.py PROJECT CONFIG --propose --write   the same, added to the config (never over a setup block there)
+  python3 doctor.py PROJECT CONFIG --propose --write   the same, added to the config only when it fixes the commands the
+                                                       preflight found failing on the environment (never over a block)
+  python3 doctor.py PROJECT CONFIG --candidate FILE [--write]   an agent's draft (agents/env.md), the same check
 
 The report prints three parts: the toolchain (the first line of each tool's version, or "not on PATH"), the setup block of
 .claude/temper.config (its run line is shown, never run: it may start a service), and whether each service the block
 names answers a TCP connect. It writes no file, no ledger, no state and no view. A variable whose name says it holds a
 credential is never shown.
 
---propose reads facts, never runs a build: a Maven enforcer's JDK range or `<java.version>` with the project's own
-`scripts/ensure-jdk*.sh --export` (else a JDK of that version in /usr/lib/jvm), a `*POSTGRES*PORT` variable the code reads with
-a local Postgres cluster (`pg_lsclusters`), an `.nvmrc` (nvm selects it when installed). It proposes only what it found; with nothing found it
-proposes nothing. --write is the person's choice at a question; the run line it writes is idempotent. Standard library only.
+--propose reads facts, never runs a build: the JDK a Maven, Gradle, .java-version or .tool-versions file asks for; the
+project's CI (GitHub Actions setup-java and setup-node, a job's database services and the variables that point at them,
+.gitlab-ci.yml image tags, .devcontainer features); Docker Compose services when a Docker daemon answers, else a local
+Postgres cluster; a Python .venv; an .nvmrc. It proposes only what it found. --write (and --candidate FILE --write, for
+the environment agent's draft) adds a block only after the CLI reran the commands the preflight found failing on the
+environment with it, and none of them failed on the environment again. Standard library only.
 """
 import os
 import re
@@ -22,6 +26,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import preflight  # noqa: E402
 import run_env  # noqa: E402
 
 DEFAULT_TOOLS = ("java", "mvn", "python3", "node", "git")
@@ -101,6 +106,98 @@ def docker_ready(cwd):
         return False
 
 
+CONTAINER_PORT = {"postgres": 5432, "mysql": 3306, "mariadb": 3306, "redis": 6379}
+# what an image needs to start at all; the passwords are throwaway test values, never a credential of the project
+SERVICE_ENV = {"postgres": ["POSTGRES_HOST_AUTH_METHOD=trust"], "mysql": ["MYSQL_ALLOW_EMPTY_PASSWORD=yes"],
+               "mariadb": ["MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=yes"]}
+
+
+def kind_of(image):
+    return next((k for k in ("postgres", "mariadb", "mysql", "redis") if k in (image or "").lower()), "")
+
+
+def ci_facts(project):
+    """What the project's CI says it runs on: {'java': (N, file) or None, 'node': (N, file) or None,
+    'services': [(name, kind, host port, image, file)], 'env': {NAME: value or 'service:<name>'}}. Read from GitHub
+    Actions workflows (setup-java, setup-node, job services, env), .gitlab-ci.yml (an image tag such as temurin-24) and
+    .devcontainer/devcontainer.json. Plain text matching: no YAML reader is needed for these fields."""
+    out = {"java": None, "node": None, "services": [], "env": {}}
+    wf = os.path.join(project, ".github", "workflows")
+    files = [os.path.join(wf, f) for f in listed(wf) if f.endswith((".yml", ".yaml"))]
+    files += [p for p in (os.path.join(project, ".gitlab-ci.yml"), os.path.join(project, ".devcontainer", "devcontainer.json"),
+                          os.path.join(project, ".devcontainer.json")) if os.path.isfile(p)]
+    for path in files:
+        text, rel = read(path), os.path.relpath(path, project)
+        for pat, key in ((r"java-version:\s*['\"]?(\d+)", "java"), (r"(?:temurin|openjdk|jdk|java)[-:]?(\d{2})\b", "java"),
+                         (r"node-version:\s*['\"]?(\d+)", "node"), (r"features/node[^}]*?\"version\":\s*\"(\d+)", "node"),
+                         (r"features/java[^}]*?\"version\":\s*\"(\d+)", "java")):
+            m = re.search(pat, text, re.S)
+            if m and not out[key]:
+                n = int(m.group(1))
+                if (key == "java" and 8 <= n <= 40) or (key == "node" and 10 <= n <= 40):
+                    out[key] = (n, rel)
+        if rel.endswith((".yml", ".yaml")):
+            for name, kind, port, image in ci_services(text):
+                if not any(s[0] == name for s in out["services"]):
+                    out["services"].append((name, kind, port, image, rel))
+            for m in re.finditer(r"(?m)^\s+([A-Z][A-Z0-9_]*):\s*(.+?)\s*$", text):
+                var, val = m.group(1), m.group(2).strip("'\"")
+                svc = re.search(r"job\.services\.([\w.-]+)\.ports", val)
+                if svc:
+                    out["env"].setdefault(var, "service:" + svc.group(1))
+                elif (re.search(r"(POSTGRES|MYSQL|MARIADB|REDIS|DATABASE|DB)", var) and re.search(r"(PORT|HOST)$", var)
+                      and re.match(r"^(\d{2,5}|localhost|127\.0\.0\.1)$", val)):
+                    out["env"].setdefault(var, val)   # a database's local port or host only: a CI job also sets deploy and API values
+    return out
+
+
+def ci_services(text):
+    """[(service, kind, host port, image)] of the database and cache services a GitHub Actions job declares: an indented
+    `services:` block whose entries have an `image:` and a published port (or the image's own port)."""
+    out, lines = [], text.splitlines()
+    i = 0
+    while i < len(lines):
+        m = re.match(r"^(\s+)services:\s*$", lines[i])
+        if not m:
+            i += 1
+            continue
+        ind = len(m.group(1))
+        i += 1
+        name, image, port, nind = None, "", "", None
+        def flush():
+            k = kind_of(image)
+            if name and k:
+                out.append((name, k, port or str(CONTAINER_PORT[k]), image))
+        while i < len(lines) and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > ind):
+            l = lines[i]
+            cur = len(l) - len(l.lstrip())
+            nm = re.match(r"^\s+([A-Za-z0-9._-]+):\s*$", l)
+            if nm and (nind is None or cur == nind):
+                flush()
+                nind, name, image, port = cur, nm.group(1), "", ""
+            im = re.match(r"^\s+image:\s*['\"]?([^'\"\s]+)", l)
+            if im:
+                image = im.group(1)
+            pm = re.match(r"^\s+-\s*['\"]?(\d+):\d+", l)
+            if pm and not port:
+                port = pm.group(1)
+            i += 1
+        flush()
+    return out
+
+
+def local_postgres():
+    """(version, cluster, port) of the first local Postgres cluster (pg_lsclusters), or None."""
+    if not shutil.which("pg_lsclusters"):
+        return None
+    try:
+        out = subprocess.run(["pg_lsclusters", "-h"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=TOOL_LIMIT_S).stdout.decode()
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    cl = [l.split() for l in out.splitlines() if len(l.split()) >= 3]
+    return tuple(cl[0][:3]) if cl else None
+
+
 def compose_services(text):
     """[(service, kind, host port)] of a compose file's database and cache services (postgres, mysql, mariadb, redis)
     that publish a port. Read by indentation, as compose files are written; no YAML reader is needed."""
@@ -167,6 +264,11 @@ def propose(project):
             need = max(need, int(m.group(1)))
             facts.append("%s names JDK %s" % (vf, m.group(1)))
             tools += [] if "java" in tools else ["java"]
+    ci = ci_facts(project)   # 9.8.5: what the project's CI and devcontainer say it runs on
+    if ci["java"]:
+        need = max(need, ci["java"][0])
+        facts.append("%s runs on JDK %d" % (ci["java"][1], ci["java"][0]))
+        tools += [] if "java" in tools else ["java"]
     if need:
         have = java_major(version("java", project)) if shutil.which("java") else 0
         here = os.path.join(project, "scripts")
@@ -203,25 +305,64 @@ def propose(project):
                 if var and var not in env:
                     env[var] = port
                 facts.append("%s runs %s (%s) on port %s" % (os.path.relpath(compose, project), name, kind, port))
-    var = find_var(project, r"\b([A-Z][A-Z0-9_]*POSTGRES[A-Z0-9_]*PORT)\b")
-    if var and "postgres" not in kinds and shutil.which("pg_lsclusters"):   # a Compose service of the project wins
-        try:
-            out = subprocess.run(["pg_lsclusters", "-h"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=TOOL_LIMIT_S).stdout.decode()
-        except (OSError, subprocess.TimeoutExpired):
-            out = ""
-        cl = [l.split() for l in out.splitlines() if len(l.split()) >= 3]
-        if cl:
-            ver, name, port = cl[0][:3]
-            run.append("(pg_isready -q -h 127.0.0.1 -p %s || pg_ctlcluster %s %s start)" % (port, ver, name))
-            env[var] = port
-            services["postgres"] = "127.0.0.1:%s" % port
-            facts.append("the code reads %s; a local Postgres %s cluster listens on %s" % (var, ver, port))
+    # the CI's services: started with docker when its daemon answers, else by a local server of that kind (9.8.5)
+    for name, kind, port, image, src in ci["services"]:
+        if kind in kinds:
+            continue
+        if docker_ready(project):
+            cname = "temper-%s" % name
+            run.append("(docker start %s >/dev/null 2>&1 || docker run -d --name %s -p %s:%s %s%s >/dev/null)" % (
+                cname, cname, port, CONTAINER_PORT[kind], " ".join("-e %s" % e for e in SERVICE_ENV.get(kind, [])) + " " if SERVICE_ENV.get(kind) else "", image))
+            services[name] = "127.0.0.1:%s" % port
+            kinds.add(kind)
+            facts.append("%s runs %s (%s) on port %s: docker starts it" % (src, name, image, port))
+        elif kind == "postgres" and local_postgres():
+            ver, cname, port = local_postgres()
+            run.append("(pg_isready -q -h 127.0.0.1 -p %s || pg_ctlcluster %s %s start)" % (port, ver, cname))
+            services[name] = "127.0.0.1:%s" % port
+            kinds.add(kind)
+            facts.append("%s runs %s (%s): the local Postgres %s cluster on %s stands in for it" % (src, name, image, ver, port))
+        elif kind == "redis" and shutil.which("redis-server"):
+            run.append("(redis-cli -p %s ping >/dev/null 2>&1 || redis-server --port %s --daemonize yes >/dev/null)" % (port, port))
+            services[name] = "127.0.0.1:%s" % port
+            kinds.add(kind)
+            facts.append("%s runs redis on port %s: the local redis-server starts it" % (src, port))
+        elif kind in ("mysql", "mariadb") and shutil.which("mysqld") and shutil.which("service"):
+            run.append("(mysqladmin -h 127.0.0.1 -P 3306 ping >/dev/null 2>&1 || service mysql start >/dev/null)")
+            services[name] = "127.0.0.1:3306"
+            kinds.add(kind)
+            facts.append("%s runs %s: the local MySQL server starts it (port 3306)" % (src, kind))
+        elif kind != "postgres":
+            facts.append("%s runs %s (%s), and neither docker nor a local server of that kind is here" % (src, name, image))
+    var = find_var(project, r"\b([A-Z][A-Z0-9_]*POSTGRES[A-Z0-9_]*PORT)\b") or next(
+        (v for v, val in ci["env"].items() if val.startswith("service:") and "POSTGRES" in v), "")
+    if var and "postgres" not in kinds and local_postgres():   # a Compose or CI service of the project wins
+        ver, name, port = local_postgres()
+        run.append("(pg_isready -q -h 127.0.0.1 -p %s || pg_ctlcluster %s %s start)" % (port, ver, name))
+        env[var] = port
+        services["postgres"] = "127.0.0.1:%s" % port
+        facts.append("the code reads %s; a local Postgres %s cluster listens on %s" % (var, ver, port))
+    for var, value in ci["env"].items():
+        svc = re.match(r"^service:(\w[\w.-]*)$", value)
+        if svc:
+            addr = services.get(svc.group(1)) or next((a for n, a in services.items() if n.startswith(svc.group(1))), "")
+            if addr:
+                env.setdefault(var, addr.rsplit(":", 1)[1])
+        elif not run_env.is_credential(var):
+            env.setdefault(var, value)
     # a Python virtual environment of the project
     venv = next((d for d in (".venv", "venv") if os.path.isfile(os.path.join(project, d, "bin", "activate"))), "")
     if venv:
         run.append(". %s/bin/activate" % venv)
         facts.append("%s/ is the project's Python environment" % venv)
         tools += [] if "python3" in tools else ["python3"]
+    if ci["node"] and shutil.which("node") and java_major('version "%s' % version("node", project).lstrip("v")) != ci["node"][0]:
+        homes = [os.path.join("/opt", f) for f in listed("/opt") if re.match(r"^node-?v?%d(\D|$)" % ci["node"][0], f)]
+        if homes and os.path.isdir(os.path.join(homes[0], "bin")):
+            run.append('export PATH="%s/bin:$PATH"' % homes[0])
+            facts.append("%s runs on Node %d, installed at %s" % (ci["node"][1], ci["node"][0], homes[0]))
+        else:
+            facts.append("%s runs on Node %d; the shell has another and none was found in /opt" % (ci["node"][1], ci["node"][0]))
     if os.path.isfile(os.path.join(project, "package.json")):
         tools += ["node", "npm"]
         if os.path.isfile(os.path.join(project, ".nvmrc")):
@@ -256,6 +397,92 @@ def parts(block):
     return out
 
 
+TRIED = os.path.join(".temper", "setup-tried.json")
+
+
+def block_hash(block):
+    import hashlib
+    return hashlib.sha256("\n".join(block).encode("utf-8")).hexdigest()
+
+
+def record_failed(project, block):
+    """A block whose check failed is not offered again (the question offers the environment agent instead)."""
+    import json
+    path = os.path.join(project, TRIED)
+    try:
+        d = json.load(open(path))
+        d = d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        d = {}
+    d.setdefault("failed", []).append(block_hash(block))
+    try:
+        json.dump(d, open(path, "w"))
+    except OSError:
+        pass
+
+
+def tried_and_failed(project, block):
+    import json
+    try:
+        return block_hash(block) in (json.load(open(os.path.join(project, TRIED))).get("failed") or [])
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def setup_of(block):
+    """The setup a block of config lines means, read the way the CLI reads the config (run_env.load_setup)."""
+    import tempfile
+    fd, path = tempfile.mkstemp(prefix="temper-candidate-", suffix=".config")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(block) + "\n")
+        return run_env.load_setup(path)
+    finally:
+        os.remove(path)
+
+
+def write_block(config, block, how):
+    if run_env.load_setup(config):
+        print("FAIL: %s has a setup block already; nothing was written" % config, file=sys.stderr)
+        return 1
+    os.makedirs(os.path.dirname(os.path.abspath(config)), exist_ok=True)
+    old = read(config)
+    with open(config, "a", encoding="utf-8") as f:
+        f.write(("" if not old or old.endswith("\n") else "\n") + "\n# %s, added by the person's choice.\n" % how
+                + "\n".join(block) + "\n")
+    print("OK: the setup block is in %s" % config)
+    return 0
+
+
+def checked(project, config, block, how, write):
+    """Prints the block and, with write, adds it to the config only when it fixes the environment faults the preflight
+    stored (9.8.5: an unchecked guess never reaches the person). With no stored fault there is nothing to check: it is
+    written, and the output says it was not checked."""
+    if " #" in "\n".join(block):
+        print("FAIL: the run line holds ' #', which the config reader cuts", file=sys.stderr)
+        return 1
+    print("\n".join(block))
+    if not write:
+        return 0
+    setup = setup_of(block)
+    if not setup:
+        print("FAIL: these lines hold no setup block the CLI can read; nothing was written", file=sys.stderr)
+        return 1
+    ok, lines = preflight.verify(project, setup)
+    for l in lines:
+        print("check: " + l)
+    if lines and lines[0].startswith("no environment fault is stored"):
+        print("FAIL: nothing to check the block against, so nothing was written (the config is the person's: only a block "
+              "that fixes a failing command is added). Copy it into .claude/temper.config yourself, or run the plan gate first",
+              file=sys.stderr)
+        return 1
+    if not ok:
+        record_failed(project, block)
+        print("FAIL: the block does not fix the environment faults above; nothing was written", file=sys.stderr)
+        return 1
+    return write_block(config, block, how + " (checked: it fixed the failing commands)")
+
+
 def main(argv):
     if len(argv) >= 4 and argv[3] == "--propose":
         project, config = argv[1], argv[2]
@@ -265,21 +492,15 @@ def main(argv):
         if not block:
             print("Nothing to propose: no need of the project was found that a setup block meets.")
             return 0
-        if " #" in "\n".join(block):
-            print("FAIL: the proposed run line holds ' #', which the config reader cuts", file=sys.stderr)
+        return checked(project, config, block, "Proposed by temper doctor --propose", argv[4:] == ["--write"])
+    if len(argv) >= 5 and argv[3] == "--candidate":
+        # an agent's draft (agents/env.md): the same check, then the same write
+        project, config = argv[1], argv[2]
+        lines = [l.rstrip() for l in read(argv[4]).splitlines() if l.strip() and not l.lstrip().startswith("#")]
+        if not lines or lines[0] != "setup:":
+            print("FAIL: %s holds no setup block (its first line must be setup:)" % argv[4], file=sys.stderr)
             return 1
-        print("\n".join(block))
-        if argv[4:] == ["--write"]:
-            if run_env.load_setup(config):
-                print("FAIL: %s has a setup block already; nothing was written" % config, file=sys.stderr)
-                return 1
-            os.makedirs(os.path.dirname(os.path.abspath(config)), exist_ok=True)
-            old = read(config)
-            with open(config, "a", encoding="utf-8") as f:
-                f.write(("" if not old or old.endswith("\n") else "\n") + "\n# Proposed by temper doctor --propose, added by the person's choice.\n"
-                        + "\n".join(block) + "\n")
-            print("OK: the setup block is in %s" % config)
-        return 0
+        return checked(project, config, lines, "Found by the environment agent", argv[5:] == ["--write"])
     if len(argv) != 3:
         print(__doc__, file=sys.stderr)
         return 2

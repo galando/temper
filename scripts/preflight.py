@@ -171,20 +171,28 @@ def make_row(spec, project, config, ledger, fresh=False):
                 return kept["row"]
         except (OSError, ValueError, KeyError, AttributeError):
             pass
-    result = run_all(project, cmds, declared, limit, run_env.load_setup(config))
+    runs = run_classes(project, cmds, declared, limit, run_env.load_setup(config))
+    result = format_row(runs)
+    faults = [{"cmd": c, "files": f, "why": w} for c, f, cls, w, _ in (runs or []) if cls == "environment fault"]
     try:
-        json.dump({"key": key, "head": head, "row": result}, open(store, "w", encoding="utf-8"), indent=2)
+        json.dump({"key": key, "head": head, "row": result, "env_faults": faults, "limit": limit},
+                  open(store, "w", encoding="utf-8"), indent=2)
     except OSError:
         pass
     return result
 
 
 def run_all(project, cmds, declared, limit, setup):
+    return format_row(run_classes(project, cmds, declared, limit, setup))
+
+
+def run_classes(project, cmds, declared, limit, setup):
+    """[(cmd, files, class, why, output)] of each command on a throwaway worktree of HEAD, or None with no commit."""
     tmp = tempfile.mkdtemp(prefix="temper-preflight-")
     wt = os.path.join(tmp, "base")
     if git(project, "worktree", "add", "--detach", wt, "HEAD").returncode != 0:
         shutil.rmtree(tmp, ignore_errors=True)
-        return row(True, "skipped: no commit to run on")
+        return None
     results = []
     try:
         for cmd, files in cmds:
@@ -194,11 +202,18 @@ def run_all(project, cmds, declared, limit, setup):
                 raw, rc = run_env.run_cmd(wt, limit, [cmd], setup)
             out = raw.decode("utf-8", "replace")
             cls, why = classify(cmd, out, rc, limit, declared, wt)
-            results.append((cmd, cls, why, out))
+            results.append((cmd, files, cls, why, out))
     finally:
         git(project, "worktree", "remove", "--force", wt)
         git(project, "worktree", "prune")
         shutil.rmtree(tmp, ignore_errors=True)
+    return results
+
+
+def format_row(runs):
+    if runs is None:
+        return row(True, "skipped: no commit to run on")
+    results = [(c, cls, w, o) for c, _, cls, w, o in runs]
     counts = ["%d %s" % (n, c) for c in CLASSES for n in [sum(1 for r in results if r[1] == c)] if n]
     lines = ["%d command(s): %s" % (len(results), ", ".join(counts))]
     for cmd, cls, why, out in results:
@@ -207,6 +222,25 @@ def run_all(project, cmds, declared, limit, setup):
             if cls != "needs new code":
                 lines.append(quote(out))
     return row(not any(r[1] in ("environment fault", "command fault") for r in results), "\n".join(lines))
+
+
+def verify(project, setup):
+    """9.8.5: does a candidate setup block fix the environment faults of the stored preflight? (ok, lines): each command
+    that failed on the environment runs again, on a throwaway worktree of HEAD, under the candidate. ok when none of them
+    is an environment fault any more (a pass, or needs new code). No stored fault: nothing to check against."""
+    try:
+        kept = json.load(open(os.path.join(project, ".temper", "preflight.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        kept = {}
+    faults = kept.get("env_faults") or []
+    if not faults:
+        return False, ["no environment fault is stored to check against: run the plan gate (or temper plan preflight) first"]
+    runs = run_classes(project, [(f["cmd"], f.get("files")) for f in faults], [], int(kept.get("limit") or DEFAULT_TIMEOUT), setup)
+    if runs is None:
+        return False, ["no commit to run on"]
+    lines = ["%s `%s`: was environment fault (%s), now %s%s" % ("ok" if cls != "environment fault" else "still failing", c[:120],
+             f.get("why", ""), cls, (": " + w) if w else "") for (c, _, cls, w, _), f in zip(runs, faults)]
+    return all(cls != "environment fault" for _, _, cls, _, _ in runs), lines
 
 
 def main(argv):

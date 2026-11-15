@@ -844,7 +844,8 @@ class Builder:
                 add = self.setup_offer([{"name": "preflight", "detail": "environment fault"}])   # no block, and one proposed
                 if add:
                     fix["label"] = fix["label"].replace(" (Recommended)", "")
-                    add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
+                    if add["label"].startswith("Add the proposed"):
+                        add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
                 return self.question(GATE_HEADER, "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. "
                                      "%s run Check again?" % (setup, "Add the proposed setup block and" if add else "Repair it and"), stage=stage,
                                      options=([add] if add else []) + [fix, self.save()] + back_opt(rec=False) + [override_opt(go)])
@@ -1185,14 +1186,45 @@ class Builder:
         cfg = self.r.ctx.get("config_file") or os.path.join(".claude", "temper.config")
         if not any(x.get("name") == "preflight" and "environment fault" in str(x.get("detail", "")) for x in rows) or run_env.load_setup(cfg):
             return None
+        kept = read_json(os.path.join(TEMPER, "preflight.json"), {})
+        if not (isinstance(kept, dict) and kept.get("env_faults")):
+            return None   # nothing to check a block against: a block is written only after it fixed a stored failing command
         block, _ = doctor.propose(os.getcwd())
-        if not block:
-            return None
-        parts = doctor.parts(block)
-        run, env = parts["run"], ", ".join("%s=%s" % kv for kv in parts["env"].items())
-        what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
-        return self.opt("Add the proposed setup block (Recommended)", what, move="redo",
-                        calls=[self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")])
+        if block and not doctor.tried_and_failed(os.getcwd(), block):
+            parts = doctor.parts(block)
+            run, env = parts["run"], ", ".join("%s=%s" % kv for kv in parts["env"].items())
+            what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
+            return self.opt("Add the proposed setup block (Recommended)", what + ". Temper first reruns the failing commands with it, "
+                            "and adds it only when they no longer fail on the environment.", move="redo",
+                            calls=[self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")])
+        if self.r.state.get("env_agent") != "tried":
+            # 9.8.5: no rule fits this project (or its block did not fix the failure): an agent reads how the project runs
+            return self.opt("Let an agent find the setup (Recommended)", "An agent reads the project's CI, README and scripts and "
+                            "drafts a setup block; Temper reruns the failing commands with it and adds it only when they pass.",
+                            move="redo", calls=[self.c("state set env_agent requested")])
+        return None
+
+    def env_agent_work(self):
+        """9.8.5: the environment agent the person asked for: it drafts {spec}/setup-proposal.yaml; the CLI checks it on the
+        failing commands (doctor --candidate --write) and only a draft that fixes them reaches the config."""
+        r = self.r
+        kept = read_json(os.path.join(TEMPER, "preflight.json"), {})
+        faults = ["`%s`: %s" % (f.get("cmd", ""), f.get("why", "")) for f in (kept.get("env_faults") or [])[:6]] if isinstance(kept, dict) else []
+        if r.stage == "check" and self.setup_fault():
+            faults.append("Check: %s" % self.setup_fault())
+        _, facts = doctor.propose(os.getcwd())
+        draft = os.path.join(r.spec, "setup-proposal.yaml")
+        lines = ["Follow %s/agents/env.md exactly." % self.plugin, "Spec path: %s." % r.spec,
+                 "Failing on the environment: %s." % ("; ".join(faults) or "(see the last gate's rows)"),
+                 "temper doctor --propose found: %s." % ("; ".join(facts) or "nothing"), self.plugin_line()]
+        then = [self.c("plan preflight"), self.c("gate plan")] if r.stage == "plan" else [
+            self.c("state redo %s --reason %s" % (r.stage, shlex.quote("SETUP: the environment agent's block was added")))]
+        model = (r.ctx.get("models") or {}).get("env") or "sonnet"
+        a = {"type": "temper:temper-env", "model": model, "prompt": "\n".join(lines),
+             "after": [self.c("state set env_agent tried"), self.c("usage add --stage %s --model %s --ms {ms}" % (r.stage, model)),
+                       self.c("doctor --candidate %s --write" % shlex.quote(draft))] + then}
+        return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
+                "say": "An agent looks for how this project is set up, on %s. %s" % (short_model(model), goes_on(False))}
 
     def setup_fault(self):
         """9.8.5 (Q6): the reason Check's latest run hit the environment (a `setup fault:` row after its last suite row), or ""."""
@@ -2341,6 +2373,9 @@ class Builder:
                 out.update(self.side_review_failed(done))
             else:
                 out.update(self.small_change_work(done))
+            return out
+        if r.state.get("env_agent") == "requested" and stage in ("plan", "check"):
+            out.update(self.env_agent_work())
             return out
         if stage == "commit":
             out.update(self.commit())
