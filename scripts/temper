@@ -419,9 +419,8 @@ _lock_acquire() {
       continue
     fi
     if (( $(date +%s) >= deadline )); then
-      # A holder that is alive is working (on a loaded machine many writers queue for longer than the wait): wait on for it,
-      # up to TEMPER_LOCK_MAX_S, rather than write beside it and lose a row. A holder that is gone or unknown, or one past that
-      # bound, is written past as before (fail open: a stuck holder never wedges a run).
+      # A holder that is alive is working: wait on for it, up to TEMPER_LOCK_MAX_S (120 s), rather than write beside it and
+      # lose a row. A gone holder's old lock is broken and taken. Past that bound the write fails (9.8.5): nothing is written.
       [[ -d "$_LOCK_DIR" ]] || continue   # freed since the mkdir: take it, never write past a lock that is gone
       local holder; holder="$(cat "$_LOCK_DIR/owner" 2>/dev/null)"; holder="${holder%%.*}"
       [[ -n "$holder" || -d "$_LOCK_DIR" ]] || continue
@@ -430,15 +429,15 @@ _lock_acquire() {
            && python3 -I -c "import os,sys,time
 try: sys.exit(time.time() - os.path.getmtime(sys.argv[1]) > 2)
 except OSError: pass" "$_LOCK_DIR" 2>/dev/null; }; } \
-         && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )); then
+         && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-120} )); then
         python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
       fi
       # its owner is gone: break it and take it (within the same bound as a live holder)
-      if (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )) && _lock_older_than_30s "$_LOCK_DIR"; then
+      if (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-120} )) && _lock_older_than_30s "$_LOCK_DIR"; then
         _lock_break_stale; python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
       fi
-      echo "WARN: could not take $_LOCK_DIR within ${TEMPER_LOCK_WAIT_S:-10}s; writing without the lock" >&2
-      return 0
+      echo "FAIL: $_LOCK_DIR is held (owner ${holder:-unknown}) past ${TEMPER_LOCK_MAX_S:-120}s; nothing was written. Run the call again" >&2
+      exit 75   # 9.8.5 (Q9): never write without the lock
     fi
     python3 -I -c "import time; time.sleep(0.02)"
     i=$(( i + 1 ))

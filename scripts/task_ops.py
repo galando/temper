@@ -13,7 +13,7 @@ Standard library only.
 """
 import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
-from run_env import run_cmd, test_env  # noqa: F401
+from run_env import run_cached, run_cmd, test_env  # noqa: F401
 import scenario_ops
 import maven_loop
 import preflight
@@ -406,13 +406,13 @@ elif mode == 'grouprun':
     # group and carries phase 'group', so it never counts as a task RED or GREEN run
     wt, timeout, rowfile, group = sys.argv[2:6]
     cmd = sys.argv[7:]    # argv[6] is the '--' separator
-    out, rc = run_cmd(wt, timeout, cmd)
+    out, rc, reused = run_cached(wt, timeout, cmd)
     show(out, rc)
     row = {'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'group', 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
            'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-           'output': out[-4096:].decode('utf-8', 'replace')}
+           'output': out[-4096:].decode('utf-8', 'replace'), 'reused': reused or None}
     if rc != 0:
         row['fail_lines'] = fail_lines(out, rc=rc)
     json.dump(row, open(rowfile, 'w'))
@@ -430,12 +430,12 @@ elif mode == 'integrun':
     # out of the task RED/GREEN counts
     wt, timeout, rowfile = sys.argv[2:5]
     cmd = sys.argv[6:]    # argv[5] is the '--' separator
-    out, rc = run_cmd(wt, timeout, cmd)
+    out, rc, reused = run_cached(wt, timeout, cmd)
     show(out, rc)
     row = {'claim': 'Integration suite', 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'integration', 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'executed_by': 'cli',
-           'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'output': out[-4096:].decode('utf-8', 'replace')}
+           'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'output': out[-4096:].decode('utf-8', 'replace'), 'reused': reused or None}
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 

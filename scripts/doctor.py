@@ -10,11 +10,10 @@ names answers a TCP connect. It writes no file, no ledger, no state and no view.
 credential is never shown.
 
 --propose reads facts, never runs a build: a Maven enforcer's JDK range or `<java.version>` with the project's own
-`scripts/ensure-jdk*.sh --export` (else an installed JDK of that version), a `*POSTGRES*PORT` variable the code reads with
-a local Postgres cluster (`pg_lsclusters`), an `.nvmrc` with nvm. It proposes only what it found; with nothing found it
+`scripts/ensure-jdk*.sh --export` (else a JDK of that version in /usr/lib/jvm), a `*POSTGRES*PORT` variable the code reads with
+a local Postgres cluster (`pg_lsclusters`), an `.nvmrc` (nvm selects it when installed). It proposes only what it found; with nothing found it
 proposes nothing. --write is the person's choice at a question; the run line it writes is idempotent. Standard library only.
 """
-import glob
 import os
 import re
 import shutil
@@ -83,6 +82,14 @@ def find_var(project, pattern, max_files=6000):
     return ""
 
 
+def listed(folder):
+    """The names in a folder, sorted ([] when it is not there)."""
+    try:
+        return sorted(os.listdir(folder))
+    except OSError:
+        return []
+
+
 def java_major(text):
     m = re.search(r'version "(\d+)', text)
     return int(m.group(1)) if m else 0
@@ -91,7 +98,7 @@ def java_major(text):
 def propose(project):
     """(block lines, facts): a setup block made from what the project says it needs."""
     run, env, services, tools, facts = [], {}, {}, [], []
-    poms = [p for p in [os.path.join(project, "pom.xml")] + sorted(glob.glob(os.path.join(project, "*", "pom.xml"))) if os.path.isfile(p)]
+    poms = [p for p in [os.path.join(project, "pom.xml")] + [os.path.join(project, d, "pom.xml") for d in listed(project)] if os.path.isfile(p)]
     need = 0
     for pom in poms:
         text = read(pom)
@@ -103,13 +110,16 @@ def propose(project):
         tools += ["java", "mvn"]
     if need:
         have = java_major(version("java", project)) if shutil.which("java") else 0
-        script = next((p for p in sorted(glob.glob(os.path.join(project, "scripts", "ensure-jdk*.sh"))) if "--export" in read(p)), "")
+        here = os.path.join(project, "scripts")
+        script = next((os.path.join(here, f) for f in listed(here) if re.match(r"^ensure-jdk.*\.sh$", f) and "--export" in read(os.path.join(here, f))), "")
         if script:
             rel = os.path.relpath(script, project)
             run.append('eval "$(%s --export)"' % rel)
             facts.append("%s --export sets the JDK" % rel)
         elif have < need:
-            homes = sorted(glob.glob("/usr/lib/jvm/*-%d*" % need) + glob.glob(os.path.expanduser("~/.sdkman/candidates/java/%d*" % need)))
+            # the system's JDK folder only: the CLI reads no home folder
+            homes = [os.path.join("/usr/lib/jvm", f) for f in listed("/usr/lib/jvm")
+                     if re.match(r"^.*-%d(\D|$)" % need, f) and os.path.isdir(os.path.join("/usr/lib/jvm", f))]
             if homes:
                 run.append('export JAVA_HOME=%s PATH="%s/bin:$PATH"' % (homes[0], homes[0]))
                 facts.append("JDK %d is installed at %s (the shell has %s)" % (need, homes[0], have or "none"))
@@ -130,9 +140,10 @@ def propose(project):
             facts.append("the code reads %s; a local Postgres %s cluster listens on %s" % (var, ver, port))
     if os.path.isfile(os.path.join(project, "package.json")):
         tools += ["node", "npm"]
-        if os.path.isfile(os.path.join(project, ".nvmrc")) and os.path.isfile(os.path.expanduser("~/.nvm/nvm.sh")):
-            run.append('. "$HOME/.nvm/nvm.sh" && nvm use >/dev/null')
-            facts.append(".nvmrc names the Node version")
+        if os.path.isfile(os.path.join(project, ".nvmrc")):
+            # the shell checks for nvm when the line runs (the CLI reads no home folder)
+            run.append('{ [ ! -s "$HOME/.nvm/nvm.sh" ] || { . "$HOME/.nvm/nvm.sh" && nvm use >/dev/null; }; }')
+            facts.append(".nvmrc names the Node version (nvm, when it is installed, selects it)")
     if not (run or env):
         return [], facts
     block = ["setup:"]

@@ -213,8 +213,8 @@ assert_eq "A16: a holder that is alive is waited for past the wait: the row land
   "$rc|$(printf '%s' "$out" | grep -c WARN)|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")"
 mkdir -p .temper/.lock; printf '%s.1' "$HOLDER" > .temper/.lock/owner
 out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence add --stage build --claim "past a stuck holder" 2>&1)"; rc=$?
-assert_eq "A16: a live holder past TEMPER_LOCK_MAX_S is written past with a WARN (a stuck holder never wedges a run)" "0|1|yes" \
-  "$rc|$(printf '%s' "$out" | grep -c 'WARN.*lock')|$([[ -d .temper/.lock ]] && echo yes || echo no)"
+assert_eq "A16: a live holder past TEMPER_LOCK_MAX_S fails the write, which writes nothing (9.8.5, Q9)" "75|1|yes" \
+  "$rc|$(printf '%s' "$out" | grep -c 'FAIL.*nothing was written')|$([[ -d .temper/.lock ]] && echo yes || echo no)"
 kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
 rm -rf .temper/.lock
 
@@ -236,7 +236,7 @@ mkdir -p .temper/.lock; printf '%s.1' "$LIVE" > .temper/.lock/owner
 python3 -c "import os,time; t=time.time()-120; os.utime('.temper/.lock',(t,t))"
 out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence add --stage build --claim "beside an old live holder" 2>&1)"
 assert_eq "A16: a lock older than 30 s whose owner is alive is not broken as stale (the holder keeps it)" "$LIVE.1|1" \
-  "$(cat .temper/.lock/owner 2>/dev/null)|$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+  "$(cat .temper/.lock/owner 2>/dev/null)|$(printf '%s' "$out" | grep -c 'FAIL.*lock')"
 kill "$LIVE" 2>/dev/null; wait "$LIVE" 2>/dev/null
 rm -rf .temper/.lock
 for i in 1 2 3 4 5 6; do "$TEMPER" evidence add --stage build --claim "release $i" >/dev/null 2>&1 & done; wait

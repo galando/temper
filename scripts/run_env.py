@@ -118,6 +118,68 @@ def setup_args(cmd, setup):
     return ['bash', '-c', pre + 'exec "$@"', 'temper-setup'] + list(cmd), extra
 
 
+# 9.8.5 (S5): a passing run of a command on a clean tree is kept by the tree's hash, the command and the setup block; the
+# same command on the same tree passes again without running (a measured run ran the same 11,600 tests about eight times).
+# Only a pass is kept; a failure always runs again. A tree with uncommitted changes is never reused.
+RESULTS = 'temper-results.json'
+KEEP = 200
+
+
+def _git(wt, *args):
+    p = subprocess.run(['git', '-C', wt] + list(args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return p.stdout.decode('utf-8', 'replace').strip() if p.returncode == 0 else ''
+
+
+def result_key(wt, cmd, setup):
+    tree = _git(wt, 'rev-parse', 'HEAD^{tree}')
+    dirty = [l for l in _git(wt, 'status', '--porcelain', '--untracked-files=all').splitlines()
+             if l[3:] and not l[3:].startswith(('.temper/', '.claude/worktrees/'))]
+    if not tree or dirty:
+        return None
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps([tree, list(cmd), setup or {}], sort_keys=True).encode('utf-8')).hexdigest()
+
+
+def _store(wt):
+    d = _git(wt, 'rev-parse', '--git-common-dir')
+    return os.path.join(d if os.path.isabs(d) else os.path.join(wt, d), RESULTS) if d else ''
+
+
+def run_cached(wt, timeout, cmd, setup=None):
+    """(output, exit, reused ts or '') : run_cmd, or the kept pass of the same command on the same clean tree."""
+    import json
+    import time
+    if setup is None:
+        setup = load_setup()
+    key, path = result_key(wt, cmd, setup), _store(wt)
+    kept = {}
+    if key and path:
+        try:
+            kept = json.load(open(path))
+            kept = kept if isinstance(kept, dict) else {}
+        except (OSError, ValueError):
+            kept = {}
+        hit = kept.get(key)
+        if isinstance(hit, dict) and hit.get('rc') == 0:
+            note = '[temper: the same command passed on this same tree at %s; reused, not run again]\n' % hit.get('ts', '?')
+            return (note + str(hit.get('tail', ''))).encode('utf-8'), 0, str(hit.get('ts', ''))
+    out, rc = run_cmd(wt, timeout, cmd, setup)
+    if rc == 0 and key and path:
+        kept[key] = {'rc': 0, 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                     'tail': out[-2048:].decode('utf-8', 'replace')}
+        if len(kept) > KEEP:
+            for k in sorted(kept, key=lambda k: kept[k].get('ts', ''))[:len(kept) - KEEP]:
+                kept.pop(k, None)
+        try:
+            tmp = '%s.tmp.%d' % (path, os.getpid())
+            json.dump(kept, open(tmp, 'w'))
+            os.replace(tmp, path)
+        except OSError:
+            pass
+    return out, rc, ''
+
+
 def run_cmd(wt, timeout, cmd, setup=None):
     """Returns (output bytes, exit). 124 is a timeout, 127 a command that could not start, 125 a failed setup line."""
     if setup is None:
