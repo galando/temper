@@ -209,6 +209,16 @@ says what to change instead, and `Add to plan` stays for files outside the plan.
 accepts an answer of up to 2000 characters (the `Include what is left out` option carries the whole list); plan.md
 shows its first 100.
 
+### A plan patch (9.8.5)
+
+`temper plan patch G<n>|task N|integration --cmd '<command>'` changes one command line of the approved `tasks.md`
+(a group's Validate, a task's Test, the Integration line) and nothing else (`scripts/plan_patch.py`). The passed tasks
+keep their work, no loop is spent, the approved plan's hash follows the change, a patched group's check runs again, and
+the plan ledger records the old and the new line as the person's. It refuses a `tasks.md` that differs from the
+approved plan in anything else (that is a loop back to Plan). It is the person's: the group question offers `Change
+the group's command`, recommended when the cause is the command (a second time-out, or a fix agent that changed
+nothing), and the person types the command. The mod lets it run only as that answer.
+
 ### The run policy (9.8.5)
 
 `autonomy.policy: decide` in `.claude/temper.config` (only the person writes it) extends an armed run past Build. The

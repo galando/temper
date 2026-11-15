@@ -1976,6 +1976,20 @@ class Builder:
         opts += [o for o in rest if o]
         if not save_rec:
             opts.append(save)
+        # 9.8.5 (S6): when the cause is the group's command (a time-out again, or a fix that changed nothing), the person
+        # types the command to run instead: one line of tasks.md changes, the passed tasks keep their work, no loop is spent
+        cmd_cause = (timed and not limit) or empty
+        patch = self.opt("Change the group's command" + (" (Recommended)" if cmd_cause else ""),
+                         "Type the Validate command group %s should run (now: %s); its check runs again, the tasks keep their work, no loop is spent." % (
+                             gid, (g.get("validate") or "none")[:120]),
+                         move="redo", calls=[self.c("plan patch %s --cmd '{answer}'" % gid), self.c("group gate %s" % gid)],
+                         answer=("Group command", "Group %s: what Validate command should it run? It runs the tests this group can break, within the time limit." % gid))
+        if cmd_cause:
+            for o in opts:
+                o["label"] = o["label"].replace(" (Recommended)", "")
+            opts.insert(0, patch)
+        else:
+            opts.insert(len(opts) - 1, patch)
         opts.sort(key=lambda o: 0 if o["label"].endswith("(Recommended)") else 1)   # the recommended option first
         text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
         if fl:
@@ -1985,7 +1999,7 @@ class Builder:
                      "environment is (temper doctor shows the environment).")
         elif tried and fixable:
             text += " A fix of its merged work did not make it pass" + (": the plan is the likelier cause." if back else ".")
-        text += (" Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
+        text += (" Change the group's command?" if cmd_cause else " Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
                  " Save the run for later?" if save_rec else " Run its tasks again?")
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
 

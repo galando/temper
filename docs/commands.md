@@ -229,6 +229,12 @@ block and what it found, and runs no build. `--write` adds it to `.claude/temper
 there. You rarely type it: when the plan gate's preflight or Check fails on the environment and the project has no
 block, the question's first option is "Add the proposed setup block", which runs it with `--write` and checks again.
 
+### `temper plan patch` (9.8.5)
+
+`temper plan patch G1 --cmd 'bash scripts/selftest/run-selftest.sh --fast'` changes one command line of the approved
+plan (`G<n>` a group's Validate, `task N` a task's Test, `integration` the Integration line), keeps every passed task,
+and spends no loop. You give it as your answer to "Change the group's command" at the group question.
+
 ### `temper plan preflight` (9.8.5)
 
 Runs every command of the plan on HEAD again and stores the result the plan gate reads (see `docs/flow.md`). Run it

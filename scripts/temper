@@ -4608,6 +4608,9 @@ _setup_calls() {
 # changes the plan: it is recorded as the person's note for Plan, and Plan runs again with it.
 cmd_plan() {
   _state_migrate_legacy
+  if [[ "${1:-}" == "patch" ]]; then   # the person's change of one command line (scripts/plan_patch.py)
+    local rc; _lock_acquire; python3 -E -s "$SCRIPTS_DIR/plan_patch.py" "$(_spec_path "")" "$STATE_FILE" "$GROUPS_FILE" "$(_evidence_file plan)" "${@:2}"; rc=$?; _lock_release; return $rc
+  fi
   if [[ "${1:-}" == "preflight" ]]; then   # runs the plan's commands on HEAD again and stores the result (scripts/preflight.py)
     local sp; sp="$(_spec_path "")"; [[ -d "$sp" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
     python3 -E -s "$SCRIPTS_DIR/preflight.py" run "$sp" "$(pwd -P)" "$CONFIG_FILE" "$(_evidence_file plan)"; return
@@ -5132,6 +5135,7 @@ Usage:
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
   temper plan preflight                   (run every command of the plan on HEAD again; the plan gate reads it)
+  temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)
   temper doctor                           (toolchain, setup block and services; only reads)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)

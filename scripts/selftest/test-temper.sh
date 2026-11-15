@@ -258,6 +258,7 @@ source "$TESTS_DIR/case-helpers.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 26 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-26.sh"; }
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 27 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-27.sh"; }
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 28 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-28.sh"; }
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 29 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-29.sh"; }
 
 # the suite leaves the real .temper folder as it was, and a CLI call outside its own folder is refused
 assert_eq "selftest safety: the real .temper folder is as it was" "$_REAL_TEMPER_BEFORE" "$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"
