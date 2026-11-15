@@ -152,6 +152,13 @@ autonomy:
     max-total-loops: 4
     max-stages: 12
 
+build:
+  # red-before-code: false     # true: a task's failing run (RED) counts only on the code as the attempt found it, with
+  #                            # no stub (for compiled languages, where a compile failure is the RED)
+evidence:
+  # claimed-runs: ignore       # a test run counts at a gate only when the CLI ran it (evidence run, a task test, Check).
+  #                            # count: also a run an agent only claimed with evidence add --exit (before 9.8.5).
+
 # The environment contract: what every command the CLI runs, and every agent, needs first. No block: as before.
 # The run line runs in the same shell before each command (keep it idempotent; it cannot hold " #"). A variable whose
 # name says it holds a credential (PASSWORD, TOKEN, KEY, SECRET, ...) is never set or shown. `temper doctor` reads it.

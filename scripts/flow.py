@@ -1922,13 +1922,23 @@ class Builder:
         lines = [str(x) for x in ((ginfo.get("gate") or {}).get("fail_lines") or []) if str(x).strip()][:n]
         return "; ".join(x if len(x) <= 160 else x[:157] + "..." for x in lines)
 
-    def group_failed(self, g, ginfo):
+    def group_failed(self, g, ginfo, decide=False):
         gid = g["id"]
         gate = ginfo.get("gate") or {}
         reason = " ".join(str(gate.get("reason", "")).split())
         reason = reason if len(reason) <= 300 else reason[:297] + "..."
         fl = self.fail_text(ginfo)
-        if self.r.armed():  # nobody is there to answer: an armed run parks, as on every stop
+        if self.r.armed() and self.r.policy() and not decide:
+            # 9.8.5 (U1): under the policy the run takes the recommended option itself when no person is needed for it;
+            # a typed command, Save for later or a spent budget park it, as before
+            q = self.group_failed(g, ginfo, decide=True)["ask"]
+            rec = next((o for o in q["options"] + ((q.get("more") or {}).get("options") or []) if o["label"].endswith("(Recommended)")), None)
+            if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop"):
+                why = "policy: group %s failed its check (%s)" % (gid, reason[:200])
+                calls = [c.replace("'{reason}'", "'%s'" % why.replace("'", "")) for c in rec["calls"]]
+                return {"action": "auto", "stage": "build", "calls": calls,
+                        "say": "Group %s failed its check; the policy takes \"%s\"." % (gid, rec["label"].replace(" (Recommended)", ""))}
+        if self.r.armed() and not decide:  # nobody is there to answer: an armed run parks, as on every stop
             why = (reason[:300] + (" | " + fl if fl else ""))[:1200]   # 9.8.5 (S4): the whole failure, not its first 400 characters
             return {"action": "auto", "stage": "build",
                     "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],

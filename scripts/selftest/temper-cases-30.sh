@@ -34,7 +34,25 @@ _q4plan | m_setup; "$TEMPER" task start 1 >/dev/null 2>&1; mkdir -p "$W/src" "$W
 echo '[ "$(bash src/a.sh 2>/dev/null)" = 3 ]' > "$W/unit/a_test.sh"
 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 echo 'echo 3' > "$W/src/a.sh"; "$TEMPER" task test 1 --phase green >/dev/null 2>&1
-assert_eq "9.8.5 Q4: a RED before the code is the proof, as before" "PASS" "$("$TEMPER" task gate 1 --model haiku 2>&1 | grep -q '^PASS: Task 1' && echo PASS || echo FAIL)"
+assert_eq "9.8.5 Q4: a RED before the code is the proof, as before" "PASS" "$(G="$("$TEMPER" task gate 1 --model haiku 2>&1)"; grep -q '^PASS: Task 1' <<<"$G" && echo PASS || echo FAIL)"
+# a stub before the RED: allowed by default (Python needs one), refused with build.red-before-code: true
+_q4stub() { _q4plan | m_setup; printf 'build:\n  red-before-code: %s\n' "$1" >> .claude/temper.config; "$TEMPER" task start 1 >/dev/null 2>&1; mkdir -p "$W/src" "$W/unit"
+  echo '[ "$(bash src/a.sh 2>/dev/null)" = 3 ]' > "$W/unit/a_test.sh"; echo 'echo 0' > "$W/src/a.sh"   # the stub
+  "$TEMPER" task test 1 --phase red >/dev/null 2>&1; echo 'echo 3' > "$W/src/a.sh"; "$TEMPER" task test 1 --phase green >/dev/null 2>&1; }
+_q4stub false
+assert_eq "9.8.5 Q4: a stub before the RED passes by default" "PASS" "$(G="$("$TEMPER" task gate 1 --model haiku 2>&1)"; grep -q '^PASS: Task 1' <<<"$G" && echo PASS || echo FAIL)"
+_q4stub true
+assert_eq "9.8.5 Q4: with build.red-before-code: true, a RED after a stub is refused, naming the file" "True" \
+  "$(G="$("$TEMPER" task gate 1 --model haiku 2>&1)"; grep -q 'the RED run came after a change to src/a.sh' <<<"$G" && echo True || echo False)"
+# a retried attempt is judged too: the code at its start is the baseline
+_q4plan | m_setup; "$TEMPER" task start 1 >/dev/null 2>&1; mkdir -p "$W/src" "$W/unit"
+echo 'exit 1' > "$W/unit/a_test.sh"; "$TEMPER" task test 1 --phase red >/dev/null 2>&1; "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 --model haiku >/dev/null 2>&1   # attempt 1 fails (no green); the task is retried
+"$TEMPER" task start 1 >/dev/null 2>&1; mkdir -p "$W/src" "$W/unit"
+echo 'echo 3' > "$W/src/a.sh"; echo '[ "$(bash src/a.sh)" = 3 ] && [ -e .ok ]' > "$W/unit/a_test.sh"
+"$TEMPER" task test 1 --phase red >/dev/null 2>&1; touch "$W/.ok"; "$TEMPER" task test 1 --phase green >/dev/null 2>&1; rm -f "$W/.ok"
+assert_eq "9.8.5 Q4: a retried attempt that writes the code before its RED is refused too" "True" \
+  "$(G="$("$TEMPER" task gate 1 --model haiku 2>&1)"; grep -q 'the RED run was made on the final code' <<<"$G" && echo True || echo False)"
 
 # --- 9.8.5 (U2): the orchestrator's note for this step's question, marked as Claude's, in the CLI's own question ---
 fresh; gpass intent

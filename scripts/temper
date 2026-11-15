@@ -1598,7 +1598,7 @@ cmd_evidence_list() {
 import json, sys
 for i, e in enumerate(json.load(open(sys.argv[1])), 1):
     mark = 'OK ' if (e.get('exit_code') in (0, None)) else 'ERR'
-    line = f\"#{i} [{e.get('label')}] {mark} {e.get('claim')}\"
+    line = f\"#{i} [{e.get('label')}] {mark} {e.get('claim')}\" + (f\" [void: {e['voided'].get('reason')}]\" if isinstance(e.get('voided'), dict) else '')
     if e.get('severity'):
         line += f\" (severity: {e.get('severity')})\"
     if e.get('resolved'):
@@ -1800,9 +1800,11 @@ cmd_evidence() {
     list) cmd_evidence_list "$@" ;;
     resolve) cmd_evidence_resolve "$@" ;;
     accept) cmd_evidence_accept "$@" ;;
+    void) local st="" id="" why=""; while [[ $# -gt 0 ]]; do case "$1" in --stage) st="$2";; --id) id="$2";; --reason) why="$2";; esac; shift 2 || break; done
+          _stage_ok "$st" || { _stage_refuse "$st"; return 1; }; _lock_acquire; python3 -E -s "$SCRIPTS_DIR/runs.py" void "$(_evidence_file "$st")" "$id" "$why"; local rc=$?; _lock_release; return $rc ;;
     clear) cmd_evidence_clear "$@" ;;
     contest|escalate) _evidence_answer "$sub" "$@" ;;
-    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|accept|void|contest|escalate|clear> ..." >&2; return 1 ;;
   esac
 }
 
@@ -1896,29 +1898,6 @@ _clear_evidence_downstream() { # _clear_evidence_downstream <to> — truncates e
 # Purpose-built evidence queries — every value crosses the shell/python boundary as an
 # argv element, never interpolated into python source, so no claim/detail text can ever
 # be misparsed as code.
-
-_ev_count_matching() { # _ev_count_matching <stage> <keyword-regex|""> <phase|""> <exit:any|0|nonzero>
-  local stage="$1" keyword="$2" phase="$3" exitfilter="$4"
-  local file; file="$(_evidence_file "$stage")"
-  [[ -f "$file" ]] || { echo 0; return; }
-  python3 -I -c "
-import json, sys, re
-file, keyword, phase, exitfilter = sys.argv[1:5]
-entries = json.load(open(file))
-n = 0
-for e in entries:
-    if keyword and not re.search(keyword, e.get('claim') or '', re.I):
-        continue
-    if phase and e.get('phase') != phase:
-        continue
-    if exitfilter == '0' and e.get('exit_code') != 0:
-        continue
-    if exitfilter == 'nonzero' and e.get('exit_code') in (0, None):
-        continue
-    n += 1
-print(n)
-" "$file" "$keyword" "$phase" "$exitfilter"
-}
 
 _ev_last_value() { # _ev_last_value <stage> <keyword-regex|""> -> last matching entry's numeric value, or ""
   local stage="$1" keyword="$2"
@@ -3008,7 +2987,8 @@ t['started_at'] = a[4]
 t['worktree'] = a[5]
 t['branch'] = a[6]
 t['model'] = a[7] if t['attempt'] <= 2 else a[8]
-" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" || return 1
+t['start_hashes'] = json.loads(a[9] or '{}')   # 9.8.5 (Q4): the code files as this attempt found them
+" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$(_task_py codehash "$tabs" "$_T_PLAN" "$n")" || return 1
   echo "OK: Task $n started (group $group, worktree $twt)"
 }
 
@@ -3132,7 +3112,7 @@ _task_gate_body() {
     return 1
   fi
   local v verdict reason
-  v="$(_task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
+  v="$(TEMPER_RED_BEFORE_CODE="$(_cfg_get build.red-before-code false)" _task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
   verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
   [[ -n "${TEMPER_ACCEPT_COVERED:-}" && "$verdict" == "COVERED" ]] && verdict=PASS   # the person accepted it (task accept)
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
@@ -3650,21 +3630,8 @@ gate_build() {
         return 0
       fi ;;
   esac
-  local red_n green_n after_n
-  red_n=$(_ev_count_matching build test red nonzero)
-  green_n=$(_ev_count_matching build test green 0)
-  # The order counts: a passing run recorded after a failing one (test first). GREEN rows that only come before
-  # every RED row prove no test failed first.
-  after_n="$(python3 -I -c "
-import json, re, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-def test(r): return isinstance(r, dict) and re.search('test', r.get('claim') or '', re.I)
-red = [i for i, r in enumerate(rows) if test(r) and r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
-print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.get('phase') == 'green' and r.get('exit_code') == 0))
-" "$(_evidence_file build)" 2>/dev/null || echo 0)"
+  local red_n green_n after_n   # runs the CLI ran or the person confirmed; a claim counts only with evidence.claimed-runs: count (Q3)
+  read -r red_n green_n after_n <<<"$(python3 -E -s "$SCRIPTS_DIR/runs.py" build "$(_evidence_file build)" "$(_cfg_get evidence.claimed-runs ignore)")"
   if [[ -f "$spec_path/tasks.md" ]] && python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
     reqs+=("$(_req "RED then GREEN" 1 "every task is manual: the person confirms each by hand, there is no test to run")")
   elif [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
@@ -3899,20 +3866,7 @@ gate_check() {
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
   # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
-  local tests_n tests_red; tests_n="$(python3 -I -c "
-import json, re, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-# the acceptance run has a row of its own (a correction names its tests: 'corrected after the lock: test_...')
-runs = [r for r in rows if isinstance(r, dict) and not r.get('scenario') and isinstance(r.get('exit_code'), int)
-        and re.search('test', r.get('claim') or '', re.I) and not (r.get('claim') or '').startswith('acceptance (written before Build)')]
-last = {}
-for r in runs:
-    last[' '.join(str(r.get('claim')).lower().split())] = r
-red = [k for k, r in last.items() if r.get('exit_code') != 0]
-print('%d|%s' % (sum(1 for r in runs if r.get('exit_code') == 0), '; '.join(red)[:300]))" "$(_evidence_file check)" 2>/dev/null || echo 0)"
+  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$(_cfg_get evidence.claimed-runs ignore)" 2>/dev/null || echo 0)"
   tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
   if [[ -n "$tests_red" ]]; then
     reqs+=("$(_req "tests pass" 0 "the latest run of a test command failed: $tests_red")")

@@ -28,3 +28,17 @@ fresh; gpass intent plan build
 for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 "$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1; gpass review
 assert_eq "9.8.5 policy: without autonomy.policy, an armed run still asks at Review, as before" "ask" "$(nx "d['action']")"
+
+# --- 9.8.5 (U1): under the policy a failed group check takes the recommended option, unless a person is needed ---
+_polg() { # _polg <group G1 fields>: an armed run under the policy at Build, group G1's check failed
+  fresh; printf 'autonomy:\n  policy: decide\n' >> .claude/temper.config
+  gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", %s}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' "$1" > .temper/groups.json
+}
+_polg '"fails": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}'
+assert_eq "9.8.5 policy: a failed group check whose tasks all passed sends the fix agent by itself" "auto|True" \
+  "$(nx "d['action'] + '|' + str(d['calls'][0].endswith('group fix G1'))")"
+_polg '"fails": 1, "fix_tries": 1, "fix_empty": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "ran": true, "timeout_s": 600, "fail_lines": ["x"]}'
+assert_eq "9.8.5 policy: when the recommendation needs a typed command, the run parks for the person" "auto|True" \
+  "$(nx "d['action'] + '|' + str(' park --verdict PARKED-NEEDS-DECISION ' in d['calls'][0])")"

@@ -36,3 +36,25 @@ printf 'setup:\n  env:\n    X: 1\n' >> .claude/temper.config
 assert_eq "9.8.5 propose: with a setup block already there, nothing is proposed at the question" "False" \
   "$(PATH="$PWD/fakepg:$PATH" nx "any(o['label'].startswith('Add the proposed setup block') for o in d['ask']['options'])")"
 rm -rf backend scripts fakepg
+
+# --- 9.8.5: propose reads Gradle, version files, Docker Compose services and a Python virtual environment too ---
+fresh; mkdir -p app fakedock .venv/bin; : > .venv/bin/activate
+printf 'java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }\n' > app/build.gradle.kts
+printf 'java temurin-21.0.4\n' > .tool-versions
+printf 'services:\n  db:\n    image: postgres:16\n    ports:\n      - "5433:5432"\n  cache:\n    image: redis:7\n    ports:\n      - 6380:6379\n' > compose.yaml
+printf 'String p = System.getenv("APP_POSTGRES_PORT"); String r = System.getenv("APP_REDIS_PORT");\n' > app/Conf.java
+printf '#!/usr/bin/env bash\nexit 0\n' > fakedock/docker; chmod +x fakedock/docker
+OUT="$(PATH="$PWD/fakedock:$PATH" "$TEMPER" doctor --propose 2>&1)"
+assert_eq "9.8.5 propose: Gradle and .tool-versions name the JDK; Compose services start with their ports; the venv is activated" \
+  "True|True|True|True|True|True" \
+  "$(python3 -c "
+import sys; o = sys.stdin.read()
+print('|'.join(map(str, ['app/build.gradle.kts needs JDK 21' in o, '.tool-versions names JDK 21' in o, 'docker compose -f compose.yaml up -d db cache' in o,
+      '    APP_POSTGRES_PORT: 5433' in o and '    APP_REDIS_PORT: 6380' in o, '    db: 127.0.0.1:5433' in o, '. .venv/bin/activate' in o])))" <<<"$OUT")"
+OUT="$(python3 -I -c "
+import sys, shutil; sys.path.insert(0, sys.argv[1]); import doctor
+real = shutil.which; doctor.shutil.which = lambda n: None if n == 'docker' else real(n)
+block, facts = doctor.propose('.'); print('\n'.join(facts + block))" "$REPO_ROOT/scripts")"
+assert_eq "9.8.5 propose: without docker the Compose services are named as a fact, not started" "True|False" \
+  "$(grep -q 'docker does not answer here' <<<"$OUT" && echo True || echo False)|$(grep -q 'docker compose' <<<"$OUT" && echo True || echo False)"
+rm -rf app fakedock .venv .tool-versions compose.yaml

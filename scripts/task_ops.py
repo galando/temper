@@ -173,11 +173,23 @@ def file_hash(wt, f):
     except OSError:
         return 'absent'
 
-def red_on_final(r, wt):
-    """9.8.5 (Q4): the code files a RED run saw are byte for byte the final code: the failing run came after the code,
-    so it proves nothing about the test (the declared code files; a task with none is not judged here)."""
+def red_staged(r, wt, start, strict):
+    """9.8.5 (Q4): why a RED run is no failing-first proof, or ''. A RED whose code files are already the final code,
+    when this attempt wrote that code (it differs from the code the attempt started with), came after the code. With
+    build.red-before-code: true, a RED counts only when every code file is still as the attempt found it (no stub
+    either: a compile failure is the RED). A task with no declared code file is not judged here."""
     h = r.get('red_hashes') or {}
-    return bool(h) and all(v != 'absent' and file_hash(wt, f) == v for f, v in h.items())
+    if not h:
+        return ''
+    if strict:
+        moved = sorted(f for f, v in h.items() if start and v != start.get(f, 'absent'))
+        return ('the RED run came after a change to %s (build.red-before-code: the test fails first, on the code as it was)'
+                % ', '.join(moved)) if moved else ''
+    final = {f: file_hash(wt, f) for f in h}
+    done = all(v != 'absent' and final[f] == v for f, v in h.items())
+    written = not start or any(final[f] != start.get(f, 'absent') for f in h)
+    return ('the RED run was made on the final code (%s unchanged since): write the test first, see it fail, then the code'
+            % ', '.join(sorted(h))) if done and written else ''
 
 def red_ok(r):
     """A RED run counts when it failed on the tests themselves, not before they ran."""
@@ -403,6 +415,12 @@ elif mode == 'show':
             pb = pb[:max(room - len(note), 0)].decode('utf-8', 'ignore').encode('utf-8') + note if room > len(note) else b''
         body += pb.decode('utf-8', 'ignore')
     sys.stdout.write(body)
+
+elif mode == 'codehash':
+    # codehash <worktree> <plan> <N>: the hash of each declared code file of Task N (not its tests) as JSON
+    wt, plan, n = sys.argv[2], json.loads(sys.argv[3]), int(sys.argv[4])
+    files = next((x['files'] for x in plan['tasks'] if x['n'] == n), [])
+    print(json.dumps({f: file_hash(wt, f) for f in files if not TEST_FILE.search(f)}))
 
 elif mode == 'testrun':
     wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
@@ -668,12 +686,12 @@ elif mode == 'verdict':
     reason = ''
     if green is None:
         reason = 'no green run for this task and attempt'
-    # 9.8.5 (Q4): judged on a task's first attempt only; a retried or reopened task may keep code from before, legitimately
-    first = not c['attempts'] and not (((run.get('tasks') or {}).get(str(n)) or {}).get('reopened'))
-    on_final = lambda r: first and red_on_final(r, wt)
-    if green is not None and any(red_ok(r) for r in mine[:green]) and not any(red_ok(r) and not on_final(r) for r in mine[:green]):
-        reason = 'the RED run was made on the final code (%s unchanged since): write the test first, see it fail, then the code' % (
-            ', '.join(sorted([r for r in mine[:green] if red_ok(r)][-1].get('red_hashes') or {})))
+    # 9.8.5 (Q4): a RED counts as the failing-first proof only when the attempt had not finished the code before it
+    start = (((run.get('tasks') or {}).get(str(n)) or {}).get('start_hashes')) or {}
+    strict = os.environ.get('TEMPER_RED_BEFORE_CODE', '').lower() == 'true'
+    reds = [r for r in mine[:green] if red_ok(r)] if green is not None else []
+    if reds and all(red_staged(r, wt, start, strict) for r in reds):
+        reason = red_staged(reds[-1], wt, start, strict)
     elif green is None:
         pass
     elif not any(red_ok(r) for r in mine[:green]):

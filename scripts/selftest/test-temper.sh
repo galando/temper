@@ -74,6 +74,8 @@ autonomy:
   budget:
     max-total-loops: 4
     max-stages: 12
+evidence:
+  claimed-runs: count   # 9.8.5: the cases simulate runs with evidence add; temper-cases-31.sh tests the strict default
 EOF
   cat > .temper/specs/demo/intent.md <<'EOF'
 **Author:** Demo Author <demo@example.com>
@@ -260,6 +262,7 @@ source "$TESTS_DIR/case-helpers.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 28 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-28.sh"; }
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 29 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-29.sh"; }
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 30 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-30.sh"; }
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 31 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-31.sh"; }
 
 # the suite leaves the real .temper folder as it was, and a CLI call outside its own folder is refused
 assert_eq "selftest safety: the real .temper folder is as it was" "$_REAL_TEMPER_BEFORE" "$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"

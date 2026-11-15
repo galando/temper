@@ -226,7 +226,9 @@ person still arms the run at the last question before Build; the option's text t
 Build passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the
 question: an open finding at medium or above loops back to Build with the findings as the reason; a clean Review goes
 on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only while
-`loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. An environment fault (SETUP), a
+`loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. A failed group check during Build
+takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again, a loop back to
+Plan) when no person is needed for it; a typed command, Save for later or a spent budget park the run. An environment fault (SETUP), a
 missing measurement, a failed acceptance test, a spent budget and the commit park the run for the person, as an armed
 Build does. With the key absent or `ask`, every gate after Build asks, as before.
 
@@ -238,12 +240,20 @@ Build does. With the key absent or `ask`, every gate after Build asks, as before
   runs again.
 - **The lock.** A write waits for a live holder of `.temper/.lock` up to `TEMPER_LOCK_MAX_S` (120 s) and breaks a gone
   holder's old lock. Past that it fails with exit 75 and writes nothing; it never writes past the lock.
-- **The failing-first proof.** A task's RED run records the hash of each declared code file (not its tests). A RED whose
-  code files are byte for byte the final code at the gate does not count: the gate says the RED was made on the final
-  code.
+- **The failing-first proof.** `task start` records each declared code file (not its tests) as the attempt finds it, and a
+  RED run records them again. A RED whose code files are already the final code, when this attempt wrote that code,
+  does not count: the gate says the RED was made on the final code. This holds for every attempt, a retry or a reopen
+  included (kept code from before is the attempt's start). A stub before the RED is allowed by default (in Python a
+  missing function makes pytest exit 2, which is no RED); `build.red-before-code: true` allows none: the RED must run
+  on the code as the attempt found it, so a compile failure is the RED.
 - **Interfaces.** The integrate check finds a planned signature as written, or with the same shape once type names are
   unqualified (an imported `AgencyHealth` for a planned `MonitoringSummary.AgencyHealth`, and the reverse).
 - **The person's note** (`evidence add --phase note --kind input`) is labelled `PERSON`, not `HEURISTIC`.
+- **Runs the CLI saw.** The Build gate's `RED then GREEN` row and Check's `tests pass` row count a test run only when the CLI
+  ran it (`temper evidence run`, a task test, a group check, integrate, Check) or the person confirmed it
+  (`scripts/runs.py`). A run an agent recorded with `evidence add --exit` is a claim and counts nowhere, unless the
+  config says `evidence.claimed-runs: count`. `temper evidence void --stage S --id N --reason R` marks a false pass void:
+  the row stays, `evidence list` shows `[void: R]`, and it counts in no mode. Only a pass is voided.
 - **A backup push.** During a run the mod lets the session push the run's work to a `temper-backup/` branch
   (`git push origin HEAD:temper-backup/<name>`); no force, delete, mirror, all or tags. Any other push stays refused.
 - **A note in the question.** `temper state set ask_note '<step>: <text>'` adds the orchestrator's note to the question

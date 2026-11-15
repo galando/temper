@@ -49,8 +49,19 @@ limit, three fix agents that changed nothing) showed most of them again. Each ch
   final code does not count (judged on a task's first attempt). Interfaces match by shape. A person's note is labelled `PERSON`. The mod allows a push to a
   `temper-backup/` branch. The orchestrator can add a marked note to a question.
 
-Not done: Q3 (void a row; count passes only from commands the CLI ran) changes what counts as a pass in several gates
-and needs its own design.
+**The gaps, closed**
+- **Q3.** The Build gate's RED then GREEN and Check's tests pass count a run only when the CLI ran it (`temper evidence
+  run`, a task test, a group check, integrate, Check) or the person confirmed it; a run an agent recorded with
+  `evidence add --exit` is a claim and counts nowhere (`evidence.claimed-runs: count` keeps the old rule). The build and
+  fix briefs record RED and GREEN with `evidence run`. `temper evidence void` marks a false pass void: the row stays,
+  is shown as void, and counts no more; only a pass can be voided.
+- **Q4.** `task start` records the code files as the attempt finds them, so retries and reopens are judged too: a RED
+  made on code this attempt had already finished does not count. `build.red-before-code: true` allows no stub either.
+- **The policy** also takes the recommended option at a failed group check when no person is needed for it.
+- **`doctor --propose`** reads Gradle toolchains, `.java-version`, `.tool-versions`, Docker Compose services (Postgres,
+  MySQL, MariaDB, Redis; only when a Docker daemon answers) and Python virtual environments too.
+- **The selftest.** Case file 6 runs on its own (`case-helpers-5.sh`, made by `make-helpers-5.sh`), so the parallel
+  runner no longer runs 5 and 6 as one pair.
 
 ## v9.8.4: the faults one failed run exposed
 
