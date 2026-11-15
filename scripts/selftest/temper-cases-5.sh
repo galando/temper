@@ -38,13 +38,16 @@ assert_eq "stale lock: the write succeeds without a warning" "0|0" "$rc|$(printf
 assert_eq "stale lock: the row is recorded and the lock is gone" "1|no" \
   "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$([[ -e .temper/.lock ]] && echo yes || echo no)"
 
-# a fresh lock held by someone else: fail open after the wait, warn, never release it
+# a fresh lock held by someone else: after the wait the write fails and writes nothing (9.8.5, Q9: never write without the
+# lock; it wrote past it with a WARN before), and the foreign lock is never released
 setup
 mkdir -p .temper/evidence .temper/.lock
-out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "while locked" 2>&1)"; rc=$?
-assert_eq "held lock: writes anyway with a WARN after the wait" "0|1" "$rc|$(printf '%s' "$out" | grep -c 'WARN.*lock')"
-assert_eq "held lock: the row is recorded and the foreign lock is left alone" "1|yes" \
-  "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$([[ -d .temper/.lock ]] && echo yes || echo no)"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence add --stage build --claim "while locked" 2>&1)"; rc=$?
+assert_eq "held lock: the write fails after the wait, saying nothing was written" "75|1" "$rc|$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
+assert_eq "held lock: no row is recorded and the foreign lock is left alone" "0|yes" \
+  "$(python3 -c "import json
+try: print(len(json.load(open('.temper/evidence/build.json'))))
+except OSError: print(0)")|$([[ -d .temper/.lock ]] && echo yes || echo no)"
 
 # R8: the lock wait is bounded by the wall clock, so TEMPER_LOCK_WAIT_S is honoured
 setup
@@ -1391,12 +1394,12 @@ assert_eq "L1: 16 writers racing a stale lock land 16 rows and release the lock"
 setup; mkdir -p .temper/evidence
 for i in 1 2 3 4 5 6 7 8; do "$TEMPER" evidence add --stage review --claim "finding $i" --severity high >/dev/null 2>&1; done
 mkdir .temper/.lock
-out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc 2>&1)"
-assert_eq "L2: evidence resolve waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
-out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence accept --stage review --id 2 --reason ok 2>&1)"
-assert_eq "L2: evidence accept waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
-out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" gate review 2>&1)"
-assert_eq "L2: the gate verdict write waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc 2>&1)"
+assert_eq "L2: evidence resolve waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence accept --stage review --id 2 --reason ok 2>&1)"
+assert_eq "L2: evidence accept waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" gate review 2>&1)"
+assert_eq "L2: the gate verdict write waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
 rmdir .temper/.lock
 L2_LOCK_BEFORE="$([[ -e .temper/.lock ]] && echo held || echo free)"
 for i in 3 4 5 6 7 8; do "$TEMPER" evidence resolve --stage review --id "$i" --fixed-by "fix $i" > ".temper/l2.$i.out" 2>&1 & done

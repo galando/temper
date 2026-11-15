@@ -579,8 +579,10 @@ case "$*" in *verify*) exit 0 ;; esac
       const wt = path.relative(wd.dir, worktreeOf(t(wd, `task show ${n}`).out))
       fs.rmSync(green, { force: true })
       wd.write(path.join(wt, `src/test/java/com/acme/${test}.java`), `package com.acme;\npublic class ${test} {}\n`)
-      wd.write(path.join(wt, `src/main/java/com/acme/${main}.java`), `package com.acme;\npublic class ${main} {}\n`)
+      // 9.8.5 (Q4): a stub at RED, the code before GREEN (a RED on the final code is no failing-first proof)
+      wd.write(path.join(wt, `src/main/java/com/acme/${main}.java`), `package com.acme;\npublic class ${main} { /* stub */ }\n`)
       expect(t(wd, `task test ${n} --phase red`).code !== 0, 'RED fails')
+      wd.write(path.join(wt, `src/main/java/com/acme/${main}.java`), `package com.acme;\npublic class ${main} { int v() { return 1; } }\n`)
       fs.writeFileSync(green, '')
       const g = t(wd, `task test ${n} --phase green`)
       expect(g.code === 0, `GREEN passes with a new report for the class (${g.out.slice(0, 200)})`)
@@ -604,14 +606,14 @@ export const fixRun = (w: World): void => {
   const bug = '.temper/specs/bug'
   const agents: Record<string, Agent> = {
     'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
+    // 9.8.5 (Q3): the CLI runs the regression test (evidence run), as agents/fix.md says; a claimed run counts nowhere
     'temper:temper-fix': wd => {
       wd.write('unit/test_ci_shape.py', SHAPE_TEST)
-      const red = sh(wd, 'python3 -m unittest unit.test_ci_shape')
-      expect(red.code !== 0, 'the regression test fails first')
-      t(wd, `evidence add --stage build --phase red --claim 'regression test: the shape keeps its verdict' --exit 1 --cmd 'python3 -m unittest unit.test_ci_shape'`)
+      const red = t(wd, `evidence run --stage build --phase red --claim 'regression test: the shape keeps its verdict' -- python3 -m unittest unit.test_ci_shape`)
+      expect(/exit [1-9]/.test(red.out), `the regression test fails first (${red.out.slice(0, 200)})`)
       wd.write('src/ci_shape.py', SHAPE_CODE)
-      expect(sh(wd, 'python3 -m unittest unit.test_ci_shape').code === 0, 'the fix passes the regression test')
-      t(wd, `evidence add --stage build --phase green --claim 'regression test: the shape keeps its verdict' --exit 0 --cmd 'python3 -m unittest unit.test_ci_shape'`)
+      const green = t(wd, `evidence run --stage build --phase green --claim 'regression test: the shape keeps its verdict' -- python3 -m unittest unit.test_ci_shape`)
+      expect(/exit 0\b/.test(green.out), `the fix passes the regression test (${green.out.slice(0, 200)})`)
     },
     'temper:temper-review': wd => t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`),
     'temper:temper-check': wd => {

@@ -133,7 +133,21 @@ def plan_scenario_commands(spec, project):
     return row(name, True, "%d scenario(s), each with a Test: command" % len(blocks))
 
 
-def plan_maven_verify(spec):
+def pom_binds_jacoco(project, cmd):
+    """9.8.5: the pom of the folder a Maven command runs in binds JaCoCo's check goal, so `mvn verify` runs it with no
+    profile or flag (a project like the measured one names no jacoco on the command line)."""
+    for part in maven_loop.maven_parts(cmd or ""):
+        rel = os.path.join(part["dir"], "pom.xml") if part["dir"] else "pom.xml"
+        try:
+            pom = open(os.path.join(project or ".", rel), encoding="utf-8").read()
+        except OSError:
+            continue
+        if "jacoco" in pom.lower() and re.search(r"<goal>\s*check\s*</goal>", pom):
+            return True
+    return False
+
+
+def plan_maven_verify(spec, project=None):
     """A Maven group (a task or the group's Validate runs mvn, mvnd or mvnw, or a task declares a pom.xml) validates with
     `mvn verify` and JaCoCo on, once, at the group gate. The row names each Maven group that breaks the rule."""
     name = "maven group verify"
@@ -141,18 +155,61 @@ def plan_maven_verify(spec):
     bad, maven = [], 0
     for g in plan["groups"]:
         tasks = [t for t in plan["tasks"] if t["group"] == g["id"]]
-        if not (maven_loop.is_maven(g["validate"]) or any(maven_loop.is_maven(t["test"]) for t in tasks)
+        if not (maven_loop.maven_parts(g["validate"]) or any(maven_loop.is_maven(t["test"]) for t in tasks)
                 or any(f.endswith("pom.xml") for t in tasks for f in t["files"])):
             continue
         maven += 1
         v = g["validate"]
-        if not (maven_loop.is_maven(v) and re.search(r"\bverify\b", v) and "jacoco" in v.lower()):
+        on = "jacoco" in v.lower().replace("jacoco.skip=true", "") or ("jacoco.skip=true" not in v.lower() and pom_binds_jacoco(project, v))
+        if not (maven_loop.maven_parts(v) and re.search(r"\bverify\b", v) and on):
             bad.append(g["id"])
     if not maven:
         return row(name, True, "skipped: no Maven group")
     if bad:
         return row(name, False, "%s: a Maven group validates with `mvn verify` and JaCoCo on (for example `mvn verify -Pjacoco`), once, at the group gate" % ", ".join(bad))
     return row(name, True, "%d Maven group(s) validate with mvn verify and JaCoCo" % maven)
+
+
+def plan_maven_filtered(spec, project):
+    """A `verify` filtered by -Dtest= or -Dit.test= under a JaCoCo BUNDLE rule fails the rule: say so before the run."""
+    name = "maven filtered verify"
+    plan = tasks_md.parse(os.path.join(spec, "tasks.md"))
+    cmds = [("%s Validate" % g["id"], g["validate"]) for g in plan["groups"]]
+    cmds += [("%s Task %s Test" % (t["group"], t["n"]), t["test"]) for t in plan["tasks"]]
+    cmds.append(("Integration", plan.get("integration") or ""))
+    try:
+        lines = open(os.path.join(spec, "intent.md"), encoding="utf-8").read().splitlines()
+    except OSError:
+        lines = []
+    cmds += [('Scenario "%s" Test' % b["name"], b["cmd"]) for b in acceptance.scenario_blocks(lines)]
+    seen, bad = 0, []
+    for label, cmd in cmds:
+        for part in maven_loop.maven_parts(cmd or ""):
+            seen += 1
+            args = part["args"]
+            if "verify" not in args or "-Djacoco.skip=true" in args or not any(a.startswith(("-Dtest=", "-Dit.test=")) for a in args):
+                continue
+            rel = os.path.join(part["dir"], "pom.xml") if part["dir"] else "pom.xml"
+            try:
+                pom = open(os.path.join(project, rel), encoding="utf-8").read()
+            except OSError:
+                continue
+            if not (re.search(r"<goal>\s*check\s*</goal>", pom) and "jacoco" in pom.lower()):
+                continue
+            rules = re.findall(r"<rule>(.*?)</rule>", pom, re.S)
+            if any("<element>" not in r or re.search(r"<element>\s*BUNDLE\s*</element>", r) for r in rules):
+                bad.append("%s: %s has a JaCoCo BUNDLE rule, and a filtered verify covers only part of the bundle" % (label, rel))
+    if not seen:
+        return row(name, True, "skipped: no Maven command")
+    if bad:
+        # 9.8.5: a group's Validate must be `mvn verify` with JaCoCo on (the maven group verify row), so its fix is to drop
+        # the filter; a filtered run belongs in a task's Test (an end to end replay followed the old advice into that row)
+        validate = any(" Validate: " in b for b in bad)
+        how = ("For a group's Validate, drop the filter: `mvn verify` runs the whole module with JaCoCo on, as the maven group "
+               "verify row asks. A filtered run belongs in a task's Test: there, run `test` instead of `verify`, or add "
+               "-Djacoco.skip=true" if validate else "Run `test` instead of `verify`, or add -Djacoco.skip=true")
+        return row(name, False, "; ".join(bad) + ". " + how)
+    return row(name, True, "no filtered verify under a JaCoCo bundle rule")
 
 
 def build_criteria(spec, evidence):
@@ -269,10 +326,11 @@ def main(argv):
         return 0 if argv[3] in names else 1
     if len(argv) in (4, 5) and argv[1] == "plan-rows":
         print(json.dumps(plan_scenario_commands(argv[2], argv[3])))
-        print(json.dumps(plan_maven_verify(argv[2])))
+        print(json.dumps(plan_maven_verify(argv[2], argv[3])))
         print(json.dumps(plan_request_routes(argv[2], argv[3])))
         if os.path.isfile(os.path.join(argv[2], "plan.md")):   # a run with no plan.md (the trivial path) has no map to review
             print(json.dumps(plan_ops.gate_row(argv[2], argv[4] if len(argv) == 5 else "auto")))
+        print(json.dumps(plan_maven_filtered(argv[2], argv[3])))
         return 0
     if len(argv) == 4 and argv[1] == "build-rows":
         if os.path.isfile(os.path.join(argv[2], "intent.md")):

@@ -391,6 +391,19 @@ assert_eq "F22: a Maven group that does not verify with JaCoCo is named by the p
 sed -i 's/^\*\*Validate:\*\* `mvn test`$/**Validate:** `mvn verify -Pjacoco`/' .temper/specs/demo/tasks.md
 assert_eq "F22: mvn verify with JaCoCo passes the row" "True" \
   "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; print(json.load(sys.stdin)['pass'])")"
+sed -i 's/^\*\*Validate:\*\* `mvn verify -Pjacoco`$/**Validate:** `cd backend \&\& mvn test`/' .temper/specs/demo/tasks.md
+assert_eq "F22: a Validate that changes folder before mvn is a Maven group the row names" "False|1" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+str(d['detail'].count('G1')))")"
+sed -i 's/^\*\*Validate:\*\* `cd backend && mvn test`$/**Validate:** `cd backend \&\& mvn verify -Djacoco.skip=true`/' .temper/specs/demo/tasks.md
+assert_eq "F22: mvn verify with JaCoCo switched off fails the group row too" "False|1" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+str(d['detail'].count('G1')))")"
+assert_eq "maven_parts: env words and a cd before mvnw are read; no Maven command gives none" "[{'dir': 'backend', 'args': ['./mvnw', '-q', 'verify']}]|[]|True|False" \
+  "$(python3 -I - "$REPO_ROOT/scripts" <<'PYT'
+import sys; sys.path.insert(0, sys.argv[1])
+import maven_loop as m
+print('|'.join([str(m.maven_parts('FOO=1 cd backend && ./mvnw -q verify')), str(m.maven_parts('true')), str(m.is_maven('mvn test')), str(m.is_maven('cd b && mvn test'))]))
+PYT
+)"
 
 # --- F6. The Context Map: the plan gate row, the Context check as the CLI's own question, and plan review ---
 _cmap() { # _cmap <reviewed line> [entry lines...]: plan.md with a Context Map at the top
@@ -421,7 +434,7 @@ _cmap pending '- use: intent.md - scope' '- ignore: .temper/specs/old/ - other s
 "$TEMPER" plan review --answer "Narrow the focus" --focus "src/auth/" >/dev/null 2>&1
 assert_eq "F6: plan review writes the answer and focus into the map and sets reviewed: human" "1|1|1|0" \
   "$(grep -c '^- answer: Narrow the focus' .temper/specs/demo/plan.md)|$(grep -c '^- focus: src/auth/' .temper/specs/demo/plan.md)|$(grep -c '^- reviewed: human' .temper/specs/demo/plan.md)|$(grep -c 'reviewed: pending' .temper/specs/demo/plan.md)"
-assert_exit "F6: an answer over 100 characters is refused" 1 "$TEMPER" plan review --answer "$(printf 'y%.0s' $(seq 1 130))"
+assert_exit "F6: an answer over 2000 characters is refused (9.8.5: 100 refused the Include option's own text)" 1 "$TEMPER" plan review --answer "$(printf 'y%.0s' $(seq 1 2010))"
 # the question in next and the view
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '\n### Open Questions\n\n- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.\n' >> .temper/specs/demo/intent.md

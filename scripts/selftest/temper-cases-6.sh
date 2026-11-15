@@ -7,6 +7,8 @@
 # --accept-foreign and a reason (recorded like an override, shown by temper report); (d) the group gate checks that every passed
 # task's commit is still on the group branch; (e) a FAIL without a foreign commit discards the attempt's worktree and retries or
 # escalates (D-03).
+# run on its own (9.8.5), case 5's helpers come from the generated file; after case 5 they are defined already
+declare -F st_setup >/dev/null || source "$TESTS_DIR/case-helpers-5.sh"
 T2W=".claude/worktrees/temper-demo-T2"
 d_setup() { f_setup; }
 d_red() { ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1; }

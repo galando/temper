@@ -28,7 +28,7 @@ tools:
     mode: off
 
 review:
-  block-on: [critical]        # severities that fail the review gate
+  block-on: [critical, high]  # severities that fail the review gate (9.8.5: high blocks by default)
 
 check:
   coverage-threshold: 80      # the check gate requires recorded coverage >= this
@@ -105,6 +105,9 @@ plan:
   fresh-review: ask                 # a reviewer with no context reads the plan: ask (the plan question offers it); auto (medium, complex); always; off
   fresh-review-twice: true          # a risk H plan gets two independent fresh reviewers (A and B)
   fresh-review-rounds: 3            # launches of the fresh review in one run, at most
+  # The preflight runs every Validate, Test and Integration command of the plan once on HEAD, before Build.
+#  preflight-timeout: 300           # seconds per command; over it is an environment fault
+#  preflight-skip: "<reason>"       # only you skip it, with a reason; the plan ledger and the gate row show it
 phases:
   design: true                 # design stage for medium/complex features (auto-skipped otherwise)
   pipeline: true               # false: no Pipeline stage after a Commit that opened a pull request
@@ -140,8 +143,29 @@ loops:
 autonomy:
   # enabled is no longer read (9.8.0): the unattended run is offered at the last question before Build in every run.
   max-blast-radius: 15         # the plan gate splits a group that declares more files than this
+  # policy: decide             # when you arm a run, Review and Check decide by fixed rules too: a failed check loops back
+  #                            # within the loop budget, findings at medium or above are repaired, nothing is overridden;
+  #                            # anything else and the commit still ask you. Default: ask (Review and Check ask you).
   # Folder-name patterns over paths in your project only (any path before and after).
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
   budget:
     max-total-loops: 4
     max-stages: 12
+
+build:
+  # red-before-code: false     # true: a task's failing run (RED) counts only on the code as the attempt found it, with
+  #                            # no stub (for compiled languages, where a compile failure is the RED)
+evidence:
+  # claimed-runs: ignore       # a test run counts at a gate only when the CLI ran it (evidence run, a task test, Check).
+  #                            # count: also a run an agent only claimed with evidence add --exit (before 9.8.5).
+
+# The environment contract: what every command the CLI runs, and every agent, needs first. No block: as before.
+# The run line runs in the same shell before each command (keep it idempotent; it cannot hold " #"). A variable whose
+# name says it holds a credential (PASSWORD, TOKEN, KEY, SECRET, ...) is never set or shown. `temper doctor` reads it.
+# setup:
+#   run: eval "$(scripts/ensure-jdk24.sh --export)" && (pg_isready -q || pg_ctlcluster 16 main start)
+#   env:
+#     IT_POSTGRES_PORT: 5432
+#   services:
+#     postgres: 127.0.0.1:5432
+#   tools: [java, mvn]

@@ -118,8 +118,9 @@ The group gate keeps the first FAIL lines of its Validate output and counts its 
 (`groups.json`: `gate.fail_lines`, `gate.ran`, `fails`). The question shows the first three lines. When
 every task of the group passed and its check ran and failed, the first and recommended option is one Build
 fix agent on the group's merged tree (`temper group fix G<n>`; the agent's work is committed by
-`temper group fix G<n> --commit`, which also clears the group's gate, so the next action checks the group
-again as an ordinary CLI call and a FAIL there asks the question again). From the second failure on, "Run the
+`temper group fix G<n> --commit`, which also clears the group's gate when the agent changed something, so the next
+action checks the group again as an ordinary CLI call and a FAIL there asks the question again; see 9.8.5 below for a
+fix that changed nothing). From the second failure on, "Run the
 group's tasks again" is never recommended. The fix is recommended once (`fix_tries`): when it did not make the group
 pass, the loop back to Plan is recommended, or Save for later when that step is spent, so following the
 recommendation always ends.
@@ -127,6 +128,138 @@ recommendation always ends.
 To read a failure, the session runs `temper output G<n>` (the group's last Validate run: its command, exit,
 FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed
 run). It is read only; with the mod on, the session may run the CLI but not `printenv` or a test runner.
+
+### The preflight, the setup block and an environment fault (9.8.5)
+
+**The preflight.** `temper gate plan` has a `preflight` row (`scripts/preflight.py`). It runs each distinct Validate,
+task Test, Integration and scenario `Test:` command of the plan once, in a detached worktree of HEAD that it removes
+after, and sorts each result into one of four classes: `passes`; `needs new code` (the tests of code not written yet
+fail on the base; this does not fail the row); `environment fault` (a `temper-setup: FAIL` line, the time limit, the
+Maven enforcer's `which is not in the allowed range` reported as `needs JDK <range> (found <version>)`, an unsupported
+class file version, `Connection refused`, the command's own program not found, an uncached dependency offline);
+`command fault` (`Rule violated for bundle`, `Coverage checks have not been met`, tests that pass followed by
+`BUILD FAILURE`, an unknown phase or option). Either fault fails the row, which quotes the last 20 lines of the output
+plus every `Failed to execute goal` and `Rule violated` line. Each command has `plan.preflight-timeout` seconds (300).
+The result is stored in `.temper/preflight.json` with a key of HEAD, the command texts, the setup block and the time
+limit; every later `gate plan` reads it while that key holds, so the commands run once per plan.
+`temper plan preflight` runs them again. `plan.preflight-skip: "<reason>"`, which only the person writes, skips the row
+(it passes and says `skipped by the person: <reason>`; the plan ledger gets one row); a skip with no text fails it.
+
+**The setup block.** `setup:` in `.claude/temper.config` holds `run:` (one shell line), `env:`, `services:` and
+`tools:`. `scripts/run_env.py` runs the line in the same shell before every command the CLI runs (task tests, group
+and scenario checks, integrate, Check, the preflight), prints `temper-setup: OK`, and adds the variables; a failing
+line prints `temper-setup: FAIL (exit N)` and exits 125. A variable whose name says it holds a credential is never set
+or shown. Every agent prompt ends with an `Environment setup` line that carries the run line and the variables. No
+block: every command and prompt is as before. The person rarely writes the block: when the preflight or Check fails on
+the environment and there is none, the question offers `Add the proposed setup block (Recommended)`, made by
+`temper doctor --propose` from the project's own files and its CI, or `Let an agent find the setup` when no rule fits;
+either block is written only after the CLI reran the failing commands with it and they no longer fail on the
+environment (`docs/commands.md`).
+
+**An environment fault at a task gate.** When the last run of a task's attempt is a failing GREEN, a RED came before
+it, nothing else is wrong, and the output names an environment fault, `temper task gate` prints `ENV: Task N failed on
+the environment, not on the code: <reason>`, exits 0, spends no attempt, keeps the worktree and the status `running`,
+and marks the task `env_fault` in `groups.json`. `temper next` then asks, in every mode: `Check it again
+(Recommended)` (runs `task test N --phase green` and `task gate N --model M`) or `Save for later`. Here a time-out is
+the code's, as before: it spends the attempt. Any status move clears the mark.
+
+### Decisions, findings and integrate (9.8.5)
+
+**A Design answer reaches the tasks.** `temper intent answer 'Design: ...'` keeps the answer with the hash `tasks.md` has
+at that moment (`.temper/decisions.json`, `scripts/decisions.py`). The Design gate's row `tasks agree with decisions`
+fails while `tasks.md` is still that file: the answer may replace a rule a task or a scenario still carries, and the CLI
+cannot read which. The Design question then recommends `Loop back to Plan`; the person may instead override with the
+reason `The tasks already agree`, which the report shows. Each Build task prompt lists the Design answers, newest
+first, as decisions that win over `tasks.md`.
+
+**High findings block.** `review.block-on` defaults to `[critical, high]`. A passed Review with an open finding at
+medium or above recommends `Loop back to Build`; both Review questions name the open findings per level
+(`open findings: 1 high, 2 medium`).
+
+**Integrate after new commits.** `temper integrate` records the HEAD it passed on. Called again on a PASS, it runs the
+whole Integration command again when HEAD moved since (a fix pass committed), records the new verdict, then the
+scenario tests, as before.
+
+### Failure text, the SETUP verdict and recommendations that follow the evidence (9.8.5)
+
+**What failed.** A failed group check keeps its failure lines most telling first: a time-out (exit 124) says so; then
+the build tool's own summary (the last Maven `Failed to execute goal` line, `Rule violated` lines, failed test names);
+then the lines that say FAIL, ERROR or an exception, without the log lines a passing test printed
+(`20:01:44.264 [main] ERROR ...`). With none, the last three lines, never the first. An armed run's park reason keeps
+1200 characters of it.
+
+**No empty fix pass.** Build's fix pass after integrate gets the integrate verdict and the Build gate's failed rows in
+its prompt. When nothing names a fault (no feedback, no failed row, no note of the person), no agent is launched: the
+CLI runs `integrate` and `gate build` again, and a failure there names the fault.
+
+**A fix that changed nothing.** `temper group fix G<n> --commit` with no change keeps the group's check failed (the same
+tree would fail the same way, so it does not run again) and counts `fix_empty`. The next question recommends the loop
+back to Plan (or Save for later), and says the cause is the plan's command or the environment. "Run the gate again with
+twice the time" is recommended only at the first time-out; later it is offered, not recommended.
+
+**SETUP at Check.** When the suite or the acceptance run of Check fails on its environment (a project marker
+`<script>: SETUP: <reason>`, or the preflight's environment rule: a JDK out of range, `Connection refused`, a failed
+setup line), Check records a `setup fault: <reason>` row beside the red suite row, so the gate still fails. The
+question says `SETUP`, offers `Repair the environment and run again (Recommended)` first, and never recommends a loop
+back. Rows no longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe` warnings).
+
+**Overrides at the commit gate.** `Override and commit` clears a failed stage gate the commit gate names. It never
+cleared the commit gate's own rows (blast radius, scope, park-on-touch), so it is no longer offered for them; the question
+says what to change instead, and `Add to plan` stays for files outside the plan.
+
+**Questions.** A question has four options at most; the CLI puts the rest under `More options`. The Context check
+accepts an answer of up to 2000 characters (the `Include what is left out` option carries the whole list); plan.md
+shows its first 100.
+
+### A plan patch (9.8.5)
+
+`temper plan patch G<n>|task N|integration --cmd '<command>'` changes one command line of the approved `tasks.md`
+(a group's Validate, a task's Test, the Integration line) and nothing else (`scripts/plan_patch.py`). The passed tasks
+keep their work, no loop is spent, the approved plan's hash follows the change, a patched group's check runs again, and
+the plan ledger records the old and the new line as the person's. It refuses a `tasks.md` that differs from the
+approved plan in anything else (that is a loop back to Plan). It is the person's: the group question offers `Change
+the group's command`, recommended when the cause is the command (a second time-out, or a fix agent that changed
+nothing), and the person types the command. The mod lets it run only as that answer.
+
+### The run policy (9.8.5)
+
+`autonomy.policy: decide` in `.claude/temper.config` (only the person writes it) extends an armed run past Build. The
+person still arms the run at the last question before Build; the option's text then says the policy applies. After
+Build passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the
+question: an open finding at medium or above loops back to Build with the findings as the reason; a clean Review goes
+on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only while
+`loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. A failed group check during Build
+takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again, a loop back to
+Plan) when no person is needed for it; a typed command, Save for later or a spent budget park the run. An environment fault (SETUP), a
+missing measurement, a failed acceptance test, a spent budget and the commit park the run for the person, as an armed
+Build does. With the key absent or `ask`, every gate after Build asks, as before.
+
+### Evidence, the lock, a backup push and a note (9.8.5)
+
+- **A reused pass.** A group check or the Integration suite that passed with the same command and setup on the same
+  clean tree (`git rev-parse HEAD^{tree}`, no change outside `.temper/`) passes again without running; its row says
+  `reused` and when it ran. Kept in the git folder (`temper-results.json`), shared by every worktree. A failure always
+  runs again.
+- **The lock.** A write waits for a live holder of `.temper/.lock` up to `TEMPER_LOCK_MAX_S` (120 s) and breaks a gone
+  holder's old lock. Past that it fails with exit 75 and writes nothing; it never writes past the lock.
+- **The failing-first proof.** `task start` records each declared code file (not its tests) as the attempt finds it, and a
+  RED run records them again. A RED whose code files are already the final code, when this attempt wrote that code,
+  does not count: the gate says the RED was made on the final code. This holds for every attempt, a retry or a reopen
+  included (kept code from before is the attempt's start). A stub before the RED is allowed by default (in Python a
+  missing function makes pytest exit 2, which is no RED); `build.red-before-code: true` allows none: the RED must run
+  on the code as the attempt found it, so a compile failure is the RED.
+- **Interfaces.** The integrate check finds a planned signature as written, or with the same shape once type names are
+  unqualified (an imported `AgencyHealth` for a planned `MonitoringSummary.AgencyHealth`, and the reverse).
+- **The person's note** (`evidence add --phase note --kind input`) is labelled `PERSON`, not `HEURISTIC`.
+- **Runs the CLI saw.** The Build gate's `RED then GREEN` row and Check's `tests pass` row count a test run only when the CLI
+  ran it (`temper evidence run`, a task test, a group check, integrate, Check) or the person confirmed it
+  (`scripts/runs.py`). A run an agent recorded with `evidence add --exit` is a claim and counts nowhere, unless the
+  config says `evidence.claimed-runs: count`. `temper evidence void --stage S --id N --reason R` marks a false pass void:
+  the row stays, `evidence list` shows `[void: R]`, and it counts in no mode. Only a pass is voided.
+- **A backup push.** During a run the mod lets the session push the run's work to a `temper-backup/` branch
+  (`git push origin HEAD:temper-backup/<name>`); no force, delete, mirror, all or tags. Any other push stays refused.
+- **A note in the question.** `temper state set ask_note '<step>: <text>'` adds the orchestrator's note to the question
+  of that step, marked `Note from Claude (not from Temper)`; the options stay the CLI's.
 
 ## `.temper/view.json`
 

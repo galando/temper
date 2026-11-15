@@ -386,10 +386,11 @@ REASON="it is \`touch PWNED6\` and it's fine"; Q="${REASON//\'/\'\\\'\'}"
 assert_eq "round 2, 10: a reason put in its placeholder as the page says is kept as written, and runs nothing" "0|1" \
   "$([[ -e PWNED6 ]] && echo 1 || echo 0)|$(grep -c 'touch PWNED6' .temper/overrides.json)"
 assert_eq "round 2, 10: no call of flow.py puts a placeholder of the person's text in double quotes" "0" "$(grep -cE '\"\{(reason|text)\}|#\{K\}: \{text\}\"' "$REPO_ROOT/scripts/flow.py")"
-# 11. Override and commit after a park on a commit row of its own (blast radius) records the person's skip.
+# 11. A commit row of its own (blast radius) is not cleared by an override of the commit check (9.8.5, Q8: the same question
+# came back after it), so the override is not offered there; Add to plan is.
 fresh; _walk_to_commit; gfail commit "blast radius" "changed outside declared files: src/x"
-assert_eq "round 2, 11: Override and commit skips the commit check with the person's reason" "override commit --reason" \
-  "$(nx "' '.join([o for o in d['ask']['options'] if o['label'] == 'Override and commit'][0]['calls'][0].split('temper ', 1)[1].split()[:3])")"
+assert_eq "round 2, 11: no Override and commit for the commit gate's own row; Add to plan is first" "Add to plan (Recommended)|0" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + str(sum(1 for x in o if x['label'] == 'Override and commit'))")"
 # 12. The Design door of a run with no Design stage enters at Build: the stages before are walked, not run again.
 setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; "$TEMPER" state set complexity simple >/dev/null 2>&1
 assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
@@ -577,6 +578,8 @@ assert_eq "9.8.4 2c: with the step back to Plan spent, Save for later is recomme
 # --- 9.8.4 reverify: the fix pass ends with the CLI's scenario run; Build that fails the same way after running again is not run again ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+# 9.8.5 (S7): a fix pass needs a fault to fix; here the person's note is that fault
+"$TEMPER" evidence add --stage build --phase note --kind input --claim "the export drops refunds" >/dev/null 2>&1
 assert_eq "9.8.4 reverify: the fix pass of an integrated run reruns the scenario tests before the Build gate" "integrate|gate build" \
   "$(nx "a = d['agents'][0]['after']; a[-2].split('temper ', 1)[1] + '|' + a[-1].split('temper ', 1)[1]")"
 gfail build "tests pass" "the last test run failed"

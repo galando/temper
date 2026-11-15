@@ -55,6 +55,7 @@ describe('9.7.5: the calls only the person may cause', () => {
     ['task accept', `${CLI} task accept 2 --reason 'built before'`],
     ['adhoc open', `${CLI} adhoc open --stage check --reason 'a fix'`],
     ['state set branch', `${CLI} state set branch feature/pw-2`],
+    ['plan patch', `${CLI} plan patch G1 --cmd 'make test-g1'`],   // 9.8.5: a patch changes the approved plan
   ]
   for (const [name, call] of calls) {
     test(`${name} is refused with no answer, and passes as the call an answer maps to`, () => {

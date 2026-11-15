@@ -22,13 +22,13 @@ the plugin folder.
    RED-then-GREEN pair; the "no unchecked tasks" requirement is skipped automatically —
    fixes have no `tasks.md`). Record as you go:
    ```
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "regression test" --cmd '<the exact test command>' --exit <code> \
-     --phase red --label HEURISTIC    # failing, before the fix
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "regression test" --cmd '<the exact test command>' --exit 0 \
-     --phase green --label PROVEN  # passing, after the fix
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage build \
+     --claim "regression test" --phase red -- <the exact test command>    # failing, before the fix
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage build \
+     --claim "regression test" --phase green -- <the exact test command>  # passing, after the fix
    ```
+   The CLI runs the command and records the exit code it saw; a run recorded with `evidence add --exit` is a claim
+   no gate counts (9.8.5).
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
    `$` in it stays text.
    As soon as RED is confirmed, also record the test's path — this arms the write
