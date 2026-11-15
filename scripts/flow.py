@@ -753,7 +753,7 @@ class Builder:
             # 9.8.4: the same failure after a Run again is not run again by the recommendation: the run converges on the
             # person (an e2e run that followed it relaunched Build's fix pass forty times on one failure)
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
-            same = redo.get("stage") == stage and str(redo.get("reason") or "") == why[:300]
+            same = redo.get("stage") == stage and same_failure(str(redo.get("reason") or ""), why[:300])
             again = self.opt("Run %s again" % label + ("" if same else " (Recommended)"), "Mend what the failed rows name, then check %s again." % label,
                              move="redo", calls=[self.c('state redo %s --reason %s' % (stage, shlex.quote(why[:300])))])
             if same:
@@ -853,7 +853,7 @@ class Builder:
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
-            same = gap and redo.get("stage") == "check" and str(redo.get("reason") or "") == ("the measurement was missing: " + why)[:300]
+            same = gap and redo.get("stage") == "check" and same_failure(str(redo.get("reason") or ""), ("the measurement was missing: " + why)[:300])
             again = [self.opt("Run Check again" + ("" if same else " (Recommended)"), "Install what the failed row names, then Check measures again; Build is not redone.",
                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))])] if gap else []
             if same:
@@ -2569,6 +2569,13 @@ def path_tokens(text):
 
 
 # ---- the view ----------------------------------------------------------------------------------
+
+def same_failure(a, b):
+    """9.8.5: two failure texts name the same failure when they differ only in their numbers (a count that grows each run,
+    `green=1` then `green=2`, made an end to end replay recommend "Run Build again" 72 times)."""
+    norm = lambda t: re.sub(r"\d+", "#", " ".join(str(t).split()))
+    return norm(a) == norm(b)
+
 
 def goes_on(plural):
     return "The run goes on when %s." % ("they return" if plural else "it returns")

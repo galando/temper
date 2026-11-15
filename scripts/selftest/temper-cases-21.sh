@@ -33,3 +33,21 @@ assert_eq "9.8.5: an Integration line is checked the same way" "False" "$(_frow 
 sed -i "s/^\*\*Integration:\*\* .*$/**Integration:** \`true\`/" .temper/specs/demo/tasks.md
 grep -q 'Test:' .temper/specs/demo/intent.md && sed -i "s/^\( *\)Test: .*/\1Test: $FILT/" .temper/specs/demo/intent.md
 assert_eq "9.8.5: a scenario Test is checked the same way" "False" "$(_frow | cut -d'|' -f2)"
+
+# --- 9.8.5 (found by the A/B replay): the two Maven rows agree on a group's Validate line ---
+_mv() { # _mv <Validate>: the plan rows of a plan whose G1 validates with the given line, on a pom that binds JaCoCo's check
+  fresh; f9_tasks > .temper/specs/demo/tasks.md; mkdir -p backend
+  printf '<project><build><plugins><plugin><groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><executions><execution><goals><goal>check</goal></goals><configuration><rules><rule><element>BUNDLE</element></rule></rules></configuration></execution></executions></plugin></plugins></build></project>\n' > backend/pom.xml
+  sed -i "s|^\*\*Validate:\*\* \`true\`\$|**Validate:** \`$1\`|" .temper/specs/demo/tasks.md
+  python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" auto | python3 -c "
+import json, sys
+rows = {r['name']: r for r in map(json.loads, sys.stdin)}
+print('|'.join(str(rows[n]['pass']) for n in ('maven group verify', 'maven filtered verify')) + '|' + rows['maven filtered verify']['detail'])"
+}
+assert_eq "9.8.5: an unfiltered verify on a pom that binds JaCoCo's check passes both Maven rows (no jacoco word needed)" "True|True|no filtered verify under a JaCoCo bundle rule" \
+  "$(_mv 'cd backend \&\& mvn -s settings.xml verify -DskipITs')"
+OUT="$(_mv "cd backend \&\& mvn verify -Dtest=ATest -DskipITs")"
+assert_eq "9.8.5: a filtered verify as a group's Validate is told to drop the filter, which the group row accepts" "True|False|True" \
+  "$(cut -d'|' -f1,2 <<<"$OUT")|$(grep -q "drop the filter: \`mvn verify\` runs the whole module with JaCoCo on" <<<"$OUT" && echo True || echo False)"
+assert_eq "9.8.5: verify with -Djacoco.skip=true does not count as JaCoCo on" "False" "$(_mv 'cd backend \&\& mvn verify -Djacoco.skip=true' | cut -d'|' -f1)"
+rm -rf backend

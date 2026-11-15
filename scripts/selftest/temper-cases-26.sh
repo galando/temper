@@ -67,3 +67,16 @@ printf '## Context Map\n- use: src/ (3 files)\n- reviewed: pending\n\n## Plan\n'
 LONG="Include what is left out: packages 2 to 4 (decisions to tasks, finding levels, failure text, SETUP verdict, reuse); the RCA prompt"
 assert_eq "9.8.5: a long Context answer is accepted; plan.md keeps a line that fits the map" "0|True" \
   "$("$TEMPER" plan review --answer "$LONG" >/dev/null 2>&1; echo $?)|$(python3 -c "import sys; print(all(len(l) <= 100 for l in open('.temper/specs/demo/plan.md').read().splitlines()))")"
+
+# --- 9.8.5 (found by the A/B replay): a failure whose text differs only in a count is the same failure ---
+assert_eq "9.8.5: same_failure ignores the numbers, not the words" "True|False" \
+  "$(python3 -I -c "
+import sys; sys.path.insert(0, sys.argv[1]); import flow
+print(str(flow.same_failure('RED then GREEN: have red=0 green=1', 'RED then GREEN: have red=0 green=2')) + '|' + str(flow.same_failure('tests pass: unit failed', 'coverage: 40 < 80')))" "$REPO_ROOT/scripts")"
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+gfail build "RED then GREEN" "need >=1 failing test run (RED) and >=1 passing run (GREEN); have red=0 green=1"
+"$TEMPER" state redo build --reason "RED then GREEN: need >=1 failing test run (RED) and >=1 passing run (GREEN); have red=0 green=1" >/dev/null 2>&1
+gfail build "RED then GREEN" "need >=1 failing test run (RED) and >=1 passing run (GREEN); have red=0 green=2"
+assert_eq "9.8.5: the same failure with a grown count recommends Save for later, not Run Build again (it looped 72 times)" "Save for later (Recommended)" \
+  "$(nx "d['ask']['options'][0]['label']")"
