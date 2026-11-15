@@ -434,7 +434,7 @@ _cmap pending '- use: intent.md - scope' '- ignore: .temper/specs/old/ - other s
 "$TEMPER" plan review --answer "Narrow the focus" --focus "src/auth/" >/dev/null 2>&1
 assert_eq "F6: plan review writes the answer and focus into the map and sets reviewed: human" "1|1|1|0" \
   "$(grep -c '^- answer: Narrow the focus' .temper/specs/demo/plan.md)|$(grep -c '^- focus: src/auth/' .temper/specs/demo/plan.md)|$(grep -c '^- reviewed: human' .temper/specs/demo/plan.md)|$(grep -c 'reviewed: pending' .temper/specs/demo/plan.md)"
-assert_exit "F6: an answer over 100 characters is refused" 1 "$TEMPER" plan review --answer "$(printf 'y%.0s' $(seq 1 130))"
+assert_exit "F6: an answer over 2000 characters is refused (9.8.5: 100 refused the Include option's own text)" 1 "$TEMPER" plan review --answer "$(printf 'y%.0s' $(seq 1 2010))"
 # the question in next and the view
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '\n### Open Questions\n\n- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.\n' >> .temper/specs/demo/intent.md

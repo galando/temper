@@ -121,15 +121,26 @@ def show(out, rc, keep=12):
     sys.stdout.flush()
 
 FAIL_LINE = re.compile(r'\bFAIL(?:ED|URE|S)?\b|\bERROR\b|^not ok\b|^E\s+\S|Error:')
+# 9.8.5 (S4): a log line a passing test printed (`20:01:44.264 [main] ERROR com.x.Y -- ...`) says nothing about the run
+LOG_LINE = re.compile(r'^\d{1,2}:\d{2}:\d{2}(?:[.,]\d+)?\s+\[[^\]]*\]\s+(?:ERROR|WARN)\b')
+# the build tool's own summary of what failed, before any other line: Maven's goal, a JaCoCo rule, a failed test's name
+SUMMARY = (re.compile(r'temper-setup: FAIL'), re.compile(r'Failed to execute goal'), re.compile(r'Rule violated'),
+           re.compile(r'^\[ERROR\]\s+(?:Tests run:.*FAILURE|[\w.$]+\.\w+:\d+\b)'), re.compile(r'<<< (?:FAILURE|ERROR)!'))
 
-def fail_lines(out, keep=8):
-    """9.8.4: the lines of a failing run that say what failed (FAIL, FAILED, ERROR, not ok, an exception), first ones first,
-    read from the whole output; when none matches, the last three lines. A question shows the first few, so the person
-    reads the failure, not the tail of whatever the runner printed last."""
+def fail_lines(out, keep=8, rc=None):
+    """What a failing run says failed, most telling first: a time-out (exit 124); the build tool's summary (the last Maven
+    `Failed to execute goal` line, `Rule violated` lines, the names of failed tests); then the lines that say FAIL, FAILED,
+    ERROR, not ok or an exception, first ones first, without the log lines a passing test printed. With none of these, the
+    LAST three lines of the output, never the first (9.8.4, 9.8.5)."""
     lines = [' '.join(l.split()) for l in out.decode('utf-8', 'replace').splitlines()]
     lines = [l[:240] for l in lines if l]
-    hits = list(dict.fromkeys(l for l in lines if FAIL_LINE.search(l)))
-    return hits[:keep] if hits else lines[-3:]
+    head = ['the command did not finish within its time limit (exit 124)'] if rc == 124 else []
+    for pat in SUMMARY:
+        found = [l for l in lines if pat.search(l)]
+        head += found[-1:] if pat.pattern == 'Failed to execute goal' else found[:4]
+    hits = [l for l in lines if FAIL_LINE.search(l) and not LOG_LINE.search(l)]
+    picked = list(dict.fromkeys(head + hits))
+    return picked[:keep] if picked else lines[-3:]
 
 def red_why(r):
     """Why a failing RED run is not evidence ('' when it is): the command never ran the tests."""
@@ -403,7 +414,7 @@ elif mode == 'grouprun':
            'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
            'output': out[-4096:].decode('utf-8', 'replace')}
     if rc != 0:
-        row['fail_lines'] = fail_lines(out)
+        row['fail_lines'] = fail_lines(out, rc=rc)
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 

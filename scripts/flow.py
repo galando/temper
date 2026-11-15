@@ -485,6 +485,12 @@ class Builder:
         return o
 
     def question(self, header, text, options, stage, more=None, extra=None):
+        if len(options) > 4 and more is None:
+            # 9.8.5: the question dialog takes four options at most (a group question once had five, and the session could
+            # only drop one): the first three, then "More options" with the rest, as with_more does.
+            rest = options[3:]
+            more = self.question(header, text.split("?")[0] + "? More options.", rest, stage)
+            options = options[:3] + [self.opt("More options", ", ".join(o["label"] for o in rest), do="Ask the more question.")]
         q = {"header": header, "question": text, "multiSelect": False,
              "options": [{"label": o["label"], "description": o["description"]} for o in options]}
         out = {"stage": stage, "step": self.r.state.get("step"), "run_id": self.r.state.get("run_id"),
@@ -816,6 +822,16 @@ class Builder:
                 return self.question(GATE_HEADER, text, stage=stage, options=[
                     self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls)]
                     + back_opt() + [self.save()])
+            setup = self.setup_fault()
+            if setup:
+                # 9.8.5 (Q6): the environment was not ready (no database, the wrong JDK, a failed setup line). Nothing in the
+                # code is wrong, so a loop back is never recommended: repair the environment, then Check runs again.
+                fix = self.opt("Repair the environment and run again (Recommended)",
+                               "temper doctor shows what is missing; the setup: block of .claude/temper.config makes it ready. Then Check runs again.",
+                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))])
+                return self.question(GATE_HEADER, "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. "
+                                     "Repair it and run Check again?" % setup, stage=stage,
+                                     options=[fix, self.save()] + back_opt(rec=False) + [override_opt(go)])
             gap = self.measurement_gap(r.failed_rows("check"))
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times
@@ -1101,6 +1117,25 @@ class Builder:
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
                 "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+
+    def setup_fault(self):
+        """9.8.5 (Q6): the reason Check's latest run hit the environment (a `setup fault:` row after its last suite row), or ""."""
+        rows = [x for x in read_json(os.path.join(TEMPER, "evidence", "check.json"), []) if isinstance(x, dict)]
+        last = max((i for i, x in enumerate(rows) if str(x.get("claim", "")).startswith("tests: the suite")), default=-1)
+        hits = [x for x in rows[last + 1:] if str(x.get("claim", "")).startswith("setup fault: ")]
+        return " ".join(hits[-1]["claim"][len("setup fault: "):].split())[:300] if hits else ""
+
+    def fault_lines(self):
+        """9.8.5 (S7): what failed at Build when no loop carries feedback: the integrate verdict, then the gate's failed rows."""
+        r = self.r
+        out = []
+        integ = r.groups.get("integration") or {}
+        if integ.get("verdict") == "FAIL" and integ.get("reason"):
+            out.append("What failed: integrate: %s." % " ".join(str(integ["reason"]).split())[:600])
+        rows = ["%s: %s" % (x.get("name"), " ".join(str(x.get("detail", "")).split())[:300]) for x in r.failed_rows("build")[:4]]
+        if rows:
+            out.append("What failed at the Build gate: %s." % "; ".join(rows))
+        return out
 
     def feedback_lines(self):
         fb = self.r.latest_feedback()
@@ -1513,7 +1548,13 @@ class Builder:
         # run whose code an earlier run built (built_before, from the walked Build's check) mends it the same way.
         before = r.state.get("built_before") and not rg
         if (integ and gid and all(gpass(g) for g in gid)) or before:
-            a = self.agent("build", self.feedback_lines())
+            lines = self.feedback_lines() or self.fault_lines()
+            if not lines and not r.notes("build", "input"):
+                # 9.8.5 (S7): a fix pass with no fault in its prompt fixes nothing (a measured launch said so): the CLI
+                # checks Build again, and a failure there names the fault for the next pass
+                return {"action": "auto", "stage": "build", "calls": ([self.c("integrate")] if integ and not before else []) + [self.c("gate build")],
+                        "say": "Build: nothing names a fault to fix, so the CLI checks Build again first."}
+            a = self.agent("build", lines)
             # 9.8.4: the CLI runs the scenario tests on the fixed tree (integrate does when the groups are merged already),
             # so no record pass of a model is needed after a step back that cleared Build's rows
             if integ and not before:
@@ -1812,7 +1853,7 @@ class Builder:
         reason = reason if len(reason) <= 300 else reason[:297] + "..."
         fl = self.fail_text(ginfo)
         if self.r.armed():  # nobody is there to answer: an armed run parks, as on every stop
-            why = (reason[:200] + (" | " + fl if fl else ""))[:400]
+            why = (reason[:300] + (" | " + fl if fl else ""))[:1200]   # 9.8.5 (S4): the whole failure, not its first 400 characters
             return {"action": "auto", "stage": "build",
                     "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],
                     "say": "Group %s failed its check; the armed run parks for you." % gid}
@@ -1827,16 +1868,19 @@ class Builder:
         tried = int(ginfo.get("fix_tries") or 0)
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = []
-        limit = int(gate.get("timeout_s") or 0)
-        if limit:  # the gate ran out of time, not out of luck: the same checks again with twice the limit
-            opts.append(self.opt("Run the gate again with twice the time (Recommended)", "Group %s's checks run again, limit %d seconds." % (gid, 2 * limit),
-                                 move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * limit))]))
-        fix_rec = fixable and not limit and not tried
+        empty = int(ginfo.get("fix_empty") or 0)   # 9.8.5 (S8): a fix agent that changed nothing: the code is not the cause
+        timed = int(gate.get("timeout_s") or 0)
+        limit = timed if fails < 2 and not empty else 0   # a second time-out points at the plan's command: offered, not recommended
+        if timed:  # the gate ran out of time, not out of luck: the same checks again with twice the limit
+            opts.append(self.opt("Run the gate again with twice the time" + (" (Recommended)" if limit else ""),
+                                 "Group %s's checks run again, limit %d seconds." % (gid, 2 * timed),
+                                 move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * timed))]))
+        fix_rec = fixable and not limit and not tried and not empty
         fix = self.opt("Fix the group's merged work" + (" (Recommended)" if fix_rec else ""),
                        "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
                        move="redo", calls=[self.c("group fix %s" % gid)]) if fixable else None
         back = self.r.can_loop("build", "plan")
-        rerun_rec = not limit and not fixable and fails < 2
+        rerun_rec = not limit and not fixable and fails < 2 and not empty
         rerun = self.opt("Run the group's tasks again" + (" (Recommended)" if rerun_rec else ""), "Each task of %s runs again." % gid, move="redo", calls=reopen)
         plan_rec = not limit and not fix_rec and not rerun_rec and back
         loop = self.opt("Loop back to Plan" + (" (Recommended)" if plan_rec else ""), "The plan cannot be built as written.", move="back",
@@ -1856,10 +1900,14 @@ class Builder:
         opts += [o for o in rest if o]
         if not save_rec:
             opts.append(save)
+        opts.sort(key=lambda o: 0 if o["label"].endswith("(Recommended)") else 1)   # the recommended option first
         text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
         if fl:
             text += " What failed: %s." % fl
-        if tried and fixable:
+        if empty:
+            text += (" A fix agent changed nothing, so the cause is not in the group's code: the plan's command or the "
+                     "environment is (temper doctor shows the environment).")
+        elif tried and fixable:
             text += " A fix of its merged work did not make it pass" + (": the plan is the likelier cause." if back else ".")
         text += (" Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
                  " Save the run for later?" if save_rec else " Run its tasks again?")
@@ -2067,7 +2115,9 @@ class Builder:
         failing = sorted({re.sub(r"\s+gate$", "", str(x.get("name", ""))) for x in r.failed_rows("commit") if str(x.get("name", "")).endswith(" gate")})
         # Only rows of the commit gate's own failed (an armed run's blast radius or park-on-touch): the person's skip is
         # of the commit check itself, recorded with their reason like any other.
-        failing = failing or ["commit"]
+        # 9.8.5 (Q8): an override clears a failed stage gate the commit gate names; it never clears the commit gate's own rows
+        # (blast radius, scope, park-on-touch), so it is not offered for them (a run asked the same question again after it)
+        own = not failing
         opts = []
         # 9.8.0: files changed outside the plan (the scope row): the person adds them to the plan here, the same answer as
         # "Add to plan" at a Scope drift question (a drift row in the Build ledger), and the commit gate runs again.
@@ -2084,12 +2134,15 @@ class Builder:
         if r.command == "fix" and "check" in failing and r.can_loop("check", "fix"):
             opts.append(self.opt("Loop back to Fix (Recommended)", "Write the fix again; Review and Check run again.", move="back",
                                  calls=[self.c("state loop check fix --reason '{reason}'")], reason=["The check found a real problem"]))
-        opts.append(self.opt("Override and commit", "Skip the failed gates with your reason and commit.", move="commitOverride",
-                             calls=[self.c("override %s --reason '{reason}'" % s) for s in failing] + [self.c("gate commit")],
-                             reason=["I accept the risk", "It is not a real issue"]))
+        if not own:
+            opts.append(self.opt("Override and commit", "Skip the failed gates with your reason and commit.", move="commitOverride",
+                                 calls=[self.c("override %s --reason '{reason}'" % s) for s in failing] + [self.c("gate commit")],
+                                 reason=["I accept the risk", "It is not a real issue"]))
         opts.append(self.save())
         why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit")[:3])
-        return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: the commit gate failed (%s). Override and commit?" % why, stage="commit", options=opts)}
+        ask = ("Override and commit?" if not own else "Add the files to the plan?" if outside else
+               "An override does not clear this row: change what it names (the config's autonomy limits, or the change), then check again.")
+        return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: the commit gate failed (%s). %s" % (why, ask), stage="commit", options=opts)}
 
     def restart(self):
         r = self.r

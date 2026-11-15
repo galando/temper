@@ -118,8 +118,9 @@ The group gate keeps the first FAIL lines of its Validate output and counts its 
 (`groups.json`: `gate.fail_lines`, `gate.ran`, `fails`). The question shows the first three lines. When
 every task of the group passed and its check ran and failed, the first and recommended option is one Build
 fix agent on the group's merged tree (`temper group fix G<n>`; the agent's work is committed by
-`temper group fix G<n> --commit`, which also clears the group's gate, so the next action checks the group
-again as an ordinary CLI call and a FAIL there asks the question again). From the second failure on, "Run the
+`temper group fix G<n> --commit`, which also clears the group's gate when the agent changed something, so the next
+action checks the group again as an ordinary CLI call and a FAIL there asks the question again; see 9.8.5 below for a
+fix that changed nothing). From the second failure on, "Run the
 group's tasks again" is never recommended. The fix is recommended once (`fix_tries`): when it did not make the group
 pass, the loop back to Plan is recommended, or Save for later when that step is spent, so following the
 recommendation always ends.
@@ -174,6 +175,37 @@ medium or above recommends `Loop back to Build`; both Review questions name the 
 **Integrate after new commits.** `temper integrate` records the HEAD it passed on. Called again on a PASS, it runs the
 whole Integration command again when HEAD moved since (a fix pass committed), records the new verdict, then the
 scenario tests, as before.
+
+### Failure text, the SETUP verdict and recommendations that follow the evidence (9.8.5)
+
+**What failed.** A failed group check keeps its failure lines most telling first: a time-out (exit 124) says so; then
+the build tool's own summary (the last Maven `Failed to execute goal` line, `Rule violated` lines, failed test names);
+then the lines that say FAIL, ERROR or an exception, without the log lines a passing test printed
+(`20:01:44.264 [main] ERROR ...`). With none, the last three lines, never the first. An armed run's park reason keeps
+1200 characters of it.
+
+**No empty fix pass.** Build's fix pass after integrate gets the integrate verdict and the Build gate's failed rows in
+its prompt. When nothing names a fault (no feedback, no failed row, no note of the person), no agent is launched: the
+CLI runs `integrate` and `gate build` again, and a failure there names the fault.
+
+**A fix that changed nothing.** `temper group fix G<n> --commit` with no change keeps the group's check failed (the same
+tree would fail the same way, so it does not run again) and counts `fix_empty`. The next question recommends the loop
+back to Plan (or Save for later), and says the cause is the plan's command or the environment. "Run the gate again with
+twice the time" is recommended only at the first time-out; later it is offered, not recommended.
+
+**SETUP at Check.** When the suite or the acceptance run of Check fails on its environment (a project marker
+`<script>: SETUP: <reason>`, or the preflight's environment rule: a JDK out of range, `Connection refused`, a failed
+setup line), Check records a `setup fault: <reason>` row beside the red suite row, so the gate still fails. The
+question says `SETUP`, offers `Repair the environment and run again (Recommended)` first, and never recommends a loop
+back. Rows no longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe` warnings).
+
+**Overrides at the commit gate.** `Override and commit` clears a failed stage gate the commit gate names. It never
+cleared the commit gate's own rows (blast radius, scope, park-on-touch), so it is no longer offered for them; the question
+says what to change instead, and `Add to plan` stays for files outside the plan.
+
+**Questions.** A question has four options at most; the CLI puts the rest under `More options`. The Context check
+accepts an answer of up to 2000 characters (the `Include what is left out` option carries the whole list); plan.md
+shows its first 100.
 
 ## `.temper/view.json`
 

@@ -77,10 +77,12 @@ def main(argv):
         return fail("git add in %s failed: %s" % (wt, out.splitlines()[-1] if out else "no output"))
     # the group is checked again by the next action, as an ordinary call of the CLI: its gate goes (the count stays)
     if git(wt, "diff", "--cached", "--quiet")[0] == 0:
+        # 9.8.5 (S8): no change means the cause is not in the group's code. The same tree would fail the same way, so its
+        # check stays failed (no rerun) and the next question points at the plan or the environment.
         g.pop("fix", None)
-        g.pop("gate", None)
+        g["fix_empty"] = int(g.get("fix_empty") or 0) + 1
         save(path, d)
-        print("OK: group %s: the fix agent changed nothing; the group is checked again as it is" % gid)
+        print("OK: group %s: the fix agent changed nothing, so the cause is not in the group's code; its check stays failed" % gid)
         return 0
     rc, out = git(wt, *id_args(), "commit", "-q", "-m", "fix(%s): %s group check" % (slug or "run", gid))
     if rc != 0:
