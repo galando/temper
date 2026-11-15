@@ -3598,6 +3598,8 @@ gate_plan() {
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
     done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$STATE_FILE" "$(_cfg_get plan.fresh-review ask)" "$(_cfg_get plan.fresh-review-twice true)" "$(_cfg_get plan.fresh-review-rounds 3)")"
+    g_line="$(python3 -E -s "$SCRIPTS_DIR/preflight.py" row "$spec_path" "$(pwd -P)" "$CONFIG_FILE" "$(_evidence_file plan)")"
+    reqs+=("$g_line"); grep -q '"pass": false' <<<"$g_line" && all_pass=0
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
