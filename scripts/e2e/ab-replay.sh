@@ -5,7 +5,7 @@
 # worktree. Needs bun. Nothing here touches the project's own .temper or branches.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../.." && pwd)"
+ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 BASE="${1:-7c7a1c1}"
 OUT="$(mktemp -d)"
 OLD="$OUT/base"
