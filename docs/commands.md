@@ -209,6 +209,24 @@ take up a `/temper` run at their stage, so there is one flow to keep right:
 
 ---
 
+### `temper doctor` (9.8.5)
+
+`scripts/temper doctor` shows the environment a run will use, and changes nothing: it writes no file, ledger, state or
+`view.json`. It prints three parts:
+
+- **Toolchain:** the first line of each tool's version (`setup.tools`, else java, mvn, python3, node and git), or
+  `not on PATH`. It reads the shell as it is.
+- **Setup block:** `none`, or the run line with `(not run by doctor: it may start a service)`, each variable as
+  `NAME=value`, and each credential name it left out.
+- **Services:** for each `setup.services` entry, `answering` or `not answering` (a TCP connect, 2 seconds).
+
+The mod lets it run during a run, as any CLI call. Use it when a gate says `environment fault` or `ENV:`.
+
+### `temper plan preflight` (9.8.5)
+
+Runs every command of the plan on HEAD again and stores the result the plan gate reads (see `docs/flow.md`). Run it
+when the environment changed and the commands and HEAD did not.
+
 ## `/temper:intent`
 
 Capture an idea as a draft `intent.md` — the artifact that starts the pipeline —

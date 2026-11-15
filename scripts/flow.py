@@ -27,6 +27,7 @@ import config_yaml
 import fresh_review
 import intent_parse
 import plan_ops
+import run_env
 import tasks_md
 from findings import finding_state  # the one state of a finding row, the CLI's own reading (A20)
 import loop_step
@@ -434,8 +435,19 @@ class Builder:
                 "command": r.command, "mode": r.state.get("run_mode") or "interactive"}
 
     def plugin_line(self):
-        return ("Plugin folder: %s; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT "
+        line = ("Plugin folder: %s; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT "
                 "variable, use this folder." % self.plugin)
+        return line + self.setup_line()
+
+    def setup_line(self):
+        """The project's environment contract (the setup: block of .claude/temper.config), one line, in every agent prompt.
+        No block: nothing (the prompt is as before). A credential-named variable is never shown (run_env.load_setup)."""
+        s = run_env.load_setup(self.r.ctx.get("config_file") or os.path.join(".claude", "temper.config"))
+        if not s:
+            return ""
+        env = ", ".join("%s=%s" % kv for kv in s["env"].items()) or "(none)"
+        return ("\nEnvironment setup (.claude/temper.config setup:): in each new shell, before a build or test command, "
+                "run: %s; variables: %s. The CLI applies it to every command it runs." % (run_env.mask(s["run"]) or "(none)", env))
 
     # -- options ---------------------------------------------------------------------------
     def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None, answer=None):
@@ -1536,6 +1548,9 @@ class Builder:
         covered = sorted(int(n) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "covered")
         if covered:
             return self.covered_task(covered[0], plan, rt.get(str(covered[0])) or {})
+        on_env = sorted(n for n, v in running if v.get("env_fault"))
+        if on_env:
+            return self.env_task(on_env[0], plan, rt.get(str(on_env[0])) or {})
         waiting_on_person = sorted(n for n, v in running if v.get("awaiting") == "confirm")
         if waiting_on_person:
             return self.manual_task(waiting_on_person[0], plan)
@@ -1659,6 +1674,21 @@ class Builder:
             opts.append(self.opt("Loop back to Plan", "The plan asks for work that is already done.", move="back",
                                  calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
         opts.append(self.save())
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+
+    def env_task(self, n, plan, info):
+        """A task whose GREEN run failed on the environment (a JDK, a database, the setup block), not on its code: it kept
+        its attempt and its worktree. The person repairs the environment; the same work is checked again. Asked in every
+        mode: an armed run cannot repair a toolchain."""
+        title = next((x.get("title", "") for x in plan.get("tasks", []) if x["n"] == n), "")
+        why = " ".join(str((info.get("env_fault") or {}).get("reason", "")).split())[:300]
+        model = self.ran_on(info)
+        text = ("Task %d (%s) failed on the environment, not on its code: %s. Its attempt and its work are kept. "
+                "Repair the environment (temper doctor shows it; the setup: block of .claude/temper.config applies it), "
+                "then check it again?" % (n, title, why or "no reason recorded"))
+        opts = [self.opt("Check it again (Recommended)", "Run the task's test again on the kept work and gate it; no attempt is spent.",
+                         move="redo", calls=[self.c("task test %d --phase green" % n), self.c("task gate %d --model %s" % (n, model))]),
+                self.save()]
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
 
     def manual_task(self, n, plan):

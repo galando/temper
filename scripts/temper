@@ -91,6 +91,7 @@ TEMPER_DIR="$REPO_ROOT/.temper"
 # TEMPER_CONFIG may name another config file to READ (the guard scripts pass the project's
 # own); nothing in this script ever writes to it.
 CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
+export TEMPER_SETUP_CONFIG="$CONFIG_FILE"   # the setup block (scripts/run_env.py)
 STATE_FILE="$TEMPER_DIR/build-state.json"
 LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
 GATES_FILE="$TEMPER_DIR/gates.json"
@@ -3144,6 +3145,11 @@ _task_gate_body() {
     echo "NEXT: temper next asks the person"
     return 0
   fi
+  if [[ "$verdict" == "ENV" ]]; then   # the environment failed, not the code: no attempt is spent, the worktree stays
+    _groups_mutate "d['tasks'][a[0]]['env_fault'] = {'reason': a[1], 'ts': a[2]}" "$n" "$reason" "$(_now)" || return 1
+    echo "ENV: Task $n failed on the environment, not on the code: $reason"
+    echo "NEXT: temper next asks the person to repair it and check again"; return 0
+  fi
   if [[ "$verdict" == "AWAIT" ]]; then   # a manual task: its files are made, the person confirms them by hand (F12)
     _groups_mutate "d['tasks'][a[0]]['awaiting'] = 'confirm'" "$n" || return 1
     echo "NEXT: temper next asks the person to confirm Task $n by hand"
@@ -4587,12 +4593,16 @@ _setup_calls() {
 # changes the plan: it is recorded as the person's note for Plan, and Plan runs again with it.
 cmd_plan() {
   _state_migrate_legacy
+  if [[ "${1:-}" == "preflight" ]]; then   # runs the plan's commands on HEAD again and stores the result (scripts/preflight.py)
+    local sp; sp="$(_spec_path "")"; [[ -d "$sp" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
+    python3 -E -s "$SCRIPTS_DIR/preflight.py" run "$sp" "$(pwd -P)" "$CONFIG_FILE" "$(_evidence_file plan)"; return
+  fi
   if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
     local rc; _lock_acquire
     python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds 3)" "$(_now)" "$(_evidence_file plan)"; rc=$?
     _lock_release; return $rc
   fi
-  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again" >&2; return 1; }
+  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan preflight" >&2; return 1; }
   shift
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
@@ -5040,6 +5050,7 @@ main() {
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
     plan) cmd_plan "$@" ;;
+    doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" ;;   # only reads
     guards) case "${1:-}" in
               uninstall) python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall ;;
               install) bash "$SCRIPTS_DIR/guards/install.sh" ;;   # 9.8.1: the commit gate, as a setup call of the CLI
@@ -5105,6 +5116,8 @@ Usage:
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
+  temper plan preflight                   (run every command of the plan on HEAD again; the plan gate reads it)
+  temper doctor                           (toolchain, setup block and services; only reads)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
   temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
@@ -5121,7 +5134,7 @@ EOF
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift) ;;
+    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor) ;;
     next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;

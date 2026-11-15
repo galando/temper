@@ -128,6 +128,36 @@ To read a failure, the session runs `temper output G<n>` (the group's last Valid
 FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed
 run). It is read only; with the mod on, the session may run the CLI but not `printenv` or a test runner.
 
+### The preflight, the setup block and an environment fault (9.8.5)
+
+**The preflight.** `temper gate plan` has a `preflight` row (`scripts/preflight.py`). It runs each distinct Validate,
+task Test, Integration and scenario `Test:` command of the plan once, in a detached worktree of HEAD that it removes
+after, and sorts each result into one of four classes: `passes`; `needs new code` (the tests of code not written yet
+fail on the base; this does not fail the row); `environment fault` (a `temper-setup: FAIL` line, the time limit, the
+Maven enforcer's `which is not in the allowed range` reported as `needs JDK <range> (found <version>)`, an unsupported
+class file version, `Connection refused`, the command's own program not found, an uncached dependency offline);
+`command fault` (`Rule violated for bundle`, `Coverage checks have not been met`, tests that pass followed by
+`BUILD FAILURE`, an unknown phase or option). Either fault fails the row, which quotes the last 20 lines of the output
+plus every `Failed to execute goal` and `Rule violated` line. Each command has `plan.preflight-timeout` seconds (300).
+The result is stored in `.temper/preflight.json` with a key of HEAD, the command texts, the setup block and the time
+limit; every later `gate plan` reads it while that key holds, so the commands run once per plan.
+`temper plan preflight` runs them again. `plan.preflight-skip: "<reason>"`, which only the person writes, skips the row
+(it passes and says `skipped by the person: <reason>`; the plan ledger gets one row); a skip with no text fails it.
+
+**The setup block.** `setup:` in `.claude/temper.config` holds `run:` (one shell line), `env:`, `services:` and
+`tools:`. `scripts/run_env.py` runs the line in the same shell before every command the CLI runs (task tests, group
+and scenario checks, integrate, Check, the preflight), prints `temper-setup: OK`, and adds the variables; a failing
+line prints `temper-setup: FAIL (exit N)` and exits 125. A variable whose name says it holds a credential is never set
+or shown. Every agent prompt ends with an `Environment setup` line that carries the run line and the variables. No
+block: every command and prompt is as before.
+
+**An environment fault at a task gate.** When the last run of a task's attempt is a failing GREEN, a RED came before
+it, nothing else is wrong, and the output names an environment fault, `temper task gate` prints `ENV: Task N failed on
+the environment, not on the code: <reason>`, exits 0, spends no attempt, keeps the worktree and the status `running`,
+and marks the task `env_fault` in `groups.json`. `temper next` then asks, in every mode: `Check it again
+(Recommended)` (runs `task test N --phase green` and `task gate N --model M`) or `Save for later`. Here a time-out is
+the code's, as before: it spends the attempt. Any status move clears the mark.
+
 ## `.temper/view.json`
 
 | Field | Meaning |

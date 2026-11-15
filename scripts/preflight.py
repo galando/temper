@@ -1,11 +1,14 @@
 """preflight.py: the plan gate's "preflight" row: every command of the plan, run once on the clean base (HEAD).
 
-  python3 preflight.py row SPEC PROJECT CONFIG LEDGER    prints the row as JSON
+  python3 preflight.py row SPEC PROJECT CONFIG LEDGER    prints the row as JSON (a stored result while it is current)
+  python3 preflight.py run SPEC PROJECT CONFIG LEDGER    runs the commands again and stores the result (temper plan preflight)
 
 Each distinct Validate, task Test, Integration and scenario Test command runs in a detached worktree of HEAD (a Maven task
 Test through maven_loop, as Build runs it), which is removed after. A command is sorted into one class: passes, environment
 fault, command fault or needs new code (the tests of new code fail on the base). Only the two faults fail the row.
 plan.preflight-timeout (default 300 s) limits each command; plan.preflight-skip "<reason>" skips the run, once in the ledger.
+The preflight runs once per plan: its result is stored in .temper/preflight.json with a key made of HEAD, the
+command texts, the setup block and the time limit, and the gate reads it while that key is unchanged.
 Standard library only.
 """
 import json
@@ -16,6 +19,8 @@ import subprocess
 import sys
 import tempfile
 import time
+
+import hashlib
 
 import acceptance
 import config_yaml
@@ -65,27 +70,39 @@ def programs(cmd):
     return out
 
 
+def env_fault(out, rc, cmd, limit=None, timeout_is_env=True):
+    """The reason a failed run is an environment fault, or "". timeout_is_env=False (the task gate): a time-out is the code's."""
+    if rc == 0:
+        return ""
+    if "temper-setup: FAIL" in out:
+        m = re.search(r"temper-setup: FAIL \(exit \d+\)", out)
+        return "the setup block failed (%s)" % (m.group(0) if m else "temper-setup: FAIL")
+    if rc == 124 and timeout_is_env:
+        return "time limit %s s" % limit if limit is not None else "time limit"
+    m = re.search(r"^.*which is not in the allowed range (\S+?)\.?\s*$", out, re.M)
+    if m:
+        v = re.search(r"version (\d[\w.+-]*)", m.group(0))
+        return "needs JDK %s (found %s)" % (m.group(1), v.group(1) if v else "unknown")
+    for pat in ENV_PATTERNS:
+        hit = re.search(pat, out)
+        if hit:
+            return hit.group(0)
+    if rc == 127:
+        for name in re.findall(r"([^\s:]+): command not found", out):
+            if name in programs(cmd):
+                return "%s: command not found" % name
+    if "in offline mode" in out and "Cannot access" in out:
+        return "a dependency is not cached (offline mode)"
+    return ""
+
+
 def classify(cmd, out, rc, limit, declared, wt):
     """(class, reason) for one run."""
     if rc == 0:
         return "passes", ""
-    if "temper-setup: FAIL" in out:
-        return "environment fault", "the setup block failed"
-    if rc == 124:
-        return "environment fault", "time limit %s s" % limit
-    m = re.search(r"^.*which is not in the allowed range (\S+?)\.?\s*$", out, re.M)
-    if m:
-        v = re.search(r"version (\d[\w.+-]*)", m.group(0))
-        return "environment fault", "needs JDK %s (found %s)" % (m.group(1), v.group(1) if v else "unknown")
-    for pat in ENV_PATTERNS:
-        if re.search(pat, out):
-            return "environment fault", re.search(pat, out).group(0)
-    if rc == 127:
-        for name in re.findall(r"([^\s:]+): command not found", out):
-            if name in programs(cmd):
-                return "environment fault", "%s: command not found" % name
-    if "in offline mode" in out and "Cannot access" in out:
-        return "environment fault", "a dependency is not cached (offline mode)"
+    why = env_fault(out, rc, cmd, limit)
+    if why:
+        return "environment fault", why
     for pat in CMD_PATTERNS:
         if re.search(pat, out):
             return "command fault", re.search(pat, out).group(0)
@@ -123,7 +140,14 @@ def note_skip(ledger, reason):
     json.dump(data, open(ledger, "w", encoding="utf-8"), indent=2)
 
 
-def make_row(spec, project, config, ledger):
+def store_key(project, cmds, limit, config):
+    head = git(project, "rev-parse", "HEAD").stdout.decode("utf-8", "replace").strip()
+    setup = json.dumps(run_env.load_setup(config), sort_keys=True)
+    text = json.dumps([head, [c for c, _ in cmds], setup, limit])   # the spec's commands are part of the key
+    return hashlib.sha256(text.encode("utf-8")).hexdigest(), head
+
+
+def make_row(spec, project, config, ledger, fresh=False):
     cfg = config_yaml.load(config)
     skip = config_yaml.get(cfg, "plan.preflight-skip", "")
     if skip != "":
@@ -138,6 +162,24 @@ def make_row(spec, project, config, ledger):
     except (TypeError, ValueError):
         limit = DEFAULT_TIMEOUT
     cmds, declared = commands(spec)
+    key, head = store_key(project, cmds, limit, config)
+    store = os.path.join(project, ".temper", "preflight.json")   # run state, beside gates.json
+    if not fresh:
+        try:
+            kept = json.load(open(store, encoding="utf-8"))
+            if kept.get("key") == key:
+                return kept["row"]
+        except (OSError, ValueError, KeyError, AttributeError):
+            pass
+    result = run_all(project, cmds, declared, limit, run_env.load_setup(config))
+    try:
+        json.dump({"key": key, "head": head, "row": result}, open(store, "w", encoding="utf-8"), indent=2)
+    except OSError:
+        pass
+    return result
+
+
+def run_all(project, cmds, declared, limit, setup):
     tmp = tempfile.mkdtemp(prefix="temper-preflight-")
     wt = os.path.join(tmp, "base")
     if git(project, "worktree", "add", "--detach", wt, "HEAD").returncode != 0:
@@ -147,9 +189,9 @@ def make_row(spec, project, config, ledger):
     try:
         for cmd, files in cmds:
             if files is not None and maven_loop.is_maven(cmd):
-                raw, rc = maven_loop.run(wt, limit, cmd, files)
+                raw, rc = maven_loop.run(wt, limit, cmd, files, setup)
             else:
-                raw, rc = run_env.run_cmd(wt, limit, [cmd])
+                raw, rc = run_env.run_cmd(wt, limit, [cmd], setup)
             out = raw.decode("utf-8", "replace")
             cls, why = classify(cmd, out, rc, limit, declared, wt)
             results.append((cmd, cls, why, out))
@@ -168,8 +210,8 @@ def make_row(spec, project, config, ledger):
 
 
 def main(argv):
-    if len(argv) == 6 and argv[1] == "row":
-        print(json.dumps(make_row(*argv[2:])))
+    if len(argv) == 6 and argv[1] in ("row", "run"):
+        print(json.dumps(make_row(*argv[2:], fresh=argv[1] == "run")))
         return 0
     print(__doc__, file=sys.stderr)
     return 2

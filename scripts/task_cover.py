@@ -35,6 +35,7 @@ def set_status(t, new):
     if new != old and new not in TASK_MOVES.get(old, ()):
         raise ValueError("a task does not move from %s to %s" % (old, new))
     t["status"] = new
+    t.pop("env_fault", None)   # a move ends a wait on the environment
 
 
 def load(path, default):

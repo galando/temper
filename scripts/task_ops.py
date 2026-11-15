@@ -16,6 +16,7 @@ import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 from run_env import run_cmd, test_env  # noqa: F401
 import scenario_ops
 import maven_loop
+import preflight
 import tasks_md
 
 # The project's folder from the top of its repository ("" at the top). git status and git diff name a path from the
@@ -680,6 +681,16 @@ elif mode == 'verdict':
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     verdict = 'FAIL' if reason else ('AWAIT' if c['manual'] and not c['confirmed_by'] else 'PASS')
+    # ENV: the attempt's last run is a failing GREEN whose output names an environment fault (preflight.env_fault; a
+    # time-out is the code's here), a RED came before it, and nothing else is wrong. The task does not pass: it keeps its
+    # attempt and its worktree, and the person repairs the environment and checks it again.
+    env_why = ''
+    if (verdict == 'FAIL' and green is None and not problems and not c['manual'] and mine and mine[-1].get('phase') == 'green'
+            and mine[-1].get('exit_code') not in (0, None) and any(red_ok(r) for r in mine[:-1])):
+        env_why = preflight.env_fault(mine[-1].get('output') or '', mine[-1].get('exit_code'), mine[-1].get('cmd') or '',
+                                      timeout_is_env=False)
+    if env_why:
+        verdict, reason = 'ENV', env_why
     red_cmd = red_tail = ''
     if covered:
         verdict, red_cmd = 'COVERED', mine[-1].get('cmd') or ''

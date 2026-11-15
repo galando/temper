@@ -98,17 +98,13 @@ def reports_made(worktree, classes, since):
     return missing
 
 
-def run(worktree, timeout, declared, files):
+def run(worktree, timeout, declared, files, setup=None):
     classes = classes_of(files)
     cmd = build(declared, classes)
     since = time.time() - 1
-    try:
-        p = subprocess.run(cmd, cwd=worktree, env=run_env.test_env(worktree), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=float(timeout))
-        out, rc = p.stdout, p.returncode
-    except subprocess.TimeoutExpired as e:
-        return (e.stdout or b"") + b"\nmaven_loop: timed out\n", 124
-    except OSError as e:
-        return ("%s\n" % e).encode(), 127
+    out, rc = run_env.run_cmd(worktree, timeout, cmd, setup)   # the setup block applies here too
+    if rc == 124:
+        return out + b"\nmaven_loop: timed out\n", 124
     if rc == 0 and classes:
         missing = reports_made(worktree, classes, since)
         if missing:
@@ -120,7 +116,7 @@ def main(argv):
     if len(argv) < 5 or argv[1] != "run":
         print(__doc__, file=sys.stderr)
         return 2
-    out, rc = run(argv[2], argv[3], argv[4], argv[5:])
+    out, rc = run(argv[2], argv[3], argv[4], argv[5:], {})   # its caller (run_cmd) applied the setup block already
     sys.stdout.buffer.write(out)
     return rc
 

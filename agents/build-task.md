@@ -57,6 +57,11 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
   and no stub, and say so in its `stopped:` line. The person decides; the gate does not retry it.
 - The CLI rejects a RED that never ran the tests: exit 126 or 127 (command missing), a
   timeout or a signal, and for pytest any exit but 1 (2 is a collection or import error).
+- When the prompt has an `Environment setup` line, run its `run:` line and set its variables in each new shell before any
+  build or test command of your own. The CLI applies it to every command it runs; a shell of yours does not get it.
+- A GREEN that fails on the environment (a JDK out of range, a database that does not answer, `temper-setup: FAIL`) is not
+  your code's fault: the gate says `ENV:` and keeps your attempt and worktree. Report it in your `stopped:` line; never
+  record a pass for a run that did not run.
 - Never run the test command yourself in place of `task test`; only the CLI's recorded
   run counts as evidence, and a RED that never failed is rejected.
 - Never edit outside the worktree, and never touch a file another task declares.

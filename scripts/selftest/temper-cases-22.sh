@@ -37,7 +37,7 @@ OUT="$(PATH="$WORKDIR/fakebin:$PATH" _pfhas passes 'needs new code' 'environment
 assert_eq "9.8.5 preflight: four commands, four classes, the JDK range and the JaCoCo line quoted, the absent file named" \
   "preflight|False|True|True|True|True|True|True|True" "$OUT"
 assert_eq "9.8.5 preflight: the base is as it was after the run (no worktree left, no file changed)" "1|" \
-  "$(git worktree list | wc -l)|$(git status --porcelain | grep -v '^?? fakebin' | head -1)"
+  "$(git worktree list | wc -l)|$(git status --porcelain | grep -v '^?? fakebin' | grep -v '^?? .temper/preflight.json' | head -1)"
 _pfsetup; sed -i 's/^\*\*Validate:\*\* `true`$/**Validate:** `sleep 5`/' .temper/specs/demo/tasks.md
 printf 'plan:\n  preflight-timeout: 2\n' >> .claude/temper.config; _pfcommit
 assert_eq "9.8.5 preflight: a command over plan.preflight-timeout is an environment fault naming the limit" "preflight|False|True|True" "$(_pfhas 'environment fault' 'time limit 2 s')"
@@ -54,3 +54,15 @@ before="$(git status --porcelain | sort | cksum)"
 assert_eq "9.8.5 preflight: a repository with no commit skips the row" "preflight|True|True" "$(_pfhas 'skipped: no commit to run on')"
 assert_eq "9.8.5 preflight: the tree and the worktree list are as before" "$before|1" "$(git status --porcelain | sort | cksum)|$(git worktree list | wc -l)"
 rm -rf fakebin
+
+# --- 9.8.5: the preflight runs once per plan; the gate reads the stored result while HEAD, commands and setup are unchanged ---
+_pfsetup; sed -i "s|^\*\*Validate:\*\* \`true\`\$|**Validate:** \`echo ran >> $PWD/pf-count\`|" .temper/specs/demo/tasks.md; _pfcommit
+rm -f pf-count; _pfrun >/dev/null; _pfrun >/dev/null
+assert_eq "9.8.5 preflight: a second gate on the same HEAD and commands reads the stored result (one run)" "1" "$(wc -l < pf-count | tr -d ' ')"
+python3 -E -s "$REPO_ROOT/scripts/preflight.py" run .temper/specs/demo "$PWD" .claude/temper.config .temper/evidence/plan.json >/dev/null
+assert_eq "9.8.5 preflight: preflight.py run (temper plan preflight) runs it again" "2" "$(wc -l < pf-count | tr -d ' ')"
+echo change > README2; _pfcommit; _pfrun >/dev/null
+assert_eq "9.8.5 preflight: a new HEAD runs it again" "3" "$(wc -l < pf-count | tr -d ' ')"
+printf 'setup:\n  env:\n    IT_PORT: 5433\n' >> .claude/temper.config; _pfrun >/dev/null
+assert_eq "9.8.5 preflight: a changed setup block runs it again" "4" "$(wc -l < pf-count | tr -d ' ')"
+rm -f pf-count README2
