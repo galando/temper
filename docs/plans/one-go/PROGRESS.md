@@ -34,7 +34,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 
 | Id | State | Commit | Date | Note |
 |---|---|---|---|---|
-| WP00 | doing | | 2026-11-16 | merges and tools done; baseline running |
+| WP00 | done | `2992cad` | 2026-11-16 | baseline green, every number as the kit says |
 | WP01 | todo | | | |
 | WP02 | todo | | | |
 | WP03 | todo | | | |
