@@ -217,6 +217,17 @@ r5="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED .*T2 two' "$_c43/ct.out")"
 assert_eq "done: a removed or changed assertion of a test of the base fails until changed-tests.md lists it" \
   "0 1 0 1 0 1|1" "$r0 $r1 $r2 $r3 $r4 $r5"
 
+# a name is listed only by the code span that is the first cell of a row: a span in the intro or in another column
+# names nothing (phase 2 review, F1)
+CT_BASE="$(_c43_ct_repo)"
+sed -i '/T1 one/d' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+sed -i '1i This page lists `T1 one` in its intro.\n' "$_c43/ct/docs/plans/one-go/changed-tests.md"
+printf '| %s | a file | `T1 one` was removed | why | WP07 |\n' '`T2 two`' >> "$_c43/ct/docs/plans/one-go/changed-tests.md"
+r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED .*T1 one' "$_c43/ct.out")"
+_c43_ct_listed 'T1 one'
+assert_eq "done: a name counts as listed only in the code span of the first cell of a row of changed-tests.md" \
+  "1|1 0" "$r1 $(_c43_ct "$CT_BASE")"
+
 # D84b: the second base, the commit that first added the file, for done.md and the case files 43 to 46
 CT_BASE="$(_c43_ct_repo)"
 mkdir -p "$_c43/ct/docs/plans/one-go"

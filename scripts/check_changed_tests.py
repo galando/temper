@@ -8,7 +8,8 @@ against the base) for the test files (the case files of the selftest, its runner
 suite and the test files of the mod) that hold `assert_eq`, `assert_exit`, `expect(` or `test(` are read. For each such
 line the statement is taken from the base, a line that ends in a backslash running on through its last line; its name
 is its first quoted string. A statement that is in the tree as it was (each line compared with its indent left out) is
-not a change. Any other one fails unless its name is the text of a code span of `docs/plans/one-go/changed-tests.md`.
+not a change. Any other one fails unless its name is the text of the code span that is the first cell of a row of the
+table of `docs/plans/one-go/changed-tests.md` (a code span elsewhere on that page names nothing).
 So a changed expected value under an unchanged name is a changed assertion, and must be listed.
 
 The second base (row D84b): for the case files 43 to 46, `scripts/e2e/accept.ts`, `scripts/e2e/slow.ts`,
@@ -84,12 +85,37 @@ def squeeze(lines):
     return "\n".join(line.strip() for line in lines)
 
 
+def first_cell(line):
+    """The first cell of a table line, a code span (of one or more backticks) kept whole even when it holds a `|`."""
+    text, i, cell = line.strip()[1:], 0, []
+    while i < len(text):
+        m = SPAN.match(text, i) if text[i] == "`" else None
+        if m is not None:
+            cell.append(m.group(0))
+            i = m.end()
+        elif text[i] == "|":
+            break
+        else:
+            cell.append(text[i])
+            i += 1
+    return "".join(cell).strip()
+
+
 def listed_names(root):
+    """The names of the table: the text of the code span that is the whole first cell of a line starting with `|`.
+    A code span anywhere else on the page (its intro, the other columns) names nothing."""
     path = os.path.join(root, LISTING)
     if not os.path.isfile(path):
         return set()
+    names = set()
     with open(path, encoding="utf-8") as f:
-        return {m.group(2).strip() for m in SPAN.finditer(f.read())}
+        for line in f.read().split("\n"):
+            if not line.startswith("|"):
+                continue
+            m = SPAN.fullmatch(first_cell(line))
+            if m is not None:
+                names.add(m.group(2).strip())
+    return names
 
 
 def tree_text(root, specs):
