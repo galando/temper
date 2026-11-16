@@ -8,7 +8,8 @@ The line: {"v": 1, "at", "run", "slug", "command", "version", "mode", "ended", "
 "steps_back": [{"from", "to", "n"}], "launches": {"by_stage"}, "seconds", "agent_seconds", "skips"}. It is made from the
 files `state clear` deletes: build-state.json (the run), feedback-loops.json (the steps back), usage.json (the agents
 recorded with their stage and time), overrides.json (the skips), gates.json (`ended` is `committed` when the commit gate's
-verdict is PASS, else `cleared`) and asked.json.
+verdict is PASS, else `cleared`) and asked.json. A launch is a usage row of an agent stage. A row of a task gate is no
+launch unless it has a time: the gate of a task an earlier conversation left running, which counts for Build.
 
 asked.json holds the questions the CLI asked, once each: when the flow writes a view whose `ask` is set, the key
 `<run id>:<step>:<question id>` is recorded with the stage and the kind, so `next` run twice at one step counts one. A set
@@ -105,8 +106,10 @@ def summary(temper_dir, now):
     usage = read(os.path.join(temper_dir, "usage.json"), [])
     by_stage, ms = {}, 0
     for r in usage if isinstance(usage, list) else []:
-        if isinstance(r, dict):
-            st = str(r.get("stage") or "unknown")
+        # A `task` row is a task gate's record: the agent gates its own tasks and its launch has its `build` row. Only
+        # the gate of a task left running by an earlier conversation (`task gate N --ms`) records a launch with no row.
+        if isinstance(r, dict) and (r.get("stage") != "task" or isinstance(r.get("ms"), int)):
+            st = "build" if r.get("stage") == "task" else str(r.get("stage") or "unknown")
             by_stage[st] = by_stage.get(st, 0) + 1
             ms += r.get("ms") if isinstance(r.get("ms"), int) else 0
     gates = read(os.path.join(temper_dir, "gates.json"), {})

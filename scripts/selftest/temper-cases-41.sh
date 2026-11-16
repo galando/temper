@@ -153,6 +153,21 @@ _at review
 assert_eq "summary: the steps back of the run are in the line" "[{'from': 'review', 'n': 1, 'to': 'build'}]" \
   "$(_c41_last 'd["steps_back"]')"
 
+# A Build task agent: its own gate of Task 1 (a `task` row), its launch's row (`build`, 2 s), the gate of its after calls
+# (nothing to gate). Then the gate of Task 3, left running by an earlier conversation, with its time (3 s): one launch.
+declare -F st_setup >/dev/null || source "$TESTS_DIR/case-helpers-5.sh"
+st_setup
+st_pass_ready
+"$TEMPER" task gate 1 --model m >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model m --ms 2000 --task 1 >/dev/null
+"$TEMPER" task gate 1 --model m --if-running >/dev/null 2>&1
+"$TEMPER" task start 3 >/dev/null 2>&1
+"$TEMPER" task gate 3 --model m --ms 3000 >/dev/null 2>&1
+_c41_rows="$(python3 -c 'import json; print(",".join(r["stage"] for r in json.load(open(".temper/usage.json"))))')"
+"$TEMPER" state clear >/dev/null
+assert_eq "summary: a task gate is no launch, but for the gate of a task left running" "task,build,task {'build': 2} 5" \
+  "$_c41_rows $(_c41_last 'd["launches"]["by_stage"]') $(_c41_last 'd["agent_seconds"]')"
+
 setup
 python3 -c 'import json; open(".temper/runs.jsonl", "w").write("".join(json.dumps({"v": 1, "n": i}) + "\n" for i in range(205)))'
 "$TEMPER" state clear >/dev/null
