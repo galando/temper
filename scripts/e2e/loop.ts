@@ -127,7 +127,8 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
     wait: ids => Object.fromEntries(ids.map(id => [id, { text: '', ms: 1 }])),
     ask: (q: GoQuestion) => {
       w.guardAsk(q as Json)
-      if (q.kind === 'reason') {
+      // a reason question: one an option of this step carries (its question goes to the dialog as given, with no id)
+      if (asksOf(w.next()).some(x => (x.options as Json[]).some(o => o.reason_ids?.kind === 'reason' && o.reason_question?.question === q.question))) {
         const r = note || (q.options[0]?.label ?? 'e2e reason')
         note = ''
         return r

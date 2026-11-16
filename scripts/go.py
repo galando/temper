@@ -38,14 +38,15 @@ def brief(call, cli):
     return call + " --brief" if re.fullmatch(re.escape(cli) + r" gate [a-z]+", call) else call
 
 
-SLIM_KEYS = ("id", "kind", "move", "recommended", "calls", "steps", "do", "stop", "reason", "reason_question", "answer_question")
+SLIM_KEYS = ("id", "kind", "move", "recommended", "calls", "steps", "do", "stop", "reason", "reason_question", "reason_ids",
+             "answer_question", "answer_ids")
 
 
 def slim(a):
     """9.8.0: a question as the session needs it: `question` to ask exactly, its id and kind, and per option only what the
-    answer runs (its label, calls, steps, do, stop, reason and name questions) and what a reader selects it by (its id,
-    kind, move and recommended: 9.8.5 keeps these few short keys, the price of selecting by field and never by label).
-    The description is in `question` too, and the run id, step and stage are the mod's, read from view.json."""
+    answer runs (its label, calls, steps, do, stop, reason and name questions, each with its ids beside it) and what a
+    reader selects it by (its id, kind, move and recommended: 9.8.5 keeps these few short keys, the price of selecting
+    by field and never by label). The description is in `question` too, and the run id, step and stage are the mod's, read from view.json."""
     if not isinstance(a, dict) or "question" not in a:
         return a
     out = dict({k: a[k] for k in ("id", "kind") if a.get(k)}, question=a["question"])

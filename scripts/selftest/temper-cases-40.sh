@@ -22,14 +22,24 @@ def views():
             yield k, d[k]
 
 
+def beside(q, ids):
+    """A dialog question and the ids beside it, as one question: the id and kind of the ids, and each option of the
+    dialog with the id (and kind) at its place. A count that differs leaves an option with no id."""
+    ids = ids if isinstance(ids, dict) else {}
+    opts = (q or {}).get("options") or []
+    io = ids.get("options") or []
+    merged = [dict(o, **(io[k] if k < len(io) and len(io) == len(opts) else {})) for k, o in enumerate(opts)]
+    return {"id": ids.get("id"), "kind": ids.get("kind")}, merged
+
+
 def questions(v):
     out = []
 
     def follow(where, opts):
         for o in opts:
-            for key in ("reason_question", "answer_question"):
+            for key, ids in (("reason_question", "reason_ids"), ("answer_question", "answer_ids")):
                 if isinstance(o.get(key), dict):
-                    out.append(("%s/%s/%s" % (where, o.get("label"), key), o[key], o[key].get("options") or []))
+                    out.append(("%s/%s/%s" % (where, o.get("label"), key),) + beside(o[key], o.get(ids)))
 
     def walk(where, a):
         if not isinstance(a, dict):
@@ -48,7 +58,7 @@ def questions(v):
     if isinstance(rs, dict):
         out.append(("restart", rs, rs.get("options") or []))
     for i, b in enumerate(v.get("blocking_asks") or []):
-        out.append(("blocking_asks[%d]" % i, b, (b.get("question") or {}).get("options") or []))
+        out.append(("blocking_asks[%d]" % i,) + beside(b.get("question"), b.get("question_ids")))
     return out
 
 
@@ -96,6 +106,31 @@ elif mode == "dialog":
             walk(where + ".more", a.get("more"))
             walk(where + ".accept", a.get("accept"))
         walk("ask", v.get("ask"))
+elif mode == "keys":
+    # every dict a session hands to the question tool, as the CLI wrote it: the tool takes these keys and refuses others
+    QK, OK = {"question", "header", "options", "multiSelect"}, {"label", "description", "preview"}
+
+    def dialog(name, where, d):
+        if not isinstance(d, dict):
+            return
+        extra = sorted(set(d) - QK) + sorted({k for o in d.get("options") or [] for k in set(o) - OK})
+        if extra:
+            bad.append("%s %s: %s" % (name, where, ",".join(extra)))
+
+    for name, v in views():
+        def walk(where, a):
+            if not isinstance(a, dict):
+                return
+            dialog(name, where, a.get("question"))
+            for o in a.get("options") or []:
+                for key in ("reason_question", "answer_question"):
+                    dialog(name, "%s/%s/%s" % (where, o.get("label"), key), o.get(key))
+            for k in ("more", "accept", "change"):
+                walk(where + "." + k, a.get(k))
+        walk("ask", v.get("ask"))
+        walk("context_check", v.get("context_check"))
+        for i, b in enumerate(v.get("blocking_asks") or []):
+            dialog(name, "blocking_asks[%d]" % i, b.get("question"))
 elif mode in ("suffix", "calls"):
     files = os.environ["FLOW_FILES"].split()
     for f in files:
@@ -124,6 +159,7 @@ assert_eq "ids: option ids are unique in a question and come from the closed lis
 assert_eq "ids: recommended is true exactly where the label ends in the suffix, and absent elsewhere" "ok" "$(_i40 rec 2>&1)"
 assert_eq "ids: at most one recommended option in a question and its More question together" "ok" "$(_i40 one 2>&1)"
 assert_eq "ids: the question that goes to the dialog has no new key" "ok" "$(_i40 dialog 2>&1)"
+assert_eq "ids: no dialog the CLI writes holds a key the question tool refuses" "ok" "$(_i40 keys 2>&1)"
 assert_eq "ids: only opt() and set_rec() know the suffix" "ok" "$(FLOW_FILES="$FLOW_FILES" _i40 suffix 2>&1)"
 assert_eq "ids: every call of question(), with_more() and opt() passes qid or oid" "ok" "$(FLOW_FILES="$FLOW_FILES" _i40 calls 2>&1)"
 
@@ -172,6 +208,6 @@ printf '# Intent: Demo\n\n**Status:** draft\n\n### Open Questions\n\n- Blocking:
 gpass intent
 assert_eq "ids: a Blocking question carries intent.blocking beside its question, its choices and Carry forward by id" \
   "intent.blocking|blocking|choice-1,choice-2,carry|carry|header,multiSelect,options,question" \
-  "$(nx "b = d['blocking_asks'][0]; o = b['question']['options']; '|'.join([b['id'], b['kind'], ','.join(x['id'] for x in o), o[-1]['kind'], ','.join(sorted(b['question']))])")"
+  "$(nx "b = d['blocking_asks'][0]; i = b['question_ids']; o = i['options']; '|'.join([i['id'], i['kind'], ','.join(x['id'] for x in o), o[-1]['kind'], ','.join(sorted(b['question']))])")"
 assert_eq "ids: the resume and the Scope drift questions of the view have their ids" "run.restart|resume|start-over,cancel|scope.drift|drift" \
   "$(vw "r = d['restart']; '|'.join([r['id'], r['kind'], ','.join(o['id'] for o in r['options']), d['drift']['id'], d['drift']['kind']])")"

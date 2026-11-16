@@ -1,5 +1,6 @@
 // Ids in the protocol (WP04): every question and option of the view has a stable id, a question and some options a kind,
-// and an option says when it is recommended. The mod reads them, still takes a view of the base (10e965a) that has none,
+// and an option says when it is recommended. A question that goes to the dialog as given (a reason, name or Blocking
+// question) holds no id: its ids sit beside it. The mod reads them, still takes a view of the base (10e965a) that has none,
 // and selects More options, Accept, Cancel and Carry forward by kind. An id is a lookup: an answer still counts only on
 // the exact header, question and label for the run and step (core/answers.ts; ADR 0016 decision 1).
 import { describe, expect, test } from 'claude-code/testing'
@@ -22,6 +23,8 @@ function base(v: J): J {
     delete x.id
     delete x.kind
     delete x.recommended
+    delete x.reason_ids
+    delete x.answer_ids
     for (const k of ['more', 'accept', 'reason_question', 'answer_question', 'question']) strip(x[k])
     for (const opt of Array.isArray(x.options) ? x.options : []) strip(opt)
   }
@@ -97,9 +100,10 @@ describe('the driver selects by kind, never by label', () => {
     const v = view('intent-fail')
     const ask = v.ask as J
     const over = (ask.options as J[]).find(o => o.id === 'override') as J
-    const rq = over.reason_question as { question: string; options: Array<{ label: string; kind?: string }> }
-    const cancel = rq.options.find(o => o.kind === 'cancel')!
-    cancel.label = 'Not now'
+    const rq = over.reason_question as { question: string; options: Array<{ label: string }> }
+    // the ids sit beside the dialog question, in the order of its options
+    const at = (over.reason_ids as { options: Array<{ kind?: string }> }).options.findIndex(o => o.kind === 'cancel')
+    rq.options[at]!.label = 'Not now'
     const { p, log } = port([{ action: 'ask', stage: 'intent', ask: ask as unknown as GoAsk }], ['Override and continue', 'Not now', 'Save for later'])
     await drive(p, CLI, null)
     expect(log.asked.map(q => q.question)).toEqual([(ask.question as J).question, rq.question, (ask.question as J).question])
@@ -108,8 +112,9 @@ describe('the driver selects by kind, never by label', () => {
 
   test('it runs the carry call on kind carry', async () => {
     const question: GoQuestion = { header: 'Question 1', question: 'Who may refund?', options: [
-      { label: 'Admins only', description: 'Recommended', id: 'choice-1' }, { label: 'Keep it for later', description: '', id: 'carry', kind: 'carry' }] }
-    const blocking = [{ id: 'intent.blocking', kind: 'blocking', question, answer: `${CLI} intent answer 'Who may refund?' '{answer}'`, carry: `${CLI} intent carry 'Who may refund?'` }]
+      { label: 'Admins only', description: 'Recommended' }, { label: 'Keep it for later', description: '' }] }
+    const question_ids = { id: 'intent.blocking', kind: 'blocking', options: [{ id: 'choice-1' }, { id: 'carry', kind: 'carry' }] }
+    const blocking = [{ question, question_ids, answer: `${CLI} intent answer 'Who may refund?' '{answer}'`, carry: `${CLI} intent carry 'Who may refund?'` }]
     const { p, log } = port([{ action: 'ask', stage: 'intent', gate: `${CLI} gate intent`, blocking }], ['Keep it for later'])
     await drive(p, CLI, null)
     expect(log.ran).toContain(`${CLI} intent carry 'Who may refund?'`)

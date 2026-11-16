@@ -175,20 +175,23 @@ CARRY = "Carry forward"
 def blocking_asks(items, cli):
     """9.8.0: each Blocking question as the session asks it, built by the CLI: `{question, answer, carry}`. `question` is the
     AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options with the first marked
-    recommended, at most three, then Carry forward; each option has its id, Carry forward the kind `carry`, and the entry
-    the question's id and kind); `answer` is the call that writes the person's answer into intent.md
+    recommended, at most three, then Carry forward), exactly as the dialog takes it, and beside it `question_ids`: the
+    question's id and kind and each option's id in order, Carry forward with the kind `carry`; `answer` is the call that writes the person's answer into intent.md
     (`{answer}` is theirs: the label they chose or the text they typed), `carry` the call for Carry forward. Before, the
     session built each question from the line and then edited intent.md itself."""
     out = []
     for i, item in enumerate(items):
         m = re.match(r"^(.*?)\s+choices:\s*(.+?)\.?\s*$", item, re.I | re.S)
         q, cs = (m.group(1).strip(), [c.strip() for c in m.group(2).split("|") if c.strip()][:3]) if m else (item.strip(), [])
-        opts = [{"label": c, "description": "Recommended" if k == 0 else "", "id": "choice-%d" % (k + 1)} for k, c in enumerate(cs)]
+        opts = [{"label": c, "description": "Recommended" if k == 0 else ""} for k, c in enumerate(cs)]
+        ids = [{"id": "choice-%d" % (k + 1)} for k in range(len(cs))]
         if not opts:   # a question with no ready answers: the person types the answer in Other
-            opts = [{"label": "Type the answer", "description": "Type it in Other; this option alone answers nothing.", "id": "type", "kind": "type"}]
-        opts.append({"label": CARRY, "description": "Keep it on record as Deferred; it no longer holds the gate.", "id": "carry", "kind": "carry"})
-        out.append({"id": "intent.blocking", "kind": "blocking",
-                    "question": {"header": "Question %d" % (i + 1), "question": q, "multiSelect": False, "options": opts},
+            opts = [{"label": "Type the answer", "description": "Type it in Other; this option alone answers nothing."}]
+            ids = [{"id": "type", "kind": "type"}]
+        opts.append({"label": CARRY, "description": "Keep it on record as Deferred; it no longer holds the gate."})
+        ids.append({"id": "carry", "kind": "carry"})
+        out.append({"question": {"header": "Question %d" % (i + 1), "question": q, "multiSelect": False, "options": opts},
+                    "question_ids": {"id": "intent.blocking", "kind": "blocking", "options": ids},
                     "answer": "%s intent answer %s '{answer}'" % (cli, shlex.quote(q)),
                     "carry": "%s intent carry %s" % (cli, shlex.quote(q))})
     return out

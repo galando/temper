@@ -40,7 +40,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `say` | one sentence for the person |
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step; 9.8.5: id `run.restart`, kind `resume`, options `start-over` and `cancel` (kind `cancel`) |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
-| `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); 9.8.5: the entry has `id` `intent.blocking` and `kind` `blocking`, and each option of `question` its `id` (`choice-1` to `choice-3`, `type`, `carry`), Carry forward the kind `carry`; `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
+| `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); 9.8.5: `question` goes to the dialog as it is, so its ids sit beside it in `question_ids`: `{id, kind, options}`, with id `intent.blocking`, kind `blocking`, and each option's `id` in the same order (`choice-1` to `choice-3`, `type`, `carry`), Carry forward with the kind `carry`; `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
 | `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
 | `context_map` | at Plan, when `plan.md` has a Context Map: `{intro, file, rows, answer, table}`, the table as plain text |
 | `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; 9.8.5: id `plan.context`, kind `context`, options `as-planned`, `include-left-out`, `type` and `carry`; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
@@ -78,7 +78,9 @@ commit gate (a change made at Build, or of docs only, runs only the stage's gate
 ### Questions
 
 `ask` is `{stage, step, run_id, id, kind, question, options, more?, accept?}`. `question` is exactly what
-goes to the AskUserQuestion tool, and it holds no other key. 9.8.5: `id` is the question's id in the registry
+goes to the AskUserQuestion tool, and it holds no other key: the tool takes only `question`, `header`, `options` and
+`multiSelect`, and an option only `label`, `description` and `preview`, so every question the CLI writes for the dialog
+has its ids beside it. 9.8.5: `id` is the question's id in the registry
 `QUESTIONS` of `scripts/flow_base.py` (`plan.approve`, `check.fail`), which also says what decision it asks for, and
 `kind` is its kind: `gate`, `group`, `resume`, `drift`, `blocking`, `context`, `reason` or `name`. A More question has
 the id of its parent and `.more`, an accept question `.accept`. Each entry of `options` is the same option with what it
@@ -96,8 +98,8 @@ means:
 | `do` | for an option that decides nothing: what to do, then ask the question again |
 | `skill` | 9.8.0, with `do`: the skill the option carries out (`grill-me`, `teach-me`); the mod lets its own questions through while it runs |
 | `stop` | the run stops here (Save for later) |
-| `reason`, `reason_question` | the move needs the person's reason: their note on the option, or their answer to `reason_question` (any answer but Cancel, typed text included). 9.8.5: `reason_question` has the id of its question and `.reason` and the kind `reason`, each ready reason the id `choice-N`, and Cancel the id `cancel` with the kind `cancel` |
-| `answer_question` | the move needs a typed value (a name, a command): the id of its question and `.name`, the kind `name`; its `Type it below` has the kind `type`, its Cancel the kind `cancel` |
+| `reason`, `reason_question`, `reason_ids` | the move needs the person's reason: their note on the option, or their answer to `reason_question` (any answer but Cancel, typed text included). 9.8.5: `reason_question` goes to the dialog as it is, so its ids sit beside it in `reason_ids`: `{id, kind, options}`, with the id of its question and `.reason`, the kind `reason`, and in the order of its options each ready reason's id `choice-N` and Cancel's id `cancel` with the kind `cancel` |
+| `answer_question`, `answer_ids` | the move needs a typed value (a name, a command), asked by `answer_question`. 9.8.5: its ids sit beside it in `answer_ids`, as `reason_ids`: the id of its question and `.name`, the kind `name`, and `type` (kind `type`) and `cancel` (kind `cancel`) in the order of its options |
 
 `more` is the second question of "More options"; `accept` is the question of "Accept a finding". Both
 have the same shape. A question holds four options at most.

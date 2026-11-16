@@ -2,7 +2,7 @@
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
 import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
-import type { AgentEnd, GoAgent, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
+import type { AgentEnd, GoAgent, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 
 const CLI = '/p/scripts/temper'
 
@@ -47,9 +47,10 @@ function port(s: Script & { stop?: number }) {
   return { p, log }
 }
 
-// The kinds the CLI gives these options (9.8.5): the driver selects by kind, never by label.
+const q = (question: string, labels: string[], header = 'Temper gate'): GoQuestion => ({ header, question, options: labels.map(label => ({ label, description: '' })) })
+// The ids the CLI writes beside a reason, name or Blocking question (9.8.5): the driver selects by their kind, never by label.
 const KINDS: Record<string, string> = { 'Carry forward': 'carry', Cancel: 'cancel', 'Type it below': 'type' }
-const q = (question: string, labels: string[], header = 'Temper gate'): GoQuestion => ({ header, question, options: labels.map(label => ({ label, description: '', ...(KINDS[label] ? { kind: KINDS[label] } : {}) })) })
+const ids = (x: GoQuestion): GoIds => ({ options: x.options.map((o, i) => ({ id: KINDS[o.label] ?? `choice-${i + 1}`, ...(KINDS[o.label] ? { kind: KINDS[o.label] } : {}) })) })
 const agent = (type: string, after: string[] = []): GoAgent => ({ type, model: 'opus', prompt: `Follow ${type}.`, after, gate: after.find(c => / gate /.test(c)) })
 
 describe('the driver carries a run from the request to the end', () => {
@@ -78,8 +79,8 @@ describe('the driver carries a run from the request to the end', () => {
   test('Blocking questions: each answer is written by its call, Carry forward by its own', async () => {
     const { p, log } = port({
       goes: [{ action: 'ask', stage: 'intent', gate: `${CLI} gate intent`, ask: { question: q('Intent: answer the questions?', ['Continue']), options: [] }, blocking: [
-        { question: q('Who may refund?', ['Admins only (Recommended)', 'Everyone', 'Carry forward'], 'Question 1'), answer: `${CLI} intent answer 'Who may refund?' '{answer}'`, carry: `${CLI} intent carry 'Who may refund?'` },
-        { question: q('A window?', ['60 days', 'Carry forward'], 'Question 2'), answer: `${CLI} intent answer 'A window?' '{answer}'`, carry: `${CLI} intent carry 'A window?'` },
+        { question: q('Who may refund?', ['Admins only (Recommended)', 'Everyone', 'Carry forward'], 'Question 1'), question_ids: ids(q('Who may refund?', ['Admins only (Recommended)', 'Everyone', 'Carry forward'], 'Question 1')), answer: `${CLI} intent answer 'Who may refund?' '{answer}'`, carry: `${CLI} intent carry 'Who may refund?'` },
+        { question: q('A window?', ['60 days', 'Carry forward'], 'Question 2'), question_ids: ids(q('A window?', ['60 days', 'Carry forward'], 'Question 2')), answer: `${CLI} intent answer 'A window?' '{answer}'`, carry: `${CLI} intent carry 'A window?'` },
       ] }],
       answers: ['Admins only (Recommended)', 'Carry forward'],
     })
@@ -91,7 +92,7 @@ describe('the driver carries a run from the request to the end', () => {
   })
 
   test('Blocking questions come four to a dialog, as the loop without the mod asks them; each answer\'s call runs in order', async () => {
-    const qs = [1, 2, 3, 4, 5].map(n => ({ question: q(`Rule ${n}?`, [`Yes ${n}`, 'Carry forward'], `Question ${n}`),
+    const qs = [1, 2, 3, 4, 5].map(n => ({ question: q(`Rule ${n}?`, [`Yes ${n}`, 'Carry forward'], `Question ${n}`), question_ids: ids(q(`Rule ${n}?`, [`Yes ${n}`, 'Carry forward'])),
       answer: `${CLI} intent answer 'Rule ${n}?' '{answer}'`, carry: `${CLI} intent carry 'Rule ${n}?'` }))
     const dialogs: string[][] = []
     const { p, log } = port({ goes: [{ action: 'ask', stage: 'intent', gate: `${CLI} gate intent`, ask: { question: q('Intent?', ['Continue']), options: [] }, blocking: qs }] })
@@ -117,8 +118,8 @@ describe('the driver carries a run from the request to the end', () => {
   })
 
   test('a manual task\'s name question is asked by the driver: "Type it below" asks again, the typed name fills the call', async () => {
-    const nameQ = { header: 'Manual task', question: 'Task 2: what name should the confirmation carry?', options: [{ label: 'Type it below', description: '', kind: 'type' }, { label: 'Cancel', description: '', kind: 'cancel' }] }
-    const confirm = { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`, `${CLI} task gate 2 --model person`], answer_question: nameQ }
+    const nameQ = { header: 'Manual task', question: 'Task 2: what name should the confirmation carry?', options: [{ label: 'Type it below', description: '' }, { label: 'Cancel', description: '' }] }
+    const confirm = { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`, `${CLI} task gate 2 --model person`], answer_question: nameQ, answer_ids: ids(nameQ) }
     const { p, log } = port({
       goes: [{ action: 'ask', stage: 'build', ask: { question: q('Task 2 is a manual task. Confirm?', ['Confirm', 'Stop']), options: [confirm, { label: 'Stop' }] } }, { action: 'none', say: 'end' }],
       answers: ['Confirm', 'Type it below', "Gal O'Neil"],
@@ -130,8 +131,8 @@ describe('the driver carries a run from the request to the end', () => {
   })
 
   test('Cancel at the name question asks the manual task question again, and nothing runs', async () => {
-    const nameQ = { header: 'Manual task', question: 'Task 2: name?', options: [{ label: 'Type it below', description: '', kind: 'type' }, { label: 'Cancel', description: '', kind: 'cancel' }] }
-    const confirm = { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`], answer_question: nameQ }
+    const nameQ = { header: 'Manual task', question: 'Task 2: name?', options: [{ label: 'Type it below', description: '' }, { label: 'Cancel', description: '' }] }
+    const confirm = { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`], answer_question: nameQ, answer_ids: ids(nameQ) }
     const { p, log } = port({
       goes: [{ action: 'ask', stage: 'build', ask: { question: q('Confirm?', ['Confirm', 'Stop']), options: [confirm, { label: 'Stop', stop: true }] } }],
       answers: ['Confirm', 'Cancel', 'Stop'],
@@ -154,7 +155,7 @@ describe('the driver carries a run from the request to the end', () => {
   test('an option that needs a reason asks the reason question as given; Cancel asks the first question again', async () => {
     const rq = q('Loop back to Plan. What is the reason?', ['The plan cannot be built', 'Cancel'])
     const opts = { question: q('Group G1 is parked. Run the task again?', ['Loop back to Plan', 'Run the task again']), options: [
-      { label: 'Loop back to Plan', calls: [`${CLI} state loop build plan --reason '{reason}'`], reason: true, reason_question: rq },
+      { label: 'Loop back to Plan', calls: [`${CLI} state loop build plan --reason '{reason}'`], reason: true, reason_question: rq, reason_ids: ids(rq) },
       { label: 'Run the task again', calls: [`${CLI} group reopen G1 --task 2`] },
     ] }
     const { p, log } = port({ goes: [{ action: 'ask', ask: opts }, { action: 'none', say: 'end' }], answers: ['Loop back to Plan', 'Cancel', 'Loop back to Plan', 'The plan cannot be built'] })

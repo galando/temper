@@ -63,9 +63,9 @@ class AskPart:
             # Two options at least, or the question tool refuses the dialog (9.8.0: a run with a manual task stopped at
             # its name question, which held Cancel alone). The first only says to type; the typed text is the answer.
             o["answer_question"] = {"header": answer[0], "question": answer[1], "multiSelect": False,
-                                    "options": [{"label": "Type it below", "description": "Type the answer in the box below; this option alone records nothing.",
-                                                 "id": "type", "kind": "type"},
-                                                {"label": "Cancel", "description": "Back to the question before.", "id": "cancel", "kind": "cancel"}]}
+                                    "options": [{"label": "Type it below", "description": "Type the answer in the box below; this option alone records nothing."},
+                                                {"label": "Cancel", "description": "Back to the question before."}]}
+            o["answer_ids"] = {"options": [{"id": "type", "kind": "type"}, {"id": "cancel", "kind": "cancel"}]}
         if steps:
             o["steps"] = steps
         if do:
@@ -74,16 +74,18 @@ class AskPart:
             o["stop"] = True
         if reason:
             o["reason"] = True
-            o["reason_question"] = {
-                "header": GATE_HEADER, "question": "%s. What is the reason?" % label,
-                "multiSelect": False, "options": self.reason_options(reason)}
+            o["reason_question"] = {"header": GATE_HEADER, "question": "%s. What is the reason?" % label, "multiSelect": False}
+            self.set_reasons(o, reason)
         return o
 
     @staticmethod
-    def reason_options(reasons):
-        """The options of a reason question: each ready reason, then Cancel (kind `cancel`: back to the question before)."""
-        return [{"label": x, "description": "", "id": "choice-%d" % (k + 1)} for k, x in enumerate(reasons)] + \
-            [{"label": "Cancel", "description": "Back to the question before.", "id": "cancel", "kind": "cancel"}]
+    def set_reasons(o, reasons):
+        """The options of a reason question: each ready reason, then Cancel. The question goes to the dialog as it is, so
+        their ids sit beside it, in `reason_ids`, in the same order: `choice-N`, and `cancel` (kind `cancel`: back to the
+        question before)."""
+        o["reason_question"]["options"] = [{"label": x, "description": ""} for x in reasons] + \
+            [{"label": "Cancel", "description": "Back to the question before."}]
+        o["reason_ids"] = {"options": [{"id": "choice-%d" % (k + 1)} for k in range(len(reasons))] + [{"id": "cancel", "kind": "cancel"}]}
 
     @staticmethod
     def set_rec(o, on):
@@ -116,11 +118,12 @@ class AskPart:
     @staticmethod
     def follow_ups(o, qid):
         """The ids of an option's reason and name questions, from the question it is in: `<qid>.reason`, `<qid>.name` (an
-        option under More options belongs to the decision of the question above it)."""
+        option under More options belongs to the decision of the question above it). They go into `reason_ids` and
+        `answer_ids`, beside the questions, which go to the dialog as they are."""
         top = re.sub(r"(\.more)+$", "", qid)
-        for key, suffix, kind in (("reason_question", "reason", "reason"), ("answer_question", "name", "name")):
+        for key, suffix in (("reason_ids", "reason"), ("answer_ids", "name")):
             if isinstance(o.get(key), dict):
-                o[key]["id"], o[key]["kind"] = "%s.%s" % (top, suffix), kind
+                o[key] = {"id": "%s.%s" % (top, suffix), "kind": suffix, "options": o[key]["options"]}
 
     def question(self, header, text, options, stage, more=None, extra=None, qid=None):
         """A question of the CLI: `qid` is its id of the registry (required), its kind is the registry's. `question` is the
@@ -380,7 +383,7 @@ class AskPart:
                 # 9.8.5 (Q1): a Design answer replaced a rule the tasks still carry. Plan updates them; or the person says no
                 # task names the old rule (an override with that reason, which the report shows).
                 ov = override_opt(go)
-                ov["reason_question"]["options"] = self.reason_options(["The tasks already agree"] + override_reasons)
+                self.set_reasons(ov, ["The tasks already agree"] + override_reasons)
                 return self.question(GATE_HEADER, "Design: the check failed (%s). Loop back to Plan so the tasks follow your answers?" % why,
                                      stage=stage, options=back_opt(rec=True) + [ov, self.save()], qid="design.fail")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
