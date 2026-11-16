@@ -102,7 +102,8 @@ def summary(temper_dir, now):
     for l in ((loops.get("active_loops") or []) + (loops.get("history") or [])) if isinstance(loops, dict) else []:
         if isinstance(l, dict):
             k = (str(l.get("from_stage") or ""), str(l.get("to_stage") or ""))
-            back[k] = back.get(k, 0) + 1
+            it = l.get("iteration")   # loop_step.py keeps one record a pair: its iteration is the steps it made
+            back[k] = back.get(k, 0) + (it if isinstance(it, int) and not isinstance(it, bool) else 1)
     usage = read(os.path.join(temper_dir, "usage.json"), [])
     by_stage, ms = {}, 0
     for r in usage if isinstance(usage, list) else []:

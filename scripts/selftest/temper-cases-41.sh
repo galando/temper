@@ -153,6 +153,17 @@ _at review
 assert_eq "summary: the steps back of the run are in the line" "[{'from': 'review', 'n': 1, 'to': 'build'}]" \
   "$(_c41_last 'd["steps_back"]')"
 
+# two steps back from Review to Build are one record of feedback-loops.json, with its iteration at 2
+setup
+_at review
+"$TEMPER" state loop review build --reason 'a finding to repair' >/dev/null
+_at review
+"$TEMPER" state loop review build --reason 'a second finding' >/dev/null
+_c41_it="$(python3 -c 'import json; print([l["iteration"] for l in json.load(open(".temper/feedback-loops.json"))["active_loops"]])')"
+"$TEMPER" state clear >/dev/null
+assert_eq "summary: two steps back of one pair count two" "[2] [{'from': 'review', 'n': 2, 'to': 'build'}]" \
+  "$_c41_it $(_c41_last 'd["steps_back"]')"
+
 # A Build task agent: its own gate of Task 1 (a `task` row), its launch's row (`build`, 2 s), the gate of its after calls
 # (nothing to gate). Then the gate of Task 3, left running by an earlier conversation, with its time (3 s): one launch.
 declare -F st_setup >/dev/null || source "$TESTS_DIR/case-helpers-5.sh"
