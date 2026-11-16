@@ -24,11 +24,28 @@ export type Person = (ask: Json, w: World) => string | { label: string; note?: s
 
 export class Denied extends Error {}
 
+// 9.8.5 (WP05): what a run did, for the floor (scripts/e2e/floor.json): the dialogs the person saw, by stage and by kind;
+// the agents launched, by type; the steps the CLI took by itself (`auto`); the steps back the person chose; the hand backs
+// of the run driver to the model loop; and the runs of the whole suite (`suite_runs`, the lines the fixture's suite
+// script appends to the file named by TEMPER_E2E_COUNT).
+export type Counts = {
+  dialogs: number
+  by_stage: Record<string, number>
+  by_kind: Record<string, number>
+  launches: Record<string, number>
+  auto: number
+  back: number
+  handbacks: number
+  suite_runs: number
+}
+
 export class World {
   dir: string
   trace: string[] = []
   denials: string[] = []
   allowed: string[] = []
+  counts: Counts = { dialogs: 0, by_stage: {}, by_kind: {}, launches: {}, auto: 0, back: 0, handbacks: 0, suite_runs: 0 }
+  countFile: string
   env: Record<string, string>
   started = Date.now()
   // TEMPER_E2E_LIMIT_S: the seconds a scenario may run before next() stops it (default 300); a step count alone let a
@@ -38,7 +55,25 @@ export class World {
     this.dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `temper-e2e-${name}-`)))
     this.env = { ...process.env, GIT_AUTHOR_NAME: 'e2e', GIT_AUTHOR_EMAIL: 'e2e@example.com', GIT_COMMITTER_NAME: 'e2e', GIT_COMMITTER_EMAIL: 'e2e@example.com' } as Record<string, string>
     for (const k of Object.keys(this.env)) if (!k.startsWith('GIT_CONFIG') && /(^|_)(KEY|TOKEN|SECRET|PASSWORD)(_|$)/i.test(k)) delete this.env[k]
+    this.countFile = `${this.dir}.suite-runs`
+    fs.writeFileSync(this.countFile, '')
+    this.env.TEMPER_E2E_COUNT = this.countFile
     this.sh('git init -q . && git checkout -q -B main')
+  }
+  // The counts of the run so far, with the suite runs read from the count file and `launch_total`, the sum of the launches.
+  finalCounts(): Counts & { launch_total: number } {
+    let suite = 0
+    try {
+      suite = fs.readFileSync(this.countFile, 'utf8').split('\n').filter(Boolean).length
+    } catch {
+      suite = 0
+    }
+    const c = { ...this.counts, suite_runs: suite }
+    const sorted = (r: Record<string, number>): Record<string, number> => Object.fromEntries(Object.keys(r).sort().map(k => [k, r[k]!]))
+    return { ...c, by_stage: sorted(c.by_stage), by_kind: sorted(c.by_kind), launches: sorted(c.launches), launch_total: Object.values(c.launches).reduce((a, b) => a + b, 0) }
+  }
+  countLaunch(type: string): void {
+    this.counts.launches[type] = (this.counts.launches[type] ?? 0) + 1
   }
   // ---- the project ----
   write(rel: string, text: string): void {
@@ -107,10 +142,17 @@ export class World {
     this.session({ tool: 'Bash', input: { command } })
   }
   guardAgent(a: Json): void {
+    this.countLaunch(String(a.type))
     this.session({ tool: 'Agent', input: { subagent_type: a.type, model: a.model, prompt: a.prompt, description: 'stage' } })
   }
-  guardAsk(q: Json): void {
-    this.session({ tool: 'AskUserQuestion', input: { questions: [q] } })
+  // One dialog: the questions shown at once (a Blocking set holds up to four), with the stage and the kind it counts under.
+  guardAsk(q: Json | Json[], stage = '', kind = ''): void {
+    this.counts.dialogs++
+    const st = stage || 'none'
+    const kd = kind || 'none'
+    this.counts.by_stage[st] = (this.counts.by_stage[st] ?? 0) + 1
+    this.counts.by_kind[kd] = (this.counts.by_kind[kd] ?? 0) + 1
+    this.session({ tool: 'AskUserQuestion', input: { questions: Array.isArray(q) ? q : [q] } })
   }
   // The mod's check of a call, without raising: the denial text, or null when it passes.
   denies(call: { tool: string; input: Json }): string | null {

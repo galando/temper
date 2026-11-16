@@ -159,6 +159,31 @@ jobs:
       - name: Run the scenarios of this shard in every mode
         run: bun scripts/e2e/run.ts all --shard ${{ matrix.shard }}/4
 
+  floor-and-caps:
+    # What keeps the product from growing back (9.8.5). The caps: each `now` of scripts/caps.json equals its measure and
+    # no `final` was raised (python3 and git only, always). The floor: the counts of the scripted default run, the full
+    # run and a fix run in every mode (dialogs, launches by agent type, the CLI's own steps, steps back, hand backs,
+    # suite runs) equal the `now` values of scripts/e2e/floor.json, and no `final` there was raised.
+    name: Floor and caps
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # a final is held against its first committed value, read from the history of the file
+      - name: The caps
+        run: python3 scripts/check_caps.py
+      - name: The floor's shape, and no final raised
+        run: python3 scripts/check_floor.py
+      - uses: oven-sh/setup-bun@v2
+        if: needs.changes.outputs.long == 'true'
+        with:
+          bun-version: 1.4.4   # the version the e2e job pins
+      - name: The counts of default-run, full-run and fix in every mode against the floor
+        if: needs.changes.outputs.long == 'true'
+        run: bun scripts/e2e/run.ts all default-run full-run fix --floor scripts/e2e/floor.json
+
   mod:
     name: Mod (Claude Code 2.1.287)
     runs-on: ubuntu-latest
@@ -193,7 +218,7 @@ jobs:
     # changes job skipped on purpose counts as passed.
     name: Gate
     needs: [changes, quality, temper-cli, validate-readme, validate-directory, validate-docs, validate-plugin,
-      validate-panels, validate-manifest, e2e, mod]
+      validate-panels, validate-manifest, e2e, floor-and-caps, mod]
     if: always()
     runs-on: ubuntu-latest
     steps:

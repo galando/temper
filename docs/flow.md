@@ -319,3 +319,29 @@ next` gives three actions in turn: steps that end with `temper report --end`, wh
 the orchestrator to show; `temper report --html`, which writes the page with no question (9.8.0; the run used to ask
 whether to write it); then the commit steps. The run's `end_report` records the first two (the CLI keeps it), and
 the page is carried by the commit. Every value is escaped, and it never writes inside the plugin's own folder.
+
+## The run summary (9.8.5)
+
+A finished run leaves one line in the project. `temper state clear` appends it to `.temper/runs.jsonl`
+(`scripts/run_summary.py`) before it deletes the run's files, and the file keeps its last 200 lines:
+
+```json
+{"v": 1, "at": "...", "run": "<run id>", "slug": "...", "command": "temper", "version": "9.8.5", "mode": "interactive",
+ "ended": "committed", "asks": {"n": 8, "by_stage": {"plan": 2}, "by_kind": {"gate": 5}},
+ "steps_back": [{"from": "review", "to": "build", "n": 1}], "launches": {"by_stage": {"plan": 1}},
+ "seconds": 1200, "agent_seconds": 900, "skips": 0}
+```
+
+`ended` is `committed` when the commit gate's verdict is PASS, else `cleared`. The steps back come from
+`feedback-loops.json`, the launches and the agent seconds from `usage.json` (the agents recorded with their stage and
+time), the skips from `overrides.json`. The asks are the questions the CLI asked: each time the flow writes a view whose
+`ask` is set, `.temper/asked.json` records `<run id>:<step>:<question id>` once, with the stage and the kind, so `next`
+run twice at one step counts one; a set of Blocking questions counts one for every four. Follow up dialogs (More
+options, a reason, a name) are asked by the carrier and are not seen here, so `asks` counts the CLI's questions, not
+every dialog a person saw. Both files are run files git ignores; `runs.jsonl` survives `state init` and `state clear`,
+and neither decides a gate row.
+
+The end to end scenarios count the dialogs a person saw, the launches by agent type, the steps the CLI took by itself,
+the steps back, the hand backs of the run driver and the runs of the whole suite; `scripts/e2e/floor.json` holds those
+counts for each scenario and mode, and `bun scripts/e2e/run.ts <mode> <name> --floor scripts/e2e/floor.json` compares
+them exactly (`scripts/check_floor.py`).

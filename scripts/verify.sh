@@ -6,11 +6,13 @@
 #
 # quick: the validators, the name check, the case files that differ from REV (run-selftest.sh --touched), and, only when
 # what they cover changed since REV, the two fixture compares and one whole end to end run (a file under scripts outside
-# scripts/selftest), and the mod's tests (a .ts or .tsx file); then the type check of the mod. REV defaults to HEAD when
+# scripts/selftest), the floor of default-run and fix in plain mode, and the mod's tests (a .ts or .tsx file); then the
+# type check of the mod. Both words check the caps and the shape of the floor first. REV defaults to HEAD when
 # the work tree has changes and to HEAD~1 when it is clean.
 # full: the validators, the name check, every case file in parallel (the fixture compares are in case file 8), the end
-# to end suite in every mode as shards side by side (one per CPU, up to 4), the mod's tests, its manifest, its reviewed
-# calls, the type check and the test of the directory rules.
+# to end suite in every mode as shards side by side (one per CPU, up to 4) with the floor, the replay against the floor
+# and the A/B replay against the base, the mod's tests, its manifest, its reviewed calls, the type check and the test
+# of the directory rules.
 #
 # One line per step with its result and seconds, then `verify quick: PASS` or `FAIL` (or `full`). Exit 0 only when
 # every step passed; another word exits 2. When the mod's types cannot be made here, the two fixture files are
@@ -35,8 +37,10 @@ FAILED=0; N=0; T0=$SECONDS; BG=()
 report() { # report <name> <exit> <seconds> <log>
   if [[ "$2" -eq 0 ]]; then
     printf 'PASS  %5d s  %s\n' "$3" "$1"
-    # a suite's own total (the selftest prints PASS: N  FAIL: M last) goes into the gate's output
+    # a suite's own total (the selftest prints PASS: N  FAIL: M last) goes into the gate's output, and so do the last
+    # lines of the floor and the caps (9.8.5, WP05)
     tail -n 1 "$4" | grep -E '^PASS: [0-9]+' | sed 's/^/        /' || true
+    grep -E '^(floor|caps): ' "$4" | tail -n 2 | sed 's/^/        /' || true
   else
     printf 'FAIL  %5d s  %s\n' "$3" "$1"
     tail -n 20 "$4" | sed 's/^/        /'
@@ -66,6 +70,7 @@ collect() {
   BG=()
 }
 
+replay_floor() { bun scripts/e2e/replay.ts final | tail -n 1 | python3 -I scripts/check_floor.py --replay; }
 fixtures_first() { bash scripts/selftest/make-view-fixtures.sh | cmp - scripts/selftest/view-fixtures.ts; }
 fixtures_extra() { bash scripts/selftest/make-view-fixtures.sh extra | cmp - scripts/selftest/view-fixtures-2.ts; }
 TYPES=".claude-plugin/types/claude-code/index.d.ts"
@@ -101,6 +106,8 @@ step "validate-plugin.sh" bash scripts/validate-plugin.sh
 step "validate-panels.py" python3 scripts/validate-panels.py
 step "check-known-limits.sh" bash scripts/check-known-limits.sh
 step "check-names.py (the tracked Python scripts)" python3 -I scripts/selftest/check-names.py
+step "caps: check_caps.py (the growth caps of scripts/caps.json)" python3 -I scripts/check_caps.py
+step "floor: check_floor.py (the shape of scripts/e2e/floor.json, no final raised)" python3 -I scripts/check_floor.py
 
 if [[ "$WORD" == quick ]]; then
   REV="${2:-}"
@@ -122,6 +129,9 @@ if [[ "$WORD" == quick ]]; then
     bg_step "fixture compare: make-view-fixtures.sh extra and view-fixtures-2.ts" fixtures_extra
     bg_step "end to end: run.ts both full-run" bun scripts/e2e/run.ts both full-run
   fi
+  # the counts of dialogs and launches did not move unseen (9.8.5, WP05)
+  bg_step "floor: run.ts plain default-run fix --floor scripts/e2e/floor.json" \
+    bun scripts/e2e/run.ts plain default-run fix --floor scripts/e2e/floor.json
   collect
   if [[ "$SCRIPTS" -eq 0 ]]; then
     skip "fixture compares and end to end (no file under scripts outside scripts/selftest changed)"
@@ -139,9 +149,13 @@ else
   [[ "$CPUS" =~ ^[1-9][0-9]*$ ]] || CPUS=4
   (( CPUS <= 4 )) || CPUS=4
   for k in $(seq 1 "$CPUS"); do
-    bg_step "end to end: run.ts all --shard $k/$CPUS" bun scripts/e2e/run.ts all --shard "$k/$CPUS"
+    bg_step "end to end: run.ts all --shard $k/$CPUS --floor" bun scripts/e2e/run.ts all --shard "$k/$CPUS" --floor scripts/e2e/floor.json
   done
   collect
+  # the measured bad run, replayed, against the floor's replay entry; and the base column of the A/B replay against
+  # replay_base (ab-replay.sh checks it itself when its base is 10e965a)
+  step "floor: replay.ts final against the replay entry" replay_floor
+  step "floor: ab-replay.sh 10e965a (its base column equals replay_base)" bash scripts/e2e/ab-replay.sh 10e965a
   step "claude plugin test ." claude plugin test .
   step "claude plugin validate --strict ." claude plugin validate --strict .
   step "test-check-mod-calls.sh" bash scripts/selftest/test-check-mod-calls.sh

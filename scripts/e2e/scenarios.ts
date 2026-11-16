@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
-import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, TASKS_MD } from './project'
+import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, CONTEXT_CHECK_LINE, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
 import { ROOT, TEMPER, World } from './world'
 import type { Agent, Json, Person } from './world'
 
@@ -27,7 +27,7 @@ export function startProject(w: World, config = '', before?: (w: World) => void)
   // 9.8.0: Check is run by the CLI. The driver names its commands (the suite, with a coverage total it prints) and turns
   // the mutation gate off, so a run gives the same verdict on every machine.
   const cfg = path.join(w.dir, '.claude/temper.config')
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80', "  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: python3 -m unittest discover -s unit -t .\n    coverage: python3 -m unittest discover -s unit -t . && echo 'TOTAL 100 10 90%'"))
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80', `  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'`))
   if (config) fs.appendFileSync(cfg, `\n${config}\n`)
   w.sh('git add -A && git commit -qm config')
   before?.(w)
@@ -95,6 +95,8 @@ export const AGENTS: Record<string, Agent> = {
   'temper:temper-plan': w => {
     if (!w.read(`${SPEC}/intent.md`).includes(INTENT_SCENARIOS)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('## Scenarios (BDD)\n', INTENT_SCENARIOS))
     w.write(`${SPEC}/plan.md`, PLAN_MD)
+    // the Open Question agents/plan.md tells a planner to add with its Context Map
+    if (!w.read(`${SPEC}/intent.md`).includes(CONTEXT_CHECK_LINE)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('### Open Questions\n', `### Open Questions\n\n${CONTEXT_CHECK_LINE}\n`))
     w.write(`${SPEC}/tasks.md`, TASKS_MD)
     t(w, 'state set complexity simple')
     t(w, 'risk')
@@ -129,6 +131,21 @@ export const script = (extra: Partial<Script> = {}): Script => ({
   instruction: (_w, text) => /each file the run changed|^Copy what|^When .* records deviations/.test(text),
   ...extra,
 })
+
+// An agent the session launches by hand, outside the loop over `next` (commands/fix.md launches the RCA agent itself):
+// counted as a launch of its type, as the loop counts the agents the CLI names.
+export function launchByHand(w: World, agents: Record<string, Agent>, type: string, a: Json = {}): void {
+  w.countLaunch(type)
+  agents[type]!(w, { type, ...a })
+}
+
+// 9.8.5 (WP05): the default run the floor counts: the project of full-run, the Context Map as agents/plan.md tells a
+// planner to write it (the scripted Plan agent of every scenario does), and the person who takes the recommended option
+// everywhere. It asserts nothing about numbers: scripts/e2e/floor.json holds them.
+export const defaultRun = (w: World): void => {
+  startProject(w)
+  orchestrate(w, script())
+}
 
 export const fullRun = (w: World): void => {
   startProject(w)
@@ -341,8 +358,7 @@ export const contextCheck = (w: World): void => {
     ...AGENTS,
     'temper:temper-plan': (wd, a) => {
       AGENTS['temper:temper-plan']!(wd, a)
-      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('- reviewed: auto - every source is current and on topic', '- gap: no rate limit policy was found in code, docs or the ticket\n- reviewed: pending'))
-      wd.write(`${SPEC}/intent.md`, wd.read(`${SPEC}/intent.md`).replace('### Open Questions\n', '### Open Questions\n\n- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.\n'))
+      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('- reviewed: pending', '- gap: no rate limit policy was found in code, docs or the ticket\n- reviewed: pending'))
     },
   }
   let asked = 0
@@ -556,11 +572,11 @@ case "$*" in *verify*) exit 0 ;; esac
   startProject(w)
   // 9.8.0: Check is the CLI's; this project has no Python tests, so its Check commands are mvn's
   const cfg = path.join(w.dir, '.claude/temper.config')
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('    test: python3 -m unittest discover -s unit -t .', '    test: mvn -q verify').replace("    coverage: python3 -m unittest discover -s unit -t . && echo 'TOTAL 100 10 90%'", "    coverage: mvn -q verify && echo 'TOTAL 100 10 90%'"))
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace(`    test: ${SUITE}`, '    test: mvn -q verify').replace(`    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'`, "    coverage: mvn -q verify && echo 'TOTAL 100 10 90%'"))
   const tasks = TASKS_MD
     .replace(/\*\*Validate:\*\* `python3 -m unittest unit\.test_ci_shape`/, '**Validate:** `mvn verify -Pjacoco`')
     .replace(/\*\*Validate:\*\* `python3 -m unittest unit\.test_ci_bytes`/, '**Validate:** `mvn verify -Pjacoco`')
-    .replace('**Integration:** `python3 -m unittest discover -s unit -t .`', '**Integration:** `mvn verify -Pjacoco`')
+    .replace(`**Integration:** \`${SUITE}\``, '**Integration:** `mvn verify -Pjacoco`')
     .replace('`src/ci_shape.py`, `unit/test_ci_shape.py`', '`src/main/java/com/acme/Shape.java`, `src/test/java/com/acme/ShapeTest.java`')
     .replace('`src/ci_bytes.py`, `unit/test_ci_bytes.py`', '`src/main/java/com/acme/Bytes.java`, `src/test/java/com/acme/BytesTest.java`')
     .replace(/\*\*Test:\*\* `python3 -m unittest unit\.test_ci_(shape|bytes)`/g, '**Test:** `mvn test`')
@@ -638,7 +654,7 @@ export const fixRun = (w: World): void => {
     orchestrateFix(w, fixScript, 'the shape drops the verdict', 'bug')
   } else {
     // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question
-    agents['temper:temper-rca']!(w, {})
+    launchByHand(w, agents, 'temper:temper-rca')
     // 9.8.0 (round 5): the CLI draws the RCA panel from the file the agent wrote; commands/fix.md prints it
     expect(w.sh(`${TEMPER} panel rca ${bug}/rca.md`).includes('| RCA: the shape drops the verdict'), 'the CLI drew the RCA panel from rca.md')
     orchestrate(w, fixScript)
@@ -749,7 +765,9 @@ export const freshContest = (w: World): void => {
         expect(opt.reason_question.options[0].label === 'Contested with evidence: .gitignore:1', 'the first reason is the checked citation')
         expect(opt.reason_question.options[1].label === 'The quoted text answers it: __pycache__/', 'the second reason is the checked quote')
         wd.answer(aq, opt.label, 'Contested with evidence: .gitignore:1')
-        runCalls(wd, opt.calls, { reason: 'Contested with evidence: .gitignore:1' })
+        // the option's gate call records a verdict: the Context check the plan still waits for fails it, and the next
+        // question asks that check
+        runCalls(wd, opt.calls, { reason: 'Contested with evidence: .gitignore:1' }, 'any')
         return true
       }
       return /each file the run changed|^Copy what|^When .* records deviations/.test(text)

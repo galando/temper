@@ -1,24 +1,40 @@
-// bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N]  (all: plain, mod and the mod's run driver)  (a live model smoke is not part of this: it stays off, and out of CI)
-import { freshAsk, freshContest, freshNotRun, freshReview, armedRun, branchClash, branchClashCarry, contextCheck, designRun, failingScenario, fixRun, mavenRun, threeGroups, coveredAndManual, fullRun, hookScope, modGuards, prAndPipeline, saveAndResume, smallChange } from './scenarios'
+// bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N] [--floor FILE | --write-floor FILE]  (all: plain, mod and the mod's run driver)  (a live model smoke is not part of this: it stays off, and out of CI)
+import { defaultRun, freshAsk, freshContest, freshNotRun, freshReview, armedRun, branchClash, branchClashCarry, contextCheck, designRun, failingScenario, fixRun, mavenRun, threeGroups, coveredAndManual, fullRun, hookScope, modGuards, prAndPipeline, saveAndResume, smallChange } from './scenarios'
 import { pyjokesBlocked, pyjokesFull, pyjokesRun } from './pyjokes'
 import { Denied, World } from './world'
-import type { Mode } from './world'
+import type { Json, Mode } from './world'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-const SCENARIOS: Record<string, (w: World) => void> = { 'full-run': fullRun, 'mod-guards': modGuards, 'small-change': smallChange, 'covered-and-manual': coveredAndManual, 'pr-and-pipeline': prAndPipeline, 'context-check': contextCheck, 'branch-clash': branchClash, 'branch-clash-carry': branchClashCarry, 'hook-scope': hookScope, 'failing-scenario': failingScenario, 'armed-run': armedRun, 'save-and-resume': saveAndResume, design: designRun, 'three-groups': threeGroups, maven: mavenRun, fix: fixRun, 'fresh-review': freshReview, 'fresh-not-run': freshNotRun, 'fresh-contest': freshContest, 'fresh-ask': freshAsk, pyjokes: pyjokesRun, 'pyjokes-full': pyjokesFull, 'pyjokes-blocked': pyjokesBlocked }
+const SCENARIOS: Record<string, (w: World) => void> = { 'default-run': defaultRun, 'full-run': fullRun, 'mod-guards': modGuards, 'small-change': smallChange, 'covered-and-manual': coveredAndManual, 'pr-and-pipeline': prAndPipeline, 'context-check': contextCheck, 'branch-clash': branchClash, 'branch-clash-carry': branchClashCarry, 'hook-scope': hookScope, 'failing-scenario': failingScenario, 'armed-run': armedRun, 'save-and-resume': saveAndResume, design: designRun, 'three-groups': threeGroups, maven: mavenRun, fix: fixRun, 'fresh-review': freshReview, 'fresh-not-run': freshNotRun, 'fresh-contest': freshContest, 'fresh-ask': freshAsk, pyjokes: pyjokesRun, 'pyjokes-full': pyjokesFull, 'pyjokes-blocked': pyjokesBlocked }
 
 const want = process.argv[2] ?? 'both'
 const modes: Mode[] = want === 'both' ? ['plain', 'mod'] : want === 'all' ? ['plain', 'mod', 'driver'] : [want as Mode]
 // After the mode: scenario names and flags, in any order. --shard K/N keeps the scenarios of SCENARIOS whose index modulo
 // N is K minus 1; every mode of a scenario stays in this one process, since the compare of the flow with the mod and
 // without it reads two traces of one process.
+// --floor FILE (9.8.5, WP05): each finished scenario's counts (dialogs, launches by agent type, the CLI's own steps,
+// steps back, hand backs, suite runs) are compared with the `now` values of FILE by scripts/check_floor.py; any
+// difference, and a scenario with no entry, fails. --write-floor FILE writes the `now` values instead (one process
+// writes the file, so it is refused with --shard).
 const words: string[] = []
 let shard: [number, number] | null = null
+let floor = ''
+let writeFloor = ''
 const rest = process.argv.slice(3)
 for (let i = 0; i < rest.length; i++) {
   const a = rest[i]!
-  if (a === '--shard') {
+  if (a === '--floor' || a === '--write-floor') {
+    const f = rest[++i] ?? ''
+    if (f === '' || f.startsWith('--')) {
+      console.log(`FAIL: ${a} takes a file`)
+      process.exit(2)
+    }
+    if (a === '--floor') floor = path.resolve(f)
+    else writeFloor = path.resolve(f)
+  } else if (a === '--shard') {
     const m = /^([1-9]\d*)\/([1-9]\d*)$/.exec(rest[++i] ?? '')
     if (m === null || Number(m[1]) > Number(m[2])) {
       console.log('FAIL: --shard takes K/N with 1 <= K <= N')
@@ -29,6 +45,10 @@ for (let i = 0; i < rest.length; i++) {
     console.log(`FAIL: unknown flag ${a} (bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N])`)
     process.exit(2)
   } else words.push(a)
+}
+if (writeFloor !== '' && (shard !== null || floor !== '')) {
+  console.log('FAIL: --write-floor writes the file from one process: not with --shard or --floor')
+  process.exit(2)
 }
 const unknown = words.filter(n => !(n in SCENARIOS))
 if (unknown.length > 0) {
@@ -50,6 +70,7 @@ function dumpTrace(w: World): void {
 }
 let failed = 0
 const traces: Record<string, string[]> = {}
+const counted: Array<{ scenario: string; mode: string; counts: Json }> = []
 for (const name of names) {
   for (const mode of modes) {
     const w = new World(mode, name)
@@ -57,6 +78,9 @@ for (const name of names) {
       SCENARIOS[name]!(w)
       traces[`${name}:${mode}`] = w.trace.filter(l => !l.startsWith('  call'))
       console.log(`PASS ${name} [${mode}] (${w.trace.length} steps, ${w.denials.length} refusals)`)
+      const counts = w.finalCounts()
+      counted.push({ scenario: name, mode, counts })
+      console.log(`COUNT ${name} [${mode}] ${JSON.stringify(counts)}`)
     } catch (e) {
       failed++
       console.log(`FAIL ${name} [${mode}]: ${(e as Error).message.slice(0, 1500)}`)
@@ -70,6 +94,17 @@ for (const name of names) {
     console.log(`${same ? 'PASS' : 'FAIL'} ${name}: the flow is identical with the mod and without it`)
     if (!same) failed++
   }
+}
+// The floor: one call of scripts/check_floor.py with the counts of every scenario that passed here.
+if (floor !== '' || writeFloor !== '') {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'temper-floor-'))
+  const file = path.join(tmp, 'counts.json')
+  fs.writeFileSync(file, JSON.stringify(counted, null, 1) + '\n')
+  const args = writeFloor !== '' ? ['--floor', writeFloor, '--counts', file, '--write'] : ['--floor', floor, '--counts', file]
+  const r = spawnSync('python3', ['-I', path.join(import.meta.dir, '..', 'check_floor.py'), ...args], { encoding: 'utf8' })
+  process.stdout.write((r.stdout ?? '') + (r.stderr ?? ''))
+  if (r.status !== 0) failed++
+  fs.rmSync(tmp, { recursive: true, force: true })
 }
 console.log(failed === 0 ? 'e2e: all passed' : `e2e: ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

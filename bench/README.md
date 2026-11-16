@@ -39,9 +39,31 @@ tasks/<id>/
    nothing: did the change break what worked?
 3. **The diff:** files and lines changed against the base commit (Temper's own `.temper/` and `.claude/` folders
    counted apart), and every changed file outside `expected_paths`.
-4. **Cost and time**, from the SDK's own result messages (`run.json`).
+4. **Cost and time**, from the SDK's own result messages (`run.json`). That is the one source of cost: the
+   scorecard and `report.py` read `cost_usd` of `run.json`. `loop.py` prices the same requests from Claude Code's
+   logs, and `loop.py --check` compares the two; its figure is for a reader, never a second number in a table.
 
-`report.py` prints one table per task and one overall.
+`report.py` prints one table per task and one overall, with the median, the minimum and the maximum beside each mean.
+Arm names are free: an arm that is not one of the five known ones gets its own row.
+
+## The scorecard
+
+`run.mjs` also writes, on each line of `person.jsonl`, the dialog it was asked in (four Blocking questions in one
+dialog share the index), the question's id and the move of the answer, and in `run.json` which code ran: the plugin's
+version and commit, the Claude Code version and whether the mod was loaded. `agentlog.py` reads the agents of a run from
+Claude Code's own logs (the type matched whole).
+
+```bash
+python3 scorecard.py ~/results-before ~/results-after          # scorecard.json in each folder, and one table
+python3 scorecard.py ~/results-before ~/results-after --gate ../docs/evidence/scorecard-9.8.5.json
+```
+
+A block is one arm of one results folder, named `<folder>/<arm>`, so the round before and the round after, both run as
+the arm `temper`, stay apart, and a third arm (the model test) lives in a folder of its own. `--gate` holds one block
+against the pass lines of part H of `docs/plans/one-go/done.md` (`bug`, `clear`, `vague`, `hidden`, `rules_met`,
+`reviews`, `steps_back`): `--arm NAME` names it, by default the `temper` block of the last folder; `--before` and
+`--plain` name the round before and plain Claude Code. A line with no data says so and is not a pass. A missed line is
+reported with its numbers; it is never tuned.
 
 ## Running it
 
