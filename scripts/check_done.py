@@ -1,0 +1,534 @@
+#!/usr/bin/env python3
+"""check_done.py: every promise of docs/plans/one-go/done.md has its check, 9.8.5 (WP07).
+
+  python3 scripts/check_done.py [--final] [--root DIR]
+
+It reads the table under the heading "The table" of `docs/plans/one-go/done.md` and the expected to fail list,
+`scripts/selftest/expected-fail.txt`, and fails when:
+  - a row whose fourth cell is `yes` (it needs no model) names no check, or a row id is used twice;
+  - a `case NN <token>` item names a token that no assertion of `scripts/selftest/temper-cases-NN.sh` starts with (the
+    token and a space, after a quote: a token is a whole word, so `D10` never matches `D100`);
+  - a `scenario <name>` item names a scenario that no file of `scripts/e2e` registers (its quoted name as a key);
+  - a line of the list matches no check, names a token that is not a token of the table, or names a scenario that is
+    not one of `scripts/e2e/accept.ts`, `scripts/e2e/slow.ts` or `scripts/e2e/broken.ts`;
+  - a line of the list was taken off it by an earlier commit and is on it again (from `git log -p` of the list; a
+    checkout with no history shows no such commit);
+  - a test file of the mod (the pathspecs `*.test.ts` and `*.test.tsx`) holds `.skip(`, `.only(` or `.todo(`;
+  - a scenario of those three files does not call the shared assert `worldCheck` (row D105), in its own body or in a
+    function of the same file it calls;
+  - one of the rows `D30` to `D39` names neither a case nor a scenario that runs in plain mode (rule 11, row D40).
+A `mod` item is not looked up: the mod's own suite runs every test file. A `gate` and a `bench` item are not run here.
+
+With `--final` it also fails while the list has an entry, and it runs D75b: each `final` of `scripts/caps.json` and
+`scripts/e2e/floor.json` equals the value the table writes after `=` for its key, every such key of the table has its
+`final`, and no `final` is above its value in the commit that first added the key.
+
+It prints one line a row: the id and `ok`, `expected to fail` (a check of the row is on the list) or `open` (the row
+needs a model or a person, or a `final` it names is not written yet), or `FAIL` with what is missing; then the count of
+the list. Python 3 and git only. Exit 0 when every rule holds, else 1 (2 for a wrong call).
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+DONE = "docs/plans/one-go/done.md"
+LIST = "scripts/selftest/expected-fail.txt"
+SELFTEST = "scripts/selftest"
+E2E = "scripts/e2e"
+CAPS = "scripts/caps.json"
+FLOOR = "scripts/e2e/floor.json"
+THREE = ("accept.ts", "slow.ts", "broken.ts")
+KINDS = ("case", "scenario", "floor", "caps", "mod", "gate", "bench")
+MODES = ("plain", "mod", "driver")
+RULE_ROWS = ["D%d" % n for n in range(30, 40)]
+SPAN = re.compile(r"`([^`]+)`")
+VALUE = re.compile(r"\s*=\s*([^\s;,()]+)(?:\s+in\s+(plain|mod|driver)\s+mode)?")
+MODES_AFTER = re.compile(r"\s+((?:plain|mod|driver)(?:\s*,\s*(?:plain|mod|driver))*)\b")
+IDENT = r"[A-Za-z_$][\w$]*"
+
+
+def read(root, rel):
+    p = os.path.join(root, rel)
+    if not os.path.isfile(p):
+        return None
+    with open(p, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def git(root, *args):
+    p = subprocess.run(["git", "-C", root] + list(args), capture_output=True, text=True, errors="replace")
+    return p.returncode, p.stdout
+
+
+# ---- the table ---------------------------------------------------------------------------------------------------------
+
+def cells_of(line):
+    """The cells of a table line, split on `|` outside code spans."""
+    out, cur, tick = [], [], False
+    for ch in line.strip().strip("|"):
+        if ch == "`":
+            tick = not tick
+        if ch == "|" and not tick:
+            out.append("".join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur).strip())
+    return out
+
+
+def table(text):
+    """[(line number, cells)] of the rows under the heading "The table"."""
+    rows, inside = [], False
+    for n, line in enumerate(text.split("\n"), 1):
+        if line.strip() == "## The table":
+            inside = True
+            continue
+        if not inside:
+            continue
+        if line.startswith("## "):
+            break
+        if not line.startswith("|"):
+            continue
+        cells = cells_of(line)
+        if cells[0] == "Id" or set(cells[0]) <= set("-: "):
+            continue
+        rows.append((n, cells))
+    return rows
+
+
+def parse_value(s):
+    s = s.rstrip(".")
+    if s in ("true", "false"):
+        return s == "true"
+    try:
+        return int(s)
+    except ValueError:
+        try:
+            return float(s)
+        except ValueError:
+            return s
+
+
+def items_of(check):
+    """The items of a check cell: dicts with kind, words, value (or None), mode (of the value) and modes (a scenario)."""
+    items = []
+    for m in SPAN.finditer(check):
+        words = m.group(1).split()
+        if not words or words[0] not in KINDS:
+            continue
+        after = check[m.end():]
+        item = {"kind": words[0], "words": words[1:], "text": m.group(1), "value": None, "mode": None, "modes": None}
+        v = VALUE.match(after)
+        if v is not None and words[0] in ("floor", "caps"):
+            item["value"] = parse_value(v.group(1))
+            item["mode"] = v.group(2)
+        if words[0] == "scenario":
+            ms = MODES_AFTER.match(after)
+            item["modes"] = re.findall(r"plain|mod|driver", ms.group(1)) if ms else list(MODES)
+        items.append(item)
+    return items
+
+
+# ---- where the checks live ---------------------------------------------------------------------------------------------
+
+def case_files(root):
+    d = os.path.join(root, SELFTEST)
+    if not os.path.isdir(d):
+        return {}
+    out = {}
+    for f in sorted(os.listdir(d)):
+        m = re.match(r"^temper-cases-(\d+)\.sh$", f)
+        if m:
+            out[m.group(1)] = read(root, "%s/%s" % (SELFTEST, f)) or ""
+    return out
+
+
+def has_token(text, token):
+    """True when an assertion name in the text starts with the token and a space (the token as a whole word)."""
+    return text is not None and ('"%s ' % token in text or "'%s " % token in text)
+
+
+def e2e_files(root):
+    d = os.path.join(root, E2E)
+    if not os.path.isdir(d):
+        return {}
+    return {f: read(root, "%s/%s" % (E2E, f)) or "" for f in sorted(os.listdir(d))
+            if f.endswith(".ts") and not f.endswith(".test.ts")}
+
+
+def has_scenario(files, name):
+    """True when a file of scripts/e2e registers the scenario: its quoted name as the key of an entry, or as a name:."""
+    q = "['\"]%s['\"]" % re.escape(name)
+    reg = re.compile(r"%s\s*:|\bname\s*:\s*%s" % (q, q))
+    return any(reg.search(t) for t in files.values())
+
+
+def registered(src):
+    """{scenario name: function name} of a scenario file: the entries of its objects named *SCENARIOS, else of every
+    object entry whose key is a lower case name joined by hyphens and whose value is a function or { run: function }."""
+    entry = re.compile(r"['\"]([a-z0-9]+(?:-[a-z0-9]+)+)['\"]\s*:\s*(?:\{\s*run\s*:\s*)?(%s)" % IDENT)
+    out = {}
+    for m in re.finditer(r"(?:const|let)\s+\w*SCENARIOS\b[^\n]*=\s*\{", src):
+        block = braced(src, m.end() - 1) or ""
+        out.update({k: v for k, v in entry.findall(block)})
+    if not out:
+        out = {k: v for k, v in entry.findall(src)}
+    return out
+
+
+def braced(src, i):
+    """The text from the brace at i to its match, or None."""
+    if i < 0 or i >= len(src) or src[i] != "{":
+        return None
+    depth = 0
+    for j in range(i, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[i:j + 1]
+    return None
+
+
+def body_of(src, ident):
+    m = re.search(r"function\s+%s\s*[<(]" % re.escape(ident), src)
+    if m is not None:
+        return braced(src, src.find("{", src.find(")", m.end()))) if src.find(")", m.end()) >= 0 else None
+    m = re.search(r"(?:const|let)\s+%s\b[^=]*=" % re.escape(ident), src)
+    if m is None:
+        return None
+    arrow = src.find("=>", m.end())
+    if arrow < 0:
+        return None
+    k = arrow + 2
+    while k < len(src) and src[k] in " \t":
+        k += 1
+    if k < len(src) and src[k] == "{":
+        return braced(src, k)
+    end = src.find("\n", k)
+    return src[k:end if end >= 0 else len(src)]
+
+
+def calls_world_check(src, ident, seen=None, depth=0):
+    seen = set() if seen is None else seen
+    if ident in seen or depth > 4:
+        return False
+    seen.add(ident)
+    body = body_of(src, ident)
+    if body is None:
+        return False
+    if re.search(r"\bworldCheck\s*\(", body):
+        return True
+    return any(calls_world_check(src, c, seen, depth + 1) for c in re.findall(r"\b(%s)\s*\(" % IDENT, body)
+               if c != ident)
+
+
+# ---- the list ------------------------------------------------------------------------------------------------------------
+
+def read_list(text):
+    """[(line number, check, suite, name, mode)] and the errors of the list."""
+    out, errors = [], []
+    for n, raw in enumerate((text or "").split("\n"), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        words = line.split()
+        parts = words[0].split(":")
+        if len(words) < 2 or not re.match(r"^WP\d{2}$", words[1]):
+            errors.append("line %d of the list names no package: %s" % (n, line))
+        if parts[0] == "selftest" and len(parts) == 2 and parts[1]:
+            out.append((n, words[0], "selftest", parts[1], None))
+        elif parts[0] == "selftest" and len(parts) == 3 and parts[1] and parts[2] == "":
+            out.append((n, words[0], "selftest", parts[1] + ":", None))   # a token that ends in a colon
+        elif parts[0] == "e2e" and len(parts) in (2, 3) and parts[1]:
+            out.append((n, words[0], "e2e", parts[1], parts[2] if len(parts) == 3 else None))
+        else:
+            errors.append("line %d of the list is neither selftest:<token> nor e2e:<scenario>[:<mode>]: %s" % (n, line))
+    return out, errors
+
+
+def came_back(root, current):
+    """The checks of the list that an earlier commit took off it and that are on it again."""
+    code, out = git(root, "log", "-p", "--reverse", "--no-color", "--format=%x00COMMIT %H", "--", LIST)
+    if code != 0:
+        return []
+    gone = set()
+    for chunk in out.split("\x00COMMIT ")[1:]:
+        removed, added = set(), set()
+        for line in chunk.split("\n"):
+            if line.startswith("---") or line.startswith("+++"):
+                continue
+            body = line[1:].split("#", 1)[0].split()
+            if not body:
+                continue
+            if line.startswith("-"):
+                removed.add(body[0])
+            elif line.startswith("+"):
+                added.add(body[0])
+        gone |= removed - added
+    return sorted(c for c in current if c in gone)
+
+
+# ---- the finals (D75b) ---------------------------------------------------------------------------------------------------
+
+def flat(d, pre=""):
+    out = {}
+    for k, v in d.items():
+        p = "%s.%s" % (pre, k) if pre else str(k)
+        if isinstance(v, dict):
+            out.update(flat(v, p))
+        else:
+            out[p] = v
+    return out
+
+
+def finals_of(rel, doc):
+    """{(key, mode): value} of every `final` of the caps file or the floor file, keyed as the table names them."""
+    out = {}
+    if not isinstance(doc, dict):
+        return out
+    if rel == CAPS:
+        for k, v in (doc.get("caps") or {}).items():
+            if isinstance(v, dict) and "final" in v:
+                out[(k, None)] = v["final"]
+        return out
+    for sc, modes in (doc.get("scenarios") or {}).items():
+        for mode, entry in (modes or {}).items():
+            if isinstance(entry, dict) and isinstance(entry.get("final"), dict):
+                for p, v in flat(entry["final"]).items():
+                    out[("%s.%s" % (sc, p), mode)] = v
+    rep = doc.get("replay")
+    if isinstance(rep, dict) and isinstance(rep.get("final"), dict):
+        for p, v in flat(rep["final"]).items():
+            out[("replay.%s" % p, None)] = v
+    return out
+
+
+def same(a, b):
+    num = (int, float)
+    if isinstance(a, bool) or isinstance(b, bool):
+        return isinstance(a, bool) and isinstance(b, bool) and a == b
+    if isinstance(a, num) and isinstance(b, num):
+        return a == b
+    return type(a) is type(b) and a == b
+
+
+def above(now, first):
+    if isinstance(now, bool) or isinstance(first, bool) or not isinstance(now, (int, float)) \
+            or not isinstance(first, (int, float)):
+        return not same(now, first)
+    return now > first
+
+
+def first_values(root, rel):
+    """{(key, mode): value} of each `final` in the commit of the file that first held it."""
+    code, out = git(root, "log", "--reverse", "--format=%H", "--", rel)
+    if code != 0:
+        return {}
+    first = {}
+    for c in out.split():
+        code, text = git(root, "show", "%s:%s" % (c, rel))
+        if code != 0:
+            continue
+        try:
+            doc = json.loads(text)
+        except ValueError:
+            continue
+        for k, v in finals_of(rel, doc).items():
+            first.setdefault(k, v)
+    return first
+
+
+def load_json(root, rel):
+    text = read(root, rel)
+    if text is None:
+        return None
+    try:
+        return json.loads(text)
+    except ValueError:
+        return None
+
+
+# ---- the check -------------------------------------------------------------------------------------------------------------
+
+def main(argv):
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    final = False
+    args = list(argv)
+    while args:
+        a = args.pop(0)
+        if a == "--final":
+            final = True
+        elif a == "--root" and args:
+            root = os.path.abspath(args.pop(0))
+        else:
+            print("usage: python3 scripts/check_done.py [--final] [--root DIR]")
+            return 2
+    done = read(root, DONE)
+    if done is None:
+        print("check_done: FAIL: no %s" % DONE)
+        return 1
+    rows = table(done)
+    if not rows:
+        print("check_done: FAIL: %s has no table under the heading \"The table\"" % DONE)
+        return 1
+    cases = case_files(root)
+    e2e = e2e_files(root)
+    lst, problems = read_list(read(root, LIST))
+    list_tokens = {name for _, _, suite, name, _ in lst if suite == "selftest"}
+    list_scen = {name for _, _, suite, name, _ in lst if suite == "e2e"}
+    three = {}
+    for f in THREE:
+        if f in e2e:
+            for name, fn in registered(e2e[f]).items():
+                three[name] = (f, fn)
+    floor_doc, caps_doc = load_json(root, FLOOR), load_json(root, CAPS)
+    finals = {}
+    finals.update(finals_of(CAPS, caps_doc))
+    finals.update(finals_of(FLOOR, floor_doc))
+
+    def final_keys(item):
+        """[(key, mode)] of the finals an item with a value names; [] when the file holds none of them."""
+        key = " ".join(item["words"])
+        if item["kind"] == "caps":
+            return [(key, None)] if (key, None) in finals else []
+        if key.startswith("replay."):
+            return [(key, None)] if (key, None) in finals else []
+        found = [(k, m) for (k, m) in finals if k == key and (item["mode"] is None or m == item["mode"])]
+        return found
+
+    seen_ids, table_tokens, counts = {}, set(), {"ok": 0, "expected to fail": 0, "open": 0, "FAIL": 0}
+    for n, cells in rows:
+        if len(cells) != 5:
+            problems.append("line %d of %s: a row has five cells, this one %d" % (n, DONE, len(cells)))
+            continue
+        rid, _, check, nomodel, _ = cells
+        if not re.match(r"^D\d+$", rid):
+            problems.append("line %d of %s: '%s' is no row id" % (n, DONE, rid))
+            continue
+        if rid in seen_ids:
+            problems.append("%s: the row id is used twice (lines %d and %d)" % (rid, seen_ids[rid], n))
+        seen_ids[rid] = n
+        items = items_of(check)
+        for it in items:
+            if it["kind"] == "case" and len(it["words"]) == 2:
+                table_tokens.add(it["words"][1])
+        missing, listed, opened = [], False, []
+        for it in items:
+            if it["kind"] == "case":
+                if len(it["words"]) != 2 or not it["words"][0].isdigit():
+                    missing.append("`%s` is not case NN <token>" % it["text"])
+                    continue
+                nn, tok = it["words"]
+                if not has_token(cases.get(nn), tok):
+                    missing.append("case %s %s (no assertion of %s/temper-cases-%s.sh starts with it)" % (nn, tok, SELFTEST, nn))
+                elif tok in list_tokens:
+                    listed = True
+            elif it["kind"] == "scenario":
+                name = it["words"][0] if it["words"] else ""
+                if not has_scenario(e2e, name):
+                    missing.append("scenario %s (no file of %s registers it)" % (name, E2E))
+                elif name in list_scen:
+                    listed = True
+            elif it["kind"] in ("floor", "caps") and it["value"] is not None and not final_keys(it):
+                opened.append("%s %s has no final yet" % (it["kind"], " ".join(it["words"])))
+        if nomodel == "yes" and not items:
+            missing.append("the row needs no model and names no check")
+        if rid in RULE_ROWS and not any(it["kind"] == "case" or (it["kind"] == "scenario" and "plain" in it["modes"])
+                                        for it in items):
+            missing.append("rule 11: the row names neither a case nor a scenario that runs in plain mode")
+        if missing:
+            status = "FAIL"
+            problems.extend("%s: %s" % (rid, m) for m in missing)
+            print("%s FAIL: %s" % (rid, "; ".join(missing)))
+        elif nomodel != "yes":
+            status = "open"
+            print("%s open (%s)" % (rid, "needs a person" if nomodel == "person" else "needs a model"))
+        elif listed:
+            status = "expected to fail"
+            print("%s expected to fail" % rid)
+        elif opened:
+            status = "open"
+            print("%s open (%s)" % (rid, "; ".join(opened)))
+        else:
+            status = "ok"
+            print("%s ok" % rid)
+        counts[status] += 1
+
+    # the list: every line matches a check, a token of the table or a scenario of the three files, and none came back
+    for n, check, suite, name, mode in lst:
+        if suite == "selftest":
+            if not any(has_token(t, name) for t in cases.values()):
+                problems.append("line %d of the list: %s matches no check (no assertion starts with %s)" % (n, check, name))
+            if name not in table_tokens:
+                problems.append("line %d of the list: %s is not a token of the table of %s" % (n, check, DONE))
+        else:
+            if not has_scenario(e2e, name):
+                problems.append("line %d of the list: %s matches no check (no scenario %s)" % (n, check, name))
+            if name not in three:
+                problems.append("line %d of the list: %s is not a scenario of %s" % (
+                    n, check, ", ".join("%s/%s" % (E2E, f) for f in THREE)))
+            if mode is not None and mode not in MODES:
+                problems.append("line %d of the list: %s names no mode" % (n, check))
+    for check in came_back(root, [c for _, c, _, _, _ in lst]):
+        problems.append("%s was taken off the list by an earlier commit and is on it again: a line never comes back"
+                        % check)
+
+    # no test of the mod is skipped
+    code, out = git(root, "grep", "-n", "--untracked", "-F", "-e", ".skip(", "-e", ".only(", "-e", ".todo(", "--",
+                    "*.test.ts", "*.test.tsx")
+    if code == 0:
+        for line in out.strip().split("\n"):
+            problems.append("a test is skipped: %s" % line)
+
+    # D105: every scenario of the three files calls the shared assert
+    for name, (f, fn) in sorted(three.items()):
+        if not calls_world_check(e2e[f], fn):
+            problems.append("D105: the scenario %s of %s/%s (%s) does not call the shared assert worldCheck"
+                            % (name, E2E, f, fn))
+
+    if final:
+        for _, check, _, _, _ in lst:
+            problems.append("final: %s is still on the expected to fail list" % check)
+        for _, cells in rows:
+            if len(cells) != 5:
+                continue
+            for it in items_of(cells[2]):
+                if it["kind"] not in ("floor", "caps") or it["value"] is None:
+                    continue
+                keys = final_keys(it)
+                label = "%s %s" % (it["kind"], " ".join(it["words"]))
+                if not keys:
+                    problems.append("D75b: %s = %s has no final in its file" % (label, json.dumps(it["value"])))
+                for k in keys:
+                    if not same(finals[k], it["value"]):
+                        problems.append("D75b: %s%s: the final is %s, the table says %s" % (
+                            label, " [%s]" % k[1] if k[1] else "", json.dumps(finals[k]), json.dumps(it["value"])))
+        for rel in (CAPS, FLOOR):
+            doc = caps_doc if rel == CAPS else floor_doc
+            first = first_values(root, rel)
+            for k, v in finals_of(rel, doc).items():
+                if k in first and above(v, first[k]):
+                    problems.append("D75b: %s %s%s: the final %s is above %s, its value in the commit that first "
+                                    "added it" % (rel, k[0], " [%s]" % k[1] if k[1] else "", json.dumps(v),
+                                                  json.dumps(first[k])))
+
+    print("check_done: %d rows: %d ok, %d expected to fail, %d open, %d failing" % (
+        len(rows), counts["ok"], counts["expected to fail"], counts["open"], counts["FAIL"]))
+    print("check_done: the list holds %d expected failures (%d selftest, %d e2e)" % (
+        len(lst), len([x for x in lst if x[2] == "selftest"]), len([x for x in lst if x[2] == "e2e"])))
+    if problems:
+        for p in problems:
+            print("FAIL: %s" % p)
+        print("check_done%s: FAIL (%d)" % (" --final" if final else "", len(problems)))
+        return 1
+    print("check_done%s: PASS" % (" --final" if final else ""))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

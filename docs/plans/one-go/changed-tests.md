@@ -1,0 +1,39 @@
+# Changed tests: every assertion of the base that was changed or removed, and why
+
+This page is row `D84` of `docs/plans/one-go/done.md`. `python3 scripts/check_changed_tests.py` reads it: an assertion
+of a test of the base (`10e965a`) that the tree no longer holds as it was must have its name in a code span in the first
+column of the table below. The same holds, from the commit that first added each file to the branch, for the case files
+43 to 46, `scripts/e2e/accept.ts`, `scripts/e2e/slow.ts`, `scripts/e2e/broken.ts` and the table of `done.md`, whose
+rows are named by their id (`D84b`).
+
+A package that changes or removes such an assertion adds its line here in the same commit. It never changes what a check
+of `done.md` asserts: only a name may be corrected, and the line says so.
+
+## The table
+
+| Name | File | What changed | Why | Package |
+|---|---|---|---|---|
+| `the CLI and its Python helpers list no folder by wildcard and load no folder onto sys.path` | `scripts/selftest/temper-cases-2.sh` | the text it searches is `_cli_text` and `_flow_text` with the helpers, in the place of `scripts/temper` and `scripts/flow.py` alone | the code of the CLI moved into Python modules and the flow into seven modules; the case reads all of them, so it asserts the same of more text | WP02, WP03 |
+| `the CLI and the guard scripts never read the plugin root variable` | `scripts/selftest/temper-cases-2.sh` | the text it searches is `_cli_text` in the place of `scripts/temper` alone | the code of the CLI moved into Python modules; the assertion is the same | WP02 |
+| `F5: the lock code has no TEMPER_LOCK_TEST_HOOK seam` | `scripts/selftest/temper-cases-5.sh` | the text it searches is `_cli_text` and `scripts/task_ops.py` | the code of the CLI moved into Python modules; the assertion is the same | WP02 |
+| `M6: no TEMPER_OVERRIDES_FILE in scripts/temper or scripts/task_ops.py` | `scripts/selftest/temper-cases-6.sh` | the text it searches is `_cli_text` and `scripts/task_ops.py` | the code of the CLI moved into Python modules; the assertion is the same | WP02 |
+| `D-08: no automatic-undo code is left in scripts/temper` | `scripts/selftest/temper-cases-6.sh` | the text it searches is `_cli_text` | the code of the CLI moved into Python modules; the assertion is the same | WP02 |
+| `init: the CLI names no settings file, and /temper:init offers no settings edit` | `scripts/selftest/temper-cases-9.sh` | the text it searches is `_cli_text` | the code of the CLI moved into Python modules; the assertion is the same | WP02 |
+| `F15: nothing in the CLI, the flow or the orchestrator page reads or sets TEMPER_MOD` | `scripts/selftest/temper-cases-13.sh` | the files it searches are the CLI, `$CLI_MODULES` and `$FLOW_FILES` | the code moved out of `scripts/temper` and `scripts/flow.py`; the assertion is the same | WP02, WP03 |
+| `F3: no say string in flow.py holds an instruction for Claude` | `scripts/selftest/temper-cases-10.sh` | it reads `_flow_text` in the place of `scripts/flow.py` | the flow was split into a facade and seven modules; the assertion is the same | WP03 |
+| `F23: no gh pr create without --draft, and no gh pr ready command, in the flow, the references and the briefs` | `scripts/selftest/temper-cases-13.sh` | the flow files it searches are `$FLOW_FILES` | the flow was split; the assertion is the same | WP03 |
+| `9.8.0: the page question is gone from the CLI (the page is written with no question)` | `scripts/selftest/temper-cases-15.sh` | it reads `_flow_text` | the flow was split; the assertion is the same | WP03 |
+| `B1: every move flow.py writes is in MOVES, and MOVES holds no move flow.py never writes` | `scripts/selftest/temper-cases-18.sh` | the moves are read from `_flow_text` | the flow was split; the assertion is the same | WP03 |
+| `9.8.5 policy: no policy move ever overrides or accepts` | `scripts/selftest/temper-cases-28.sh` | it reads `scripts/flow_work.py`, where `policy_move` now is | the flow was split; the assertion is the same | WP03 |
+| `round 2, 10: no call of flow.py puts a placeholder of the person's text in double quotes` | `scripts/selftest/temper-cases-8.sh` | it reads `_flow_text` | the flow was split; the assertion is the same | WP03 |
+| `9.8.0: go's question keeps the question as asked, and per option only what the answer runs` | `scripts/selftest/temper-cases-16.sh` | its name ends `and what selects it`, and the third value it expects is `yes`, not `no`: each option of `go` carries its move again | the ids of WP04: a reader selects an option by its id, kind, move and recommended field, never by its label (`contracts.md` section 4) | WP04 |
+| `Blocking questions: each answer is written by its call, Carry forward by its own` | `tests/mod/driver.test.ts` | the view it builds carries `question_ids` beside each Blocking question | the ids of WP04 sit beside a reason, name or Blocking dialog, and the driver selects by them, so the fixture holds them. What the test asserts did not change | WP04 |
+| `Blocking questions come four to a dialog, as the loop without the mod asks them; each answer's call runs in order` | `tests/mod/driver.test.ts` | the same: `question_ids` beside each question | as above | WP04 |
+| `a manual task's name question is asked by the driver: "Type it below" asks again, the typed name fills the call` | `tests/mod/driver.test.ts` | the option carries `answer_ids` beside its name question | as above | WP04 |
+| `Cancel at the name question asks the manual task question again, and nothing runs` | `tests/mod/driver.test.ts` | the same: `answer_ids` | as above | WP04 |
+| `an option that needs a reason asks the reason question as given; Cancel asks the first question again` | `tests/mod/driver.test.ts` | the option carries `reason_ids` beside its reason question | as above | WP04 |
+| `` More options asks the rest of the question; an option with a `do` (a skill) runs its calls, then hands back `` | `tests/mod/driver.test.ts` | its option More options carries the kind `more` | as above | WP04 |
+| `Blocking questions come in one dialog through the mod, and each answer's call runs` | `tests/mod/driver-wiring.test.ts` | its fixture marks `Carry forward` with the kind `carry` and carries `question_ids` | as above: the fixture holds what the CLI now writes; the assertions did not change | WP04 |
+| `PLAN_MD` | `scripts/e2e/project.ts`, `scripts/e2e/pyjokes.ts`, `scripts/e2e/replay.ts` | the Context Map ends `reviewed: pending`, and the scripted planner adds the Context check question to `intent.md` | faithful fixtures: a scripted agent writes what its brief asks of a real one, so the counts of the floor are the counts of a real run | WP05 |
+| `TASKS_MD` | `scripts/e2e/project.ts` | the Integration line is `bash suite.sh`, one script that counts each run of the whole suite | the floor key `suite_runs` counts the runs of the suite | WP05 |
+| `the CLI and its Python files expand no home folder and read no transcript, and usage_cost.py is gone` | `scripts/selftest/temper-cases-9.sh` | it counts the matching lines, not the matching files, and leaves out the lines that name `runs.jsonl` | the run summary of WP05 writes `.temper/runs.jsonl`, whose name holds `.jsonl` and is no transcript; a transcript is still refused. Commit `c7c3355` | WP05 |

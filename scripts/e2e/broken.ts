@@ -80,6 +80,7 @@ export const brokenFirstRun = (w: World): void => {
   const asked: Json[] = []
   const types = (): string[] => rec.agents.map(a => a.type)
   let redNamed = false
+  let redBeforePlan = false
   const base = defaultPerson(ALLOWED)
   const person: Person = (ask, wd) => {
     asked.push(ask)
@@ -95,7 +96,10 @@ export const brokenFirstRun = (w: World): void => {
       const block = setupBlock(wd.exists('.claude/temper.config') ? wd.read('.claude/temper.config') : '')
       expect(block !== '' && shown(asked[0]!).includes(block.trimEnd()), `D13 the setup block written to the config is byte equal to the block the first question showed (${JSON.stringify(block.slice(0, 120))})`)
     }
+    // WP07: only a question asked while the planner had not been launched names the red test before it
+    expect(!types().includes('temper:temper-plan') || redBeforePlan, `D13 the red test ${RED} was named in a question before temper:temper-plan was launched (asked ${asked.map(idOf).join(', ')})`)
     if (text.includes(RED)) redNamed = true
+    if (redNamed && !types().includes('temper:temper-plan')) redBeforePlan = true
     expect(redNamed || !types().includes('temper:temper-plan'), `D13 the red test ${RED} is named in a question before temper:temper-plan is launched (asked ${asked.map(idOf).join(', ')})`)
     expect(!types().includes('temper:temper-env') && !types().includes('temper:temper-build'), `D13 no environment agent and no fix pass are launched (${types().join(', ')})`)
     return base(ask, wd)
@@ -110,6 +114,10 @@ export const brokenFirstRun = (w: World): void => {
   expect(shown(last!).includes(RED) && shown(last!).includes(FLAKY), `D13 the commit card lists the red test ${RED} and the flaky test ${FLAKY}`)
   expect(asked.length <= 4, `D13 the run asks at most 4 dialogs (${asked.length}: ${asked.map(idOf).join(', ')})`)
   expect(withoutSetup(w.read('.claude/temper.config')) === withoutSetup(p.initConfig), 'D13 the config changed only in a setup: block, which the person added')
+  // WP07: the dialogs as the floor counts them, and the planner launched once (no step back to Plan)
+  expect(w.counts.dialogs <= 4, `D13 the run asks at most 4 dialogs as the floor counts them (${w.counts.dialogs}: ${JSON.stringify(w.counts.by_stage)})`)
+  const planners = w.counts.launches['temper:temper-plan'] ?? 0
+  expect(planners === 1, `D13 no step back to Plan: temper:temper-plan is launched once (${planners})`)
   worldCheck(w)
 }
 

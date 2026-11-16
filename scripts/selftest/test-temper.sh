@@ -28,11 +28,38 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 PASS=0
 FAIL=0
+XFAIL=0
+
+# The expected to fail list (9.8.5, WP07): scripts/selftest/expected-fail.txt next to this file, read once a process. A
+# line `selftest:<token> <package> <promise>` lists every assertion whose name starts with the token and a space; `#`
+# starts a comment and the e2e lines are the scenario runner's. A listed assertion that fails counts in XFAIL, not in
+# FAIL; one that passes counts in FAIL, as an unexpected pass. A token never hides an assertion that is not listed.
+_XF_LIST=" $(sed 's/#.*//' "$TESTS_DIR/expected-fail.txt" 2>/dev/null | awk '$1 ~ /^selftest:/ { sub(/^selftest:/, "", $1); printf "%s ", $1 }')"
+_XF_SEEN=" "
+_xf_listed() { # _xf_listed <name>: 0 when the first word of the name is a token of the list (and marks it seen)
+  local tok="${1%% *}"
+  [[ "$tok" != "$1" && "$_XF_LIST" == *" $tok "* ]] || return 1
+  [[ "$_XF_SEEN" == *" $tok "* ]] || _XF_SEEN="$_XF_SEEN$tok "
+  return 0
+}
+_xf_pass() { # _xf_pass <name>: a pass, or an unexpected pass of a listed assertion
+  if _xf_listed "$1"; then
+    FAIL=$((FAIL+1))
+    echo "UNEXPECTED PASS: $1 — take ${1%% *} off scripts/selftest/expected-fail.txt"
+    return 0
+  fi
+  PASS=$((PASS+1))
+}
+_xf_fail() { # _xf_fail <name>: 0 when the failure was expected (counted and printed here), else 1
+  _xf_listed "$1" || return 1
+  XFAIL=$((XFAIL+1))
+  echo "XFAIL: $1"
+}
 
 assert_eq() { # assert_eq <name> <expected> <actual>
   if [[ "$2" == "$3" ]]; then
-    PASS=$((PASS+1))
-  else
+    _xf_pass "$1"
+  elif ! _xf_fail "$1"; then
     FAIL=$((FAIL+1))
     echo "FAIL: $1 — expected '$2', got '$3'"
   fi
@@ -45,8 +72,8 @@ assert_exit() { # assert_exit <name> <expected-code> <cmd...>
   if [[ -d "$WORKDIR/.git" ]]; then out="$(mktemp "$WORKDIR/.git/assert-out.XXXXXX")"; else out="$(mktemp "$WORKDIR/assert-out.XXXXXX")"; fi
   "$@" >"$out" 2>&1; actual=$?
   if [[ "$actual" == "$expected" ]]; then
-    PASS=$((PASS+1))
-  else
+    _xf_pass "$name"
+  elif ! _xf_fail "$name"; then
     FAIL=$((FAIL+1))
     echo "FAIL: $name — expected exit $expected, got $actual"
     sed 's/^/    /' "$out"
@@ -262,7 +289,18 @@ assert_exit "selftest safety: a CLI call from outside the self test folder is re
   bash -c "cd '$REPO_ROOT' && '$TEMPER' config get check.coverage-threshold"
 assert_exit "selftest safety: model is refused there too" 3 bash -c "cd '$REPO_ROOT' && '$TEMPER' model plan"
 
+# a line of the list that matches no assertion is stale and fails; only the whole suite can tell, so a run of some case
+# files (TEMPER_CASES_ONLY, as run-selftest.sh runs each) leaves this to scripts/check_done.py
+if [[ -z "${TEMPER_CASES_ONLY:-}" ]]; then
+  for _xf_tok in $_XF_LIST; do
+    [[ "$_XF_SEEN" == *" $_xf_tok "* ]] && continue
+    FAIL=$((FAIL+1))
+    echo "FAIL: selftest:$_xf_tok on scripts/selftest/expected-fail.txt matches no check: take its line off"
+  done
+fi
+
 echo ""
 echo "=== test-temper.sh ==="
+echo "XFAIL: $XFAIL"
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
