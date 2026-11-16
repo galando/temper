@@ -15,7 +15,8 @@
 # A case file is found by its name: every temper-cases-N.sh next to this script, so a new one needs no list. Files that
 # use what an earlier file defines run in one process with it (group_of). Each group runs alone (TEMPER_CASES_ONLY) in
 # its own process and folder; the helpers they share are case-helpers.sh. Exit 0 only when every group ends with
-# FAIL: 0. The totals count each file once.
+# FAIL: 0. The totals count each file once; the checks of scripts/selftest/expected-fail.txt that failed as expected are
+# added up apart, in the line XFAIL: <n> before the last line.
 set -uo pipefail
 unset CDPATH
 HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -93,6 +94,7 @@ fi
 if [[ -z "${GROUPS_TO_RUN// /}" ]]; then
   echo "=== run-selftest.sh ($TIER) ==="
   echo "no case file to run"
+  echo "XFAIL: 0"
   echo "PASS: 0  FAIL: 0"
   exit 0
 fi
@@ -107,16 +109,20 @@ for n in $GROUPS_TO_RUN; do
 done
 wait
 
-pass=0; fail=0; bad=0
+pass=0; fail=0; bad=0; xfail=0
 for n in $GROUPS_TO_RUN; do
   line="$(grep -E '^PASS: [0-9]+  FAIL: [0-9]+' "$LOGS/$n.log" | tail -1)"
   if [[ -z "$line" ]]; then echo "case file(s) ${n//_/ }: no result (the run stopped early)"; tail -5 "$LOGS/$n.log" | sed 's/^/    /'; bad=$((bad + 1)); continue; fi
   p="${line#PASS: }"; p="${p%% *}"; f="${line##*FAIL: }"
-  echo "case file(s) ${n//_/ }: $line"
-  pass=$((pass + p)); fail=$((fail + f))
-  [[ "$f" -eq 0 ]] || { grep '^FAIL' "$LOGS/$n.log" | head -8 | sed 's/^/    /'; }
+  # the checks still expected to fail (scripts/selftest/expected-fail.txt), counted apart: test-temper.sh prints XFAIL: <n>
+  # before its last line
+  x="$(grep -E '^XFAIL: [0-9]+$' "$LOGS/$n.log" | tail -1)"; x="${x#XFAIL: }"; x="${x:-0}"
+  echo "case file(s) ${n//_/ }: $line${x:+  XFAIL: $x}"
+  pass=$((pass + p)); fail=$((fail + f)); xfail=$((xfail + x))
+  [[ "$f" -eq 0 ]] || { grep -E '^(FAIL|UNEXPECTED PASS)' "$LOGS/$n.log" | head -8 | sed 's/^/    /'; }
 done
 echo ""
 echo "=== run-selftest.sh ($TIER${SHARD:+, shard $SHARD}, $JOBS at a time) ==="
+echo "XFAIL: $xfail"
 echo "PASS: $pass  FAIL: $((fail + bad))"
 [[ $fail -eq 0 && $bad -eq 0 ]]
