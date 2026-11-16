@@ -78,6 +78,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 
 | Phase | Commit | Date | Result of `full` | Seconds | Expected to fail |
 |---|---|---|---|---|---|
+| 1 | `2c48db1` | 2026-11-16 | PASS (selftest 737 s, end to end shards 660, 728, 806 and 522 s, traces kept) | 1625 | no list yet |
 
 ## Blockers
 
@@ -93,4 +94,6 @@ None.
 - 2026-11-16 WP02: the capture also differed between runs on the key of `.temper/preflight.json`, a hash over the fixture's HEAD; the capture writes it as fixed text.
 - 2026-11-16 WP02: the optional docstrings of step 4 were not written; the room target was met without them.
 - 2026-11-16 WP03: the spec's line ranges were off at four edges, only comments and blank lines; case 13 and case 18 read the flow text through a list `FLOW_FILES` and `_flow_text` of `case-helpers.sh`.
+- 2026-11-16 phase 1 review: six findings fixed in `b15f153` (renames in the changes job, the concurrency group on main, two silent runner flags, a dash under a narrow locale, the capture's state file, a doc line); none changed a result.
+- 2026-11-16 WP01: the run on `2c48db1` was green in CI in 9 min 12 s of wall time.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
