@@ -30,6 +30,10 @@ export class World {
   denials: string[] = []
   allowed: string[] = []
   env: Record<string, string>
+  started = Date.now()
+  // TEMPER_E2E_LIMIT_S: the seconds a scenario may run before next() stops it (default 300); a step count alone let a
+  // looping scenario run for 21 minutes a mode before it failed
+  limitS = Number(process.env.TEMPER_E2E_LIMIT_S ?? '') > 0 ? Number(process.env.TEMPER_E2E_LIMIT_S) : 300
   constructor(public mode: Mode, public name: string) {
     this.dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `temper-e2e-${name}-`)))
     this.env = { ...process.env, GIT_AUTHOR_NAME: 'e2e', GIT_AUTHOR_EMAIL: 'e2e@example.com', GIT_COMMITTER_NAME: 'e2e', GIT_COMMITTER_EMAIL: 'e2e@example.com' } as Record<string, string>
@@ -120,6 +124,7 @@ export class World {
   }
   // ---- the view and the person ----
   next(extra = ''): Json {
+    if (Date.now() - this.started > this.limitS * 1000) throw new Error(`the scenario ran over its time limit of ${this.limitS} s`)
     const r = this.cli(`next --json ${extra}`)
     if (r.code !== 0) throw new Error(`next failed: ${r.out}`)
     return JSON.parse(r.out)

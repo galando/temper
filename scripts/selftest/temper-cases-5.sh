@@ -792,7 +792,8 @@ print(v)" "$1" "$2"
 }
 gg_ready_g1() { "$TEMPER" schedule | python3 -c "
 import json,sys
-print(','.join('%d@%d' % (r['task'], r['attempt']) for r in (json.loads(l) for l in sys.stdin if l.startswith('{')) if r.get('group')=='G1'))"; }
+print(','.join('%d@%d' % (r['task'], r['attempt']) for r in (json.loads(l) for l in sys.stdin if l.startswith('{')) if r.get('group')=='G1'))"
+}
 
 # PASS path
 gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
@@ -898,7 +899,8 @@ import json,sys
 v=json.load(open('.temper/groups.json')).get('integration') or {}
 for k in sys.argv[1].split('.'):
     v=v.get(k,'') if isinstance(v,dict) else ''
-print(v if not isinstance(v,list) else ','.join(v))" "$1"; }
+print(v if not isinstance(v,list) else ','.join(v))" "$1"
+}
 gi_gate_row() { "$TEMPER" gate build 2>&1 | grep -c "integration"; }
 
 gi_all; BASE="$(git rev-parse HEAD)"
@@ -1038,7 +1040,8 @@ import json,sys
 v=json.load(sys.stdin)
 for k in sys.argv[1].split('.'):
     v=v.get(k,'') if isinstance(v,dict) else ''
-print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
+print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"
+}
 gg_setup
 # Task 1 fails twice (haiku, haiku) then passes on the escalation model; Task 2 passes at once
 for a in 1 2; do
@@ -1109,7 +1112,8 @@ import json,sys
 v=json.load(sys.stdin)
 for k in sys.argv[1].split('.'):
     v=v.get(k,'') if isinstance(v,dict) else ''
-print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
+print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"
+}
 setup
 assert_exit "usage add: a recorded row exits 0" 0 "$TEMPER" usage add --stage plan --model sonnet --ms 4000
 "$TEMPER" usage add --stage build --model claude-haiku-5-5 --ms 2000 --task 4 >/dev/null 2>&1
@@ -1260,7 +1264,8 @@ case_hook() { # case_hook <shell line>: a native pre-commit hook that runs the l
   printf '#!/bin/sh\n%s\nexit 0\n' "$1" > "$hd/pre-commit"; chmod +x "$hd/pre-commit"
   git config core.hooksPath "$hd"
 }
-h5_hook() { case_hook 'mkdir -p .temper && echo "{}" > .temper/gates.json'; }   # writes run state in the commit's own top folder, as the real hook does
+# h5_hook writes run state in the commit's own top folder, as the real hook does
+h5_hook() { case_hook 'mkdir -p .temper && echo "{}" > .temper/gates.json'; }
 st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'; h5_hook
 "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
@@ -1327,7 +1332,8 @@ assert_eq "H4: the autonomy commit gate compares exact paths too" "1" "$(gc_row 
 setup
 
 # --- Grouped Build (9.7.0), review loop 1: locking, atomic run-file writes and recorded shas [M1, L1, L2, L3, A1] ---
-slow_hook() { case_hook "sleep $1"; }   # sleeps $1 seconds, so a commit is observably in flight
+# slow_hook sleeps $1 seconds, so a commit is observably in flight
+slow_hook() { case_hook "sleep $1"; }
 lock_owner() { cat .temper/.lock/owner 2>/dev/null || echo none; }
 
 # A1: a commit the task agent makes itself, with the CLI's subject format, is still not the CLI's

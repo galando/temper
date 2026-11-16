@@ -1,40 +1,68 @@
 #!/usr/bin/env bash
 # run-selftest.sh: the self test in parallel, by case file, with tiers.
 #
-#   bash scripts/selftest/run-selftest.sh [--jobs N] [--fast | --slow | --changed [REV]]
+#   bash scripts/selftest/run-selftest.sh [--jobs N] [--fast | --slow | --changed [REV] | --touched [REV]] [--shard K/N] [--list]
 #
 #   (default)        every case file, N at a time (TEMPER_SELFTEST_JOBS, default the number of CPUs, at most 12)
-#   --fast           the case files the 9.7.5, 9.7.6, 9.8.0, state machine and 9.8.4 work added (10 to 31): a minute or two
-#   --slow           the whole self test, one case file after another, as test-temper.sh runs it (what CI runs)
-#   --changed [REV]  the case files that the files changed since REV (default HEAD) point at, plus the 9.7.5 and 9.7.6 ones
+#   --fast           every case file from 10 up: a few minutes
+#   --slow           the whole self test, one case file after another, as test-temper.sh runs it
+#   --changed [REV]  the case files that the files changed since REV (default HEAD) point at, plus every one from 10 up
+#   --touched [REV]  only the case files that themselves differ from REV (default HEAD) or are untracked; a changed
+#                    temper-cases-5.sh or case-helpers-5.sh also selects 6 and 31 (what bash scripts/verify.sh quick runs)
+#   --shard K/N      of the groups in order, only those whose index modulo N is K minus 1 (what CI runs, one shard a job)
+#   --list           print the groups the chosen tier would run, one per line, and run nothing
 #
-# Each case file runs alone (TEMPER_CASES_ONLY=N) in its own process and folder; the helpers they share are case-helpers.sh.
-# Exit 0 only when every file ends with FAIL: 0. The totals count each file once.
+# A case file is found by its name: every temper-cases-N.sh next to this script, so a new one needs no list. Files that
+# use what an earlier file defines run in one process with it (group_of). Each group runs alone (TEMPER_CASES_ONLY) in
+# its own process and folder; the helpers they share are case-helpers.sh. Exit 0 only when every group ends with
+# FAIL: 0. The totals count each file once.
 set -uo pipefail
 unset CDPATH
 HERE="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${HERE%/scripts/selftest}"
 JOBS="${TEMPER_SELFTEST_JOBS:-$(nproc 2>/dev/null || echo 4)}"
-TIER="all"; REV="HEAD"
+TIER="all"; REV="HEAD"; LIST=0; SHARD=""
+USAGE="usage: run-selftest.sh [--jobs N] [--fast | --slow | --changed [REV] | --touched [REV]] [--shard K/N] [--list]"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --jobs) JOBS="${2:-}"; shift 2 ;;
     --fast) TIER="fast"; shift ;;
     --slow) TIER="slow"; shift ;;
-    --changed) TIER="changed"; REV="HEAD"; if [[ "${2:-}" != "" && "${2:-}" != --* ]]; then REV="$2"; shift; fi; shift ;;
-    *) echo "FAIL: usage: run-selftest.sh [--jobs N] [--fast | --slow | --changed [REV]]" >&2; exit 2 ;;
+    --changed|--touched) TIER="${1#--}"; REV="HEAD"; if [[ "${2:-}" != "" && "${2:-}" != --* ]]; then REV="$2"; shift; fi; shift ;;
+    --shard) SHARD="${2:-}"; shift 2 || shift ;;
+    --list) LIST=1; shift ;;
+    *) echo "FAIL: $USAGE" >&2; exit 2 ;;
   esac
 done
+if [[ -n "$SHARD" ]]; then
+  [[ "$SHARD" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] && (( BASH_REMATCH[1] <= BASH_REMATCH[2] )) \
+    || { echo "FAIL: --shard takes K/N with 1 <= K <= N, not '$SHARD'; $USAGE" >&2; exit 2; }
+  SHARD_K="${BASH_REMATCH[1]}"; SHARD_N="${BASH_REMATCH[2]}"
+fi
 [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || JOBS=4
 [[ "$JOBS" -le 12 ]] || JOBS=12
 
-if [[ "$TIER" == "slow" ]]; then exec bash "$HERE/test-temper.sh"; fi
+if [[ "$TIER" == "slow" && "$LIST" -eq 0 && -z "$SHARD" ]]; then exec bash "$HERE/test-temper.sh"; fi
 
-# Case files that use what an earlier file defines run in one process with it, in order: 2 with 3, 5 with 6, 8 with 9.
-ALL="1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31"
+# The numbers of the temper-cases-N.sh files next to this script, in number order.
+case_files() { (cd "$HERE" && for f in temper-cases-*.sh; do f="${f#temper-cases-}"; echo "${f%.sh}"; done) | sort -n | tr '\n' ' '; }
+ALL="$(case_files)"
+FROM10="$(for n in $ALL; do [[ "$n" -ge 10 ]] && echo "$n"; done | tr '\n' ' ')"
+# Case files that use what an earlier file defines run in one process with it, in order: 2 with 3, 8 with 9. (Case
+# file 6 sources case-helpers-5.sh, which make-helpers-5.sh generates, so 5 and 6 run side by side.)
 group_of() { case "$1" in 3) echo "2 3" ;; 2) echo "2 3" ;; 8|9) echo "8 9" ;; *) echo "$1" ;; esac; }
 case "$TIER" in
-  fast) FILES="10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31" ;;
+  fast) FILES="$FROM10" ;;
+  touched)
+    FILES=""
+    while IFS= read -r f; do
+      case "$f" in
+        scripts/selftest/temper-cases-5.sh|scripts/selftest/case-helpers-5.sh) FILES="$FILES 5 6 31" ;;
+        scripts/selftest/temper-cases-*.sh) n="${f##*cases-}"; FILES="$FILES ${n%.sh}" ;;
+      esac
+    done < <(git -C "$ROOT" diff --name-only "$REV" 2>/dev/null; git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null)
+    FILES="$(for n in $FILES; do [[ -f "$HERE/temper-cases-$n.sh" ]] && echo "$n"; done | sort -n | uniq | tr '\n' ' ')"
+    ;;
   changed)
     FILES=""
     while IFS= read -r f; do
@@ -46,11 +74,24 @@ case "$TIER" in
         scripts/*|templates/*|agents/*|commands/*|reference/*) FILES="$ALL" ;;
       esac
     done < <(git -C "$ROOT" diff --name-only "$REV" 2>/dev/null; git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null)
-    FILES="$(printf '%s\n' $FILES 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 | sort -n | uniq | tr '\n' ' ')"
+    FILES="$(printf '%s\n' $FILES $FROM10 | sort -n | uniq | tr '\n' ' ')"
     ;;
   *) FILES="$ALL" ;;
 esac
 GROUPS_TO_RUN="$(for n in $FILES; do group_of "$n" | tr ' ' '_'; done | sort -t_ -k1,1n | uniq | tr '\n' ' ')"
+if [[ -n "$SHARD" ]]; then
+  GROUPS_TO_RUN="$(i=0; for g in $GROUPS_TO_RUN; do (( i % SHARD_N == SHARD_K - 1 )) && echo "$g"; i=$((i + 1)); done | tr '\n' ' ')"
+fi
+if [[ "$LIST" -eq 1 ]]; then
+  for g in $GROUPS_TO_RUN; do echo "${g//_/ }"; done
+  exit 0
+fi
+if [[ -z "${GROUPS_TO_RUN// /}" ]]; then
+  echo "=== run-selftest.sh ($TIER) ==="
+  echo "no case file to run"
+  echo "PASS: 0  FAIL: 0"
+  exit 0
+fi
 
 LOGS="$(mktemp -d)"; trap 'rm -rf "$LOGS"' EXIT
 run_one() { TEMPER_CASES_ONLY="${1//_/ }" bash "$HERE/test-temper.sh" > "$LOGS/$1.log" 2>&1; }
@@ -72,6 +113,6 @@ for n in $GROUPS_TO_RUN; do
   [[ "$f" -eq 0 ]] || { grep '^FAIL' "$LOGS/$n.log" | head -8 | sed 's/^/    /'; }
 done
 echo ""
-echo "=== run-selftest.sh ($TIER, $JOBS at a time) ==="
+echo "=== run-selftest.sh ($TIER${SHARD:+, shard $SHARD}, $JOBS at a time) ==="
 echo "PASS: $pass  FAIL: $((fail + bad))"
 [[ $fail -eq 0 && $bad -eq 0 ]]

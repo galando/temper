@@ -232,37 +232,14 @@ _fresh_fixture() {
   cd "$WORKDIR" || exit 1
 }
 source "$TESTS_DIR/case-helpers.sh"
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 1 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-1.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 2 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-2.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 3 "* ]] && source "$TESTS_DIR/temper-cases-3.sh"
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 4 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-4.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 5 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-5.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 6 "* ]] && source "$TESTS_DIR/temper-cases-6.sh"
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 7 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-7.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 8 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-8.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 9 "* ]] && source "$TESTS_DIR/temper-cases-9.sh"
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 10 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-10.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 11 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-11.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 12 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-12.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 13 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-13.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 14 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-14.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 15 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-15.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 16 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-16.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 17 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-17.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 18 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-18.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 19 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-19.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 20 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-20.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 21 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-21.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 22 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-22.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 23 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-23.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 24 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-24.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 25 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-25.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 26 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-26.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 27 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-27.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 28 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-28.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 29 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-29.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 30 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-30.sh"; }
-[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 31 "* ]] && { _fresh_fixture; source "$TESTS_DIR/temper-cases-31.sh"; }
+# Every temper-cases-N.sh next to this file, in number order: a new case file is found by its name, with no list to
+# change. The files in GOES_ON continue the one before them and are sourced without _fresh_fixture.
+GOES_ON=" 3 6 9 "
+for _n in $(cd "$TESTS_DIR" && for f in temper-cases-*.sh; do f="${f#temper-cases-}"; echo "${f%.sh}"; done | sort -n); do
+  [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" $_n "* ]] || continue
+  [[ "$GOES_ON" == *" $_n "* ]] || _fresh_fixture
+  source "$TESTS_DIR/temper-cases-$_n.sh"
+done
 
 # the suite leaves the real .temper folder as it was, and a CLI call outside its own folder is refused
 assert_eq "selftest safety: the real .temper folder is as it was" "$_REAL_TEMPER_BEFORE" "$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"

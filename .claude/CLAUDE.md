@@ -39,10 +39,11 @@ Config: `.claude/temper.config` | Docs: `reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 
 **Developing temper (this repo):**
-- Test: `bash scripts/selftest/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
-  `bash scripts/quality-check.sh` (also runs in CI via quality.yml).
-- Faster: `bash scripts/selftest/run-selftest.sh [--fast|--changed|--slow]` runs the case files in parallel; `bun scripts/e2e/run.ts both`
-  is the end to end driver (the real CLI, with the mod's rule engine and without it).
+- Test: `bash scripts/verify.sh quick` after a change (about 3 minutes, ends `verify quick: PASS`), and
+  `bash scripts/verify.sh full` before a push (every case file, the end to end suite in every mode, the mod).
+- Selftest: `bash scripts/selftest/run-selftest.sh [--fast|--changed|--touched|--slow] [--shard K/N] [--list]` runs
+  the case files in parallel; a case file is found by its name (`temper-cases-N.sh`), so a new one needs no list.
+  `bun scripts/e2e/run.ts both` is the end to end driver (the real CLI, with the mod's rule engine and without it).
 - Directory readiness: `bash scripts/validate-directory.sh` (no raw HTML in the README, no
   assets folder path in text, no `options` key). Run it before any README or manifest change.
 - The mod (pure rules, wiring, drawing) and its test suite: after any change to them run

@@ -12,9 +12,10 @@ cd temper
 # Create a feature branch
 git checkout -b feature/my-improvement
 
-# Make your changes, then run the checks
-bash scripts/selftest/test-temper.sh
-bash scripts/quality-check.sh
+# Make your changes, then run the gate: quick after each change (about 3 minutes),
+# full before a push (every case file, the end to end suite in every mode, the mod)
+bash scripts/verify.sh quick
+bash scripts/verify.sh full
 
 # Submit a pull request
 git push origin feature/my-improvement
