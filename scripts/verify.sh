@@ -7,8 +7,8 @@
 # quick: the validators, the name check, the case files that differ from REV (run-selftest.sh --touched), and, only when
 # what they cover changed since REV, the two fixture compares and one whole end to end run (a file under scripts outside
 # scripts/selftest), the floor of default-run and fix in plain mode, and the mod's tests (a .ts or .tsx file); then the
-# type check of the mod. Both words check the caps and the shape of the floor first. REV defaults to HEAD when
-# the work tree has changes and to HEAD~1 when it is clean.
+# type check of the mod. Both words check the caps, the shape of the floor and the expected to fail rule first. REV
+# defaults to HEAD when the work tree has changes and to HEAD~1 when it is clean.
 # full: the validators, the name check, every case file in parallel (the fixture compares are in case file 8), the end
 # to end suite in every mode as shards side by side (one per CPU, up to 4) with the floor, the replay against the floor
 # and the A/B replay against the base, the mod's tests, its manifest, its reviewed calls, the type check and the test
@@ -108,6 +108,7 @@ step "check-known-limits.sh" bash scripts/check-known-limits.sh
 step "check-names.py (the tracked Python scripts)" python3 -I scripts/selftest/check-names.py
 step "caps: check_caps.py (the growth caps of scripts/caps.json)" python3 -I scripts/check_caps.py
 step "floor: check_floor.py (the shape of scripts/e2e/floor.json, no final raised)" python3 -I scripts/check_floor.py
+step "xfail: xfail.ts --check (the expected to fail rule, on made up input)" bun scripts/e2e/xfail.ts --check
 
 if [[ "$WORD" == quick ]]; then
   REV="${2:-}"

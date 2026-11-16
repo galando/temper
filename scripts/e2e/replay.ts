@@ -14,9 +14,9 @@
 // database), the person repairs the shell by hand, as the person and the orchestrator did in the measured run: export
 // the JDK, start the database. Each such repair is counted. Every call of the fake tools is logged.
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 
+import { POM, installTools } from './faketools'
 import { orchestrate } from './loop'
 import type { Script } from './loop'
 import { CONTEXT_CHECK_LINE } from './project'
@@ -28,62 +28,7 @@ const label = process.argv[2] ?? 'run'
 const POLICY = process.env.REPLAY_POLICY === '1'   // this PR with autonomy.policy: decide, the run armed once
 const NEW = fs.existsSync(path.join(ROOT, 'scripts/runs.py'))   // 9.8.5 and later: runs count only when the CLI ran them
 
-// ---- the fake toolchain ---------------------------------------------------------------------------------------------
-const MVN = `#!/usr/bin/env bash
-echo "mvn $* jdk=\${TOOL_JDK:-21} db=$([ -f "$MOCK_DB/up" ] && echo up || echo down) port=\${IT_POSTGRES_PORT:-}" >> "$MOCK_LOG"
-if [ "\${TOOL_JDK:-21}" != 24 ]; then
-  echo "[ERROR] Rule 1: org.apache.maven.enforcer.rules.version.RequireJavaVersion failed with message:"
-  echo "[ERROR] Detected JDK /usr/lib/jvm/java-21 is version 21.0.12 which is not in the allowed range [24,)."
-  echo "[INFO] BUILD FAILURE"; exit 1
-fi
-root="$(pwd)"; [ -f "$root/pom.xml" ] || root="$root/backend"
-want() { case "$1" in Shape) grep -q 'return 1;' "$root/src/Shape.java" 2>/dev/null ;; Bytes) grep -q 'return 2;' "$root/src/Bytes.java" 2>/dev/null ;; esac; }
-classes="Shape Bytes"
-case "$*" in *-Dtest=ShapeTest*) classes=Shape ;; *-Dtest=BytesTest*) classes=Bytes ;; esac
-failed=""
-for c in $classes; do want "$c" || failed="$failed \${c}Test"; done
-if [ -n "$failed" ]; then
-  echo "[ERROR] Tests run: 2, Failures: 1, Errors: 0"; for f in $failed; do echo "[ERROR]   $f.check:12 expected the final value"; done
-  echo "[INFO] BUILD FAILURE"; exit 1
-fi
-echo "[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0"
-case "$*" in *verify*)
-  case "$*" in *-Dtest=*) case "$*" in *-Djacoco.skip=true*) ;; *)
-    echo "[WARNING] Rule violated for bundle demo: lines covered ratio is 0.04, but expected minimum is 0.94"
-    echo "[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.16:check (coverage-check) on project demo: Coverage checks have not been met."
-    echo "[INFO] BUILD FAILURE"; exit 1 ;; esac ;; esac
-  case "$*" in *-DskipITs*) ;; *)
-    if [ ! -f "$MOCK_DB/up" ] || [ -z "\${IT_POSTGRES_PORT:-}" ]; then
-      echo "[ERROR] ItBaseIT: org.postgresql.util.PSQLException: Connection refused. Check that the hostname and port are correct"
-      echo "[INFO] BUILD FAILURE"; exit 1
-    fi
-    echo "[INFO] Tests run: 3, Failures: 0, Errors: 0 (integration)" ;; esac ;;
-esac
-echo "[INFO] BUILD SUCCESS"
-`
-const JAVA = `#!/usr/bin/env bash
-[ "\${TOOL_JDK:-21}" = 24 ] && echo 'openjdk version "24.0.1" 2025-04-15' >&2 || echo 'openjdk version "21.0.12" 2025-07-15' >&2
-`
-const PG = {
-  pg_lsclusters: `#!/usr/bin/env bash
-[ "$1" = -h ] || echo "Ver Cluster Port Status Owner Data directory Log file"
-echo "16  main    5432 $([ -f "$MOCK_DB/up" ] && echo online || echo down) postgres /var/lib/postgresql/16/main /var/log/pg.log"
-`,
-  pg_isready: '#!/usr/bin/env bash\n[ -f "$MOCK_DB/up" ]\n',
-  pg_ctlcluster: '#!/usr/bin/env bash\necho "pg_ctlcluster $*" >> "$MOCK_LOG"; touch "$MOCK_DB/up"\n',
-  docker: '#!/usr/bin/env bash\nexit 1\n',   // the container's docker: the program is there, its daemon is not
-}
-
-const POM = `<project><modelVersion>4.0.0</modelVersion><groupId>demo</groupId><artifactId>demo</artifactId><version>1</version>
-<properties><java.version>24</java.version></properties>
-<build><plugins>
-<plugin><artifactId>maven-enforcer-plugin</artifactId><executions><execution><goals><goal>enforce</goal></goals><configuration><rules>
-<requireJavaVersion><version>[24,)</version></requireJavaVersion></rules></configuration></execution></executions></plugin>
-<plugin><groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.16</version><executions><execution>
-<id>coverage-check</id><phase>verify</phase><goals><goal>check</goal></goals><configuration><rules><rule><element>BUNDLE</element>
-<limits><limit><counter>LINE</counter><value>COVEREDRATIO</value><minimum>0.94</minimum></limit></limits></rule></rules></configuration>
-</execution></executions></plugin></plugins></build></project>
-`
+// ---- the fake toolchain: scripts/e2e/faketools.ts (MVN, JAVA, PG, POM and the lines that install them) -----------
 
 // ---- the plan the scripted Plan agent writes --------------------------------------------------------------------------
 const BAD_VALIDATE = "cd backend && mvn -s settings.xml verify -Dtest='*Test' -DskipITs"
@@ -281,19 +226,7 @@ const ENV_FAULT = /allowed range|Connection refused|environment fault|SETUP|need
 
 function main(): void {
   const w = new World('plain', `replay-${label}`)
-  const tools = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-tools-'))
-  const db = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-db-'))
-  const log = path.join(tools, 'calls.log')
-  fs.writeFileSync(log, '')
-  for (const [name, body] of Object.entries({ mvn: MVN, java: JAVA, ...PG })) {
-    fs.writeFileSync(path.join(tools, name), body)
-    fs.chmodSync(path.join(tools, name), 0o755)
-  }
-  w.env.PATH = `${tools}:${w.env.PATH}`
-  w.env.MOCK_LOG = log
-  w.env.MOCK_DB = db
-  delete w.env.TOOL_JDK
-  delete w.env.IT_POSTGRES_PORT
+  const { tools, db, log } = installTools(w)
   // the project
   const files: Record<string, string> = {
     'README.md': '# demo\n', '.gitignore': '__pycache__/\n', 'backend/pom.xml': POM, 'backend/settings.xml': '<settings/>\n',
