@@ -48,6 +48,11 @@ printf '{"env_faults": [{"cmd": "mvn verify", "files": null, "why": "needs JDK [
 assert_eq "9.8.5 propose: the failed plan question's first option adds the block, runs the preflight again and gates the plan" \
   "Add the proposed setup block (Recommended)|doctor --propose --write|plan preflight|gate plan|True" \
   "$(PATH="$PWD/fakepg:$PATH" nx "o = d['ask']['options'][0]; '|'.join([o['label']] + [c.split('temper ', 1)[1] for c in o['calls']] + [str('IT_POSTGRES_PORT=5432' in o['description'])])")"
+# WP08 (M16): after the person repaired the environment, one option checks again: the preflight, then the plan gate
+assert_eq "9.8.5 preflight: the failed plan question offers check-again" "plan|check-again|plan preflight|gate plan" \
+  "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; os_ = (a.get('options') or []) + ((a.get('more') or {}).get('options') or []); \
+o = ([x for x in os_ if x.get('id') == 'check-again'] or [{}])[0]; \
+'|'.join([str(d.get('stage')), o.get('id', 'none')] + [c.split('temper ', 1)[-1] for c in o.get('calls') or []])")"
 printf 'setup:\n  env:\n    X: 1\n' >> .claude/temper.config
 assert_eq "9.8.5 propose: with a setup block already there, nothing is proposed at the question" "False" \
   "$(PATH="$PWD/fakepg:$PATH" nx "any(o['label'].startswith('Add the proposed setup block') for o in d['ask']['options'])")"
