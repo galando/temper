@@ -14,5 +14,7 @@ behavior.
   feedback tiers) retired in v7, when gate logic moved into `scripts/temper`.
 - [`pricing.md`](pricing.md) — the price table that fed a `cost_usd` estimate in the
   removed `observability.json`; retired in v7 (an unbacked estimate isn't a fact).
+- `changelog-before-9.7.md`: the changelog entries from v9.6.8 back to v5.0.1, moved out of
+  `CHANGELOG.md` unchanged in 9.8.5 so that file keeps room under the size limit of the plugin directory.
 
 See `CHANGELOG.md` for what replaced each.
