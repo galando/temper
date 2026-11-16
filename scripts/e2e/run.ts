@@ -1,6 +1,9 @@
-// bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N] [--floor FILE | --write-floor FILE]  (all: plain, mod and the mod's run driver)  (a live model smoke is not part of this: it stays off, and out of CI)
+// bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N] [--floor FILE | --write-floor FILE]  (all: plain, mod and the mod's run driver; a scenario of slow.ts or broken.ts runs only in the modes it names; a scenario on scripts/selftest/expected-fail.txt prints XFAIL when it throws)  (a live model smoke is not part of this: it stays off, and out of CI)
 import { defaultRun, freshAsk, freshContest, freshNotRun, freshReview, armedRun, branchClash, branchClashCarry, contextCheck, designRun, failingScenario, fixRun, mavenRun, threeGroups, coveredAndManual, fullRun, hookScope, modGuards, prAndPipeline, saveAndResume, smallChange } from './scenarios'
 import { pyjokesBlocked, pyjokesFull, pyjokesRun } from './pyjokes'
+import { BROKEN_SCENARIOS } from './broken'
+import { SLOW_SCENARIOS } from './slow'
+import { listed, loadList, skipsCompare, stale, verdict } from './xfail'
 import { Denied, World } from './world'
 import type { Json, Mode } from './world'
 import { spawnSync } from 'node:child_process'
@@ -9,6 +12,27 @@ import os from 'node:os'
 import path from 'node:path'
 
 const SCENARIOS: Record<string, (w: World) => void> = { 'default-run': defaultRun, 'full-run': fullRun, 'mod-guards': modGuards, 'small-change': smallChange, 'covered-and-manual': coveredAndManual, 'pr-and-pipeline': prAndPipeline, 'context-check': contextCheck, 'branch-clash': branchClash, 'branch-clash-carry': branchClashCarry, 'hook-scope': hookScope, 'failing-scenario': failingScenario, 'armed-run': armedRun, 'save-and-resume': saveAndResume, design: designRun, 'three-groups': threeGroups, maven: mavenRun, fix: fixRun, 'fresh-review': freshReview, 'fresh-not-run': freshNotRun, 'fresh-contest': freshContest, 'fresh-ask': freshAsk, pyjokes: pyjokesRun, 'pyjokes-full': pyjokesFull, 'pyjokes-blocked': pyjokesBlocked }
+
+// The scenarios of the two scripted projects (WP06) run only in the modes each names.
+const ONLY: Record<string, string[]> = {}
+for (const [name, s] of Object.entries({ ...SLOW_SCENARIOS, ...BROKEN_SCENARIOS })) {
+  SCENARIOS[name] = s.run
+  ONLY[name] = s.modes
+}
+// The expected to fail list (scripts/selftest/expected-fail.txt), read once: a line it cannot read, or an e2e line that
+// names no scenario, fails the run at once (scripts/e2e/xfail.ts).
+let LISTED: ReturnType<typeof loadList> = []
+try {
+  LISTED = loadList()
+} catch (e) {
+  console.log(`FAIL: ${(e as Error).message}`)
+  process.exit(1)
+}
+const STALE = stale(LISTED, Object.keys(SCENARIOS))
+if (STALE.length > 0) {
+  console.log(`FAIL: scripts/selftest/expected-fail.txt names no scenario: ${STALE.map(e => `${e.text} (line ${e.line})`).join(', ')}`)
+  process.exit(1)
+}
 
 const want = process.argv[2] ?? 'both'
 const modes: Mode[] = want === 'both' ? ['plain', 'mod'] : want === 'all' ? ['plain', 'mod', 'driver'] : [want as Mode]
@@ -72,24 +96,34 @@ let failed = 0
 const traces: Record<string, string[]> = {}
 const counted: Array<{ scenario: string; mode: string; counts: Json }> = []
 for (const name of names) {
-  for (const mode of modes) {
+  const own = modes.filter(m => ONLY[name] === undefined || ONLY[name]!.includes(m))
+  for (const mode of own) {
     const w = new World(mode, name)
+    // a listed scenario (WP07 mechanism, step 3): one that throws is an XFAIL line and no failure, one that returns
+    // fails and names the list; the floor leaves it out
+    const entry = listed(LISTED, name, mode)
+    let error: Error | null = null
     try {
       SCENARIOS[name]!(w)
       traces[`${name}:${mode}`] = w.trace.filter(l => !l.startsWith('  call'))
-      console.log(`PASS ${name} [${mode}] (${w.trace.length} steps, ${w.denials.length} refusals)`)
+    } catch (e) {
+      error = e as Error
+    }
+    const v = verdict(entry, name, mode, error, `(${w.trace.length} steps, ${w.denials.length} refusals)`)
+    console.log(v.line)
+    if (v.failed) failed++
+    if (error !== null && entry === null) {
+      if (error instanceof Denied) console.log('  (the mod refused a call the flow needs)')
+      console.log(w.trace.slice(-12).join('\n'))
+    }
+    if (error === null && entry === null) {
       const counts = w.finalCounts()
       counted.push({ scenario: name, mode, counts })
       console.log(`COUNT ${name} [${mode}] ${JSON.stringify(counts)}`)
-    } catch (e) {
-      failed++
-      console.log(`FAIL ${name} [${mode}]: ${(e as Error).message.slice(0, 1500)}`)
-      if (e instanceof Denied) console.log('  (the mod refused a call the flow needs)')
-      console.log(w.trace.slice(-12).join('\n'))
     }
     dumpTrace(w)
   }
-  if (modes.includes('plain') && modes.includes('mod') && traces[`${name}:plain`] && traces[`${name}:mod`]) {
+  if (!skipsCompare(LISTED, name, own) && own.includes('plain') && own.includes('mod') && traces[`${name}:plain`] && traces[`${name}:mod`]) {
     const same = JSON.stringify(traces[`${name}:plain`]) === JSON.stringify(traces[`${name}:mod`])
     console.log(`${same ? 'PASS' : 'FAIL'} ${name}: the flow is identical with the mod and without it`)
     if (!same) failed++

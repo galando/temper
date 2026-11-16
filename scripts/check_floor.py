@@ -17,6 +17,9 @@ measured run (`bun scripts/e2e/replay.ts`), and `replay_base` the numbers of the
 COUNTS is the JSON list scripts/e2e/run.ts writes: [{"scenario", "mode", "counts"}]. A replay line is read from the
 file named, else from standard input; the last line that holds a JSON object is the one compared.
 
+A scenario on scripts/selftest/expected-fail.txt may have a `final` and no `now`: it has none until it passes, and the
+runner counts no listed scenario.
+
 Nothing raises a `final`: a `final` above its value in the commit of the file that first added the key fails, read
 from the history of the file in git (a key no commit holds yet is exempt). A rule that read only the file as it is would
 be passed by the very commit that raises a value. In `launches` of a `final`, a type it does not name stands at 0.
@@ -143,6 +146,22 @@ def differ(want, got, where):
     return out
 
 
+XFAIL_LIST = os.path.join(HERE, "selftest", "expected-fail.txt")
+
+
+def xfail_listed(scenario, mode):
+    """The scenario is on the expected to fail list in this mode (`e2e:<scenario>` or `e2e:<scenario>:<mode>`)."""
+    try:
+        lines = open(XFAIL_LIST, encoding="utf-8").read().splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        words = line.split("#", 1)[0].split()
+        if words and words[0] in ("e2e:%s" % scenario, "e2e:%s:%s" % (scenario, mode)):
+            return True
+    return False
+
+
 def shape(doc):
     out = []
     if doc.get("version") != 1:
@@ -151,6 +170,8 @@ def shape(doc):
         for m, e in (modes or {}).items():
             if m not in ("plain", "mod", "driver"):
                 out.append("%s: no mode %s" % (s, m))
+            if isinstance(e, dict) and "now" not in e and isinstance(e.get("final"), dict) and xfail_listed(s, m):
+                continue   # 9.8.5 (WP06): a scenario on the expected to fail list has no now until it passes
             if not isinstance(e, dict) or not isinstance(e.get("now"), dict):
                 out.append("%s [%s]: no now values" % (s, m))
                 continue

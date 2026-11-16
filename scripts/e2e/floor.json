@@ -262,6 +262,18 @@
     }
    }
   },
+  "broken-first-run": {
+   "plain": {
+    "final": {
+     "dialogs": 4
+    }
+   },
+   "driver": {
+    "final": {
+     "dialogs": 4
+    }
+   }
+  },
   "context-check": {
    "plain": {
     "now": {
@@ -1974,6 +1986,20 @@
      "auto": 11,
      "back": 0,
      "handbacks": 0,
+     "suite_runs": 3
+    }
+   }
+  },
+  "slow-first-run": {
+   "plain": {
+    "final": {
+     "dialogs": 2,
+     "suite_runs": 3
+    }
+   },
+   "driver": {
+    "final": {
+     "dialogs": 2,
      "suite_runs": 3
     }
    }
