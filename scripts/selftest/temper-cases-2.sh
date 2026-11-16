@@ -1083,7 +1083,7 @@ assert_eq "a CLI reached through a symlink resolves a model from its own folder,
 assert_exit "a CLI reached through a symlink loads acceptance.py by its full path, with an empty environment" 0 \
   env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/temper" gate plan
 assert_eq "the CLI and its Python helpers list no folder by wildcard and load no folder onto sys.path" "0" \
-  "$(cat "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$REPO_ROOT/scripts/task_ops.py" | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
+  "$({ _cli_text; cat "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$REPO_ROOT/scripts/task_ops.py"; } | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
 
 # --- CLI: the plugin folder comes from the CLI's own file, never from an environment variable ---
 setup
@@ -1091,7 +1091,7 @@ mkdir -p "$WORKDIR/bin"
 CLI_PLUGIN="$WORKDIR/cli-plugin"
 rm -rf "$CLI_PLUGIN"
 mkdir -p "$CLI_PLUGIN/scripts" "$CLI_PLUGIN/inner/sub"
-cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$CLI_PLUGIN/scripts/"
+_cli_files "$CLI_PLUGIN/scripts/"
 cp -R "$REPO_ROOT/agents" "$CLI_PLUGIN/agents"
 ln -sf ../cli-plugin/scripts/temper "$WORKDIR/bin/rel-temper"
 ln -sf rel-temper "$WORKDIR/bin/chained-temper"
@@ -1102,4 +1102,4 @@ assert_eq "a CLI reached through a chain of relative symlinks finds its own plug
 ROOT_VAR_NAME="$(sed -n 's/^ROOT_VAR_NAME = "\(.*\)"$/\1/p' "$REPO_ROOT/scripts/guardrails-snippet.py")"
 GUARD_FILES="$(git -C "$REPO_ROOT" ls-files -- scripts/guards | sed "s|^|$REPO_ROOT/|")"
 assert_eq "the CLI and the guard scripts never read the plugin root variable" "yes|yes|0" \
-  "$([[ -n "$ROOT_VAR_NAME" ]] && echo yes || echo no)|$([[ -n "$GUARD_FILES" ]] && echo yes || echo no)|$({ cat "$TEMPER"; while IFS= read -r f; do cat "$f"; done <<< "$GUARD_FILES"; } | grep -cF -- "$ROOT_VAR_NAME")"
+  "$([[ -n "$ROOT_VAR_NAME" ]] && echo yes || echo no)|$([[ -n "$GUARD_FILES" ]] && echo yes || echo no)|$({ _cli_text; while IFS= read -r f; do cat "$f"; done <<< "$GUARD_FILES"; } | grep -cF -- "$ROOT_VAR_NAME")"

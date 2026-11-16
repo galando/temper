@@ -25,7 +25,7 @@ printf '# Tasks: demo\n\n### Task 1: a\n**File:** `src/a.sh`\n**Test:** `true`\n
 assert_eq "F15: the stop for a plan with no groups is the same with the mod off, and Build does not stop for the mod" "same|0" \
   "$(_same_with_mod_off)|$(TEMPER_MOD=off "$TEMPER" next --json | grep -c 'TEMPER_MOD')"
 assert_eq "F15: nothing in the CLI, the flow or the orchestrator page reads or sets TEMPER_MOD" "0" \
-  "$(cd "$REPO_ROOT" && grep -l 'TEMPER_MOD' scripts/temper scripts/flow.py scripts/cli_ctx.py commands/temper.md | wc -l | tr -d ' ')"
+  "$(cd "$REPO_ROOT" && grep -l 'TEMPER_MOD' scripts/temper $CLI_MODULES scripts/flow.py scripts/cli_ctx.py commands/temper.md | wc -l | tr -d ' ')"
 
 # --- F4. A failed call stops its action; an agent's gate call named gate is the one exception ---
 assert_eq "F4: commands/temper.md and docs/flow.md state the rule" "1|1" \

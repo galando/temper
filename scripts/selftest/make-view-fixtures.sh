@@ -7,6 +7,10 @@
 #
 # Each run is made in a throwaway folder, with the CLI's own moves; a verdict is written as a gate run writes it. The
 # plugin folder, the project folder, run ids, times and commit ids are replaced by fixed text.
+#
+# With TEMPER_CAPTURE_DIR set (scripts/selftest/capture-cli.sh), each state is also copied, and in the copy a fixed list
+# of CLI calls runs: their exit codes and outputs, and then every file under .temper of the copy, go to
+# $TEMPER_CAPTURE_DIR/<state>.txt with the same replacements. The printed module does not change.
 set -euo pipefail
 exec </dev/null
 unset CDPATH
@@ -21,7 +25,7 @@ export TEMPER_SELFTEST_ROOT="$WORK" HOME="$WORK/home"
 mkdir -p "$HOME"
 
 python3 - "$ROOT" "$WORK" "${1:-}" <<'PY'
-import json, os, re, subprocess, sys
+import json, os, re, shutil, subprocess, sys
 
 root, work = sys.argv[1], sys.argv[2]
 temper = os.path.join(root, "scripts", "temper")
@@ -106,6 +110,63 @@ def snap(cwd, name, run_name):
         text = text.replace(rid, run_name)
     text = re.sub(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?", "2026-01-01T00:00:00Z", text)
     views[name] = json.loads(text)
+    if CAPTURE:
+        capture(cwd, name, run_name, rid)
+
+
+CAPTURE = os.environ.get("TEMPER_CAPTURE_DIR", "")
+READS = [["next", "--json"], ["status"], ["report"], ["schedule"], ["panel", "plan"], ["model", "--all"],
+         ["state", "get", "next_stage"], ["evidence", "list", "--stage", "build"]] + \
+        [["gate", s] for s in ("intent", "plan", "design", "build", "review", "check", "commit")] + \
+        [["status"], ["report"], ["go"], ["next", "--json"]]
+# one call for each writer the run above does not reach; {at} is the stage the copy's run is at
+WRITES = [["evidence", "run", "--stage", "build", "--claim", "capture", "--", "true"],
+          ["evidence", "accept", "--stage", "review", "--id", "2", "--reason", "capture"],
+          ["evidence", "resolve", "--stage", "review", "--id", "1", "--fixed-by", "capture"],
+          ["intent", "carry", "capture question"], ["intent", "answer", "capture question", "capture answer"],
+          ["intent", "accept"], ["task", "confirm", "1", "--by", "capture"], ["group", "start", "G1"],
+          ["group", "continue", "G1"], ["group", "reopen", "G1", "--task", "1"], ["state", "archive"],
+          ["state", "redo", "{at}", "--reason", "capture"], ["state", "loop", "{at}", "intent", "--reason", "capture"],
+          ["state", "clear"]]
+
+
+def capture(cwd, name, run_name, rid):
+    copy = os.path.join(work, "capture-copy")
+    shutil.rmtree(copy, ignore_errors=True)
+    shutil.copytree(cwd, copy, symlinks=True)
+    git = lambda: subprocess.run(["git", "rev-parse", "HEAD"], cwd=copy, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout.strip()
+    heads = [git()]
+    try:
+        at = json.load(open(os.path.join(copy, ".temper", "state.json"))).get("next_stage") or ""
+    except Exception:
+        at = ""
+    out = []
+    for call in READS + [[a.replace("{at}", at) for a in c] for c in WRITES]:
+        r = cli(copy, *call)
+        out += ["$ temper " + " ".join(call), "exit %d" % r.returncode, "--- stdout", r.stdout, "--- stderr", r.stderr]
+    heads.append(git())
+    for top, dirs, files in os.walk(os.path.join(copy, ".temper")):
+        dirs.sort()
+        for f in sorted(files):
+            path = os.path.join(top, f)
+            out.append("=== " + os.path.relpath(path, copy))
+            try:
+                out.append(open(path, encoding="utf-8", errors="replace").read())
+            except OSError as e:
+                out.append("(unreadable: %s)" % e.__class__.__name__)
+    text = "\n".join(out).replace(root, "/plugin").replace(copy, "/project").replace(cwd, "/project").replace(work, "/work")
+    for i, h in enumerate(heads):
+        if h:
+            text = text.replace(h, str(i) * 40)
+    text = re.sub(r"its last commit is [0-9a-f]{7,40} ", "its last commit is 0000000 ", text)
+    if rid:
+        text = text.replace(rid, run_name)
+    text = re.sub(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?", "2026-01-01T00:00:00Z", text)
+    # a traceback names a file and a line of the code that raised: keep only its last line
+    text = re.sub(r"Traceback \(most recent call last\):\n(?:[ \t].*\n)+", "Traceback (the frames are not compared)\n", text)
+    with open(os.path.join(CAPTURE, name + ".txt"), "w") as f:
+        f.write(text)
+    shutil.rmtree(copy, ignore_errors=True)
 
 
 # A /temper run from Intent to the commit.
