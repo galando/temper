@@ -68,6 +68,21 @@ assert_eq "floor: a final value above its first committed value fails" "0|1 yes"
      python3 -I "$_c41_floor" --floor "$_c41_dir/hf/floor.json" > "$_c41_dir/hf.out" 2>&1; echo -n "$? "
      grep -q 'scenarios/default-run/plain/final/dialogs is 3, above its first committed value 2' "$_c41_dir/hf.out" && echo yes || echo no)"
 
+# a final removed or set to null loosens its bound as a raise does; a type a `launches` final no longer names stands at 0
+_c41_drop() { # _c41_drop <name> <python statement over d>: the floor committed, then the statement committed; prints the exit
+  _c41_hist "$_c41_dir/$1" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
+  _c41_edit "$_c41_dir/$1/floor.json" "$2"
+  git -C "$_c41_dir/$1" -c user.name=t -c user.email=t@example.com commit -qam drop
+  python3 -I "$_c41_floor" --floor "$_c41_dir/$1/floor.json" > "$_c41_dir/$1.out" 2>&1; echo -n "$?"
+}
+assert_eq "floor: a final removed or set to null fails, a launch type left out of a launches final does not" "1 yes|1 yes|1|0" \
+  "$(_c41_drop hl 'for e in d["scenarios"]["default-run"].values(): e["final"].pop("launches")'
+     grep -q 'scenarios/default-run/plain/final/launches/temper:temper-plan is removed, its first committed value is 1: a final is never removed' "$_c41_dir/hl.out" && echo -n " yes|" || echo -n " no|"
+     _c41_drop hn 'd["scenarios"]["default-run"]["driver"]["final"]["dialogs"] = None'
+     grep -q 'scenarios/default-run/driver/final/dialogs is null, its first committed value is' "$_c41_dir/hn.out" && echo -n " yes|" || echo -n " no|"
+     _c41_drop hb 'd["scenarios"]["default-run"]["plain"].pop("final")'; echo -n "|"
+     _c41_drop ht 'd["scenarios"]["default-run"]["plain"]["final"]["launches"].pop("temper:temper-review")')"
+
 # a made up counts file: the counts of default-run in plain mode as the floor holds them, then one moved
 python3 -I - "$REPO_ROOT/scripts/e2e/floor.json" "$_c41_dir" <<'PY'
 import json, os, sys
