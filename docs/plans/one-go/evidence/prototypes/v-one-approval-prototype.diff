@@ -1,0 +1,98 @@
+diff --git a/scripts/flow.py b/scripts/flow.py
+index 2546f0a..de46b77 100644
+--- a/scripts/flow.py
++++ b/scripts/flow.py
+@@ -554,20 +554,31 @@ class Builder:
+                 'else mkdir -p %s && cp -R "$t"/. %s/; echo "FAIL: could not switch to %s; your spec files are in $t" >&2; exit 1; fi'
+                 % (spec, spec, spec, shlex.quote(branch), spec, spec, spec, spec, branch.replace('"', '')))
+ 
+-    def leave_intent(self, switch=True):
++    def leave_intent(self, switch=True, accept=True):
+         """Switch to the run's branch, accept the intent (when there is one, and it is not accepted yet the accept changes
+-        it), commit, advance."""
++        it), commit, advance. accept False: the rule's move (intent_by_rule); the person accepts it with the plan."""
+         r = self.r
+         has = bool(r.intent)
+         # The first Status line's value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
+-        accepts = has and intent_parse.status(r.intent) not in ("accepted", "completed")
+-        return (self.to_branch() if switch else []) + ([self.c("intent accept")] if has else []) + \
+-            self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + [self.c("state advance intent_complete plan")]
++        accepts = has and accept and intent_parse.status(r.intent) not in ("accepted", "completed")
++        return (self.to_branch() if switch else []) + ([self.c("intent accept")] if has and accept else []) + \
++            self.spec_commit("docs(intent): %s %s" % ("accept" if accept else "draft of", r.slug), changes=accepts) + [self.c("state advance intent_complete plan")]
++
++    def intent_by_rule(self):
++        """The run leaves Intent with no question: the check passed (not skipped), intent.md exists, no Blocking question is
++        open, no branch clash, no loop back into Intent, no note of the person at Intent, and no door walked it."""
++        r = self.r
++        return (r.command == "temper" and r.verdict("intent") == "PASS" and r.skip("intent") is None and bool(r.intent)
++                and not r.blocking() and not self.branch_clash() and not r.loop_into("intent") and not r.loop_through("intent")
++                and not r.notes("intent", "input") and not self.walked("intent"))
+ 
+     def leave_plan(self):
+         r, nxt = self.r, self.r.next_of("plan") or "build"
++        # The intent left Intent by rule: the person's approval of the plan is their acceptance of it (one approval).
++        accepts = bool(r.intent) and intent_parse.status(r.intent) == "draft"
+         # Still on another branch (a run whose Intent was left before this step existed, or a switch since): switch now.
+-        return self.to_branch() + self.spec_commit("docs(plan): approve the plan of %s" % r.slug) + \
++        return self.to_branch() + ([self.c("intent accept")] if accepts else []) + \
++            self.spec_commit("docs(plan): %sapprove the plan of %s" % ("accept the intent and " if accepts else "", r.slug), changes=accepts) + \
+             [self.c("state advance plan_complete %s" % nxt)]
+ 
+     # -- gate questions ----------------------------------------------------------------------
+@@ -2335,7 +2346,8 @@ class Builder:
+             cm = r.context()
+             if cm:
+                 out["context_map"] = {k: cm[k] for k in ("intro", "file", "rows", "answer", "table")}
+-                if cm["reviewed"] not in ("human", "auto") and r.cfg("plan.context-check", "auto").lower() != "off":
++                mode = r.cfg("plan.context-check", "auto").lower()
++                if cm["reviewed"] not in ("human", "auto") and (mode == "always" or (mode != "off" and cm["flagged"])):
+                     q = self.context_question(cm)
+                     out["context_check"] = {k: q[k] for k in ("question", "options", "answer", "gate")}
+                     out["context_check"]["header"] = GATE_HEADER
+@@ -2470,6 +2482,10 @@ class Builder:
+             if mv:
+                 out.update(mv)
+                 return out
++        if stage == "intent" and self.intent_by_rule():
++            out.update({"action": "work", "stage": stage, "calls": self.leave_intent(accept=False), "agents": [],
++                        "say": "Intent: the check passed and nothing is open. You approve it with the plan."})
++            return out
+         q = self.ask(stage)
+         out.update({"action": "ask", "stage": stage, "ask": q})
+         self.add_adhoc(out, stage)
+diff --git a/scripts/plan_ops.py b/scripts/plan_ops.py
+index 2b6fef0..1ced5e6 100644
+--- a/scripts/plan_ops.py
++++ b/scripts/plan_ops.py
+@@ -78,6 +78,12 @@ def row(ok, detail):
+     return {"name": "context map reviewed", "pass": ok, "detail": detail}
+ 
+ 
++def asks(m, mode):
++    """Whether the person is asked about this map: never under off, always under always, under auto only when it holds an
++    ignore or a gap entry (the config's own words for auto)."""
++    return mode == "always" or (mode != "off" and any(e["kind"] in ("ignore", "gap") for e in m["entries"]))
++
++
+ def gate_row(spec, mode):
+     mode = mode if mode in ("auto", "always", "off") else "auto"
+     m = parse(spec)
+@@ -89,7 +95,7 @@ def gate_row(spec, mode):
+         return row(False, "the Context Map has %d entries; keep it to %d, one line per source (group an area: src/auth/ (12 files))" % (len(m["entries"]), MAX_ENTRIES))
+     if m["long"]:
+         return row(False, "a Context Map line is over %d characters; shorten: %s" % (MAX_LINE, m["long"][0][:60]))
+-    if m["reviewed"] not in ("human", "auto") and not (mode == "off" and m["reviewed"] == "pending"):
++    if m["reviewed"] not in ("human", "auto") and not (m["reviewed"] == "pending" and not asks(m, mode)):
+         return row(False, "the Context check is pending: the person's answer is not recorded yet (it is asked as the Is this the right context for the plan? question)"
+                    if m["reviewed"] == "pending" else "the Context Map has no `- reviewed: human|auto` line")
+     if m["reviewed"] == "auto" and mode != "off":
+@@ -117,7 +123,7 @@ def map_json(spec):
+     if m is None:
+         return None
+     return {"intro": m["intro"] or "The sources Plan used, one line each.", "file": os.path.join(spec, "plan.md"), "rows": m["entries"],
+-            "answer": m["answer"], "reviewed": m["reviewed"], "table": table(m)}
++            "answer": m["answer"], "reviewed": m["reviewed"], "table": table(m), "flagged": any(e["kind"] in ("ignore", "gap") for e in m["entries"])}
+ 
+ 
+ def review(spec, answer, focus):
