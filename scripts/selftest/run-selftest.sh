@@ -68,7 +68,7 @@ case "$TIER" in
     while IFS= read -r f; do
       case "$f" in
         scripts/selftest/temper-cases-*.sh) n="${f##*cases-}"; FILES="$FILES ${n%.sh}" ;;
-        scripts/flow.py|scripts/cli_ctx.py|scripts/selftest/make-view-fixtures.sh) FILES="$FILES 8 10 12 13" ;;
+        scripts/flow.py|scripts/flow_*.py|scripts/cli_ctx.py|scripts/selftest/make-view-fixtures.sh) FILES="$FILES 8 10 12 13" ;;
         scripts/task_ops.py|scripts/tasks_md.py|scripts/scenario_ops.py|scripts/maven_loop.py|scripts/run_env.py|scripts/task_rows.py|scripts/task_cover.py) FILES="$FILES 5 11" ;;
         scripts/guards/*|scripts/guards_ops.py) FILES="$FILES 1 3 4 12" ;;
         scripts/*|templates/*|agents/*|commands/*|reference/*) FILES="$ALL" ;;

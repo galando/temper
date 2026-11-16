@@ -46,11 +46,11 @@ assert_eq "B4: a run with no record of its tasks is still judged by its boxes" "
 
 # --- B1: MOVES is the checked list of the moves an option carries (it was PERSON_MOVES, read nowhere) ---
 assert_eq "B1: every move flow.py writes is in MOVES, and MOVES holds no move flow.py never writes" "ok" \
-  "$(python3 - "$REPO_ROOT/scripts" <<'PY'
+  "$(python3 - "$REPO_ROOT/scripts" <(_flow_text) <<'PY'
 import re, sys
 sys.path.insert(0, sys.argv[1])
 import flow
-src = open(sys.argv[1] + '/flow.py').read()
+src = open(sys.argv[2]).read()
 used = set(re.findall(r'\bmove="([A-Za-z]+)"', src)) | set(re.findall(r'"move": "([A-Za-z]+)"', src)) | set(re.findall(r'return "(approve)" if', src)) | {'advance'}
 print('ok' if used == flow.MOVES and not hasattr(flow, 'PERSON_MOVES') else 'used-not-listed %s listed-not-used %s' % (sorted(used - flow.MOVES), sorted(flow.MOVES - used)))
 PY

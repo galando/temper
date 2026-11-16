@@ -25,7 +25,7 @@ printf '# Tasks: demo\n\n### Task 1: a\n**File:** `src/a.sh`\n**Test:** `true`\n
 assert_eq "F15: the stop for a plan with no groups is the same with the mod off, and Build does not stop for the mod" "same|0" \
   "$(_same_with_mod_off)|$(TEMPER_MOD=off "$TEMPER" next --json | grep -c 'TEMPER_MOD')"
 assert_eq "F15: nothing in the CLI, the flow or the orchestrator page reads or sets TEMPER_MOD" "0" \
-  "$(cd "$REPO_ROOT" && grep -l 'TEMPER_MOD' scripts/temper $CLI_MODULES scripts/flow.py scripts/cli_ctx.py commands/temper.md | wc -l | tr -d ' ')"
+  "$(cd "$REPO_ROOT" && grep -l 'TEMPER_MOD' scripts/temper $CLI_MODULES $FLOW_FILES scripts/cli_ctx.py commands/temper.md | wc -l | tr -d ' ')"
 
 # --- F4. A failed call stops its action; an agent's gate call named gate is the one exception ---
 assert_eq "F4: commands/temper.md and docs/flow.md state the rule" "1|1" \
@@ -35,7 +35,7 @@ assert_eq "F4: the agent's gate call is the last of its after calls and is named
 
 # --- F23. Every pull request is a draft: no step, brief or page runs gh pr create without --draft, and none runs gh pr ready ---
 assert_eq "F23: no gh pr create without --draft, and no gh pr ready command, in the flow, the references and the briefs" "0|0" \
-  "$(cd "$REPO_ROOT" && grep -rhE 'gh pr create' scripts/flow.py scripts/cli_ctx.py reference agents commands | grep -v -e '--draft' -e 'never' -e 'without' | wc -l | tr -d ' ')|$(cd "$REPO_ROOT" && grep -rhE '^[[:space:]]*(\$ )?gh pr ready' reference agents commands scripts/flow.py | wc -l | tr -d ' ')"
+  "$(cd "$REPO_ROOT" && grep -rhE 'gh pr create' $FLOW_FILES scripts/cli_ctx.py reference agents commands | grep -v -e '--draft' -e 'never' -e 'without' | wc -l | tr -d ' ')|$(cd "$REPO_ROOT" && grep -rhE '^[[:space:]]*(\$ )?gh pr ready' reference agents commands $FLOW_FILES | wc -l | tr -d ' ')"
 
 # --- F22. A real Maven run needs java and the artifacts; without them the case says SKIP and counts as nothing ---
 if command -v mvn >/dev/null 2>&1 && command -v java >/dev/null 2>&1 && [[ -d "${HOME:-/nonexistent}/.m2" ]]; then

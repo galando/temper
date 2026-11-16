@@ -23,7 +23,7 @@ assert_eq "9.8.5 policy: a missing measurement parks for the person" "auto|True"
 _pol check; gpass check
 assert_eq "9.8.5 policy: a passed Check goes on to the commit, which still parks for the person" "True" \
   "$(nx "d['calls'][0].endswith('state advance check_complete commit')")"
-assert_eq "9.8.5 policy: no policy move ever overrides or accepts" "0" "$(grep -cE "c\(\"(override|evidence accept)" <(sed -n '/def policy_move/,/def setup_offer/p' "$REPO_ROOT/scripts/flow.py"))"
+assert_eq "9.8.5 policy: no policy move ever overrides or accepts" "0" "$(grep -cE "c\(\"(override|evidence accept)" <(sed -n '/def policy_move/,/def setup_offer/p' "$REPO_ROOT/scripts/flow_work.py"))"
 fresh; gpass intent plan build
 for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 "$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1; gpass review

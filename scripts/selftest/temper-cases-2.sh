@@ -1083,7 +1083,7 @@ assert_eq "a CLI reached through a symlink resolves a model from its own folder,
 assert_exit "a CLI reached through a symlink loads acceptance.py by its full path, with an empty environment" 0 \
   env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/temper" gate plan
 assert_eq "the CLI and its Python helpers list no folder by wildcard and load no folder onto sys.path" "0" \
-  "$({ _cli_text; cat "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$REPO_ROOT/scripts/task_ops.py"; } | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
+  "$({ _cli_text; cat "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/task_ops.py"; _flow_text; } | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
 
 # --- CLI: the plugin folder comes from the CLI's own file, never from an environment variable ---
 setup

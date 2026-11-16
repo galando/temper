@@ -1,5 +1,13 @@
 # Helpers the case files share (sourced by test-temper.sh before them, so any case file runs alone with TEMPER_CASES_ONLY).
 # They use assert_eq, setup, $TEMPER and the counters of test-temper.sh.
+# The flow: scripts/flow.py, the facade, and the modules it imports (WP03). A case that reads the text of the flow reads it
+# through _flow_text, or names the files by FLOW_FILES (paths from the repository root), so a moved method is still read.
+FLOW_FILES="scripts/flow.py scripts/flow_base.py scripts/flow_run.py scripts/flow_ask.py scripts/flow_work.py
+scripts/flow_build.py scripts/flow_commit.py scripts/flow_view.py"
+_flow_text() { # the text of flow.py and of its modules, one after another
+  local m
+  for m in $FLOW_FILES; do cat "$REPO_ROOT/$m"; done
+}
 
 _ev() { # _ev <code> <json text>: runs the code over d (the JSON); the last "; " part is printed
   python3 - "$1" "$2" <<'PY' 2>&1
