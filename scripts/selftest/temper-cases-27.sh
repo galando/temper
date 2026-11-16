@@ -33,8 +33,8 @@ assert_exit "9.8.5 propose: --write never writes over a setup block that is ther
 git checkout -q -- .claude/temper.config 2>/dev/null
 _fault 'echo Connection refused; exit 1'
 assert_exit "9.8.5 propose: a block that does not fix the failing command is not written" 1 env PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose --write
-assert_eq "9.8.5 propose: that block is not offered again; the agent is offered instead" "Let an agent find the setup (Recommended)|state set env_agent requested" \
-  "$(gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gfail plan "preflight" "1 command(s): 1 environment fault"; PATH="$PWD/fakepg:$PATH" nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+assert_eq "9.8.5 propose: a block that does not fix the command is not offered again, and no agent is offered" "block=0|agent=0" \
+  "$(gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gfail plan "preflight" "1 command(s): 1 environment fault"; PATH="$PWD/fakepg:$PATH" nx "o = d['ask']['options'] + (d['ask'].get('more') or {}).get('options', []); 'block=%d|agent=%d' % (sum(1 for x in o if x['label'].startswith('Add the proposed setup block')), sum(1 for x in o if 'Let an agent find the setup' in x['label']))")"
 rm -rf .git
 rm -rf backend scripts fakepg; fresh
 assert_eq "9.8.5 propose: a project with no such facts gets no proposal" "True" \
@@ -48,6 +48,15 @@ printf '{"env_faults": [{"cmd": "mvn verify", "files": null, "why": "needs JDK [
 assert_eq "9.8.5 propose: the failed plan question's first option adds the block, runs the preflight again and gates the plan" \
   "Add the proposed setup block (Recommended)|doctor --propose --write|plan preflight|gate plan|True" \
   "$(PATH="$PWD/fakepg:$PATH" nx "o = d['ask']['options'][0]; '|'.join([o['label']] + [c.split('temper ', 1)[1] for c in o['calls']] + [str('IT_POSTGRES_PORT=5432' in o['description'])])")"
+_blk27="$(PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose 2>/dev/null | sed -n '/^setup:/,/^[^ ]/p' | grep -E '^(setup:|  )')"
+assert_eq "9.8.5 propose: the question shows the proposed block whole" "lines>2|missing=none" \
+  "lines$([[ $(grep -c . <<<"$_blk27") -gt 2 ]] && echo '>2' || echo "=$(grep -c . <<<"$_blk27")")|missing=$(PATH="$PWD/fakepg:$PATH" python3 - "$_blk27" "$("$TEMPER" next --json 2>/dev/null)" <<'PY'
+import json, sys
+d = json.loads(sys.argv[2])
+text = ((d.get("ask") or {}).get("question") or {}).get("question", "")
+print("; ".join(l.strip() for l in sys.argv[1].splitlines() if l.strip() and l.strip() not in text) or "none")
+PY
+)"
 printf 'setup:\n  env:\n    X: 1\n' >> .claude/temper.config
 assert_eq "9.8.5 propose: with a setup block already there, nothing is proposed at the question" "False" \
   "$(PATH="$PWD/fakepg:$PATH" nx "any(o['label'].startswith('Add the proposed setup block') for o in d['ask']['options'])")"
@@ -115,10 +124,8 @@ rm -rf .github .devcontainer fakepg
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '{"env_faults": [{"cmd": "make test", "files": null, "why": "needs JDK [24,) (found 21.0.12)"}], "limit": 30}\n' > .temper/preflight.json
 "$TEMPER" state set env_agent requested >/dev/null 2>&1
-assert_eq "9.8.5 agent: the person's choice launches the environment agent with the failing command and its error" \
-  "work|temper:temper-env|True|True" \
-  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], str('`make test`: needs JDK [24,) (found 21.0.12)' in a['prompt']), str(any('doctor --candidate' in c and c.endswith('--write') for c in a['after']))])")"
-assert_eq "9.8.5 agent: its after calls mark it tried first, so it is offered once" "True" "$(nx "d['agents'][0]['after'][0].endswith('state set env_agent tried')")"
+assert_eq "9.8.5 agent: a saved request for the environment agent launches nothing" "0" \
+  "$(nx "sum(1 for a in d.get('agents') or [] if a.get('type') == 'temper:temper-env')")"
 git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.name=t -c user.email=t@e commit -q -m base >/dev/null 2>&1
 printf '{"env_faults": [{"cmd": "test \\"$NEEDED\\" = yes || { echo Connection refused; exit 1; }", "files": null, "why": "Connection refused"}], "limit": 30}\n' > .temper/preflight.json
 printf 'setup:\n  env:\n    NEEDED: yes\n' > .temper/specs/demo/setup-proposal.yaml

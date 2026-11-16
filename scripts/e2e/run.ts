@@ -1,5 +1,5 @@
 // bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N] [--floor FILE | --write-floor FILE]  (all: plain, mod and the mod's run driver; a scenario of slow.ts, broken.ts or accept.ts runs only in the modes it names; a scenario on scripts/selftest/expected-fail.txt prints XFAIL when it throws)  (a live model smoke is not part of this: it stays off, and out of CI)
-import { defaultRun, freshAsk, freshContest, freshNotRun, freshReview, armedRun, branchClash, branchClashCarry, contextCheck, designRun, failingScenario, fixRun, mavenRun, threeGroups, coveredAndManual, fullRun, hookScope, modGuards, prAndPipeline, saveAndResume, smallChange } from './scenarios'
+import { defaultRun, freshAsk, policyRun, freshContest, freshNotRun, freshReview, armedRun, branchClash, branchClashCarry, contextCheck, designRun, failingScenario, fixRun, mavenRun, threeGroups, coveredAndManual, fullRun, hookScope, modGuards, prAndPipeline, saveAndResume, smallChange } from './scenarios'
 import { pyjokesBlocked, pyjokesFull, pyjokesRun } from './pyjokes'
 import { ACCEPT_SCENARIOS } from './accept'
 import { BROKEN_SCENARIOS } from './broken'
@@ -12,7 +12,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-const SCENARIOS: Record<string, (w: World) => void> = { 'default-run': defaultRun, 'full-run': fullRun, 'mod-guards': modGuards, 'small-change': smallChange, 'covered-and-manual': coveredAndManual, 'pr-and-pipeline': prAndPipeline, 'context-check': contextCheck, 'branch-clash': branchClash, 'branch-clash-carry': branchClashCarry, 'hook-scope': hookScope, 'failing-scenario': failingScenario, 'armed-run': armedRun, 'save-and-resume': saveAndResume, design: designRun, 'three-groups': threeGroups, maven: mavenRun, fix: fixRun, 'fresh-review': freshReview, 'fresh-not-run': freshNotRun, 'fresh-contest': freshContest, 'fresh-ask': freshAsk, pyjokes: pyjokesRun, 'pyjokes-full': pyjokesFull, 'pyjokes-blocked': pyjokesBlocked }
+const SCENARIOS: Record<string, (w: World) => void> = { 'default-run': defaultRun, 'full-run': fullRun, 'mod-guards': modGuards, 'small-change': smallChange, 'covered-and-manual': coveredAndManual, 'pr-and-pipeline': prAndPipeline, 'context-check': contextCheck, 'branch-clash': branchClash, 'branch-clash-carry': branchClashCarry, 'hook-scope': hookScope, 'failing-scenario': failingScenario, 'armed-run': armedRun, 'save-and-resume': saveAndResume, design: designRun, 'three-groups': threeGroups, maven: mavenRun, fix: fixRun, 'fresh-review': freshReview, 'fresh-not-run': freshNotRun, 'fresh-contest': freshContest, 'fresh-ask': freshAsk, pyjokes: pyjokesRun, 'pyjokes-full': pyjokesFull, 'pyjokes-blocked': pyjokesBlocked, 'policy-run': policyRun }
 
 // The scenarios of the two scripted projects (WP06) and the acceptance scenarios of docs/plans/one-go/done.md (WP07)
 // run only in the modes each names.
@@ -21,6 +21,9 @@ for (const [name, s] of Object.entries({ ...SLOW_SCENARIOS, ...BROKEN_SCENARIOS,
   SCENARIOS[name] = s.run
   ONLY[name] = s.modes
 }
+// policy-run (WP08) runs in plain and mod mode; its driver mode is WP09's (temper go reports a failed group gate as an
+// error, so the driver hands the run back).
+ONLY['policy-run'] = ['plain', 'mod']
 // The expected to fail list (scripts/selftest/expected-fail.txt), read once: a line it cannot read, or an e2e line that
 // names no scenario, fails the run at once (scripts/e2e/xfail.ts).
 let LISTED: ReturnType<typeof loadList> = []

@@ -499,6 +499,16 @@ _at review; "$TEMPER" adhoc open --stage review --reason "a doc fix" >/dev/null 
 "$TEMPER" adhoc close >/dev/null 2>&1
 assert_eq "F14: a change of docs only takes no snapshot" "0" \
   "$(python3 -c "import json; print(int(bool(json.load(open('.temper/build-state.json')).get('review_snapshot'))))")"
+# M7 of WP08: a small change at Check, in a project whose test command the CLI can run, is checked by the CLI with no agent
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+sed -i 's/^check:$/check:\n  commands:\n    test: "true"/' .claude/temper.config
+git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+_at check; "$TEMPER" adhoc open --stage check --reason "fix an off by one" >/dev/null 2>&1
+mkdir -p src; echo changed-again > src/a.sh
+"$TEMPER" adhoc close >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1; gpass review   # the Review step of the change ran and passed: the Check step comes next
+assert_eq "M7: a small change at Check is checked by the CLI" "steps=check,commit|work|check run,gate check|agents=0" \
+  "steps=$(python3 -c "import json; print(','.join((json.load(open('.temper/build-state.json')).get('adhoc_done') or {}).get('steps', [])))")|$(nx "cs = [c.split('temper ', 1)[-1] for c in d.get('calls') or []]; d['action'] + '|' + ','.join(c for c in cs if c in ('check run', 'gate check')) + '|agents=' + str(len(d.get('agents') or []))")"
 setup
 # F18 through task test: a package importable from the project root (PYTHONPATH here) and from the task worktree: the worktree copy wins
 f9_tasks | m_setup
