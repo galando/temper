@@ -75,21 +75,25 @@ function seed(taskDir, work) {
 
 // The moves of the options Temper's CLI offers right now (label -> move), so person.mjs answers a gate
 // by what it does, and the id of each question by its text (9.8.5: the scorecard groups dialogs by question id and
-// counts the steps back by move). Empty outside a Temper run.
+// counts the steps back to Plan by move and by the stage the option's `state loop` call goes back to). Empty outside a
+// Temper run.
 function temperMoves(work) {
   try {
     const n = JSON.parse(sh(TEMPER, ["next", "--json"], work));
     const m = {};
+    const tos = {};
     const qids = {};
     const asks = [n.ask, n.ask?.more, n.ask?.accept, n.context_check].filter(Boolean);
     for (const a of asks) if (a.question?.question && a.id) qids[a.question.question] = a.id;
     for (const b of n.blocking_asks || []) if (b.question?.question) qids[b.question.question] = b.question_ids?.id || "intent.blocking";
     for (const o of [...(n.ask?.options || []), ...(n.ask?.more?.options || []), ...(n.context_check?.options || [])]) {
       if (o && o.label) m[o.label] = o.move ?? null;
+      const to = (o?.calls || []).map((c) => /\bstate loop \S+ (\S+)/.exec(c)?.[1]).find(Boolean);
+      if (o && o.label && to) tos[o.label] = to;
     }
-    return { moves: m, qids, action: n.action, stage: n.stage ?? n.run?.stage ?? null };
+    return { moves: m, tos, qids, action: n.action, stage: n.stage ?? n.run?.stage ?? null };
   } catch {
-    return { moves: {}, qids: {}, action: "unknown", stage: null };
+    return { moves: {}, tos: {}, qids: {}, action: "unknown", stage: null };
   }
 }
 
@@ -180,10 +184,10 @@ async function main() {
       if (toolName !== "AskUserQuestion") return { behavior: "allow", updatedInput: input };
       questions++;
       if (questions > 60) return { behavior: "deny", message: "The person has left: too many questions.", interrupt: true };
-      const ctx = a.arm === "temper" ? temperMoves(work) : { moves: {}, qids: {}, action: null, stage: null };
+      const ctx = a.arm === "temper" ? temperMoves(work) : { moves: {}, tos: {}, qids: {}, action: null, stage: null };
       // each line: the dialog it was asked in (a dialog of four Blocking questions is four lines with one index), the
-      // question's id and the move of the answer, when the CLI gave them
-      const ids = (q, ans) => ({ dialog: questions, qid: ctx.qids[q] ?? null, move: ctx.moves[ans] ?? null });
+      // question's id, the move of the answer and the stage a step back goes to, when the CLI gave them
+      const ids = (q, ans) => ({ dialog: questions, qid: ctx.qids[q] ?? null, move: ctx.moves[ans] ?? null, to: ctx.tos[ans] ?? null });
       if (!brief) {
         const { updatedInput, log } = answer(input, ctx.moves);
         for (const l of log) px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...ids(l.question, l.answer), ...l }) + "\n");

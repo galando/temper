@@ -221,7 +221,7 @@ assert_eq "summary: the file keeps the last 200 lines" "200 6 1" \
 python3 -I - "$_c41_dir/bench" <<'PY'
 import json, os, sys
 root = sys.argv[1]
-def run(folder, task, arm, rep, cost, wall, dialogs, reviews, back=0, mod=False):
+def run(folder, task, arm, rep, cost, wall, dialogs, reviews, back=0, mod=False, to="plan", blocking=0, blocked=0):
     d = os.path.join(root, folder, "%s__%s__%d" % (task, arm, rep))
     os.makedirs(os.path.join(d, "session", "subagents"), exist_ok=True)
     json.dump({"task": task, "arm": arm, "rep": rep, "cost_usd": cost, "wall_s": wall, "questions": dialogs,
@@ -229,17 +229,38 @@ def run(folder, task, arm, rep, cost, wall, dialogs, reviews, back=0, mod=False)
     json.dump({"hidden_pass": 4, "hidden_total": 4}, open(os.path.join(d, "grade.json"), "w"))
     with open(os.path.join(d, "person.jsonl"), "w") as f:
         for k in range(dialogs):
-            f.write(json.dumps({"dialog": k + 1, "qid": "plan.approve", "move": "back" if k < back else None}) + "\n")
+            f.write(json.dumps({"dialog": k + 1, "qid": "plan.approve", "move": "back" if k < back else None,
+                                "to": to if k < back else None}) + "\n")
+        for k in range(blocking):   # the Blocking questions, four to a dialog
+            f.write(json.dumps({"dialog": dialogs + 1 + k // 4, "qid": "intent.blocking", "move": None}) + "\n")
     for k in range(reviews):
         base = os.path.join(d, "session", "subagents", "agent-%d" % k)
         json.dump({"agentType": "temper:temper-review", "model": "sonnet"}, open(base + ".meta.json", "w"))
         open(base + ".jsonl", "w").write(json.dumps({"timestamp": "2026-01-01T00:00:0%dZ" % k}) + "\n"
                                           + json.dumps({"timestamp": "2026-01-01T00:00:1%dZ" % k}) + "\n")
+    if blocked:   # a build task agent: `task blocked` taken for each task, and one more call the CLI refused
+        base = os.path.join(d, "session", "subagents", "agent-b")
+        json.dump({"agentType": "temper:temper-build-task", "model": "sonnet"}, open(base + ".meta.json", "w"))
+        with open(base + ".jsonl", "w") as f:
+            for n in list(range(1, blocked + 1)) + [blocked + 1]:
+                cmd = "/p/scripts/temper task blocked %d --needs src/x.py --reason 'needs x'" % n
+                f.write(json.dumps({"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "id": "t%d" % n, "name": "Bash", "input": {"command": cmd}}]}}) + "\n")
+                text = "FAIL: src/x.py is a file of Task %d" % n if n > blocked else "OK: Task %d is blocked" % n
+                f.write(json.dumps({"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": "t%d" % n, "content": text}]}}) + "\n")
 for rep in (1, 2):
     run("before", "cent-mismatch", "vanilla", rep, 1.0, 100, 0, 0)
     run("before", "cent-mismatch", "temper", rep, 3.0, 400, 6, 2, back=1)
     run("after", "cent-mismatch", "vanilla", rep, 1.0, 100, 0, 0)
     run("after", "cent-mismatch", "temper", rep, 1.4, 240, 2, 1)
+    # D96 and D90 to D92: a second pair of rounds whose after round blocks a task and steps back to Build only
+    run("b2", "cent-mismatch", "vanilla", rep, 1.0, 100, 0, 0)
+    run("b2", "cent-mismatch", "temper", rep, 1.4, 240, 2, 1, back=1)
+    run("a2", "cent-mismatch", "vanilla", rep, 1.0, 100, 0, 0)
+    run("a2", "vague-refunds", "vanilla", rep, 1.0, 100, 0, 0)
+    run("a2", "cent-mismatch", "temper", rep, 1.4, 240, 2, 1, back=2, to="build", blocking=4, blocked=1)
+    run("a2", "vague-refunds", "temper", rep, 1.4, 240, 2, 1, blocking=4)
 PY
 _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" before after --gate gate.json >/dev/null 2>&1; echo -n "$? "
   python3 -c 'import json; d=json.load(open("gate.json")); l=d["lines"]; print(d["arm"], d["before"], d["plain"], l["bug"]["cost_ratio"], l["bug"]["time_ratio"], l["bug"]["pass"], l["hidden"]["pass"], l["reviews"]["pass"], l["steps_back"]["pass"], l["clear"]["pass"])'
@@ -247,3 +268,8 @@ _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" be
 assert_eq "summary: the bench scorecard holds the round after against the plain arm and the round before" \
   "0 after/temper before/temper after/vanilla 1.4 2.4 True True True True None
 {'temper:temper-review': 2} 1.4" "$_c41_sc"
+_c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" b2 a2 --gate gate2.json >/dev/null 2>&1; echo -n "$? "
+  python3 -c 'import json; l=json.load(open("gate2.json"))["lines"]; s=l["steps_back"]
+print(s["mean"], s["before"], s["blocked"], s["blocked_before"], s["pass"], l["bug"]["runs_over_dialogs"], l["vague"]["runs_over_dialogs"])')"
+assert_eq "summary: the bench counts steps back to Plan and blocked tasks, and more dialogs only on a vague task" \
+  "1 0 1 0.5 0 False 2 0" "$_c41_sc"
