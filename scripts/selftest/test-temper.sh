@@ -15,6 +15,10 @@ TESTS_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${TESTS_DIR%/scripts/selftest}"
 [[ "$REPO_ROOT" != "$TESTS_DIR" && -x "$REPO_ROOT/scripts/temper" ]] || { echo "FAIL: cannot find the repo root from $TESTS_DIR"; exit 1; }
 TEMPER="$REPO_ROOT/scripts/temper"
+# The Python modules the CLI runs, by name: a case that copies the CLI copies them too (_cli_files), and a case that
+# proves a text is absent from the CLI reads them too (_cli_text)
+CLI_MODULES="scripts/json_ops.py scripts/state_ops.py scripts/ledger_ops.py scripts/spec_text.py scripts/commit_rows.py
+scripts/report_ops.py scripts/groups_ops.py"
 WORKDIR="$(mktemp -d)" || exit 1
 WORKDIR="$(cd -P "$WORKDIR" && pwd)" || exit 1   # physical, as the scripts see their own folders
 # A CLI call from outside this folder is refused (exit 3), config and model included, and the real .temper is left as it was.
@@ -208,12 +212,23 @@ _git_list() { # _git_list <git folder>: every file and folder in it, sorted, but
               # itself rewrites), so a case can show the installer wrote nothing else there
   (cd "$1" && find . \( -path ./temper-gate -o -path ./temper-pre-commit -o -path ./logs -o -name 'index*' -o -name '*.lock' \) -prune -o -print | LC_ALL=C sort)
 }
+_cli_files() { # _cli_files <folder>: copies the CLI and the files it runs into a throwaway plugin's scripts folder
+  local m
+  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" \
+    "$REPO_ROOT/scripts/flow.py" "$REPO_ROOT/scripts/temper-help.txt" "$1"
+  for m in $CLI_MODULES; do cp "$REPO_ROOT/$m" "$1"; done
+}
+_cli_text() { # the text of the CLI and of its Python modules
+  local m
+  cat "$TEMPER"
+  for m in $CLI_MODULES; do cat "$REPO_ROOT/$m"; done
+}
 _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI, acceptance.py, the
                # guard scripts the hook runs, and the changed install.sh)
   local g
   rm -rf "$1"
   mkdir -p "$1/scripts/guards"
-  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$1/scripts/"
+  _cli_files "$1/scripts/"
   for g in block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh; do
     cp "$REPO_ROOT/scripts/guards/$g" "$1/scripts/guards/$g"
   done

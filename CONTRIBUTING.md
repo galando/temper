@@ -39,6 +39,8 @@ temper/
 ├── skills/                  # Skill definitions (temper-core, grill-me, ...)
 ├── packs/                   # Rule packs, stack files, guardrails pack
 ├── scripts/                 # temper CLI (the deterministic spine), flow.py, guards/, selftest/
+│                            # the CLI's Python modules: json_ops.py, state_ops.py, ledger_ops.py, spec_text.py,
+│                            # commit_rows.py, report_ops.py, groups_ops.py; its help text: temper-help.txt
 ├── templates/               # Artifact templates (intent/plan/design/config)
 ├── examples/                # Company packs, CI workflow templates, an example gate
 ├── docs/                    # GitHub Pages documentation

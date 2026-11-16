@@ -64,4 +64,35 @@ assert_eq "tooling: verify.sh names quick and full and refuses another word" "2|
 _t32_wf="$REPO_ROOT/.github/workflows/quality.yml"
 assert_eq "tooling: the workflow cancels a superseded pull request run and ends in one gate job" "1|1|1|1" \
   "$(grep -c '^concurrency:' "$_t32_wf")|$(grep -c '^ *cancel-in-progress:' "$_t32_wf")|$(grep -c '^ *if: always()' "$_t32_wf")|$(awk '/^  changes:/ {on=1; next} /^  [a-z0-9_-]+:/ {on=0} on' "$_t32_wf" | grep -c 'github.base_ref' | sed 's/^[1-9][0-9]*$/1/')"
-unset _t32_sel _t32_files _t32_list _t32_shards _t32_cl _t32_old _t32_out _t32_rc _t32_wf _k
+
+# --- room (WP02): the code moved out of scripts/temper into Python modules, and the room that leaves ---
+_t32_cli="$REPO_ROOT/scripts/temper"
+assert_eq "room: scripts/temper leaves 40,000 bytes free" "yes" \
+  "$([[ $(wc -c < "$_t32_cli") -le 222144 ]] && echo yes || echo "no: $(wc -c < "$_t32_cli" | tr -d ' ') bytes")"
+assert_eq "room: the CLI holds at most one Python heredoc" "yes" \
+  "$([[ $(grep -c "<<'PY'" "$_t32_cli") -le 1 ]] && echo yes || echo "no: $(grep -c "<<'PY'" "$_t32_cli")")"
+assert_eq "room: the new modules run isolated" "ok" \
+  "$(python3 -I - "$REPO_ROOT" <<'PY'
+import ast, os, re, sys
+root = sys.argv[1]
+mods = ("json_ops", "state_ops", "ledger_ops", "spec_text", "commit_rows", "report_ops", "groups_ops")
+bad = []
+for n, line in enumerate(open(os.path.join(root, "scripts", "temper"), encoding="utf-8"), 1):
+    for m in mods:
+        for hit in re.finditer(re.escape("$SCRIPTS_DIR/%s.py" % m), line):
+            if not line[:hit.start()].endswith('python3 -I "'):
+                bad.append("scripts/temper:%d starts %s without python3 -I" % (n, m))
+for m in mods:
+    path = os.path.join(root, "scripts", m + ".py")
+    if not os.path.isfile(path):
+        bad.append("%s.py is missing" % m)
+        continue
+    text = open(path, encoding="utf-8").read()
+    if "sys.path" in text:
+        bad.append("%s.py names sys.path" % m)
+    if any(isinstance(x, ast.ImportFrom) and any(a.name == "*" for a in x.names) for x in ast.walk(ast.parse(text))):
+        bad.append("%s.py has a star import" % m)
+print("; ".join(bad) or "ok")
+PY
+)"
+unset _t32_sel _t32_files _t32_list _t32_shards _t32_cl _t32_old _t32_out _t32_rc _t32_wf _t32_cli _k

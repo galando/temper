@@ -568,7 +568,7 @@ setup
 assert_eq "init: no settings file is made, with or without the old flag" "" \
   "$(ls .claude | grep -E '^settings' || true)"
 assert_eq "init: the CLI names no settings file, and /temper:init offers no settings edit" "0|0" \
-  "$(grep -c 'settings\.json' "$TEMPER")|$(grep -c 'foreground-agents' "$REPO_ROOT/commands/init.md")"
+  "$(_cli_text | grep -c 'settings\.json')|$(grep -c 'foreground-agents' "$REPO_ROOT/commands/init.md")"
 
 # --- live runs: the Design question names the open areas of concern, leaving Design records them, design.md is committed ---
 fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH

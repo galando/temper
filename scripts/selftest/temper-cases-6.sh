@@ -266,11 +266,11 @@ assert_eq "M5: integrate refuses a group branch holding an unrecorded commit, na
   "$rc|$(printf '%s' "$out" | grep -c "${ASHA:0:7}")|$(git rev-parse HEAD)"
 
 # M6: the verdict reads no environment variable for the overrides file
-assert_eq "M6: no TEMPER_OVERRIDES_FILE in scripts/temper or scripts/task_ops.py" "0" "$(cat "$TEMPER" "$REPO_ROOT/scripts/task_ops.py" | grep -c 'TEMPER_OVERRIDES_FILE')"
+assert_eq "M6: no TEMPER_OVERRIDES_FILE in scripts/temper or scripts/task_ops.py" "0" "$({ _cli_text; cat "$REPO_ROOT/scripts/task_ops.py"; } | grep -c 'TEMPER_OVERRIDES_FILE')"
 
 # the undo machinery is gone from the CLI
 assert_eq "D-08: no automatic-undo code is left in scripts/temper" "0" \
-  "$(grep -c 'stillon\|reverthint\|TEMPER_UNDO_HEAL\|reverted_foreign\|merge_info\|temper-undo' "$TEMPER")"
+  "$(grep -c 'stillon\|reverthint\|TEMPER_UNDO_HEAL\|reverted_foreign\|merge_info\|temper-undo' < <(_cli_text))"
 setup
 
 # --- Grouped Build: whole-diff review fixes (F1-F5) and the fail-closed spec path ---

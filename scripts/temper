@@ -268,21 +268,14 @@ _now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 _ensure_dirs() { mkdir -p .temper/evidence; }   # the project's .temper and its evidence folder
 
-# ---------------------------------------------------------------------------
+# ---
 # Minimal JSON helpers (python3 stdlib only — no jq / pyyaml dependency)
-# ---------------------------------------------------------------------------
+# ---
 
 _json_read() { # _json_read <file> <default-json>
   local file="$1" default="$2"
   if [[ -f "$file" ]]; then
-    python3 -I -c "
-import json, sys
-try:
-    json.load(open(sys.argv[1]))
-    print(open(sys.argv[1]).read())
-except Exception:
-    print(sys.argv[2])
-" "$file" "$default"
+    python3 -I "$SCRIPTS_DIR/json_ops.py" read-valid "$file" "$default"
   else
     echo "$default"
   fi
@@ -290,26 +283,7 @@ except Exception:
 
 _json_get_path() { # _json_get_path <file> <dot.path> [default]
   local file="$1" path="$2" default="${3:-}"
-  python3 -I -c "
-import json, sys
-path, default = sys.argv[2], sys.argv[3]
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    print(default); sys.exit(0)
-cur = d
-for k in path.split('.'):
-    if isinstance(cur, dict) and k in cur:
-        cur = cur[k]
-    else:
-        print(default); sys.exit(0)
-if isinstance(cur, (dict, list)):
-    print(json.dumps(cur))
-elif isinstance(cur, bool):
-    print('true' if cur else 'false')  # bash compares lowercase — never emit Python's True/False
-else:
-    print(cur if cur is not None else default)
-" "$file" "$path" "$default" 2>/dev/null || echo "$default"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" get-path "$file" "$path" "$default" 2>/dev/null || echo "$default"
 }
 
 # Write lock for the shared run files under .temper/. A mkdir lock (portable: macOS has no flock):
@@ -458,35 +432,7 @@ _lock_release() {
 _json_set_path() { # _json_set_path <file> <dot.path> <value> <default-json>
   local file="$1" path="$2" value="$3" default="$4" rc
   _lock_acquire
-  python3 -I -c "
-import json, os, sys
-path, value, default = sys.argv[2], sys.argv[3], sys.argv[4]
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    d = json.loads(default)
-# auto-typing: true/false/int/float pass through, else string
-if value in ('true', 'false'):
-    v = (value == 'true')
-else:
-    try:
-        v = int(value)
-    except ValueError:
-        try:
-            v = float(value)
-        except ValueError:
-            v = value
-cur = d
-keys = path.split('.')
-for k in keys[:-1]:
-    cur = cur.setdefault(k, {})
-cur[keys[-1]] = v
-tmp = '%s.tmp.%d' % (sys.argv[1], os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-os.replace(tmp, sys.argv[1])
-" "$file" "$path" "$value" "$default"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" set-path "$file" "$path" "$value" "$default"
   rc=$?
   _lock_release
   return $rc
@@ -495,30 +441,16 @@ os.replace(tmp, sys.argv[1])
 _json_append() { # _json_append <file> <entry-json>  (file holds a JSON array)
   local file="$1" entry="$2" rc
   _lock_acquire
-  python3 -I -c "
-import json, os, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    if not isinstance(d, list):
-        d = []
-except Exception:
-    d = []
-d.append(json.loads(sys.argv[2]))
-tmp = '%s.tmp.%d' % (sys.argv[1], os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-os.replace(tmp, sys.argv[1])
-" "$file" "$entry"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" append-row "$file" "$entry"
   rc=$?
   _lock_release
   return $rc
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # Config (a small YAML subset — indentation-nested maps/lists, flow lists).
 # The v7 config is ~25 lines; this parser is intentionally not general-purpose YAML.
-# ---------------------------------------------------------------------------
+# ---
 
 _cfg_get() { # _cfg_get <dot.path> [default]
   local path="$1" default="${2:-}"
@@ -526,7 +458,7 @@ _cfg_get() { # _cfg_get <dot.path> [default]
   python3 "$SCRIPTS_DIR/config_yaml.py" "$CONFIG_FILE" "$path" "$default" 2>/dev/null || echo "$default"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # model — resolve which model a stage runs on.
 #
 # v7 replaced the v6 `models.routing`/`models.tiers` config with fixed `model:`
@@ -538,7 +470,7 @@ _cfg_get() { # _cfg_get <dot.path> [default]
 # So: the frontmatter stays the source of truth for defaults (no table to drift out of
 # sync with it), an optional flat `models.{stage}` config key overrides it, and the
 # lookup lives here — one deterministic call, no algorithm in prose.
-# ---------------------------------------------------------------------------
+# ---
 
 _agent_file() { # <stage> -> its brief, each path written out in full (an unknown stage has none)
   case "$1" in
@@ -623,9 +555,9 @@ cmd_model() {
   echo "$m"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # init
-# ---------------------------------------------------------------------------
+# ---
 
 # The CLI's run files under .temper/, which init lists in the clone's info/exclude (one list, so the setup check sees an
 # older project that lacks a newer one)
@@ -633,14 +565,6 @@ _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json o
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
 security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/"
 
-_excludes_current() { # 0 when the clone's info/exclude lists every run file init writes (or this is no git repository)
-  local ex pre p
-  ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" || return 0
-  [[ "$ex" != "/info/exclude" ]] || return 0
-  pre="$(_prefix_glob)"
-  for p in $_RUN_FILES; do grep -qxF "/${pre}.temper/$p" "$ex" 2>/dev/null || return 1; done
-  grep -qxF "/${pre}.claude/worktrees/" "$ex" 2>/dev/null
-}
 
 cmd_init() {
   _ensure_dirs
@@ -673,12 +597,12 @@ _config_pin() {
 }
 
 _same_file() { # _same_file <a> <b> -> 0 when both name the same path once every link and '..' is resolved
-  python3 -I -c "import os, sys; sys.exit(0 if os.path.realpath(sys.argv[1]) == os.path.realpath(sys.argv[2]) else 1)" "$1" "$2"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" same-file "$1" "$2"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # state
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch NAME]
   local slug="${1:-}"; shift || true
@@ -740,40 +664,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
   [[ -n "$branch" ]] || branch="feature/$slug"
   [[ "$command" == "fix" ]] && [[ "$branch" == "feature/$slug" ]] && branch="fix/$slug"
-  python3 -I -c "
-import json, os, sys, uuid
-d = {
-    'stage': 'started',
-    'spec': sys.argv[1],
-    'spec_path': f'.temper/specs/{sys.argv[1]}',
-    'branch': sys.argv[2],
-    'command': sys.argv[3],
-    'next_stage': 'intent' if sys.argv[3] == 'temper' else 'rca',
-    'run_mode': 'interactive',
-    'artifacts': ['intent.md', 'tasks.md'] if sys.argv[3] == 'temper' else ['rca.md'],
-    'updated': sys.argv[4],
-    # ADR 0012: the run and the step a decision of the person belongs to. step counts every change of next_stage.
-    'run_id': uuid.uuid4().hex[:16],
-    'step': 0,
-    'started': sys.argv[4],
-}
-# ADR 0013: the feature as the person gave it (the Intent brief's input), and a door's stage
-if sys.argv[6]: d['feature'] = sys.argv[6]
-if sys.argv[7] and sys.argv[3] == 'temper':
-    d['enter'] = sys.argv[7]
-    # A door's run takes the tier Plan recorded: plan.md's Complexity line, else intent.md's (Intent's first guess)
-    import re
-    for name in ('plan.md', 'intent.md'):
-        try:
-            text = open(os.path.join(d['spec_path'], name), encoding='utf-8', errors='replace').read()
-        except OSError:
-            continue
-        m = re.search(r'^\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*(trivial|simple|medium|complex)\b', text, re.I | re.M)
-        if m:
-            d['complexity'] = m.group(1).lower()
-            break
-json.dump(d, open(sys.argv[5], 'w'), indent=2)
-" "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
+  python3 -I "$SCRIPTS_DIR/state_ops.py" state-init "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
   echo "Note: the run $slug owns this folder; separate work goes in a worktree (claude --worktree <name>), which gives it its own run."
 }
@@ -787,31 +678,7 @@ _state_migrate_legacy() { # idempotent; called before any state read/write and b
   [[ -f "$STATE_FILE" ]] || return 0
   # fast path, no python3 spawn: nothing of eval left, and the run id of ADR 0012 is there
   if ! grep -q '"eval' "$STATE_FILE" 2>/dev/null && grep -q '"run_id"' "$STATE_FILE" 2>/dev/null; then return 0; fi
-  python3 -I - "$STATE_FILE" <<'PY'
-import json, os, sys, tempfile
-p = sys.argv[1]
-try:
-    d = json.load(open(p))
-except Exception:
-    sys.exit(0)                     # malformed state == absent; never crash (spine contract)
-changed = False
-if not isinstance(d, dict):
-    sys.exit(0)
-if d.get("next_stage") == "eval":       d["next_stage"] = "commit";        changed = True
-if d.get("stage") == "eval_complete":   d["stage"] = "check_complete";     changed = True
-# ADR 0012: a run state written before the run id; its step count starts here
-if "run_id" not in d:
-    import uuid
-    d["run_id"] = uuid.uuid4().hex[:16];  changed = True
-if not isinstance(d.get("step"), int):
-    d["step"] = 0;                        changed = True
-if not changed:
-    sys.exit(0)
-fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p) or ".")
-with os.fdopen(fd, "w") as f:
-    json.dump(d, f, indent=2); f.write("\n")
-os.replace(tmp, p)                  # atomic: a truncated migration would LOSE state
-PY
+  python3 -I "$SCRIPTS_DIR/state_ops.py" migrate-legacy "$STATE_FILE"
 }
 
 cmd_state_get() {
@@ -948,32 +815,7 @@ cmd_state_set() {
 # `state init --enter` reads them. check prints each file whose line names another tier ("intent.md says simple");
 # write sets each such line to the tier (a tier outside the four is not written) and prints what it changed.
 _tier_lines() {
-  python3 -I -c "
-import os, re, sys
-sp, mode, tier = sys.argv[1], sys.argv[2], sys.argv[3].strip().lower()
-rx = re.compile(r'^(\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*)(trivial|simple|medium|complex)\b', re.I | re.M)
-if tier not in ('trivial', 'simple', 'medium', 'complex'):
-    sys.exit(0)
-for name in ('intent.md', 'plan.md'):
-    p = os.path.join(sp, name)
-    try:
-        text = open(p, encoding='utf-8', errors='surrogateescape').read()
-    except OSError:
-        continue
-    said = [m.group(2).lower() for m in rx.finditer(text)]
-    other = [s for s in said if s != tier]
-    if not other:
-        continue
-    if mode == 'check':
-        print('%s says %s' % (name, other[0]))
-        continue
-    new = rx.sub(lambda m: m.group(1) + tier, text)
-    tmp = '%s.tmp.%d' % (p, os.getpid())
-    with open(tmp, 'w', encoding='utf-8', errors='surrogateescape') as f:
-        f.write(new)
-    os.replace(tmp, p)
-    print('OK: %s now says Complexity %s (it said %s)' % (name, tier, other[0]))
-" "$1" "$2" "${3:-}"
+  python3 -I "$SCRIPTS_DIR/spec_text.py" tier-lines "$1" "$2" "${3:-}"
 }
 
 _run_seq() { # the run's own stage sequence, with the commit stage last (a fix run has its own)
@@ -995,42 +837,7 @@ _stage_before() { # _stage_before <a> <b>: 0 when stage a comes before stage b i
 _state_next() { # _state_next <next_stage>: sets next_stage; a change counts one step (ADR 0012). Prints moved or same.
   local next="$1" rc
   _lock_acquire
-  python3 -I - "$STATE_FILE" "$next" "$(_now)" $(_run_seq) <<'PY'
-import json, os, sys
-p, nxt, ts = sys.argv[1:4]
-seq = sys.argv[4:]
-try:
-    d = json.load(open(p))
-    if not isinstance(d, dict):
-        d = {}
-except Exception:
-    d = {}
-same = d.get('next_stage') == nxt
-if not same:
-    cur = d.get('next_stage')
-    if nxt in seq and cur in seq and seq.index(nxt) < seq.index(cur):
-        # Going back: the bookkeeping stage (the last stage left, which guards/verify-tests-ran.sh reads) is the one
-        # before the stage the run is at again, so a run sent back from Check no longer reads check_complete.
-        i = seq.index(nxt)
-        d['stage'] = (seq[i - 1] + '_complete') if i else 'started'
-        d.pop('end_report', None)   # a run sent back from Commit shows its report again when it gets there
-    d['next_stage'] = nxt
-    d.pop('parked', None)   # a park ends when the run moves on
-    # a small change belongs to the stage it was made at: a window open there, or the steps it still owed, end with it
-    d.pop('adhoc', None)
-    d.pop('adhoc_done', None)
-    try:
-        d['step'] = int(d.get('step') or 0) + 1
-    except (TypeError, ValueError):
-        d['step'] = 1
-d['updated'] = ts
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-os.replace(tmp, p)
-print('same' if same else 'moved')
-PY
+  python3 -I "$SCRIPTS_DIR/state_ops.py" state-next "$STATE_FILE" "$next" "$(_now)" $(_run_seq)
   rc=$?
   _lock_release
   # the project's code as Review starts, so the Review check sees a change a Review agent left
@@ -1053,39 +860,7 @@ _redo_from() { # _redo_from <stage>: the run goes back to <stage>, so <stage> an
   _ensure_dirs
   mkdir -p "$TEMPER_DIR/archive"
   _lock_acquire
-  python3 -I - "$GATES_FILE" "$OVERRIDES_FILE" "$TEMPER_DIR/archive/overrides-redone.json" "$to" "$(_now)" $seq <<'PY'
-import json, os, sys
-gates_p, over_p, redone_p, to, ts = sys.argv[1:6]
-seq = sys.argv[6:]
-if to not in seq:
-    sys.exit(0)
-redo = set(seq[seq.index(to):])
-
-def load(p, default):
-    try:
-        d = json.load(open(p))
-        return d if isinstance(d, type(default)) else default
-    except Exception:
-        return default
-
-def save(p, d):
-    tmp = '%s.tmp.%d' % (p, os.getpid())
-    with open(tmp, 'w') as f:
-        json.dump(d, f, indent=2)
-        f.write('\n')
-    os.replace(tmp, p)
-
-gates = load(gates_p, {})
-if any(k in gates for k in redo):
-    save(gates_p, {k: v for k, v in gates.items() if k not in redo})
-over = load(over_p, [])
-keep = [o for o in over if not (isinstance(o, dict) and o.get('stage') in redo)]
-gone = [o for o in over if isinstance(o, dict) and o.get('stage') in redo]
-if gone:
-    old = load(redone_p, [])
-    save(redone_p, old + [dict(o, redone_at=ts, redone_from=to) for o in gone])
-    save(over_p, keep)
-PY
+  python3 -I "$SCRIPTS_DIR/state_ops.py" redo-from "$GATES_FILE" "$OVERRIDES_FILE" "$TEMPER_DIR/archive/overrides-redone.json" "$to" "$(_now)" $seq
   rc=$?
   _lock_release
   return $rc
@@ -1143,25 +918,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     # The approved tasks as parsed, so a later question can name what changed (the Design question, 9.8.0)
     [[ -n "$digest" ]] && mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$spec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
     _lock_acquire
-    python3 -I -c "
-import json, os, sys
-p = sys.argv[1]
-d = json.load(open(p))
-try:
-    files = json.loads(sys.argv[2])
-except ValueError:
-    files = []
-d['approved_files'] = files if isinstance(files, list) else []
-if sys.argv[3]:
-    d['plan_hash'] = sys.argv[3]
-else:
-    d.pop('plan_hash', None)
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\\n')
-os.replace(tmp, p)
-" "$STATE_FILE" "$files" "$digest"
+    python3 -I "$SCRIPTS_DIR/state_ops.py" approve-plan "$STATE_FILE" "$files" "$digest"
     _lock_release
     if [[ -z "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
       local head; head="$(git rev-parse HEAD 2>/dev/null || true)"
@@ -1187,24 +944,7 @@ os.replace(tmp, p)
       if [[ -n "$ddigest" && "$ddigest" != "$(_json_get_path "$STATE_FILE" plan_hash "")" ]]; then
         local dfiles; dfiles="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$dspec" 2>/dev/null || echo '[]')"
         _lock_acquire
-        python3 -I -c "
-import json, os, sys
-p = sys.argv[1]
-d = json.load(open(p))
-try:
-    files = json.loads(sys.argv[2])
-except ValueError:
-    files = []
-if isinstance(files, list):
-    d['approved_files'] = files
-d['plan_hash'] = sys.argv[3]
-d['tasks_changed_by_design'] = True
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\\n')
-os.replace(tmp, p)
-" "$STATE_FILE" "$dfiles" "$ddigest"
+        python3 -I "$SCRIPTS_DIR/state_ops.py" approve-design-tasks "$STATE_FILE" "$dfiles" "$ddigest"
         _lock_release
         mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$dspec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
         echo "OK: the tasks Design changed are approved with the design"
@@ -1249,9 +989,7 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   # The budget is loop_step.budget, the rule temper next offers the step back by: it reads these config values
   # (fix.max-loops only when the key is set, Decision 5).
   local cfgjson
-  cfgjson="$(python3 -I -c "
-import json, sys
-print(json.dumps({k: v for k, v in zip(sys.argv[1::2], sys.argv[2::2]) if v != ''}))" \
+  cfgjson="$(python3 -I "$SCRIPTS_DIR/state_ops.py" loop-config \
     loops.max-per-type "$(_cfg_get loops.max-per-type "")" fix.max-loops "$(_cfg_get fix.max-loops "")")"
   local result
   result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$cfgjson" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
@@ -1313,17 +1051,7 @@ _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.js
       _task_py keep "$slug" replan "$ts" "$g" "$branch" >/dev/null \
         || echo "WARN: could not move $branch aside; delete it before the re-planned run starts $g" >&2
     fi
-  done < <(python3 -I -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    d = {}
-for g, e in sorted((d.get('groups') or {}).items()):
-    print('\t'.join([d.get('slug') or '', g, e.get('worktree') or '', e.get('branch') or '']))
-for n, e in sorted((d.get('tasks') or {}).items()):   # a task's own worktree, kept by a park or still running
-    if e.get('worktree') or e.get('branch'):
-        print('\t'.join([d.get('slug') or '', 'T' + n, e.get('worktree') or '', e.get('branch') or '']))" "$GROUPS_FILE")
+  done < <(python3 -I "$SCRIPTS_DIR/groups_ops.py" groups-reset-rows "$GROUPS_FILE")
   mkdir -p .temper/archive
   mv "$GROUPS_FILE" ".temper/archive/groups-$ts.json" && echo "OK: grouped run reset for the re-plan (groups.json -> .temper/archive/groups-$ts.json)"
 }
@@ -1369,48 +1097,10 @@ _archive_ledger() { # writes gate-ledger.json into the run's spec folder from th
     local grouped_json=""
     if [[ -f "$GROUPS_FILE" ]]; then
       grouped_json="$(_group_report_json)"
-      grouped_json="$(python3 -I -c "
-import json, sys
-d = json.loads(sys.argv[1]); d['task_model'] = sys.argv[2]; d['escalation_model'] = sys.argv[3]
-print(json.dumps(d))" "$grouped_json" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)")"
+      grouped_json="$(python3 -I "$SCRIPTS_DIR/state_ops.py" grouped-models "$grouped_json" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)")"
     fi
     local usage_json; usage_json="$(_usage_json)"
-    python3 -I - "$GATES_FILE" "$OVERRIDES_FILE" "$out" "$(_now)" "$grouped_json" "$usage_json" "${ev_pairs[@]}" <<'PY'
-import json, sys
-gates_f, overrides_f, out_f, ts, grouped, usage = sys.argv[1:7]
-pairs = sys.argv[7:]
-def load(p, default):
-    try:
-        return json.load(open(p))
-    except Exception:
-        return default
-gates = load(gates_f, {})
-overrides = load(overrides_f, [])
-evidence = {}
-for stage, ledger in sorted(zip(pairs[0::2], pairs[1::2])):
-    rows = load(ledger, [])
-    if rows:
-        evidence[stage] = {'rows': len(rows),
-                           'labels': {l: sum(1 for e in rows if e.get('label') == l)
-                                      for l in sorted({e.get('label') for e in rows if e.get('label')})}}
-doc = {'gates': gates, 'overrides': overrides, 'evidence': evidence, 'archived': ts}
-if grouped:
-    doc['grouped'] = json.loads(grouped)
-if usage:
-    doc['usage'] = json.loads(usage)
-# The same record but for its times (state clear after the commit archives again): the committed file stays as it is,
-# so the commit does not leave the spec folder changed.
-def bare(o):
-    if isinstance(o, dict):
-        return {k: bare(v) for k, v in o.items() if k not in ('archived', 'ts')}
-    if isinstance(o, list):
-        return [bare(v) for v in o]
-    return o
-if bare(load(out_f, None)) != bare(doc):
-    with open(out_f, 'w') as fh:
-        json.dump(doc, fh, indent=2)
-        fh.write('\n')
-PY
+    python3 -I "$SCRIPTS_DIR/state_ops.py" archive-ledger "$GATES_FILE" "$OVERRIDES_FILE" "$out" "$(_now)" "$grouped_json" "$usage_json" "${ev_pairs[@]}"
     [[ -f "$out" ]] && { echo "$out"; return 0; }
   fi
   return 0
@@ -1471,23 +1161,7 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
   # and so is every stage after it (the door's entry moves to it).
   local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
   [[ -n "$enter" ]] && ! _stage_before "$stage" "$enter" && enter=""
-  python3 -I - "$STATE_FILE" "$stage" "$reason" "$(_now)" "$enter" <<'PY' || return 1
-import json, os, sys
-p, stage, reason, ts, enter = sys.argv[1:6]
-d = json.load(open(p))
-if enter:
-    d['enter'] = stage
-d['redo'] = {'stage': stage, 'reason': reason, 'ts': ts}
-# the stage runs again from the start: a small change made at it, and the steps it still owed, end here
-d.pop('adhoc', None)
-d.pop('adhoc_done', None)
-if stage == 'commit':
-    d.pop('end_report', None)   # the commit gate runs again, and the report is shown again after it
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2); f.write('\n')
-os.replace(tmp, p)
-PY
+  python3 -I "$SCRIPTS_DIR/state_ops.py" state-redo "$STATE_FILE" "$stage" "$reason" "$(_now)" "$enter" || return 1
   echo "OK: $stage runs again${reason:+ ($reason)}"
 }
 
@@ -1506,9 +1180,9 @@ cmd_state() {
   esac
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # evidence
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_evidence_add() {
   local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind=""
@@ -1560,21 +1234,7 @@ cmd_evidence_add() {
     artifact_hash="$(python3 -I -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
   fi
   local entry
-  entry=$(python3 -I -c "
-import json, sys
-claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, kind, ts = sys.argv[1:]
-e = {'claim': claim, 'cmd': cmd or None,
-     'exit_code': int(exit_code) if exit_code != '' else None,
-     'artifact': artifact or None, 'sha256': artifact_hash or None,
-     'value': (float(value) if value != '' else None),
-     'severity': severity or None, 'phase': phase or None, 'scenario': scenario or None,
-     'criterion': criterion or None, 'label': label, 'ts': ts}
-if confidence != '':
-    e['confidence'] = float(confidence)
-if kind:
-    e['kind'] = kind
-print(json.dumps(e))
-" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -1594,23 +1254,7 @@ cmd_evidence_list() {
   if [[ "$as_json" == "true" ]]; then
     cat "$file"
   else
-    python3 -I -c "
-import json, sys
-for i, e in enumerate(json.load(open(sys.argv[1])), 1):
-    mark = 'OK ' if (e.get('exit_code') in (0, None)) else 'ERR'
-    line = f\"#{i} [{e.get('label')}] {mark} {e.get('claim')}\" + (f\" [void: {e['voided'].get('reason')}]\" if isinstance(e.get('voided'), dict) else '')
-    if e.get('severity'):
-        line += f\" (severity: {e.get('severity')})\"
-    if e.get('resolved'):
-        line += f\" [resolved: {e['resolved'].get('fixed_by')}]\"
-    if e.get('accepted'):
-        line += f\" [accepted: {e['accepted'].get('reason')}]\"
-    if e.get('cmd'):
-        line += f\" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})\"
-    if e.get('scenario'):
-        line += f\" [scenario: {e.get('scenario')}]\"
-    print(line)
-" "$file"
+    python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-list "$file"
   fi
 }
 
@@ -1633,30 +1277,7 @@ cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
   _lock_acquire
-  python3 -I - "$file" "$id" "$fixed_by" "$(_now)" <<'PY'
-import json, os, sys
-f, id_s, fixed_by, ts = sys.argv[1:5]
-entries = json.load(open(f))
-try:
-    idx = int(id_s)
-except ValueError:
-    sys.exit("FAIL: --id must be the 1-based number shown by 'temper evidence list'")
-if idx < 1 or idx > len(entries):
-    sys.exit("FAIL: no finding #%s in this stage (it has %d entries)" % (id_s, len(entries)))
-e = entries[idx - 1]
-if not e.get('severity'):
-    sys.exit("FAIL: finding #%s carries no severity, so it never counted against a gate" % id_s)
-if e.get('resolved'):
-    sys.exit("FAIL: finding #%s is already resolved (%s)" % (id_s, e['resolved'].get('fixed_by')))
-if e.get('accepted'):
-    sys.exit("FAIL: finding #%s is already accepted (%s)" % (id_s, e['accepted'].get('reason')))
-e['resolved'] = {'fixed_by': fixed_by, 'ts': ts}
-tmp = '%s.tmp.%d' % (f, os.getpid())
-with open(tmp, 'w') as fh:
-    json.dump(entries, fh, indent=2)
-os.replace(tmp, f)
-print("OK: %s finding #%s resolved — %s" % (e.get('severity'), id_s, fixed_by))
-PY
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-resolve "$file" "$id" "$fixed_by" "$(_now)"
   local rc=$?
   _lock_release
   return $rc
@@ -1683,30 +1304,7 @@ cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "
   # The person decides it at the gate. Temper reads no name or email from git and reads no login name.
   local by="the person"
   _lock_acquire
-  python3 -I - "$file" "$id" "$reason" "$by" "$(_now)" <<'PY'
-import json, os, sys
-f, id_s, reason, by, ts = sys.argv[1:6]
-entries = json.load(open(f))
-try:
-    idx = int(id_s)
-except ValueError:
-    sys.exit("FAIL: --id must be the 1-based number shown by 'temper evidence list'")
-if idx < 1 or idx > len(entries):
-    sys.exit("FAIL: no finding #%s in this stage (it has %d entries)" % (id_s, len(entries)))
-e = entries[idx - 1]
-if not e.get('severity'):
-    sys.exit("FAIL: finding #%s carries no severity, so it never counted against a gate" % id_s)
-if e.get('resolved'):
-    sys.exit("FAIL: finding #%s is already resolved (%s)" % (id_s, e['resolved'].get('fixed_by')))
-if e.get('accepted'):
-    sys.exit("FAIL: finding #%s is already accepted (%s)" % (id_s, e['accepted'].get('reason')))
-e['accepted'] = {'reason': reason, 'author': by, 'ts': ts}
-tmp = '%s.tmp.%d' % (f, os.getpid())
-with open(tmp, 'w') as fh:
-    json.dump(entries, fh, indent=2)
-os.replace(tmp, f)
-print("OK: %s finding #%s accepted by %s — %s" % (e.get('severity'), id_s, by, reason))
-PY
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-accept "$file" "$id" "$reason" "$by" "$(_now)"
   local rc=$?
   _lock_release
   return $rc
@@ -1751,15 +1349,7 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || (set -C; echo '[]' > "$file") 2>/dev/null || true
   local entry
-  entry=$(python3 -I -c "
-import json, sys
-claim, cmd, exit_code, severity, label, phase, scenario, criterion, ts = sys.argv[1:]
-e = {'claim': claim, 'cmd': cmd, 'exit_code': int(exit_code), 'artifact': None,
-     'sha256': None, 'value': None, 'severity': severity or None,
-     'phase': phase or None, 'scenario': scenario or None, 'criterion': criterion or None,
-     'label': label, 'executed_by': 'cli', 'ts': ts}
-print(json.dumps(e))
-" "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" run-entry "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim (cli-executed, exit $exit_code)"
   return 0
@@ -1808,10 +1398,10 @@ cmd_evidence() {
   esac
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # config — scriptable read access to .claude/temper.config (the same parser
 # every gate uses, exposed so hook scripts and CI steps never re-implement it).
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_config() {
   local sub="${1:-}"; shift || true
@@ -1827,24 +1417,15 @@ cmd_config() {
   esac
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # gate — the whole point. Deterministic PASS/FAIL, evidence-backed.
-# ---------------------------------------------------------------------------
+# ---
 
 _gate_write_verdict() { # _gate_write_verdict <stage> <verdict> <requirements-json-array>
   local stage="$1" verdict="$2" reqs="$3" rc
   _lock_acquire
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
-  python3 -I -c "
-import json, os, sys
-f, stage, verdict, reqs, ts = sys.argv[1:6]
-d = json.load(open(f))
-d[stage] = {'verdict': verdict, 'requirements': json.loads(reqs), 'ts': ts}
-tmp = '%s.tmp.%d' % (f, os.getpid())
-with open(tmp, 'w') as fh:
-    json.dump(d, fh, indent=2)
-os.replace(tmp, f)
-" "$GATES_FILE" "$stage" "$verdict" "$reqs" "$(_now)"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" write-verdict "$GATES_FILE" "$stage" "$verdict" "$reqs" "$(_now)"
   rc=$?
   _lock_release
   return $rc
@@ -1903,40 +1484,19 @@ _ev_last_value() { # _ev_last_value <stage> <keyword-regex|""> -> last matching 
   local stage="$1" keyword="$2"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, sys, re
-file, keyword = sys.argv[1:3]
-entries = json.load(open(file))
-vals = [e.get('value') for e in entries
-        if (not keyword or re.search(keyword, e.get('claim') or '', re.I)) and e.get('value') is not None]
-print(vals[-1] if vals else '')
-" "$file" "$keyword"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-value "$file" "$keyword"
 }
 
 _ev_last_claim() { # _ev_last_claim <stage> <regex> -> the claim of the last row whose claim matches, or ""
   local file; file="$(_evidence_file "$1")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, re, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-hits = [str(r.get('claim')) for r in rows if isinstance(r, dict) and re.search(sys.argv[2], str(r.get('claim') or ''))]
-print(hits[-1] if hits else '')" "$file" "$2" 2>/dev/null
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-claim "$file" "$2" 2>/dev/null
 }
 
 _ev_last_row() { # _ev_last_row <stage> <regex> -> "<exit>|<output, one line>" of the last row whose claim matches, or ""
   local file; file="$(_evidence_file "$1")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, re, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-hits = [r for r in rows if isinstance(r, dict) and re.search(sys.argv[2], str(r.get('claim') or ''))]
-print('%s|%s' % (hits[-1].get('exit_code'), ' '.join(str(hits[-1].get('output') or '').split())[:300]) if hits else '')" "$file" "$2" 2>/dev/null
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-row "$file" "$2" 2>/dev/null
 }
 
 _ev_count_severity_in() { # _ev_count_severity_in <stage> <comma-separated severities>
@@ -1969,12 +1529,7 @@ _ev_scenarios_covered() { # _ev_scenarios_covered <stage> -> count of DISTINCT s
   local stage="$1"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo 0; return; }
-  python3 -I -c "
-import json, sys
-entries = json.load(open(sys.argv[1]))
-covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
-print(len(covered))
-" "$file"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" scenarios-covered "$file"
 }
 
 _intent_uncovered_scenarios() { # _intent_uncovered_scenarios <intent.md> <stage>
@@ -1982,31 +1537,12 @@ _intent_uncovered_scenarios() { # _intent_uncovered_scenarios <intent.md> <stage
                                  # not recorded as covered (exit_code 0) in the ledger
   local intent="$1" stage="$2"
   local file; file="$(_evidence_file "$stage")"
-  python3 -I -c "
-import json, re, sys
-intent_path, ev_path = sys.argv[1:3]
-names = []
-for line in open(intent_path):
-    m = re.match(r'^\s*Scenario:\s*(.+?)\s*$', line)
-    if m:
-        names.append(m.group(1))
-covered = set()
-try:
-    entries = json.load(open(ev_path))
-    covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
-except Exception:
-    pass
-missing = [n for n in names if n not in covered]
-print('\x1f'.join(missing))
-" "$intent" "$file"
+  python3 -I "$SCRIPTS_DIR/spec_text.py" uncovered-scenarios "$intent" "$file"
 }
 
 _req() { # _req <label> <bool 0|1> <detail> -> emits one requirement json line to stdout, and echoes pass/fail
   local label="$1" ok="$2" detail="$3"
-  python3 -I -c "
-import json, sys
-print(json.dumps({'name': sys.argv[1], 'pass': sys.argv[2] == '1', 'detail': sys.argv[3]}))
-" "$label" "$ok" "$detail"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" req "$label" "$ok" "$detail"
 }
 
 # Draft-intent requirements. Ten checks that apply to **Status:** draft intents
@@ -2108,46 +1644,11 @@ gate_intent() {
 
 _unfenced_scenarios() { # _unfenced_scenarios <intent.md> -> \x1f-joined "lineno: text" for
                         # every Scenario: line not protected by a ```gherkin fence
-  python3 -I - "$1" <<'PY'
-import re, sys
-bad = []
-fence = None   # info string of the currently open fence, else None
-for i, l in enumerate(open(sys.argv[1]).read().splitlines(), 1):
-    m = re.match(r'^\s*(`{3,}|~{3,})\s*(\S*)', l)
-    if m:
-        fence = (m.group(2) or '') if fence is None else None
-        continue
-    if fence != 'gherkin' and re.match(r'^\s*Scenario:', l):
-        bad.append('%d: %s' % (i, l.strip()[:40]))
-print('\x1f'.join(bad))
-PY
+  python3 -I "$SCRIPTS_DIR/spec_text.py" unfenced-scenarios "$1"
 }
 
 _cross_repo_recorded() { # _cross_repo_recorded <plan.md> -> "ok" or a FAIL detail
-  python3 -I - "$1" <<'PY'
-import re, sys
-lines = open(sys.argv[1]).read().splitlines()
-sec, active = [], False
-for l in lines:
-    h = re.match(r'^(#{1,6})\s', l)
-    if h:
-        if active:
-            break
-        if re.search(r'cross.?repo search', l, re.I):
-            active = True
-            continue
-    if active:
-        sec.append(l)
-if not active:
-    print('no heading matching "Cross-Repo Search" in plan.md')
-    sys.exit(0)
-for l in sec:
-    m = re.match(r'^\s*-\s*(used|not available):\s*(.+?)\s*$', l, re.I)
-    if m and re.search(r'[A-Za-z0-9]', re.sub(r'\{[^{}]*\}', '', m.group(2))):
-        print('ok')
-        sys.exit(0)
-print('Cross-Repo Search section has no "- used:" / "- not available:" line with real text')
-PY
+  python3 -I "$SCRIPTS_DIR/spec_text.py" cross-repo-recorded "$1"
 }
 
 # Grouped Build (9.7.0): the tasks.md parser. One embedded python parser shared by every grouped
@@ -2161,16 +1662,7 @@ _grouped_parse() { # _grouped_parse <tasks.md>
 # H3: the approved grouped plan, as a digest. Task blocks (File, Depends, Test), group Validate/Interfaces/Context
 # and Integration count; titles, prose and checkbox ticks do not, so the CLI's own tick is no change.
 _plan_digest() { # _plan_digest <parsed-plan-json>
-  python3 -I -c "
-import hashlib, json, sys
-m = json.loads(sys.argv[1])
-def n(p):
-    p = p.strip()
-    return p[2:] if p.startswith('./') else p
-core = {'tasks': [{'n': t['n'], 'group': t['group'], 'files': [n(f) for f in t['files']], 'depends': t['depends'], 'test': t['test']} for t in m['tasks']],
-        'groups': [{'id': g['id'], 'depends': g['depends'], 'validate': g['validate'], 'interfaces': g['interfaces'], 'context': g['context'], 'tasks': g['tasks']} for g in m['groups']],
-        'integration': m['integration']}
-print(hashlib.sha256(json.dumps(core, sort_keys=True).encode('utf-8')).hexdigest())" "$1"
+  python3 -I "$SCRIPTS_DIR/spec_text.py" plan-digest "$1"
 }
 
 # Refuses (returns 1) when the plan changed since the person approved it: the digest `state advance plan_complete`
@@ -2178,16 +1670,7 @@ print(hashlib.sha256(json.dumps(core, sort_keys=True).encode('utf-8')).hexdigest
 # digest recorded yet: nothing to compare.
 _plan_fresh() { # _plan_fresh <parsed-plan-json>
   local want have
-  want="$(python3 -I -c "
-import json, sys
-for p in sys.argv[1:]:
-    try:
-        h = json.load(open(p)).get('plan_hash')
-    except Exception:
-        h = None
-    if h:
-        print(h)
-        break" "$STATE_FILE" "$GROUPS_FILE")"
+  want="$(python3 -I "$SCRIPTS_DIR/spec_text.py" plan-hash-recorded "$STATE_FILE" "$GROUPS_FILE")"
   [[ -z "$want" ]] && return 0
   have="$(_plan_digest "$1")"
   [[ "$have" == "$want" ]] && return 0
@@ -2210,37 +1693,14 @@ cmd_schedule() { # temper schedule [--json]
 }
 
 # Grouped Build (9.7.0): groups.json is CLI-owned run state. Every write goes through here: the lock
-# is held around the read-modify-write, the file is replaced atomically, and the python body only
-# sees `d` (the whole document) and `a` (the extra arguments). A body that calls sys.exit(n) writes
-# nothing and returns n.
-_groups_mutate() { # _groups_mutate <python-body> [args...]: the body changes d (groups.json); a task's status changes only
+# is held around the read-modify-write, the file is replaced atomically, and the change, a function of
+# scripts/groups_ops.py (MUTATIONS), only sees `d` (the whole document) and `a` (the extra arguments). A
+# change that calls sys.exit(n) writes nothing and returns n.
+_groups_mutate() { # _groups_mutate <change> [args...]: the change alters d (groups.json); a task's status changes only
                    # through task_status(t, new) (task_cover.py's table of moves), and a move it refuses writes nothing
   local body="$1" rc; shift
   _lock_acquire
-  python3 -I - "$SCRIPTS_DIR/task_cover.py" "$GROUPS_FILE" "$body" "$@" <<'PY'
-import importlib.util, json, os, sys
-spec = importlib.util.spec_from_file_location('task_cover', sys.argv[1])   # by its one full path, no folder on sys.path
-task_cover = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(task_cover)
-task_status = task_cover.set_status
-f, body, a = sys.argv[2], sys.argv[3], sys.argv[4:]
-try:
-    d = json.load(open(f))
-except Exception:
-    d = {}
-if not isinstance(d, dict):
-    d = {}
-try:
-    exec(body)
-except ValueError as e:
-    print('FAIL: %s' % e, file=sys.stderr)
-    sys.exit(1)
-tmp = '%s.tmp.%d' % (f, os.getpid())
-with open(tmp, 'w') as fh:
-    json.dump(d, fh, indent=2)
-    fh.write('\n')
-os.replace(tmp, f)
-PY
+  python3 -I "$SCRIPTS_DIR/groups_ops.py" groups-mutate "$SCRIPTS_DIR/task_cover.py" "$GROUPS_FILE" "$body" "$@"
   rc=$?
   _lock_release
   return $rc
@@ -2324,16 +1784,7 @@ cmd_group_start() {
   pplan="$(_grouped_parse "$spec_path/tasks.md")"
   _plan_fresh "$pplan" || return 1
   phash="$(_plan_digest "$pplan")"
-  deps="$(python3 -I - "$g" "$pplan" <<'PY'
-import json, sys
-plan = json.loads(sys.argv[2])
-for grp in plan['groups']:
-    if grp['id'] == sys.argv[1]:
-        print('ok ' + ' '.join(grp['depends']))
-        sys.exit(0)
-print('unknown')
-PY
-)"
+  deps="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" group-deps "$g" "$pplan")"
   if [[ "$deps" == "unknown" ]]; then
     echo "FAIL: tasks.md has no group $g" >&2
     return 1
@@ -2360,13 +1811,7 @@ PY
   for d in $deps; do
     # The group it builds on passed its check and the person chose Continue there: a Change at that group reruns work
     # this one would build on.
-    dv="$(python3 -I -c "
-import json, sys
-try:
-    g = ((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {})
-    print((g.get('gate') or {}).get('verdict', '') + ('|confirmed' if g.get('confirmed') else ''))
-except Exception:
-    print('')" "$GROUPS_FILE" "$d")"
+    dv="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" dep-verdict "$GROUPS_FILE" "$d")"
     if [[ "${dv%%|*}" != "PASS" ]]; then
       echo "FAIL: $g depends on $d, whose group gate has not passed" >&2
       return 1
@@ -2417,21 +1862,7 @@ except Exception:
   fi
 
   local base_sha; base_sha="$(git -C "$wt" rev-parse HEAD)"
-  _groups_mutate "
-d['version'] = 1
-d.setdefault('plan_hash', a[7])
-d['slug'] = a[0]
-d['feature_branch'] = a[1]
-d.setdefault('groups', {})
-d.setdefault('tasks', {})
-e = d['groups'].setdefault(a[2], {})
-e['status'] = 'running' if e.get('status') in (None, 'pending') else e['status']
-e['worktree'] = a[3]
-e['branch'] = a[4]
-e['base_sha'] = a[5] if a[8] == '0' else e.get('base_sha') or a[5]   # a new branch (not this run's own) starts here
-e.setdefault('started_at', a[6])
-e.setdefault('finished_at', None)
-" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" "$own" || return 1
+  _groups_mutate group-start "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" "$own" || return 1
   echo "OK: group $g started ($wt on $branch)"
 }
 
@@ -2457,12 +1888,7 @@ cmd_group_gate() {
   fi
   plan="$(_grouped_parse "$spec_path/tasks.md")"
   _plan_fresh "$plan" || return 1
-  wt="$(python3 -I -c "
-import json, sys
-try:
-    print(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('worktree', ''))
-except Exception:
-    print('')" "$GROUPS_FILE" "$g")"
+  wt="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" group-worktree "$GROUPS_FILE" "$g")"
   chk="$(_task_py gatecheck "$plan" "$GROUPS_FILE" "$g" "$(pwd -P)/$wt")" || return 1
   if [[ -z "$wt" ]]; then
     echo "FAIL: group $g is not started (temper group start $g)" >&2
@@ -2518,21 +1944,7 @@ except Exception:
 _group_gate_record() { # _group_gate_record <G> <PASS|FAIL> <reason> <timeout-s|"">: the group's gate and its status, in one
                        # write: a group is passed exactly while its gate says PASS (finished_at is when it passed). A gate that
                        # fails again after a PASS takes the group back to running; a parked group stays parked.
-  _groups_mutate "
-g = d.setdefault('groups', {}).setdefault(a[0], {})
-g['gate'] = {'verdict': a[1], 'ts': a[4]}
-if a[1] == 'PASS':
-    g['status'] = 'passed'
-    g['finished_at'] = a[4]
-else:
-    g['gate']['reason'] = a[2]
-    if a[3]: g['gate']['timeout_s'] = int(a[3])
-    if a[5]: g['gate'].update(ran=True, fail_lines=json.loads(a[5]))   # 9.8.4: the check ran; what failed in it
-    g['fails'] = int(g.get('fails') or 0) + 1                          # and how many times the group's check failed
-    if g.get('status') != 'parked':
-        g['status'] = 'running'
-    g['finished_at'] = None
-" "$1" "$2" "$3" "$4" "$(_now)" "${5:-}"
+  _groups_mutate group-gate "$1" "$2" "$3" "$4" "$(_now)" "${5:-}"
 }
 
 # D-08: what a human does about a parked foreign commit; printed by the task gate that parks the group and by a refused reopen.
@@ -2638,12 +2050,7 @@ _group_reopen_body() {
   plan="$(_grouped_parse "$spec_path/tasks.md")"
   _plan_fresh "$plan" || return 1
   local chk; chk="$(_task_py reopencheck "$plan" "$GROUPS_FILE" "$g" "${tasks[@]}")" || return 1
-  wt="$(python3 -I -c "
-import json, sys
-try:
-    print(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('worktree', ''))
-except Exception:
-    print('')" "$GROUPS_FILE" "$g")"
+  wt="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" group-worktree "$GROUPS_FILE" "$g")"
   if [[ -z "$wt" ]]; then
     echo "FAIL: group $g is not started (temper group start $g)" >&2
     return 1
@@ -2660,26 +2067,12 @@ except Exception:
   # or a merge has a new sha): the check names the first ones it finds and stops
   local left fc accepted=() tcsv
   tcsv="$(IFS=,; echo "${tasks[*]}")"
-  left="$(python3 -I -c "
-import json, sys
-try:
-    print(json.dumps(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('parked_foreign') or []))
-except Exception:
-    print('[]')" "$GROUPS_FILE" "$g")"
+  left="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" parked-foreign "$GROUPS_FILE" "$g")"
   # the commits a park is about sit in the parked task's own worktree (kept by the park), so every kept worktree of a
   # task of G that is not running is checked, whichever task is named, and the group's own worktree too (a task that
   # is running has its range checked by its own gate)
   local cwts=("$wt") cwt t
-  while IFS= read -r t; do [[ -n "$t" && -d "$t" ]] && cwts+=("$t"); done < <(python3 -I -c "
-import json, sys
-try:
-    ts = json.load(open(sys.argv[1])).get('tasks') or {}
-except Exception:
-    ts = {}
-for k in sorted(ts, key=lambda x: int(x) if x.isdigit() else 0):
-    v = ts[k]
-    if v.get('group') == sys.argv[2] and v.get('status') != 'running' and v.get('worktree'):
-        print(v['worktree'])" "$GROUPS_FILE" "$g")
+  while IFS= read -r t; do [[ -n "$t" && -d "$t" ]] && cwts+=("$t"); done < <(python3 -I "$SCRIPTS_DIR/groups_ops.py" kept-worktrees "$GROUPS_FILE" "$g")
   local kind val acc_all=() bad_all=() fcall=""
   for cwt in "${cwts[@]}"; do
     fc="$(_task_py foreigncheck "$(pwd -P)/$cwt" "$left" "$accept" "$GROUPS_FILE" "$g")" || return 1
@@ -2752,44 +2145,18 @@ for k in sorted(ts, key=lambda x: int(x) if x.isdigit() else 0):
           return 1
         fi
         # R2: a reopen revert is the CLI's own commit
-        _groups_mutate "
-d.setdefault('cli_commits', []).append(a[0])
-" "$(git -C "$abs" rev-parse HEAD)" || return 1
+        _groups_mutate cli-commit "$(git -C "$abs" rev-parse HEAD)" || return 1
       fi
     fi
     _task_box "$spec_path/tasks.md" "$n" " "
-    _groups_mutate "
-t = d.setdefault('tasks', {}).setdefault(a[0], {})
-t.setdefault('attempts_prior', []).extend(t.get('attempts') or [])
-t['attempts'] = []; t.pop('blocked', None)
-task_status(t, 'pending')
-t['attempt'] = 1
-for k in ('commit', 'passed_at', 'snapshot', 'start_sha', 'started_at'):
-    t.pop(k, None)
-t.setdefault('reopened', []).append({'ts': a[1], 'feedback': a[2] or None})
-g = d.setdefault('groups', {}).setdefault(a[3], {})
-g.pop('parked_foreign', None)   # D-08: off the branch or accepted (checked above); no other group's list is touched
-g.pop('gate', None); g.pop('fix', None)
-g.pop('finished_at', None)
-g.pop('confirmed', None)        # the person's Continue was for the group as it passed; it is asked again once it passes again
-d.pop('integration', None)      # and the merge of the groups no longer holds this group's work: integrate runs again
-if g.get('status') in ('parked', 'passed'):
-    g['status'] = 'running'
-    g.pop('parked_reason', None)
-" "$n" "$(_now)" "$feedback" "$g" || return 1
+    _groups_mutate task-reopen "$n" "$(_now)" "$feedback" "$g" || return 1
   done <<<"$chk"
   echo "OK: reopened ${tasks[*]/#/Task } in group $g"
   # M3: a task that was running when the group parked kept its work; it has no ready line in the schedule, so say how to gate it
   local rn
-  for rn in $(python3 -I -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    d = {}
-print(' '.join(sorted((k for k, v in (d.get('tasks') or {}).items() if v.get('group') == sys.argv[2] and v.get('status') == 'running'), key=int)))" "$GROUPS_FILE" "$g"); do
+  for rn in $(python3 -I "$SCRIPTS_DIR/groups_ops.py" running-tasks "$GROUPS_FILE" "$g"); do
     local ra rmodel
-    ra="$(python3 -I -c "import json, sys; print(((json.load(open(sys.argv[1])).get('tasks') or {}).get(sys.argv[2]) or {}).get('attempt') or 1)" "$GROUPS_FILE" "$rn")"
+    ra="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" task-attempt "$GROUPS_FILE" "$rn")"
     if [[ "$ra" =~ ^[0-9]+$ && "$ra" -ge 3 ]]; then rmodel="$(_resolve_task_escalation_model)"; else rmodel="$(_resolve_task_model)"; fi
     echo "NEXT: temper task gate $rn --model $rmodel   (Task $rn was running when the group parked; its work is still in its worktree. Run it once its agent has returned)"
   done
@@ -2814,17 +2181,9 @@ cmd_group_report() { # temper group report [--json]
 cmd_group_continue() {
   local g="${1:-}"
   [[ "$g" =~ ^G[0-9]+$ ]] || { echo "FAIL: usage: temper group continue G<n>" >&2; return 1; }
-  local v; v="$(python3 -I -c "
-import json, sys
-try:
-    print((((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('gate') or {}).get('verdict', ''))
-except Exception:
-    print('')" "$GROUPS_FILE" "$g")"
+  local v; v="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" gate-verdict "$GROUPS_FILE" "$g")"
   [[ "$v" == "PASS" ]] || { echo "FAIL: group $g has not passed its gate (temper group gate $g)" >&2; return 1; }
-  _groups_mutate "
-g = d.setdefault('groups', {}).setdefault(a[0], {})
-g['confirmed'] = a[1]
-" "$g" "$(_now)" || return 1
+  _groups_mutate group-confirm "$g" "$(_now)" || return 1
   echo "OK: group $g continues"
 }
 
@@ -2847,24 +2206,7 @@ cmd_group() {
 # groups.json writes go through _groups_mutate (the lock), ledger rows through _json_append.
 TASK_SHOW_MAX_BYTES=8600
 _task_box() { # _task_box <tasks.md> <N> <x|" ">: set the first box of Task N to [x] (ticked) or [ ] (unticked)
-  python3 -I - "$1" "$2" "$3" <<'PY'
-import os, re, sys
-p, n, to = sys.argv[1], sys.argv[2], sys.argv[3]
-frm = ' ' if to == 'x' else 'x'
-lines = open(p, encoding='utf-8').read().split('\n')
-inside = False
-for i, l in enumerate(lines):
-    m = re.match(r'^###\s+Task\s+(\d+)\s*:', l)
-    if m: inside = (m.group(1) == n)
-    elif re.match(r'^#{1,2}\s', l): inside = False
-    elif inside and re.match(r'^\s*- \[%s\]' % re.escape(frm), l):
-        lines[i] = l.replace('- [%s]' % frm, '- [%s]' % to, 1)
-        break
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w', encoding='utf-8') as fh:
-    fh.write('\n'.join(lines))
-os.replace(tmp, p)
-PY
+  python3 -I "$SCRIPTS_DIR/spec_text.py" task-box "$1" "$2" "$3"
 }
 
 _task_py() { # _task_py <mode> [args...]: the Build task operations, in scripts/task_ops.py
@@ -2873,11 +2215,7 @@ _task_py() { # _task_py <mode> [args...]: the Build task operations, in scripts/
 
 _jget() { # _jget <json> <key> -> the value (lists and objects as JSON); the JSON goes in on stdin, so a large
           # verdict (thousands of paths) never meets the argument size limit
-  printf '%s' "$1" | python3 -I -c "
-import json, sys
-v = json.load(sys.stdin).get(sys.argv[1], '')
-s = json.dumps(v) if isinstance(v, (list, dict)) else ('' if v is None else str(v))
-sys.stdout.buffer.write((s + '\\n').encode('utf-8', 'surrogateescape'))" "$2"
+  printf '%s' "$1" | python3 -I "$SCRIPTS_DIR/json_ops.py" jget "$2"
 }
 
 _task_load() { # _task_load <N>: sets _T_SPEC _T_PLAN _T_CTX _T_ABS for task N, or returns 1 with the reason
@@ -2935,10 +2273,7 @@ _task_start_body() {
     why="it is already $status"
   else
     local ready max
-    ready="$(cmd_schedule 2>/dev/null | python3 -I -c "
-import json, sys
-n = int(sys.argv[1])
-print(1 if any(l.strip().startswith('{') and json.loads(l).get('task') == n for l in sys.stdin) else 0)" "$n")"
+    ready="$(cmd_schedule 2>/dev/null | python3 -I "$SCRIPTS_DIR/groups_ops.py" task-ready "$n")"
     if [[ "$ready" != "1" ]]; then
       max="$(_cfg_get build.grouped.max-parallel 4)"; [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
       why="$(_task_py why "$_T_PLAN" "$GROUPS_FILE" "$n" "$max")"
@@ -2972,23 +2307,7 @@ print(1 if any(l.strip().startswith('{') and json.loads(l).get('task') == n for 
   fi
   snap='{}'
   sha="$(git -C "$tabs" rev-parse HEAD)" || return 1
-  _groups_mutate "
-t = d.setdefault('tasks', {}).setdefault(a[0], {})
-if t.get('status') == 'running':
-    print('FAIL: Task %s is already running' % a[0], file=sys.stderr)
-    sys.exit(1)
-t.setdefault('attempts', [])
-t['group'] = a[1]
-task_status(t, 'running')
-t['attempt'] = len(t['attempts']) + 1
-t['start_sha'] = a[2]
-t['snapshot'] = json.loads(a[3])
-t['started_at'] = a[4]
-t['worktree'] = a[5]
-t['branch'] = a[6]
-t['model'] = a[7] if t['attempt'] <= 2 else a[8]
-t['start_hashes'] = json.loads(a[9] or '{}')   # 9.8.5 (Q4): the code files as this attempt found them
-" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$(_task_py codehash "$tabs" "$_T_PLAN" "$n")" || return 1
+  _groups_mutate task-start "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$(_task_py codehash "$tabs" "$_T_PLAN" "$n")" || return 1
   echo "OK: Task $n started (group $group, worktree $twt)"
 }
 
@@ -2997,11 +2316,7 @@ t['start_hashes'] = json.loads(a[9] or '{}')   # 9.8.5 (Q4): the code files as t
 _task_wt_discard() { # _task_wt_discard <N> <worktree rel> <branch>
   [[ -n "$2" ]] && git worktree remove --force "$2" >/dev/null 2>&1
   [[ -n "$3" ]] && git branch -D "$3" >/dev/null 2>&1
-  _groups_mutate "
-t = d.setdefault('tasks', {}).setdefault(a[0], {})
-t.pop('worktree', None)
-t.pop('branch', None)
-" "$1"
+  _groups_mutate task-wt-forget "$1"
 }
 
 cmd_task_show() {
@@ -3120,18 +2435,18 @@ _task_gate_body() {
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
   _usage_append task "$model" "$ms" "$n" "$group" || true
   if [[ "$verdict" == "COVERED" ]]; then   # F19: its tests pass before any change; the person decides, no attempt is spent
-    _groups_mutate "task_status(d['tasks'][a[0]], 'covered'); d['tasks'][a[0]]['covered'] = {'cmd': a[1], 'tail': a[2], 'ts': a[3]}" "$n" "$(_jget "$v" red_cmd)" "$(_jget "$v" red_tail)" "$(_now)" || return 1
+    _groups_mutate task-covered "$n" "$(_jget "$v" red_cmd)" "$(_jget "$v" red_tail)" "$(_now)" || return 1
     echo "COVERED: Task $n's tests already pass before any change; the worktree is kept with the tests"
     echo "NEXT: temper next asks the person"
     return 0
   fi
   if [[ "$verdict" == "ENV" ]]; then   # the environment failed, not the code: no attempt is spent, the worktree stays
-    _groups_mutate "d['tasks'][a[0]]['env_fault'] = {'reason': a[1], 'ts': a[2]}" "$n" "$reason" "$(_now)" || return 1
+    _groups_mutate task-env-fault "$n" "$reason" "$(_now)" || return 1
     echo "ENV: Task $n failed on the environment, not on the code: $reason"
     echo "NEXT: temper next asks the person to repair it and check again"; return 0
   fi
   if [[ "$verdict" == "AWAIT" ]]; then   # a manual task: its files are made, the person confirms them by hand (F12)
-    _groups_mutate "d['tasks'][a[0]]['awaiting'] = 'confirm'" "$n" || return 1
+    _groups_mutate task-awaiting "$n" || return 1
     echo "NEXT: temper next asks the person to confirm Task $n by hand"
     return 0
   fi
@@ -3152,21 +2467,7 @@ _task_gate_body() {
       # worktree is discarded; the next attempt starts a fresh one from the group branch.
       _task_wt_discard "$n" "$wtrel" "$(_jget "$_T_CTX" tbranch)" || return 1
     fi
-    _groups_mutate "
-t = d['tasks'][a[0]]
-def num(x): return int(x) if x.isdigit() else None
-t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3],
-    'ms': num(a[4]), 'ts': a[5], 'output': a[6]})
-task_status(t, 'failed')
-if int(a[1]) >= 3 or a[8]:
-    g = d.setdefault('groups', {}).setdefault(a[7], {})
-    g.setdefault('parked_foreign', []).extend(x for x in json.loads(a[9] or '[]') if x not in g.get('parked_foreign', []))
-    # a group already parked keeps the reason it was parked for and gains this one
-    new = a[8] or 'Task %s failed %s attempts' % (a[0], a[1])
-    old = g.get('parked_reason') if g.get('status') == 'parked' else ''
-    g['parked_reason'] = old + ' -- also: ' + new if old and new not in old else (old or new)
-    g['status'] = 'parked'
-" "$n" "$att" "$model" "$reason" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" "${fshas:-[]}" || return 1
+    _groups_mutate task-fail "$n" "$att" "$model" "$reason" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" "${fshas:-[]}" || return 1
     echo "FAIL: $reason"
     if [[ "$fshas" != "[]" && -n "$fshas" ]]; then
       local fl=(); mapfile -t fl < <(python3 -I -c "
@@ -3227,16 +2528,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
       git -C "$gabs" merge --abort >/dev/null 2>&1 || true
       [[ -n "$cf" ]] || cf="$(printf '%s' "$mout" | grep -v '^[[:space:]]*$' | head -1)"
       reason="Task $n passed but could not be merged into the group branch (${cf:-git merge failed}); its worktree is kept"
-      _groups_mutate "
-t = d['tasks'][a[0]]
-t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3], 'ts': a[4]})
-task_status(t, 'failed')
-g = d.setdefault('groups', {}).setdefault(a[5], {})
-g['status'] = 'parked'
-g['parked_reason'] = a[3]
-if a[6]:   # the commit the CLI just made on the task branch is its own, so a reopen does not take it for an agent's
-    d.setdefault('cli_commits', []).append(a[6])
-" "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$(_now)" "$group" "$sha" || return 1
+      _groups_mutate task-park "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$(_now)" "$group" "$sha" || return 1
       echo "FAIL: $reason"
       echo "NEXT: park group $group"
       return 1
@@ -3246,40 +2538,15 @@ if a[6]:   # the commit the CLI just made on the task branch is its own, so a re
     tip=""
   fi
   _task_box "$_T_SPEC/tasks.md" "$n" x
-  _groups_mutate "
-t = d['tasks'][a[0]]
-def num(x): return int(x) if x.isdigit() else None
-t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'PASS', 'reason': '',
-    'ms': num(a[3]), 'ts': a[4]})
-task_status(t, 'passed')
-t['passed_at'] = a[4]
-t['commit'] = a[7] or None
-for x in (a[5], a[6]):
-    if x:
-        d.setdefault('cli_commits', []).append(x)
-" "$n" "$(_jget "$v" attempt)" "$model" "$ms" "$(_now)" "$sha" "$mrg" "$tip" || return 1
+  _groups_mutate task-pass "$n" "$(_jget "$v" attempt)" "$model" "$ms" "$(_now)" "$sha" "$mrg" "$tip" || return 1
   _task_wt_discard "$n" "$(_jget "$_T_CTX" worktree)" "$tb" || return 1
   # F1: a task reopened with group-gate feedback answers it by passing: the CLI records the feedback-resolved row
   # that gate build requires, and marks the reopen answered so task show stops printing it
   local fid
-  for fid in $(python3 -I -c "
-import json, sys
-try:
-    t = (json.load(open(sys.argv[1])).get('tasks') or {}).get(sys.argv[2]) or {}
-except Exception:
-    t = {}
-print(' '.join(str(r['feedback']) for r in (t.get('reopened') or []) if r.get('feedback') and not r.get('resolved')))" "$GROUPS_FILE" "$n"); do
-    _json_append "$(_evidence_file build)" "$(python3 -I -c "
-import json, sys, time
-print(json.dumps({'claim': 'feedback #%s: applied — Task %s re-ran after group reopen and passed its task gate' % (sys.argv[1], sys.argv[2]),
-                  'cmd': None, 'exit_code': 0, 'artifact': None, 'sha256': None, 'value': None, 'severity': None,
-                  'phase': 'feedback-resolved', 'scenario': None, 'criterion': None, 'label': 'PROVEN', 'task': int(sys.argv[2]),
-                  'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))" "$fid" "$n")"
+  for fid in $(python3 -I "$SCRIPTS_DIR/groups_ops.py" open-feedback "$GROUPS_FILE" "$n"); do
+    _json_append "$(_evidence_file build)" "$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" feedback-resolved-row "$fid" "$n")"
   done
-  _groups_mutate "
-for r in (d['tasks'][a[0]].get('reopened') or []):
-    if r.get('feedback'): r['resolved'] = True
-" "$n" || return 1
+  _groups_mutate feedback-resolved "$n" || return 1
   echo "PASS: Task $n"
   echo "NEXT: schedule"
 }
@@ -3290,12 +2557,7 @@ for r in (d['tasks'][a[0]].get('reopened') or []):
 # (the worktrees and branches stay for diagnosis). The verdict lives in groups.json 'integration'; gate build
 # reads it. Exit 0 PASS, 1 FAIL, 3 a protected branch or an unsatisfied upstream gate (ADR 0009).
 _integ_record() { # _integ_record <verdict> <reason> [group] [files-csv] [foreign-json]
-  _groups_mutate "
-d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
-                    'files': [f for f in a[3].split(',') if f], 'ts': a[4], 'head': a[6]}
-if a[5]:
-    d['integration']['foreign'] = json.loads(a[5])   # {group: [sha, newest first]}: the person takes them out or keeps them
-" "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)"
+  _groups_mutate integration "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)"
 }
 
 cmd_integrate() {
@@ -3306,13 +2568,7 @@ cmd_integrate() {
     echo "FAIL: no grouped run to integrate (temper group start first)" >&2
     return 1
   fi
-  local iv; iv="$(python3 -I -c "
-import json, sys
-try:
-    i = json.load(open(sys.argv[1])).get('integration') or {}
-    print(i.get('verdict', ''), i.get('head', ''))
-except Exception:
-    print('')" "$GROUPS_FILE")"
+  local iv; iv="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" integration-head "$GROUPS_FILE")"
   if [[ "${iv%% *}" == "PASS" ]]; then
     if [[ "${iv#* }" != "$(git rev-parse HEAD 2>/dev/null)" ]]; then   # Q7: commits since the last integrate: the suite runs again
       local s rf; s="$(_jget "$(_task_py integplan "$(_grouped_parse "$spec_path/tasks.md")" "$GROUPS_FILE")" integration)"
@@ -3365,10 +2621,7 @@ except Exception:
     ugl="$(printf '%s\n' "$ufull" | cut -c1-7 | paste -sd' ' -)"
     [[ -z "$ufull" ]] && continue
     unk="${unk:+$unk; }$ug: $ugl"
-    foreign="$(python3 -I -c "
-import json, sys
-d = json.loads(sys.argv[1]); d[sys.argv[2]] = [x for x in sys.argv[3].split() if x]
-print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
+    foreign="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" foreign-add "$foreign" "$ug" "$ufull")"
   done
   if [[ -n "$unk" ]]; then
     _integ_record FAIL "commit(s) not made by the CLI and not accepted: $unk" "" "" "$foreign" || true
@@ -3442,15 +2695,11 @@ cmd_task_confirm() {
   [[ "$(_jget "$_T_CTX" manual)" == "True" || "$(_jget "$_T_CTX" manual)" == "true" ]] || { echo "FAIL: Task $n is not a manual task" >&2; return 1; }
   [[ "$(_jget "$_T_CTX" status)" == "running" ]] || { echo "FAIL: Task $n is not running (temper task start $n)" >&2; return 1; }
   _lock_acquire
-  _groups_mutate "d['tasks'][a[0]]['confirmed_by'] = a[1]; d['tasks'][a[0]].pop('awaiting', None)" "$n" "$by"
+  _groups_mutate task-confirmed "$n" "$by"
   local rc=$?
   _lock_release
   [[ $rc -eq 0 ]] || return $rc
-  _json_append "$(_evidence_file build)" "$(python3 -I -c "
-import json, sys, time
-print(json.dumps({'claim': 'Task %s confirmed by %s' % (sys.argv[1], sys.argv[2]), 'cmd': None, 'exit_code': 0, 'artifact': None,
-                  'sha256': None, 'value': None, 'severity': None, 'phase': 'confirm', 'scenario': None, 'criterion': None,
-                  'label': 'PROVEN', 'task': int(sys.argv[1]), 'executed_by': 'person', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))" "$n" "$by")"
+  _json_append "$(_evidence_file build)" "$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" confirm-row "$n" "$by")"
   echo "OK: Task $n confirmed by $by"
 }
 
@@ -3655,32 +2904,7 @@ gate_build() {
   # answered by a `feedback-resolved` row — applied (detail optional) or declined
   # with a reason. A decline with no reason is not an answer.
   local fb_answered fb_detail
-  fb_detail="$(python3 -I - "$(_evidence_file build)" <<'PY'
-import json, re, sys, os
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-fb = {m.group(1) for r in rows if r.get('phase') == 'feedback'
-      for m in [re.search(r'feedback #(\d+)', r.get('claim') or '')] if m}
-res = {m.group(1): r for r in rows if r.get('phase') == 'feedback-resolved'
-       for m in [re.search(r'feedback #(\d+)', r.get('claim') or '')] if m}
-if not fb:
-    print('SKIP')
-else:
-    unanswered = []
-    for n in sorted(fb, key=int):
-        r = res.get(n)
-        if r is None:
-            unanswered.append('feedback #%s' % n)
-        else:
-            c = r.get('claim') or ''
-            m = re.search(r'declined\s*[—-]\s*(.*)', c)
-            if 'declined' in c and (not m or not m.group(1).strip()):
-                unanswered.append('feedback #%s (declined with no reason)' % n)
-    print(' | '.join(unanswered) if unanswered else 'OK')
-PY
-)"
+  fb_detail="$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" feedback-answered "$(_evidence_file build)")"
   if [[ "$fb_detail" == "SKIP" ]]; then
     reqs+=("$(_req "checkpoint feedback answered" 1 "no feedback rows — nothing to answer")")
   elif [[ "$fb_detail" == "OK" ]]; then
@@ -3692,13 +2916,7 @@ PY
   # Build runs in groups: a run with a tasks.md is integrated by `temper integrate` (a /temper:fix run has none)
   if [[ -n "$spec_path" && -f "$spec_path/tasks.md" ]]; then
     local integ
-    integ="$(python3 -I -c "
-import json, sys
-try:
-    i = json.load(open(sys.argv[1])).get('integration') or {}
-except Exception:
-    i = {}
-print('%s|%s' % (i.get('verdict', ''), i.get('reason', '')))" "$GROUPS_FILE")"
+    integ="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" integration-verdict "$GROUPS_FILE")"
     if [[ "${integ%%|*}" == "PASS" ]]; then
       reqs+=("$(_req "integration" 1 "groups merged, suite and interfaces verified (temper integrate)")")
     elif [[ -z "${integ%%|*}" && -n "$(cmd_state_get built_before "")" ]]; then
@@ -3751,62 +2969,12 @@ _ev_latest_claim_exit() { # _ev_latest_claim_exit <stage> <keyword-regex>
   local stage="$1" keyword="$2"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, sys, re
-file, keyword = sys.argv[1:3]
-entries = json.load(open(file))
-hits = [e for e in entries if re.search(keyword, e.get('claim') or '', re.I)]
-print(('%s|%s' % (hits[-1].get('exit_code'), hits[-1].get('claim') or '')) if hits else '')
-" "$file" "$keyword"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" latest-claim-exit "$file" "$keyword"
 }
 
 _review_code() { # _review_code save|compare: the tracked files of the project (outside .temper and .claude) and HEAD as
                  # Review starts (save, into the run state), or the ones that differ from that since (compare: prints them)
-  python3 -I - "$1" "$STATE_FILE" <<'PY'
-import hashlib, json, os, subprocess, sys
-mode, state = sys.argv[1:3]
-def git(*a):
-    r = subprocess.run(['git', '-c', 'core.quotePath=false', '-c', 'status.renames=false'] + list(a), capture_output=True)
-    return r.stdout.decode('utf-8', 'replace') if r.returncode == 0 else ''
-top = git('rev-parse', '--show-toplevel').strip()
-pre = git('rev-parse', '--show-prefix').strip()
-def mine(path):
-    rel = path[len(pre):] if pre and path.startswith(pre) else path
-    return None if rel.startswith(('.temper/', '.claude/')) or (pre and not path.startswith(pre)) else rel
-def snap():
-    files = {}
-    for f in git('status', '--porcelain=v1', '-z', '-uno', '--', '.').split('\0'):
-        if len(f) < 4:
-            continue
-        rel = mine(f[3:])
-        if rel is None:
-            continue
-        try:
-            files[rel] = hashlib.sha256(open(os.path.join(top, f[3:]), 'rb').read()).hexdigest()
-        except OSError:
-            files[rel] = 'DELETED'
-    return {'head': git('rev-parse', 'HEAD').strip(), 'files': files}
-try:
-    d = json.load(open(state))
-except Exception:
-    sys.exit(0)
-if mode == 'save':
-    d['review_snapshot'] = snap()
-    tmp = '%s.tmp.%d' % (state, os.getpid())
-    with open(tmp, 'w') as f:
-        json.dump(d, f, indent=2); f.write('\n')
-    os.replace(tmp, state)
-    sys.exit(0)
-old = d.get('review_snapshot')
-if not isinstance(old, dict):
-    print('NONE'); sys.exit(0)
-cur = snap()
-a, b = old.get('files') or {}, cur['files']
-changed = {k for k in b if b[k] != a.get(k)} | {k for k in a if k not in b}
-if old.get('head') and cur['head'] and old.get('head') != cur['head']:
-    changed |= {r for r in (mine(x) for x in git('diff', '--name-only', '--no-renames', old['head'], cur['head'], '--', '.').split('\n') if x) if r}
-print(', '.join(sorted(changed)[:5]))
-PY
+  python3 -I "$SCRIPTS_DIR/state_ops.py" review-code "$1" "$STATE_FILE"
 }
 
 gate_review() {
@@ -3984,20 +3152,7 @@ _override_covers() { # _override_covers <stage> -> 0 when a skip of the person c
                      # skip does not cover it. The flow never runs a gate again after its skip (it gates a stage only while
                      # nobody skipped it), and a step back moves the skip out (_redo_from). A skip or verdict written without
                      # a time (an older run) is compared by stage alone.
-  python3 -I -c "
-import json, sys
-def load(p, default):
-    try:
-        d = json.load(open(p))
-        return d if isinstance(d, type(default)) else default
-    except Exception:
-        return default
-over, gates, stage = load(sys.argv[1], []), load(sys.argv[2], {}), sys.argv[3]
-v = gates.get(stage)
-vts = str(v.get('ts') or '') if isinstance(v, dict) else ''
-sys.exit(0 if any(isinstance(o, dict) and o.get('stage') == stage and (not vts or not o.get('ts') or str(o.get('ts')) >= vts)
-                  for o in over) else 1)
-" "$OVERRIDES_FILE" "$GATES_FILE" "$1" 2>/dev/null
+  python3 -I "$SCRIPTS_DIR/commit_rows.py" override-covers "$OVERRIDES_FILE" "$GATES_FILE" "$1" 2>/dev/null
 }
 
 _project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder,
@@ -4011,19 +3166,7 @@ _glob_touch_match() { # _glob_touch_match <file> <pattern>  (a project pattern f
   # `authenticator`; a star inside a segment (any .sql file in a migrations folder) is
   # honored. file + pattern cross as argv, never source.
   local file="$1" pattern="$2"
-  python3 -I - "$file" "$pattern" <<'PY'
-import re, sys
-target, pat = sys.argv[1].lstrip("./"), sys.argv[2]
-out, i, n = [], 0, len(pat)
-while i < n:
-    if pat[i:i+3] == "**/": out.append("(?:.*/)?"); i += 3
-    elif pat[i:i+3] == "/**": out.append("(?:/.*)?"); i += 3
-    elif pat[i:i+2] == "**": out.append(".*"); i += 2
-    elif pat[i] == "*": out.append("[^/]*"); i += 1
-    elif pat[i] == "?": out.append("[^/]"); i += 1
-    else: out.append(re.escape(pat[i])); i += 1
-sys.exit(0 if re.match("^" + "".join(out) + "$", target) else 1)
-PY
+  python3 -I "$SCRIPTS_DIR/commit_rows.py" glob-touch-match "$file" "$pattern"
 }
 
 gate_pipeline() { # gate_pipeline <spec_path>: the rows of the Pipeline gate (gate_rows.py)
@@ -4082,17 +3225,7 @@ gate_commit() {
     if [[ -n "$sp" && -f "$sp/intent.md" ]]; then _stage_satisfied intent || upstream_ok=false; fi
     if [[ -n "$sp" && -f "$sp/design.md" ]]; then _stage_satisfied design || upstream_ok=false; fi
     if [[ "$upstream_ok" == "true" ]]; then
-      local last_green; last_green="$(python3 -I - "$(_evidence_file build)" <<'PY'
-import json, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-hits = [r for r in rows if r.get('phase') == 'green' and 'test' in (r.get('claim') or '').lower()]
-if hits:
-    print('%s|%s' % (hits[-1].get('exit_code'), hits[-1].get('claim') or ''))
-PY
-)"
+      local last_green; last_green="$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-green "$(_evidence_file build)")"
       if [[ -n "$last_green" && "${last_green%%|*}" == "0" ]]; then
         reqs+=("$(_req "build checkpoint commit" 1 "per-task checkpoint on $cur_branch; last GREEN test run: ${last_green#*|}")")
         local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
@@ -4158,29 +3291,7 @@ PY
   [[ -n "$gspec" && -f "$gspec/tasks.md" ]] && plan_json="$(_grouped_parse "$gspec/tasks.md")"
   if [[ -n "$gspec" && -f "$gspec/tasks.md" ]]; then
     local gverdict
-    gverdict="$(_changed_since_base | python3 -I -c "
-import json, os, re, sys
-plan = json.loads(sys.argv[1]); spec = sys.argv[2].rstrip('/')
-declared = {f for t in plan.get('tasks', []) for f in t.get('files', [])}
-try:
-    rows = json.load(open(sys.argv[3]))
-except Exception:
-    rows = []
-allowed = set()
-for r in rows if isinstance(rows, list) else []:
-    m = re.match(r'^drift (\\S+): (Add to plan|Allow once)\\b', str(r.get('claim') or ''), re.I)
-    if m:
-        allowed.add(m.group(1))
-test = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\\.py$|_test\\.(py|go)$|\\.(test|spec)\\.[cm]?[jt]sx?$|Tests?\\.(java|kt|cs)$|_spec\\.rb$')
-def ok(p):
-    if spec and (p == spec or p.startswith(spec + '/')): return True
-    if p.startswith('.temper/') or p.startswith('.claude/worktrees/'): return True   # run state the CLI owns
-    return p in declared or p in allowed or bool(test.search(p))
-changed = [l.strip() for l in sys.stdin if l.strip()]
-bad = [c for c in changed if not ok(c)]
-if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]) + (' (and %d more)' % (len(bad) - 5) if len(bad) > 5 else ''))
-else: print('PASS %d changed, all declared' % len(changed))
-" "$plan_json" "${gspec#"$REPO_ROOT"/}" "$(_evidence_file build)")"
+    gverdict="$(_changed_since_base | python3 -I "$SCRIPTS_DIR/commit_rows.py" blast-radius "$plan_json" "${gspec#"$REPO_ROOT"/}" "$(_evidence_file build)")"
     if [[ "$gverdict" == PASS* ]]; then
       reqs+=("$(_req "blast radius" 1 "${gverdict#PASS }")")
     else
@@ -4205,7 +3316,7 @@ else: print('PASS %d changed, all declared' % len(changed))
     local touched=""
     if [[ -n "$patterns" ]]; then
       local pats=() declared_list
-      declared_list="$(python3 -I -c "import json,sys; print('\\n'.join(sorted({f for t in json.loads(sys.argv[1]).get('tasks', []) for f in t.get('files', [])})))" "$plan_json")"
+      declared_list="$(python3 -I "$SCRIPTS_DIR/commit_rows.py" declared-list "$plan_json")"
       IFS=$'\x1f' read -r -a pats <<< "$patterns"
       while IFS= read -r f; do
         [[ -z "$f" ]] && continue
@@ -4313,33 +3424,20 @@ cmd_gate() {
   if [[ "$record" != "1" ]]; then
     echo "  (not recorded: a run of $run_spec is active, and this verdict is of $spec_path_override)"
     # The gate of a standalone /temper:intent ran: the debt its session owes (verify-stage-gate.sh) is paid.
-    python3 -I -c "
-import json, os, sys
-try:
-    if json.load(open(sys.argv[1])).get('stage') == sys.argv[2]:
-        os.remove(sys.argv[1])
-except Exception:
-    pass" "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
+    python3 -I "$SCRIPTS_DIR/state_ops.py" pending-done "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
   fi
   # --brief (9.8.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
   # passed row was context the session read again on every later turn.
-  python3 -I -c "
-import json, sys
-for r in json.loads(sys.argv[1]):
-    if r['pass'] and sys.argv[2] == '1':
-        continue
-    mark = 'v' if r['pass'] else 'x'
-    print(f\"  [{mark}] {r['name']} — {r['detail']}\")
-" "$reqs_json" "$brief"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" print-rows "$reqs_json" "$brief"
 
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # status — per-criterion pass/open view of intent.md against the evidence ledger,
 # written to .temper/status.json after every gate (the mods UI reads it; nothing
 # here is a verdict — gates.json owns those).
-# ---------------------------------------------------------------------------
+# ---
 
 _status_write() { # _status_write <spec-path> -> writes .temper/status.json, prints it
   local spec_path="$1" out
@@ -4370,31 +3468,15 @@ cmd_status() { # temper status [--json] [--spec-path P]
   printf '%s\n' "$out" > "$STATUS_FILE" 2>/dev/null || true
   local models; models="$(python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --source 2>/dev/null)"
   if [[ "$as_json" == "true" ]]; then
-    python3 -I -c "
-import json, sys
-d = json.loads(sys.argv[1])
-d['models'] = [{'stage': l.split('=', 1)[0], 'model': l.split('=', 1)[1].rsplit(' (', 1)[0], 'source': l.rsplit(' (', 1)[1].rstrip(')')}
-               for l in sys.argv[2].splitlines() if '=' in l and ' (' in l]
-print(json.dumps(d))" "$out" "$models"
+    python3 -I "$SCRIPTS_DIR/report_ops.py" status-json "$out" "$models"
   else
-    python3 -I -c "
-import json, sys
-for c in json.loads(sys.argv[1])['criteria']:
-    ev = '; '.join(c['evidence']) if c['evidence'] else 'no evidence'
-    print('  [%s] %s (%s) — %s' % ('v' if c['status'] == 'passed' else ' ', c['id'], c['priority'], ev))
-print('Models')
-for l in sys.argv[2].splitlines():
-    if '=' in l and ' (' in l:
-        name, rest = l.split('=', 1)
-        model, src = rest.rsplit(' (', 1)
-        print('  %-16s %-18s %s' % (name, model, src.rstrip(')')))
-" "$out" "$models"
+    python3 -I "$SCRIPTS_DIR/report_ops.py" status-text "$out" "$models"
   fi
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # override
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_override() {
   local stage="${1:-}"; shift || true
@@ -4415,15 +3497,12 @@ cmd_override() {
   # additionally puts a human permission prompt between an agent and this command.
   local by="the person"
   local entry
-  entry=$(python3 -I -c "
-import json, sys
-print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3], 'ts': sys.argv[4]}))
-" "$stage" "$reason" "$by" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/state_ops.py" override-entry "$stage" "$reason" "$by" "$(_now)")
   _json_append "$OVERRIDES_FILE" "$entry"
   echo "OK: override recorded for '$stage' by $by: $reason"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # intent accept|complete|carry: the header of the run's intent.md, written by the CLI (ADR 0013).
 # carry '<question>': the person's Carry forward on a Blocking question (9.8.0): its label turns to
 # `Deferred: (carried forward at the Intent gate)`, so the question stays on record, later gates name it, and it no
@@ -4432,7 +3511,7 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 # is the acceptance; Temper reads no name or email from git). complete: **Status:** completed plus
 # **Completed:** today.
 # Idempotent: an accepted intent stays as it is.
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_intent() {
   local sub="${1:-}"
@@ -4443,65 +3522,10 @@ cmd_intent() {
   [[ "$sub" == "answer" ]] && { python3 -E -s "$SCRIPTS_DIR/answer_ops.py" "$spec" "${@:2}"; return; }
   if [[ "$sub" == "carry" ]]; then
     [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper intent carry '<question>'" >&2; return 1; }
-    python3 -I - "$spec/intent.md" "$2" <<'PY'
-import os, re, sys
-path, q = sys.argv[1:3]
-norm = lambda t: re.sub(r'\W+', ' ', t).strip().lower()
-want = norm(q)[:60]
-lines = open(path, encoding='utf-8').read().split('\n')
-active, hit = False, None
-for i, l in enumerate(lines):
-    h = re.match(r'^#{1,6}\s+(.*)$', l)
-    if h:
-        active = bool(re.match(r'open questions', h.group(1).strip(), re.I))
-        continue
-    m = re.match(r'^(\s*[-*]\s+(?:\[[ xX]\]\s+)?)Blocking:\s*(.+)$', l) if active else None
-    if m and want and (norm(m.group(2)).startswith(want) or want.startswith(norm(m.group(2))[:60])):
-        lines[i] = '%sDeferred: (carried forward at the Intent gate) %s' % (m.group(1), m.group(2).strip())
-        hit = m.group(2).strip()
-        break
-if hit is None:
-    print('FAIL: no Blocking open question starts with: %s' % q[:80], file=sys.stderr)
-    sys.exit(1)
-tmp = '%s.tmp.%d' % (path, os.getpid())
-with open(tmp, 'w', encoding='utf-8') as f:
-    f.write('\n'.join(lines))
-os.replace(tmp, path)
-print('OK: carried forward: %s' % hit[:80])
-PY
+    python3 -I "$SCRIPTS_DIR/spec_text.py" intent-carry "$spec/intent.md" "$2"
     return
   fi
-  python3 -I - "$spec/intent.md" "$sub" "the person at the Intent gate" "$(date -u +%Y-%m-%d)" <<'PY'
-import os, re, sys
-path, sub, who, day = sys.argv[1:5]
-text = open(path, encoding='utf-8').read()
-lines = text.split('\n')
-idx = next((i for i, l in enumerate(lines) if re.match(r'^\*\*Status:\*\*', l)), None)
-want = 'accepted' if sub == 'accept' else 'completed'
-cur = re.sub(r'^\*\*Status:\*\*\s*', '', lines[idx]).strip().lower() if idx is not None else ''
-if cur == want or (sub == 'accept' and cur == 'completed'):
-    print('OK: intent.md is already %s' % cur)
-    sys.exit(0)
-# An intent moves draft -> accepted -> completed: a draft nobody accepted at the Intent gate never turns completed, which
-# would read as finished work with no Accepted-by.
-if sub == 'complete' and cur != 'accepted':
-    print('FAIL: intent.md is %s, not accepted; temper intent accept comes first (the person, at the Intent gate)' % (
-        cur or 'without a Status'), file=sys.stderr)
-    sys.exit(1)
-if idx is None:
-    lines.insert(0, '**Status:** %s' % want)
-    idx = 0
-else:
-    lines[idx] = '**Status:** %s' % want
-key, value = ('Accepted-by', who) if sub == 'accept' else ('Completed', day)
-if not any(re.match(r'^\*\*%s:\*\*' % re.escape(key), l) for l in lines):
-    lines.insert(idx + 1, '**%s:** %s' % (key, value))
-tmp = '%s.tmp.%d' % (path, os.getpid())
-with open(tmp, 'w', encoding='utf-8') as f:
-    f.write('\n'.join(lines))
-os.replace(tmp, path)
-print('OK: intent.md is %s' % want)
-PY
+  python3 -I "$SCRIPTS_DIR/spec_text.py" intent-status "$spec/intent.md" "$sub" "the person at the Intent gate" "$(date -u +%Y-%m-%d)"
 }
 
 # temper park --verdict SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION --reason "...": an armed run stops for the person
@@ -4537,25 +3561,6 @@ cmd_park() {
   echo "OK: parked at $stage ($verdict); the report is in .temper/autonomy-report.md"
 }
 
-# The setup a project still lacks, as the calls that make it (each is idempotent): the config, the .temper
-# scaffold, and the commit gate, which is in place when git's pre-commit hook is the kept Temper hook
-# (temper-gate/pre-commit in the git folder), names this plugin's CLI, and is of this version (it gates every
-# project the commit touches, reading a rename by both its names, and runs its Python isolated from the project's
-# files). Prints one call per line.
-_setup_calls() {
-  [[ -f "$CONFIG_FILE" ]] || echo "$PLUGIN_ROOT/scripts/temper config init"
-  # the scaffold, and the run files kept out of git status (a run's end removes gates.json, so that file is no sign)
-  { [[ -d "$TEMPER_DIR" ]] && _excludes_current; } || echo "$PLUGIN_ROOT/scripts/temper init"
-  git rev-parse --git-dir >/dev/null 2>&1 || return 0
-  local hdir hook; hdir="$(git rev-parse --git-path hooks 2>/dev/null)"; hook="$hdir/pre-commit"
-  if [[ "$hook" != */temper-gate/pre-commit || ! -f "$hook" ]] \
-     || [[ "$(sed -n 2p "$hook" 2>/dev/null)" != "# Temper native pre-commit hook"* ]] \
-     || ! grep -qF "$PLUGIN_ROOT/scripts/temper" "$hook" 2>/dev/null \
-     || ! grep -qF '"--cached", "--name-only", "--no-renames"' "$hook" 2>/dev/null \
-     || ! grep -qF 'python3 -I ' "$hook" 2>/dev/null; then
-    echo "$PLUGIN_ROOT/scripts/temper guards install"
-  fi
-}
 
 # temper plan review --answer '<text>' [--focus '<area>']... [--redo]: the person's answer to the Context check, written into
 # plan.md's Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand. --redo (9.8.0): the answer
@@ -4613,9 +3618,7 @@ cmd_adhoc() {
   esac
   _lock_release
   # a change that re-runs the Review agent takes the Review code snapshot now, after the change: Review then does not fail on it
-  if [[ "$sub" == "close" && $rc -eq 0 ]] && python3 -I -c "
-import json, sys
-sys.exit(0 if 'review' in (json.load(open(sys.argv[1])).get('adhoc_done') or {}).get('steps', []) else 1)" "$STATE_FILE"; then
+  if [[ "$sub" == "close" && $rc -eq 0 ]] && python3 -I "$SCRIPTS_DIR/state_ops.py" adhoc-review "$STATE_FILE"; then
     _review_code save || true
   fi
   return $rc
@@ -4655,9 +3658,9 @@ _view_write() {
     --config-file "$CONFIG_FILE" --now "$(_now)" >/dev/null 2>&1 || true
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # report
-# ---------------------------------------------------------------------------
+# ---
 
 # _report_end <shown|html|none>: the end of the run, at a passed Commit only. --end records that the report was printed
 # for the person (temper next then asks whether to write the page), --html or --no-html records their answer (next then
@@ -4700,62 +3703,13 @@ cmd_report() {
       cat "$GATES_FILE"
     else
       # gates.json as it is, plus a "usage" key only when usage rows exist
-      python3 -I -c "
-import json, sys
-d = json.load(open(sys.argv[1]))
-d['usage'] = json.loads(sys.argv[2])
-print(json.dumps(d, indent=2))" "$GATES_FILE" "$usage_json"
+      python3 -I "$SCRIPTS_DIR/report_ops.py" report-json "$GATES_FILE" "$usage_json"
     fi
     return
   fi
   # The two file paths cross as argv, never as Python source: the project path may hold a quote.
-  python3 -I -c "
-import json, sys
-d = json.load(open(sys.argv[1]))
-try:
-    overrides = json.load(open(sys.argv[2]))
-except Exception:
-    overrides = []
-accepted = [o for o in overrides if str(o.get('stage', '')).startswith('foreign-commit:')]
-overridden = {o['stage'] for o in overrides if o not in accepted}
-print('Stage    Verdict  Evidence')
-print('-------  -------  --------')
-for stage in ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit']:
-    g = d.get(stage)
-    if not g:
-        continue
-    tag = g['verdict'] + (' (overridden)' if stage in overridden and g['verdict'] == 'FAIL' else '')
-    print(f\"{stage:<8} {tag}\")
-    for r in g.get('requirements', []):
-        mark = 'v' if r['pass'] else 'x'
-        print(f\"           [{mark}] {r['name']} — {r['detail']}\")
-if overridden:
-    print()
-    print(f'{len(overridden)} gate(s) overridden by a human — see .temper/overrides.json')
-if accepted:
-    print()
-    print('Agent commits kept by a human (group reopen --accept-foreign):')
-    for o in accepted:
-        _, grp, sha = (str(o['stage']).split(':', 2) + ['', ''])[:3]
-        print('  %s in group %s, by %s: %s' % (sha[:7], grp, o.get('by', '?'), o.get('reason', '')))
-" "$GATES_FILE" "$OVERRIDES_FILE"
-  [[ -z "$usage_json" ]] || python3 -I -c "
-import json, sys
-u = json.loads(sys.argv[1])
-def n(v): return '-' if v is None else str(v)
-seq = ['intent', 'rca', 'plan', 'design', 'build', 'task', 'fix', 'review', 'check']
-in_run = lambda kv: (seq.index(kv[0]) if kv[0] in seq else len(seq), kv[0])
-print()
-print('Usage (the time Claude Code gave for each agent)')
-w = max([10] + [len(k) for k in list(u['by_stage']) + list(u['by_model'])])   # a full model id is wider than a stage
-print('  %-*s %6s %12s  %s' % (w, 'stage', 'rows', 'ms', 'model'))
-for k, v in sorted(u['by_stage'].items(), key=in_run):
-    print('  %-*s %6d %12s  %s' % (w, k, v['rows'], n(v['ms']), ', '.join(v.get('models') or []) or '-'))
-print('  %-*s %6s %12s' % (w, 'model', 'rows', 'ms'))
-for k, v in u['by_model'].items():
-    print('  %-*s %6d %12s' % (w, k, v['rows'], n(v['ms'])))
-t = u['total']
-print('  %-*s %6d %12s' % (w, 'total', t['rows'], n(t['ms'])))" "$usage_json"
+  python3 -I "$SCRIPTS_DIR/report_ops.py" report-table "$GATES_FILE" "$OVERRIDES_FILE"
+  [[ -z "$usage_json" ]] || python3 -I "$SCRIPTS_DIR/report_ops.py" report-usage "$usage_json"
   [[ "$end" == "true" ]] && _report_end shown
   return 0
 }
@@ -4768,12 +3722,7 @@ print('  %-*s %6d %12s' % (w, 'total', t['rows'], n(t['ms'])))" "$usage_json"
 # each launch once.
 _usage_append() { # _usage_append <stage> <model> <ms> <task> <group>
   local row
-  row="$(python3 -I -c "
-import json, sys
-a = sys.argv[1:]
-def num(x): return int(x) if x.isdigit() else None
-print(json.dumps({'stage': a[0], 'model': a[1] or None, 'ms': num(a[2]),
-                  'task': num(a[3]), 'group': a[4] or None, 'ts': a[5]}))" "$1" "$2" "$3" "$4" "$5" "$(_now)")" || return 1
+  row="$(python3 -I "$SCRIPTS_DIR/report_ops.py" usage-row "$1" "$2" "$3" "$4" "$5" "$(_now)")" || return 1
   _ensure_dirs
   _json_append "$USAGE_FILE" "$row"
 }
@@ -4818,7 +3767,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
   echo "OK: usage recorded ($stage)"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # metrics — deterministic metric ingestion for the bands monitor.
 #
 # `temper metrics append <series> <value>` appends one numeric point to
@@ -4828,7 +3777,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
 # appended series is band-able by name (`bands.metrics: [coverage, my_series]`).
 # External sources (CI failure rate, post-deploy 5xx) enter the loop the same
 # way: a pipeline step calls append, the scheduled bands check does the rest.
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_metrics() {
   local sub="${1:-}"; shift || true
@@ -4882,7 +3831,7 @@ PY
   esac
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # bands — closing the loop (deterministic drift detection, no model).
 #
 # Watches the history arrays in .temper/metrics.json against control bands
@@ -4899,7 +3848,7 @@ PY
 # baseline (sigma = 0) treats any deviation as 3sigma — a perfectly stable
 # series moving at all is out of band by definition. History points may be
 # bare numbers or objects carrying a numeric `value`/`coverage`/`count`/`pct`.
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_bands() {
   _ensure_dirs
@@ -4925,9 +3874,9 @@ cmd_bands() {
   return $rc
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # main
-# ---------------------------------------------------------------------------
+# ---
 
 # check run | check detect (9.8.0): Check, run by the CLI (scripts/check_run.py). `run` runs the suite with coverage, each
 # scenario's Test: command, the mutation score of the changed lines and, for a fix, the regression proof, and records a
@@ -5049,58 +3998,7 @@ main() {
             *) echo "FAIL: usage: temper panel plan | design | rca <rca.md> | task <N>..." >&2; false ;;
           esac ;;
     ""|-h|--help)
-      cat <<'EOF'
-temper — the deterministic spine of the Temper plugin
-
-Usage:
-  temper init
-  temper state <init|get|set|advance|loop|archive|clear> ...
-  temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
-  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
-  temper panel plan | design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
-  temper brief [--text TEXT | --stdin]   (.temper/brief.md: the code the request reaches, for Plan, Design, RCA)
-  temper model <intent|plan|design|build|review|check|rca|fix> | --all
-  temper override <stage> --reason "..."
-  temper report [--json]
-  temper status [--json] [--spec-path P]
-  temper bands [--json]
-  temper metrics append <series> <value>
-  temper config get <dot.path> [default]
-  temper config init                      (write .claude/temper.config from the plugin's default, when it is missing)
-  temper model task | task-escalation   (grouped Build: the task agent's model and its escalation model)
-  temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
-  temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)
-  temper group report [--json]    (grouped Build: the measurement report)
-  temper group fix G<n> [--commit] (a failed group: one fix agent on its merged tree; --commit commits its work)
-  temper output <stage>|G<n>      (read only: the gate's failed rows and its last run's output, or a group's last Validate)
-  temper task <start|show|test|gate|blocked> N  (grouped Build: one task's lifecycle)
-  temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
-  temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
-  temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
-  temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
-  temper report --end | --no-html (at the commit: the report for the person, then their No to the page)
-  temper intent accept|complete   (the Status header of the run's intent.md)
-  temper intent carry '<question>' (the person's Carry forward: a Blocking open question becomes Deferred)
-  temper intent answer '<question>' '<answer>' [...]  (the person's answers: into Decisions, out of Open Questions)
-  temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
-  temper group continue G<n>      (the person's Continue at a group question)
-  temper park --verdict V --reason R      (an armed run stops for the person)
-  temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
-  temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
-  temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
-  temper plan preflight                   (run every command of the plan on HEAD again; the plan gate reads it)
-  temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)
-  temper doctor                           (toolchain, setup block and services; only reads)
-  temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
-  temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
-  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
-  temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
-  temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
-                                                             (the acceptance tests written from the intent before Build)
-  temper drift [--json]                   (where the code moved away from the finished specs; read only)
-  temper guards install                   (install the Temper commit hook: scripts/guards/install.sh)
-  temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
-EOF
+      cat "$SCRIPTS_DIR/temper-help.txt"
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
   esac
