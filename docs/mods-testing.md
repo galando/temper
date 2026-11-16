@@ -30,7 +30,9 @@ In the commands below, `<clone>` is the path of your Temper clone. The short for
 
 ## 2. Automated checks
 
-Run these from `<clone>`. None of them sends a request.
+Run these from `<clone>`. None of them sends a request, with one exception: when the mod's types are missing,
+`bash scripts/verify.sh` makes them by one load of the plugin through `claude -p`, which sends one short request
+when Claude Code is signed in.
 
 - [ ] `claude plugin validate --strict .` prints `Validation passed`.
 - [ ] `claude plugin test .` ends with `0 fail`.

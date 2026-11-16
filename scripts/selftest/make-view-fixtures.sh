@@ -137,7 +137,7 @@ def capture(cwd, name, run_name, rid):
     git = lambda: subprocess.run(["git", "rev-parse", "HEAD"], cwd=copy, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout.strip()
     heads = [git()]
     try:
-        at = json.load(open(os.path.join(copy, ".temper", "state.json"))).get("next_stage") or ""
+        at = json.load(open(os.path.join(copy, ".temper", "build-state.json"))).get("next_stage") or ""
     except Exception:
         at = ""
     out = []

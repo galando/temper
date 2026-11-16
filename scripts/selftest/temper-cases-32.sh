@@ -64,6 +64,11 @@ assert_eq "tooling: verify.sh names quick and full and refuses another word" "2|
 _t32_wf="$REPO_ROOT/.github/workflows/quality.yml"
 assert_eq "tooling: the workflow cancels a superseded pull request run and ends in one gate job" "1|1|1|1" \
   "$(grep -c '^concurrency:' "$_t32_wf")|$(grep -c '^ *cancel-in-progress:' "$_t32_wf")|$(grep -c '^ *if: always()' "$_t32_wf")|$(awk '/^  changes:/ {on=1; next} /^  [a-z0-9_-]+:/ {on=0} on' "$_t32_wf" | grep -c 'github.base_ref' | sed 's/^[1-9][0-9]*$/1/')"
+assert_eq "tooling: the changes job lists a renamed file by both paths" "2" \
+  "$(awk '/^  changes:/ {on=1; next} /^  [a-z0-9_-]+:/ {on=0} on' "$_t32_wf" | grep -c 'git diff --no-renames --name-only')"
+_t32_r="$REPO_ROOT/scripts/selftest/run-selftest.sh"
+assert_eq "tooling: the runner refuses a bad commit and a shard with no value" "2|2" \
+  "$(bash "$_t32_r" --touched no-such-commit >/dev/null 2>&1; echo -n "$?|"; bash "$_t32_r" --shard >/dev/null 2>&1; echo "$?")"
 
 # --- room (WP02): the code moved out of scripts/temper into Python modules, and the room that leaves ---
 _t32_cli="$REPO_ROOT/scripts/temper"

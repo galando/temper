@@ -35,6 +35,8 @@ FAILED=0; N=0; T0=$SECONDS; BG=()
 report() { # report <name> <exit> <seconds> <log>
   if [[ "$2" -eq 0 ]]; then
     printf 'PASS  %5d s  %s\n' "$3" "$1"
+    # a suite's own total (the selftest prints PASS: N  FAIL: M last) goes into the gate's output
+    tail -n 1 "$4" | grep -E '^PASS: [0-9]+' | sed 's/^/        /' || true
   else
     printf 'FAIL  %5d s  %s\n' "$3" "$1"
     tail -n 20 "$4" | sed 's/^/        /'

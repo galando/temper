@@ -108,6 +108,8 @@ WORDS = {n.replace("_", "-"): f for n, f in (
 
 
 def main():
+    # Under a locale that cannot encode a dash, print an escape rather than lose the rows.
+    sys.stdout.reconfigure(errors="backslashreplace")
     WORDS[sys.argv[1]](sys.argv[1:])
 
 

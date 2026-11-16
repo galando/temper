@@ -6,10 +6,10 @@ on:
   pull_request:
     branches: [main]
 
-# A new push to a pull request cancels the run it supersedes; a run on main is never cancelled, so each commit there
-# keeps a result.
+# A new push to a pull request cancels the run it supersedes. A push to main has a group of its own commit, so no run
+# there is cancelled or replaced while it waits, and each commit on main keeps a result.
 concurrency:
-  group: quality-${{ github.event.pull_request.number || github.ref }}
+  group: quality-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -37,9 +37,9 @@ jobs:
           files=""
           if [ "$EVENT" = pull_request ]; then
             git fetch --no-tags origin "$BASE_REF" \
-              && files="$(git diff --name-only "origin/$BASE_REF...HEAD")" || files=""
+              && files="$(git diff --no-renames --name-only "origin/$BASE_REF...HEAD")" || files=""
           else
-            files="$(git diff --name-only "$BEFORE..$SHA")" || files=""
+            files="$(git diff --no-renames --name-only "$BEFORE..$SHA")" || files=""
           fi
           if [ -n "$files" ]; then
             long=false

@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
     --fast) TIER="fast"; shift ;;
     --slow) TIER="slow"; shift ;;
     --changed|--touched) TIER="${1#--}"; REV="HEAD"; if [[ "${2:-}" != "" && "${2:-}" != --* ]]; then REV="$2"; shift; fi; shift ;;
-    --shard) SHARD="${2:-}"; shift 2 || shift ;;
+    --shard) [[ -n "${2:-}" ]] || { echo "FAIL: --shard needs K/N; $USAGE" >&2; exit 2; }; SHARD="$2"; shift 2 ;;
     --list) LIST=1; shift ;;
     *) echo "FAIL: $USAGE" >&2; exit 2 ;;
   esac
@@ -51,6 +51,10 @@ FROM10="$(for n in $ALL; do [[ "$n" -ge 10 ]] && echo "$n"; done | tr '\n' ' ')"
 # Case files that use what an earlier file defines run in one process with it, in order: 2 with 3, 8 with 9. (Case
 # file 6 sources case-helpers-5.sh, which make-helpers-5.sh generates, so 5 and 6 run side by side.)
 group_of() { case "$1" in 3) echo "2 3" ;; 2) echo "2 3" ;; 8|9) echo "8 9" ;; *) echo "$1" ;; esac; }
+if [[ "$TIER" == touched || "$TIER" == changed ]]; then
+  git -C "$ROOT" rev-parse --verify --quiet "$REV^{commit}" > /dev/null \
+    || { echo "FAIL: --$TIER takes a commit, and '$REV' is none; $USAGE" >&2; exit 2; }
+fi
 case "$TIER" in
   fast) FILES="$FROM10" ;;
   touched)
