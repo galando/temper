@@ -3,6 +3,7 @@
 #
 #   bash scripts/verify.sh quick [REV]   about 3 minutes, at the end of every package
 #   bash scripts/verify.sh full          the whole suite, at the end of every phase (start it in the background)
+#   bash scripts/verify.sh final         full, then the closing checks of done.md, at the end of the build
 #
 # quick: the validators, the name check, the case files that differ from REV (run-selftest.sh --touched), and, only when
 # what they cover changed since REV, the two fixture compares and one whole end to end run (a file under scripts outside
@@ -13,6 +14,12 @@
 # to end suite in every mode as shards side by side (one per CPU, up to 4) with the floor, the replay against the floor
 # and the A/B replay against the base, the mod's tests, its manifest, its reviewed calls, the type check and the test
 # of the directory rules.
+# quick and full also run scripts/check_done.py (every row of docs/plans/one-go/done.md names a check that exists) and
+# print the count of the checks still expected to fail (scripts/selftest/expected-fail.txt).
+# final (9.8.5, WP07): full, then check_done.py --final (the list is empty and every final is the number of done.md),
+# check_caps.py --final, check_floor.py --final and check_changed_tests.py (every changed assertion is listed), and the
+# bench block: with docs/evidence/scorecard-9.8.5.json every line of it must pass, the lines of part H of done.md; with
+# no such file it prints the line OPEN: the bench gate (needs the owner's word and a model access), and goes on.
 #
 # One line per step with its result and seconds, then `verify quick: PASS` or `FAIL` (or `full`). Exit 0 only when
 # every step passed; another word exits 2. When the mod's types cannot be made here, the two fixture files are
@@ -23,13 +30,13 @@ unset CDPATH
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${HERE%/scripts}"
 [[ "$ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
-USAGE="usage: bash scripts/verify.sh quick [REV] | full"
+USAGE="usage: bash scripts/verify.sh quick [REV] | full | final"
 WORD="${1:-}"
 case "$WORD" in
-  quick|full) ;;
-  *) echo "verify.sh: unknown word '$WORD'; the words are quick and full. $USAGE" >&2; exit 2 ;;
+  quick|full|final) ;;
+  *) echo "verify.sh: unknown word '$WORD'; the words are quick, full and final. $USAGE" >&2; exit 2 ;;
 esac
-[[ "$WORD" == full && $# -gt 1 ]] && { echo "verify.sh: full takes no REV. $USAGE" >&2; exit 2; }
+[[ "$WORD" != quick && $# -gt 1 ]] && { echo "verify.sh: $WORD takes no REV. $USAGE" >&2; exit 2; }
 cd "$ROOT" || exit 1
 
 LOGS="$(mktemp -d)"; trap 'rm -rf "$LOGS"' EXIT
@@ -41,6 +48,9 @@ report() { # report <name> <exit> <seconds> <log>
     # lines of the floor and the caps (9.8.5, WP05)
     tail -n 1 "$4" | grep -E '^PASS: [0-9]+' | sed 's/^/        /' || true
     grep -E '^(floor|caps): ' "$4" | tail -n 2 | sed 's/^/        /' || true
+    # the count of the checks still expected to fail: the selftest's XFAIL line and check_done.py's count (WP07)
+    tail -n 2 "$4" | grep -E '^XFAIL: [0-9]+$' | sed 's/^/        /' || true
+    grep -E '^check_done: (the list holds|[0-9]+ rows)' "$4" | sed 's/^/        /' || true
   else
     printf 'FAIL  %5d s  %s\n' "$3" "$1"
     tail -n 20 "$4" | sed 's/^/        /'
@@ -70,6 +80,19 @@ collect() {
   BG=()
 }
 
+# The bench block of final: the scorecard of the bench round, when it ran, must pass every line of part H of done.md.
+SCORECARD="docs/evidence/scorecard-9.8.5.json"
+bench_lines() {
+  python3 -I - "$SCORECARD" <<'PY'
+import json, sys
+lines = json.load(open(sys.argv[1], encoding="utf-8")).get("lines") or {}
+bad = [k for k, v in lines.items() if v.get("pass") is not True]
+for k, v in sorted(lines.items()):
+    print("%-10s %s" % (k, {True: "pass", False: "MISS", None: "no data"}.get(v.get("pass"), "?")))
+print("bench: %s" % ("every line of part H passes" if lines and not bad else "outside the lines of part H: %s" % (", ".join(bad) or "no line")))
+sys.exit(0 if lines and not bad else 1)
+PY
+}
 replay_floor() { bun scripts/e2e/replay.ts final | tail -n 1 | python3 -I scripts/check_floor.py --replay; }
 fixtures_first() { bash scripts/selftest/make-view-fixtures.sh | cmp - scripts/selftest/view-fixtures.ts; }
 fixtures_extra() { bash scripts/selftest/make-view-fixtures.sh extra | cmp - scripts/selftest/view-fixtures-2.ts; }
@@ -109,6 +132,7 @@ step "check-names.py (the tracked Python scripts)" python3 -I scripts/selftest/c
 step "caps: check_caps.py (the growth caps of scripts/caps.json)" python3 -I scripts/check_caps.py
 step "floor: check_floor.py (the shape of scripts/e2e/floor.json, no final raised)" python3 -I scripts/check_floor.py
 step "xfail: xfail.ts --check (the expected to fail rule, on made up input)" bun scripts/e2e/xfail.ts --check
+step "done: check_done.py (every row of done.md names a check that exists)" python3 -I scripts/check_done.py
 
 if [[ "$WORD" == quick ]]; then
   REV="${2:-}"
@@ -144,7 +168,7 @@ if [[ "$WORD" == quick ]]; then
     skip "the mod's tests (no .ts or .tsx file changed)"
   fi
   type_check
-else
+else   # full, and final, which is full and then its closing checks
   step "selftest: run-selftest.sh (every case file, in parallel)" bash scripts/selftest/run-selftest.sh
   CPUS="$(nproc 2>/dev/null || echo 4)"
   [[ "$CPUS" =~ ^[1-9][0-9]*$ ]] || CPUS=4
@@ -163,6 +187,18 @@ else
   step "check-mod-calls.sh" bash scripts/check-mod-calls.sh
   type_check
   step "test-validate-directory.sh" bash scripts/selftest/test-validate-directory.sh
+fi
+if [[ "$WORD" == final ]]; then
+  step "done: check_done.py --final (the list is empty; every final is the number of done.md, D75b)" \
+    python3 -I scripts/check_done.py --final
+  step "caps: check_caps.py --final" python3 -I scripts/check_caps.py --final
+  step "floor: check_floor.py --final" python3 -I scripts/check_floor.py --final
+  step "done: check_changed_tests.py (every changed assertion is listed, D84)" python3 -I scripts/check_changed_tests.py
+  if [[ -f "$SCORECARD" ]]; then
+    step "bench: $SCORECARD inside the lines of part H" bench_lines
+  else
+    echo "OPEN: the bench gate (needs the owner's word and a model access)"
+  fi
 fi
 
 echo "      $((SECONDS - T0)) s in all"
