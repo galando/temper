@@ -19,9 +19,11 @@
 //                           (a test that is red on the current code)
 //   MOCK_FLAKY_BASE         a class that fails the first time it runs at all and passes after (a flaky test)
 //   MOCK_FLAKY_LATER        a class that passes on the base tree and fails once, the first time it runs on another tree
-//                           (a flaky test that a gate meets after the base). The base tree is the tree in
-//                           $MOCK_DB/flaky-later.base (`git rev-parse HEAD^{tree}`), or the first tree it runs on. When
-//                           it fails, $MOCK_DB/flaky-later.failed holds the tree and the number of mvn lines MOCK_LOG had.
+//                           (a flaky test that a gate meets after the base). The tree is the code's: the tree of the
+//                           pom's folder at HEAD (`git rev-parse HEAD:./` there), so a commit of the run's spec or
+//                           config leaves the code on the base. The base tree is the one in $MOCK_DB/flaky-later.base,
+//                           or the first tree it runs on. When it fails, $MOCK_DB/flaky-later.failed holds the tree and
+//                           the number of mvn lines MOCK_LOG had.
 // A class runs when the run has no filter, or when its filter names it. In a project with the Maven layout
 // (src/test/java under the pom's folder) a run with no filter runs Shape and Bytes only once their test file is there, as
 // Maven runs the tests that exist; the project of the replay has no such folder, and its suite names both from the start.
@@ -71,7 +73,7 @@ if runs "\${MOCK_FLAKY_BASE:-}" && [ ! -f "$MOCK_DB/flaky-base.ran" ]; then
   : > "$MOCK_DB/flaky-base.ran"; failed="$failed $MOCK_FLAKY_BASE"
 fi
 if runs "\${MOCK_FLAKY_LATER:-}"; then
-  tree="$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo none)"
+  tree="$(git -C "$root" rev-parse HEAD:./ 2>/dev/null || echo none)"
   [ -f "$MOCK_DB/flaky-later.base" ] || echo "$tree" > "$MOCK_DB/flaky-later.base"
   if [ "$(cat "$MOCK_DB/flaky-later.base")" != "$tree" ] && [ ! -f "$MOCK_DB/flaky-later.failed" ]; then
     echo "$tree $(grep -c '^mvn ' "$MOCK_LOG")" > "$MOCK_DB/flaky-later.failed"; failed="$failed $MOCK_FLAKY_LATER"

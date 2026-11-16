@@ -25,10 +25,12 @@
 //     commit card; at most 4 dialogs.
 //   broken-flaky (plain), row D14: the second flaky test fails once at the first gate that runs it on another tree; the
 //     CLI ran it once more before any agent, the ledger holds a row that calls it flaky, and no agent was launched for it.
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-import { POM, recordOf, toolRuns, withRemote } from './faketools'
+import { MVN, POM, recordOf, toolRuns, withRemote } from './faketools'
 import { orchestrate } from './loop'
 import { defaultPerson, idOf, withoutSetup, worldCheck } from './persons'
 import { expect, mavenAgents, mavenScript, planMd, promise, startMaven, stepsBackToPlan, tasksMd, withCheckLines } from './slow'
@@ -54,12 +56,15 @@ export const BROKEN_FILES: Record<string, string> = {
 export const brokenConfig = (text: string): string =>
   withCheckLines(text, `  mutation-threshold: 0\n  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'\n`)
 
-// The project, its fake tools and its faults. The base tree of the late flaky test is the tree of the base commit.
+// The base tree of the late flaky test: the tree of the code (the pom's folder) at HEAD, the key the fake mvn compares.
+export const CODE_TREE = 'git rev-parse HEAD:backend'
+// The project, its fake tools and its faults. The base tree of the late flaky test is the code of the base commit, so
+// the commits of the run's spec and config leave it on the base.
 export function startBroken(w: World, later: boolean): { log: string; db: string; initConfig: string } {
   const env: Record<string, string> = { MOCK_RED: RED, MOCK_FLAKY_BASE: FLAKY }
   if (later) env.MOCK_FLAKY_LATER = FLAKY_LATER
   const p = startMaven(w, BROKEN_FILES, { env, config: brokenConfig })
-  fs.writeFileSync(path.join(p.db, 'flaky-later.base'), `${w.sh("git rev-parse 'HEAD^{tree}'").trim()}\n`)
+  fs.writeFileSync(path.join(p.db, 'flaky-later.base'), `${w.sh(CODE_TREE).trim()}\n`)
   return p
 }
 export const agents = () => mavenAgents({ plan: planMd(), tasks: tasksMd('', INTEGRATION) })
@@ -207,4 +212,55 @@ export const brokenFlaky = (w: World): void => {
 export const BROKEN_SCENARIOS: Record<string, { run: (w: World) => void; modes: string[] }> = {
   'broken-first-run': { run: brokenFirstRun, modes: ['plain', 'driver'] },
   'broken-flaky': { run: brokenFlaky, modes: ['plain'] },
+}
+
+// ---- the check of this file, on made up input -------------------------------------------------------------------------
+//
+//   bun scripts/e2e/broken.ts --check   asserts the faults of the fixture and the checks of the two scenarios on made up
+//                                       input, with no run of the CLI; exit 0 or 1
+
+function check(): number {
+  let fails = 0
+  const eq = (name: string, got: unknown, want: unknown): void => {
+    const ok = JSON.stringify(got) === JSON.stringify(want)
+    if (!ok) fails++
+    console.log(`${ok ? 'PASS' : 'FAIL'}: broken ${name}${ok ? '' : ` (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`}`)
+  }
+  // the fake mvn in a scratch copy of the project, with the late flaky test on and its base written as startBroken does
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'broken-check-'))
+  const tools = path.join(dir, 'tools')
+  const db = path.join(dir, 'db')
+  const proj = path.join(dir, 'project')
+  for (const d of [tools, db, proj]) fs.mkdirSync(d)
+  fs.writeFileSync(path.join(tools, 'mvn'), MVN, { mode: 0o755 })
+  const log = path.join(tools, 'calls.log')
+  fs.writeFileSync(log, '')
+  const env: Record<string, string> = {
+    PATH: `${tools}:${process.env.PATH ?? ''}`, HOME: dir, MOCK_LOG: log, MOCK_DB: db, TOOL_JDK: '24', MOCK_FLAKY_LATER: FLAKY_LATER,
+    GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_NOSYSTEM: '1',
+  }
+  const sh = (cmd: string): { code: number; out: string } => {
+    const r = spawnSync('bash', ['-c', cmd], { cwd: proj, env, encoding: 'utf8' })
+    return { code: r.status ?? -1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }
+  }
+  for (const [rel, text] of Object.entries(BROKEN_FILES)) {
+    fs.mkdirSync(path.dirname(path.join(proj, rel)), { recursive: true })
+    fs.writeFileSync(path.join(proj, rel), text)
+  }
+  sh('git init -q && git add -A && git commit -qm base')
+  fs.writeFileSync(path.join(db, 'flaky-later.base'), `${sh(CODE_TREE).out.trim()}\n`)
+  const suite = (): number => sh('cd backend && mvn -s settings.xml verify -DskipITs').code
+  sh('mkdir -p .temper/specs/report && echo intent > .temper/specs/report/intent.md && git add -A && git commit -qm spec')
+  eq(`the late flaky test passes after a commit of the spec alone: the code is still on the base`, suite(), 0)
+  sh('echo "class Shape { }" > backend/src/Shape.java && git add -A && git commit -qm code')
+  eq(`the late flaky test fails once, the first time it runs on another code tree, and passes after`, [suite(), suite()], [1, 0])
+  fs.rmSync(dir, { recursive: true, force: true })
+  console.log(`broken --check: ${fails === 0 ? 'PASS' : `FAIL (${fails})`}`)
+  return fails === 0 ? 0 : 1
+}
+
+if (import.meta.main) {
+  if (process.argv[2] === '--check') process.exit(check())
+  console.log('usage: bun scripts/e2e/broken.ts --check')
+  process.exit(2)
 }
