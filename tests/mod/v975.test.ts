@@ -67,6 +67,30 @@ describe('9.7.5: the calls only the person may cause', () => {
   test('adhoc close needs no answer', () => {
     expect('deny' in bash(ctx(run()), `${CLI} adhoc close`)).toBe(false)
   })
+  // 9.8.5 (WP08, M13): a setup block reaches the config only by the person's answer. The stage rules judge every call,
+  // the session's and an agent's alike, so a call with no answer behind it is refused for both.
+  test('doctor --propose --write and doctor --candidate F --write typed by the session or an agent are refused', () => {
+    const writes = [`${CLI} doctor --propose --write`, `${CLI} doctor --candidate F --write`, `${CLI} doctor --candidate '/tmp/setup draft' --write`]
+    for (const call of writes) {
+      for (const stage of ['plan', 'build', 'review', 'check'] as const) {
+        expect('deny' in bash(ctx(run({ stage })), call), `${stage}: ${call}`).toBe(true)
+        expect(text(bash(ctx(run({ stage })), call)), `${stage}: ${call}`).toContain('Next: ')
+      }
+    }
+    // The answer for the proposed block is no answer for a draft of another block.
+    const picked = `${CLI} doctor --propose --write`
+    expect('deny' in bash(ctx(run({ stage: 'check' }), [picked]), `${CLI} doctor --candidate F --write`)).toBe(true)
+  })
+  test('doctor --propose --write passes as the call of the option the person picked', () => {
+    const call = `${CLI} doctor --propose --write`
+    for (const stage of ['plan', 'check'] as const) {
+      expect('deny' in bash(ctx(run({ stage }), [call]), call), stage).toBe(false)
+    }
+  })
+  test('doctor reads: doctor and doctor --propose need no answer', () => {
+    expect('deny' in bash(ctx(run({ stage: 'check' })), `${CLI} doctor`)).toBe(false)
+    expect('deny' in bash(ctx(run({ stage: 'check' })), `${CLI} doctor --propose`)).toBe(false)
+  })
 })
 
 describe('9.7.5: turning Temper off is not done during a run', () => {
