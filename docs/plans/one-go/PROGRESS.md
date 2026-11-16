@@ -104,4 +104,5 @@ None.
 - 2026-11-16 WP05: `done.md` gives no `final` for `question_ids` and `config_comment_keys`; each `final` is today's value (35 and 46).
 - 2026-11-16 WP05: the replay entry of the floor bounds only the agent types its `final` names; a scenario's `launches` bound every type.
 - 2026-11-16 WP05: a failed `temper gate` call inside an answer now counts as a verdict in the plain loop too, as in the driver.
+- 2026-11-16 CI: the run of `ba13ee3` failed case 9 `the CLI and its Python files expand no home folder and read no transcript`, because WP05's `runs.jsonl` matched its `.jsonl` pattern; the case now leaves out lines that name `runs.jsonl` (for `changed-tests.md`). `quick` had not run case files 8 and 9, so from here the whole selftest runs before every progress commit.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
