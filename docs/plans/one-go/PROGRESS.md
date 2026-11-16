@@ -28,6 +28,9 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | `e2e/ab-replay.sh` | 9.8.4 against the base: questions 8, 8, 4; launches 10, 7, 7; agent minutes 191, 92, 92 | 51 |
 | selftest, parallel (`run-selftest.sh`) | PASS 2879, FAIL 0 | 882 |
 | end to end, `run.ts all` (one process) | 69 mode lines PASS, 23 flows identical, e2e: all passed | 2498 |
+| after WP01: case file 6 alone | PASS 114, FAIL 0 (no assertion of case file 5 runs twice) | 278 |
+| after WP01: `verify.sh quick` with case file 5 touched | PASS | 811 |
+| after WP01: bytes | `view-fixtures.ts` 187,069; `view-fixtures-2.ts` 57,975; `CHANGELOG.md` 109,834; `scripts/temper` and `scripts/flow.py` unchanged | |
 | bytes | `scripts/temper` 260,504; `scripts/flow.py` 205,631; `CHANGELOG.md` 246,956; `view-fixtures.ts` 259,060; `view-fixtures-2.ts` 78,629 | |
 
 ## Packages
@@ -35,7 +38,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | Id | State | Commit | Date | Note |
 |---|---|---|---|---|
 | WP00 | done | `2992cad` | 2026-11-16 | baseline green, every number as the kit says |
-| WP01 | todo | | | |
+| WP01 | done | `3f8a47e` | 2026-11-16 | CI in shards with cancel and one gate job, verify.sh, fixtures one view a line, older changelog moved |
 | WP02 | todo | | | |
 | WP03 | todo | | | |
 | WP04 | todo | | | |
@@ -80,4 +83,8 @@ None.
 ## Found on the way
 
 - 2026-11-16 WP00: the first merge of `10e965a` went as a fast forward; both merges were made again with `--no-ff` before any push, so the history shows two merge commits.
+- 2026-11-16 WP01: CI check names change: six checks `temper CLI selftest (shard K of 6)`, four `End to end (shard K of 4)`, and two new jobs `Changed files` and `Gate`; a branch rule should require `Gate` alone (for the owner).
+- 2026-11-16 WP01: `quick` runs case files 5, 6 and 31 when case file 5 changed, so it takes about 13 minutes then, as contracts section 10 warns.
+- 2026-11-16 WP01: the spec gave 259,060 bytes for the two fixture files together; that is `view-fixtures.ts` alone (the two were 337,689). `check-names.py` reads 51 tracked Python files, not 49.
+- 2026-11-16 WP01: `run.ts` now exits 2 for an unknown flag or scenario name; before, an unknown name was a FAIL inside the run.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
