@@ -36,6 +36,90 @@ BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "revi
 MOVES = {"advance", "approve", "arm", "override", "back", "redo", "accept", "covered", "keep", "commitOverride", "restart",
          "confirm", "drift", "answer", "pause", "adhoc"}
 
+# 9.8.5 (WP04): the ids of the protocol. Every question of `next`, `go` and view.json has an `id` of QUESTIONS and its
+# `kind`; every option an `id` of OPTION_IDS, a `kind` when a reader acts on it, and `recommended: true` when it is the
+# recommended one. Readers select by these, never by label text; the label stays what the person reads and what an answer
+# is matched on. The closed list is section 5 of docs/plans/one-go/contracts.md. question() and opt() refuse any other id.
+QUESTION_KINDS = ("gate", "group", "resume", "drift", "blocking", "context", "reason", "name")
+OPTION_KINDS = ("more", "accept", "cancel", "carry", "type")
+# A question id is `<stage or scope>.<state>`; sites that share one decision share one id. `decision` says what only the
+# person can decide there.
+QUESTIONS = {
+    "intent.accept": {"kind": "gate", "decision": "Whether the intent is right, so the run goes on to Plan with it."},
+    "intent.fail": {"kind": "gate", "decision": "Whether to correct the intent or skip its failed check."},
+    "intent.branch": {"kind": "gate", "decision": "Which branch the run goes on, when its branch exists from an earlier run."},
+    "intent.blocking": {"kind": "blocking", "decision": "The answer to an open question of the intent, or that it waits."},
+    "rca.approve": {"kind": "gate", "decision": "Whether the root cause is right, so the fix is written from it."},
+    "plan.approve": {"kind": "gate", "decision": "Whether the plan is approved, and whether the run then asks at every stage."},
+    "plan.fail": {"kind": "gate", "decision": "Whether to revise the plan, keep a finding, step back or skip the failed check."},
+    "plan.context": {"kind": "context", "decision": "Whether the plan reads the right context, or what it should read."},
+    "design.pass": {"kind": "gate", "decision": "Whether the design is accepted, its open concerns as written, before Build."},
+    "design.fail": {"kind": "gate", "decision": "Whether to step back to Plan or skip the failed check of the design."},
+    "build.pass": {"kind": "gate", "decision": "Whether the change is right as built, or what to change."},
+    "build.fail": {"kind": "gate", "decision": "Whether Build runs again, steps back, skips the check or is saved."},
+    "build.ungrouped": {"kind": "gate", "decision": "Whether Plan runs again to write the tasks in groups."},
+    "build.foreign": {"kind": "gate", "decision": "Whether commits the CLI did not make are taken out or kept."},
+    "fix.pass": {"kind": "gate", "decision": "Whether the fix is right as written, or what to change."},
+    "fix.fail": {"kind": "gate", "decision": "Whether Fix runs again, steps back, skips the check or is saved."},
+    "task.covered": {"kind": "gate", "decision": "Whether a task an earlier task built is taken as done."},
+    "task.env": {"kind": "gate", "decision": "Whether the environment is repaired, so the kept work is checked again."},
+    "task.manual": {"kind": "gate", "decision": "Whether each Case of a manual task holds, confirmed by hand."},
+    "group.pass": {"kind": "group", "decision": "Whether a passed group is right, or what to change in it."},
+    "group.change": {"kind": "group", "decision": "Which task of the group changes."},
+    "group.fail": {"kind": "group", "decision": "What happens to a group whose check failed."},
+    "group.parked": {"kind": "group", "decision": "What happens to a parked group."},
+    "review.pass": {"kind": "gate", "decision": "Whether the change goes on to Check with the open findings, or is repaired."},
+    "review.fail": {"kind": "gate", "decision": "Whether to repair the findings, keep one or skip the failed check."},
+    "check.pass": {"kind": "gate", "decision": "Whether the change is committed, and how."},
+    "check.fail": {"kind": "gate", "decision": "What happens to a failed check: run again, confirm, step back, skip or save."},
+    "pipeline.pass": {"kind": "gate", "decision": "Whether the run ends once every job passed."},
+    "pipeline.fail": {"kind": "gate", "decision": "Whether the CI fix is applied and pushed, or the run ends."},
+    "commit.confirm": {"kind": "gate", "decision": "Whether the change is committed."},
+    "commit.fail": {"kind": "gate", "decision": "Whether to add the files to the plan, step back or skip the failed gates."},
+    "adhoc.fail": {"kind": "gate", "decision": "Whether a small change whose Review failed is redone or let through."},
+    "run.walked": {"kind": "gate", "decision": "Whether a stage an earlier session ran is taken as it is or run again."},
+    "run.restart": {"kind": "resume", "decision": "Whether the saved run state goes, so a new run starts."},
+    "scope.drift": {"kind": "drift", "decision": "Whether a file outside the plan is added to it, reverted or allowed once."},
+}
+# A follow up question takes its parent's id and one of these suffixes: a More question asks its parent's decision, an
+# accept question keeps a finding, a reason question asks the reason the report shows, a name question a typed value.
+FOLLOW_UPS = {"more": None, "accept": "gate", "reason": "reason", "name": "name"}
+FOLLOW_DECISION = {"accept": "Which open finding is kept as it is, with a reason.",
+                   "reason": "The reason for the answer, which the report shows.",
+                   "name": "The value the answer needs, typed by the person: a name or a command."}
+OPTION_IDS = frozenset((
+    # the names section 5 of docs/plans/one-go/contracts.md fixes
+    "approve-run", "ask-every-stage", "continue", "commit", "back", "redo", "override", "save", "more", "accept-finding",
+    "small-change", "confirm", "as-planned", "carry", "cancel", "type", "add-setup", "start-over",
+    "choice-1", "choice-2", "choice-3", "choice-4",
+    # the rest of the head, by the rule: one id a meaning
+    "grill-me", "teach-me", "html-review", "share-review", "revise-plan", "fresh-review", "fresh-again", "find-setup",
+    "walk-through", "change", "depth-review", "commit-pr", "commit-stacked-prs", "config-suggestions", "restore-tests",
+    "correct-test", "end-run", "apply-fix", "continue-on-branch", "new-branch", "merge-groups", "take-out",
+    "keep-commits", "accept-done", "twice-the-time", "fix-group", "change-command", "add-to-plan", "include-left-out"))
+
+
+def question_entry(qid):
+    """The registry's entry of a question id, `{"kind", "decision"}`, or None when it is no id of the registry. A follow
+    up's entry is its parent's, with the kind and the decision of its suffix (a More question asks its parent's decision)."""
+    if not isinstance(qid, str):
+        return None
+    if qid in QUESTIONS:
+        return QUESTIONS[qid]
+    parent, _, suffix = qid.rpartition(".")
+    up = question_entry(parent) if suffix in FOLLOW_UPS else None
+    if up is None:
+        return None
+    return {"kind": FOLLOW_UPS[suffix] or up["kind"], "decision": FOLLOW_DECISION.get(suffix, up["decision"])}
+
+
+def choice_id(i, n):
+    """The id of the i-th of n ready answers (a task, a finding) as they land in questions of four options at most: the
+    first three and More options, the rest in the More question, split the same way again (question())."""
+    while n > 4 and i >= 3:
+        i, n = i - 3, n - 3
+    return "choice-%d" % (i + 1)
+
 
 # ---- reading the run -----------------------------------------------------------------------
 
@@ -91,18 +175,20 @@ CARRY = "Carry forward"
 def blocking_asks(items, cli):
     """9.8.0: each Blocking question as the session asks it, built by the CLI: `{question, answer, carry}`. `question` is the
     AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options with the first marked
-    recommended, at most three, then Carry forward); `answer` is the call that writes the person's answer into intent.md
+    recommended, at most three, then Carry forward; each option has its id, Carry forward the kind `carry`, and the entry
+    the question's id and kind); `answer` is the call that writes the person's answer into intent.md
     (`{answer}` is theirs: the label they chose or the text they typed), `carry` the call for Carry forward. Before, the
     session built each question from the line and then edited intent.md itself."""
     out = []
     for i, item in enumerate(items):
         m = re.match(r"^(.*?)\s+choices:\s*(.+?)\.?\s*$", item, re.I | re.S)
         q, cs = (m.group(1).strip(), [c.strip() for c in m.group(2).split("|") if c.strip()][:3]) if m else (item.strip(), [])
-        opts = [{"label": c, "description": "Recommended" if k == 0 else ""} for k, c in enumerate(cs)]
+        opts = [{"label": c, "description": "Recommended" if k == 0 else "", "id": "choice-%d" % (k + 1)} for k, c in enumerate(cs)]
         if not opts:   # a question with no ready answers: the person types the answer in Other
-            opts = [{"label": "Type the answer", "description": "Type it in Other; this option alone answers nothing."}]
-        opts.append({"label": CARRY, "description": "Keep it on record as Deferred; it no longer holds the gate."})
-        out.append({"question": {"header": "Question %d" % (i + 1), "question": q, "multiSelect": False, "options": opts},
+            opts = [{"label": "Type the answer", "description": "Type it in Other; this option alone answers nothing.", "id": "type", "kind": "type"}]
+        opts.append({"label": CARRY, "description": "Keep it on record as Deferred; it no longer holds the gate.", "id": "carry", "kind": "carry"})
+        out.append({"id": "intent.blocking", "kind": "blocking",
+                    "question": {"header": "Question %d" % (i + 1), "question": q, "multiSelect": False, "options": opts},
                     "answer": "%s intent answer %s '{answer}'" % (cli, shlex.quote(q)),
                     "carry": "%s intent carry %s" % (cli, shlex.quote(q))})
     return out

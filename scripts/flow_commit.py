@@ -125,8 +125,8 @@ class CommitPart:
                 return {"action": "work", "stage": "commit", "calls": [self.c("report --html")], "agents": [],
                         "say": "The report page is written (report.html in the spec folder); then the commit."}
             if r.state.get("parked"):
-                return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?", stage="commit", options=[
-                    self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.report_steps()), self.save()])}
+                return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?", stage="commit", qid="commit.confirm", options=[
+                    self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.report_steps(), oid="commit"), self.save()])}
             return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.report_steps(),
                     "say": "Every gate passed: the report first, then the commit."}
         failing = sorted({re.sub(r"\s+gate$", "", str(x.get("name", ""))) for x in r.failed_rows("commit") if str(x.get("name", "")).endswith(" gate")})
@@ -147,27 +147,28 @@ class CommitPart:
             opts.append(self.opt("Add to plan (Recommended)", "%s belong%s to this feature: record %s as planned, then check the commit again." % (
                 ", ".join(outside), "s" if len(outside) == 1 else "", "it" if len(outside) == 1 else "them"), move="drift",
                 calls=[self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote("drift %s: Add to plan: the person, at the commit gate" % f))
-                       for f in outside] + [self.c("gate commit")]))
+                       for f in outside] + [self.c("gate commit")], oid="add-to-plan"))
         if r.command == "fix" and "check" in failing and r.can_loop("check", "fix"):
             opts.append(self.opt("Loop back to Fix (Recommended)", "Write the fix again; Review and Check run again.", move="back",
-                                 calls=[self.c("state loop check fix --reason '{reason}'")], reason=["The check found a real problem"]))
+                                 calls=[self.c("state loop check fix --reason '{reason}'")], reason=["The check found a real problem"], oid="back"))
         if not own:
             opts.append(self.opt("Override and commit", "Skip the failed gates with your reason and commit.", move="commitOverride",
                                  calls=[self.c("override %s --reason '{reason}'" % s) for s in failing] + [self.c("gate commit")],
-                                 reason=["I accept the risk", "It is not a real issue"]))
+                                 reason=["I accept the risk", "It is not a real issue"], oid="override"))
         opts.append(self.save())
         why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit")[:3])
         ask = ("Override and commit?" if not own else "Add the files to the plan?" if outside else
                "An override does not clear this row: change what it names (the config's autonomy limits, or the change), then check again.")
-        return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: the commit gate failed (%s). %s" % (why, ask), stage="commit", options=opts)}
+        return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: the commit gate failed (%s). %s" % (why, ask), stage="commit", options=opts,
+                                                                       qid="commit.fail")}
 
     def restart(self):
         r = self.r
         return {"header": RESUME_HEADER, "question": "A run of %s is open at %s. Start over?" % (r.slug, LABEL.get(r.stage, r.stage)),
-                "multiSelect": False, "step": r.state.get("step"), "run_id": r.state.get("run_id"),
+                "multiSelect": False, "step": r.state.get("step"), "run_id": r.state.get("run_id"), "id": "run.restart", "kind": "resume",
                 "options": [{"label": "Start over", "description": "The saved run state goes; the spec files stay.", "move": "restart",
-                             "calls": [self.c("state clear")]},
-                            {"label": "Cancel", "description": "Keep the run.", "move": None, "calls": []}]}
+                             "calls": [self.c("state clear")], "id": "start-over"},
+                            {"label": "Cancel", "description": "Keep the run.", "move": None, "calls": [], "id": "cancel", "kind": "cancel"}]}
 
     # -- the one entry point -------------------------------------------------------------------
     @staticmethod
@@ -193,21 +194,21 @@ class CommitPart:
         so the answer changes the plan instead of only being written down (9.8.0)."""
         text, left = self.context_text(cm)
         opts = [self.opt("As planned (Recommended)", "The plan's context is right; check the plan again.", move="answer",
-                         calls=[self.c("plan review --answer 'As planned'"), self.c("gate plan")])]
+                         calls=[self.c("plan review --answer 'As planned'"), self.c("gate plan")], oid="as-planned")]
         if left:
             # 9.8.4: Plan gets the whole text of what is left out (the question shows each cut to fit); a cut at 100
             # characters told the Plan agent "already co".
             full = [x["text"] for x in (cm.get("rows") or []) if x.get("kind") == "ignore"][:3]
             what = "Include what is left out: %s" % "; ".join(full)
             opts.append(self.opt("Include what is left out", "Plan revises the plan to cover: %s." % "; ".join(left), move="answer",
-                                 calls=[self.c("plan review --answer %s --redo" % shlex.quote(what))]))
+                                 calls=[self.c("plan review --answer %s --redo" % shlex.quote(what))], oid="include-left-out"))
         opts.append(self.opt("Something else", "Type what Plan should change or read (Other); Plan revises the plan with it.",
-                             do="Ask the person to type it in Other, then run the question's `answer` call with their text."))
-        carry = self.opt("Carry forward", "Decide later; the plan gate keeps naming this question.", move=None, calls=[])
+                             do="Ask the person to type it in Other, then run the question's `answer` call with their text.", oid="type", kind="type"))
+        carry = self.opt("Carry forward", "Decide later; the plan gate keeps naming this question.", move=None, calls=[], oid="carry", kind="carry")
         opts.append(carry)
         for o in opts:
             o["preview"] = cm["table"]
-        q = self.question(GATE_HEADER, text, opts, "plan")
+        q = self.question(GATE_HEADER, text, opts, "plan", qid="plan.context")
         q["context"] = True
         q["answer"] = self.c("plan review --answer '{text}' --redo")
         q["gate"] = self.c("gate plan")

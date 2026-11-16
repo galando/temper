@@ -259,7 +259,7 @@ def view(run, nxt):
 
 
 def drift_info():
-    return {"header": DRIFT_HEADER, "prefix": DRIFT_PREFIX, "options": DRIFT_OPTIONS}
+    return {"id": "scope.drift", "kind": "drift", "header": DRIFT_HEADER, "prefix": DRIFT_PREFIX, "options": DRIFT_OPTIONS}
 
 
 AGENTS_NAMED = "agents-named.json"

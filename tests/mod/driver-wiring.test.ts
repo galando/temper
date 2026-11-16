@@ -95,7 +95,7 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     const files = { ...runFiles({ gates: { plan: 'PASS' } }), '/repo/.git/HEAD': 'ref: refs/heads/feature/pw\n' }
     const w = world(on, files, { projectRoot: '/repo', answers: ['Admins only', 'Carry forward', '60 days'] })
     const q = questionOf(viewText(w) ?? '')
-    const b = (n: number, text: string, labels: string[]) => ({ question: { header: `Question ${n}`, question: text, options: labels.map(l => ({ label: l, description: '' })) },
+    const b = (n: number, text: string, labels: string[]) => ({ question: { header: `Question ${n}`, question: text, options: labels.map(l => ({ label: l, description: '', ...(l === 'Carry forward' ? { kind: 'carry' } : {}) })) },
       answer: `X/scripts/temper intent answer '${text}' '{answer}'`, carry: `X/scripts/temper intent carry '${text}'` })
     const goes = [
       { action: 'ask', stage: 'plan', gate: 'X/scripts/temper gate plan', ask: { question: { ...q, multiSelect: false }, options: q.options.map(o => ({ label: o.label, calls: [] })) },

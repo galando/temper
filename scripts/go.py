@@ -38,17 +38,18 @@ def brief(call, cli):
     return call + " --brief" if re.fullmatch(re.escape(cli) + r" gate [a-z]+", call) else call
 
 
-SLIM_KEYS = ("calls", "steps", "do", "stop", "reason", "reason_question", "answer_question")
+SLIM_KEYS = ("id", "kind", "move", "recommended", "calls", "steps", "do", "stop", "reason", "reason_question", "answer_question")
 
 
 def slim(a):
-    """9.8.0: a question as the session needs it: `question` to ask exactly, and per option only what the answer runs
-    (its label, calls, steps, do, stop, reason and name questions). The description and the move were in it twice (they are
-    in `question` too), and the run id, step and stage are the mod's, read from view.json."""
+    """9.8.0: a question as the session needs it: `question` to ask exactly, its id and kind, and per option only what the
+    answer runs (its label, calls, steps, do, stop, reason and name questions) and what a reader selects it by (its id,
+    kind, move and recommended: 9.8.5 keeps these few short keys, the price of selecting by field and never by label).
+    The description is in `question` too, and the run id, step and stage are the mod's, read from view.json."""
     if not isinstance(a, dict) or "question" not in a:
         return a
-    out = {"question": a["question"],
-           "options": [dict({"label": o.get("label")}, **{k: o[k] for k in SLIM_KEYS if o.get(k)}) for o in a.get("options") or []]}
+    out = dict({k: a[k] for k in ("id", "kind") if a.get(k)}, question=a["question"])
+    out["options"] = [dict({"label": o.get("label")}, **{k: o[k] for k in SLIM_KEYS if o.get(k)}) for o in a.get("options") or []]
     for k in ("more", "accept"):
         if a.get(k):
             out[k] = slim(a[k])

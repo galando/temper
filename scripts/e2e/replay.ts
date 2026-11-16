@@ -340,7 +340,10 @@ function main(): void {
     const q = String(ask.question.question)
     m.question_texts.push(q.slice(0, 160))
     const opts = ask.options as Json[]
-    const rec = opts.find(o => String(o.label).includes('(Recommended)')) ?? opts[0]!
+    // the `recommended` field when the CLI writes ids (9.8.5); the label's suffix for a plugin folder without them (9.8.4,
+    // the base), since the same script drives both through TEMPER_E2E_ROOT
+    const fields = opts.some(o => typeof o.id === 'string')
+    const rec = opts.find(o => (fields ? o.recommended === true : String(o.label).includes('(Recommended)'))) ?? opts[0]!
     diligence(q, opts.some(o => /setup block|find the setup/.test(String(o.label))))
     if (/setup block|find the setup/.test(String(rec.label))) m.setup_clicks++
     if (/^Override/.test(String(rec.label))) m.overrides++

@@ -97,12 +97,12 @@ class WorkPart:
             what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
             return self.opt("Add the proposed setup block (Recommended)", what + ". Temper first reruns the failing commands with it, "
                             "and adds it only when they no longer fail on the environment.", move="redo",
-                            calls=[self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")])
+                            calls=[self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")], oid="add-setup")
         if self.r.state.get("env_agent") != "tried":
             # 9.8.5: no rule fits this project (or its block did not fix the failure): an agent reads how the project runs
             return self.opt("Let an agent find the setup (Recommended)", "An agent reads the project's CI, README and scripts and "
                             "drafts a setup block; Temper reruns the failing commands with it and adds it only when they pass.",
-                            move="redo", calls=[self.c("state set env_agent requested")])
+                            move="redo", calls=[self.c("state set env_agent requested")], oid="find-setup")
         return None
 
     def env_agent_work(self):
@@ -399,7 +399,7 @@ class WorkPart:
         redo = self.c("state redo check --reason %s")
         if detail.startswith("changed after they were locked"):
             return [self.opt("Restore the locked tests (Recommended)", "A builder changed the locked acceptance tests: put them back as they were locked, then check again.",
-                             move="redo", calls=[self.c("acceptance restore"), redo % shlex.quote("the locked acceptance tests were restored")])]
+                             move="redo", calls=[self.c("acceptance restore"), redo % shlex.quote("the locked acceptance tests were restored")], oid="restore-tests")]
         if d.get("reopened"):
             return []
         t = self.acc_triage()
@@ -409,7 +409,7 @@ class WorkPart:
             rec = r.loop_count("check", "build") >= 1 or not r.can_loop("check", "build")
         return [self.opt("Correct the acceptance test" + (" (Recommended)" if rec else ""),
                          "The test is wrong, not the code: the writer corrects it against the intent and locks it again; the report shows your reason.",
-                         move="redo", calls=[self.c("acceptance reopen --reason '{reason}'")], reason=self.ACC_REASONS)]
+                         move="redo", calls=[self.c("acceptance reopen --reason '{reason}'")], reason=self.ACC_REASONS, oid="correct-test")]
 
     def acceptance_fix_work(self):
         """The person reopened the locked acceptance tests at the Check question: the writer corrects the test the failure

@@ -5,9 +5,16 @@
 // small change window, an unknown step) it hands back to the model loop of commands/temper.md, which goes on from the
 // same state: the CLI holds the run, the driver holds nothing. Pure: the engine is reached through `Port`.
 
-export type GoQuestion = { header: string; question: string; options: Array<{ label: string; description?: string; preview?: string }>; multiSelect?: boolean }
+// 9.8.5: the CLI's ids. A question of `temper go` has its `id` and `kind` beside `question`; each option its `id`, and a
+// `kind` when the driver acts on it (more, accept, cancel, carry, type). A reason, name or Blocking question carries the
+// ids of its own options. The driver selects by kind; the label is only what the dialog returns, matched in one question.
+export type GoQuestion = { header: string; question: string; options: Array<{ label: string; description?: string; preview?: string; id?: string; kind?: string }>; multiSelect?: boolean; id?: string; kind?: string }
 export type GoOption = {
   label: string
+  id?: string
+  kind?: string
+  move?: string | null
+  recommended?: boolean
   calls?: string[]
   steps?: string[]
   do?: string
@@ -16,9 +23,9 @@ export type GoOption = {
   reason_question?: GoQuestion
   answer_question?: GoQuestion
 }
-export type GoAsk = { question: GoQuestion; options: GoOption[]; more?: GoAsk; accept?: GoAsk }
+export type GoAsk = { id?: string; kind?: string; question: GoQuestion; options: GoOption[]; more?: GoAsk; accept?: GoAsk }
 export type GoAgent = { type: string; model: string; prompt: string; before?: string[]; after?: string[]; gate?: string }
-export type GoBlocking = { question: GoQuestion; answer: string; carry: string }
+export type GoBlocking = { id?: string; kind?: string; question: GoQuestion; answer: string; carry: string }
 export type GoOut = {
   action: string
   stage?: string
@@ -227,6 +234,10 @@ function optionOf(ask: GoAsk, label: string): GoOption | undefined {
   return ask.options.find(o => o.label === label)
 }
 
+// The kind of the option the person picked in a dialog question (a reason, name or Blocking question), by the label the
+// dialog returns; undefined for a typed answer.
+const kindOf = (q: GoQuestion, label: string): string | undefined => q.options.find(o => o.label === label)?.kind
+
 // The driver is a generator of steps (an effect each: run a call, launch an agent, wait, ask, record, show, look for an
 // interrupt), so one core runs in the mod (each step awaited on the engine) and in the e2e driver (each step done at once
 // on its world).
@@ -287,8 +298,8 @@ function* answer(cli: string, q: GoAsk, depth = 0): Steps<DriveEnd | null> {
   const opt = optionOf(q, picked)
   if (opt === undefined) return handback('the person typed an answer', `discuss ${picked}`)
   yield { k: 'record', q: q.question, answer: picked }
-  if (opt.label === 'More options' && q.more) return yield* answer(cli, q.more, depth + 1)
-  if (/^Ask the accept question/.test(opt.do ?? '') && q.accept) return yield* answer(cli, q.accept, depth + 1)
+  if (opt.kind === 'more' && q.more) return yield* answer(cli, q.more, depth + 1)
+  if (opt.kind === 'accept' && q.accept) return yield* answer(cli, q.accept, depth + 1)
   // An option the conversation must carry out (a skill, the HTML review, a small change, a name to type, a step only a
   // model can do): nothing of it runs here; the conversation runs it whole, as the answer the person already gave.
   const needs = opt.do ? opt.do.slice(0, 160)
@@ -298,7 +309,7 @@ function* answer(cli: string, q: GoAsk, depth = 0): Steps<DriveEnd | null> {
   if (opt.reason_question && (opt.calls ?? []).some(c => c.includes('{reason}'))) {
     const r = yield* ask(opt.reason_question)
     if (r === null) return handback('nobody answered the reason question')
-    if (r === 'Cancel') return yield* answer(cli, q, depth + 1)
+    if (kindOf(opt.reason_question, r) === 'cancel') return yield* answer(cli, q, depth + 1)
     yield { k: 'record', q: opt.reason_question, answer: r }
     fills.reason = r
   }
@@ -308,7 +319,7 @@ function* answer(cli: string, q: GoAsk, depth = 0): Steps<DriveEnd | null> {
     for (let k = 0; k < 3 && fills.answer === undefined; k++) {
       const typed = yield* ask(opt.answer_question)
       if (typed === null) return handback('nobody answered the name question')
-      if (typed === 'Cancel') return yield* answer(cli, q, depth + 1)
+      if (kindOf(opt.answer_question, typed) === 'cancel') return yield* answer(cli, q, depth + 1)
       if (opt.answer_question.options.some(o => o.label === typed) || typed.trim() === '') continue
       yield { k: 'record', q: opt.answer_question, answer: typed }
       fills.answer = typed.trim()
@@ -380,7 +391,7 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
           const b = chunk[j] as GoBlocking
           const picked = picks[j] ?? null
           if (picked === null) return handback('nobody answered a Blocking question')
-          const call = picked === 'Carry forward' ? b.carry : fill(b.answer, { answer: picked })
+          const call = kindOf(b.question, picked) === 'carry' ? b.carry : fill(b.answer, { answer: picked })
           if ((yield* run(call)).code !== 0) return handback('the answer call failed')
         }
       }

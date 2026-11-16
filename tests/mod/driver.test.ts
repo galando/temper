@@ -47,7 +47,9 @@ function port(s: Script & { stop?: number }) {
   return { p, log }
 }
 
-const q = (question: string, labels: string[], header = 'Temper gate'): GoQuestion => ({ header, question, options: labels.map(label => ({ label, description: '' })) })
+// The kinds the CLI gives these options (9.8.5): the driver selects by kind, never by label.
+const KINDS: Record<string, string> = { 'Carry forward': 'carry', Cancel: 'cancel', 'Type it below': 'type' }
+const q = (question: string, labels: string[], header = 'Temper gate'): GoQuestion => ({ header, question, options: labels.map(label => ({ label, description: '', ...(KINDS[label] ? { kind: KINDS[label] } : {}) })) })
 const agent = (type: string, after: string[] = []): GoAgent => ({ type, model: 'opus', prompt: `Follow ${type}.`, after, gate: after.find(c => / gate /.test(c)) })
 
 describe('the driver carries a run from the request to the end', () => {
@@ -115,7 +117,7 @@ describe('the driver carries a run from the request to the end', () => {
   })
 
   test('a manual task\'s name question is asked by the driver: "Type it below" asks again, the typed name fills the call', async () => {
-    const nameQ = { header: 'Manual task', question: 'Task 2: what name should the confirmation carry?', options: [{ label: 'Type it below', description: '' }, { label: 'Cancel', description: '' }] }
+    const nameQ = { header: 'Manual task', question: 'Task 2: what name should the confirmation carry?', options: [{ label: 'Type it below', description: '', kind: 'type' }, { label: 'Cancel', description: '', kind: 'cancel' }] }
     const confirm = { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`, `${CLI} task gate 2 --model person`], answer_question: nameQ }
     const { p, log } = port({
       goes: [{ action: 'ask', stage: 'build', ask: { question: q('Task 2 is a manual task. Confirm?', ['Confirm', 'Stop']), options: [confirm, { label: 'Stop' }] } }, { action: 'none', say: 'end' }],
@@ -128,7 +130,7 @@ describe('the driver carries a run from the request to the end', () => {
   })
 
   test('Cancel at the name question asks the manual task question again, and nothing runs', async () => {
-    const nameQ = { header: 'Manual task', question: 'Task 2: name?', options: [{ label: 'Type it below', description: '' }, { label: 'Cancel', description: '' }] }
+    const nameQ = { header: 'Manual task', question: 'Task 2: name?', options: [{ label: 'Type it below', description: '', kind: 'type' }, { label: 'Cancel', description: '', kind: 'cancel' }] }
     const confirm = { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`], answer_question: nameQ }
     const { p, log } = port({
       goes: [{ action: 'ask', stage: 'build', ask: { question: q('Confirm?', ['Confirm', 'Stop']), options: [confirm, { label: 'Stop', stop: true }] } }],
@@ -164,7 +166,7 @@ describe('the driver carries a run from the request to the end', () => {
 
   test('More options asks the rest of the question; an option with a `do` (a skill) runs its calls, then hands back', async () => {
     const more = { question: q('More choices?', ['Grill Me', 'Cancel']), options: [{ label: 'Grill Me', do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' }, { label: 'Cancel' }] }
-    const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'More options']), options: [{ label: 'Approve' }, { label: 'More options', do: 'Ask the more question.' }], more } }], answers: ['More options', 'Grill Me'] })
+    const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'More options']), options: [{ label: 'Approve' }, { label: 'More options', do: 'Ask the more question.', kind: 'more' }], more } }], answers: ['More options', 'Grill Me'] })
     const end = await drive(p, CLI, null)
     expect(end.kind).toBe('handback')
     expect(log.asked.map(x => x.question)).toEqual(['Approve?', 'More choices?'])
