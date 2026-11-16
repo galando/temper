@@ -1693,10 +1693,10 @@ cmd_schedule() { # temper schedule [--json]
 }
 
 # Grouped Build (9.7.0): groups.json is CLI-owned run state. Every write goes through here: the lock
-# is held around the read-modify-write, the file is replaced atomically, and the python body only
-# sees `d` (the whole document) and `a` (the extra arguments). A body that calls sys.exit(n) writes
-# nothing and returns n.
-_groups_mutate() { # _groups_mutate <python-body> [args...]: the body changes d (groups.json); a task's status changes only
+# is held around the read-modify-write, the file is replaced atomically, and the change, a function of
+# scripts/groups_ops.py (MUTATIONS), only sees `d` (the whole document) and `a` (the extra arguments). A
+# change that calls sys.exit(n) writes nothing and returns n.
+_groups_mutate() { # _groups_mutate <change> [args...]: the change alters d (groups.json); a task's status changes only
                    # through task_status(t, new) (task_cover.py's table of moves), and a move it refuses writes nothing
   local body="$1" rc; shift
   _lock_acquire
@@ -1862,21 +1862,7 @@ cmd_group_start() {
   fi
 
   local base_sha; base_sha="$(git -C "$wt" rev-parse HEAD)"
-  _groups_mutate "
-d['version'] = 1
-d.setdefault('plan_hash', a[7])
-d['slug'] = a[0]
-d['feature_branch'] = a[1]
-d.setdefault('groups', {})
-d.setdefault('tasks', {})
-e = d['groups'].setdefault(a[2], {})
-e['status'] = 'running' if e.get('status') in (None, 'pending') else e['status']
-e['worktree'] = a[3]
-e['branch'] = a[4]
-e['base_sha'] = a[5] if a[8] == '0' else e.get('base_sha') or a[5]   # a new branch (not this run's own) starts here
-e.setdefault('started_at', a[6])
-e.setdefault('finished_at', None)
-" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" "$own" || return 1
+  _groups_mutate group-start "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" "$own" || return 1
   echo "OK: group $g started ($wt on $branch)"
 }
 
@@ -1958,21 +1944,7 @@ cmd_group_gate() {
 _group_gate_record() { # _group_gate_record <G> <PASS|FAIL> <reason> <timeout-s|"">: the group's gate and its status, in one
                        # write: a group is passed exactly while its gate says PASS (finished_at is when it passed). A gate that
                        # fails again after a PASS takes the group back to running; a parked group stays parked.
-  _groups_mutate "
-g = d.setdefault('groups', {}).setdefault(a[0], {})
-g['gate'] = {'verdict': a[1], 'ts': a[4]}
-if a[1] == 'PASS':
-    g['status'] = 'passed'
-    g['finished_at'] = a[4]
-else:
-    g['gate']['reason'] = a[2]
-    if a[3]: g['gate']['timeout_s'] = int(a[3])
-    if a[5]: g['gate'].update(ran=True, fail_lines=json.loads(a[5]))   # 9.8.4: the check ran; what failed in it
-    g['fails'] = int(g.get('fails') or 0) + 1                          # and how many times the group's check failed
-    if g.get('status') != 'parked':
-        g['status'] = 'running'
-    g['finished_at'] = None
-" "$1" "$2" "$3" "$4" "$(_now)" "${5:-}"
+  _groups_mutate group-gate "$1" "$2" "$3" "$4" "$(_now)" "${5:-}"
 }
 
 # D-08: what a human does about a parked foreign commit; printed by the task gate that parks the group and by a refused reopen.
@@ -2173,31 +2145,11 @@ _group_reopen_body() {
           return 1
         fi
         # R2: a reopen revert is the CLI's own commit
-        _groups_mutate "
-d.setdefault('cli_commits', []).append(a[0])
-" "$(git -C "$abs" rev-parse HEAD)" || return 1
+        _groups_mutate cli-commit "$(git -C "$abs" rev-parse HEAD)" || return 1
       fi
     fi
     _task_box "$spec_path/tasks.md" "$n" " "
-    _groups_mutate "
-t = d.setdefault('tasks', {}).setdefault(a[0], {})
-t.setdefault('attempts_prior', []).extend(t.get('attempts') or [])
-t['attempts'] = []; t.pop('blocked', None)
-task_status(t, 'pending')
-t['attempt'] = 1
-for k in ('commit', 'passed_at', 'snapshot', 'start_sha', 'started_at'):
-    t.pop(k, None)
-t.setdefault('reopened', []).append({'ts': a[1], 'feedback': a[2] or None})
-g = d.setdefault('groups', {}).setdefault(a[3], {})
-g.pop('parked_foreign', None)   # D-08: off the branch or accepted (checked above); no other group's list is touched
-g.pop('gate', None); g.pop('fix', None)
-g.pop('finished_at', None)
-g.pop('confirmed', None)        # the person's Continue was for the group as it passed; it is asked again once it passes again
-d.pop('integration', None)      # and the merge of the groups no longer holds this group's work: integrate runs again
-if g.get('status') in ('parked', 'passed'):
-    g['status'] = 'running'
-    g.pop('parked_reason', None)
-" "$n" "$(_now)" "$feedback" "$g" || return 1
+    _groups_mutate task-reopen "$n" "$(_now)" "$feedback" "$g" || return 1
   done <<<"$chk"
   echo "OK: reopened ${tasks[*]/#/Task } in group $g"
   # M3: a task that was running when the group parked kept its work; it has no ready line in the schedule, so say how to gate it
@@ -2231,10 +2183,7 @@ cmd_group_continue() {
   [[ "$g" =~ ^G[0-9]+$ ]] || { echo "FAIL: usage: temper group continue G<n>" >&2; return 1; }
   local v; v="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" gate-verdict "$GROUPS_FILE" "$g")"
   [[ "$v" == "PASS" ]] || { echo "FAIL: group $g has not passed its gate (temper group gate $g)" >&2; return 1; }
-  _groups_mutate "
-g = d.setdefault('groups', {}).setdefault(a[0], {})
-g['confirmed'] = a[1]
-" "$g" "$(_now)" || return 1
+  _groups_mutate group-confirm "$g" "$(_now)" || return 1
   echo "OK: group $g continues"
 }
 
@@ -2358,23 +2307,7 @@ _task_start_body() {
   fi
   snap='{}'
   sha="$(git -C "$tabs" rev-parse HEAD)" || return 1
-  _groups_mutate "
-t = d.setdefault('tasks', {}).setdefault(a[0], {})
-if t.get('status') == 'running':
-    print('FAIL: Task %s is already running' % a[0], file=sys.stderr)
-    sys.exit(1)
-t.setdefault('attempts', [])
-t['group'] = a[1]
-task_status(t, 'running')
-t['attempt'] = len(t['attempts']) + 1
-t['start_sha'] = a[2]
-t['snapshot'] = json.loads(a[3])
-t['started_at'] = a[4]
-t['worktree'] = a[5]
-t['branch'] = a[6]
-t['model'] = a[7] if t['attempt'] <= 2 else a[8]
-t['start_hashes'] = json.loads(a[9] or '{}')   # 9.8.5 (Q4): the code files as this attempt found them
-" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$(_task_py codehash "$tabs" "$_T_PLAN" "$n")" || return 1
+  _groups_mutate task-start "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$(_task_py codehash "$tabs" "$_T_PLAN" "$n")" || return 1
   echo "OK: Task $n started (group $group, worktree $twt)"
 }
 
@@ -2383,11 +2316,7 @@ t['start_hashes'] = json.loads(a[9] or '{}')   # 9.8.5 (Q4): the code files as t
 _task_wt_discard() { # _task_wt_discard <N> <worktree rel> <branch>
   [[ -n "$2" ]] && git worktree remove --force "$2" >/dev/null 2>&1
   [[ -n "$3" ]] && git branch -D "$3" >/dev/null 2>&1
-  _groups_mutate "
-t = d.setdefault('tasks', {}).setdefault(a[0], {})
-t.pop('worktree', None)
-t.pop('branch', None)
-" "$1"
+  _groups_mutate task-wt-forget "$1"
 }
 
 cmd_task_show() {
@@ -2506,18 +2435,18 @@ _task_gate_body() {
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
   _usage_append task "$model" "$ms" "$n" "$group" || true
   if [[ "$verdict" == "COVERED" ]]; then   # F19: its tests pass before any change; the person decides, no attempt is spent
-    _groups_mutate "task_status(d['tasks'][a[0]], 'covered'); d['tasks'][a[0]]['covered'] = {'cmd': a[1], 'tail': a[2], 'ts': a[3]}" "$n" "$(_jget "$v" red_cmd)" "$(_jget "$v" red_tail)" "$(_now)" || return 1
+    _groups_mutate task-covered "$n" "$(_jget "$v" red_cmd)" "$(_jget "$v" red_tail)" "$(_now)" || return 1
     echo "COVERED: Task $n's tests already pass before any change; the worktree is kept with the tests"
     echo "NEXT: temper next asks the person"
     return 0
   fi
   if [[ "$verdict" == "ENV" ]]; then   # the environment failed, not the code: no attempt is spent, the worktree stays
-    _groups_mutate "d['tasks'][a[0]]['env_fault'] = {'reason': a[1], 'ts': a[2]}" "$n" "$reason" "$(_now)" || return 1
+    _groups_mutate task-env-fault "$n" "$reason" "$(_now)" || return 1
     echo "ENV: Task $n failed on the environment, not on the code: $reason"
     echo "NEXT: temper next asks the person to repair it and check again"; return 0
   fi
   if [[ "$verdict" == "AWAIT" ]]; then   # a manual task: its files are made, the person confirms them by hand (F12)
-    _groups_mutate "d['tasks'][a[0]]['awaiting'] = 'confirm'" "$n" || return 1
+    _groups_mutate task-awaiting "$n" || return 1
     echo "NEXT: temper next asks the person to confirm Task $n by hand"
     return 0
   fi
@@ -2538,21 +2467,7 @@ _task_gate_body() {
       # worktree is discarded; the next attempt starts a fresh one from the group branch.
       _task_wt_discard "$n" "$wtrel" "$(_jget "$_T_CTX" tbranch)" || return 1
     fi
-    _groups_mutate "
-t = d['tasks'][a[0]]
-def num(x): return int(x) if x.isdigit() else None
-t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3],
-    'ms': num(a[4]), 'ts': a[5], 'output': a[6]})
-task_status(t, 'failed')
-if int(a[1]) >= 3 or a[8]:
-    g = d.setdefault('groups', {}).setdefault(a[7], {})
-    g.setdefault('parked_foreign', []).extend(x for x in json.loads(a[9] or '[]') if x not in g.get('parked_foreign', []))
-    # a group already parked keeps the reason it was parked for and gains this one
-    new = a[8] or 'Task %s failed %s attempts' % (a[0], a[1])
-    old = g.get('parked_reason') if g.get('status') == 'parked' else ''
-    g['parked_reason'] = old + ' -- also: ' + new if old and new not in old else (old or new)
-    g['status'] = 'parked'
-" "$n" "$att" "$model" "$reason" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" "${fshas:-[]}" || return 1
+    _groups_mutate task-fail "$n" "$att" "$model" "$reason" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" "${fshas:-[]}" || return 1
     echo "FAIL: $reason"
     if [[ "$fshas" != "[]" && -n "$fshas" ]]; then
       local fl=(); mapfile -t fl < <(python3 -I -c "
@@ -2613,16 +2528,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
       git -C "$gabs" merge --abort >/dev/null 2>&1 || true
       [[ -n "$cf" ]] || cf="$(printf '%s' "$mout" | grep -v '^[[:space:]]*$' | head -1)"
       reason="Task $n passed but could not be merged into the group branch (${cf:-git merge failed}); its worktree is kept"
-      _groups_mutate "
-t = d['tasks'][a[0]]
-t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3], 'ts': a[4]})
-task_status(t, 'failed')
-g = d.setdefault('groups', {}).setdefault(a[5], {})
-g['status'] = 'parked'
-g['parked_reason'] = a[3]
-if a[6]:   # the commit the CLI just made on the task branch is its own, so a reopen does not take it for an agent's
-    d.setdefault('cli_commits', []).append(a[6])
-" "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$(_now)" "$group" "$sha" || return 1
+      _groups_mutate task-park "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$(_now)" "$group" "$sha" || return 1
       echo "FAIL: $reason"
       echo "NEXT: park group $group"
       return 1
@@ -2632,18 +2538,7 @@ if a[6]:   # the commit the CLI just made on the task branch is its own, so a re
     tip=""
   fi
   _task_box "$_T_SPEC/tasks.md" "$n" x
-  _groups_mutate "
-t = d['tasks'][a[0]]
-def num(x): return int(x) if x.isdigit() else None
-t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'PASS', 'reason': '',
-    'ms': num(a[3]), 'ts': a[4]})
-task_status(t, 'passed')
-t['passed_at'] = a[4]
-t['commit'] = a[7] or None
-for x in (a[5], a[6]):
-    if x:
-        d.setdefault('cli_commits', []).append(x)
-" "$n" "$(_jget "$v" attempt)" "$model" "$ms" "$(_now)" "$sha" "$mrg" "$tip" || return 1
+  _groups_mutate task-pass "$n" "$(_jget "$v" attempt)" "$model" "$ms" "$(_now)" "$sha" "$mrg" "$tip" || return 1
   _task_wt_discard "$n" "$(_jget "$_T_CTX" worktree)" "$tb" || return 1
   # F1: a task reopened with group-gate feedback answers it by passing: the CLI records the feedback-resolved row
   # that gate build requires, and marks the reopen answered so task show stops printing it
@@ -2651,10 +2546,7 @@ for x in (a[5], a[6]):
   for fid in $(python3 -I "$SCRIPTS_DIR/groups_ops.py" open-feedback "$GROUPS_FILE" "$n"); do
     _json_append "$(_evidence_file build)" "$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" feedback-resolved-row "$fid" "$n")"
   done
-  _groups_mutate "
-for r in (d['tasks'][a[0]].get('reopened') or []):
-    if r.get('feedback'): r['resolved'] = True
-" "$n" || return 1
+  _groups_mutate feedback-resolved "$n" || return 1
   echo "PASS: Task $n"
   echo "NEXT: schedule"
 }
@@ -2665,12 +2557,7 @@ for r in (d['tasks'][a[0]].get('reopened') or []):
 # (the worktrees and branches stay for diagnosis). The verdict lives in groups.json 'integration'; gate build
 # reads it. Exit 0 PASS, 1 FAIL, 3 a protected branch or an unsatisfied upstream gate (ADR 0009).
 _integ_record() { # _integ_record <verdict> <reason> [group] [files-csv] [foreign-json]
-  _groups_mutate "
-d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
-                    'files': [f for f in a[3].split(',') if f], 'ts': a[4], 'head': a[6]}
-if a[5]:
-    d['integration']['foreign'] = json.loads(a[5])   # {group: [sha, newest first]}: the person takes them out or keeps them
-" "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)"
+  _groups_mutate integration "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)"
 }
 
 cmd_integrate() {
@@ -2808,7 +2695,7 @@ cmd_task_confirm() {
   [[ "$(_jget "$_T_CTX" manual)" == "True" || "$(_jget "$_T_CTX" manual)" == "true" ]] || { echo "FAIL: Task $n is not a manual task" >&2; return 1; }
   [[ "$(_jget "$_T_CTX" status)" == "running" ]] || { echo "FAIL: Task $n is not running (temper task start $n)" >&2; return 1; }
   _lock_acquire
-  _groups_mutate "d['tasks'][a[0]]['confirmed_by'] = a[1]; d['tasks'][a[0]].pop('awaiting', None)" "$n" "$by"
+  _groups_mutate task-confirmed "$n" "$by"
   local rc=$?
   _lock_release
   [[ $rc -eq 0 ]] || return $rc
