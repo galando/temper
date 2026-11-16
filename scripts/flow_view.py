@@ -8,6 +8,7 @@ import os
 import re
 import tempfile
 
+import run_summary
 import tasks_md
 
 from flow_base import (
@@ -299,6 +300,10 @@ def write_view(doc):
         write_named(doc)
     except OSError:
         pass   # the record is a memory for the mod's guard: a launch it forgets is refused, never let through
+    try:
+        run_summary.record_ask(TEMPER, doc)   # 9.8.5 (WP05): the question asked, once, for the run's summary line
+    except (OSError, ValueError, TypeError):
+        pass   # the count of the summary never stops a view
     fd, tmp = tempfile.mkstemp(dir=TEMPER, prefix=".view.", suffix=".tmp")
     os.chmod(tmp, 0o644)
     with os.fdopen(fd, "w") as f:

@@ -16,7 +16,8 @@
 // folder is a scratch copy. The run writes, under the out folder:
 //   transcript.jsonl   every SDK message
 //   person.jsonl       every question and the answer given
-//   run.json           arm, task, rep, model, cost, time, turns, how it ended
+//   run.json           arm, task, rep, model, cost, time, turns, how it ended, and which code ran (the plugin's
+//                      version and commit, the Claude Code version, the mod on or off)
 //   work/              the repository as the arm left it (grade.py reads it)
 // The out folder defaults to $TEMPER_BENCH_RESULTS/<task>__<arm>__<rep>, else ~/temper-bench-results/...
 // It is never part of CI: it costs real model calls. Requires `npm install` in bench once.
@@ -73,18 +74,36 @@ function seed(taskDir, work) {
 }
 
 // The moves of the options Temper's CLI offers right now (label -> move), so person.mjs answers a gate
-// by what it does. Empty outside a Temper run.
+// by what it does, and the id of each question by its text (9.8.5: the scorecard groups dialogs by question id and
+// counts the steps back by move). Empty outside a Temper run.
 function temperMoves(work) {
   try {
     const n = JSON.parse(sh(TEMPER, ["next", "--json"], work));
     const m = {};
+    const qids = {};
+    const asks = [n.ask, n.ask?.more, n.ask?.accept, n.context_check].filter(Boolean);
+    for (const a of asks) if (a.question?.question && a.id) qids[a.question.question] = a.id;
+    for (const b of n.blocking_asks || []) if (b.question?.question) qids[b.question.question] = b.question_ids?.id || "intent.blocking";
     for (const o of [...(n.ask?.options || []), ...(n.ask?.more?.options || []), ...(n.context_check?.options || [])]) {
       if (o && o.label) m[o.label] = o.move ?? null;
     }
-    return { moves: m, action: n.action, stage: n.stage ?? n.run?.stage ?? null };
+    return { moves: m, qids, action: n.action, stage: n.stage ?? n.run?.stage ?? null };
   } catch {
-    return { moves: {}, action: "unknown", stage: null };
+    return { moves: {}, qids: {}, action: "unknown", stage: null };
   }
+}
+
+// Which code ran: the plugin's version and commit, and whether the mod's folder was loaded with it.
+function stamp(arm) {
+  const plugin = JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8"));
+  let commit = null;
+  try {
+    commit = sh("git", ["rev-parse", "HEAD"], PLUGIN).trim();
+  } catch {
+    commit = null;
+  }
+  return { plugin_version: plugin.version ?? null, plugin_commit: commit,
+    mod: arm === "temper" && fs.existsSync(path.join(PLUGIN, "hooks", "temper-mod")) };
 }
 
 function copySessionLog(sessionId, dest) {
@@ -161,10 +180,13 @@ async function main() {
       if (toolName !== "AskUserQuestion") return { behavior: "allow", updatedInput: input };
       questions++;
       if (questions > 60) return { behavior: "deny", message: "The person has left: too many questions.", interrupt: true };
-      const ctx = a.arm === "temper" ? temperMoves(work) : { moves: {}, action: null, stage: null };
+      const ctx = a.arm === "temper" ? temperMoves(work) : { moves: {}, qids: {}, action: null, stage: null };
+      // each line: the dialog it was asked in (a dialog of four Blocking questions is four lines with one index), the
+      // question's id and the move of the answer, when the CLI gave them
+      const ids = (q, ans) => ({ dialog: questions, qid: ctx.qids[q] ?? null, move: ctx.moves[ans] ?? null });
       if (!brief) {
         const { updatedInput, log } = answer(input, ctx.moves);
-        for (const l of log) px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...l }) + "\n");
+        for (const l of log) px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...ids(l.question, l.answer), ...l }) + "\n");
         return { behavior: "allow", updatedInput };
       }
       // Vague task: a Temper gate (its options are the CLI's) and a request for a typed name keep the fixed
@@ -184,8 +206,8 @@ async function main() {
           used.forEach((u) => elicited.add(u));
         }
         answers[q.question] = ans;
-        px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, who, header: q.header, question: q.question,
-          options: opts.map((o) => o.label), answer: ans, used }) + "\n");
+        px.write(JSON.stringify({ t: Date.now() - t0, stage: ctx.stage, ...ids(q.question, ans), who, header: q.header,
+          question: q.question, options: opts.map((o) => o.label), answer: ans, used }) + "\n");
       }
       return { behavior: "allow", updatedInput: { ...input, answers } };
     },
@@ -193,6 +215,7 @@ async function main() {
 
   const results = [];
   let sessionId = null;
+  let claudeCode = null;
   let ended = "done";
   // Temper can end a turn before the run is over (an agent in the background, a stop it asks for). A
   // person would type to go on, so the harness resumes the session with the same command, at most 5 times.
@@ -207,6 +230,7 @@ async function main() {
       for await (const m of query({ prompt: p, options: { ...options, ...(sessionId ? { resume: sessionId } : {}) } })) {
         tx.write(JSON.stringify(m) + "\n");
         if (m.session_id) sessionId = m.session_id;
+        if (m.type === "system" && m.subtype === "init" && m.claude_code_version) claudeCode = m.claude_code_version;
         if (m.type === "result") results.push(m);
         if (m.type === "assistant" && !m.parent_tool_use_id) {
           const t = (m.message?.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
@@ -247,6 +271,7 @@ async function main() {
   const totalCost = cumulative ? Number(results.at(-1).total_cost_usd) || 0 : sum("total_cost_usd");
   const run = {
     task: a.task, arm: a.arm, rep: Number(a.rep), base, ...(a["task-dir"] ? { task_dir: taskDir } : {}),
+    ...stamp(a.arm), claude_code_version: claudeCode,
     model_requested: a.model || "default",
     models_cost_usd: models,
     cost_usd: Number(totalCost.toFixed(4)),

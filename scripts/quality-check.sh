@@ -155,6 +155,16 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# --- The growth caps (9.8.5): each `now` of scripts/caps.json equals its measure, and no `final` was raised ---
+if caps_out="$(python3 -I "$REPO_ROOT/scripts/check_caps.py" 2>&1)"; then
+  echo "[PASS] Growth caps (scripts/check_caps.py): ${caps_out##*$'\n'}"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] Growth caps (scripts/check_caps.py):"
+  printf '%s\n' "$caps_out" | sed 's/^/  /'
+  FAIL=$((FAIL+1))
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Summary ==="

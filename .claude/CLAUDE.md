@@ -65,7 +65,10 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
   stage's return box: a brief must never point a clean-context subprocess at an
   orchestrator file); new commands and agents must be listed in `.claude-plugin/plugin.json`;
   the person decides only in a question dialog, so never add a button that decides to the
-  mod, and never give a stage command a flow of its own (it is a door into `/temper`).
+  mod, and never give a stage command a flow of its own (it is a door into `/temper`); a cap
+  of `scripts/caps.json` is never raised by a building session (`now` follows the measure,
+  `final` never moves), and a count of the floor (`scripts/e2e/floor.json`) moves only in the
+  commit that moves the behaviour (`bun scripts/e2e/run.ts all <name> --floor scripts/e2e/floor.json`).
 
 <!-- Nothing follows. Do not add a generated advice section here: validate-docs.sh
      rejects the TOKENOMICS:START / TOKENOMICS:END markers (docs/history/tokenomics.md).
