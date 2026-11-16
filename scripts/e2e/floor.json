@@ -84,6 +84,95 @@
     }
    }
   },
+  "ask-every-stage": {
+   "plain": {
+    "now": {
+     "dialogs": 8,
+     "by_stage": {
+      "build": 3,
+      "check": 1,
+      "intent": 1,
+      "plan": 2,
+      "review": 1
+     },
+     "by_kind": {
+      "context": 1,
+      "gate": 5,
+      "group": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 0,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 3
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 8,
+     "by_stage": {
+      "build": 3,
+      "check": 1,
+      "intent": 1,
+      "plan": 2,
+      "review": 1
+     },
+     "by_kind": {
+      "context": 1,
+      "gate": 5,
+      "group": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 0,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 3
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 8,
+     "by_stage": {
+      "build": 3,
+      "check": 1,
+      "intent": 1,
+      "plan": 2,
+      "review": 1
+     },
+     "by_kind": {
+      "context": 1,
+      "gate": 5,
+      "group": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 11,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 3
+    }
+   }
+  },
   "branch-clash": {
    "plain": {
     "now": {
