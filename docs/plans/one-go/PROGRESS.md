@@ -1,9 +1,9 @@
 # Progress of the one pass build
 
 - Branch: `claude/fervent-shannon-gtbnuf`
-- Pull request: not opened yet
+- Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-16 14:54 UTC
+- Watch: one check is scheduled; the next is due 2026-11-16 23:04 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -47,7 +47,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP04 | done | `7fe865f` | 2026-11-16 | 35 question ids and 51 option ids in flow_base; the ids of every dialog sit beside it, never inside |
 | WP05 | done | `fbc75ec` | 2026-11-16 | floor of default-run 8 dialogs and 6 launches in every mode, fix 4 and 3; caps file, stops list, run summary, replay base 9 questions and 7 launches |
 | WP06 | done | `8b57b10` | 2026-11-16 | slow and broken scripted projects, four scenarios on the list, the expected to fail rule of the scenarios; whole selftest PASS 2710 |
-| WP07 | todo | | | |
+| WP07 | done | `3d43388` | 2026-11-16 | case files 43 to 46 and 17 acceptance scenarios written failing first; check_done, check_changed_tests, verify.sh final; expected to fail 112 (92 selftest, 20 scenarios) |
 | WP08 | todo | | | |
 | WP09 | todo | | | |
 | WP10 | todo | | | |
@@ -108,4 +108,13 @@ None.
 - 2026-11-16 WP06: the slow project keeps the replay's pom with JaCoCo bound, because the plan gate's row `maven group verify` refuses a Maven group without it; "no coverage tool" means no coverage command Temper can run.
 - 2026-11-16 WP06: `temper init` writes no config, so the fixtures also run `temper config init`, as `/temper:init` does.
 - 2026-11-16 WP06: `scripts/check_floor.py` accepts a floor entry with only a `final` while its scenario is on the expected to fail list; `--final` still fails on it.
+- 2026-11-16 WP07: `check_changed_tests.py` takes the second base of D84b as the first add on the first parent line (the kit's merge `3f186d4` for `done.md`), not the kit's first cut, which the kit itself rewrote; a change inside a multi line `$( ... )` with no backslash is not detected and is listed by hand.
+- 2026-11-16 WP07: the scenario half of the expected to fail rule is not a bash case (the selftest job of CI has no bun); it stays the `verify.sh` step `bun scripts/e2e/xfail.ts --check`, and case 43 asserts that the step is there.
+- 2026-11-16 WP07: `verify.sh final` requires every scorecard line to pass, while note 2 of `done.md` expects D91 to miss; a bench round that ran makes `final` red there unless the owner decides otherwise (for WP32).
+- 2026-11-16 WP07: five listed scenarios fail in more than the 10 seconds of the spec (integrate-fail driver 30 s, budget-stop 29 s, stop-keeps-mode 26 s, slow-at55 23 s, broken-flaky 22 s); each fails where its promise breaks, after Build starts, so they were left as they are.
+- 2026-11-16 WP07: ask-every-stage (D17) passes at the head and had no floor entry; its now counts went into `scripts/e2e/floor.json` (dialogs 8 in every mode), with no `final` in `done.md`.
+- 2026-11-16 WP07: D33a is one joined assertion over the 30 stops (26 hold at the head), so one token covers them; every stop's check in `scripts/stops.json` names it.
+- 2026-11-16 WP07: rows that differ from their package spec, where the case follows the row: D42 (Teach Me stays in reach at a passed Review with an open Medium finding; WP08), D57a (the Medium finding is named at the commit question; WP08 turns it green only with that), D61 (a GONE key is named once by `temper config show`; WP29).
+- 2026-11-16 WP07: passing at the head and so not listed, though `done.md` names a later package: D64b (WP24), D60a, D60b, D60d, D60e; D29b reads the page rule of `commands/temper.md`, because the selftest job cannot run the mod.
+- 2026-11-16 WP07: the merges of the first stage (`3c9dd27`, `e5935e8`) carry no attribution lines; they were not rewritten.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
