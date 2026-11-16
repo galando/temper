@@ -1,0 +1,8 @@
+# The checks still expected to fail: one check a line, the package that makes it pass, the row of done.md it proves.
+# selftest:<token> lists every assertion whose name starts with the token and a space; e2e:<scenario> lists a scenario in
+# every mode, e2e:<scenario>:<mode> in one. A line leaves in the commit that makes its check pass, and never comes back.
+# suite:name                   passes after   promise
+e2e:slow-first-run             WP23           D11
+e2e:slow-at55                  WP20           D12
+e2e:broken-first-run           WP21           D13
+e2e:broken-flaky               WP22           D14
