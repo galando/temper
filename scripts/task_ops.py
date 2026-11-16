@@ -13,9 +13,10 @@ Standard library only.
 """
 import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
-from run_env import run_cmd, test_env  # noqa: F401
+from run_env import run_cached, run_cmd, test_env  # noqa: F401
 import scenario_ops
 import maven_loop
+import preflight
 import tasks_md
 
 # The project's folder from the top of its repository ("" at the top). git status and git diff name a path from the
@@ -120,15 +121,39 @@ def show(out, rc, keep=12):
     sys.stdout.flush()
 
 FAIL_LINE = re.compile(r'\bFAIL(?:ED|URE|S)?\b|\bERROR\b|^not ok\b|^E\s+\S|Error:')
+# 9.8.5 (S4): a log line a passing test printed (`20:01:44.264 [main] ERROR com.x.Y -- ...`) says nothing about the run
+LOG_LINE = re.compile(r'^\d{1,2}:\d{2}:\d{2}(?:[.,]\d+)?\s+\[[^\]]*\]\s+(?:ERROR|WARN)\b')
+# the build tool's own summary of what failed, before any other line: Maven's goal, a JaCoCo rule, a failed test's name
+SUMMARY = (re.compile(r'temper-setup: FAIL'), re.compile(r'Failed to execute goal'), re.compile(r'Rule violated'),
+           re.compile(r'^\[ERROR\]\s+(?:Tests run:.*FAILURE|[\w.$]+\.\w+:\d+\b)'), re.compile(r'<<< (?:FAILURE|ERROR)!'))
 
-def fail_lines(out, keep=8):
-    """9.8.4: the lines of a failing run that say what failed (FAIL, FAILED, ERROR, not ok, an exception), first ones first,
-    read from the whole output; when none matches, the last three lines. A question shows the first few, so the person
-    reads the failure, not the tail of whatever the runner printed last."""
+def fail_lines(out, keep=8, rc=None):
+    """What a failing run says failed, most telling first: a time-out (exit 124); the build tool's summary (the last Maven
+    `Failed to execute goal` line, `Rule violated` lines, the names of failed tests); then the lines that say FAIL, FAILED,
+    ERROR, not ok or an exception, first ones first, without the log lines a passing test printed. With none of these, the
+    LAST three lines of the output, never the first (9.8.4, 9.8.5)."""
     lines = [' '.join(l.split()) for l in out.decode('utf-8', 'replace').splitlines()]
     lines = [l[:240] for l in lines if l]
-    hits = list(dict.fromkeys(l for l in lines if FAIL_LINE.search(l)))
-    return hits[:keep] if hits else lines[-3:]
+    head = ['the command did not finish within its time limit (exit 124)'] if rc == 124 else []
+    for pat in SUMMARY:
+        found = [l for l in lines if pat.search(l)]
+        head += found[-1:] if pat.pattern == 'Failed to execute goal' else found[:4]
+    hits = [l for l in lines if FAIL_LINE.search(l) and not LOG_LINE.search(l)]
+    picked = list(dict.fromkeys(head + hits))
+    return picked[:keep] if picked else lines[-3:]
+
+def _shape(text):
+    """A signature as code reads it: qualifiers taken off names (`MonitoringSummary.AgencyHealth` and an imported
+    `AgencyHealth` are the same type), and the spaces that do not separate two words."""
+    t = re.sub(r'\b(?:[A-Za-z_]\w*\.)+(?=[A-Za-z_])', '', text)
+    t = re.sub(r'\s+', ' ', t)
+    return re.sub(r'\s*([(),<>\[\]{}:;=])\s*', r'\1', t).strip()
+
+def literal_found(literal, text):
+    """9.8.5 (Q5): an Interfaces literal is in the file as written, or with the same shape once names are unqualified:
+    a planned full type name may be imported and used short, and the reverse (an agent once rewrote three signatures
+    to full names only to pass a text match)."""
+    return literal in text or _shape(literal) in _shape(text)
 
 def red_why(r):
     """Why a failing RED run is not evidence ('' when it is): the command never ran the tests."""
@@ -139,6 +164,32 @@ def red_why(r):
     if re.search(r'(^|[\s/\'"])pytest\b', cmd) and rc != 1:
         return 'pytest exits 1 when a test fails; %s is a collection, import or usage error' % rc
     return ''
+
+TEST_FILE = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\.py$|_test\.(py|go|sh)$|\.(test|spec)\.[cm]?[jt]sx?$|Tests?\.(java|kt|cs)$|_spec\.rb$')
+
+def file_hash(wt, f):
+    try:
+        return hashlib.sha256(open(os.path.join(wt, f), 'rb').read()).hexdigest()
+    except OSError:
+        return 'absent'
+
+def red_staged(r, wt, start, strict):
+    """9.8.5 (Q4): why a RED run is no failing-first proof, or ''. A RED whose code files are already the final code,
+    when this attempt wrote that code (it differs from the code the attempt started with), came after the code. With
+    build.red-before-code: true, a RED counts only when every code file is still as the attempt found it (no stub
+    either: a compile failure is the RED). A task with no declared code file is not judged here."""
+    h = r.get('red_hashes') or {}
+    if not h:
+        return ''
+    if strict:
+        moved = sorted(f for f, v in h.items() if start and v != start.get(f, 'absent'))
+        return ('the RED run came after a change to %s (build.red-before-code: the test fails first, on the code as it was)'
+                % ', '.join(moved)) if moved else ''
+    final = {f: file_hash(wt, f) for f in h}
+    done = all(v != 'absent' and final[f] == v for f, v in h.items())
+    written = not start or any(final[f] != start.get(f, 'absent') for f in h)
+    return ('the RED run was made on the final code (%s unchanged since): write the test first, see it fail, then the code'
+            % ', '.join(sorted(h))) if done and written else ''
 
 def red_ok(r):
     """A RED run counts when it failed on the tests themselves, not before they ran."""
@@ -365,6 +416,12 @@ elif mode == 'show':
         body += pb.decode('utf-8', 'ignore')
     sys.stdout.write(body)
 
+elif mode == 'codehash':
+    # codehash <worktree> <plan> <N>: the hash of each declared code file of Task N (not its tests) as JSON
+    wt, plan, n = sys.argv[2], json.loads(sys.argv[3]), int(sys.argv[4])
+    files = next((x['files'] for x in plan['tasks'] if x['n'] == n), [])
+    print(json.dumps({f: file_hash(wt, f) for f in files if not TEST_FILE.search(f)}))
+
 elif mode == 'testrun':
     wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
     cmd = sys.argv[10:]   # argv[9] is the '--' separator
@@ -381,11 +438,21 @@ elif mode == 'testrun':
     byproducts = sorted(untracked(wt) - before)
     sys.stdout.write(out.decode('utf-8', 'replace'))
     sys.stdout.flush()
+    hashes = {}
+    if phase == 'red':   # 9.8.5 (Q4): what the declared code files held at the failing run
+        slug = load_run(os.environ.get('TEMPER_GROUPS_FILE', '')).get('slug', '')
+        try:
+            files = next((x['files'] for x in tasks_md.parse(os.path.join('.temper', 'specs', slug, 'tasks.md'))['tasks'] if x['n'] == int(n)), [])
+        except Exception:
+            files = []
+        hashes = {f: file_hash(wt, f) for f in files if not TEST_FILE.search(f)}
     row = {'claim': 'Task %s unit test %s' % (n, phase), 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': phase, 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'task': int(n), 'group': group,
            'attempt': int(attempt), 'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
            'output': out[-4096:].decode('utf-8', 'replace'), 'byproducts': byproducts[:1000]}
+    if hashes:
+        row['red_hashes'] = hashes
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
@@ -394,15 +461,15 @@ elif mode == 'grouprun':
     # group and carries phase 'group', so it never counts as a task RED or GREEN run
     wt, timeout, rowfile, group = sys.argv[2:6]
     cmd = sys.argv[7:]    # argv[6] is the '--' separator
-    out, rc = run_cmd(wt, timeout, cmd)
+    out, rc, reused = run_cached(wt, timeout, cmd)
     show(out, rc)
     row = {'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'group', 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
            'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-           'output': out[-4096:].decode('utf-8', 'replace')}
+           'output': out[-4096:].decode('utf-8', 'replace'), 'reused': reused or None}
     if rc != 0:
-        row['fail_lines'] = fail_lines(out)
+        row['fail_lines'] = fail_lines(out, rc=rc)
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
@@ -418,12 +485,12 @@ elif mode == 'integrun':
     # out of the task RED/GREEN counts
     wt, timeout, rowfile = sys.argv[2:5]
     cmd = sys.argv[6:]    # argv[5] is the '--' separator
-    out, rc = run_cmd(wt, timeout, cmd)
+    out, rc, reused = run_cached(wt, timeout, cmd)
     show(out, rc)
     row = {'claim': 'Integration suite', 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'integration', 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'executed_by': 'cli',
-           'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'output': out[-4096:].decode('utf-8', 'replace')}
+           'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'output': out[-4096:].decode('utf-8', 'replace'), 'reused': reused or None}
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
@@ -450,7 +517,7 @@ elif mode == 'ifcheck':
     # ifcheck <interfaces-json>: the first Interfaces entry whose literal is not in its file at HEAD
     for x in json.loads(sys.argv[2]):
         r = subprocess.run(['git', 'show', 'HEAD:' + x['path']], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        if r.returncode != 0 or x['literal'] not in r.stdout.decode('utf-8', 'replace'):
+        if r.returncode != 0 or not literal_found(x['literal'], r.stdout.decode('utf-8', 'replace')):
             print('interface missing: %s in %s' % (x['literal'], x['path']))
             sys.exit(1)
 
@@ -619,6 +686,14 @@ elif mode == 'verdict':
     reason = ''
     if green is None:
         reason = 'no green run for this task and attempt'
+    # 9.8.5 (Q4): a RED counts as the failing-first proof only when the attempt had not finished the code before it
+    start = (((run.get('tasks') or {}).get(str(n)) or {}).get('start_hashes')) or {}
+    strict = os.environ.get('TEMPER_RED_BEFORE_CODE', '').lower() == 'true'
+    reds = [r for r in mine[:green] if red_ok(r)] if green is not None else []
+    if reds and all(red_staged(r, wt, start, strict) for r in reds):
+        reason = red_staged(reds[-1], wt, start, strict)
+    elif green is None:
+        pass
     elif not any(red_ok(r) for r in mine[:green]):
         bad = [r for r in mine[:green] if r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
         reason = ('need a failing run before a passing run for this task and attempt' if not bad else
@@ -680,6 +755,16 @@ elif mode == 'verdict':
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     verdict = 'FAIL' if reason else ('AWAIT' if c['manual'] and not c['confirmed_by'] else 'PASS')
+    # ENV: the attempt's last run is a failing GREEN whose output names an environment fault (preflight.env_fault; a
+    # time-out is the code's here), a RED came before it, and nothing else is wrong. The task does not pass: it keeps its
+    # attempt and its worktree, and the person repairs the environment and checks it again.
+    env_why = ''
+    if (verdict == 'FAIL' and green is None and not problems and not c['manual'] and mine and mine[-1].get('phase') == 'green'
+            and mine[-1].get('exit_code') not in (0, None) and any(red_ok(r) for r in mine[:-1])):
+        env_why = preflight.env_fault(mine[-1].get('output') or '', mine[-1].get('exit_code'), mine[-1].get('cmd') or '',
+                                      timeout_is_env=False)
+    if env_why:
+        verdict, reason = 'ENV', env_why
     red_cmd = red_tail = ''
     if covered:
         verdict, red_cmd = 'COVERED', mine[-1].get('cmd') or ''

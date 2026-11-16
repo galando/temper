@@ -15,7 +15,7 @@ Modes (python3 plan_ops.py <mode> ...):
   map SPEC_DIR                 the map as JSON for `temper next` and the view
 
 The CLI writes the `reviewed:` line, never Plan and never a model by hand: auto mode may refuse an edit of it
-(docs/auto-mode.md). Text is data: one line, at most 100 characters. Standard library only.
+(docs/auto-mode.md). Text is data: one line, at most 100 characters (an answer: 2000, shown cut to the line). Standard library only.
 """
 import json
 import os
@@ -25,6 +25,7 @@ import sys
 KINDS = ("use", "ignore", "gap")
 MAX_ENTRIES = 12
 MAX_LINE = 100
+MAX_ANSWER = 2000   # the person's answer to the Context check; plan.md shows its first MAX_LINE characters
 HEADING = re.compile(r"^##\s+Context Map\s*$", re.M)
 ENTRY = re.compile(r"^-\s+(use|ignore|gap|reviewed|answer|focus):\s*(.*?)\s*$")
 
@@ -127,8 +128,12 @@ def review(spec, answer, focus):
     if sec is None:
         raise ValueError("plan.md has no ## Context Map to review")
     answer = " ".join(str(answer).split())
-    if not answer or len(answer) > MAX_LINE:
-        raise ValueError("the answer is one line of at most %d characters" % MAX_LINE)
+    if not answer or len(answer) > MAX_ANSWER:
+        raise ValueError("the answer is one line of at most %d characters" % MAX_ANSWER)
+    # 9.8.5: the person's whole answer goes to Plan (temper plan review --redo records it as their note); plan.md keeps a
+    # line that fits the map's limit. "Include what is left out" carries the whole list, which never fit in 100.
+    shown = MAX_LINE - len("- answer: ")
+    answer = answer if len(answer) <= shown else answer[:shown - 3].rstrip() + "..."
     focus = [" ".join(str(f).split()) for f in focus]
     if any(not f or len(f) > MAX_LINE for f in focus):
         raise ValueError("a focus area is one line of at most %d characters" % MAX_LINE)

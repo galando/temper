@@ -136,7 +136,10 @@ Any other failure of it still stops the action.
 - **Exactly as given.** The header, the question, every option label and description, in the order
   given, four options at most. With the Temper mod, an answer counts only when it matches the question
   the CLI wrote for the step the run is at; a reworded question is no answer, and the call it would
-  allow is refused. Never add "(Recommended)" or any other word.
+  allow is refused. Never add "(Recommended)" or any other word. When the person needs a fact the question
+  lacks (what a tool showed, why an option will not help), put it in the question through the CLI: run
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set ask_note '{step}: {the fact, one line}'` ({step} is `run.step` of `temper next --json`), then run `temper go` again: its question ends with
+  your note, marked as yours.
 - **The person decides.** Only the person's choice in the dialog is a decision. Never choose for
   them, never answer a question for them, and never choose "Start over" yourself.
 - **Names.** An option with `answer_question` needs a typed answer, such as the name of the person who

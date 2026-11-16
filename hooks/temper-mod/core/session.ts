@@ -117,6 +117,22 @@ const DEVICES = new Set(['/dev/null', '/dev/stdout', '/dev/stderr'])
 
 const base = (w: string): string => (w.split('/').pop() ?? '').toLowerCase()
 
+// 9.8.5 (U4): a push of the run's work to a backup branch (`git push origin HEAD:temper-backup/<name>`) during a run: the
+// merged work of a long run lived only in the container for hours. Only a `temper-backup/` destination, never a force,
+// a delete, a mirror, every branch or the tags; any other push stays the person's.
+const BACKUP_DEST = /^(?:refs\/heads\/)?temper-backup\/[A-Za-z0-9._\/-]+$/
+function backupPush(args: readonly string[]): boolean {
+  const opts = args.filter(a => a.startsWith('-'))
+  if (opts.some(o => !['-u', '--set-upstream', '-q', '--quiet'].includes(o))) return false
+  const pos = args.filter(a => !a.startsWith('-'))
+  if (pos.length < 2) return false
+  return pos.slice(1).every(spec => {
+    if (spec.startsWith('+')) return false
+    const dest = spec.includes(':') ? spec.slice(spec.indexOf(':') + 1) : ''
+    return dest !== '' && spec.indexOf(':') > 0 && BACKUP_DEST.test(dest)
+  })
+}
+
 // Why a statement is not one the session may run, or null when it may.
 function statementWhy(words: readonly string[], publish: boolean, cliVars: ReadonlySet<string> = new Set()): string | null {
   let i = 0
@@ -135,6 +151,7 @@ function statementWhy(words: readonly string[], publish: boolean, cliVars: Reado
     const args = rest.slice(k + 1)
     if (GIT_READS.has(sub)) return null
     if (publish && (sub === 'push' || sub === 'fetch' || sub === 'remote')) return null
+    if (sub === 'push' && backupPush(args)) return null
     if (sub === 'branch' && args.every(a => ['--show-current', '--list', '-a', '-r', '-v', '-vv', '--all'].includes(a))) return null
     if (sub === 'config' && args.some(a => ['--get', '--get-all', '--get-regexp', '--list', '-l'].includes(a))) return null
     if (sub === 'remote' && args.every(a => a === '-v')) return null

@@ -91,6 +91,7 @@ TEMPER_DIR="$REPO_ROOT/.temper"
 # TEMPER_CONFIG may name another config file to READ (the guard scripts pass the project's
 # own); nothing in this script ever writes to it.
 CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
+export TEMPER_SETUP_CONFIG="$CONFIG_FILE"   # the setup block (scripts/run_env.py)
 STATE_FILE="$TEMPER_DIR/build-state.json"
 LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
 GATES_FILE="$TEMPER_DIR/gates.json"
@@ -418,9 +419,8 @@ _lock_acquire() {
       continue
     fi
     if (( $(date +%s) >= deadline )); then
-      # A holder that is alive is working (on a loaded machine many writers queue for longer than the wait): wait on for it,
-      # up to TEMPER_LOCK_MAX_S, rather than write beside it and lose a row. A holder that is gone or unknown, or one past that
-      # bound, is written past as before (fail open: a stuck holder never wedges a run).
+      # A holder that is alive is working: wait on for it, up to TEMPER_LOCK_MAX_S (120 s), rather than write beside it and
+      # lose a row. A gone holder's old lock is broken and taken. Past that bound the write fails (9.8.5): nothing is written.
       [[ -d "$_LOCK_DIR" ]] || continue   # freed since the mkdir: take it, never write past a lock that is gone
       local holder; holder="$(cat "$_LOCK_DIR/owner" 2>/dev/null)"; holder="${holder%%.*}"
       [[ -n "$holder" || -d "$_LOCK_DIR" ]] || continue
@@ -429,15 +429,15 @@ _lock_acquire() {
            && python3 -I -c "import os,sys,time
 try: sys.exit(time.time() - os.path.getmtime(sys.argv[1]) > 2)
 except OSError: pass" "$_LOCK_DIR" 2>/dev/null; }; } \
-         && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )); then
+         && (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-120} )); then
         python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
       fi
       # its owner is gone: break it and take it (within the same bound as a live holder)
-      if (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-60} )) && _lock_older_than_30s "$_LOCK_DIR"; then
+      if (( $(date +%s) < deadline - ${TEMPER_LOCK_WAIT_S:-10} + ${TEMPER_LOCK_MAX_S:-120} )) && _lock_older_than_30s "$_LOCK_DIR"; then
         _lock_break_stale; python3 -I -c "import time; time.sleep(0.02)"; i=$(( i + 1 )); continue
       fi
-      echo "WARN: could not take $_LOCK_DIR within ${TEMPER_LOCK_WAIT_S:-10}s; writing without the lock" >&2
-      return 0
+      echo "FAIL: $_LOCK_DIR is held (owner ${holder:-unknown}) past ${TEMPER_LOCK_MAX_S:-120}s; nothing was written. Run the call again" >&2
+      exit 75   # 9.8.5 (Q9): never write without the lock
     fi
     python3 -I -c "import time; time.sleep(0.02)"
     i=$(( i + 1 ))
@@ -1532,6 +1532,7 @@ cmd_evidence_add() {
   done
   case "$kind" in ""|input|edit) ;; *) echo "FAIL: --kind takes input or edit (a note for the next agent, or a change made for the person)" >&2; return 1 ;; esac
   [[ -z "$kind" || "$phase" == "note" ]] || { echo "FAIL: --kind goes with --phase note" >&2; return 1; }
+  [[ "$kind" == input ]] && label=PERSON   # 9.8.5 (U5): the person's own words, not a heuristic
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
@@ -1597,7 +1598,7 @@ cmd_evidence_list() {
 import json, sys
 for i, e in enumerate(json.load(open(sys.argv[1])), 1):
     mark = 'OK ' if (e.get('exit_code') in (0, None)) else 'ERR'
-    line = f\"#{i} [{e.get('label')}] {mark} {e.get('claim')}\"
+    line = f\"#{i} [{e.get('label')}] {mark} {e.get('claim')}\" + (f\" [void: {e['voided'].get('reason')}]\" if isinstance(e.get('voided'), dict) else '')
     if e.get('severity'):
         line += f\" (severity: {e.get('severity')})\"
     if e.get('resolved'):
@@ -1799,9 +1800,11 @@ cmd_evidence() {
     list) cmd_evidence_list "$@" ;;
     resolve) cmd_evidence_resolve "$@" ;;
     accept) cmd_evidence_accept "$@" ;;
+    void) local st="" id="" why=""; while [[ $# -gt 0 ]]; do case "$1" in --stage) st="$2";; --id) id="$2";; --reason) why="$2";; esac; shift 2 || break; done
+          _stage_ok "$st" || { _stage_refuse "$st"; return 1; }; _lock_acquire; python3 -E -s "$SCRIPTS_DIR/runs.py" void "$(_evidence_file "$st")" "$id" "$why"; local rc=$?; _lock_release; return $rc ;;
     clear) cmd_evidence_clear "$@" ;;
     contest|escalate) _evidence_answer "$sub" "$@" ;;
-    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|accept|void|contest|escalate|clear> ..." >&2; return 1 ;;
   esac
 }
 
@@ -1895,29 +1898,6 @@ _clear_evidence_downstream() { # _clear_evidence_downstream <to> — truncates e
 # Purpose-built evidence queries — every value crosses the shell/python boundary as an
 # argv element, never interpolated into python source, so no claim/detail text can ever
 # be misparsed as code.
-
-_ev_count_matching() { # _ev_count_matching <stage> <keyword-regex|""> <phase|""> <exit:any|0|nonzero>
-  local stage="$1" keyword="$2" phase="$3" exitfilter="$4"
-  local file; file="$(_evidence_file "$stage")"
-  [[ -f "$file" ]] || { echo 0; return; }
-  python3 -I -c "
-import json, sys, re
-file, keyword, phase, exitfilter = sys.argv[1:5]
-entries = json.load(open(file))
-n = 0
-for e in entries:
-    if keyword and not re.search(keyword, e.get('claim') or '', re.I):
-        continue
-    if phase and e.get('phase') != phase:
-        continue
-    if exitfilter == '0' and e.get('exit_code') != 0:
-        continue
-    if exitfilter == 'nonzero' and e.get('exit_code') in (0, None):
-        continue
-    n += 1
-print(n)
-" "$file" "$keyword" "$phase" "$exitfilter"
-}
 
 _ev_last_value() { # _ev_last_value <stage> <keyword-regex|""> -> last matching entry's numeric value, or ""
   local stage="$1" keyword="$2"
@@ -3007,7 +2987,8 @@ t['started_at'] = a[4]
 t['worktree'] = a[5]
 t['branch'] = a[6]
 t['model'] = a[7] if t['attempt'] <= 2 else a[8]
-" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" || return 1
+t['start_hashes'] = json.loads(a[9] or '{}')   # 9.8.5 (Q4): the code files as this attempt found them
+" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$(_task_py codehash "$tabs" "$_T_PLAN" "$n")" || return 1
   echo "OK: Task $n started (group $group, worktree $twt)"
 }
 
@@ -3131,7 +3112,7 @@ _task_gate_body() {
     return 1
   fi
   local v verdict reason
-  v="$(_task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
+  v="$(TEMPER_RED_BEFORE_CODE="$(_cfg_get build.red-before-code false)" _task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
   verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
   [[ -n "${TEMPER_ACCEPT_COVERED:-}" && "$verdict" == "COVERED" ]] && verdict=PASS   # the person accepted it (task accept)
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
@@ -3143,6 +3124,11 @@ _task_gate_body() {
     echo "COVERED: Task $n's tests already pass before any change; the worktree is kept with the tests"
     echo "NEXT: temper next asks the person"
     return 0
+  fi
+  if [[ "$verdict" == "ENV" ]]; then   # the environment failed, not the code: no attempt is spent, the worktree stays
+    _groups_mutate "d['tasks'][a[0]]['env_fault'] = {'reason': a[1], 'ts': a[2]}" "$n" "$reason" "$(_now)" || return 1
+    echo "ENV: Task $n failed on the environment, not on the code: $reason"
+    echo "NEXT: temper next asks the person to repair it and check again"; return 0
   fi
   if [[ "$verdict" == "AWAIT" ]]; then   # a manual task: its files are made, the person confirms them by hand (F12)
     _groups_mutate "d['tasks'][a[0]]['awaiting'] = 'confirm'" "$n" || return 1
@@ -3306,10 +3292,10 @@ for r in (d['tasks'][a[0]].get('reopened') or []):
 _integ_record() { # _integ_record <verdict> <reason> [group] [files-csv] [foreign-json]
   _groups_mutate "
 d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
-                    'files': [f for f in a[3].split(',') if f], 'ts': a[4]}
+                    'files': [f for f in a[3].split(',') if f], 'ts': a[4], 'head': a[6]}
 if a[5]:
     d['integration']['foreign'] = json.loads(a[5])   # {group: [sha, newest first]}: the person takes them out or keeps them
-" "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}"
+" "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)"
 }
 
 cmd_integrate() {
@@ -3320,12 +3306,25 @@ cmd_integrate() {
     echo "FAIL: no grouped run to integrate (temper group start first)" >&2
     return 1
   fi
-  if [[ "$(python3 -I -c "
+  local iv; iv="$(python3 -I -c "
 import json, sys
 try:
-    print((json.load(open(sys.argv[1])).get('integration') or {}).get('verdict', ''))
+    i = json.load(open(sys.argv[1])).get('integration') or {}
+    print(i.get('verdict', ''), i.get('head', ''))
 except Exception:
-    print('')" "$GROUPS_FILE")" == "PASS" ]]; then
+    print('')" "$GROUPS_FILE")"
+  if [[ "${iv%% *}" == "PASS" ]]; then
+    if [[ "${iv#* }" != "$(git rev-parse HEAD 2>/dev/null)" ]]; then   # Q7: commits since the last integrate: the suite runs again
+      local s rf; s="$(_jget "$(_task_py integplan "$(_grouped_parse "$spec_path/tasks.md")" "$GROUPS_FILE")" integration)"
+      if [[ -n "$s" ]]; then
+        rf="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
+        _task_py integrun "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$rf" -- "$s"; local rc=$?
+        [[ -s "$rf" ]] && _json_append "$(_evidence_file build)" "$(cat "$rf")"; rm -f "$rf"
+        [[ $rc -eq 0 ]] || { _integ_record FAIL "integration suite failed after new commits (exit $rc): $s"; echo "FAIL: integration suite failed (exit $rc): $s" >&2; return 1; }
+      fi
+      _integ_record PASS "" || return 1
+      echo "OK: new commits since the last integrate; the Integration suite ran again and passed"
+    fi
     # 9.8.4: after a fix pass, the scenario tests run again on the fixed tree (a step back cleared Build's rows)
     [[ -f "$spec_path/intent.md" ]] && python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" integrate "$spec_path/intent.md" "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$(_evidence_file build)"
     echo "OK: already integrated; the scenario tests ran again"
@@ -3598,6 +3597,8 @@ gate_plan() {
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
     done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$STATE_FILE" "$(_cfg_get plan.fresh-review ask)" "$(_cfg_get plan.fresh-review-twice true)" "$(_cfg_get plan.fresh-review-rounds 3)")"
+    g_line="$(python3 -E -s "$SCRIPTS_DIR/preflight.py" row "$spec_path" "$(pwd -P)" "$CONFIG_FILE" "$(_evidence_file plan)")"
+    reqs+=("$g_line"); grep -q '"pass": false' <<<"$g_line" && all_pass=0
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -3629,21 +3630,8 @@ gate_build() {
         return 0
       fi ;;
   esac
-  local red_n green_n after_n
-  red_n=$(_ev_count_matching build test red nonzero)
-  green_n=$(_ev_count_matching build test green 0)
-  # The order counts: a passing run recorded after a failing one (test first). GREEN rows that only come before
-  # every RED row prove no test failed first.
-  after_n="$(python3 -I -c "
-import json, re, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-def test(r): return isinstance(r, dict) and re.search('test', r.get('claim') or '', re.I)
-red = [i for i, r in enumerate(rows) if test(r) and r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
-print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.get('phase') == 'green' and r.get('exit_code') == 0))
-" "$(_evidence_file build)" 2>/dev/null || echo 0)"
+  local red_n green_n after_n   # runs the CLI ran or the person confirmed; a claim counts only with evidence.claimed-runs: count (Q3)
+  read -r red_n green_n after_n <<<"$(python3 -E -s "$SCRIPTS_DIR/runs.py" build "$(_evidence_file build)" "$(_cfg_get evidence.claimed-runs ignore)")"
   if [[ -f "$spec_path/tasks.md" ]] && python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
     reqs+=("$(_req "RED then GREEN" 1 "every task is manual: the person confirms each by hand, there is no test to run")")
   elif [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
@@ -3744,6 +3732,8 @@ gate_design() {
     reqs+=("$(_req "concerns flagged" 0 "design.md has no Areas of Concern section — flag conflicts, or state 'None flagged — {why}'")")
     all_pass=0
   fi
+  local d_line; d_line="$(python3 -E -s "$SCRIPTS_DIR/decisions.py" row "$(pwd -P)" "$spec_path")"   # Design answers reach tasks.md
+  reqs+=("$d_line"); grep -q '"pass": false' <<<"$d_line" && all_pass=0
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
 }
@@ -3821,7 +3811,7 @@ PY
 
 gate_review() {
   local block_on sev_csv
-  block_on="$(_cfg_get review.block-on critical)"
+  block_on="$(_cfg_get review.block-on critical,high)"
   sev_csv="$(printf '%s' "$block_on" | tr $'\x1f' ',')"
   local n; n=$(_ev_count_severity_in review "$sev_csv")
   local resolved; resolved=$(_ev_count_resolved_in review "$sev_csv")
@@ -3876,20 +3866,7 @@ gate_check() {
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
   # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
-  local tests_n tests_red; tests_n="$(python3 -I -c "
-import json, re, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-# the acceptance run has a row of its own (a correction names its tests: 'corrected after the lock: test_...')
-runs = [r for r in rows if isinstance(r, dict) and not r.get('scenario') and isinstance(r.get('exit_code'), int)
-        and re.search('test', r.get('claim') or '', re.I) and not (r.get('claim') or '').startswith('acceptance (written before Build)')]
-last = {}
-for r in runs:
-    last[' '.join(str(r.get('claim')).lower().split())] = r
-red = [k for k, r in last.items() if r.get('exit_code') != 0]
-print('%d|%s' % (sum(1 for r in runs if r.get('exit_code') == 0), '; '.join(red)[:300]))" "$(_evidence_file check)" 2>/dev/null || echo 0)"
+  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$(_cfg_get evidence.claimed-runs ignore)" 2>/dev/null || echo 0)"
   tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
   if [[ -n "$tests_red" ]]; then
     reqs+=("$(_req "tests pass" 0 "the latest run of a test command failed: $tests_red")")
@@ -4585,12 +4562,19 @@ _setup_calls() {
 # changes the plan: it is recorded as the person's note for Plan, and Plan runs again with it.
 cmd_plan() {
   _state_migrate_legacy
+  if [[ "${1:-}" == "patch" ]]; then   # the person's change of one command line (scripts/plan_patch.py)
+    local rc; _lock_acquire; python3 -E -s "$SCRIPTS_DIR/plan_patch.py" "$(_spec_path "")" "$STATE_FILE" "$GROUPS_FILE" "$(_evidence_file plan)" "${@:2}"; rc=$?; _lock_release; return $rc
+  fi
+  if [[ "${1:-}" == "preflight" ]]; then   # runs the plan's commands on HEAD again and stores the result (scripts/preflight.py)
+    local sp; sp="$(_spec_path "")"; [[ -d "$sp" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
+    python3 -E -s "$SCRIPTS_DIR/preflight.py" run "$sp" "$(pwd -P)" "$CONFIG_FILE" "$(_evidence_file plan)"; return
+  fi
   if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
     local rc; _lock_acquire
     python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds 3)" "$(_now)" "$(_evidence_file plan)"; rc=$?
     _lock_release; return $rc
   fi
-  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again" >&2; return 1; }
+  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan preflight" >&2; return 1; }
   shift
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
@@ -5038,6 +5022,7 @@ main() {
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
     plan) cmd_plan "$@" ;;
+    doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;;   # only reads; --propose --write adds setup:
     guards) case "${1:-}" in
               uninstall) python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall ;;
               install) bash "$SCRIPTS_DIR/guards/install.sh" ;;   # 9.8.1: the commit gate, as a setup call of the CLI
@@ -5103,6 +5088,9 @@ Usage:
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
+  temper plan preflight                   (run every command of the plan on HEAD again; the plan gate reads it)
+  temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)
+  temper doctor                           (toolchain, setup block and services; only reads)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
   temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
@@ -5119,7 +5107,7 @@ EOF
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift) ;;
+    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor) ;;
     next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;

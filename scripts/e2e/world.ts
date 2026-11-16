@@ -13,7 +13,8 @@ import type { RuleContext, RunFacts } from '../../hooks/temper-mod/core/rules'
 import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import { cliStage } from '../../hooks/temper-mod/core/stages'
 
-export const ROOT = path.resolve(import.meta.dir, '../..')
+// TEMPER_E2E_ROOT: another plugin folder to drive (the A/B replay runs the same script against the version before a change)
+export const ROOT = process.env.TEMPER_E2E_ROOT ? path.resolve(process.env.TEMPER_E2E_ROOT) : path.resolve(import.meta.dir, '../..')
 export const TEMPER = path.join(ROOT, 'scripts/temper')
 
 export type Json = Record<string, any>

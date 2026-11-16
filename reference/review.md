@@ -25,7 +25,7 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 
 ## Step 1: Gather Context
 
-`git diff --stat` + changed files; `.claude/temper.config` for `review.block-on` /
+`git diff --stat` + changed files; `.claude/temper.config` for `review.block-on` (default `[critical, high]`) /
 `review.confidence-threshold` / auto-fix; the enabled packs' `rules.md` (project
 `.claude/packs/` shadows global `~/.claude/packs/` shadows
 the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains `review`);

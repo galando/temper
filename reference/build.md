@@ -5,7 +5,7 @@ description: "The TDD method of Build: what to test, in what order, and the fix 
 # Build: Execute Plan with Quality Gates
 
 **Goal:** Implement the approved plan with real TDD discipline.
-The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --phase red/green` invocations
+The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --phase red/green` invocations (the CLI runs the command; 9.8.5)
 the gate needs; this doc is the methodology behind what to test and in what order.
 
 **Modes:** the fix pass (`agents/build.md`, launched by the orchestrator) starts clean —

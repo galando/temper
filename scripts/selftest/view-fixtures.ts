@@ -1992,7 +1992,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "More options"
      }
     ],
-    "question": "Review: the check failed (critical findings: 1 open critical finding). Loop back to Build?"
+    "question": "Review: the check failed (critical findings: 1 open critical finding), open findings: 1 critical, 1 low. Loop back to Build?"
    },
    "run_id": "run-armed",
    "stage": "review",
@@ -2412,18 +2412,10 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Keep a finding as it is, with your reason.",
-      "do": "Ask the accept question.",
-      "label": "Accept a finding",
+      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+      "do": "Ask the more question.",
+      "label": "More options",
       "move": null
-     },
-     {
-      "calls": [],
-      "description": "Stress test the change.",
-      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
-      "label": "Grill Me",
-      "move": null,
-      "skill": "grill-me"
      },
      {
       "calls": [
@@ -2453,13 +2445,6 @@ export const VIEWS: Record<string, unknown> = {
        ],
        "question": "Make a small change. What is the reason?"
       }
-     },
-     {
-      "calls": [],
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later",
-      "move": "pause",
-      "stop": true
      }
     ],
     "question": {
@@ -2467,23 +2452,15 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Keep a finding as it is, with your reason.",
-       "label": "Accept a finding"
-      },
-      {
-       "description": "Stress test the change.",
-       "label": "Grill Me"
+       "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+       "label": "More options"
       },
       {
        "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
-      },
-      {
-       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-       "label": "Save for later"
       }
      ],
-     "question": "Review: more options."
+     "question": "Review: the check passed, open findings: 1 critical, 1 low. Loop back to Build to repair them? More options."
     },
     "run_id": "run-armed",
     "stage": "review",
@@ -2492,18 +2469,10 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state advance review_complete check"
-     ],
-     "description": "Start Check.",
-     "label": "Continue to Check (Recommended)",
-     "move": "advance"
-    },
-    {
-     "calls": [
       "/plugin/scripts/temper state loop review build --reason '{reason}'"
      ],
      "description": "Do Build again; the stages after it are redone too.",
-     "label": "Loop back to Build",
+     "label": "Loop back to Build (Recommended)",
      "move": "back",
      "reason": true,
      "reason_question": {
@@ -2519,8 +2488,16 @@ export const VIEWS: Record<string, unknown> = {
         "label": "Cancel"
        }
       ],
-      "question": "Loop back to Build. What is the reason?"
+      "question": "Loop back to Build (Recommended). What is the reason?"
      }
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper state advance review_complete check"
+     ],
+     "description": "Start Check with the findings open.",
+     "label": "Continue to Check",
+     "move": "advance"
     },
     {
      "calls": [],
@@ -2531,7 +2508,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Accept a finding, Grill Me, Make a small change, Save for later",
+     "description": "More options, Make a small change",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -2542,23 +2519,23 @@ export const VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Start Check.",
-      "label": "Continue to Check (Recommended)"
+      "description": "Do Build again; the stages after it are redone too.",
+      "label": "Loop back to Build (Recommended)"
      },
      {
-      "description": "Do Build again; the stages after it are redone too.",
-      "label": "Loop back to Build"
+      "description": "Start Check with the findings open.",
+      "label": "Continue to Check"
      },
      {
       "description": "Check the changed modules' depth, then come back here.",
       "label": "Architecture Depth Review"
      },
      {
-      "description": "Accept a finding, Grill Me, Make a small change, Save for later",
+      "description": "More options, Make a small change",
       "label": "More options"
      }
     ],
-    "question": "Review: the check passed. Continue to Check?"
+    "question": "Review: the check passed, open findings: 1 critical, 1 low. Loop back to Build to repair them?"
    },
    "run_id": "run-armed",
    "stage": "review",
@@ -11201,7 +11178,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "More options"
      }
     ],
-    "question": "Review: the check failed (critical findings: 1 open critical finding). Loop back to Build?"
+    "question": "Review: the check failed (critical findings: 1 open critical finding), open findings: 1 critical, 1 low. Loop back to Build?"
    },
    "run_id": "run-pw",
    "stage": "review",
@@ -11621,18 +11598,10 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Keep a finding as it is, with your reason.",
-      "do": "Ask the accept question.",
-      "label": "Accept a finding",
+      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+      "do": "Ask the more question.",
+      "label": "More options",
       "move": null
-     },
-     {
-      "calls": [],
-      "description": "Stress test the change.",
-      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
-      "label": "Grill Me",
-      "move": null,
-      "skill": "grill-me"
      },
      {
       "calls": [
@@ -11662,13 +11631,6 @@ export const VIEWS: Record<string, unknown> = {
        ],
        "question": "Make a small change. What is the reason?"
       }
-     },
-     {
-      "calls": [],
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later",
-      "move": "pause",
-      "stop": true
      }
     ],
     "question": {
@@ -11676,23 +11638,15 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Keep a finding as it is, with your reason.",
-       "label": "Accept a finding"
-      },
-      {
-       "description": "Stress test the change.",
-       "label": "Grill Me"
+       "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+       "label": "More options"
       },
       {
        "description": "Claude makes one small change here, with no loop back to Build: the one you describe, or the one the review asked for. Only what it touches is checked again.",
        "label": "Make a small change"
-      },
-      {
-       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-       "label": "Save for later"
       }
      ],
-     "question": "Review: more options."
+     "question": "Review: the check passed, open findings: 1 critical, 1 low. Loop back to Build to repair them? More options."
     },
     "run_id": "run-pw",
     "stage": "review",
@@ -11701,18 +11655,10 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state advance review_complete check"
-     ],
-     "description": "Start Check.",
-     "label": "Continue to Check (Recommended)",
-     "move": "advance"
-    },
-    {
-     "calls": [
       "/plugin/scripts/temper state loop review build --reason '{reason}'"
      ],
      "description": "Do Build again; the stages after it are redone too.",
-     "label": "Loop back to Build",
+     "label": "Loop back to Build (Recommended)",
      "move": "back",
      "reason": true,
      "reason_question": {
@@ -11728,8 +11674,16 @@ export const VIEWS: Record<string, unknown> = {
         "label": "Cancel"
        }
       ],
-      "question": "Loop back to Build. What is the reason?"
+      "question": "Loop back to Build (Recommended). What is the reason?"
      }
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper state advance review_complete check"
+     ],
+     "description": "Start Check with the findings open.",
+     "label": "Continue to Check",
+     "move": "advance"
     },
     {
      "calls": [],
@@ -11740,7 +11694,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Accept a finding, Grill Me, Make a small change, Save for later",
+     "description": "More options, Make a small change",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -11751,23 +11705,23 @@ export const VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Start Check.",
-      "label": "Continue to Check (Recommended)"
+      "description": "Do Build again; the stages after it are redone too.",
+      "label": "Loop back to Build (Recommended)"
      },
      {
-      "description": "Do Build again; the stages after it are redone too.",
-      "label": "Loop back to Build"
+      "description": "Start Check with the findings open.",
+      "label": "Continue to Check"
      },
      {
       "description": "Check the changed modules' depth, then come back here.",
       "label": "Architecture Depth Review"
      },
      {
-      "description": "Accept a finding, Grill Me, Make a small change, Save for later",
+      "description": "More options, Make a small change",
       "label": "More options"
      }
     ],
-    "question": "Review: the check passed. Continue to Check?"
+    "question": "Review: the check passed, open findings: 1 critical, 1 low. Loop back to Build to repair them?"
    },
    "run_id": "run-pw",
    "stage": "review",

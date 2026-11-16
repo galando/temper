@@ -209,6 +209,59 @@ take up a `/temper` run at their stage, so there is one flow to keep right:
 
 ---
 
+### `temper doctor` (9.8.5)
+
+`scripts/temper doctor` shows the environment a run will use, and changes nothing: it writes no file, ledger, state or
+`view.json`. It prints three parts:
+
+- **Toolchain:** the first line of each tool's version (`setup.tools`, else java, mvn, python3, node and git), or
+  `not on PATH`. It reads the shell as it is.
+- **Setup block:** `none`, or the run line with `(not run by doctor: it may start a service)`, each variable as
+  `NAME=value`, and each credential name it left out.
+- **Services:** for each `setup.services` entry, `answering` or `not answering` (a TCP connect, 2 seconds).
+
+The mod lets it run during a run, as any CLI call. Use it when a gate says `environment fault` or `ENV:`.
+
+**How Temper finds the setup of a project it has never seen.** Three sources, one check:
+
+1. **Rules, for common setups** (`temper doctor --propose`): the JDK a Maven enforcer, `<java.version>`, a Gradle
+   toolchain, `.java-version` or `.tool-versions` asks for, set by the project's `scripts/ensure-jdk*.sh --export` (else a
+   JDK of that version in `/usr/lib/jvm`); Docker Compose services (Postgres, MySQL, MariaDB, Redis) when a Docker daemon
+   answers; a local Postgres cluster; a Python `.venv`; an `.nvmrc`.
+2. **The project's CI and devcontainer** (the same command): GitHub Actions (`actions/setup-java` and `setup-node`
+   versions, a job's `services:` with their images and ports, the variables that point at them, such as
+   `IT_POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}`), `.gitlab-ci.yml` image tags, and
+   `.devcontainer/devcontainer.json` features. A CI service starts with Docker when its daemon answers, else with a
+   local server of that kind. Only a database variable with a local port or host is taken from a CI `env:`; deploy
+   targets and credentials never are.
+3. **The environment agent** (`agents/env.md`), when no rule or CI file describes the project, or their block did not
+   fix the failure. It reads the CI files, the Dockerfile, the Makefile, the README and the failing errors, looks at the
+   machine without changing it, and writes a draft to `{spec}/setup-proposal.yaml`.
+
+**The check.** A block from any source is written to `.claude/temper.config` only by `--write`, and only after the CLI
+reruns each command the preflight found failing on the environment, with the block, on a throwaway worktree of HEAD,
+and none of them fails on the environment any more. With no stored failing command there is nothing to check, so
+nothing is written, and no block is offered (at Check too: a block is offered there only when the plan's preflight stored
+the commands that failed). A block that did not fix them is remembered and not offered again. `temper doctor --candidate FILE
+[--write]` checks the agent's draft the same way.
+
+**For the person it is one click.** When the preflight or Check fails on the environment and the project has no block,
+the question's first option is `Add the proposed setup block` (sources 1 and 2), or, when no rule fits or that block
+failed its check, `Let an agent find the setup` (source 3, offered once). Either way only a block that fixed the
+failing commands reaches the config. What no source can make (a missing licence, a secret, a VPN, a JDK the machine
+does not have and the project cannot fetch) is said in plain words instead.
+
+### `temper plan patch` (9.8.5)
+
+`temper plan patch G1 --cmd 'bash scripts/selftest/run-selftest.sh --fast'` changes one command line of the approved
+plan (`G<n>` a group's Validate, `task N` a task's Test, `integration` the Integration line), keeps every passed task,
+and spends no loop. You give it as your answer to "Change the group's command" at the group question.
+
+### `temper plan preflight` (9.8.5)
+
+Runs every command of the plan on HEAD again and stores the result the plan gate reads (see `docs/flow.md`). Run it
+when the environment changed and the commands and HEAD did not.
+
 ## `/temper:intent`
 
 Capture an idea as a draft `intent.md` — the artifact that starts the pipeline —

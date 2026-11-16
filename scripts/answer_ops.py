@@ -15,6 +15,8 @@ session started editing spec files of its own accord. Now one call per answer:
     leaves that section;
   - `### Decisions` gains `- {question} -> {answer} (the person, {date})`, the template's row; a placeholder row there
     (`(none yet)`, `none`) goes;
+  - a `Design:` answer is kept with the hash tasks.md has now (scripts/decisions.py): the Design gate fails until tasks.md
+    changes, or the person says the tasks already agree;
   - a question that starts with `Design:` names an area of concern in design.md: the open concern whose title it names
     (the title, as written, is the question or a part of it), else the one open concern that shares the most words with
     it, gets a `resolved: {answer}` line. When none shares enough, or two share as many, nothing is resolved here: the
@@ -27,6 +29,7 @@ import os
 import re
 import sys
 
+import decisions
 import flow
 
 PLACEHOLDER = re.compile(r"^\s*[-*]\s+\(?(none( yet)?|n/?a|tbd)\)?\.?\s*$", re.I)
@@ -120,6 +123,13 @@ def resolve_concern(spec, asked, answer):
     return best["title"]
 
 
+def project_of(spec):
+    """The project folder of a spec folder (PROJECT/.temper/specs/SLUG), else the current folder."""
+    p = os.path.abspath(spec)
+    up = os.path.dirname(os.path.dirname(p))
+    return os.path.dirname(up) if os.path.basename(up) == ".temper" else os.getcwd()
+
+
 def main(argv):
     pairs = argv[1:]
     if len(argv) < 3 or len(pairs) % 2 or any(not x.strip() for x in pairs):
@@ -134,6 +144,7 @@ def main(argv):
             continue
         print("OK: answered: %s" % asked[:80])
         if re.match(r"^\s*design:", asked, re.I):
+            decisions.record(project_of(spec), spec, asked, answer)
             title = resolve_concern(spec, asked, answer)
             print("OK: resolved in design.md: %s" % title[:80] if title else "Note: no open concern in design.md matched; the Design question resolves it")
     return rc

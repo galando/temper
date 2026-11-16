@@ -33,6 +33,7 @@ import tempfile
 import time
 
 import acceptance
+import preflight
 import run_env
 
 SKIP_DIRS = {".git", ".temper", ".claude", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", "target", ".tox"}
@@ -170,11 +171,26 @@ def coverage_value(root, det, out_text):
     return None
 
 
+strip_banner = run_env.strip_banner
+
+
+def setup_fault(out, rc, cmd):
+    """Why a run failed on its environment, not on the code ("" when it did not): the project's own setup marker
+    (`temper-check: SETUP: ...`), else the preflight's environment rule (a time-out stays the code's)."""
+    text = out.decode("utf-8", "replace") if isinstance(out, bytes) else str(out or "")
+    if rc == 0:
+        return ""
+    m = re.search(r"^[\w.-]+: SETUP: (.+)$", text, re.M)   # a project script's marker: `temper-check: SETUP: no Postgres ...`
+    if m:
+        return " ".join(m.group(1).split())[:200]
+    return preflight.env_fault(text, rc, cmd, timeout_is_env=False)
+
+
 def row(claim, cmd, rc, out, **kw):
     r = {"claim": claim, "cmd": cmd, "exit_code": rc, "artifact": None, "sha256": None, "value": None, "severity": None,
          "phase": "check", "scenario": None, "criterion": None, "label": "PROVEN" if rc == 0 else "HEURISTIC",
          "executed_by": "cli", "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-         "output": (out or b"")[-2048:].decode("utf-8", "replace") if isinstance(out, bytes) else str(out or "")[-2048:]}
+         "output": strip_banner((out or b"").decode("utf-8", "replace") if isinstance(out, bytes) else str(out or ""))[-2048:]}
     r.update(kw)
     return r
 
@@ -681,6 +697,10 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd=""):
         out = out + b"\n" + rout
     rows.append(row("tests: the suite (run by the CLI)", cmd, rc, out))
     print("tests: exit %d, %.1f s (%s)" % (rc, suite_s, cmd[:120]))
+    why = setup_fault(out, rc, cmd)
+    if why:   # the suite row stays red: the gate fails as before, and the question says SETUP
+        rows.append(row("setup fault: " + why, cmd, 1, b"", label="HEURISTIC"))
+        print("SETUP: %s" % why)
     if cov:
         val = coverage_value(root, det, out.decode("utf-8", "replace"))
         if val is not None and rc == 0:
@@ -705,6 +725,10 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd=""):
     for r_ in acc_run(root, spec, lockfile):
         rows.append(r_)
         print("acceptance: exit %s" % r_["exit_code"])
+        why = setup_fault(r_.get("output") or "", r_["exit_code"] if isinstance(r_["exit_code"], int) else 1, r_.get("cmd") or "")
+        if why and not any(str(x.get("claim", "")).startswith("setup fault: ") for x in rows[-3:]):
+            rows.append(row("setup fault: " + why, r_.get("cmd") or "", 1, b"", label="HEURISTIC"))
+            print("SETUP: %s" % why)
     # mutation score on the changed lines (any stack with a test command), only on a green suite
     if det.get("mutation") and rc == 0 and base:
         score, ran, caught, surv, note = mutation(root, base, det["test"], suite_s)

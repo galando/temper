@@ -10,6 +10,7 @@ export type Script = {
   // An instruction in a step or an option's `do` that is not a command: handled here, or ignored.
   instruction?: (w: World, text: string) => boolean
   stopAt?: (w: World, n: Json) => boolean             // end the loop early (a scenario that checks the middle of a run)
+  afterFailStops?: boolean                            // a failed after call stops its action and the loop asks next (commands/temper.md); default: it throws
 }
 
 const looksLikeCommand = (s: string): boolean => /^(\/|git |gh |mkdir |cp |rm |bash |python3 |cd |t=)/.test(s.trim()) && !/each file the run changed|\{each/.test(s)
@@ -177,7 +178,7 @@ function loop(w: World, script: Script, limit = 400): Json {
         if (agent === undefined) throw new Error(`no scripted agent for ${a.type}`)
         w.guardAgent(a)
         agent(w, a)
-        runCalls(w, a.after ?? [], { ms: '1' }, a.gate ?? '')
+        runCalls(w, a.after ?? [], { ms: '1' }, a.gate ?? '', script.afterFailStops ?? false)
       }
       runSteps(w, script, n.steps ?? [])
       continue

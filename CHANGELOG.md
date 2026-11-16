@@ -3,6 +3,70 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.8.5: a run that checks its own environment first, and asks less
+
+One real run on a Java 24 Maven project (3.2 hours of agent time, 12 tasks) lost most of its time to faults that existed
+before any code was written, and a Temper run on this very change (a plan line that could never finish in its time
+limit, three fix agents that changed nothing) showed most of them again. Each change below has its cases in
+`temper-cases-21.sh` to `temper-cases-30.sh`.
+
+**Before Build (package 1: S1, S2, S3, U3)**
+- **Preflight.** The plan gate runs every Validate, task Test, Integration and scenario command once on HEAD, in a
+  throwaway worktree, and sorts each into passes, needs new code, environment fault or command fault; the two faults
+  fail the gate with the real error. Once per plan: the result is stored and read while HEAD, the commands and the
+  setup block hold (`temper plan preflight` runs it again). `plan.preflight-timeout` (300 s); only the person skips it,
+  with `plan.preflight-skip: "<reason>"`.
+- **Maven rows.** Maven is found after `cd backend &&`, `./mvnw` or `mvnd`. New row `maven filtered verify`: a `verify`
+  with `-Dtest=`/`-Dit.test=` under a JaCoCo BUNDLE rule fails (use `test`, or `-Djacoco.skip=true`).
+- **The environment contract.** `setup:` in `.claude/temper.config` (`run`, `env`, `services`, `tools`) applies to every
+  command the CLI runs and is in every agent prompt; credential names are never set or shown. `temper doctor` shows the
+  toolchain, the block and the services, and changes nothing. `temper doctor --propose` writes the block from the
+  project's own files, and a failed preflight or Check offers it as one click.
+- **ENV at a task gate.** A GREEN that failed on the environment keeps its attempt and worktree; "Check it again".
+
+**Decisions and findings (package 2: Q1, Q2, Q7)**
+- A Design answer given after the plan holds Build until `tasks.md` changes (Loop back to Plan is recommended), and
+  Build task prompts carry those decisions.
+- `review.block-on` defaults to `[critical, high]`; open findings at medium or above recommend the repair, and the
+  question counts them per level.
+- `temper integrate` runs the Integration command again when HEAD moved since its last pass.
+
+**Fewer wrong clicks (package 3: S4, S7, S8, Q6, Q8)**
+- The failure text is the build tool's summary (Maven's failed goal, `Rule violated`, failed tests), never a passing
+  test's log line; a time-out says so.
+- No fix pass without a fault in its prompt. A fix agent that changed nothing keeps the check failed, with no rerun on
+  the same tree, and the question points at the plan or the environment.
+- Check says `SETUP` for an environment fault and recommends repairing it, never a loop back.
+- "Override and commit" is offered only where it can clear the row.
+- Every question has four options at most; the Context answer takes up to 2000 characters (the "Include what is left
+  out" option was always refused at 100).
+
+**Less back and forth (package 4: S5, S6, U1, U2, U4, Q4, Q5, Q9, U5)**
+- `autonomy.policy: decide`: an armed run goes on through Review and Check by fixed rules (loop back within the budget,
+  repair medium and above, never override); anything else and the commit park for the person.
+- `temper plan patch`: change one command line of the approved plan, keep the passed tasks, spend no loop.
+- A passing check on the same clean tree is reused. The lock never lets a write through without it. A RED made on the
+  final code does not count (judged on a task's first attempt). Interfaces match by shape. A person's note is labelled `PERSON`. The mod allows a push to a
+  `temper-backup/` branch. The orchestrator can add a marked note to a question.
+
+**The gaps, closed**
+- **Q3.** The Build gate's RED then GREEN and Check's tests pass count a run only when the CLI ran it (`temper evidence
+  run`, a task test, a group check, integrate, Check) or the person confirmed it; a run an agent recorded with
+  `evidence add --exit` is a claim and counts nowhere (`evidence.claimed-runs: count` keeps the old rule). The build and
+  fix briefs record RED and GREEN with `evidence run`. `temper evidence void` marks a false pass void: the row stays,
+  is shown as void, and counts no more; only a pass can be voided.
+- **Q4.** `task start` records the code files as the attempt finds them, so retries and reopens are judged too: a RED
+  made on code this attempt had already finished does not count. `build.red-before-code: true` allows no stub either.
+- **The policy** also takes the recommended option at a failed group check when no person is needed for it.
+- **`doctor --propose`** reads Gradle toolchains, `.java-version`, `.tool-versions`, Docker Compose services (Postgres,
+  MySQL, MariaDB, Redis; only when a Docker daemon answers) and Python virtual environments too.
+- **A setup for any project.** Three sources: the rules above, the project's CI and devcontainer files (the JDK and
+  Node versions, the database services and the variables that point at them), and an environment agent
+  (`agents/env.md`) when neither describes the project. One check: a block is written only after the CLI reran the
+  commands that failed on the environment with it, and they passed. The person still makes one click.
+- **The selftest.** Case file 6 runs on its own (`case-helpers-5.sh`, made by `make-helpers-5.sh`), so the parallel
+  runner no longer runs 5 and 6 as one pair.
+
 ## v9.8.4: the faults one failed run exposed
 
 A `/temper:temper` run of a complex feature (8 criteria, about 30 files, risk H) used 5 Plan passes, 6 fresh reviewers over

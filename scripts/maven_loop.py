@@ -28,6 +28,28 @@ def is_maven(cmd):
     return bool(MAVEN.match(cmd))
 
 
+SEGMENT = re.compile(r"&&|\|\||;")
+ENV_WORD = re.compile(r"^[A-Za-z_]\w*=")
+MAVEN_WORD = re.compile(r"^(\./)?(mvnd?|mvnw)$")
+
+
+def maven_parts(cmd):
+    """[{'dir', 'args'}] for each Maven call of a shell line (a cd before it sets 'dir'; env words are skipped)."""
+    out, cwd = [], ""
+    for seg in SEGMENT.split(cmd):
+        try:
+            toks = shlex.split(seg)
+        except ValueError:
+            continue
+        while toks and ENV_WORD.match(toks[0]):
+            toks.pop(0)
+        if len(toks) >= 2 and toks[0] == "cd":
+            cwd = os.path.normpath(os.path.join(cwd, toks[1])) if cwd else toks[1]
+        elif toks and MAVEN_WORD.match(toks[0]):
+            out.append({"dir": cwd, "args": toks})
+    return out
+
+
 def classes_of(files):
     """[(fully qualified name, simple name)] for each declared test file under src/test/java."""
     out = []
@@ -76,17 +98,13 @@ def reports_made(worktree, classes, since):
     return missing
 
 
-def run(worktree, timeout, declared, files):
+def run(worktree, timeout, declared, files, setup=None):
     classes = classes_of(files)
     cmd = build(declared, classes)
     since = time.time() - 1
-    try:
-        p = subprocess.run(cmd, cwd=worktree, env=run_env.test_env(worktree), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=float(timeout))
-        out, rc = p.stdout, p.returncode
-    except subprocess.TimeoutExpired as e:
-        return (e.stdout or b"") + b"\nmaven_loop: timed out\n", 124
-    except OSError as e:
-        return ("%s\n" % e).encode(), 127
+    out, rc = run_env.run_cmd(worktree, timeout, cmd, setup)   # the setup block applies here too
+    if rc == 124:
+        return out + b"\nmaven_loop: timed out\n", 124
     if rc == 0 and classes:
         missing = reports_made(worktree, classes, since)
         if missing:
@@ -98,7 +116,7 @@ def main(argv):
     if len(argv) < 5 or argv[1] != "run":
         print(__doc__, file=sys.stderr)
         return 2
-    out, rc = run(argv[2], argv[3], argv[4], argv[5:])
+    out, rc = run(argv[2], argv[3], argv[4], argv[5:], {})   # its caller (run_cmd) applied the setup block already
     sys.stdout.buffer.write(out)
     return rc
 

@@ -56,13 +56,14 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    integration passed. Record evidence as you go,
    not as an afterthought:
    ```
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "unit tests" --cmd '<the exact test command>' --exit <code> \
-     --phase red --label HEURISTIC     # after the RED run
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "unit tests" --cmd '<the exact test command>' --exit 0 \
-     --phase green --label PROVEN   # after the GREEN run
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage build \
+     --claim "unit tests" --phase red -- <the exact test command>     # the RED run: the CLI runs it
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage build \
+     --claim "unit tests" --phase green -- <the exact test command>   # the GREEN run: the CLI runs it
    ```
+   The CLI runs the command and records the exit code it saw. A run you record with `evidence add --exit`
+   is a claim, and no gate counts it (9.8.5); a false pass you recorded is voided with
+   `temper evidence void --stage build --id N --reason '<why>'`.
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
    `$` in it stays text.
    Keep the word `test` in the green row's `--claim` (as in `unit tests`): the build-checkpoint

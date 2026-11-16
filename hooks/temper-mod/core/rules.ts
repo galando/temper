@@ -478,7 +478,7 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   if (a === 'override') return true
   // 9.7.5: the Context check answer, a manual task's confirmation, a covered task's acceptance and a small change are the
   // person's, each only as the call their answer to the CLI's question maps to.
-  if (a === 'plan' && b === 'review') return true
+  if (a === 'plan' && (b === 'review' || b === 'patch')) return true   // 9.8.5: a plan patch changes the approved plan
   if (a === 'task' && (b === 'confirm' || b === 'accept')) return true
   if (a === 'adhoc' && b === 'open') return true
   // 9.8.0: reopening the locked acceptance tests (a test the person says is wrong) is the person's; restoring them is not.
