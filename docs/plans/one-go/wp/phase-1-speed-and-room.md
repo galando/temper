@@ -48,7 +48,10 @@ case 5 pass, then make the change.
    star import fails the file. It passes today on all 49 files (prototyped); it is the guard WP02 and WP03 lean on.
 6. `tooling: the changelog starts at 9.7.0 and the older entries are in docs/history`. `CHANGELOG.md` has no
    heading `## v9.6` and is below 196,608 bytes; `docs/history/changelog-before-9.7.md` has the heading `## v9.6.8`
-   and `## v5.0.1`. Fails today. The line leaves room for the 10.0.0 entry, to which every package adds (the
+   and `## v5.0.1`. The same case holds the one entry of the result (row `D86` of `done.md`): exactly one
+   heading of `CHANGELOG.md` starts with `## v9.8.5`, and it reads `## v9.8.5: a run that asks twice`. It does
+   not assert that this heading is the first, so the case still holds when a later release adds its own.
+   Fails today on both halves. The line leaves room for that one 9.8.5 entry, to which every package adds (the
    9.8.0 entry alone is 37,629 bytes).
 7. `tooling: verify.sh names quick and full and refuses another word`. `bash scripts/verify.sh bogus` exits 2 and
    its text names both words. Fails today: no such script.
@@ -132,7 +135,8 @@ The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it
    CI. The dry run could make the file: `docs/plans/one-go/session-mechanics.md` section 1 says how (Claude Code
    2.1.287 through `npx`), so expect the whole type check to run locally. Later packages add their own steps
    here: WP05 the floor, the caps and the replay with its base column, WP06 the check of the expected to fail
-   rule, WP07 `scripts/check_done.py` and the word `final`, WP32 the compare of the replay against 9.8.5.
+   rule, WP07 `scripts/check_done.py` and the word `final`, WP32 the compare of the replay against the base
+   (`10e965a`) and the check of its summary.
 7. **The workflow** (`.github/workflows/quality.yml`). Keep the eight short jobs and their names. Change this:
 
    ```yaml
@@ -143,6 +147,7 @@ The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it
      changes:      # output long: 'false' only when every changed file is under docs/decisions, docs/evidence,
                    # docs/history or docs/plans, or is CHANGELOG.md; any error in the diff gives 'true'
      temper-cli:   # needs changes; if long; fail-fast false; matrix shard 1..6; timeout-minutes 20
+                   # checkout with fetch-depth: 0 (cases from WP07 on read the history and the commit 10e965a)
                    # bash scripts/selftest/run-selftest.sh --shard ${{ matrix.shard }}/6
      e2e:          # needs changes; if long; fail-fast false; matrix shard 1..4; timeout-minutes 20
                    # bun scripts/e2e/run.ts all --shard ${{ matrix.shard }}/4
@@ -167,6 +172,13 @@ The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it
    into `docs/history/changelog-before-9.7.md`, under front matter like `docs/history/tokenomics.md` has, and add
    one closing line to `CHANGELOG.md` that names the new file. 109,769 bytes stay (it was 246,956, with 15,188
    free) and 137,187 move. Add one entry to `docs/history/README.md` in that file's own style.
+   Then the one entry of the result. The version of the result is 9.8.5, the number the base already carries
+   (the brief, section 3, decision 7), so no package adds a version heading. Change the heading of the first
+   entry, `CHANGELOG.md:6`, which at the base reads
+   `## v9.8.5: a run that checks its own environment first, and asks less`, to `## v9.8.5: a run that asks twice`,
+   and leave the text under it as it is. From this package on every package writes its lines under that heading,
+   above the text of the base. WP31 gives the entry its final parts and cuts the text of the base down to what
+   stays of pull request #115 (`docs/plans/one-go/pr-115-fixes.md` section 4).
 9. **Add the base numbers to `docs/plans/one-go/PROGRESS.md`**: the serial total of the selftest, the parallel
    total before and after step 3, the seconds of `verify.sh quick` and `full`, and the bytes of the four files of
    the Traps table. Later packages compare against them. WP00 created the file with its baseline table; this
@@ -174,7 +186,8 @@ The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it
 
 **Removed:** the four hand lists of case files (`run-selftest.sh:34`, `:37`, `:49`; `test-temper.sh:235-265`); the
 serial CI unit job; the single 60 minute end to end job; 214 assertion lines from `case-helpers-5.sh`; the entries
-before 9.7.0 from `CHANGELOG.md` (moved, not deleted).
+before 9.7.0 from `CHANGELOG.md` (moved, not deleted); the words of the first changelog heading of the base (the
+number 9.8.5 stays).
 
 **Documents in the same change.** `CONTRIBUTING.md:16` (the check to run is `bash scripts/verify.sh quick`, then
 `full` before a push); `.claude/CLAUDE.md:42-45` (the same two commands, and that a case file is found by its name);
@@ -193,6 +206,8 @@ before 9.7.0 from `CHANGELOG.md` (moved, not deleted).
   total at the head is 2,575). Record the real numbers.
 - `wc -c scripts/selftest/view-fixtures.ts` prints about 187,000 and `git diff --stat` shows no fixture change after
   a second regeneration.
+- `grep -m1 '^## v' CHANGELOG.md` prints `## v9.8.5: a run that asks twice`, `grep -c '^## v9.8.5' CHANGELOG.md`
+  prints 1, and `bash scripts/quality-check.sh` still prints its version match.
 - `TEMPER_E2E_LIMIT_S=1 bun scripts/e2e/run.ts plain full-run` fails within seconds with the time limit text, and
   `bun scripts/e2e/run.ts all --shard 1/4` passes.
 - The type check: with the types made as `docs/plans/one-go/session-mechanics.md` section 1 says, the whole type
@@ -241,6 +256,9 @@ before 9.7.0 from `CHANGELOG.md` (moved, not deleted).
 - The moved changelog text holds three markdown links, all `https`; `validate-docs.sh` rule 2 checks links under
   `docs`, so run it after the move. Lines 1 to 1158 of `CHANGELOG.md` keep their numbers, and the plan and the
   evidence files cite only those.
+- The new heading keeps the number: the checks of the base compare the version in the first `## v` heading with
+  the manifest (`scripts/quality-check.sh:111-123`, `scripts/selftest/temper-cases-4.sh:76-77`), and both say 9.8.5
+  at the base. Change the words after the colon and nothing else. No file of the base reads those words.
 - Do not change a view, a label or a count in the fixtures here: the layout changes, the parsed content must be
   equal (compare the parsed JSON of the old and the new file once, by hand).
 - No prototype diff for this phase is in `docs/plans/one-go/evidence/prototypes/`. Steps 4 and 5 and the checker of

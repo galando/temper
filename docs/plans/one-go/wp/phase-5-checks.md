@@ -17,7 +17,8 @@ Names this file uses, from `docs/plans/one-go/contracts.md`: the new case files 
 `scripts/e2e/broken.ts`. The caps file is `scripts/caps.json`, the floor file `scripts/e2e/floor.json`, and the
 cards are built in `scripts/card.py`. A package that rewrites an assertion of the base lists it in
 `docs/plans/one-go/changed-tests.md`, takes each check it makes pass off `scripts/selftest/expected-fail.txt`, and
-writes its lines into `CHANGELOG.md`. A check that passed earlier is simply not on the list
+writes its lines into `CHANGELOG.md` under the one heading of the result, `## v9.8.5: a run that asks twice` (no
+package adds a version heading). A check that passed earlier is simply not on the list
 (`docs/plans/one-go/done.md`, note 7). If one still fails for a reason that belongs to a later package, do not
 weaken it: name that package on its line of the list and in `docs/plans/one-go/PROGRESS.md`.
 
@@ -700,9 +701,9 @@ weaken it: name that package on its line of the list and in `docs/plans/one-go/P
 - **Removed:** `tree_digest`, `ahead_paths`, `adopt` and `.temper/check/ahead.json`; the clean tree rule of
   `result_key`; the direct `run_cmd` calls at the sites of step 5.
 - **Documents in the same change:** `docs/trust.md` (what a reused pass proves and what it cannot see; one run per
-  tree is the guarantee one CI run gives, weaker than the repeats of 9.8.5), `docs/flow.md` (the digest and the
-  store in ten lines, the rows `reused`, `flaky`, `forced`), `reference/check.md:190-194` (one suite run),
-  `CHANGELOG.md`.
+  tree is the guarantee one CI run gives, weaker than the repeated runs of 9.8.4, the version users have),
+  `docs/flow.md` (the digest and the store in ten lines, the rows `reused`, `flaky`, `forced`),
+  `reference/check.md:190-194` (one suite run), `CHANGELOG.md`.
 - **Done when:** `scripts/selftest/temper-cases-63.sh` and cases 5, 11, 15, 16 and 25 pass; the run counts of
   `three-groups` hold in three modes and those of `slow-first-run` in plain and driver mode; `broken-flaky`, `D15`,
   `D34b` and `D34c` are off

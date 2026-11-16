@@ -4,6 +4,9 @@
 **Date:** 2026-11-16
 **Base:** the head of pull request #115 (`10e965a`, version 9.8.5, all 10 CI checks green). Every `file:line` below
 is of that commit.
+**After this proposal:** the owner chose to build it in one pass, as one pull request, and to release the result as
+9.8.5. The brief for that build is `docs/plans/one-go/README.md`. Where this page says 9.8.5 it means the head of
+pull request #115, which is the base of that build and was never released; users have 9.8.4.
 
 ## 1. The plan on one page
 

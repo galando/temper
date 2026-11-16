@@ -8,6 +8,10 @@ adds one line here in its own commit. Section 14 lists the names that were chose
 "Creates" names the package whose commit first holds the thing. A role such as "the caps file of WP05" in a spec is
 the name of this page: `scripts/caps.json`. Every `file:line` of the specs is of the head `10e965a`.
 
+"9.8.5" on this page and in every spec is the result of the build (the brief, section 3, decision 7). The tree
+the build starts from is "the base (`10e965a`)", or "the head" where a column says where a thing first exists.
+What users have is 9.8.4 (`7c7a1c1`).
+
 ## 1. Files and modules
 
 | Name | What it is | Creates | Uses or extends |
@@ -20,7 +24,7 @@ the name of this page: `scripts/caps.json`. Every `file:line` of the specs is of
 | `scripts/flow_base.py` | the tables of the flow: `MOVES`, `SEQ`, and the registries `QUESTIONS`, `OPTION_IDS`, `NEEDS` | WP03 (the registries: WP04; `NEEDS`: WP16) | every package that adds a question, an option, a move or a kind |
 | `scripts/flow_run.py`, `scripts/flow_ask.py`, `scripts/flow_work.py`, `scripts/flow_build.py`, `scripts/flow_commit.py`, `scripts/flow_view.py` | `Run`; the four parts of `Builder`; the view | WP03 | "the flow modules" of every later spec |
 | `scripts/flow.py` | the facade: `Builder`, `core_next`, `main` | WP03 | every caller of the flow, unchanged |
-| `tests/mod/ids.test.ts` | the mod reads ids and still takes a 9.8.5 view | WP04 | kept by every package (`D65`) |
+| `tests/mod/ids.test.ts` | the mod reads ids and still takes a view of the base (`10e965a`), which has none | WP04 | kept by every package (`D65`) |
 | `scripts/e2e/floor.json`, `scripts/check_floor.py` | the counts of the scripted runs, `now` and `final` | WP05 | every package that moves a count lowers `now` in the same commit |
 | `scripts/caps.json`, `scripts/check_caps.py` | the growth caps, `now` and `final` | WP05 | every package sets `now` to the measure; nobody raises a `final` |
 | `scripts/stops.json` | the stops an unattended run must keep | WP05 (the list), WP07 (the checks) | WP10, WP11, WP12, WP24 and WP29 add stops |
@@ -30,7 +34,7 @@ the name of this page: `scripts/caps.json`. Every `file:line` of the specs is of
 | `scripts/selftest/expected-fail.txt` | the checks still expected to fail | WP06 (four lines), WP07 (the rest) | each package takes off the lines it makes pass |
 | `scripts/e2e/accept.ts` | the acceptance scenarios of `done.md` | WP07 | the packages of section 9; the reviewers of WP32 add scenarios |
 | `scripts/check_done.py`, `scripts/check_changed_tests.py`, `docs/plans/one-go/changed-tests.md` | every promise has its check; every changed assertion is listed | WP07 | every package that rewrites an assertion of the base adds its line |
-| `scripts/selftest/saved-985.json`, `scripts/selftest/make-saved-985.sh` | five run states saved by 9.8.5 | WP07 | WP11, WP24 (`D60`) |
+| `scripts/selftest/saved-old.json`, `scripts/selftest/make-saved-old.sh` | five run states saved by 9.8.4, from a work tree of `7c7a1c1`, and the same five saved by the base, from one of `10e965a`; the file holds them under the keys `7c7a1c1` and `10e965a` | WP07 | WP11, WP24 (`D60`: one token a state, `D60a` to `D60e`, and each runs the state of 9.8.4 and the state of the base); the script also stores the config template of each tree (`D61` to `D63`) and the commit hook its installer writes (`D64a`) |
 | `scripts/budget.py` | the one budget: `SPENDS`, `spend`, `room`, `grant` | WP10 | every package of section 2 that spends |
 | `scripts/rule_log.py` | appends to the record of what a rule decided | WP11 | WP15 reads it for the cards; WP24 and WP25 append |
 | `scripts/sensitive.py` | the one matcher of sensitive paths: `match`, `declared` | WP11 | WP15, WP24, WP25, WP27 |
@@ -46,11 +50,14 @@ the name of this page: `scripts/caps.json`. Every `file:line` of the specs is of
 | `reference/draft.md` | the page of the word `draft` | WP28 | none |
 | `scripts/defaults.py`, `scripts/config_tidy.py`, `scripts/check_config_keys.py` | every default in one table; the one time question; the reader test | WP29 | WP30 adds to `GONE` |
 | `scripts/words.json`, `scripts/check_words.py` | the 12 words and the retired ones | WP31 | none |
-| `scripts/e2e/replay_compare.py`, `docs/evidence/ab-replay-10.0.0.md`, `docs/evidence/scorecard-10.0.0.json` | the replay gate; the bench result | WP32 | none |
+| `scripts/e2e/replay_compare.py`, `docs/evidence/scorecard-9.8.5.json` | the replay gate; the bench result | WP32 (WP05 writes the code that makes the scorecard file) | WP07 reads the scorecard file in `final`; the README's one line on cost and time may state a figure only from it (`D108`) |
+| `docs/evidence/ab-replay-9.8.5.md` | the replay page; at the base it compares 9.8.4 with the base | the head | WP32 rewrites it in place as one page with three columns: 9.8.4, the base, the result. No second replay page is made |
+| `docs/history/build-9.8.5.md` | the summary of what happened, for the owner: the eight parts of section 8, at most 150 lines | WP32, last, after its green `final` | `python3 scripts/check_done.py --summary` (`D107`); the pull request text opens with its parts 1, 2 and 6 |
+| `scripts/e2e/live-smoke.sh`, the check `approval` | a run with a real model that must end at the approval; off unless `TEMPER_E2E_LIVE=1`, never in CI | the head (the script, with `start`, `fresh` and `cost`); WP32 (the check `approval`) | row `D109` |
 
 Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command files, `reference/status.md` and
 `scripts/earlier_build.py` (WP28); `scripts/bands.py`, `packs/stacks/` and three skills (WP30);
-`docs/plans/one-go/evidence/` (the last commit of WP32).
+`docs/plans/one-go/evidence/` (WP32, the commit before its final gate).
 
 ## 2. CLI words
 
@@ -74,6 +81,7 @@ Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command f
 | `temper plan amend task N --add-file F [--failure ID]`; `temper plan patch task N --add-file F`; `temper group keep` | WP25 | WP27 |
 | `temper model --all --source` | WP27 | WP29 |
 | `temper packs --stage S`; `temper config show [--markdown]`; `temper config tidy --apply` and `--keep` | WP29 | WP30, WP31 |
+| `python3 scripts/check_done.py --summary`; `TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh approval` | WP32 | none |
 
 Words that go: `temper panel plan` (WP15); `temper plan preflight` and `temper doctor --candidate` (WP21);
 `temper state init --enter` (WP28); `temper bands` and `temper metrics append` (WP30).
@@ -111,7 +119,7 @@ Run files:
 | `.temper/evidence/failures.json` | the failure record | WP23 | written only through `scripts/failure.py` |
 | `.temper/evidence/amendments.json` | amendments and patches, appended | WP25 | the commit card |
 | `.temper/notice.json` | the one time notice was said | WP31 | none |
-| `.claude/temper.config.before-10.0.0` | the copy the config question keeps | WP29 | none |
+| `.claude/temper.config.before-9.8.5` | the copy the config question keeps, of a config of 9.8.4 or of the base | WP29 | none |
 
 Files that go: `.temper/preflight.json` and `.temper/setup-tried.json` (WP21), `.temper/check/ahead.json` (WP22).
 Three duties come with a new run file, in the package that adds it: the name joins `_RUN_FILES` of `scripts/temper`
@@ -243,6 +251,15 @@ Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT
 | card kinds and marks | `approval`, `commit`, `stop`; the marks of WP15 step 1 | WP15 | the mod's drawing |
 | prompt lines the CLI writes | `Drift decision:` (WP16), `Repair in place:` and the brief section `Re-check:` (WP24), `Affected tasks:` (WP27), `Packs:` (WP29) | as named | the briefs |
 | selftest helpers | `_unattended <stage>` (WP07; WP11 changes its body), `_base_known` (WP20: the baseline is on record as not run, so no case of the base meets the new first step), `ev_red` and `ev_green` (WP30) | as named | the case files |
+| the one CHANGELOG entry | the heading `## v9.8.5: a run that asks twice`, in the place of the heading of the base at `CHANGELOG.md:6`; no other heading starts with `## v9.8.5`, and no package adds a version heading | WP01 | every package writes its lines under it, above the text of the base; WP31 gives the entry its final parts and folds in what stays of pull request #115 (`pr-115-fixes.md` section 4); WP32 adds the measured lines (`D86`) |
+| the one time notice | one line that starts `Temper 9.8.5 asks twice`; the mark that it was said is `.temper/notice.json` | WP31 | `D102`; WP32 quotes it in the pull request text |
+| the title of the pull request | `Temper 9.8.5: a run that asks twice` | WP00 | WP32; it does not change |
+| the headings of the summary | eight headings of level two, in this order: `In five lines`, `The numbers, before and after`, `The plan, item by item`, `What changes for someone who used 9.8.4`, `What went differently from the plan`, `What is not done, and what is yours to do`, `The build in numbers`, `Was it run for real` | WP32 | `python3 scripts/check_done.py --summary` (`D107`) |
+| the states of a plan item in the summary | `built and proven`, `built and not proven` or `not built`, one in each line of part 3; the item ids are those of releases 0 to 7 of `docs/plans/two-approval-run.md`, `0a` to `7e` | WP32 | the same check |
+| the fixed headings of the product's README | `## Install` and, after it, `## What the mod reads and writes`. The part `## See it` is out until the owner records the videos again; no check holds it out | the head; WP31 keeps the two | `case 46 D108`; the directory's rules |
+| the README's line on cost and time | exactly one line of the product's `README.md` starts `**Cost and time:**`. It holds a figure only when it also names `docs/evidence/scorecard-9.8.5.json` and that file exists | WP31, with no figure | the case `w31 the README has its parts` of WP31; `case 46 D108`; WP32 step 7 (g) writes the figures into this one line when the bench ran |
+| the version stamps | the six places of row `D86`: `.claude-plugin/plugin.json`, `.claude/CLAUDE.md`, the README badge, `docs/index.html`, `docs/index.md`, `docs/getting-started.md`. All that state the version say 9.8.5 at the head but `docs/index.html:35`, which says 9.8.4 | the head | WP31 sets the one stale line by hand and holds it with the case `w31 the stamps agree`; no package runs `scripts/version-bump.sh` |
+| the open lines of `final` | `OPEN: the bench gate (needs the owner's word and a model access)` when there is no scorecard file; `OPEN: the summary of the build` when `docs/history/build-9.8.5.md` is not there yet | WP07 (the first), WP32 (the second) | the session; the pull request text |
 
 ## 9. Scenario names
 
@@ -292,7 +309,7 @@ makes pass. A token is the first word of an assertion name and is never shared b
 | 41 | WP05 | `floor:`, `caps:`, `summary:` |
 | 42 | WP06, reserved; its checks are scenarios and `scripts/e2e/xfail.ts` | |
 | 43 | WP07 | `xfail:`, `done:` |
-| 44, 45, 46 | WP07 | the tokens of `done.md` (`D02b` to `D104`) |
+| 44, 45, 46 | WP07 | the tokens of `done.md` (`D02b` to `D108`) |
 | 47 | WP08, reserved; its cases go into the files that build the state and into 45 | |
 | 48, 49 | spare | |
 | 50, 51, 52, 53, 54, 55 | WP09, WP10, WP11, WP12, WP13, WP14, in this order | `verdict:`, `budget:`, `run:`, `bound:`, `intent rule:` and `context:`, `design:` |
@@ -321,18 +338,21 @@ alone takes 13 minutes.
 | `0021-a-finding-is-repaired-in-its-stage.md` | the repair in the stage; `plan amend` and `plan patch` | WP24 creates it; WP25 adds its decision | 0009, 0011, 0013 |
 | `0022-the-acceptance-tests-keep-their-own-writer.md` | the writer stays its own agent; `code` and `metric` criteria are commands the CLI runs | WP27 | none |
 | `0023-two-commands-and-defaults-in-code.md` | two commands and their words; defaults in code; the one time config question | WP29, with the commands of WP28 | 0005, 0012 |
-| `0024-what-version-10-removed.md` | what 10.0.0 removed and what a project that used it does | WP30 | 0006 |
+| `0024-what-9-8-5-removed.md` | title "what 9.8.5 removed": what it removed and what a project that used it does | WP30 | 0006 |
 | `0025-one-route.md` | Design on request, the plan contract, the spec route not built | WP31 | 0017 |
 
-WP31 reads each record against its row, sets the status lines and writes none twice.
+WP31 reads each record against its row, sets the status lines and writes none twice. The status line of 0017
+becomes `Rejected: not built (9.8.5)`.
 
 ## 12. Caps and floor keys
 
 Keys of `scripts/caps.json`, each with `now` and `final`: `question_sites`, `option_sites`, `option_labels`,
 `question_ids`, `gate_rows`, `agent_briefs`, `listed_commands`, `listed_skills`, `config_live_keys`,
-`config_comment_keys`, `config_lines`, `prompt_bytes`, `pack_skill_bytes`, `cli_bytes`, and the list `flow_files`
-(WP05); `handback_kinds`, exactly 7, counted from `NEEDS` in `scripts/flow_base.py` (WP16). `gate_rows` is one
-number: the row names of the CLI, of the Python scripts and of `scripts/gate_rows.py` added up.
+`config_comment_keys`, `config_lines`, `prompt_bytes`, `pack_skill_bytes`, `cli_bytes`, `readme_lines`, and the
+list `flow_files` (WP05); `handback_kinds`, exactly 7, counted from `NEEDS` in `scripts/flow_base.py` (WP16).
+`gate_rows` is one number: the row names of the CLI, of the Python scripts and of `scripts/gate_rows.py` added up.
+`readme_lines` is the line count of the product's `README.md`: 89 at the head, `final` 80. WP05 adds the key
+with `now` 89, and WP31 brings the page under it (`D108`).
 
 `agent_briefs` is 13 at the head, 12 after WP21 (the environment agent goes) and 13 after WP27 (the revise agent
 comes), or 12 if WP27 finds the Check brief no longer launched. Its `final` is 13. It never ends at 10.
@@ -340,8 +360,8 @@ comes), or 12 if WP27 finds the Check brief no longer launched. Its `final` is 1
 Keys of a scenario in `scripts/e2e/floor.json`, for each mode: `dialogs`, `by_stage`, `by_kind`, `launches` by agent
 type with `launch_total` as their sum, `auto`, `back`, `handbacks`, `suite_runs`; and the entry `replay`, which
 also holds `shipped`, `defect_in_commit`, `bad_validate_line_in_plan_at_end` and its launches by type (`done.md`
-row `D58`); and the entry `replay_base`, the numbers of 9.8.5 on the same replay, which the base column of
-`bash scripts/e2e/ab-replay.sh 10e965a` must equal in every `full` (WP05 records them and adds the check; from
+row `D58`); and the entry `replay_base`, the numbers of the base (`10e965a`) on the same replay, which the base
+column of `bash scripts/e2e/ab-replay.sh 10e965a` must equal in every `full` (WP05 records them and adds the check; from
 WP08 on a package can move the column). The floor holds no count of gate rows. A `final` is never raised by the
 build session; a cap or a floor it cannot meet is a recorded blocker in `docs/plans/one-go/PROGRESS.md` with the
 measured number.
@@ -353,6 +373,10 @@ package" name the package after which each row passes, for `D04`, `D12`, `D33`, 
 a spec cites this section for a moved row, read that column; nothing is to be noted under "Found on the way" for
 it. Where a spec's "Done when" names another row or another package, `done.md` wins. No package edits `done.md`,
 but for a check name that WP07 corrects and lists in `changed-tests.md`.
+
+The owner's decisions of 2026-11-16 added three rows: `D107` (the summary, WP32), `D108` (the README of at most
+80 lines, WP31; its case is `case 46 D108`, written by WP07 failing first) and `D109` (a run with a real model,
+WP32). They added no token to rows `D60` to `D64`: each of their cases now runs on 9.8.4 and on the base.
 
 ## 14. Names chosen where the specs differed
 
@@ -377,3 +401,7 @@ but for a check name that WP07 corrects and lists in `changed-tests.md`.
 | the new case files | the numbers of section 10 | eleven specs said "the next free number" |
 | the switch that keeps the baseline in the foreground | `TEMPER_BASELINE_FOREGROUND` | WP20 named none; WP21 needs the same switch |
 | new ids with no name in a spec | `plan.command`, `repair.stop`; `more-time`, `revert-repair`, `add-file`, `tidy-config`, `keep-config` | chosen here by the rule of section 5 |
+| the version of the result | 9.8.5 | the kit named a major version until the owner's decision of 2026-11-16. The base carries the same number and is never called by it: it is "the base (`10e965a`)" |
+| the files that held the number | `docs/evidence/scorecard-9.8.5.json`, `.claude/temper.config.before-9.8.5`, `0024-what-9-8-5-removed.md`, and for the bench of WP32 `docs/evidence/bench-9.8.5.md` and `docs/evidence/bench-9.8.5/` | each held the number of a major version |
+| the replay page | `docs/evidence/ab-replay-9.8.5.md`, rewritten in place | WP32 said a second page with its own number; the page of the base already has the name of the result, so there is one page with three columns |
+| the saved states of an older Temper | `scripts/selftest/make-saved-old.sh` and `scripts/selftest/saved-old.json` | they were `make-saved-985.sh` and `saved-985.json`; the states now come from 9.8.4 first and from the base second |

@@ -9,7 +9,8 @@ function by its name, with the module table of WP03 (`Run` is in `scripts/flow_r
 in `scripts/flow_ask.py`, `policy_move` and `stage_work` in `scripts/flow_work.py`, the Build questions in
 `scripts/flow_build.py`, the commit question in `scripts/flow_commit.py`, `Builder.next` and `core_next` in
 `scripts/flow.py`, the view in `scripts/flow_view.py`, and the tables `MOVES` and `SEQ` with the registries
-`QUESTIONS` and `OPTION_IDS` in `scripts/flow_base.py`).
+`QUESTIONS` and `OPTION_IDS` in `scripts/flow_base.py`). A package that names `CHANGELOG.md` writes its lines
+under the one heading of the result, `## v9.8.5: a run that asks twice`, and adds no version heading.
 
 ## The order inside phase 4, and why
 
@@ -152,8 +153,8 @@ WP31. Do not rename a label, a `say` line or a state key in this phase; write ne
      left to WP16.
   7. **The scripted loop.** `scripts/e2e/loop.ts:18-25` reads the marker by the same rule, for any call, not only
      the agent's gate call. Keep the old reading as the way back for a CLI that prints no marker: when the output
-     of a gate call holds no `VERDICT:` line, `-> FAIL` still tells a verdict. The replay drives 9.8.4 and 9.8.5
-     through `orchestrate` of this file (`scripts/e2e/replay.ts:20, 363`).
+     of a gate call holds no `VERDICT:` line, `-> FAIL` still tells a verdict. The replay drives 9.8.4 and the base
+     (`10e965a`) through `orchestrate` of this file (`scripts/e2e/replay.ts:20, 363`).
   8. **The page.** `commands/temper.md`, in the paragraph on `temper go` (`:69-75`) and in "A refused call"
      (`:171-172`), and the same place of `commands/fix.md`: a call that prints a `VERDICT:` line recorded a
      verdict; it is no failure whatever its exit code; run the calls after it, then `temper go`.
@@ -450,8 +451,8 @@ WP31. Do not rename a label, a `say` line or a state key in this phase; write ne
     `scripts/selftest/temper-cases-15.sh:217-221` through risk H; both need `want_design` or a `design.md`.
     `scripts/selftest/temper-cases-25.sh` holds the case of the Design row. Each changed assertion goes into
     `docs/plans/one-go/changed-tests.md`.
-  - `Run.seq` (`scripts/flow.py:228-236`) removes Design by `has_design`; a run saved at Design by 9.8.5 keeps it
-    through `:256-257`.
+  - `Run.seq` (`scripts/flow.py:228-236`) removes Design by `has_design`; a run saved at Design by 9.8.4 or by the
+    base keeps it through `:256-257`.
   - The More list of the plan question grows by one option. A list of more than four makes a second level
     (`scripts/flow.py:492-498`), the path that broke in pull request 115 (M2 of
     `docs/plans/one-go/evidence/v-pr115.md`). Add a case that every option of the plan question is reachable in
@@ -518,7 +519,9 @@ WP31. Do not rename a label, a `say` line or a state key in this phase; write ne
        `check-again` and `confirm`; after `confirm` with a reason the row passes.
      - `run: a run taken up again asks its stage once`: `temper go --taken-up` on an unattended run in Build
        gives the park call, the Build question is asked once, and Review then passes as `auto`.
-     - `run: a 9.8.5 run saved armed asks at every stage`.
+     - `run: a run saved armed by an earlier version asks at every stage`, once on the armed state of 9.8.4 (what
+       users have) and once on the one of the base (`10e965a`), both from the saved states of WP07
+       (`scripts/selftest/saved-old.json`, made by `scripts/selftest/make-saved-old.sh`).
      - `run: the rule log holds each advance, repair, stop and answer`, and `run: view.json carries rule_log`.
   2. The mod: `tests/mod/dialog.test.ts`, `guard.test.ts`, `hardening.test.ts` and `answers.test.ts` hold the two
      old labels in 18 places; move them to the new labels. `tests/mod/driver.test.ts`: a drive with no request
@@ -529,8 +532,10 @@ WP31. Do not rename a label, a `say` line or a state key in this phase; write ne
      takes the recommended option; `armedRun` (`:445-462`, the scenario `armed-run`) is rewritten as the default
      run with one failed group. The scenario `policy-run` of WP08 loses its `autonomy.policy` block and stays, as
      a default run. The scenario `ask-every-stage` (row `D17`) must still pass.
-  4. From the list: `D16`, `D18a`, `D18b`, `D18c`, `D19`, `D32a`, `D32d`, `D33a`, `D33b`, `D39d`, `D60c` and the
-     scenario `stop-keeps-mode` (`D32c`) pass and leave it here; `D32b` left with WP08. `group-fail-twice` holds
+  4. From the list: `D16`, `D18a`, `D18b`, `D18c`, `D19`, `D32a`, `D32d`, `D33a`, `D33b`, `D39d`, `D60c` (the
+     armed state, of 9.8.4 and of the base), every other token of row `D60` that WP07 listed for this package
+     because its half of 9.8.4 failed at the head, and the scenario `stop-keeps-mode` (`D32c`) pass and leave it
+     here; `D32b` left with WP08. `group-fail-twice` holds
      its assertion `D33c` from here and stays listed until WP16 for row `D06`. The floor of `default-run` drops by
      the group, Build, Review and Check questions: lower `now`.
 - **Mechanism:**
@@ -548,7 +553,7 @@ WP31. Do not rename a label, a `say` line or a state key in this phase; write ne
      gate PASS and not skipped. It writes `ran_unattended` as today and `unattended_from` with the stage the run
      is at. `state set` refuses `unattended_from` in the list of `:861-864`. `_state_migrate_legacy` (`:781-789`,
      with one more test in its fast path): a state with `run_mode autonomous` and no `unattended_from` becomes
-     `interactive`. A run armed by 9.8.5 was approved for Build alone.
+     `interactive`. A run armed by 9.8.4 or by the base was approved for Build alone.
   4. **The approval's first options.** One method builds them for the plan question (`scripts/flow.py:672-680`,
      the three variants) and for the Design question (`:726-730`):
      - `approve-run`: label `Approve and build`, description `armed_text()`, move `arm`, calls
@@ -695,7 +700,19 @@ WP31. Do not rename a label, a `say` line or a state key in this phase; write ne
     the list, and row `D33` is whole only after WP16 and WP21 (`docs/plans/one-go/contracts.md` section 13).
   - `claude plugin test .`, `tsc -p tsconfig.mod.json` and `bash scripts/check-mod-calls.sh` (20 calls) are green.
   - `grep -n 'autonomy.policy\|def policy' scripts/*.py` prints nothing.
+  - The rows this package turns green are listed under its id in "Rows by package" of
+    `docs/plans/one-go/done.md`; that section wins over this list. Row `D60` there names the saved states of
+    9.8.4 and of the base; the armed ones of both pass here, and so does every state of 9.8.4 that WP07 found
+    failing at the head.
 - **Traps:**
+  - Row `D60` gives this package the saved runs of 9.8.4, which is what users have: each of its five cases runs
+    a state of 9.8.4 beside the same state of the base, and WP07 lists for this package each token whose half of
+    9.8.4 fails at the head. Take each such run up: `_state_migrate_legacy` (step 3) is the place for a state
+    key that changed its meaning. Only where a state cannot be taken up, `next` asks the restart question
+    (`run.restart`) and its text says that the run was saved by an older Temper, that the spec files stay and
+    that `start-over` begins it again; it is never `broken` or `error`. Then change that half of the one
+    assertion as the row says, list it in `docs/plans/one-go/changed-tests.md`, and write the state into
+    `docs/plans/one-go/PROGRESS.md` for the pull request text.
   - `autonomy.enabled: false` was the shipped default before 9.8.0 (the comment at `scripts/flow.py:301-302`), so
     most upgraded projects hold the line without having chosen it, and they start at `ask`. That is the settled
     decision. WP29's one time question must name this line and what removing it changes.
@@ -745,7 +762,7 @@ WP31. Do not rename a label, a `say` line or a state key in this phase; write ne
        `intent unchanged since the approval`.
      - `bound: the CLI's own lines are exempt`: `intent accept` and `intent complete` leave the row passing.
      - `bound: a changed Test line of tasks.md fails the three gates too`, and the detail names `tasks.md`.
-     - `bound: a run with no recorded digest passes the row` (a run saved by 9.8.5).
+     - `bound: a run with no recorded digest passes the row` (a run saved by 9.8.4 or by the base).
      - `bound: a step back to Plan and a new approval record the new digests`.
      - `bound: an unattended run stops at the failed row`: `next` is the park call, never a loop back.
      - `bound: leaving Intent makes no branch and no commit`: the calls of the Intent question's first option

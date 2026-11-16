@@ -6,18 +6,23 @@ the code, that must all be green at the end. This page is your contract. Read it
 
 ## 1. What you build, and what "done" means
 
-The result is Temper 10.0.0: a run that asks twice (one approval before code, one at the commit), repairs a failure
+The result is Temper 9.8.5: a run that asks twice (one approval before code, one at the commit), repairs a failure
 in the stage where it happened, finds a fault at the earliest moment, writes less at the front, and shows a new user
-two commands and about ten config lines.
+two commands and about ten config lines. The number is the owner's (section 3, decision 7): in this kit "9.8.5"
+always means this result, never the tree you start from.
 
 Done means all of these, and nothing less:
 
 1. Every check of `docs/plans/one-go/done.md` passes.
 2. The list of checks still expected to fail is empty.
 3. `bash scripts/verify.sh final` ends `verify final: PASS` on a fresh work tree of the pushed head, and CI on the
-   pull request is green.
+   pull request is green. Only the commit of the summary (item 6) comes after that run; it changes two files
+   under `docs/history`, and `quick` holds it.
 4. `docs/plans/one-go/PROGRESS.md` shows every work package as done, with its commit.
 5. The pull request text carries the scorecard and says plainly what was not measured.
+6. The summary of what happened, `docs/history/build-9.8.5.md`, is committed, opens the pull request text and is
+   your last message to the owner. It says in plain words what was built, how each item of the plan was proven,
+   and whether a run with a real model was made (WP32 writes it; rows `D107` and `D109` of `done.md`).
 
 A row that needs the owner (`done.md` note 11), a bench line that ran and missed, a cap recorded as one that
 cannot be met (note 5), a check recorded as wrong, whose line stays on the list (`done.md`, "How to read a red
@@ -41,7 +46,7 @@ The files of this folder:
 | `done.md` | every promise of the build and the automated check that proves it |
 | `pr-115-fixes.md` | the decision for each defect of pull request #115 |
 | `wp/*.md` | the specs of the work packages WP00 to WP32 |
-| `evidence/` | the reports and prototypes the specs cite; removed by the last commit |
+| `evidence/` | the reports and prototypes the specs cite; removed by WP32 before its final gate |
 
 ## 3. The settled decisions
 
@@ -70,12 +75,29 @@ The owner settled these. Do not ask about them and do not reopen them.
    `/temper:temper`; the doors go.
 6. **The plugin directory stays a goal.** Every rule of `scripts/validate-directory.sh` holds, no tracked file is over
    256 KiB, and the mod makes no host call outside the reviewed list of `scripts/check-mod-calls.sh`.
-7. **The version of the result is 10.0.0.**
+7. **The version of the result is 9.8.5**, the number the owner chose. `main` is 9.8.4 (`7c7a1c1`), and that is
+   what users have. The base (`10e965a`) already carries 9.8.5 in its manifest, in `.claude/CLAUDE.md`, in the
+   README badge and as its first CHANGELOG entry, but pull request #115 was never merged, so no user ever had
+   that 9.8.5. Four things follow:
+   - **No bump and no tag.** WP31 runs no bump script. It checks every place that states the version and sets
+     the one that is stale at the base: `docs/index.html:35` still says 9.8.4, and no check of the base reads
+     it. No other version stamp moves.
+   - **One CHANGELOG entry.** No package adds a version heading. WP01 puts the heading
+     `## v9.8.5: a run that asks twice` in the place of the heading of the base (`CHANGELOG.md:6`), every package
+     writes its lines under it, and WP31 gives the entry its final parts and folds in what stays of pull
+     request #115.
+   - **One meaning.** "9.8.5" means the result. What the build starts from is "the base (`10e965a`)" or "the head
+     of pull request #115". The plan and the reports under `evidence/` were written before this decision: where
+     they say 9.8.5 they mean the base.
+   - **Users come from 9.8.4.** Every promise about an upgrade (a saved run, an old config, the installed commit
+     hook, the one time question, the one time notice, what a user must know) is first about a project of 9.8.4
+     and second about one that ran the base.
 8. **Scope.** Releases 0 to 7 of the plan. Its "Later" list is out, except moving code out of `scripts/temper` and
    splitting `scripts/flow.py`, which come first because nothing else fits under the file limit. Neither move may
    change behaviour. Section 9 names what else is not built.
-9. **Pull request #115 is the base, not a step.** Its head `10e965a` (version 9.8.5) is merged into your branch. Its
-   defects are fixed, removed or replaced inside this build, as `docs/plans/one-go/pr-115-fixes.md` says for each one.
+9. **Pull request #115 is the base, not a step.** Its head `10e965a` is merged into your branch, and this kit calls
+   it the base. Its defects are fixed, removed or replaced inside this build, as
+   `docs/plans/one-go/pr-115-fixes.md` says for each one.
 
 ## 4. How you work
 
@@ -107,6 +129,10 @@ The owner settled these. Do not ask about them and do not reopen them.
   get a test green; a test that needs a resolved finding uses the helper WP18 adds.
 - **CI confirms, you do not wait for it.** Open the draft pull request when WP00 is pushed. When CI is red, find the
   cause and fix it in the next commit; a job gets one rerun at most.
+- **One run with a real model, when it is allowed.** Every check of `done.md` but part H uses scripted agents. WP32
+  makes one real run, in this order of preference: the bench, when the owner's first message allowed it; else the
+  check `approval` of `scripts/e2e/live-smoke.sh`, when that message allowed model use and a nested `claude -p`
+  answers (it proves the front half only); else none, and the summary says so in plain words (row `D109`).
 - **The repository's own rules hold.** `.claude/CLAUDE.md` lists the known mistakes: gate logic lives in the CLI,
   never in a prompt; what comes next lives in the flow, never in a page; a brief never points an agent at an
   orchestrator file; hooks fail open. They apply to every package.
@@ -187,8 +213,8 @@ the unattended run would sit on a question no prototype ran.
 | 29 | WP28 | Two listed commands; the doors go | WP05, WP07, WP13, WP16, WP17, WP26 | serial | `ux-onboarding.md` |
 | 30 | WP29 | Defaults in code; the one time config question | WP04, WP08, WP10, WP11, WP13, WP14, WP19, WP21, WP27, WP28 | serial | `ux-onboarding.md`, `red-completeness.md` |
 | 31 | WP30 | Packs, skills and dormant machinery removed | WP16, WP19, WP27, WP28, WP29 | serial; `full` after it | `ux-onboarding.md`, `changelog-older.md` |
-| 32 | WP31 | Words, documents, decision records, version 10.0.0 | WP01 to WP30 | steps 1 to 3 serial; then its pages may be split over agents, one page each; `full` ends phase 8 | `ux-onboarding.md`, `adr-constraints.md` |
-| 33 | WP32 | Final verification, the review, the pull request text | WP01 to WP31 | serial; its reviewers run two at a time | `v-targets-scorecard.md`, `red-bad-runs.md` |
+| 32 | WP31 | Words, documents, the README of at most 80 lines, decision records, the one CHANGELOG entry, the check that every place says 9.8.5 (no bump; one stale line of `docs/index.html` set by hand) | WP01 to WP30 | steps 1 to 3 serial; then its pages may be split over agents, one page each; `full` ends phase 8 | `ux-onboarding.md`, `adr-constraints.md` |
+| 33 | WP32 | Final verification, the review, a real run, the pull request text, the summary of what happened | WP01 to WP31 | serial; its reviewers run two at a time | `v-targets-scorecard.md`, `red-bad-runs.md` |
 
 **What is serial.** Every package marked serial edits the flow modules, `scripts/temper`, `scripts/go.py`, the view
 or the fixtures, and nearly all of them also edit `docs/flow.md`, `CHANGELOG.md`, `scripts/e2e/scenarios.ts`,
@@ -213,8 +239,8 @@ names a later package that builds on this one; it is not a dependency. "Lane" sa
 above is what decides whether two packages may run at once.
 
 The evidence behind every spec is in `docs/plans/one-go/evidence/`. Read the report a spec names before you build its
-package. A prototype diff a spec names is under `evidence/prototypes/`. Remove that folder in the last commit of the
-build.
+package. A prototype diff a spec names is under `evidence/prototypes/`. WP32 removes that folder in the commit
+before its final gate; only the commit of the summary comes after it.
 
 ## 6. The eleven rules the result must keep
 
@@ -251,12 +277,17 @@ Each has at least one automated check in `done.md`. The phase reviews test every
 
 ## 8. The final pull request
 
-One pull request to `main`, opened as a draft when WP00 is pushed and kept current. Its text has: what a user sees
+One pull request to `main`, opened as a draft when WP00 is pushed and kept current. Its title is
+`Temper 9.8.5: a run that asks twice`. Its text opens with the summary in short (parts 1, 2 and 6 of
+`docs/history/build-9.8.5.md`, which WP32 writes last). Then it has: what a user sees
 change; the scorecard table (dialogs, launches, repeats and suite runs of the scripted runs, before and after); the
 list of tests changed on purpose, with the reason for each; what was not measured (cost and time, unless the bench
-round ran; when it ran, the scorecard of all its arms and which planner the release ships with, and why); what a
-user of 9.8.5 must know; the list of decisions of section 3; what section 9 says is not built; and the items of
-section 10. Pull request #116 is the plan and this kit (branch `ccr-88156f39-u643ta`). The text says that it
+round ran; when it ran, the scorecard of all its arms and which planner the release ships with, and why); whether
+a run with a real model was made, and what it showed; what a user of 9.8.4 must know, and in one line what
+differs for a project that ran the head of pull request #115; the list of decisions of section 3; what section 9
+says is not built; and the items of section 10. It says once that the release removes commands and changes the
+default run, which a major version would usually mark, and that the owner chose the number 9.8.5.
+Pull request #116 is the plan and this kit (branch `ccr-88156f39-u643ta`). The text says that it
 supersedes #115 and #116, whose commits are inside it; closing them is left to the owner.
 
 ## 9. Not built in this pass
@@ -285,13 +316,16 @@ The build session does none of these. WP31 and WP32 write them into PROGRESS.md 
 
 - **The two README videos.** They show a run that asks at every stage; WP31 takes the part "See it" out until they
   are recorded again.
-- **The price figures.** The README keeps the measured figures of 9.8 and says so. Figures of 10.0.0 come from the
-  scorecard, and only when the bench round ran.
+- **The price figures.** The README of at most 80 lines has one line on cost and time, and no figure the
+  scorecard does not hold: until a bench round ran, the line says where the earlier measurements are. Figures of
+  the result come from `docs/evidence/scorecard-9.8.5.json`, and only when the bench round ran.
 - **The bench.** The owner's first message is where the bench is allowed: one sentence that says it may run and
   on what access (a key in the session's environment, or the session's own model access). That sentence is also
   the word that about 110 to 125 dollars and 9 to 11 hours may be spent on the two rounds and the model test
   (`docs/plans/one-go/session-mechanics.md` section 9). Without it part H of `done.md` stays open and the pull
-  request text says so. The one real Maven or Gradle project of row `D97` is the owner's to order.
+  request text says so. The one real Maven or Gradle project of row `D97` is the owner's to order. A first
+  message that allows model use is also what lets WP32 run the check `approval` of the live smoke when the bench
+  cannot run (row `D109`); with no such word the summary says that no run with a real model was made.
 - **Closing pull requests #115 and #116.** Both are inside this one.
 - **Marking the pull request ready,** merging it and pushing the tag.
 - A branch rule that names the old CI checks (WP01 renames two), and any cap or floor the session recorded as one it

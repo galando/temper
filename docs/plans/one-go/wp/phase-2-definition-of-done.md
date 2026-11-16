@@ -4,7 +4,8 @@ This file holds the specs of work packages WP04, WP05, WP06 and WP07.
 They build the ids, the counters, the two scripted projects and the checks every later package is judged by.
 The brief is `docs/plans/one-go/README.md`. Every shared name below is the one `docs/plans/one-go/contracts.md`
 fixes. Each package ends as section 4 of the brief says: the package commit, then the small progress commit, in
-one push.
+one push. A package that names `CHANGELOG.md` writes its lines under the one heading of the result,
+`## v9.8.5: a run that asks twice`, and adds no version heading.
 
 ## WP04 Ids in the protocol
 
@@ -43,7 +44,7 @@ one push.
      - `ids: every call of question(), with_more() and opt() passes qid or oid` (python `ast` over the flow modules).
   2. `tests/mod/ids.test.ts` (new, the style of `tests/mod/answers.test.ts:1-30`):
      - `parseRunView` gives each option of the view `plan-pass` its `id`, `kind` and `recommended`; a view with none
-       of the keys (a 9.8.5 view) still parses, with `id: null` and `recommended: false`.
+       of the keys (a view of the base, `10e965a`) still parses, with `id: null` and `recommended: false`.
      - The driver opens the More question by `kind: 'more'` when the option's label is changed in a doctored view;
        it goes back on `kind: 'cancel'` at a reason question; it runs the `carry` call on `kind: 'carry'`.
      - `answersIn` still counts nothing for a reworded question whose ids are right: an id is a lookup, never what
@@ -115,8 +116,8 @@ one push.
   10. **The scripted persons and traces.** `scripts/e2e/scenarios.ts:119-123`: `recommended` takes the option
       whose `recommended` is true, else the first. `scripts/e2e/loop.ts:94, 169`: the trace line is
       `ask:<stage>:<question id>:<option ids joined by |>`; `:198` opens More by kind. `scripts/e2e/replay.ts:343`
-      reads the field when present and falls back to the label, because the same script drives 9.8.4 through
-      `TEMPER_E2E_ROOT` (`scripts/e2e/world.ts:17`, `scripts/e2e/ab-replay.sh`).
+      reads the field when present and falls back to the label, because the same script drives 9.8.4 and the
+      base through `TEMPER_E2E_ROOT` (`scripts/e2e/world.ts:17`, `scripts/e2e/ab-replay.sh`).
   11. **Fixtures.** Run `bash scripts/selftest/make-view-fixtures.sh` and the same with `extra`; commit both files.
 - **Removed:** every read of the suffix text outside `opt()` and `set_rec()`; label compares in the driver for More,
   Accept, Cancel and Carry forward; the label rule of the scripted person.
@@ -266,11 +267,12 @@ one push.
      counts. Read every other `now` value off the first run.
   7. **The replay in the gate.** `bash scripts/verify.sh full` runs `bun scripts/e2e/replay.ts final`, takes the
      last line, and `python3 scripts/check_floor.py --replay` compares it with the `replay` entry. The values
-     above are those of `docs/evidence/ab-replay-9.8.5.md:26-35`.
+     above are those of `docs/evidence/ab-replay-9.8.5.md:26-35`, the page as the base has it: its column
+     "9.8.5" is the base.
      The same step of `full` runs `bash scripts/e2e/ab-replay.sh 10e965a` (about 55 seconds). The script gets
      one check: when its base is `10e965a`, it hands the JSON line of its base run to
      `python3 scripts/check_floor.py --replay-base`, which compares it with the entry `replay_base` and fails the
-     script on a difference. The harness of this tree must still drive the CLI of 9.8.5 to the same numbers: from
+     script on a difference. The harness of this tree must still drive the CLI of the base to the same numbers: from
      WP08 on a package can move them only by breaking what the two sides share (`scripts/e2e/loop.ts`, the
      persons), and `full` then says so at the next phase gate and not at WP32.
   8. **`scripts/caps.json` and `scripts/check_caps.py`.** Python 3 and git only, under a second, called from
@@ -293,6 +295,7 @@ one push.
      | `prompt_bytes` | bytes of `commands/*.md`, `agents/*.md` and `reference/**/*.md` | 307,712 |
      | `pack_skill_bytes` | bytes of the markdown under `packs` and `skills` | 79,658 |
      | `cli_bytes` | bytes of `scripts/temper` | the measure after WP02 as `now`, 222144 as `final`; and delete the case `room: scripts/temper leaves 40,000 bytes free` of case file 32 in this commit |
+     | `readme_lines` | lines of the product's `README.md`, in the root | 89 as `now`, 80 as `final`: the owner asked for a concise README, and WP31 rewrites the page under the cap (row `D108`) |
 
      The regular expressions are in `docs/plans/one-go/evidence/v-targets-scorecard.md` section 5; the values in
      the last column were counted again at the head and agree. Take the file list of the flow from one key of the
@@ -300,7 +303,8 @@ one push.
      Three rules in the script: `now` equals the measure; a `final` is not above its value in the commit that
      first added the key, which the history of the file gives; in the final mode no `now` is above its `final`.
      A rule that read only `HEAD` would be passed by the very commit that raises a value. The `final` values are
-     part F of `docs/plans/one-go/done.md`; that each `final` of the caps and of the floor equals the number of
+     part F of `docs/plans/one-go/done.md`, and row `D108` for `readme_lines`; that each `final` of the caps and
+     of the floor equals the number of
      that table is checked by `python3 scripts/check_done.py --final` (WP07, `D75b`).
      From this commit on `cli_bytes` is a cap like the others: a package may use the room WP02 made, `now`
      follows the measure, and the line of 222,144 bytes is held at the end by `--final`.
@@ -328,7 +332,7 @@ one push.
       `person.jsonl`; `:248-264`: add the plugin version, the commit, the Claude Code version and mod on or off to
       `run.json`. `bench/agentlog.py`: the four helpers of `bench/compare_models.py:25-108`, with the agent type
       matched whole. `bench/scorecard.py`: `scorecard.json` for a results folder, and `--gate FILE` that compares
-      it with the pass lines of part H and writes `docs/evidence/scorecard-10.0.0.json`. `bench/report.py:14`:
+      it with the pass lines of part H and writes `docs/evidence/scorecard-9.8.5.json`. `bench/report.py:14`:
       free arm names; median, minimum and maximum beside the mean. The scorecard takes several results folders
       and keeps one block an arm, by name: the model test of WP32 is a third arm in a folder of its own. `--gate`
       holds one arm against the pass lines: the one `--arm NAME` names, by default the round after. WP32 names
@@ -362,7 +366,9 @@ one push.
   - `scripts/e2e/replay.ts` runs `main()` when imported (`:393`): never import it; run it as a process.
   - The replay drives 9.8.4 too. Its plan with `reviewed: pending` is asked the Context check on both sides; the
     `now` numbers of the `replay` entry are read after step 4, and the table of
-    `docs/evidence/ab-replay-9.8.5.md` is printed again in the same commit if a number moved.
+    `docs/evidence/ab-replay-9.8.5.md` is printed again in the same commit if a number moved. Until WP32 that
+    page is the page of the base, 9.8.4 against the base; WP32 rewrites it in place with a third column for the
+    result.
   - `scripts/quality-check.sh` must need python3 and git only (`:3-6`): the floor needs bun and is its own step.
   - `scripts/check_caps.py` and `scripts/check_floor.py` are scripts: no path with a folder named `hooks`,
     `tests`, `mod`, `core` or `ui`, no `glob` call, no wildcard after a variable, no `..` after a variable
@@ -481,7 +487,8 @@ one push.
     `replay` entry of the floor.
   - `bash scripts/verify.sh quick` is green.
 - **Traps:**
-  - The numbers of the replay are evidence (`docs/evidence/ab-replay-9.8.5.md`). Step 1 must not move one: run the
+  - The numbers of the replay are evidence (`docs/evidence/ab-replay-9.8.5.md`, the page of the base). Step 1
+    must not move one: run the
     replay before and after, and compare the JSON lines but for `cli_seconds`.
   - `bash scripts/e2e/ab-replay.sh` runs this tree's `replay.ts` against a worktree of the base
     (`scripts/e2e/ab-replay.sh:13-17`): the new import must resolve from this tree, not from the base.
@@ -508,7 +515,7 @@ one push.
 - **Touches:** `scripts/selftest/expected-fail.txt`, `scripts/selftest/test-temper.sh`,
   `scripts/selftest/run-selftest.sh`, `scripts/e2e/accept.ts` (new), `scripts/e2e/run.ts`,
   `scripts/selftest/temper-cases-43.sh` to `scripts/selftest/temper-cases-46.sh` (new),
-  `scripts/selftest/saved-985.json` (new), `scripts/selftest/make-saved-985.sh` (new), `scripts/check_done.py`
+  `scripts/selftest/saved-old.json` (new), `scripts/selftest/make-saved-old.sh` (new), `scripts/check_done.py`
   (new), `scripts/check_changed_tests.py` (new), `scripts/verify.sh`, `scripts/stops.json`,
   `docs/plans/one-go/done.md`, `docs/plans/one-go/changed-tests.md` (new), `.claude/CLAUDE.md`.
 - **Tests first:** this package is tests. The table of `docs/plans/one-go/done.md` is its list: write every check
@@ -516,8 +523,9 @@ one push.
   word of its name.
   For each row read "Tests first" and "Mechanism" of the package in its last column: the calls that build its
   state are named there and in `contracts.md` section 2. Note 8 of `done.md` is part of this spec, and of the
-  specs of WP05 and WP06: it lists the tokens the audit added (`D02b` to `D105`), and every one is written here,
-  failing first.
+  specs of WP05 and WP06: it lists the tokens the audit added (`D02b` to `D105`) and what the owner's decisions
+  of 2026-11-16 added (the token `D108`, and the half of 9.8.4 in the cases of `D60` to `D64`), and every one is
+  written here, failing first.
   First write the checks of the mechanism itself, in `scripts/selftest/temper-cases-43.sh`, names `xfail:` and
   `done:`:
   1. `xfail: a listed selftest check that fails is counted apart and the file still ends FAIL: 0`.
@@ -597,9 +605,9 @@ one push.
      expected failures. A new mode `final` is `full`, then `python3 scripts/check_done.py --final`,
      `python3 scripts/check_caps.py --final`, `python3 scripts/check_floor.py --final`,
      `python3 scripts/check_changed_tests.py`, and the bench block: when
-     `docs/evidence/scorecard-10.0.0.json` exists it must be inside the lines of part H; when it does not,
+     `docs/evidence/scorecard-9.8.5.json` exists it must be inside the lines of part H; when it does not,
      print `OPEN: the bench gate (needs the owner's word and a model access)` and go on. The mode is extended
-     later by WP32, which adds the compare of the replay against 9.8.5 to it.
+     later by WP32, which adds the compare of the replay against the base and the check of its summary to it.
   7. **How a scenario reads and answers.** The persons are those of `scripts/e2e/persons.ts` (WP06).
      Scenarios select options by id and read results from `next --json`,
      `.temper/view.json`, `.temper/gates.json`, git and the tool logs. They name a CLI call only where the plan
@@ -622,7 +630,8 @@ one push.
      patterns of `failingScenario` (`scripts/e2e/scenarios.ts:409-441`) and of the replay's reviewer
      (`scripts/e2e/replay.ts:266-271`).
   9. **The rule cases.** `scripts/selftest/temper-cases-44.sh` (the run unit rows that are cases, and rules 1 to
-     6), `-45.sh` (rules 7 to 11 and the rows of pull request #115), `-46.sh` (migration, the front, the surface).
+     6), `-45.sh` (rules 7 to 11 and the rows of pull request #115), `-46.sh` (migration, the front, the surface,
+     and `D108`, the README of at most 80 lines, whose case reads the product's `README.md` as its row says).
      Build each state
      with the helpers of `scripts/selftest/case-helpers.sh` (`fresh`, `gpass`, `gfail`, `m_setup`, `nx`, `vw`)
      and assert on what `next` returns, on `gates.json` and on git. One new helper, `_unattended <stage>`, builds an
@@ -641,14 +650,28 @@ one push.
      `D33f`), join the results into one `assert_eq`, in the `a|b|c` style of the base. The list works by token: a
      token of which one half passes today is red as an unexpected pass while listed and red as a failure once
      taken off.
-  10. **Runs saved by 9.8.5.** `scripts/selftest/make-saved-985.sh` runs once, against a work tree of `10e965a`
-      (`git worktree add --detach`, removed after), because this tree already writes ids and two new run files:
-      there it drives the scripted run of that tree's own `scripts/selftest/make-view-fixtures.sh` to five points
+  10. **Runs and configs of an older Temper.** Users have 9.8.4 (`7c7a1c1`); the base (`10e965a`) was never
+      released. So every migration case runs first on what 9.8.4 left and second on what the base left.
+      `scripts/selftest/make-saved-old.sh` runs once, against a work tree of `7c7a1c1` and against one of
+      `10e965a` (`git worktree add --detach`, each removed after), because this tree already writes ids and two
+      new run files. In each
+      it drives the scripted run of that tree's own `scripts/selftest/make-view-fixtures.sh` to five points
       (the plan question; Build with a group running; an armed run in Build; Review with an open finding; a
       parked run) and
-      writes every file of `.temper` and of the spec folder at each point into `scripts/selftest/saved-985.json`
-      as text. The cases of `D60` restore each and run the new CLI on it. The two old config templates are read
-      with `git show 7c7a1c1:templates/temper.config.default` and `git show 10e965a:templates/temper.config.default`.
+      writes every file of `.temper` and of the spec folder at each point into `scripts/selftest/saved-old.json`
+      as text, under the key of its commit (`7c7a1c1`, `10e965a`). Under the same key it stores that tree's
+      `templates/temper.config.default` (the same text as `git show 7c7a1c1:templates/temper.config.default` and
+      `git show 10e965a:templates/temper.config.default`), so the cases of `D61` to `D63` read both old
+      templates from the file and need no old commit when they run. The script and the file are committed; no
+      case runs the script.
+      The cases of `D60` restore each state and run the new CLI on it: one token a state (`D60a` to `D60e`), and
+      each joins the result for 9.8.4 and the result for the base in one `assert_eq`. `D61a` runs on the
+      template of 9.8.4 and `D61b` on that of the base; the cases of `D62` and `D63` run on both and join the
+      two results. `D64a` uses the hook as `scripts/guards/install.sh` of
+      `7c7a1c1` writes it: no file under `scripts/guards` differs between the two commits, so that one hook
+      stands for both; the script stores its text too, with the path of the plugin as a mark the case fills in.
+      A state of 9.8.4 that the tree of this package cannot take up is no reason to weaken its case: the token
+      goes on the list for WP11, and row `D60` says what WP11 may then assert.
   11. **Close the loop.** For every check that fails now, add its line to the list with the package that will
       make it pass. For every check that passes now, leave it off. The package is the one of the last column of
       `done.md`, and for a single assertion the one "Rows by package" names; the audit of the kit already put
@@ -687,7 +710,9 @@ one push.
     where two packages far apart make the parts pass.
   - `scripts/selftest/run-selftest.sh` runs the pairs 2 with 3 and 8 with 9 in one process (`:33-35`). The list is
     read once a process; a token must not be shared by two case files.
-  - `10e965a` must stay reachable from the branch, or `scripts/check_changed_tests.py` has no base.
+  - `10e965a` must stay reachable from the branch, or `scripts/check_changed_tests.py` has no base. The case of
+    `D64b` reads `git diff 10e965a` when it runs, in CI too: the selftest job fetches the whole history for it
+    (WP01's workflow).
   - Directory rule 10 forbids a shell or Python script to name a path with a folder named `hooks`, `tests`, `mod`,
     `core` or `ui` at all, comments included (`scripts/validate-directory.sh:17-27`). So the two new scripts and
     every bash case reach the mod's tests only through git pathspecs by file ending, and never name their folder;

@@ -21,7 +21,10 @@ under about 20 lines of product code and one test. Throwing the pull request awa
 again by hand, with the 11 selftest files that cover them.
 
 **It is not merged on its own.** The one pass build starts its branch from the head of #115. The defects are fixed or
-removed inside the one pull request, as its third phase, before any new behaviour is built on them.
+removed inside the one pull request, as its third phase, before any new behaviour is built on them. The head of
+#115 calls itself 9.8.5 in its manifest, but it was never merged: no user has it, users have 9.8.4. The result of
+the build keeps the number 9.8.5 (the brief, section 3, decision 7), so this page says "the head of #115" or "the
+base" for the pull request and never calls it by that number.
 
 **What you get.** Seven dead ends on the path of a user who changes no config are gone (M1, M2, M7, M9, M10, M15,
 M16). A run asks no more than 9.8.4 did and recommends no loop that 9.8.4 did not. An unattended run never plans again
@@ -156,3 +159,11 @@ point in its own words, the point is still that package's.
 
 - The environment fault at a task gate (M9): from text patterns to three sure signs, in WP21.
 - A repair of a finding: from a loop back through Build to a fix in the stage, in WP24.
+
+**In the CHANGELOG.** The build adds no version heading. It replaces the entry of the base, whose heading at
+`CHANGELOG.md:6` is `## v9.8.5: a run that checks its own environment first, and asks less`, by one entry,
+`## v9.8.5: a run that asks twice`. WP01 changes the heading, every package writes its lines under it, and WP31
+gives the entry its final parts. What that entry keeps of pull request #115 is the list "Stays" above and the two
+lines of "Changes its form", told as what a user of 9.8.4 gets. What is under "Goes" is not told there as a
+removal: no user ever had it, so nothing was taken from anyone. It stands only in the one closing line the entry
+has for a project that ran the head of #115.

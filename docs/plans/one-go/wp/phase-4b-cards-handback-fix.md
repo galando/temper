@@ -6,6 +6,8 @@ fixes. WP02 and WP03 land before these packages and move code: find each functio
 are `scripts/flow.py` and the seven modules WP03 made of it (`scripts/flow_base.py` holds the tables and the
 registries, `scripts/flow_view.py` the view). Each package ends as the brief's section 4 says:
 `bash scripts/verify.sh quick` green, then the package commit, then the small progress commit, in one push.
+A package that names `CHANGELOG.md` writes its lines under the one heading of the result,
+`## v9.8.5: a run that asks twice`, and adds no version heading.
 
 The build order is that of the brief's section 5, not the order of this file: WP18 is built first, after WP10 and
 before WP14 and WP11; WP15, WP16 and WP17 follow WP13, and `bash scripts/verify.sh full` after WP17 ends phase 4.
@@ -254,7 +256,8 @@ belongs to a later package, do not weaken it: name that package on its line of t
 - **Documents in the same change:** `docs/flow.md` (the field `card` in the `next` section and in the view table,
   `:264-290`; the word `temper card`); `docs/mod.md` (what is drawn above the dialog); `CHANGELOG.md`;
   `docs/plans/one-go/changed-tests.md` (each case that stated the old Plan panel on purpose). The three golden
-  texts are the samples the README of WP31 quotes.
+  texts are the samples `docs/getting-started.md` of WP31 quotes; the README of WP31 has at most 80 lines and
+  quotes no card.
 - **Done when:** `bash scripts/verify.sh quick` is green; `scripts/selftest/temper-cases-56.sh` ends `FAIL: 0`;
   `claude plugin test .`, `tsc -p tsconfig.mod.json` and `bash scripts/check-mod-calls.sh` pass with the list of
   calls unchanged; `bun scripts/e2e/run.ts all full-run flagged-map` passes with equal traces, and `flagged-map`,
@@ -766,9 +769,10 @@ belongs to a later package, do not weaken it: name that package on its line of t
     none passes as `read 0 of 0 changed files`.
   - `Run.findings` leaves the completion row out by its exact claim (`scripts/flow.py:402`). Keep the claim text
     `review completed`; put the file list in the `read` field, never in the claim.
-  - A run saved by 9.8.5 after its Review has a completion row with no `read` list. Do not pass it for that: a
-    model that leaves `--read` out would get the same pass. It fails once and Review runs again. Say so in the
-    `CHANGELOG.md` line of this package; the migration note itself is left to WP32.
+  - A run saved by 9.8.4 or by the base after its Review has a completion row with no `read` list (the two write
+    the row alike). Do not pass it for that: a model that leaves `--read` out would get the same pass. It fails
+    once and Review runs again. Say so in the `CHANGELOG.md` line of this package; the migration note itself is
+    left to WP32.
   - The reviewer's list is still its own claim. The row raises the price of skipping a file from silence to a
     false statement in the ledger; `docs/trust.md` must not say more than that.
   - `scripts/temper` has 1,640 bytes free at the head. Put the two checks in `scripts/findings.py` and call them

@@ -1,17 +1,24 @@
 # Phases 7 and 8, the front and the surface: the specs of WP26 to WP31
 
 This file holds WP26 and WP27 (phase 7, the front: what Plan writes, the revise agent, criteria by the CLI, models)
-and WP28, WP29, WP30 and WP31 (phase 8, the surface: commands, config, removals, words, documents, version 10.0.0).
+and WP28, WP29, WP30 and WP31 (phase 8, the surface: commands, config, removals, words, documents, version 9.8.5).
 
 Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scripts/temper` and split
 `scripts/flow.py`, so find a cited function by its name first and by its line second.
+
+In this file "9.8.5" is the result of the build. The state the build starts from carries the same number
+(`.claude-plugin/plugin.json:5`) and is called "the base" or `10e965a`: it is the head of pull request #115, which
+was never merged, so no user had it. Users have 9.8.4 (`7c7a1c1`), and every promise to an existing project is
+made to a project of 9.8.4 first and to one of the base second.
 
 The brief is `docs/plans/one-go/README.md`, and every shared name below is the one `docs/plans/one-go/contracts.md`
 fixes: the new case files are `scripts/selftest/temper-cases-70.sh` to `temper-cases-75.sh`, one a package in the
 order of this file (the runner of WP01 finds a case file by its name, so no `source` line is added), and the
 decision records have the numbers of its section 11. The packages are built in the order of this file, after WP25.
 Each ends as the brief's section 4 says: `bash scripts/verify.sh quick` green, then the package commit, then the
-small progress commit that sets its line of `docs/plans/one-go/PROGRESS.md`, in one push.
+small progress commit that sets its line of `docs/plans/one-go/PROGRESS.md`, in one push. A package that names
+`CHANGELOG.md` writes its lines under the one heading of the result, `## v9.8.5: a run that asks twice`, and
+adds no version heading; WP31 sorts those lines into the final parts of the entry.
 
 A check leaves `scripts/selftest/expected-fail.txt` in the package commit that makes it pass. A check that passed
 earlier is simply not on the list (`docs/plans/one-go/done.md`, note 7). If one still fails for a reason that
@@ -154,10 +161,10 @@ belongs to a later package, do not weaken it: name that package on its line of t
      the bound and the call that records `medium`. The planner runs the gate before it returns
      (`agents/plan.md:59-61`), so it meets the row itself. Say the bound in `reference/plan.md:37-40`.
   7. **The files of a plan.** `plan_files` (`scripts/flow.py:2538-2559`) unions the two file tables of `plan.md`
-     with the `**File:**` lines. Keep reading the tables (a plan approved by 9.8.5 has them) and say in the
-     docstring that new plans have none. `scripts/drift.py:60` needs no change. The plan panel went with WP15, and
-     with it the file list of `scripts/panel.py:108-112` and the `SEARCH` field of `:118-119, 132`: confirm that
-     `scripts/card.py` took no `SEARCH` row over, and drop it there if it did.
+     with the `**File:**` lines. Keep reading the tables (a plan approved by 9.8.4 or by the base has them) and say
+     in the docstring that new plans have none. `scripts/drift.py:60` needs no change. The plan panel went with
+     WP15, and with it the file list of `scripts/panel.py:108-112` and the `SEARCH` field of `:118-119, 132`:
+     confirm that `scripts/card.py` took no `SEARCH` row over, and drop it there if it did.
   8. **Deviations.** `spec_ops.deviations` (`scripts/spec_ops.py:70-101`) writes `## Deviations` into `plan.md`
      and exits 1 with no `plan.md` (`:91-94`), at the commit (`scripts/flow.py:2143`). Write the same rows to
      `deviations.md` in the spec folder instead, replacing an earlier file, and never touch `plan.md`. One file
@@ -515,7 +522,8 @@ belongs to a later package, do not weaken it: name that package on its line of t
      (`hooks/temper-mod/core/rules.ts:335`; `tests/mod/audit-round4.test.ts:240` holds them): a saved state may
      carry the keys, and a guard list does not shrink without a decision record.
   9. **Fixtures and counts.** Regenerate the fixtures; write the new `now` of `question_sites`, `option_sites`,
-     `option_labels`, `prompt_bytes` and `cli_bytes` in `scripts/caps.json`.
+     `option_labels`, `prompt_bytes` and `cli_bytes` in `scripts/caps.json`, and of `readme_lines` when the
+     page's line count moved (its Commands table loses two rows).
 - **Removed:** nine command files and `reference/status.md`; the five doors with `state init --enter`, the state
   keys `enter` and `built_before`, `walked`, `_earlier_build` and `scripts/earlier_build.py`; the part "Entering
   at a stage"; the rule that any first word in a list is a word whatever follows it.
@@ -542,9 +550,9 @@ belongs to a later package, do not weaken it: name that package on its line of t
     starts a feature run named "draft an idea".
   - `temper-cases-8.sh` and `-9.sh` hold 13 uses of `--enter` that state the door behaviour on purpose. Delete
     those cases and list them; do not turn them into cases of something else.
-  - A run that 9.8.5 saved after it came through a door has `enter` in its state. The key is ignored from here:
-    a stage before the door with no verdict runs its agent. It is not an error. Say it in the `CHANGELOG.md` line
-    of this package; carrying it into what an existing project reads is left to WP31.
+  - A run that 9.8.4 or the base saved after it came through a door has `enter` in its state. The key is ignored
+    from here: a stage before the door with no verdict runs its agent. It is not an error. Say it in the
+    `CHANGELOG.md` line of this package; carrying it into what a project of 9.8.4 reads is left to WP31.
   - The words `discuss` and `chose` carried the hand back of the driver at the head. WP16 owns their meaning: it
     removed the hand back words `next` and `discuss` and made the note `step KIND OPTION`. This package only
     moves the words WP16 left into the rule of step 5; it brings none back.
@@ -555,9 +563,9 @@ belongs to a later package, do not weaken it: name that package on its line of t
 ## WP29 Defaults in code; a template of 10 live lines; the one time question; every key has a reader
 
 - **Goal:** A new project gets a config of 10 live lines, and every other default lives in one table in the
-  CLI. A project with an older config is asked once whether the lines that only repeat old defaults may go, so
-  that the new defaults reach it. Every key the template or a page names is read by code, and no agent is told
-  to read the config.
+  CLI. A project with an older config, first of all one of 9.8.4, is asked once whether the lines that only
+  repeat old defaults may go, so that the new defaults reach it. Every key the template or a page names is read
+  by code, and no agent is told to read the config.
 - **Depends on:** WP04, WP08, WP10, WP11, WP13, WP14, WP19, WP21, WP27, WP28.
 - **Lane:** `flow core` (one new question, a new line in agent prompts, the fixtures).
 - **Touches:** `templates/temper.config.default`, `.claude/temper.config`, `scripts/defaults.py` (new),
@@ -589,13 +597,16 @@ belongs to a later package, do not weaken it: name that package on its line of t
      `packs/tdd/rules.md` of the plugin; the Intent agent's prompt holds none; a project file
      `.claude/packs/security/rules.md` takes the place of the plugin's; a pack whose `phases:` leaves the stage
      out is not listed.
-  6. `w29 an old config is asked once`: a project whose config is the 9.8.5 template
-     (`git show 10e965a:templates/temper.config.default`), at the start of a run: the first `temper next --json`
-     is the question `config.tidy`, its text names the count of lines and the copy, and its two options carry
-     the calls `config tidy --apply` and `config tidy --keep`. The same for the 9.8.4 template (`7c7a1c1`).
+  6. `w29 an old config is asked once`: a project whose config is the 9.8.4 template
+     (`git show 7c7a1c1:templates/temper.config.default`, what users have), at the start of a run: the first
+     `temper next --json` is the question `config.tidy`, its text names the count of lines and the copy, and its
+     two options carry the calls `config tidy --apply` and `config tidy --keep`. The same for the template of
+     the base (`git show 10e965a:templates/temper.config.default`, 171 lines against 147), which already says
+     `block-on: [critical, high]`. The cases read both texts from `scripts/selftest/saved-old.json` (WP07 stored
+     them under the keys `7c7a1c1` and `10e965a`), so they need no old commit when they run.
   7. `w29 yes gives the new defaults`: after `temper config tidy --apply` the file is the new template, the copy
-     `.claude/temper.config.before-10.0.0` is byte equal to the old file, and `temper next --json` is no longer
-     that question.
+     `.claude/temper.config.before-9.8.5` is byte equal to the old file, and `temper next --json` is no longer
+     that question. Run it on the 9.8.4 template and on the template of the base.
   8. `w29 yes keeps what the person changed`: an old config with `coverage-threshold: 60`,
      `block-on: [critical]`, `enabled: false` under `autonomy` and `max-parallel: 7`. After `--apply`:
      `check.coverage-threshold` is 60 and `build.grouped.max-parallel` is 7 from `config`; `review.block-on`
@@ -611,9 +622,9 @@ belongs to a later package, do not weaken it: name that package on its line of t
   12. `tests/mod`: in the audit table of person only calls, `config tidy` counts only as the picked option of
       the `Temper gate` question the view holds; the same call from the model is refused. Add the fixture view
       of the question in the same change.
-  13. `scripts/selftest/temper-cases-46.sh`: the cases of WP07 that read the 9.8.4 and the 9.8.5 template as the
-      project's config (`D61a`, `D61b`, `D62a`, `D62b`, `D62c`), `D63b` (the one time question never flips an
-      existing `autonomy.enabled: false`, as test 8 has it) and `D71` pass here; take them off
+  13. `scripts/selftest/temper-cases-46.sh`: the cases of WP07 that read the 9.8.4 template and the template of
+      the base as the project's config (the tokens of rows `D61` and `D62`), `D63b` (the one time question never
+      flips an existing `autonomy.enabled: false`, as test 8 has it) and `D71` pass here; take them off
       the expected to fail list. `default-run` still asks two dialogs: a fresh project is never asked.
 - **Mechanism:**
   1. **The template.** These lines, and nothing else that is not a comment:
@@ -647,7 +658,8 @@ belongs to a later package, do not weaken it: name that package on its line of t
      never repaired by rule" if it fits in 120 columns.
   2. **One table.** `scripts/defaults.py` holds `KEYS`: for each dot path its default, the literal a reader is
      found by, and one line of meaning; `OLD`: for each dot path the values that an earlier template shipped as
-     live lines, with the version that retired them; `GONE`: each key that is no longer read, with its
+     live lines, with the version that retired them (9.8.5; fill it from the template of 9.8.4 first, then from
+     the template of the base); `GONE`: each key that is no longer read, with its
      replacement or an empty string. `config_yaml.get` (`scripts/config_yaml.py:60-72`) takes the default from
      `KEYS` when the caller gives none, and reads a renamed key under its old name when the new one is absent.
      `_cfg_get` (`scripts/temper:523`) and `Run.cfg` (`scripts/flow.py:220-222`) call it with no default; take
@@ -756,10 +768,13 @@ belongs to a later package, do not weaken it: name that package on its line of t
   - `python3 scripts/check_caps.py` exits 0 with `config_live_keys` at 10 and `config_lines` at 25 or fewer.
   - `bun scripts/e2e/run.ts all default-run fix --floor scripts/e2e/floor.json` exits 0 with the same dialogs.
   - `claude plugin test .`, `tsc -p tsconfig.mod.json`, `bash scripts/check-mod-calls.sh` pass.
+  - The rows this package turns green are listed under its id in "Rows by package" of
+    `docs/plans/one-go/done.md`; that section wins over this list. Rows `D61` and `D62` there name the config of
+    9.8.4 first and the config of the base second.
 - **Traps:**
   - `config_yaml` reads a small subset: inline lists only, and an empty value opens a block
     (`scripts/config_yaml.py:27-33`). `config_tidy.py` must write only that subset, and `asked` as a quoted
-    string, or `10.0.0` fails the number parse and is kept as text by luck.
+    string, or `9.8.5` fails the number parse and is kept as text by luck.
   - The mod guards `.claude/temper.config` during a run (`hooks/temper-mod/core/rules.ts:122, 173`). The write
     here is the CLI's own, inside a call the person picked; do not make the page edit the file.
   - The driver greps the config for the git pack (`hooks/temper-mod/core/driver.ts:502`) at the head. WP16
@@ -802,7 +817,7 @@ belongs to a later package, do not weaken it: name that package on its line of t
   `-31.sh` and every case file that simulates a test run with `evidence add`, `.gitignore`, `CONTRIBUTING.md`,
   `docs/packs.md`, `docs/recommended-setup.md`, `docs/trust.md`, `docs/directory-submission.md`,
   `docs/privacy.html`, `docs/commands.md`, `docs/flow.md`, `docs/plans/ocr-notes/` (deleted), `scripts/caps.json`,
-  `scripts/selftest/temper-cases-74.sh` (new), `docs/decisions/0024-what-version-10-removed.md` (new),
+  `scripts/selftest/temper-cases-74.sh` (new), `docs/decisions/0024-what-9-8-5-removed.md` (new),
   `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
 - **Tests first:** `scripts/selftest/temper-cases-74.sh` (new).
   1. `w30 no stack pack`: `git ls-files packs/stacks` prints nothing, and no tracked file but the CHANGELOG and
@@ -837,7 +852,7 @@ belongs to a later package, do not weaken it: name that package on its line of t
      | Bands | `scripts/bands.py`, `cmd_bands` (`scripts/temper:4886-4926`) | `git grep -n "bands" -- scripts/flow.py scripts/go.py scripts/check_run.py scripts/cli_ctx.py` | nothing; the one caller was `commands/status.md:26-27` |
      | Metrics writes | `cmd_metrics` (`scripts/temper:4822-4883`); `reference/check.md:111-114`, `reference/review.md:262` | the same grep with `metrics` | nothing: only an agent was told to call it |
      | Review memory | no script; `reference/review.md:14, 32, 186, 209, 264`, `reference/config-suggestions.md:77`, `reference/orchestrator-patterns.md:122-134`, `.gitignore:24` | `git grep -il "review-memory" -- scripts` | nothing |
-     | `evidence.claimed-runs` | `scripts/runs.py:30-33`, `scripts/temper:3633-3634, 3869` | the key is off by default since 9.8.5 | only the selftest's own config sets it (`scripts/selftest/test-temper.sh:78`) |
+     | `evidence.claimed-runs` | `scripts/runs.py:30-33`, `scripts/temper:3633-3634, 3869` | the key is off by default at the base: pull request #115 added it, and in 9.8.4 a claimed run counted | only the selftest's own config sets it (`scripts/selftest/test-temper.sh:78`) |
 
   2. **Stack packs.** Delete the six files, the part `Add a New Stack` of `CONTRIBUTING.md:53-77`, the count in
      `docs/packs.md:12`, and the clause on the project's stack file in `reference/build.md:15` and
@@ -890,8 +905,10 @@ belongs to a later package, do not weaken it: name that package on its line of t
 - **Documents in the same change:** `docs/packs.md`, `CONTRIBUTING.md`, `docs/recommended-setup.md`, `docs/trust.md`,
   `docs/directory-submission.md`, `docs/privacy.html`, `docs/commands.md` (no `temper bands`, no `temper metrics`),
   `docs/flow.md:257` (the sentence on `claimed-runs: count`); the decision record
-  `docs/decisions/0024-what-version-10-removed.md` ("What 10.0.0 removed, and what a project that used it does"),
-  which amends ADR 0006; `CHANGELOG.md`, with a line for each removed piece and what replaces it or that nothing does.
+  `docs/decisions/0024-what-9-8-5-removed.md` ("What 9.8.5 removed, and what a project that used it does"; the
+  project is one of 9.8.4, so the record also says that a test run an agent only claimed no longer counts),
+  which amends ADR 0006; `CHANGELOG.md`, with a line for each removed piece and what replaces it or that nothing
+  does, each written for a project of 9.8.4.
 - **Done when:**
   - `bash scripts/verify.sh full` is green: this package ends the changes to code, and it touches every case
     file through the helpers of step 8.
@@ -918,11 +935,12 @@ belongs to a later package, do not weaken it: name that package on its line of t
     `git grep -n "git pack" commands hooks` before this package ends.
 - **Size:** L.
 
-## WP31 Words and documents; decision records; CHANGELOG; version 10.0.0
+## WP31 Words and documents; decision records; CHANGELOG; version 9.8.5
 
 - **Goal:** A user learns at most 12 words, and no text a user reads uses a retired one. Every page says what
-  the code does at 10.0.0. The decisions of this pull request are on record, and every version stamp says
-  10.0.0.
+  the code does at the result, version 9.8.5, and the product README says it in at most 80 lines. The decisions
+  of this pull request are on record. Every version stamp says 9.8.5, the number the base already carries, and
+  the CHANGELOG has one entry under that number.
 - **Depends on:** WP01 to WP30.
 - **Lane:** `flow core` for steps 1 to 3 (labels, the notice, the fixtures); the documents after them touch no
   code.
@@ -930,7 +948,8 @@ belongs to a later package, do not weaken it: name that package on its line of t
   modules and `scripts/panel.py` and `scripts/card.py` where a label or a text holds a retired word,
   `hooks/temper-mod/core/commands.ts` and the mod's drawn texts, one mod test, both view fixture files,
   `scripts/temper` (`_RUN_FILES`, `cmd_init`), `scripts/selftest/temper-cases-75.sh` (new),
-  `scripts/selftest/expected-fail.txt`, `scripts/check-known-limits.sh`,
+  `scripts/selftest/expected-fail.txt`, `scripts/check-known-limits.sh`, `scripts/caps.json` (the `now` of
+  `readme_lines`),
   `scripts/validate-docs.sh`, `.claude-plugin/plugin.json`, `README.md`, `docs/getting-started.md`,
   `docs/index.md`, `docs/index.html`, `docs/commands.md`, `docs/flow.md`, `docs/mod.md`, `docs/trust.md`,
   `docs/auto-mode.md`, `docs/grouped-build.md`, `docs/packs.md`, `docs/enterprise.md`,
@@ -953,11 +972,15 @@ belongs to a later package, do not weaken it: name that package on its line of t
   4. One mod test with the retired list written in the test: `HELP` and every text the mod draws for the bar,
      the pane and a toast hold none of them.
   5. `w31 the notice is said once`: in a project that has `.temper/specs` from an earlier run and no notice
-     mark, the `say` of the first `temper next --json` starts with the notice of step 3 and the second does not;
-     in a project that `temper init` just made it is never said.
-  6. `w31 the stamps agree`: the version of `.claude-plugin/plugin.json` is `10.0.0`, and the three existing
-     checks hold (`scripts/selftest/temper-cases-4.sh:68-77`, `scripts/validate-plugin.sh:123-148`,
-     `scripts/quality-check.sh:111-134`).
+     mark, which is how a project of 9.8.4 looks (and one of the base), the `say` of the first
+     `temper next --json` starts with the notice of step 3 and the second does not; in a project that
+     `temper init` just made it is never said.
+  6. `w31 the stamps agree`: the version of `.claude-plugin/plugin.json` is `9.8.5`, as at the base, and the
+     three existing checks hold (`scripts/selftest/temper-cases-4.sh:68-77`, `scripts/validate-plugin.sh:123-148`,
+     `scripts/quality-check.sh:111-134`). One assert no existing check makes: `docs/index.html` says
+     `"version": "9.8.5"`. It fails first, because the base says 9.8.4 there (`docs/index.html:35`). The one
+     CHANGELOG heading is held by the changelog case of WP01 (`case 32 tooling:`, row `D86`): write no second
+     assert for it.
   7. `w31 the pages match the code`, one assert for each of the 12 places of
      `docs/plans/one-go/evidence/ux-onboarding.md` part 7 that a string can prove: `docs/commands.md` holds no
      "Share HTML review" option list for the plan question and no "Confidence: 94%"; `.claude/CLAUDE.md` and
@@ -967,8 +990,21 @@ belongs to a later package, do not weaken it: name that package on its line of t
      "224" nor "about 10 KB"; `docs/trust.md` holds no "ten Python scripts".
   8. `bash scripts/validate-directory.sh`, `bash scripts/validate-readme.sh`, `bash scripts/validate-docs.sh`
      and `bash scripts/check-known-limits.sh` exit 0.
-  9. From `scripts/selftest/expected-fail.txt`: what is left of row `D29` (`D29a` to `D29c` of
-     `scripts/selftest/temper-cases-46.sh`) passes and leaves the list here.
+  9. From `scripts/selftest/expected-fail.txt`: what is left of row `D29` (`D29c` and `D29d` of
+     `scripts/selftest/temper-cases-46.sh`; `D29a` and `D29b` left with WP28) passes and leaves the list here,
+     and so do `D79b`, `D102` and `D103` of the same file. "Rows by package" of `docs/plans/one-go/done.md`
+     is the list that counts.
+  10. Row `D108`, the README. WP07 wrote `case 46 D108` failing first, with what the row lists: the line count,
+      the two headings the directory needs and their order, the two commands, and that a number of cost or time
+      (one that stands with a dollar sign, a percent sign or the word times, seconds, minutes or hours) is only
+      on a line that names the scorecard file, and only when that file exists. It passes here and leaves the
+      list. The row's second check is the cap: `python3 scripts/check_caps.py` holds `readme_lines`, whose
+      `final` is 80.
+  11. `w31 the README has its parts`, for what the row does not hold: the `## ` headings of `README.md` are
+      `Install`, `Commands`, `How it works`, `What the mod reads and writes` and `Read more`, in this order,
+      and no other but `See it`, which the owner may bring back with new videos (the row holds no case against
+      it); exactly one line starts `**Cost and time:**`; under `How it works` at most 8 other lines are not
+      blank.
 - **Mechanism:**
   1. **The 12 words.** `scripts/words.json`:
 
@@ -1002,34 +1038,51 @@ belongs to a later package, do not weaken it: name that package on its line of t
      `.claude-plugin/plugin.json` the description says "stage bar" (`:4`) and the title of `phaseModels` says
      "Models per stage" (`:85-86`). Regenerate the fixtures. The words tier, blast radius and ledger are not
      retired here: they are in row names and in the report, and the plan does not ask for it.
-  3. **The notice.** A project that ran an earlier Temper is told once. The mark is `.temper/notice.json`, with
+  3. **The notice.** A project that ran an earlier Temper is told once: a project of 9.8.4 first, which is what
+     users have, and a project that ran the base in the same way. The mark is `.temper/notice.json`, with
      the version as its key; add the name to `_RUN_FILES` (`scripts/temper:632-634`) so git ignores it, keep it
      out of what `state clear` removes, and have `temper init` write it for a new project. When the mark is
      absent and `.temper/specs` or `.temper/archive` exists, the first action of `temper next` puts this in
      front of its `say` and writes the mark:
 
      ```text
-     Temper 10 asks twice: before any code is written, and at the commit. Pick Ask me at every stage at the
+     Temper 9.8.5 asks twice: before any code is written, and at the commit. Pick Ask me at every stage at the
      first question for the old flow. What changed: docs/getting-started.md.
      ```
 
      It is a line of text in both carriers, never a dialog.
-  4. **`README.md`.** Line 30 becomes: "You approve once before any code is written and once at the commit. In
-     between Temper stops only when a check still fails after one repair." The Commands table has two rows and
-     one line of words. The price paragraph (`:38-50`) keeps its measured 9.8 figures, says they are of 9.8,
-     and states no figure of 10.0.0 that was not measured; WP32 writes the new figures from the scorecard when
-     the bench round ran. The two videos (`:22-26`) show a run that asks at every stage: take the part "See it"
-     out and write a line in `PROGRESS.md` that the owner records them again. Keep the Install heading, the
-     heading "What the mod reads and writes", the line `Intent, Plan, Build, Review, Check` and at most 300
-     lines.
+  4. **`README.md`, by contract.** The owner asked for a concise README. At most 80 lines: the page has 89 at the
+     base, and the 300 that `scripts/quality-check.sh:99` and `scripts/validate-readme.sh:27` allow stay as
+     those scripts' own bound. The cap holds the 80: `readme_lines` of `scripts/caps.json`, which WP05 added
+     with `now` 89 and `final` 80 (`docs/plans/one-go/contracts.md` section 12). Write its new `now` here. The
+     page holds these parts, in this order, and nothing else:
+
+     | Part | What it holds | At the base |
+     |---|---|---|
+     | the top | the title, the version badge, and what Temper is in two sentences. One of the two is the promise: "You approve once before any code is written and once at the commit" | `:1-9` |
+     | `## Install` | the install lines and the first command | `:11-20` |
+     | `## Commands` | `/temper:temper` and `/temper:fix`, one line each, and the words of `/temper:temper` in one line | `:64-71` |
+     | `## How it works` | what a run looks like, in at most 8 lines: the plain line `Intent, Plan, Build, Review, Check`, the two questions, that in between Temper stops only when a check still fails after one repair, and the exception WP17 left to this page (a trivial fix ends with no question) | `:28-36` |
+     | one line that starts `**Cost and time:**` | one honest line on cost and time. A figure stands in it only when `docs/evidence/scorecard-9.8.5.json` holds it, and then the line names that file (row `D108`). The file does not exist when this package runs, so the line says in words that a run costs more and takes longer than plain Claude Code, and links where the earlier measurements are, `docs/evidence/bench-2026-11.md`. WP32 writes figures into this one line when the bench ran | `:38-50` |
+     | `## What the mod reads and writes` | as at the base, with the hook line WP28 wrote | `:73-87` |
+     | `## Read more` | Getting Started, the flow (`docs/flow.md`) and the decision records (`docs/decisions/`); then one closing line with the links the listing needs: Trust, the CHANGELOG, Privacy and the license (`docs/directory-submission.md:82` says the README links the privacy page) | `:89` |
+
+     What goes: the part "See it" with the two videos (`:22-26`; they show a run that asks at every stage) until
+     the owner records them again, with a line in `PROGRESS.md` that says so; the price paragraph (`:38-50`),
+     which becomes the one line; the part "When to use it, and when not" (`:52-62`), which moves to
+     `docs/getting-started.md` with its link to `docs/evidence/comparison.md`. The rules of the directory still
+     hold (`scripts/validate-directory.sh:66-88`, `scripts/quality-check.sh:125-135`): no raw HTML, the Install
+     heading, the heading "What the mod reads and writes", the plain line `Intent, Plan, Build, Review, Check`
+     before any diagram, alt text on every image, the version badge.
   5. **`docs/getting-started.md`, one page.** In this order: what you need (`bash`, `git`, `python3`; the CLI
      stops without it, `scripts/temper:264`); install; the first run on an existing project, walked through
      with the real texts (what the CLI finds and says first, the baseline, the approval card, the commit card,
      taken from the fixtures, never invented); what you can do in between (Ask me at every stage, Esc, then
      `/temper:temper`); a failed check; `/temper:fix`; the config in its 10 lines and `temper config show`;
      without the mod (the same questions; a background agent may leave the run waiting, and the setting that
-     cures it, `:92-108` at the head); Claude Code's own permission prompts in one sentence; `## The words`;
-     what changed from 9.8. Keep a mention of `grouped-build.md` and of install
+     cures it, `:92-108` at the head); Claude Code's own permission prompts in one sentence; when to use Temper
+     and when not (moved from the README, step 4); `## The words`; what changed from 9.8.4 (the commands, the
+     config, the first run after the upgrade). Keep a mention of `grouped-build.md` and of install
      (`scripts/validate-docs.sh:134, 207`). The examples no code prints go (`:127-152, 192-209` at the head).
   6. **The other pages.** `docs/index.md:77` (two commands); `docs/flow.md` (read once against
      `temper next --json` of the fixtures); `reference/autonomy.md` rewritten for the default run, and with it
@@ -1038,11 +1091,13 @@ belongs to a later package, do not weaken it: name that package on its line of t
      "bar" for "band"); `docs/trust.md:5-6` (the count of scripts, measured with `wc`) and its sentences that
      `scripts/check-known-limits.sh` holds; `docs/auto-mode.md`; `docs/grouped-build.md` (keep the six strings
      of `scripts/validate-docs.sh:204-206`); `docs/enterprise.md:159-176`; `docs/context-hygiene.md:33, 41`;
-     `docs/directory-submission.md:46-50` (the listing text); `agents/review.md:27`; `commands/temper.md:104`;
-     `CONTRIBUTING.md`. In `.claude/CLAUDE.md`: two commands and the words; the paragraph on Autonomous Build
-     becomes the two approvals and `run.default`; the known mistakes say "gate logic lives in the CLI (the
-     script and its Python modules), never in a prompt", lose the two on doors, and gain "before a fault adds a
-     row, a question, a key or an agent, show that the failing step cannot be removed or merged" and "a cap of
+     `docs/directory-submission.md:46-50` (the listing text) and `:35-37, 81` (they speak of the README's images
+     and a hero GIF: with the part "See it" out the page's only image is a badge, and the page says so until the
+     videos are back); `agents/review.md:27`; `commands/temper.md:104`; `CONTRIBUTING.md`. In
+     `.claude/CLAUDE.md`: two commands and the words; the paragraph on Autonomous Build becomes the two
+     approvals and `run.default`; the known mistakes say "gate logic lives in the CLI (the script and its
+     Python modules), never in a prompt", lose the two on doors, and gain "before a fault adds a row, a
+     question, a key or an agent, show that the failing step cannot be removed or merged" and "a cap of
      `scripts/caps.json` is raised only in a pull request of its own".
   7. **What only the mod holds.** Rule 11 of `docs/plans/one-go/README.md` section 6: add to `docs/trust.md` the
      sentence that with the mod off nothing but the page's rule holds that a person, not the model, picked an
@@ -1059,50 +1114,82 @@ belongs to a later package, do not weaken it: name that package on its line of t
      | `0021-a-finding-is-repaired-in-its-stage.md` | a finding is repaired in its stage; `plan amend` and `plan patch` | WP24, WP25 | 0009, 0011, 0013 (what a rule may do) |
      | `0022-the-acceptance-tests-keep-their-own-writer.md` | the acceptance tests keep their own writer; `code` and `metric` criteria are commands | WP27 | none |
      | `0023-two-commands-and-defaults-in-code.md` | two commands and their words; defaults in code; the one time config question | WP29, with the commands of WP28 | 0012 (doors), 0005 (the marked command) |
-     | `0024-what-version-10-removed.md` | what 10.0.0 removed | WP30 | 0006 |
+     | `0024-what-9-8-5-removed.md` | what 9.8.5 removed | WP30 | 0006 |
      | `0025-one-route.md` | one route: Design on request (WP14), the plan contract (WP26), the spec route not built | this package | 0017 |
 
      Status lines to set: 0002 "Rejected (never built)"; 0003 and 0004 "Accepted" (shipped in 8.0.0); 0006
-     "Superseded" by `0024`; 0017 "Rejected: not built (10.0.0)"; 0005, 0011, 0012, 0013 and 0018 keep
+     "Superseded" by `0024`; 0017 "Rejected: not built (9.8.5)"; 0005, 0011, 0012, 0013 and 0018 keep
      "Accepted" and get one line "Amended by" with the record, and so do 0009 and 0016, which `0021` and `0019`
      amend. In 0011 correct the task block budget to 2,048 bytes (`scripts/temper:108`).
-  9. **CHANGELOG.** One entry, heading `## v10.0.0: a run that asks twice`, in the form of the 9.8.5 entry
-     (`CHANGELOG.md:6`). Parts: what a run looks like now (the two questions, the two cards, a failed check);
-     what an existing project meets (the notice, the config question, a run saved by 9.8, the installed commit
-     hook); the table "gone, and what to use" (nine commands, the doors, the keys of WP29 step 3, the pieces of
-     WP30); what is measured and what is a target, in two separate lists; the caps and the floor as what keeps
-     it from growing back. Collect the lines the packages wrote and delete any heading they used above the
-     9.8.5 entry.
-  10. **The version, last.** Run `bash scripts/version-bump.sh 10.0.0`. It writes
-      `.claude-plugin/plugin.json:5`, the `**Version:**` line of `.claude/CLAUDE.md`, the `"version"` of
-      `docs/index.html`, every `9.8.5` token of `README.md` (the badge, `:8`), `docs/index.md` and
-      `docs/getting-started.md`, and a CHANGELOG skeleton in front of the first version heading
-      (`scripts/version-bump.sh:58-147`). Then replace the skeleton's heading and its one line by the entry of
-      step 9. No tag and no push of a tag: the workflow `.github/workflows/release-bump.yml` is the owner's.
-- **Removed:** the retired words from every text a user reads; the part "See it" of the README until the videos
-  are recorded again; the emoji examples of `docs/getting-started.md` and `docs/commands.md`; the status
-  "Proposed" from four records.
+  9. **CHANGELOG: one entry, and no new version heading.** The base's entry,
+     `## v9.8.5: a run that checks its own environment first, and asks less` (`CHANGELOG.md:6-68`; the heading
+     of 9.8.4 follows at `:70`), is the text of pull request #115, which no user had. Replace it by one entry
+     with the heading `## v9.8.5: a run that asks twice`, in the form the base's entry has (a short lead, then
+     parts under bold lines). WP01 put that heading in the place of the base's, and every package since wrote
+     its lines under it, above the text of the base. Parts: what a run looks like now (the two
+     questions, the two cards, a failed check); what a project of 9.8.4 meets (the notice, the config question,
+     a saved run, the installed commit hook), with one closing line for a project that ran the head of pull
+     request #115; the table "gone, and what to use" (nine commands, the doors, the keys of WP29 step 3, the
+     pieces of WP30); what is measured and what is a target, in two separate lists; the caps and the floor as
+     what keeps it from growing back. Sort the lines the packages wrote into these parts. Fold in what of pull
+     request #115 stays, the list "Stays, and the build stands on it" at the end of
+     `docs/plans/one-go/pr-115-fixes.md` (section 4) and the two lines of "Changes its form" under it, as
+     lines of this release: for a user of 9.8.4 each of them is new. What that section lists under "Goes" is
+     not told as a removal, because no user ever had it: it stands only in the one closing line for a project
+     that ran the head of pull request #115. Delete the rest of the base's entry, and any other heading a
+     package used, so that exactly one heading starts with `## v9.8.5`. The part on a
+     project of 9.8.4 is the one text of what a user must know: WP32 takes it into the pull request text and
+     into the summary it writes last, `docs/history/build-9.8.5.md`.
+  10. **The version, last: a check, no bump.** The base already carries 9.8.5 and the result keeps the number,
+      so `scripts/version-bump.sh` is not run. Check each place that states the plugin's version and change
+      nothing else: `.claude-plugin/plugin.json:5`, the `**Version:**` line of `.claude/CLAUDE.md` (`:37`), the
+      badge of `README.md` (`:8` at the base), `docs/index.html`, and `docs/index.md` and
+      `docs/getting-started.md` wherever they state the version (neither does at the base). One stamp is stale
+      at the base, and no existing check reads it: `docs/index.html:35` says `"version": "9.8.4"`. Set that one
+      line to 9.8.5 by hand; test 6 holds it from here. `bash scripts/quality-check.sh` holds the version blocks
+      (`:111-135`). No tag and no push of a tag: the workflows `.github/workflows/release-bump.yml` and
+      `.github/workflows/release.yml` are the owner's.
+- **Removed:** the retired words from every text a user reads; from the README the part "See it" until the
+  videos are recorded again, the price paragraph and the part "When to use it, and when not" (step 4); the text
+  of the base's CHANGELOG entry that step 9 does not fold in; the emoji examples of `docs/getting-started.md`
+  and `docs/commands.md`; the status "Proposed" from four records.
 - **Documents in the same change:** this package is the documents. Its last act, in the progress commit that
   follows the package commit (`docs/plans/one-go/README.md` section 4), is the line in
   `docs/plans/one-go/PROGRESS.md` that names what is left for the owner (the brief's section 10): the two videos,
-  and the README's price figures if the bench round did not run.
+  and the figures of the README's cost line if the bench round did not run.
 - **Done when:**
   - `bash scripts/verify.sh full` is green, with `python3 scripts/check_words.py` inside
     `scripts/quality-check.sh`.
   - `bash scripts/validate-directory.sh`, `bash scripts/validate-readme.sh`, `bash scripts/validate-docs.sh`,
     `bash scripts/validate-plugin.sh` and `bash scripts/check-known-limits.sh` exit 0.
-  - `grep -m1 '^## v' CHANGELOG.md` prints the 10.0.0 heading and `git grep -n "TODO" CHANGELOG.md` prints
-    nothing.
+  - `grep -m1 '^## v' CHANGELOG.md` prints `## v9.8.5: a run that asks twice`,
+    `grep -c '^## v9\.8\.5' CHANGELOG.md` prints 1, and `git grep -n "checks its own environment first" CHANGELOG.md`
+    prints nothing.
+  - `git diff 10e965a -- .claude-plugin/plugin.json` shows no change of the `"version"` line, and
+    `grep -c '"version": "9.8.5"' docs/index.html` prints 1.
+  - `wc -l < README.md` prints 80 or less, and `python3 scripts/check_caps.py` exits 0 with the `now` of
+    `readme_lines` at that count.
   - `git ls-files -z | xargs -0 wc -c | awk '$1 > 262144'` prints only the total line.
+  - The rows this package turns green are listed under its id in "Rows by package" of
+    `docs/plans/one-go/done.md`; that section wins over this list.
 - **Traps:**
-  - Three checks compare the first `## v` heading of the CHANGELOG with the manifest's version. Until step 10
-    no heading that starts `## v10` may exist: a package before this one writes its lines under a heading with
-    no version in it.
-  - The bump's skeleton heading holds a dash and the word TODO (`scripts/version-bump.sh:109`); the house
-    heading has a colon. Replace it in the same commit.
-  - The bump rewrites every `9.8.5` in `README.md`, `docs/index.md` and `docs/getting-started.md` to
-    `v10.0.0` (`:138-147`). A sentence such as "a run saved by 9.8.5" becomes false: write "9.8" in those three
-    files, or write such sentences after the bump.
+  - Three checks compare the first `## v` heading of the CHANGELOG with the manifest's version (test 6 names
+    them). Both say 9.8.5 from the base on, so the three stay green all through the build as long as that
+    heading stays the first version heading of the file. A heading with a version above it, or a second heading
+    that starts `## v9.8.5`, is the fault to look for; the changelog case of WP01 fails on the second.
+  - `scripts/version-bump.sh` stays in the tree as the owner's tool and is not run. Of the stamps it writes
+    (`scripts/version-bump.sh:58-147`) every one already says 9.8.5 at the base but the one of `docs/index.html`
+    (`:123-128`), and that line is set by hand.
+  - On every page a user reads, 9.8.5 is this release and the version before it is 9.8.4. No such page says
+    "the base" or names pull request #115; the one place for it is the closing line of the CHANGELOG part on a
+    project of 9.8.4. A marker `(9.8.5)` that the base wrote on a part that stays (the docs, the briefs and the
+    comments in the code hold many) is still true and stays; one on a part that went goes with the part.
+  - `scripts/validate-readme.sh` asks more of the README than the directory does: a line that matches
+    "How it works", "Overview" or "What it does" (`:34`), an install word in the first 50 lines (`:87`), and
+    every relative link target tracked in git (`:64-75`). The heading `## How it works` of step 4 is there for
+    the first.
+  - 80 lines is tight, and a blank line counts. The part "What the mod reads and writes" has 15 lines at the
+    base (`README.md:73-87`) and stays, so about 65 are left for the rest. Count with `wc -l` before the commit.
   - `scripts/check_words.py` may not name a path with a folder called `hooks`, `tests`, `mod`, `core` or `ui`
     (`scripts/validate-directory.sh:5-40`): the mod's texts are checked by the mod test, with the list written
     in the test, because a plugin test can read no file.

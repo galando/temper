@@ -148,7 +148,7 @@ progress commit, in one push.
       committed. Driver mode is left to WP09: `scripts/go.py:108-109` reports a failed `group gate` as an error and
       the driver hands the run back.
   26. Run files (U19), `temper-cases-45.sh` or the case file of `temper init`:
-      `the run files of 9.8.5 are listed and cleared`: after `temper init`, `.git/info/exclude` holds
+      `the run files of pull request 115 are listed and cleared`: after `temper init`, `.git/info/exclude` holds
       `preflight.json`, `setup-tried.json` and `decisions.json`; after `temper state clear` none of the three is left
       under `.temper`.
 - **Mechanism:** one commit a defect where the files allow it; M2 with F1, M15 and M16 with F4, and M3 to M6 each go
@@ -164,7 +164,7 @@ progress commit, in one push.
      `gate build` (the next call of every caller, `scripts/flow.py:1663, 1669-1670`) fails the row `integration`
      (`scripts/temper:3707`). The Build question then holds it with its failed the same way rule
      (`scripts/flow.py:753-763`). A record with no `merged` key and the verdict PASS counts as merged, so a run saved
-     by 9.8.5 goes on. In the fix pass (`scripts/flow.py:1659`) send both lists:
+     by 9.8.4 or by the base (`10e965a`) goes on. In the fix pass (`scripts/flow.py:1659`) send both lists:
      `self.feedback_lines() + self.fault_lines()`. Tested by the verifier in a clone (`e3.sh` of
      `docs/plans/one-go/evidence/v-pr115.md`, section 6 point 1).
   2. **M2, `add_adhoc`** (`scripts/flow.py:915-952`). At `:925` drop the test `startswith("Continue")`: at a passed
@@ -251,9 +251,11 @@ progress commit, in one push.
   what the preflight runs, `not checked`, a stored failure runs again; `:259-260` removed); `docs/commands.md`
   (`temper doctor`, `task gate --no-env`); `templates/temper.config.default` (`:109` and `:146-148` say the new
   rules); `agents/plan.md:100-105` (the row runs the Validates and the Integration line under one limit);
-  `agents/check.md`; `reference/check.md`; `CHANGELOG.md` (the entry of 10.0.0: one line a defect);
-  `docs/plans/one-go/changed-tests.md`; `docs/plans/one-go/PROGRESS.md`. ADR 0018 is not edited here: the record
-  that amends it, `docs/decisions/0020-checks-judged-against-the-project.md`, is left to WP21.
+  `agents/check.md`; `reference/check.md`; `CHANGELOG.md` (one line a defect, under the one heading of the result,
+  `## v9.8.5: a run that asks twice`, which WP01 put in the place of the base's heading at `CHANGELOG.md:6`; no
+  package adds a version heading, and WP31 makes the one entry of the lines); `docs/plans/one-go/changed-tests.md`;
+  `docs/plans/one-go/PROGRESS.md`. ADR 0018 is not edited here: the record that amends it,
+  `docs/decisions/0020-checks-judged-against-the-project.md`, is left to WP21.
 - **Done when:**
   - `bash scripts/verify.sh quick` is green, and `bash scripts/verify.sh full` is green at the end of the phase.
   - `grep -c "D4[1-9]\|D5[0-7]\|D32b" scripts/selftest/expected-fail.txt` prints 0: `D55` and `D57d` pass here,
@@ -449,12 +451,15 @@ progress commit, in one push.
      approved or a test. Anything else meets the whole gate. One commit a window: the token is cleared after the
      commit. It never applies to the final commit: `repair start` refuses at the commit stage, so no token exists
      there. The carve out lives in the CLI, which the installed hook calls (`gate commit --from-hook`), so a hook
-     installed by 9.8.5 gets it with no new install (`D64a`: it still blocks a commit under a failed gate). `D64b`:
+     installed by 9.8.4 gets it with no new install, and so does one installed by the base: pull request #115 did
+     not change the installer (`git diff 7c7a1c1 10e965a -- scripts/guards/install.sh` prints nothing), so the
+     two hooks have one body (`D64a`: it still blocks a commit under a failed gate). `D64b`:
      when this build changed the hook body (`scripts/guards/install.sh:167-272`), `setup_calls`
      (`scripts/cli_ctx.py:106`, the hook tests at `:117-129`) tests for one string only the new body has and asks
      for `temper guards install`. The bash twin `_setup_calls` (`scripts/temper:4551-4555`) was dead code at the
      head and went with WP02, so the live function is the one to change.
-     When no package changed the hook body, `D64b` asserts that a hook of 9.8.5 is not asked to install again. Row
+     When no package changed the hook body, `D64b` asserts that a hook of 9.8.4 or of the base is not asked to
+     install again. Row
      `D64` of `docs/plans/one-go/done.md` states both cases, and its case reads from `git diff 10e965a` of the
      installer which of the two holds.
   8. **The recheck.** A section `Re-check:` in `agents/review.md`, as `agents/plan-review.md:49` has for the plan; no
@@ -567,8 +572,9 @@ progress commit, in one push.
      `docs/plans/one-go/PROGRESS.md`, never raised.
   7. `scripts/stops.json` lists the stops an unattended run keeps. Every entry of the never by rule list is one; add
      each with the name of its assertion, or `case 46 D76` fails.
-  8. A run saved by 9.8.5 at Review with an open finding (`D60d`) has findings with no `detail` and no `proof`. Treat
-     a missing `proof` as `none` and a missing detail as the claim; never refuse the repair for it.
+  8. A run saved by 9.8.4 or by the base at Review with an open finding (`D60d` runs one such state of each) has
+     findings with no `detail` and no `proof`. Treat a missing `proof` as `none` and a missing detail as the
+     claim; never refuse the repair for it.
   9. `scripts/repair_ops.py` is a new script: run `bash scripts/validate-directory.sh` before the commit.
 - **Size:** L.
 

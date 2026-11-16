@@ -17,8 +17,8 @@ The three commits the branch is made of **[measured]**:
 
 | What | Branch on `origin` | Commit |
 |---|---|---|
-| The base | `main` | `7c7a1c1` (version 9.8.4) |
-| Pull request 115 | `ccr-e0b10914-a7hzu0`, and the pull ref `refs/pull/115/head` | `10e965a` (version 9.8.5, 16 commits on top of `7c7a1c1`) |
+| `main`, what users have | `main` | `7c7a1c1` (version 9.8.4) |
+| Pull request 115, the base of the build | `ccr-e0b10914-a7hzu0`, and the pull ref `refs/pull/115/head` | `10e965a` (16 commits on top of `7c7a1c1`; its manifest already says 9.8.5, the number the result keeps) |
 | The plan and this kit | `ccr-88156f39-u643ta` | `8477375` (the plan), `65c7d42` (the evidence), then the kit commit |
 
 The merges were rehearsed in a clone: both are clean, with no conflict, and `git diff --stat 10e965a HEAD` then
@@ -104,7 +104,7 @@ timed by a later rehearsal on the same machine, idle.
 | `TEMPER_CASES_ONLY=29 bash scripts/selftest/test-temper.sh` (10 assertions) | PASS 10 | 5.3 |
 | `TEMPER_CASES_ONLY=13 bash scripts/selftest/test-temper.sh` (43 assertions) | PASS 43 | 27.5 |
 | `bun scripts/e2e/run.ts plain full-run` (one scenario, one mode, 70 steps) | PASS | 32.0 |
-| `bash scripts/e2e/ab-replay.sh` (three replays side by side) | the table of `docs/evidence/ab-replay-9.8.5.md:26-35` | 54.4 |
+| `bash scripts/e2e/ab-replay.sh` (three replays side by side) | the table of `docs/evidence/ab-replay-9.8.5.md:26-35`, the page as the base has it: 9.8.4 against the base | 54.4 |
 | `bun scripts/e2e/run.ts plain` (23 scenarios, one mode) | stopped at the limit of 540 s: 16 scenarios passed, none failed | 540, so about 34 a scenario |
 | Case file 1 alone (the slow files ran 4 at a time) | PASS 214 | 134.3 |
 | Case files 2 and 3, one process | PASS 502 | 165.1 |
@@ -190,7 +190,7 @@ they are separate processes, and `quick` then stays near 3 minutes.
 | 3 | `bun scripts/e2e/run.ts all --floor scripts/e2e/floor.json`, as 4 shards side by side | 23 scenarios in 3 modes, the trace compare, the floor | 10 to 13 minutes (estimate: 39 minutes of work on 4 CPUs) |
 | 4 | `claude plugin test .`, `claude plugin validate --strict .`, `check-mod-calls.sh`, `test-check-mod-calls.sh`, `tsc -p tsconfig.mod.json` | the mod's suite, its manifest, its reviewed calls, its types | 51 |
 | 5 | `bash scripts/selftest/test-validate-directory.sh` | the directory rules still catch what they should | 24 |
-| 6 | `bun scripts/e2e/replay.ts final` with `python3 scripts/check_floor.py --replay`, and `bash scripts/e2e/ab-replay.sh 10e965a` (about 55 s); WP05 adds both. The base column of the second must equal the numbers of 9.8.5 that WP05 recorded (the entry `replay_base` of `scripts/e2e/floor.json`); from WP08 on a package can move it | the measured bad run, replayed; the harness still drives the CLI of 9.8.5 to the same numbers | about 95 |
+| 6 | `bun scripts/e2e/replay.ts final` with `python3 scripts/check_floor.py --replay`, and `bash scripts/e2e/ab-replay.sh 10e965a` (about 55 s); WP05 adds both. The base column of the second must equal the numbers of the base (`10e965a`) that WP05 recorded (the entry `replay_base` of `scripts/e2e/floor.json`); from WP08 on a package can move it | the measured bad run, replayed; the harness still drives the CLI of the base to the same numbers | about 95 |
 
 Added up, `full` is about 30 minutes on this machine once WP01 has made the shards, and it grows toward 45 as the
 end to end suite goes from 23 to about 55 scenarios during the build. At WP00 there are no shards: the end to end
@@ -203,10 +203,12 @@ machine.
 
 `final` is `full` plus the closing checks of WP07 (`check_done.py --final`, `check_caps.py --final`,
 `check_floor.py --final`, `check_changed_tests.py`, and the bench block: the scorecard file inside the lines of part
-H of `done.md`, or the line `OPEN: the bench gate (needs the owner's word and a model access)`), plus the one
-thing WP32 adds: in `final` the replay against 9.8.5, `bash scripts/e2e/ab-replay.sh 10e965a`, also fails when
-this tree is worse than the base. That compare is in `final` and in no other mode: in `full` the call carries
-`--base-only`. `final` is run by WP32.
+H of `done.md`, or the line `OPEN: the bench gate (needs the owner's word and a model access)`), plus the two
+things WP32 adds. One: in `final` the replay against the base, `bash scripts/e2e/ab-replay.sh 10e965a`, also fails
+when this tree is worse than the base. That compare is in `final` and in no other mode: in `full` the call carries
+`--base-only`. Two: the form of the summary, `python3 scripts/check_done.py --summary`, when
+`docs/history/build-9.8.5.md` is there; when it is not, the line `OPEN: the summary of the build`, because WP32
+writes that file after its first green `final`. `final` is run by WP32.
 
 Two rules for running the gate:
 
@@ -229,9 +231,10 @@ Two rules for running the gate:
 | `done.md` | every promise and the check that proves it; `scripts/check_done.py` reads it | the kit; WP07 corrects check names, and nothing else in it is edited |
 | `pr-115-fixes.md` | the decision for each defect of pull request #115 | the kit; never edited |
 | `wp/phase-*.md` | the specs of the work packages WP00 to WP32, several packages a file | the kit; never edited |
-| `evidence/` | the reports and prototypes the specs cite: 35 reports of the planning session and `prototypes/` with the diffs its verifiers made | the kit; removed by the last commit (WP32) |
+| `evidence/` | the reports and prototypes the specs cite: 35 reports of the planning session and `prototypes/` with the diffs its verifiers made | the kit; removed by WP32 in the commit before its final gate |
 | `PROGRESS.md` | the state of the build, one line a package | WP00 creates it, every later package updates it |
 | `changed-tests.md` | every changed or removed assertion of the base, with the reason | WP07 creates it |
+| `docs/history/build-9.8.5.md` | outside this folder: the summary of what happened, for the owner, at most 150 lines | WP32 writes it last, after its green `final` |
 
 The reports under `evidence/` cite scratch folders of the planning session (`understand/`, `verify/`, `work-*`).
 Those folders do not exist for you. The report itself is all there is; a prototype named in a spec is under
@@ -250,7 +253,7 @@ name, `contracts.md` wins; where a spec and `done.md` differ on what must hold, 
 
 - Branch: `one-go`
 - Pull request: 123 (draft)
-- Base: `7c7a1c1` (main), `10e965a` (pull request 115), `<tip of ccr-88156f39-u643ta>` (plan and kit)
+- Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `<tip of ccr-88156f39-u643ta>` (plan and kit)
 - Watch: one check is scheduled; the next is due 2026-11-17 14:00 UTC
 
 ## Baseline
@@ -342,7 +345,9 @@ The example shows a few lines of each table; the real table "Packages" has all 3
    repository and carries the id in the scope, for example `feat(wp11): the approval runs to the commit`. Add files
    by name; `git add -A` is for a tree you have just read with `git status --short`. Where a spec splits its work
    over several commits (WP02 a wave, WP08 a defect), each follows a green `quick` and carries the id; the last
-   one is the package commit, and the progress commit comes once, after it.
+   one is the package commit, and the progress commit comes once, after it. The lines a package writes into
+   `CHANGELOG.md` go under the one heading `## v9.8.5: a run that asks twice`, which WP01 puts in the place of
+   the heading of the base; no package adds a version heading and none runs a bump script.
 6. The progress commit: set the line to `done` with the hash of step 5, the date and a note; commit only
    `PROGRESS.md` as `docs(progress): WP11 done`. A commit cannot name its own hash, which is why the line is a
    second, small commit.
@@ -368,13 +373,14 @@ rebuilding would stop you at every gate.
 
 - Open it when WP00 is pushed: base `main`, head the build branch, as a draft, with the GitHub tool of the session
   (`create_pull_request` with `draft: true`). Not tried by the dry run.
-- Title: `Temper 10.0.0: a run that asks twice`. It does not change.
+- Title: `Temper 9.8.5: a run that asks twice`. It does not change.
 - The text, from the first day: what the pull request will hold (one paragraph from the plan), the line
   `Supersedes pull requests 115 and 116, whose commits are inside this one` (pull request 116 is the plan and this
   kit, branch `ccr-88156f39-u643ta`; `docs/plans/one-go/README.md` section 8), the table "Packages" of
   `PROGRESS.md` cut to id and state, the last line of "Phase gates", and the lists "Blockers" and "Found on the
   way". Update it at every phase gate with
-  `update_pull_request`. WP32 writes the final text, with the parts the brief's section 8 names.
+  `update_pull_request`. WP32 writes the final text, with the parts the brief's section 8 names; it opens with
+  the summary of what happened in short.
 - CI runs on every push to the pull request (`.github/workflows/quality.yml:6-7`), draft or not. At the head no run
   is cancelled by a newer push: until WP01 is in, each push costs one whole run of 30 to 60 minutes
   (`docs/plans/one-go/evidence/dev-efficiency.md` section 1.2). That is one more reason to do WP01 first.
@@ -452,6 +458,14 @@ ask: it leaves part H open and says so in the pull request text. Never ask for a
 never write one into a file. What WP32 runs, and in what order, is the bench block of its spec
 (`docs/plans/one-go/wp/phase-0-and-9-setup-and-final.md`).
 
+The same first message decides the one run with a real model (row `D109` of `done.md`; the block "A real run" of
+WP32). When the bench ran, its runs are that proof. When it could not run, but the message allowed model use and
+a nested `claude -p` answers, WP32 runs `TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh approval`, with the mod
+and without it: two headless sessions on a scratch project, each up to the approval. Together they cost about one
+to two dollars and ten minutes; that is an estimate from the unit figures of `done.md` note 2, not a measurement.
+With no such word the session runs neither, and the summary says in plain words that no run with a real model was
+made. The `claude -p "hi"` of section 1 only makes the types; it is not such a run.
+
 ## 10. Never
 
 - Never skip, disable, delete or weaken a test or a gate step to get green. Never add `.skip`, `.only` or `.todo`.
@@ -524,6 +538,8 @@ as an event; otherwise read the check runs of the last pushed commit with the Gi
 - Write the due time of the pending check into the head of `PROGRESS.md` (the line "Watch"), so that a restarted
   session knows whether one is pending. When the build is done (WP32 pushed), schedule no further check.
 - When a background `full` finishes, the session is told; do not poll it in a loop.
+- The last reply of the build is the summary of WP32, `docs/history/build-9.8.5.md`, whole. The owner reads
+  that, not the log of the session.
 
 ## 13. The resume rule after a restart
 
@@ -550,5 +566,8 @@ from the first package that is not done.
 7. Take the first line, in the order of the table (the build order of `docs/plans/one-go/README.md` section 5),
    that is not `done` and whose "Depends on" packages, as the second table of that section lists them, are all
    `done`. A `blocked` line is skipped until its blocker is gone. When no such line is left, the build is at WP32
-   or it is over. Never start over: a line that says `done` stays done.
+   or it is over. It is over only when `docs/history/build-9.8.5.md` is committed: the line of WP32 says `done`
+   from the commit that removes the working papers on, so a session that finds every line `done` and no summary
+   goes on at the step of WP32 that runs `final` on a fresh work tree. Never start over: a line that says `done`
+   stays done.
 8. Make sure one hourly check is pending (section 12).
