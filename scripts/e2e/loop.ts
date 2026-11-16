@@ -58,6 +58,13 @@ export function orchestrate(w: World, script: Script, limit = 400): Json {
   return w.mode === 'driver' ? driven(w, script, limit) : loop(w, script, limit)
 }
 
+// One line of the trace for a step of `next`: the action and the stage; for a question, its id and its options' ids
+// (9.8.5: a reworded label moves no trace).
+export const traceLine = (n: Json): string => {
+  const a = n.action === 'ask' ? (n.ask as Json) : null
+  return `${n.action}:${n.stage ?? ''}${a ? `:${a.id}:${(a.options as Json[]).map(o => o.id).join('|')}` : ''}`
+}
+
 // Every question of a step of `next`: the gate question, its More options and Accept questions, the Context check.
 function asksOf(n: Json): Json[] {
   const out: Json[] = []
@@ -90,8 +97,7 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
     run: call => {
       if (call === `${TEMPER} go`) {
         const n = w.next()
-        const a = n.action === 'ask' ? (n.ask as Json) : null
-        w.trace.push(`${n.action}:${n.stage ?? ''}${a ? ':' + (a.options as Json[]).map(o => o.label).join('|') : ''}`)
+        w.trace.push(traceLine(n))
         if (script.stopAt?.(w, n)) throw new Stopped(n)
         if (n.action === 'broken') throw new Error(`broken run: ${n.say}`)
       }
@@ -121,7 +127,8 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
     wait: ids => Object.fromEntries(ids.map(id => [id, { text: '', ms: 1 }])),
     ask: (q: GoQuestion) => {
       w.guardAsk(q as Json)
-      if (/What is the reason\?$/.test(q.question)) {
+      // a reason question: one an option of this step carries (its question goes to the dialog as given, with no id)
+      if (asksOf(w.next()).some(x => (x.options as Json[]).some(o => o.reason_ids?.kind === 'reason' && o.reason_question?.question === q.question))) {
         const r = note || (q.options[0]?.label ?? 'e2e reason')
         note = ''
         return r
@@ -166,7 +173,7 @@ function loop(w: World, script: Script, limit = 400): Json {
     const n = w.next()
     last = n
     const ask = n.action === 'ask' ? (n.ask as Json) : null
-    w.trace.push(`${n.action}:${n.stage ?? ''}${ask ? ':' + (ask.options as Json[]).map(o => o.label).join('|') : ''}`)
+    w.trace.push(traceLine(n))
     if (script.stopAt?.(w, n)) return n
     if (n.action === 'none') return n
     if (n.action === 'broken') throw new Error(`broken run: ${n.say}`)
@@ -194,8 +201,8 @@ function loop(w: World, script: Script, limit = 400): Json {
       let label = typeof pick === 'string' ? pick : pick.label
       let note = typeof pick === 'string' ? '' : pick.note ?? ''
       let q: Json = ask!
-      // More options holds the rest of a full question: the person answers that question next
-      if (label === 'More options' && q.more) {
+      // More options (kind `more`) holds the rest of a full question: the person answers that question next
+      if ((q.options as Json[]).find(o => o.label === label)?.kind === 'more' && q.more) {
         w.answer(q, label)
         q = q.more as Json
         w.guardAsk(q.question)

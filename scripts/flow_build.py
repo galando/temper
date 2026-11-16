@@ -10,7 +10,7 @@ import shlex
 import fresh_review
 import tasks_md
 
-from flow_base import GATE_HEADER, GROUP_HEADER, git, goes_on, on_model, scoped_notes, short_model
+from flow_base import GATE_HEADER, GROUP_HEADER, choice_id, git, goes_on, on_model, scoped_notes, short_model
 
 
 class BuildPart:
@@ -84,12 +84,12 @@ class BuildPart:
         opts = []
         if r.can_loop("build", "plan"):
             opts.append(self.opt("Run Plan again (Recommended)", "Plan writes the tasks in groups.", move="back",
-                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The tasks have no groups"]))
+                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The tasks have no groups"], oid="back"))
             text += " Run Plan again to write the tasks in groups."
         else:
             text += " Plan has run again already: write the groups by hand in tasks.md, or save the run."
         opts.append(self.save())
-        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="build.ungrouped")}
 
     def build_work(self):
         """Grouped Build, computed: start groups, hand out ready tasks, gate tasks and groups, integrate."""
@@ -256,8 +256,8 @@ class BuildPart:
                         "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote("the groups are to be merged again after the commits the CLI did not make were kept or taken out"))],
                         "say": "The armed run parks for you before the groups are merged again."}
             return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER,
-                    "The commits the CLI did not make are kept or taken out. Merge the groups again?", stage="build", options=[
-                        self.opt("Merge the groups (Recommended)", "Merge the passed groups again and check Build.", move="redo", calls=again),
+                    "The commits the CLI did not make are kept or taken out. Merge the groups again?", stage="build", qid="build.foreign", options=[
+                        self.opt("Merge the groups (Recommended)", "Merge the passed groups again and check Build.", move="redo", calls=again, oid="merge-groups"),
                         self.save()])}
         gid = sorted(left)[0]
         shas = left[gid]
@@ -274,10 +274,10 @@ class BuildPart:
         out = []
         if tip and set(tip) == set(shas):
             out.append(self.opt("Take the commits out (Recommended)", "Remove them from the group's branch, newest first; the groups are merged again.", move="redo",
-                                calls=["git -C %s rebase --autostash --onto %s~1 %s" % (shlex.quote(wt), x[:7], x[:7]) for x in shas] + again))
+                                calls=["git -C %s rebase --autostash --onto %s~1 %s" % (shlex.quote(wt), x[:7], x[:7]) for x in shas] + again, oid="take-out"))
         out += [self.opt("Keep the commits", "Keep them knowingly, with your reason (recorded like a skip).", move="keep",
                          calls=[self.c("group reopen %s --accept-foreign %s --reason '{reason}'" % (gid, csv))] + again,
-                         reason=["The commits are right", "I accept the risk"]),
+                         reason=["The commits are right", "I accept the risk"], oid="keep-commits"),
                 self.save()]
         if len(out) == 3:
             text = "Group %s's branch holds commits the CLI did not make (%s). Take them out, or keep them?" % (gid, csv)
@@ -286,7 +286,7 @@ class BuildPart:
                    "they are not the newest commits of the group's branch")
             text = ("Group %s's branch holds commits the CLI did not make (%s); %s, so they cannot be taken out here. "
                     "Keep them, or save the run and take them out by hand?" % (gid, csv, why))
-        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=out)}
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=out, qid="build.foreign")}
 
     def covered_task(self, n, plan, info):
         """A task whose tests passed before any change: an earlier task built it. The person decides; nothing retries it."""
@@ -305,13 +305,13 @@ class BuildPart:
         # `covered`, not `accept`: accepting a review finding leaves a defect in; this takes work that is done (9.8.0).
         # 9.8.0: the reason is the question's own fact (an earlier task built it), so it is recorded without a second question.
         opts = [self.opt("Accept it as done (Recommended)", "Commit its tests, merge them and tick the task (reason: an earlier task built it).", move="covered",
-                         calls=[self.c("task accept %d --reason %s" % (n, shlex.quote("An earlier task built it")))]),
-                self.opt("Run it again", "The kept worktree goes and a fresh attempt starts.", move="redo", calls=[self.c("task retry %d" % n)])]
+                         calls=[self.c("task accept %d --reason %s" % (n, shlex.quote("An earlier task built it")))], oid="accept-done"),
+                self.opt("Run it again", "The kept worktree goes and a fresh attempt starts.", move="redo", calls=[self.c("task retry %d" % n)], oid="redo")]
         if r.can_loop("build", "plan"):
             opts.append(self.opt("Loop back to Plan", "The plan asks for work that is already done.", move="back",
-                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
+                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back"))
         opts.append(self.save())
-        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="task.covered")}
 
     def env_task(self, n, plan, info):
         """A task whose GREEN run failed on the environment (a JDK, a database, the setup block), not on its code: it kept
@@ -324,9 +324,9 @@ class BuildPart:
                 "Repair the environment (temper doctor shows it; the setup: block of .claude/temper.config applies it), "
                 "then check it again?" % (n, title, why or "no reason recorded"))
         opts = [self.opt("Check it again (Recommended)", "Run the task's test again on the kept work and gate it; no attempt is spent.",
-                         move="redo", calls=[self.c("task test %d --phase green" % n), self.c("task gate %d --model %s" % (n, model))]),
+                         move="redo", calls=[self.c("task test %d --phase green" % n), self.c("task gate %d --model %s" % (n, model))], oid="redo"),
                 self.save()]
-        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="task.env")}
 
     def manual_task(self, n, plan):
         """A manual task (`**Test:** manual`) whose files are made: the person confirms each Case by hand."""
@@ -353,9 +353,9 @@ class BuildPart:
         text = "Task %d (%s) is a manual task. Confirm by hand that each Case holds: %s." % (n, t.get("title", ""), "; ".join(cases) or "see the task")
         confirm = self.opt("Confirm", "Every Case holds; the task passes.", move="confirm",
                            calls=[self.c("task confirm %d --by '{answer}'" % n), self.c("task gate %d --model person" % n)],
-                           answer=("Manual task", "Task %d: what name should the confirmation carry?" % n))
-        return {"action": "ask", "stage": "build", "ask": self.question("Manual task", text, stage="build", options=[
-            confirm, self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True)])}
+                           answer=("Manual task", "Task %d: what name should the confirmation carry?" % n), oid="confirm")
+        return {"action": "ask", "stage": "build", "ask": self.question("Manual task", text, stage="build", qid="task.manual", options=[
+            confirm, self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True, oid="save")])}
 
     def reopen_set(self, g, n):
         """Task n and the tasks that must reopen with it: a task of the group that has run (passed or running), depends on a
@@ -387,7 +387,7 @@ class BuildPart:
     def group_question(self, g):
         gid = g["id"]
         opts = []
-        for t in g.get("tasks", []):
+        for k, t in enumerate(g.get("tasks", [])):
             n = t if isinstance(t, int) else t
             taken = self.reopen_set(g, n)
             others = [m for m in taken if m != n]
@@ -395,15 +395,16 @@ class BuildPart:
             label = "Task %d" % n + (" (with %s)" % ", ".join("Task %d" % m for m in others) if others else "")
             what = names[0] if len(names) == 1 else "%s and %s" % (", ".join(names[:-1]), names[-1])
             opts.append(self.opt(label, "Re-runs %s; the other tasks of %s keep their work." % (what, gid), move="redo",
-                                 calls=[self.c("group reopen %s %s --feedback {K}" % (gid, " ".join("--task %d" % m for m in taken)))]))
+                                 calls=[self.c("group reopen %s %s --feedback {K}" % (gid, " ".join("--task %d" % m for m in taken)))],
+                                 oid=choice_id(k, len(g.get("tasks", [])))))
         which = self.with_more(GROUP_HEADER, "Which task changes?", "build", opts[:3] if len(opts) > 4 else opts,
-                               opts[3:] if len(opts) > 4 else [], "Which task changes? More tasks.")
-        q = self.question(GROUP_HEADER, "Group %s (%s) passed its check. Continue?" % (gid, g.get("title", "")), stage="build", options=[
-            self.opt("Continue (Recommended)", "Go on to the next group, or to the merge.", move="advance", calls=[self.c("group continue %s" % gid)]),
+                               opts[3:] if len(opts) > 4 else [], "Which task changes? More tasks.", qid="group.change")
+        q = self.question(GROUP_HEADER, "Group %s (%s) passed its check. Continue?" % (gid, g.get("title", "")), stage="build", qid="group.pass", options=[
+            self.opt("Continue (Recommended)", "Go on to the next group, or to the merge.", move="advance", calls=[self.c("group continue %s" % gid)], oid="continue"),
             self.opt("Change", "Give feedback; only the tasks it concerns run again.",
                      do="Record each item the person typed with %s, then ask the change question (Which task changes?) in this action's `change`; its option runs the reopen call."
-                        % self.c("evidence add --stage build --phase feedback --claim 'feedback #{K}: {text}'")),
-            self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True)],
+                        % self.c("evidence add --stage build --phase feedback --claim 'feedback #{K}: {text}'"), oid="change"),
+            self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True, oid="save")],
             extra={"change": which})
         return q
 
@@ -423,12 +424,12 @@ class BuildPart:
             # 9.8.5 (U1): under the policy the run takes the recommended option itself when no person is needed for it;
             # a typed command, Save for later or a spent budget park it, as before
             q = self.group_failed(g, ginfo, decide=True)["ask"]
-            rec = next((o for o in q["options"] + ((q.get("more") or {}).get("options") or []) if o["label"].endswith("(Recommended)")), None)
+            rec = next((o for o in q["options"] + ((q.get("more") or {}).get("options") or []) if o.get("recommended")), None)
             if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop"):
                 why = "policy: group %s failed its check (%s)" % (gid, reason[:200])
                 calls = [c.replace("'{reason}'", "'%s'" % why.replace("'", "")) for c in rec["calls"]]
                 return {"action": "auto", "stage": "build", "calls": calls,
-                        "say": "Group %s failed its check; the policy takes \"%s\"." % (gid, rec["label"].replace(" (Recommended)", ""))}
+                        "say": "Group %s failed its check; the policy takes \"%s\"." % (gid, self.bare(rec))}
         if self.r.armed() and not decide:  # nobody is there to answer: an armed run parks, as on every stop
             why = (reason[:300] + (" | " + fl if fl else ""))[:1200]   # 9.8.5 (S4): the whole failure, not its first 400 characters
             return {"action": "auto", "stage": "build",
@@ -451,21 +452,19 @@ class BuildPart:
         if timed:  # the gate ran out of time, not out of luck: the same checks again with twice the limit
             opts.append(self.opt("Run the gate again with twice the time" + (" (Recommended)" if limit else ""),
                                  "Group %s's checks run again, limit %d seconds." % (gid, 2 * timed),
-                                 move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * timed))]))
+                                 move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * timed))], oid="twice-the-time"))
         fix_rec = fixable and not limit and not tried and not empty
         fix = self.opt("Fix the group's merged work" + (" (Recommended)" if fix_rec else ""),
                        "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
-                       move="redo", calls=[self.c("group fix %s" % gid)]) if fixable else None
+                       move="redo", calls=[self.c("group fix %s" % gid)], oid="fix-group") if fixable else None
         back = self.r.can_loop("build", "plan")
         rerun_rec = not limit and not fixable and fails < 2 and not empty
-        rerun = self.opt("Run the group's tasks again" + (" (Recommended)" if rerun_rec else ""), "Each task of %s runs again." % gid, move="redo", calls=reopen)
+        rerun = self.opt("Run the group's tasks again" + (" (Recommended)" if rerun_rec else ""), "Each task of %s runs again." % gid, move="redo", calls=reopen, oid="redo")
         plan_rec = not limit and not fix_rec and not rerun_rec and back
         loop = self.opt("Loop back to Plan" + (" (Recommended)" if plan_rec else ""), "The plan cannot be built as written.", move="back",
-                        calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]) if back else None
+                        calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back") if back else None
         save_rec = not limit and not fix_rec and not rerun_rec and not plan_rec
-        save = self.save()
-        if save_rec:
-            save["label"] += " (Recommended)"
+        save = self.set_rec(self.save(), save_rec)
         if fix_rec or limit:
             rest = [fix, rerun, loop]
         elif plan_rec:
@@ -484,14 +483,15 @@ class BuildPart:
                          "Type the Validate command group %s should run (now: %s); its check runs again, the tasks keep their work, no loop is spent." % (
                              gid, (g.get("validate") or "none")[:120]),
                          move="redo", calls=[self.c("plan patch %s --cmd '{answer}'" % gid), self.c("group gate %s" % gid)],
-                         answer=("Group command", "Group %s: what Validate command should it run? It runs the tests this group can break, within the time limit." % gid))
+                         answer=("Group command", "Group %s: what Validate command should it run? It runs the tests this group can break, within the time limit." % gid),
+                         oid="change-command")
         if cmd_cause:
             for o in opts:
-                o["label"] = o["label"].replace(" (Recommended)", "")
+                self.set_rec(o, False)
             opts.insert(0, patch)
         else:
             opts.insert(len(opts) - 1, patch)
-        opts.sort(key=lambda o: 0 if o["label"].endswith("(Recommended)") else 1)   # the recommended option first
+        opts.sort(key=lambda o: 0 if o.get("recommended") else 1)   # the recommended option first
         text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
         if fl:
             text += " What failed: %s." % fl
@@ -502,7 +502,7 @@ class BuildPart:
             text += " A fix of its merged work did not make it pass" + (": the plan is the likelier cause." if back else ".")
         text += (" Change the group's command?" if cmd_cause else " Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
                  " Save the run for later?" if save_rec else " Run its tasks again?")
-        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="group.fail")}
 
     def group_fix_work(self, g, ginfo):
         """9.8.4: the person chose to fix a group whose check failed after every task passed: one Build fix agent works on the
@@ -544,10 +544,10 @@ class BuildPart:
                     ["git -C %s rebase --autostash --onto %s~1 %s" % (wt, s[:7], s[:7]) for s in foreign]
             csv = ",".join(s[:7] for s in foreign)
             opts = [self.opt("Take the commits out and run the task again (Recommended)", "Remove the agent's commits, newest first; the task runs again.",
-                             move="redo", calls=lines + [self.c("group reopen %s %s" % (gid, targs))]),
+                             move="redo", calls=lines + [self.c("group reopen %s %s" % (gid, targs))], oid="take-out"),
                     self.opt("Keep the agent's commits", "Keep them knowingly, with your reason (recorded like a skip).", move="keep",
                              calls=[self.c("group reopen %s %s --accept-foreign %s --reason '{reason}'" % (gid, targs, csv))],
-                             reason=["The commits are right", "I accept the risk"]),
+                             reason=["The commits are right", "I accept the risk"], oid="keep-commits"),
                     self.save()]
             text = "Group %s is parked: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
         elif any(isinstance((r.groups.get("tasks", {}).get(str(n)) or {}).get("blocked"), dict) for n in tasks):
@@ -559,14 +559,13 @@ class BuildPart:
                 n, x.get("needs"), ("Task %s declares" % ", ".join(str(o) for o in x.get("owners") or []) if x.get("owners") else "no task declares"),
                 x.get("reason") or "no reason given") for x, n in b)
             back = r.can_loop("build", "plan")
-            rerun = self.opt("Run the task again", "The blocked tasks run again as planned.", move="redo", calls=[self.c("group reopen %s %s" % (gid, targs))])
+            rerun = self.opt("Run the task again", "The blocked tasks run again as planned.", move="redo", calls=[self.c("group reopen %s %s" % (gid, targs))], oid="redo")
             save = self.save()
             if back:
                 opts = [self.opt("Loop back to Plan (Recommended)", "Plan moves the change or the test into the task that owns the file.", move="back",
-                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]), rerun, save]
+                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back"), rerun, save]
             else:
-                save["label"] += " (Recommended)"
-                opts = [save, rerun]
+                opts = [self.set_rec(save, True), rerun]
             text = "Group %s is parked: %s. No attempt can build it as planned. %s" % (
                 gid, what, "Loop back to Plan?" if back else "Save the run for later?")
         else:
@@ -575,14 +574,14 @@ class BuildPart:
             # task whose gate ran a test a later task writes, and parked five times).
             again = r.can_loop("build", "plan") and any((r.groups.get("tasks", {}).get(str(n)) or {}).get("reopened") for n in tasks)
             rerun = self.opt("Run the task again" + ("" if again else " (Recommended)"), "The parked tasks run again, from Haiku.", move="redo",
-                             calls=[self.c("group reopen %s %s" % (gid, targs))])
+                             calls=[self.c("group reopen %s %s" % (gid, targs))], oid="redo")
             opts = [] if again else [rerun]
             if r.can_loop("build", "plan"):
                 opts.append(self.opt("Loop back to Plan" + (" (Recommended)" if again else ""), "The plan cannot be built as written.", move="back",
-                                     calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
+                                     calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back"))
             if again:
                 opts.append(rerun)
             opts.append(self.save())
             text = ("Group %s is parked again after a rerun (%s). Loop back to Plan?" if again else
                     "Group %s is parked (%s). Run the task again?") % (gid, str(g.get("parked_reason", ""))[:200])
-        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="group.parked")}

@@ -13,7 +13,8 @@ export type DriftChoice = 'add' | 'revert' | 'allow-once'
 export type Answer =
   // A gate question's option (and the reason, when the option needs one).
   // `ask` is the CLI's question of this step that the answer belongs to (More options and the reason question included).
-  | { kind: 'gate'; stage: string; question: string; ask: string; option: Option; reason: string }
+  // `questionId`: the id of that question in the CLI's registry (null in a view of the base): kept, never what makes it count.
+  | { kind: 'gate'; stage: string; question: string; ask: string; questionId: string | null; option: Option; reason: string }
   // The `Temper resume` question's Start over.
   | { kind: 'restart'; option: Option }
   // A Scope drift question's answer for one file.
@@ -72,7 +73,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
       const option = a.options.find(o => o.label === answer)
       if (option === undefined || option.move === null) continue
       if ((option.reasonQuestion !== null || option.answerQuestion !== null) && note === '') continue
-      out.push({ kind: 'gate', stage: a.stage, question: q.question, ask: view.ask?.question.question ?? q.question, option, reason: note })
+      out.push({ kind: 'gate', stage: a.stage, question: q.question, ask: view.ask?.question.question ?? q.question, questionId: a.id, option, reason: note })
     }
     // The Context check, answered by typing: the call the CLI wrote for a typed answer, filled with the text, quoted.
     const check = view.contextCheck
@@ -80,10 +81,10 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
       const text = answer.replace(/\s+/g, ' ').trim()
       if (text !== '' && text.length <= 100 && answer !== CANCEL && check.answer !== '') {
         const option: Option = {
-          label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null, skill: null,
+          id: null, kind: null, recommended: false, label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null, skill: null,
           calls: [check.answer.replace("'{text}'", quote(text)), ...(check.ask.options[0]?.calls.slice(1) ?? [])],
         }
-        out.push({ kind: 'gate', stage: 'plan', question: q.question, ask: view.ask?.question.question ?? q.question, option, reason: '' })
+        out.push({ kind: 'gate', stage: 'plan', question: q.question, ask: view.ask?.question.question ?? q.question, questionId: check.ask.id, option, reason: '' })
       }
     }
     // A name question (the person who confirms a manual task): the typed name is the answer, any but Cancel.
@@ -92,7 +93,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
         const nq: Question | null = option.answerQuestion
         // Any typed text but Cancel; an option of the name question itself ("Type it below") only says to type, and is no name.
         if (nq === null || !same(nq, q.header, q.question) || answer === CANCEL || nq.options.some(o => o.label === answer)) continue
-        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, option, reason: answer })
+        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, questionId: a.id, option, reason: answer })
       }
     }
     // A reason question: any answer but Cancel is the reason, a typed one too.
@@ -100,7 +101,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
       for (const option of a.options) {
         const rq: Question | null = option.reasonQuestion
         if (rq === null || !same(rq, q.header, q.question) || answer === CANCEL) continue
-        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, option, reason: [answer, note].filter(t => t !== '').join(' ') })
+        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, questionId: a.id, option, reason: [answer, note].filter(t => t !== '').join(' ') })
       }
     }
     // Start over.

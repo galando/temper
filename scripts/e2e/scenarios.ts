@@ -115,9 +115,10 @@ export const AGENTS: Record<string, Agent> = {
   },
 }
 
-// The person: the recommended option of each question, unless a scenario says otherwise.
+// The person: the recommended option of each question (its `recommended` field), else the first, unless a scenario says
+// otherwise.
 export const recommended: Person = ask => {
-  const o = (ask.options as Json[]).find(x => String(x.label).includes('(Recommended)')) ?? (ask.options as Json[])[0]
+  const o = (ask.options as Json[]).find(x => x.recommended === true) ?? (ask.options as Json[])[0]
   if (ask.question.question.startsWith('Every gate passed. The report is above')) return 'Not now'
   return o.label
 }

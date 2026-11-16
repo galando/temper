@@ -49,7 +49,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                 out["context_map"] = {k: cm[k] for k in ("intro", "file", "rows", "answer", "table")}
                 if cm["reviewed"] not in ("human", "auto") and r.cfg("plan.context-check", "auto").lower() != "off":
                     q = self.context_question(cm)
-                    out["context_check"] = {k: q[k] for k in ("question", "options", "answer", "gate")}
+                    out["context_check"] = {k: q[k] for k in ("id", "kind", "question", "options", "answer", "gate")}
                     out["context_check"]["header"] = GATE_HEADER
                     rows = r.failed_rows("plan")
                     if out.get("action") == "ask" and len(rows) == 1 and rows[0].get("name") == "context map reviewed":

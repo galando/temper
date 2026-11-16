@@ -38,12 +38,12 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `action` | what to do: `none`, `work`, `ask`, `wait`, `auto`, `broken` (below) |
 | `stage` | the stage the action belongs to |
 | `say` | one sentence for the person |
-| `restart` | the `Temper resume` question (Start over or Cancel) for this run and step |
+| `restart` | the `Temper resume` question (Start over or Cancel) for this run and step; 9.8.5: id `run.restart`, kind `resume`, options `start-over` and `cancel` (kind `cancel`) |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
-| `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
+| `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); 9.8.5: `question` goes to the dialog as it is, so its ids sit beside it in `question_ids`: `{id, kind, options}`, with id `intent.blocking`, kind `blocking`, and each option's `id` in the same order (`choice-1` to `choice-3`, `type`, `carry`), Carry forward with the kind `carry`; `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
 | `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
 | `context_map` | at Plan, when `plan.md` has a Context Map: `{intro, file, rows, answer, table}`, the table as plain text |
-| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
+| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; 9.8.5: id `plan.context`, kind `context`, options `as-planned`, `include-left-out`, `type` and `carry`; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
 | `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
 
@@ -77,11 +77,20 @@ commit gate (a change made at Build, or of docs only, runs only the stage's gate
 
 ### Questions
 
-`ask` is `{stage, step, run_id, question, options, more?, accept?}`. `question` is exactly what goes
-to the AskUserQuestion tool. Each entry of `options` is the same option with what it means:
+`ask` is `{stage, step, run_id, id, kind, question, options, more?, accept?}`. `question` is exactly what
+goes to the AskUserQuestion tool, and it holds no other key: the tool takes only `question`, `header`, `options` and
+`multiSelect`, and an option only `label`, `description` and `preview`, so every question the CLI writes for the dialog
+has its ids beside it. 9.8.5: `id` is the question's id in the registry
+`QUESTIONS` of `scripts/flow_base.py` (`plan.approve`, `check.fail`), which also says what decision it asks for, and
+`kind` is its kind: `gate`, `group`, `resume`, `drift`, `blocking`, `context`, `reason` or `name`. A More question has
+the id of its parent and `.more`, an accept question `.accept`. Each entry of `options` is the same option with what it
+means:
 
 | Field | Meaning |
 |---|---|
+| `id` | 9.8.5: one id a meaning, kept when the label changes, from the closed list `OPTION_IDS` (`approve-run`, `save`, `back`) |
+| `kind` | 9.8.5, only on an option a reader acts on: `more` (opens `more`), `accept` (opens `accept`), `cancel`, `carry`, `type` |
+| `recommended` | 9.8.5, only when true: the recommended option, the one whose label ends in `(Recommended)` |
 | `label`, `description` | as in the question |
 | `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept` (a review finding), `covered` (a Build task an earlier task already built), `keep`, `commitOverride`, `redo`, `pause`, `restart`, or `null` for an option that decides nothing |
 | `calls` | the CLI calls this answer makes, in order; `{reason}` is the person's reason. Every `{...}` text stands inside single quotes: put the text there with each `'` written as `'\''`, so a backquote or a `$` in it stays text |
@@ -89,14 +98,18 @@ to the AskUserQuestion tool. Each entry of `options` is the same option with wha
 | `do` | for an option that decides nothing: what to do, then ask the question again |
 | `skill` | 9.8.0, with `do`: the skill the option carries out (`grill-me`, `teach-me`); the mod lets its own questions through while it runs |
 | `stop` | the run stops here (Save for later) |
-| `reason`, `reason_question` | the move needs the person's reason: their note on the option, or their answer to `reason_question` (any answer but Cancel, typed text included) |
+| `reason`, `reason_question`, `reason_ids` | the move needs the person's reason: their note on the option, or their answer to `reason_question` (any answer but Cancel, typed text included). 9.8.5: `reason_question` goes to the dialog as it is, so its ids sit beside it in `reason_ids`: `{id, kind, options}`, with the id of its question and `.reason`, the kind `reason`, and in the order of its options each ready reason's id `choice-N` and Cancel's id `cancel` with the kind `cancel` |
+| `answer_question`, `answer_ids` | the move needs a typed value (a name, a command), asked by `answer_question`. 9.8.5: its ids sit beside it in `answer_ids`, as `reason_ids`: the id of its question and `.name`, the kind `name`, and `type` (kind `type`) and `cancel` (kind `cancel`) in the order of its options |
 
 `more` is the second question of "More options"; `accept` is the question of "Accept a finding". Both
 have the same shape. A question holds four options at most.
 
 The person decides only by choosing an option. The mod counts an answer only when its header, its
 question and its label match exactly what `next` gave for the run and step it is at, so a reworded
-question is no answer. A typed message is never a move: it is a change request or a question.
+question is no answer. A typed message is never a move: it is a change request or a question. An id is a
+lookup: the policy, `temper go`, the mod's run driver and the scripted persons select an option by its `id`,
+`kind` and `recommended`, never by its label, and the answer still counts only on the exact header, question,
+label, run and step.
 
 ### Loop backs and replans (9.8.4)
 
@@ -274,11 +287,11 @@ Build does. With the key absent or `ask`, every gate after Build asks, as before
 | `stages` | `[{id, label, mark, verdict, failed, skipped?}]`; `mark` is `passed`, `failed`, `skipped`, `here` or `todo`; `failed` is the failed rows of its last check; `skipped` is `{reason, by}` |
 | `status` | one sentence: where the run is and who it waits for |
 | `next` | `{action, stage, say, calls, steps, agents}` of `temper next` (`action` is `error` when `next` itself failed, with the error in `say`); `calls` for a `work` or `auto` action, `steps` for a `work` action (the CLI's own moves, which the mod lets through); `agents` (9.8.0) for a `work` action, each `{type, model, prompt}`, and while the run stays at the same stage, every agent named there before (an agent's `before` call, a Build task's `task start`, changes the action before the agent is launched), kept in `.temper/agents-named.json` so a lost or rewritten view does not forget them: the only agents the mod lets the session launch |
-| `ask` | the current question, as `next` gives it, or `null` |
+| `ask` | the current question, as `next` gives it, or `null`; 9.8.5: with the `id` and `kind` of the question and of each option, and `recommended` (see Questions) |
 | `blocking` | the Blocking open questions |
 | `blocking_asks` | 9.8.0: the same questions as the session asks them (see `temper next`); the mod lets the session ask these |
 | `restart` | the `Temper resume` question |
-| `drift` | the `Scope drift` question's header, the first line prefix (`Outside the plan:`) and its three options |
+| `drift` | the `Scope drift` question's header, the first line prefix (`Outside the plan:`) and its three options; 9.8.5: id `scope.drift`, kind `drift` |
 | `guard` | what the guard needs: `{stage, spec, slug, fix_run, grouped, armed, autonomy_enabled, plan_files, step, run_id, trivial_exit, prefix}`; `plan_files` are the files the person approved at the plan gate (before it, the plan's files as they are); `prefix` is the project's folder from the top of its git repository (`packages/app/`, or empty) |
 | `plan` | `{approved, files, groups: [{id, title, files}]}` |
 | `fresh` | 9.7.6: the fresh review of the plan, `null` when it does not apply: `{paraphrase, missing, stale, findings: [{id, severity, lens, claim, state, cite}]}`; `missing` names each lens and reviewer with no completion row (`readiness A`); `state` is `open`, `resolved`, `accepted`, `contested` or `escalated`; `cite` is a contest's checked citation |

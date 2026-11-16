@@ -13,7 +13,10 @@ import fresh_review
 import intent_parse
 import run_env
 
-from flow_base import BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, goes_on, on_model, read_json, same_failure
+from flow_base import (BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, OPTION_IDS, OPTION_KINDS, choice_id, goes_on, on_model,
+                       question_entry, read_json, same_failure)
+
+RECOMMENDED = " (Recommended)"   # the label's suffix: only opt() and set_rec() read or write it
 
 
 class AskPart:
@@ -41,16 +44,28 @@ class AskPart:
                 "run: %s; variables: %s. The CLI applies it to every command it runs." % (run_env.mask(s["run"]) or "(none)", env))
 
     # -- options ---------------------------------------------------------------------------
-    def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None, answer=None):
+    def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None, answer=None,
+            oid=None, kind=None):
+        """One option. `oid` is its id of OPTION_IDS (required), `kind` set only when a reader acts on it (OPTION_KINDS);
+        `recommended` is true when the label ends in the suffix, and set_rec() changes both together."""
+        if oid not in OPTION_IDS:
+            raise ValueError("flow.py: the option id %r is not in OPTION_IDS" % oid)
+        if kind is not None and kind not in OPTION_KINDS:
+            raise ValueError("flow.py: the option kind %r is not in OPTION_KINDS" % kind)
         if move is not None and move not in MOVES:
             raise ValueError("flow.py: the move %r is not in MOVES" % move)
-        o = {"label": label, "description": description, "move": move, "calls": calls or []}
+        o = {"label": label, "description": description, "move": move, "calls": calls or [], "id": oid}
+        if kind:
+            o["kind"] = kind
+        if label.endswith(RECOMMENDED):
+            o["recommended"] = True
         if answer:  # a question whose typed answer fills {answer} in the calls (the person's name, for a manual task)
             # Two options at least, or the question tool refuses the dialog (9.8.0: a run with a manual task stopped at
             # its name question, which held Cancel alone). The first only says to type; the typed text is the answer.
             o["answer_question"] = {"header": answer[0], "question": answer[1], "multiSelect": False,
                                     "options": [{"label": "Type it below", "description": "Type the answer in the box below; this option alone records nothing."},
                                                 {"label": "Cancel", "description": "Back to the question before."}]}
+            o["answer_ids"] = {"options": [{"id": "type", "kind": "type"}, {"id": "cancel", "kind": "cancel"}]}
         if steps:
             o["steps"] = steps
         if do:
@@ -59,31 +74,77 @@ class AskPart:
             o["stop"] = True
         if reason:
             o["reason"] = True
-            o["reason_question"] = {
-                "header": GATE_HEADER, "question": "%s. What is the reason?" % label,
-                "multiSelect": False,
-                "options": [{"label": x, "description": ""} for x in reason] + [{"label": "Cancel", "description": "Back to the question before."}]}
+            o["reason_question"] = {"header": GATE_HEADER, "question": "%s. What is the reason?" % label, "multiSelect": False}
+            self.set_reasons(o, reason)
         return o
+
+    @staticmethod
+    def set_reasons(o, reasons):
+        """The options of a reason question: each ready reason, then Cancel. The question goes to the dialog as it is, so
+        their ids sit beside it, in `reason_ids`, in the same order: `choice-N`, and `cancel` (kind `cancel`: back to the
+        question before)."""
+        o["reason_question"]["options"] = [{"label": x, "description": ""} for x in reasons] + \
+            [{"label": "Cancel", "description": "Back to the question before."}]
+        o["reason_ids"] = {"options": [{"id": "choice-%d" % (k + 1)} for k in range(len(reasons))] + [{"id": "cancel", "kind": "cancel"}]}
+
+    @staticmethod
+    def set_rec(o, on):
+        """Make an option the recommended one, or not: the label's suffix and the `recommended` field change together.
+        Returns the option."""
+        bare = o["label"][:-len(RECOMMENDED)] if o["label"].endswith(RECOMMENDED) else o["label"]
+        o["label"] = bare + (RECOMMENDED if on else "")
+        if on:
+            o["recommended"] = True
+        else:
+            o.pop("recommended", None)
+        return o
+
+    def bare(self, o):
+        """The option's label without the suffix (a question's text names the recommended option in plain words)."""
+        return self.set_rec(dict(o), False)["label"]
 
     def save(self):
         return self.opt("Save for later", "Stop here. The run is saved; /temper:%s takes it up again." % ("fix" if self.r.command == "fix" else "temper"),
-                        move="pause", stop=True)
+                        move="pause", stop=True, oid="save")
 
     def skill(self, name, label, what):
-        o = self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name)
+        o = self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name, oid=name)
         o["skill"] = name   # 9.8.0: the mod lets the skill's own questions through while it runs (its session guard)
         return o
 
-    def question(self, header, text, options, stage, more=None, extra=None):
+    def more_opt(self, rest):
+        return self.opt("More options", ", ".join(o["label"] for o in rest), do="Ask the more question.", oid="more", kind="more")
+
+    @staticmethod
+    def follow_ups(o, qid):
+        """The ids of an option's reason and name questions, from the question it is in: `<qid>.reason`, `<qid>.name` (an
+        option under More options belongs to the decision of the question above it). They go into `reason_ids` and
+        `answer_ids`, beside the questions, which go to the dialog as they are."""
+        top = re.sub(r"(\.more)+$", "", qid)
+        for key, suffix in (("reason_ids", "reason"), ("answer_ids", "name")):
+            if isinstance(o.get(key), dict):
+                o[key] = {"id": "%s.%s" % (top, suffix), "kind": suffix, "options": o[key]["options"]}
+
+    def question(self, header, text, options, stage, more=None, extra=None, qid=None):
+        """A question of the CLI: `qid` is its id of the registry (required), its kind is the registry's. `question` is the
+        dialog's question, exactly as it is asked: the ids go beside it, never inside."""
+        entry = question_entry(qid)
+        if entry is None:
+            raise ValueError("flow.py: the question id %r is not in QUESTIONS" % qid)
+        ids = [o.get("id") for o in options]
+        if len(set(ids)) != len(ids):
+            raise ValueError("flow.py: two options of %s share an id (%s)" % (qid, ", ".join(sorted(str(i) for i in ids))))
         if len(options) > 4 and more is None:
             # 9.8.5: the question dialog takes four options at most (a group question once had five, and the session could
             # only drop one): the first three, then "More options" with the rest, as with_more does.
             rest = options[3:]
-            more = self.question(header, text.split("?")[0] + "? More options.", rest, stage)
-            options = options[:3] + [self.opt("More options", ", ".join(o["label"] for o in rest), do="Ask the more question.")]
+            more = self.question(header, text.split("?")[0] + "? More options.", rest, stage, qid=qid + ".more")
+            options = options[:3] + [self.more_opt(rest)]
+        for o in options:
+            self.follow_ups(o, qid)
         q = {"header": header, "question": text, "multiSelect": False,
              "options": [{"label": o["label"], "description": o["description"]} for o in options]}
-        out = {"stage": stage, "step": self.r.state.get("step"), "run_id": self.r.state.get("run_id"),
+        out = {"stage": stage, "step": self.r.state.get("step"), "run_id": self.r.state.get("run_id"), "id": qid, "kind": entry["kind"],
                "question": q, "options": options}
         if more:
             out["more"] = more
@@ -91,13 +152,13 @@ class AskPart:
             out.update(extra)
         return out
 
-    def with_more(self, header, text, stage, first, rest, more_text):
+    def with_more(self, header, text, stage, first, rest, more_text, qid=None):
         """At most four options a question: the first three, then "More options" with the rest."""
         if len(first) + len(rest) <= 4:
-            return self.question(header, text, first + rest, stage)
-        more_opt = self.opt("More options", ", ".join(o["label"] for o in rest), do="Ask the more question.")
-        more = self.question(header, more_text, rest, stage)
-        return self.question(header, text, first[:3] + [more_opt], stage, more=more)
+            return self.question(header, text, first + rest, stage, qid=qid)
+        more_opt = self.more_opt(rest)
+        more = self.question(header, more_text, rest, stage, qid=(qid or "") + ".more")
+        return self.question(header, text, first[:3] + [more_opt], stage, more=more, qid=qid)
 
     # -- the steps that leave Intent and Plan ------------------------------------------------
     def spec_commit(self, message, changes=False):
@@ -175,12 +236,12 @@ class AskPart:
                 return []
             return [self.opt("Loop back to %s%s" % (LABEL[back], " (Recommended)" if rec else ""),
                              "Do %s again; the stages after it are redone too." % LABEL[back], move="back",
-                             calls=[self.c("state loop %s %s --reason '{reason}'" % (stage, back))], reason=back_reasons)]
+                             calls=[self.c("state loop %s %s --reason '{reason}'" % (stage, back))], reason=back_reasons, oid="back")]
 
         def override_opt(then):
             return self.opt("Override and continue", "Skip this check with your reason; the report shows it.", move="override",
                             calls=[self.c("override %s --reason '{reason}'" % (r.gate_of(stage) or stage))] + then,
-                            reason=override_reasons)
+                            reason=override_reasons, oid="override")
 
         walked = self.walked(stage)
         if walked:
@@ -188,20 +249,20 @@ class AskPart:
                 label, state_of, " (%s)" % why if why and not passed else "", LABEL.get(nxt, nxt))
             go = self.leave(stage)
             if passed:
-                return self.question(GATE_HEADER, text, stage=stage, options=[
+                return self.question(GATE_HEADER, text, stage=stage, qid="run.walked", options=[
                     self.opt("Continue to %s (Recommended)" % LABEL.get(nxt, nxt), "Go on to %s." % LABEL.get(nxt, nxt),
-                             move=self.go_move(stage), calls=go), self.save()])
+                             move=self.go_move(stage), calls=go, oid="continue"), self.save()])
             # A stage of an earlier session leaves no evidence in this run (state init starts it empty): its check fails,
             # and the person runs it now (it and every stage after it run) or skips it.
             run = self.opt("Run %s (Recommended)" % label, "%s runs now, and every stage after it." % label, move="redo",
                            calls=[self.c("state redo %s --reason %s" % (stage, shlex.quote("the check of %s failed when the run entered at a later stage%s" % (
-                               label, " (%s)" % why[:300] if why else ""))))])
-            return self.question(GATE_HEADER, text, stage=stage, options=[run, override_opt(go), self.save()])
+                               label, " (%s)" % why[:300] if why else ""))))], oid="redo")
+            return self.question(GATE_HEADER, text, stage=stage, options=[run, override_opt(go), self.save()], qid="run.walked")
 
         if r.command == "fix" and stage == "rca":
-            return self.question(GATE_HEADER, "RCA: the root cause is in %s/rca.md. Proceed to Fix?" % r.spec, stage=stage, options=[
+            return self.question(GATE_HEADER, "RCA: the root cause is in %s/rca.md. Proceed to Fix?" % r.spec, stage=stage, qid="rca.approve", options=[
                 self.opt("Proceed to Fix (Recommended)", "Write the regression test and the fix.", move="approve",
-                         calls=[self.c("state advance rca_complete fix")]), self.save()])
+                         calls=[self.c("state advance rca_complete fix")], oid="continue"), self.save()])
 
         if stage == "intent":
             clash = self.branch_clash() if passed else None
@@ -209,26 +270,27 @@ class AskPart:
                 text = ("Intent: %s. The branch %s already exists from an earlier run; its last commit is %s. Accept the intent and continue to Plan?"
                         % (state_of, clash["branch"], clash["last"]))
                 tail = self.leave_intent(switch=False)
-                return self.question(GATE_HEADER, text, stage=stage, options=[
+                return self.question(GATE_HEADER, text, stage=stage, qid="intent.branch", options=[
                     self.opt("Continue on %s" % clash["branch"], "Switch to it (the new spec files go across), accept intent.md, commit it there, and start Plan.", move="approve",
-                             calls=[self.carry_switch(clash["branch"])] + tail),
+                             calls=[self.carry_switch(clash["branch"])] + tail, oid="continue-on-branch"),
                     self.opt("Continue on a new branch %s" % clash["new"], "Start a new branch from here, accept intent.md, commit it there, and start Plan.", move="approve",
-                             calls=["git checkout -b %s" % shlex.quote(clash["new"]), self.c("state set branch %s" % shlex.quote(clash["new"]))] + tail),
+                             calls=["git checkout -b %s" % shlex.quote(clash["new"]), self.c("state set branch %s" % shlex.quote(clash["new"]))] + tail, oid="new-branch"),
                     self.skill("grill-me", "Grill Me", "Stress test the intent first."), self.save()])
             if passed:
-                return self.question(GATE_HEADER, "Intent: %s. Accept the intent and continue to Plan?" % state_of, stage=stage, options=[
-                    self.opt("Continue to Plan (Recommended)", "Accept intent.md, commit it on the run's branch, and start Plan.", move="approve", calls=self.leave_intent()),
+                return self.question(GATE_HEADER, "Intent: %s. Accept the intent and continue to Plan?" % state_of, stage=stage, qid="intent.accept", options=[
+                    self.opt("Continue to Plan (Recommended)", "Accept intent.md, commit it on the run's branch, and start Plan.", move="approve", calls=self.leave_intent(),
+                             oid="continue"),
                     self.skill("grill-me", "Grill Me", "Stress test the intent first."),
                     self.skill("teach-me", "Teach Me", "Walk through the intent."), self.save()])
-            return self.question(GATE_HEADER, "Intent: the check failed (%s). Correct intent.md, or skip the check?" % why, stage=stage, options=[
+            return self.question(GATE_HEADER, "Intent: the check failed (%s). Correct intent.md, or skip the check?" % why, stage=stage, qid="intent.fail", options=[
                 override_opt(self.leave_intent()[0:1] + self.leave_intent()[1:]),
                 self.skill("grill-me", "Grill Me", "Stress test the intent first."), self.save()])
 
         if stage == "plan":
             html = self.opt("Open HTML review", "Open the plan as a page to comment on.",
-                            do="Follow %s/reference/plan-review.md (Open HTML review), then ask this question again." % self.plugin)
+                            do="Follow %s/reference/plan-review.md (Open HTML review), then ask this question again." % self.plugin, oid="html-review")
             share = self.opt("Share HTML review", "Publish the plan as a private Claude artifact others can comment on.",
-                             do="Follow %s/reference/plan-review.md (Share HTML review), then ask this question again." % self.plugin)
+                             do="Follow %s/reference/plan-review.md (Share HTML review), then ask this question again." % self.plugin, oid="share-review")
             grill = self.skill("grill-me", "Grill Me", "Stress test the plan.")
             teach = self.skill("teach-me", "Teach Me", "Walk through the plan.")
             fr = r.fresh()
@@ -251,27 +313,28 @@ class AskPart:
                     revise = self.opt("Revise the plan",
                                       "The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                       move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
-                                          ("fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))[:300]))])
+                                          ("fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))[:300]))], oid="revise-plan")
                 # 9.8.0: the unattended run is offered at the last question before Build: here when no Design follows,
                 # at the Design question when it does (so every decision is made before the run goes on by itself).
                 if not r.has_design():
-                    first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
+                    first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go,
+                                      oid="ask-every-stage"),
                              self.opt("Autonomous Build: run Build unattended", "Approve the plan; " + self.armed_text(),
-                                      move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
+                                      move="arm", calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run"), html]
                     if revise is not None:   # findings below high: revising is offered, after the ways on
-                        return self.with_more(GATE_HEADER, text, stage, first[:2] + [revise], [html, grill, teach, self.save()], "Plan: more options.")
+                        return self.with_more(GATE_HEADER, text, stage, first[:2] + [revise], [html, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
-                        return self.with_more(GATE_HEADER, text, stage, first[:2] + [self.fresh_offer()], [html, grill, teach, self.save()], "Plan: more options.")
-                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
+                        return self.with_more(GATE_HEADER, text, stage, first[:2] + [self.fresh_offer()], [html, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
                 if revise is not None:
-                    first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go), revise, html]
-                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
+                    first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage"), revise, html]
+                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
                 if fr["offer"]:
-                    first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go),
+                    first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage"),
                              self.fresh_offer(), html]
-                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
-                first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go), html, share]
-                return self.with_more(GATE_HEADER, text, stage, first, [grill, teach, self.save()], "Plan: more options.")
+                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage"), html, share]
+                return self.with_more(GATE_HEADER, text, stage, first, [grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
             fresh_failed = [x for x in rows if x.get("name") in FRESH_ROWS]
             if fr["applies"] and fresh_failed:
                 return self.fresh_question(fr, why, said, back_opt, override_opt, grill)
@@ -281,13 +344,14 @@ class AskPart:
                 # temper doctor --propose made from the project's own facts, runs the preflight again and checks the plan
                 return self.question(GATE_HEADER, "Plan: the check failed (%s).%s The project's own files say what it needs: "
                                      "add the proposed setup block (%s) and check again?" % (why, said, env_opt["description"]), stage=stage,
-                                     options=[env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()])
+                                     options=[env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()], qid="plan.fail")
             return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said), stage=stage,
-                                 options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()])
+                                 options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()], qid="plan.fail")
 
         if stage == "design":
             walk = self.opt("Walk through step by step", "Review the design section by section.",
-                            do="Walk through the sections design.md has (architecture, API contracts, database changes, integration points, decision log), then ask this question again.")
+                            do="Walk through the sections design.md has (architecture, API contracts, database changes, integration points, decision log), then ask this question again.",
+                            oid="walk-through")
             go = self.leave_design()
             opens = r.open_concerns()
             if passed:
@@ -310,49 +374,50 @@ class AskPart:
                     cont = cont[:-1] + "; the changed tasks are approved with the design."
                 arm = self.opt("Autonomous Build: run Build unattended", ("Accept the open concerns as written; " if opens else "") +
                                self.armed_text(),
-                               move="arm", calls=[self.c("state set run_mode autonomous")] + go)
+                               move="arm", calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run")
                 return self.with_more(GATE_HEADER, text, stage,
-                                      [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go), arm, walk],
+                                      [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go, oid="continue"), arm, walk],
                                       [self.skill("grill-me", "Grill Me", "Stress test the design.")] + back_opt() +
-                                      [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.")
+                                      [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.", qid="design.pass")
             if any(x.get("name") == "tasks agree with decisions" for x in rows):
                 # 9.8.5 (Q1): a Design answer replaced a rule the tasks still carry. Plan updates them; or the person says no
                 # task names the old rule (an override with that reason, which the report shows).
                 ov = override_opt(go)
-                ov["reason_question"]["options"].insert(0, {"label": "The tasks already agree", "description": ""})
+                self.set_reasons(ov, ["The tasks already agree"] + override_reasons)
                 return self.question(GATE_HEADER, "Design: the check failed (%s). Loop back to Plan so the tasks follow your answers?" % why,
-                                     stage=stage, options=back_opt(rec=True) + [ov, self.save()])
+                                     stage=stage, options=back_opt(rec=True) + [ov, self.save()], qid="design.fail")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
-                                 options=back_opt() + [override_opt(go), self.save()])
+                                 options=back_opt() + [override_opt(go), self.save()], qid="design.fail")
 
         if stage in ("build", "fix"):
             go = [self.c("state advance %s_complete %s" % (stage, nxt))]
             if passed:
                 change = self.opt("Change something", ("Say what to change; Build's fix pass makes it, and Build is checked again." if stage == "build"
                                                        else "Say what to change; the Fix agent makes it, and Fix is checked again."), move="redo",
-                                  calls=[self.c("state redo %s --reason '{reason}'" % stage)], reason=["Handle a case it missed", "Simplify the change"])
-                opts = [self.opt("Continue to %s (Recommended)" % LABEL[nxt], "Start %s." % LABEL[nxt], move="advance", calls=go), change,
+                                  calls=[self.c("state redo %s --reason '{reason}'" % stage)], reason=["Handle a case it missed", "Simplify the change"],
+                                  oid="change")
+                opts = [self.opt("Continue to %s (Recommended)" % LABEL[nxt], "Start %s." % LABEL[nxt], move="advance", calls=go, oid="continue"), change,
                         self.skill("teach-me", "Teach Me", "Walk through the changes.")]
                 return self.question(GATE_HEADER, "%s: %s. Continue to %s?" % (label, state_of, LABEL[nxt]), stage=stage,
-                                     options=opts + back_opt() + [self.save()])
+                                     options=opts + back_opt() + [self.save()], qid="%s.pass" % stage)
             # 9.8.4: the same failure after a Run again is not run again by the recommendation: the run converges on the
             # person (an e2e run that followed it relaunched Build's fix pass forty times on one failure)
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
             same = redo.get("stage") == stage and same_failure(str(redo.get("reason") or ""), why[:300])
             again = self.opt("Run %s again" % label + ("" if same else " (Recommended)"), "Mend what the failed rows name, then check %s again." % label,
-                             move="redo", calls=[self.c('state redo %s --reason %s' % (stage, shlex.quote(why[:300])))])
+                             move="redo", calls=[self.c('state redo %s --reason %s' % (stage, shlex.quote(why[:300])))], oid="redo")
             if same:
-                save = self.save()
-                save["label"] += " (Recommended)"
+                save = self.set_rec(self.save(), True)
                 return self.question(GATE_HEADER, "%s: the check failed (%s). It failed the same way after it ran again. Save the run for later?" % (label, why), stage=stage,
-                                     options=[save, again] + back_opt() + [override_opt(go)])
+                                     options=[save, again] + back_opt() + [override_opt(go)], qid="%s.fail" % stage)
             return self.question(GATE_HEADER, "%s: the check failed (%s). Run %s again?" % (label, why, label), stage=stage,
-                                 options=[again] + back_opt() + [override_opt(go), self.save()])
+                                 options=[again] + back_opt() + [override_opt(go), self.save()], qid="%s.fail" % stage)
 
         if stage == "review":
             go = [self.c("state advance review_complete check")]
             arch = self.opt("Architecture Depth Review", "Check the changed modules' depth, then come back here.",
-                            do="Run the module depth analysis of %s/reference/architecture-depth.md on the changed files, add its [ARCH-DEPTH] findings to the summary, then ask this question again." % self.plugin)
+                            do="Run the module depth analysis of %s/reference/architecture-depth.md on the changed files, add its [ARCH-DEPTH] findings to the summary, then ask this question again." % self.plugin,
+                            oid="depth-review")
             opens = r.open_findings()
             if passed:
                 # The open findings below the blocking severity (the gate counts only those at or above it).
@@ -360,19 +425,19 @@ class AskPart:
                 # Findings below the blocking severity are still open: Build can fix them (a loop back), or the person
                 # keeps one. A typed change is no fix here, since Review writes no code.
                 grill = self.skill("grill-me", "Grill Me", "Stress test the change.")
-                keep = [self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.")] if opens else []
+                keep = [self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.", oid="accept-finding", kind="accept")] if opens else []
                 # 9.8.5 (Q2): an open finding at medium or above is repaired by default: the loop back to Build is recommended
                 repair = back_opt(rec=True) if any(f["severity"] in ("critical", "high", "medium") for f in opens) else []
                 if repair:
-                    first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go), arch]
+                    first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go, oid="continue"), arch]
                 else:
-                    first = [self.opt("Continue to Check (Recommended)", "Start Check.", move="advance", calls=go)] + (back_opt() if opens else []) + [arch]
+                    first = [self.opt("Continue to Check (Recommended)", "Start Check.", move="advance", calls=go, oid="continue")] + (back_opt() if opens else []) + [arch]
                 rest = [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()]
                 q = self.with_more(GATE_HEADER, "Review: %s%s. %s" % (state_of, self.finding_counts(opens),
                                    "Loop back to Build to repair them?" if repair else "Continue to Check?"), stage,
-                                   first + ([] if opens else [grill]), keep + ([grill] if opens else []) + rest, "Review: more options.")
+                                   first + ([] if opens else [grill]), keep + ([grill] if opens else []) + rest, "Review: more options.", qid="review.pass")
                 if keep:
-                    q["accept"] = self.accept_question(opens)
+                    q["accept"] = self.accept_question(opens, qid="review.pass.accept")
                 return q
             accept = None
             # A review that recorded no completion row did not finish (its agent failed or stopped): run it again first.
@@ -380,14 +445,14 @@ class AskPart:
             first = back_opt(rec=not unfinished)
             if unfinished:
                 first.insert(0, self.opt("Run Review again (Recommended)", "The review did not finish; it runs again.", move="redo",
-                                         calls=[self.c("state redo review --reason 'the review did not finish'")]))
+                                         calls=[self.c("state redo review --reason 'the review did not finish'")], oid="redo"))
             if opens:
-                accept = self.accept_question(opens)
-                first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question."))
+                accept = self.accept_question(opens, qid="review.fail.accept")
+                first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.", oid="accept-finding", kind="accept"))
             first.append(override_opt(go))
             text = "Review: the check failed (%s)%s. Loop back to %s?" % (why, self.finding_counts([f for f in r.findings() if f["state"] == "open"]),
                                                                          LABEL.get(back or "build", "Build"))
-            q = self.with_more(GATE_HEADER, text, stage, first[:3], first[3:] + [arch, self.save()], "Review: more options.")
+            q = self.with_more(GATE_HEADER, text, stage, first[:3], first[3:] + [arch, self.save()], "Review: more options.", qid="review.fail")
             if accept:
                 q["accept"] = accept
             return q
@@ -399,11 +464,13 @@ class AskPart:
             go = [self.c("state advance check_complete commit")]
             if passed:
                 # What Check passed with a warning (a lint run, a test gap) is the person's to send back to Build.
-                opts = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", calls=go)] + back_opt() + self.pr_options(go)
+                opts = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", calls=go, oid="commit")] + back_opt() + self.pr_options(go)
                 if r.spec and os.path.isfile(os.path.join(r.spec, "config-suggestions.json")):
                     opts.append(self.opt("Review config suggestions", "Accept, reject or defer each suggestion, then come back here.",
-                                         do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again."))
-                return self.with_more(GATE_HEADER, "Check: %s. Commit?" % state_of, stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.")
+                                         do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again.",
+                                         oid="config-suggestions"))
+                return self.with_more(GATE_HEADER, "Check: %s. Commit?" % state_of, stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.",
+                                      qid="check.pass")
             # A measurement nobody took (no coverage run, no test run recorded: a tool is missing) is not a fault of the code:
             # Check runs again once the tool is there, and going back to Build would redo work for nothing.
             # 9.8.0: a criterion validated by hand is confirmed by the person here (the agent used to claim it).
@@ -416,8 +483,8 @@ class AskPart:
                 text = "Check: %s %s your confirmation: %s. Confirm?" % (
                     ", ".join(c["id"] for c in manual), "needs" if len(manual) == 1 else "need",
                     "; ".join("%s: %s" % (c["id"], c["vdetails"][:150]) for c in manual))
-                return self.question(GATE_HEADER, text, stage=stage, options=[
-                    self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls)]
+                return self.question(GATE_HEADER, text, stage=stage, qid="check.fail", options=[
+                    self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls, oid="confirm")]
                     + back_opt() + [self.save()])
             setup = self.setup_fault()
             if setup:
@@ -425,39 +492,38 @@ class AskPart:
                 # code is wrong, so a loop back is never recommended: repair the environment, then Check runs again.
                 fix = self.opt("Repair the environment and run again (Recommended)",
                                "temper doctor shows what is missing; the setup: block of .claude/temper.config makes it ready. Then Check runs again.",
-                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))])
+                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))], oid="redo")
                 add = self.setup_offer([{"name": "preflight", "detail": "environment fault"}])   # no block, and one proposed
                 if add:
-                    fix["label"] = fix["label"].replace(" (Recommended)", "")
-                    if add["label"].startswith("Add the proposed"):
+                    self.set_rec(fix, False)
+                    if add["id"] == "add-setup":
                         add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
                 return self.question(GATE_HEADER, "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. "
                                      "%s run Check again?" % (setup, "Add the proposed setup block and" if add else "Repair it and"), stage=stage,
-                                     options=([add] if add else []) + [fix, self.save()] + back_opt(rec=False) + [override_opt(go)])
+                                     options=([add] if add else []) + [fix, self.save()] + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
             gap = self.measurement_gap(r.failed_rows("check"))
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
             same = gap and redo.get("stage") == "check" and same_failure(str(redo.get("reason") or ""), ("the measurement was missing: " + why)[:300])
             again = [self.opt("Run Check again" + ("" if same else " (Recommended)"), "Install what the failed row names, then Check measures again; Build is not redone.",
-                              move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))])] if gap else []
+                              move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))], oid="redo")] if gap else []
             if same:
-                save = self.save()
-                save["label"] += " (Recommended)"
+                save = self.set_rec(self.save(), True)
                 return self.question(GATE_HEADER, "Check: the check failed (%s). It failed the same way after it ran again: install what it names, or save the run for later?" % why,
-                                     stage=stage, options=[save] + again + back_opt(rec=False) + [override_opt(go)])
+                                     stage=stage, options=[save] + again + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
             acc = self.acceptance_options(r.failed_rows("check"))
             if acc:
                 first = acc[0]
-                rec = first["label"].endswith("(Recommended)")
+                rec = first.get("recommended") is True
                 opts = [first] + back_opt(rec=False) if rec else back_opt(rec=True) + [first]
-                lead = next(o["label"] for o in opts if o["label"].endswith("(Recommended)")) if any(o["label"].endswith("(Recommended)") for o in opts) else first["label"]
+                lead = next((o for o in opts if o.get("recommended")), first)
                 t = self.acc_triage()
                 said = (" The triage says the %s looks wrong: %s." % (t["verdict"], t.get("reason", ""))) if t.get("verdict") in ("code", "test") else ""
-                return self.question(GATE_HEADER, "Check: the check failed (%s).%s %s?" % (why, said, lead.replace(" (Recommended)", "")), stage=stage,
-                                     options=opts + [override_opt(go), self.save()])
+                return self.question(GATE_HEADER, "Check: the check failed (%s).%s %s?" % (why, said, self.bare(lead)), stage=stage,
+                                     options=opts + [override_opt(go), self.save()], qid="check.fail")
             return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, "Run Check again" if gap else "Loop back to %s" % LABEL[back or "build"]), stage=stage,
-                                 options=again + back_opt(rec=not gap) + [override_opt(go), self.save()])
+                                 options=again + back_opt(rec=not gap) + [override_opt(go), self.save()], qid="check.fail")
 
         return None
 
@@ -479,7 +545,8 @@ class AskPart:
         if len((r.plan or {}).get("groups", [])) >= 2:
             kinds.append(("stacked", "stacked PRs", "a stack of draft pull requests, one per Build group"))
         return [self.opt("Commit and open %s" % label, "Commit, then Temper opens %s itself (reference/pr.md); every one is a draft." % what,
-                         move="advance", calls=[self.c("state set pr %s" % kind)] + go) for kind, label, what in kinds]
+                         move="advance", calls=[self.c("state set pr %s" % kind)] + go, oid="commit-pr" if kind == "one" else "commit-stacked-prs")
+                for kind, label, what in kinds]
 
     # The stages a small change window may open at are adhoc_ops.py's, the one list (the CLI refuses any other).
     ADHOC_STAGES = tuple(adhoc_ops.ADHOC_STAGES)   # the stages a small change window may open at: adhoc_ops.py's own list
@@ -495,7 +562,7 @@ class AskPart:
                         move="adhoc", calls=[self.c("adhoc open --stage %s --reason '{reason}'" % stage)],
                         do="Make the small change: for a fix the person describes, ask them in one line what to change first; for the "
                            "review's, take what the review asked for. Then run %s, then run %s again." % (self.c("adhoc close"), self.c("next --json")),
-                        reason=["A small fix I will describe", "A change the review asked for"])
+                        reason=["A small fix I will describe", "A change the review asked for"], oid="small-change")
 
     def add_adhoc(self, out, stage):
         """Add Make a small change to the gate question of Build, Review, Check or Commit, before Save for later. Four options
@@ -514,6 +581,7 @@ class AskPart:
                 q["more"]["options"] = [o for o in q["more"]["options"] if o["label"] != "Teach Me"]
                 q["more"]["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["more"]["options"]]
         opt = self.adhoc_option(stage)
+        self.follow_ups(opt, q["id"])
 
         def put(options):
             keep = [o for o in options if o["label"] == "Save for later"]
@@ -527,8 +595,9 @@ class AskPart:
             q["more"]["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["more"]["options"]]
         else:
             first, rest = q["options"][:3], q["options"][3:]
-            more = self.question(q["question"]["header"], q["question"]["question"].split("?")[0] + "? More options.", put(rest), stage)
-            q["options"] = first + [self.opt("More options", ", ".join(o["label"] for o in more["options"]), do="Ask the more question.")]
+            more = self.question(q["question"]["header"], q["question"]["question"].split("?")[0] + "? More options.", put(rest), stage,
+                                 qid=q["id"] + ".more")
+            q["options"] = first + [self.more_opt(more["options"])]
             q["more"] = more
         for o in q["options"]:   # the description of More options lists what is behind it, as it is now
             if o["label"] == "More options" and q.get("more"):
@@ -566,12 +635,12 @@ class AskPart:
         work = "fix" if r.command == "fix" else "build"
         if r.can_loop(r.stage, work):
             opts.append(self.opt("Loop back to %s (Recommended)" % LABEL[work], "Do %s again; the stages after it are redone too." % LABEL[work], move="back",
-                                 calls=[self.c("state loop %s %s --reason '{reason}'" % (r.stage, work))], reason=["The review found a real problem"]))
+                                 calls=[self.c("state loop %s %s --reason '{reason}'" % (r.stage, work))], reason=["The review found a real problem"], oid="back"))
         opts.append(self.opt("Override and continue", "Skip the Review of your change with your reason; the report shows it.", move="override",
-                             calls=[self.c("override review --reason '{reason}'")], reason=["I accept the risk", "It is not a real issue"]))
+                             calls=[self.c("override review --reason '{reason}'")], reason=["I accept the risk", "It is not a real issue"], oid="override"))
         opts.append(self.save())
         return {"action": "ask", "stage": r.stage, "ask": self.question(GATE_HEADER, "%s: Review of your small change failed (%s). %s" % (
-            LABEL.get(r.stage, r.stage), why, "Loop back to %s?" % LABEL[work] if len(opts) > 2 else "Override it?"), stage=r.stage, options=opts)}
+            LABEL.get(r.stage, r.stage), why, "Loop back to %s?" % LABEL[work] if len(opts) > 2 else "Override it?"), stage=r.stage, options=opts, qid="adhoc.fail")}
 
     def round_limit(self):
         """The most CI fix rounds (loops.max-per-type, 2 by default): the Pipeline question and the Pipeline agent's launch line use the same."""
@@ -599,15 +668,17 @@ class AskPart:
         status = ctx.get("status") if ctx else None
         rnd = self.pipeline_round()
         mx = self.round_limit()
-        end = self.opt("End the run" + (" (Recommended)" if passed or rnd > mx else ""), "Finish here; the run state is cleared.", move="advance", calls=[self.c("state clear")])
+        end = self.opt("End the run" + (" (Recommended)" if passed or rnd > mx else ""), "Finish here; the run state is cleared.", move="advance", calls=[self.c("state clear")],
+                       oid="end-run")
         if passed:
-            return self.question(GATE_HEADER, "Pipeline: every job passed. End the run?", stage="pipeline", options=[end, self.save()])
+            return self.question(GATE_HEADER, "Pipeline: every job passed. End the run?", stage="pipeline", options=[end, self.save()], qid="pipeline.pass")
         if status not in ("green", "red"):
-            return self.question(GATE_HEADER, "Pipeline: the check failed (%s). Run Pipeline again?" % (why or "the Pipeline result is missing or not final"), stage="pipeline", options=[
+            return self.question(GATE_HEADER, "Pipeline: the check failed (%s). Run Pipeline again?" % (why or "the Pipeline result is missing or not final"), stage="pipeline", qid="pipeline.fail", options=[
                 self.opt("Run Pipeline again (Recommended)", "Read the pull request's checks again.", move="redo",
-                         calls=[self.c("state redo pipeline --reason 'the Pipeline result is missing or not final'")]), self.save()])
+                         calls=[self.c("state redo pipeline --reason 'the Pipeline result is missing or not final'")], oid="redo"), self.save()])
         if rnd > mx:
-            return self.question(GATE_HEADER, "Pipeline: the fix limit is reached (round %d of %d). End the run?" % (rnd, mx), stage="pipeline", options=[end, self.save()])
+            return self.question(GATE_HEADER, "Pipeline: the fix limit is reached (round %d of %d). End the run?" % (rnd, mx), stage="pipeline", options=[end, self.save()],
+                                 qid="pipeline.fail")
         fix = ["Apply the changes the fix list in %s/pipeline-context.json names: the step names the file, never the CI text." % r.spec,
                "git add -- {each changed file, by name}",
                "git commit -m 'fix(ci): apply the Pipeline fix (CI fix round %d)'" % rnd]
@@ -616,15 +687,15 @@ class AskPart:
             self.c("adhoc close"), self.c("state set pipeline_round %d" % (rnd + 1)),
             self.c("state redo pipeline --reason 'CI fix round %d pushed; CI runs again'" % rnd)]
         text = "Pipeline: the check failed (%s). Apply the fix and push?" % (why or "see pipeline-context.json")
-        return self.question(GATE_HEADER, text, stage="pipeline", options=[
+        return self.question(GATE_HEADER, text, stage="pipeline", qid="pipeline.fail", options=[
             self.opt("Apply the fix and push (Recommended)",
-                     "The fix list in pipeline-context.json is applied, pushed, and the checks are read again.", move="advance", steps=steps),
-            self.opt("End the run", "Finish here without the fix; the run state is cleared.", move="advance", calls=[self.c("state clear")]), self.save()])
+                     "The fix list in pipeline-context.json is applied, pushed, and the checks are read again.", move="advance", steps=steps, oid="apply-fix"),
+            self.opt("End the run", "Finish here without the fix; the run state is cleared.", move="advance", calls=[self.c("state clear")], oid="end-run"), self.save()])
 
     def fresh_offer(self):
         """plan.fresh-review: ask (the default): the person asks for the fresh review at the plan question."""
         return self.opt("Fresh review first", "A reviewer with no context reads the plan before you approve it (worth it for medium and complex work).",
-                        move="redo", calls=[self.c("plan fresh request")])   # next launches the reviewer; its gate call follows it
+                        move="redo", calls=[self.c("plan fresh request")], oid="fresh-review")   # next launches the reviewer; its gate call follows it
 
     def fresh_question(self, fr, why, said, back_opt, override_opt, grill):
         """The plan question when the fresh review failed the gate: revise the plan with its findings, run a reviewer that
@@ -636,30 +707,30 @@ class AskPart:
         unfinished = fr["launched"] and not fr["stale"] and (fr["missing"] or not fr["paraphrase"] or fr["paraphrase_short"])
         if unfinished and not fr["capped"]:
             first.append(self.opt("Run the fresh review again (Recommended)", "A reviewer did not finish (%s); it runs again." % (
-                ", ".join(fr["missing"] + fr["lazy"]) or "no usable paraphrase"), move="redo", calls=[self.c("plan fresh again")]))
+                ", ".join(fr["missing"] + fr["lazy"]) or "no usable paraphrase"), move="redo", calls=[self.c("plan fresh again")], oid="fresh-again"))
         if opens and not fr["capped"]:
             first.append(self.opt("Revise the plan%s" % ("" if first else " (Recommended)"),
                                   "The Plan agent fixes or contests each finding; the fresh review runs again on the changed files.",
                                   move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
-                                      ("fresh review: " + "; ".join(fresh_review.describe(f) for f in opens))[:300]))]))
+                                      ("fresh review: " + "; ".join(fresh_review.describe(f) for f in opens))[:300]))], oid="revise-plan"))
         if opens:
-            first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question."))
+            first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.", oid="accept-finding", kind="accept"))
         limit = " The fresh review ran %d of %d rounds (plan.fresh-review-rounds): accept, skip or step back." % (fr["rounds"], fr["cap"]) if fr["capped"] else ""
         text = "Plan: the check failed (%s).%s%s %s?" % (why, said, limit, "Revise the plan" if opens and not fr["capped"] else
                                                        "Run the fresh review again" if first and not opens else "Accept a finding, or skip the check" if opens else "Fix the plan, or skip the check")
         q = self.with_more(GATE_HEADER, text, "plan", first[:3], first[3:] + back_opt() + [override_opt(self.leave_plan()), grill, self.save()],
-                           "Plan: more options.")
+                           "Plan: more options.", qid="plan.fail")
         if opens:
-            q["accept"] = self.accept_question(opens, stage="plan")
+            q["accept"] = self.accept_question(opens, stage="plan", qid="plan.fail.accept")
         return q
 
-    def accept_question(self, opens, stage="review"):
+    def accept_question(self, opens, stage="review", qid=None):
         """The `Accept a finding` question: one option per open finding (the first three), and Cancel."""
         label = LABEL.get(stage, stage)
         aopts = []
         # escalated and contested findings first: they wait for the person's call, with what only they know or the author's citation
         rank = lambda f: {"escalated": 0, "contested": 1}.get(f.get("answer") or f.get("state"), 2)
-        for f in sorted(opens, key=rank)[:3]:
+        for k, f in enumerate(sorted(opens, key=rank)[:3]):
             reasons = ["It is not a real issue", "I accept the risk"]
             mark = f.get("answer") or (f.get("state") if f.get("state") in ("contested", "escalated") else None)
             if mark == "contested" and f.get("cite"):
@@ -668,9 +739,10 @@ class AskPart:
                 reasons.insert(1, "The quoted text answers it: %s" % f["quote"][:80])
             aopts.append(self.opt("Accept finding %d" % f["id"], ("[%s] " % mark if mark else "") + f["claim"][:150],
                                   move="accept", calls=[self.c("evidence accept --stage %s --id %d --reason '{reason}'" % (stage, f["id"])), self.c("gate %s" % stage)],
-                                  reason=reasons))
-        return self.question(GATE_HEADER, "%s: which finding do you accept?" % label, stage=stage,
-                             options=aopts + [self.opt("Cancel", "Back to the %s question." % label, do="Ask the %s question again." % label)])
+                                  reason=reasons, oid="choice-%d" % (k + 1)))
+        return self.question(GATE_HEADER, "%s: which finding do you accept?" % label, stage=stage, qid=qid,
+                             options=aopts + [self.opt("Cancel", "Back to the %s question." % label, do="Ask the %s question again." % label,
+                                                       oid="cancel", kind="cancel")])
 
     def go_move(self, stage):
         return "approve" if stage in ("intent", "plan") else "advance"

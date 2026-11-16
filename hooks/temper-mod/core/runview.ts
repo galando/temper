@@ -8,7 +8,13 @@ export const VIEW_VERSION = 1
 export type Question = { header: string; question: string; options: Array<{ label: string; description: string }> }
 
 // An option with what it means: the move, and the exact CLI calls and steps the answer maps to.
+// 9.8.5: `id` (one id a meaning, kept when the label changes), `kind` (more, accept, cancel, carry, type: what a reader
+// does with it) and `recommended` are what a reader selects by; a view of the base (10e965a) has none: null, null, false.
+// The label stays what the person reads and what an answer is matched on.
 export type Option = {
+  id: string | null
+  kind: string | null
+  recommended: boolean
   label: string
   description: string
   move: string | null
@@ -22,7 +28,8 @@ export type Option = {
   skill: string | null
 }
 
-export type Ask = { stage: string; step: number; runId: string; question: Question; options: Option[]; more: Ask | null; accept: Ask | null }
+// 9.8.5: `id` is the question's id of the CLI's registry (scripts/flow_base.py), `kind` its kind; null in a view of the base.
+export type Ask = { id: string | null; kind: string | null; stage: string; step: number; runId: string; question: Question; options: Option[]; more: Ask | null; accept: Ask | null }
 
 export type StageMark = 'passed' | 'failed' | 'skipped' | 'here' | 'todo'
 
@@ -111,6 +118,9 @@ function question(v: unknown): Question | null {
 function option(v: unknown): Option {
   const o = obj(v)
   return {
+    id: strOrNull(o.id),
+    kind: strOrNull(o.kind),
+    recommended: o.recommended === true,
     label: str(o.label),
     description: str(o.description),
     move: strOrNull(o.move),
@@ -126,14 +136,14 @@ function ask(v: unknown): Ask | null {
   const a = obj(v)
   const q = question(a.question)
   if (q === null) return null
-  return { stage: str(a.stage), step: num(a.step, -1), runId: str(a.run_id), question: q, options: arr(a.options).map(option), more: ask(a.more), accept: ask(a.accept) }
+  return { id: strOrNull(a.id), kind: strOrNull(a.kind), stage: str(a.stage), step: num(a.step, -1), runId: str(a.run_id), question: q, options: arr(a.options).map(option), more: ask(a.more), accept: ask(a.accept) }
 }
 
 function contextCheck(v: unknown, runId: string, step: number): { ask: Ask; answer: string } | null {
   const c = obj(v)
   const q = question({ header: c.header, question: c.question, options: c.options })
   if (q === null) return null
-  return { ask: { stage: 'plan', step, runId, question: q, options: arr(c.options).map(option), more: null, accept: null }, answer: str(c.answer) }
+  return { ask: { id: strOrNull(c.id), kind: strOrNull(c.kind), stage: 'plan', step, runId, question: q, options: arr(c.options).map(option), more: null, accept: null }, answer: str(c.answer) }
 }
 
 const TASK_STATES: readonly TaskState[] = ['waiting', 'running', 'red', 'green', 'covered', 'pass', 'fail', 'parked']

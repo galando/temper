@@ -63,7 +63,8 @@ GO="$("$TEMPER" go 2>/dev/null)"
 assert_eq "9.8.0: go hands each Blocking question as the session asks it, with the call that records its answer" \
   "ask|Question 1|Who may run the demo?|Everyone (house rule)|Recommended|Carry forward|intent answer 'Who may run the demo?' '{answer}'|intent carry 'Who may run the demo?'" \
   "$(_ev "b = d['blocking'][0]; q = b['question']; '|'.join([d['action'], q['header'], q['question'], q['options'][0]['label'], q['options'][0]['description'], q['options'][-1]['label'], b['answer'].split('temper ', 1)[1], b['carry'].split('temper ', 1)[1]])" "$GO")"
-assert_eq "9.8.0: go's question keeps the question as asked, and per option only what the answer runs" "yes|no|no|yes" \
+# 9.8.5 (WP04): the move came back into go's options, beside the id, the kind and recommended: a reader selects by them
+assert_eq "9.8.0: go's question keeps the question as asked, and per option only what the answer runs and what selects it" "yes|no|yes|yes" \
   "$(_ev "a = d['ask']; '|'.join(['yes' if a['question']['options'] else 'no', 'yes' if any('description' in o for o in a['options']) else 'no', 'yes' if any('move' in o for o in a['options']) else 'no', 'yes' if all('label' in o for o in a['options']) else 'no'])" "$GO")"
 assert_eq "9.8.0: the view holds the same Blocking questions for the mod" "2|Who may run the demo?" \
   "$(vw "str(len(d['blocking_asks'])) + '|' + d['blocking_asks'][0]['question']['question']")"
