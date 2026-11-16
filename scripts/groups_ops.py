@@ -73,11 +73,107 @@ def kept_worktrees(argv):
             print(v['worktree'])
 
 
+def dep_verdict(argv):
+    import json, sys
+    try:
+        g = ((json.load(open(argv[1])).get('groups') or {}).get(argv[2]) or {})
+        print((g.get('gate') or {}).get('verdict', '') + ('|confirmed' if g.get('confirmed') else ''))
+    except Exception:
+        print('')
+
+
+def group_worktree(argv):
+    import json, sys
+    try:
+        print(((json.load(open(argv[1])).get('groups') or {}).get(argv[2]) or {}).get('worktree', ''))
+    except Exception:
+        print('')
+
+
+def parked_foreign(argv):
+    import json, sys
+    try:
+        print(json.dumps(((json.load(open(argv[1])).get('groups') or {}).get(argv[2]) or {}).get('parked_foreign') or []))
+    except Exception:
+        print('[]')
+
+
+def running_tasks(argv):
+    import json, sys
+    try:
+        d = json.load(open(argv[1]))
+    except Exception:
+        d = {}
+    print(' '.join(sorted((k for k, v in (d.get('tasks') or {}).items() if v.get('group') == argv[2] and v.get('status') == 'running'), key=int)))
+
+
+def task_attempt(argv):
+    import json, sys; print(((json.load(open(argv[1])).get('tasks') or {}).get(argv[2]) or {}).get('attempt') or 1)
+
+
+def gate_verdict(argv):
+    import json, sys
+    try:
+        print((((json.load(open(argv[1])).get('groups') or {}).get(argv[2]) or {}).get('gate') or {}).get('verdict', ''))
+    except Exception:
+        print('')
+
+
+def task_ready(argv):
+    import json, sys
+    n = int(argv[1])
+    print(1 if any(l.strip().startswith('{') and json.loads(l).get('task') == n for l in sys.stdin) else 0)
+
+
+def open_feedback(argv):
+    import json, sys
+    try:
+        t = (json.load(open(argv[1])).get('tasks') or {}).get(argv[2]) or {}
+    except Exception:
+        t = {}
+    print(' '.join(str(r['feedback']) for r in (t.get('reopened') or []) if r.get('feedback') and not r.get('resolved')))
+
+
+def integration_head(argv):
+    import json, sys
+    try:
+        i = json.load(open(argv[1])).get('integration') or {}
+        print(i.get('verdict', ''), i.get('head', ''))
+    except Exception:
+        print('')
+
+
+def foreign_add(argv):
+    import json, sys
+    d = json.loads(argv[1]); d[argv[2]] = [x for x in argv[3].split() if x]
+    print(json.dumps(d))
+
+
+def integration_verdict(argv):
+    import json, sys
+    try:
+        i = json.load(open(argv[1])).get('integration') or {}
+    except Exception:
+        i = {}
+    print('%s|%s' % (i.get('verdict', ''), i.get('reason', '')))
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('groups_mutate', groups_mutate),
     ('group_deps', group_deps),
     ('groups_reset_rows', groups_reset_rows),
     ('kept_worktrees', kept_worktrees),
+    ('dep_verdict', dep_verdict),
+    ('group_worktree', group_worktree),
+    ('parked_foreign', parked_foreign),
+    ('running_tasks', running_tasks),
+    ('task_attempt', task_attempt),
+    ('gate_verdict', gate_verdict),
+    ('task_ready', task_ready),
+    ('open_feedback', open_feedback),
+    ('integration_head', integration_head),
+    ('foreign_add', foreign_add),
+    ('integration_verdict', integration_verdict),
 )}
 
 

@@ -64,10 +64,15 @@ def blast_radius(argv):
     else: print('PASS %d changed, all declared' % len(changed))
 
 
+def declared_list(argv):
+    import json,sys; print('\n'.join(sorted({f for t in json.loads(argv[1]).get('tasks', []) for f in t.get('files', [])})))
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('glob_touch_match', glob_touch_match),
     ('override_covers', override_covers),
     ('blast_radius', blast_radius),
+    ('declared_list', declared_list),
 )}
 
 

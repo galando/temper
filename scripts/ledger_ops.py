@@ -157,6 +157,70 @@ def confirm_row(argv):
                       'label': 'PROVEN', 'task': int(argv[1]), 'executed_by': 'person', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))
 
 
+def write_verdict(argv):
+    import json, os, sys
+    f, stage, verdict, reqs, ts = argv[1:6]
+    d = json.load(open(f))
+    d[stage] = {'verdict': verdict, 'requirements': json.loads(reqs), 'ts': ts}
+    tmp = '%s.tmp.%d' % (f, os.getpid())
+    with open(tmp, 'w') as fh:
+        json.dump(d, fh, indent=2)
+    os.replace(tmp, f)
+
+
+def last_value(argv):
+    import json, sys, re
+    file, keyword = argv[1:3]
+    entries = json.load(open(file))
+    vals = [e.get('value') for e in entries
+            if (not keyword or re.search(keyword, e.get('claim') or '', re.I)) and e.get('value') is not None]
+    print(vals[-1] if vals else '')
+
+
+def last_claim(argv):
+    import json, re, sys
+    try:
+        rows = json.load(open(argv[1]))
+    except Exception:
+        rows = []
+    hits = [str(r.get('claim')) for r in rows if isinstance(r, dict) and re.search(argv[2], str(r.get('claim') or ''))]
+    print(hits[-1] if hits else '')
+
+
+def last_row(argv):
+    import json, re, sys
+    try:
+        rows = json.load(open(argv[1]))
+    except Exception:
+        rows = []
+    hits = [r for r in rows if isinstance(r, dict) and re.search(argv[2], str(r.get('claim') or ''))]
+    print('%s|%s' % (hits[-1].get('exit_code'), ' '.join(str(hits[-1].get('output') or '').split())[:300]) if hits else '')
+
+
+def scenarios_covered(argv):
+    import json, sys
+    entries = json.load(open(argv[1]))
+    covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
+    print(len(covered))
+
+
+def latest_claim_exit(argv):
+    import json, sys, re
+    file, keyword = argv[1:3]
+    entries = json.load(open(file))
+    hits = [e for e in entries if re.search(keyword, e.get('claim') or '', re.I)]
+    print(('%s|%s' % (hits[-1].get('exit_code'), hits[-1].get('claim') or '')) if hits else '')
+
+
+def print_rows(argv):
+    import json, sys
+    for r in json.loads(argv[1]):
+        if r['pass'] and argv[2] == '1':
+            continue
+        mark = 'v' if r['pass'] else 'x'
+        print(f"  [{mark}] {r['name']} — {r['detail']}")
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('evidence_resolve', evidence_resolve),
     ('evidence_accept', evidence_accept),
@@ -167,6 +231,13 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('run_entry', run_entry),
     ('feedback_resolved_row', feedback_resolved_row),
     ('confirm_row', confirm_row),
+    ('write_verdict', write_verdict),
+    ('last_value', last_value),
+    ('last_claim', last_claim),
+    ('last_row', last_row),
+    ('scenarios_covered', scenarios_covered),
+    ('latest_claim_exit', latest_claim_exit),
+    ('print_rows', print_rows),
 )}
 
 

@@ -74,10 +74,36 @@ def report_usage(argv):
     print('  %-*s %6d %12s' % (w, 'total', t['rows'], n(t['ms'])))
 
 
+def status_json(argv):
+    import json, sys
+    d = json.loads(argv[1])
+    d['models'] = [{'stage': l.split('=', 1)[0], 'model': l.split('=', 1)[1].rsplit(' (', 1)[0], 'source': l.rsplit(' (', 1)[1].rstrip(')')}
+                   for l in argv[2].splitlines() if '=' in l and ' (' in l]
+    print(json.dumps(d))
+
+
+def report_json(argv):
+    import json, sys
+    d = json.load(open(argv[1]))
+    d['usage'] = json.loads(argv[2])
+    print(json.dumps(d, indent=2))
+
+
+def usage_row(argv):
+    import json, sys
+    a = argv[1:]
+    def num(x): return int(x) if x.isdigit() else None
+    print(json.dumps({'stage': a[0], 'model': a[1] or None, 'ms': num(a[2]),
+                      'task': num(a[3]), 'group': a[4] or None, 'ts': a[5]}))
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('status_text', status_text),
     ('report_table', report_table),
     ('report_usage', report_usage),
+    ('status_json', status_json),
+    ('report_json', report_json),
+    ('usage_row', usage_row),
 )}
 
 

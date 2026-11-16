@@ -283,6 +283,36 @@ def approve_design_tasks(argv):
     os.replace(tmp, p)
 
 
+def loop_config(argv):
+    import json, sys
+    print(json.dumps({k: v for k, v in zip(argv[1::2], argv[2::2]) if v != ''}))
+
+
+def grouped_models(argv):
+    import json, sys
+    d = json.loads(argv[1]); d['task_model'] = argv[2]; d['escalation_model'] = argv[3]
+    print(json.dumps(d))
+
+
+def pending_done(argv):
+    import json, os, sys
+    try:
+        if json.load(open(argv[1])).get('stage') == argv[2]:
+            os.remove(argv[1])
+    except Exception:
+        pass
+
+
+def override_entry(argv):
+    import json, sys
+    print(json.dumps({'stage': argv[1], 'reason': argv[2], 'by': argv[3], 'ts': argv[4]}))
+
+
+def adhoc_review(argv):
+    import json, sys
+    sys.exit(0 if 'review' in (json.load(open(argv[1])).get('adhoc_done') or {}).get('steps', []) else 1)
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('migrate_legacy', migrate_legacy),
     ('state_next', state_next),
@@ -293,6 +323,11 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('state_init', state_init),
     ('approve_plan', approve_plan),
     ('approve_design_tasks', approve_design_tasks),
+    ('loop_config', loop_config),
+    ('grouped_models', grouped_models),
+    ('pending_done', pending_done),
+    ('override_entry', override_entry),
+    ('adhoc_review', adhoc_review),
 )}
 
 

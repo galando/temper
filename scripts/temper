@@ -275,14 +275,7 @@ _ensure_dirs() { mkdir -p .temper/evidence; }   # the project's .temper and its 
 _json_read() { # _json_read <file> <default-json>
   local file="$1" default="$2"
   if [[ -f "$file" ]]; then
-    python3 -I -c "
-import json, sys
-try:
-    json.load(open(sys.argv[1]))
-    print(open(sys.argv[1]).read())
-except Exception:
-    print(sys.argv[2])
-" "$file" "$default"
+    python3 -I "$SCRIPTS_DIR/json_ops.py" read-valid "$file" "$default"
   else
     echo "$default"
   fi
@@ -448,21 +441,7 @@ _json_set_path() { # _json_set_path <file> <dot.path> <value> <default-json>
 _json_append() { # _json_append <file> <entry-json>  (file holds a JSON array)
   local file="$1" entry="$2" rc
   _lock_acquire
-  python3 -I -c "
-import json, os, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    if not isinstance(d, list):
-        d = []
-except Exception:
-    d = []
-d.append(json.loads(sys.argv[2]))
-tmp = '%s.tmp.%d' % (sys.argv[1], os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-os.replace(tmp, sys.argv[1])
-" "$file" "$entry"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" append-row "$file" "$entry"
   rc=$?
   _lock_release
   return $rc
@@ -626,7 +605,7 @@ _config_pin() {
 }
 
 _same_file() { # _same_file <a> <b> -> 0 when both name the same path once every link and '..' is resolved
-  python3 -I -c "import os, sys; sys.exit(0 if os.path.realpath(sys.argv[1]) == os.path.realpath(sys.argv[2]) else 1)" "$1" "$2"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" same-file "$1" "$2"
 }
 
 # ---------------------------------------------------------------------------
@@ -1018,9 +997,7 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   # The budget is loop_step.budget, the rule temper next offers the step back by: it reads these config values
   # (fix.max-loops only when the key is set, Decision 5).
   local cfgjson
-  cfgjson="$(python3 -I -c "
-import json, sys
-print(json.dumps({k: v for k, v in zip(sys.argv[1::2], sys.argv[2::2]) if v != ''}))" \
+  cfgjson="$(python3 -I "$SCRIPTS_DIR/state_ops.py" loop-config \
     loops.max-per-type "$(_cfg_get loops.max-per-type "")" fix.max-loops "$(_cfg_get fix.max-loops "")")"
   local result
   result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$cfgjson" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
@@ -1128,10 +1105,7 @@ _archive_ledger() { # writes gate-ledger.json into the run's spec folder from th
     local grouped_json=""
     if [[ -f "$GROUPS_FILE" ]]; then
       grouped_json="$(_group_report_json)"
-      grouped_json="$(python3 -I -c "
-import json, sys
-d = json.loads(sys.argv[1]); d['task_model'] = sys.argv[2]; d['escalation_model'] = sys.argv[3]
-print(json.dumps(d))" "$grouped_json" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)")"
+      grouped_json="$(python3 -I "$SCRIPTS_DIR/state_ops.py" grouped-models "$grouped_json" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)")"
     fi
     local usage_json; usage_json="$(_usage_json)"
     python3 -I "$SCRIPTS_DIR/state_ops.py" archive-ledger "$GATES_FILE" "$OVERRIDES_FILE" "$out" "$(_now)" "$grouped_json" "$usage_json" "${ev_pairs[@]}"
@@ -1459,16 +1433,7 @@ _gate_write_verdict() { # _gate_write_verdict <stage> <verdict> <requirements-js
   local stage="$1" verdict="$2" reqs="$3" rc
   _lock_acquire
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
-  python3 -I -c "
-import json, os, sys
-f, stage, verdict, reqs, ts = sys.argv[1:6]
-d = json.load(open(f))
-d[stage] = {'verdict': verdict, 'requirements': json.loads(reqs), 'ts': ts}
-tmp = '%s.tmp.%d' % (f, os.getpid())
-with open(tmp, 'w') as fh:
-    json.dump(d, fh, indent=2)
-os.replace(tmp, f)
-" "$GATES_FILE" "$stage" "$verdict" "$reqs" "$(_now)"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" write-verdict "$GATES_FILE" "$stage" "$verdict" "$reqs" "$(_now)"
   rc=$?
   _lock_release
   return $rc
@@ -1527,40 +1492,19 @@ _ev_last_value() { # _ev_last_value <stage> <keyword-regex|""> -> last matching 
   local stage="$1" keyword="$2"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, sys, re
-file, keyword = sys.argv[1:3]
-entries = json.load(open(file))
-vals = [e.get('value') for e in entries
-        if (not keyword or re.search(keyword, e.get('claim') or '', re.I)) and e.get('value') is not None]
-print(vals[-1] if vals else '')
-" "$file" "$keyword"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-value "$file" "$keyword"
 }
 
 _ev_last_claim() { # _ev_last_claim <stage> <regex> -> the claim of the last row whose claim matches, or ""
   local file; file="$(_evidence_file "$1")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, re, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-hits = [str(r.get('claim')) for r in rows if isinstance(r, dict) and re.search(sys.argv[2], str(r.get('claim') or ''))]
-print(hits[-1] if hits else '')" "$file" "$2" 2>/dev/null
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-claim "$file" "$2" 2>/dev/null
 }
 
 _ev_last_row() { # _ev_last_row <stage> <regex> -> "<exit>|<output, one line>" of the last row whose claim matches, or ""
   local file; file="$(_evidence_file "$1")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, re, sys
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-hits = [r for r in rows if isinstance(r, dict) and re.search(sys.argv[2], str(r.get('claim') or ''))]
-print('%s|%s' % (hits[-1].get('exit_code'), ' '.join(str(hits[-1].get('output') or '').split())[:300]) if hits else '')" "$file" "$2" 2>/dev/null
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-row "$file" "$2" 2>/dev/null
 }
 
 _ev_count_severity_in() { # _ev_count_severity_in <stage> <comma-separated severities>
@@ -1593,12 +1537,7 @@ _ev_scenarios_covered() { # _ev_scenarios_covered <stage> -> count of DISTINCT s
   local stage="$1"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo 0; return; }
-  python3 -I -c "
-import json, sys
-entries = json.load(open(sys.argv[1]))
-covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
-print(len(covered))
-" "$file"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" scenarios-covered "$file"
 }
 
 _intent_uncovered_scenarios() { # _intent_uncovered_scenarios <intent.md> <stage>
@@ -1611,10 +1550,7 @@ _intent_uncovered_scenarios() { # _intent_uncovered_scenarios <intent.md> <stage
 
 _req() { # _req <label> <bool 0|1> <detail> -> emits one requirement json line to stdout, and echoes pass/fail
   local label="$1" ok="$2" detail="$3"
-  python3 -I -c "
-import json, sys
-print(json.dumps({'name': sys.argv[1], 'pass': sys.argv[2] == '1', 'detail': sys.argv[3]}))
-" "$label" "$ok" "$detail"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" req "$label" "$ok" "$detail"
 }
 
 # Draft-intent requirements. Ten checks that apply to **Status:** draft intents
@@ -1742,16 +1678,7 @@ _plan_digest() { # _plan_digest <parsed-plan-json>
 # digest recorded yet: nothing to compare.
 _plan_fresh() { # _plan_fresh <parsed-plan-json>
   local want have
-  want="$(python3 -I -c "
-import json, sys
-for p in sys.argv[1:]:
-    try:
-        h = json.load(open(p)).get('plan_hash')
-    except Exception:
-        h = None
-    if h:
-        print(h)
-        break" "$STATE_FILE" "$GROUPS_FILE")"
+  want="$(python3 -I "$SCRIPTS_DIR/spec_text.py" plan-hash-recorded "$STATE_FILE" "$GROUPS_FILE")"
   [[ -z "$want" ]] && return 0
   have="$(_plan_digest "$1")"
   [[ "$have" == "$want" ]] && return 0
@@ -1892,13 +1819,7 @@ cmd_group_start() {
   for d in $deps; do
     # The group it builds on passed its check and the person chose Continue there: a Change at that group reruns work
     # this one would build on.
-    dv="$(python3 -I -c "
-import json, sys
-try:
-    g = ((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {})
-    print((g.get('gate') or {}).get('verdict', '') + ('|confirmed' if g.get('confirmed') else ''))
-except Exception:
-    print('')" "$GROUPS_FILE" "$d")"
+    dv="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" dep-verdict "$GROUPS_FILE" "$d")"
     if [[ "${dv%%|*}" != "PASS" ]]; then
       echo "FAIL: $g depends on $d, whose group gate has not passed" >&2
       return 1
@@ -1989,12 +1910,7 @@ cmd_group_gate() {
   fi
   plan="$(_grouped_parse "$spec_path/tasks.md")"
   _plan_fresh "$plan" || return 1
-  wt="$(python3 -I -c "
-import json, sys
-try:
-    print(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('worktree', ''))
-except Exception:
-    print('')" "$GROUPS_FILE" "$g")"
+  wt="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" group-worktree "$GROUPS_FILE" "$g")"
   chk="$(_task_py gatecheck "$plan" "$GROUPS_FILE" "$g" "$(pwd -P)/$wt")" || return 1
   if [[ -z "$wt" ]]; then
     echo "FAIL: group $g is not started (temper group start $g)" >&2
@@ -2170,12 +2086,7 @@ _group_reopen_body() {
   plan="$(_grouped_parse "$spec_path/tasks.md")"
   _plan_fresh "$plan" || return 1
   local chk; chk="$(_task_py reopencheck "$plan" "$GROUPS_FILE" "$g" "${tasks[@]}")" || return 1
-  wt="$(python3 -I -c "
-import json, sys
-try:
-    print(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('worktree', ''))
-except Exception:
-    print('')" "$GROUPS_FILE" "$g")"
+  wt="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" group-worktree "$GROUPS_FILE" "$g")"
   if [[ -z "$wt" ]]; then
     echo "FAIL: group $g is not started (temper group start $g)" >&2
     return 1
@@ -2192,12 +2103,7 @@ except Exception:
   # or a merge has a new sha): the check names the first ones it finds and stops
   local left fc accepted=() tcsv
   tcsv="$(IFS=,; echo "${tasks[*]}")"
-  left="$(python3 -I -c "
-import json, sys
-try:
-    print(json.dumps(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('parked_foreign') or []))
-except Exception:
-    print('[]')" "$GROUPS_FILE" "$g")"
+  left="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" parked-foreign "$GROUPS_FILE" "$g")"
   # the commits a park is about sit in the parked task's own worktree (kept by the park), so every kept worktree of a
   # task of G that is not running is checked, whichever task is named, and the group's own worktree too (a task that
   # is running has its range checked by its own gate)
@@ -2304,15 +2210,9 @@ if g.get('status') in ('parked', 'passed'):
   echo "OK: reopened ${tasks[*]/#/Task } in group $g"
   # M3: a task that was running when the group parked kept its work; it has no ready line in the schedule, so say how to gate it
   local rn
-  for rn in $(python3 -I -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    d = {}
-print(' '.join(sorted((k for k, v in (d.get('tasks') or {}).items() if v.get('group') == sys.argv[2] and v.get('status') == 'running'), key=int)))" "$GROUPS_FILE" "$g"); do
+  for rn in $(python3 -I "$SCRIPTS_DIR/groups_ops.py" running-tasks "$GROUPS_FILE" "$g"); do
     local ra rmodel
-    ra="$(python3 -I -c "import json, sys; print(((json.load(open(sys.argv[1])).get('tasks') or {}).get(sys.argv[2]) or {}).get('attempt') or 1)" "$GROUPS_FILE" "$rn")"
+    ra="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" task-attempt "$GROUPS_FILE" "$rn")"
     if [[ "$ra" =~ ^[0-9]+$ && "$ra" -ge 3 ]]; then rmodel="$(_resolve_task_escalation_model)"; else rmodel="$(_resolve_task_model)"; fi
     echo "NEXT: temper task gate $rn --model $rmodel   (Task $rn was running when the group parked; its work is still in its worktree. Run it once its agent has returned)"
   done
@@ -2337,12 +2237,7 @@ cmd_group_report() { # temper group report [--json]
 cmd_group_continue() {
   local g="${1:-}"
   [[ "$g" =~ ^G[0-9]+$ ]] || { echo "FAIL: usage: temper group continue G<n>" >&2; return 1; }
-  local v; v="$(python3 -I -c "
-import json, sys
-try:
-    print((((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('gate') or {}).get('verdict', ''))
-except Exception:
-    print('')" "$GROUPS_FILE" "$g")"
+  local v; v="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" gate-verdict "$GROUPS_FILE" "$g")"
   [[ "$v" == "PASS" ]] || { echo "FAIL: group $g has not passed its gate (temper group gate $g)" >&2; return 1; }
   _groups_mutate "
 g = d.setdefault('groups', {}).setdefault(a[0], {})
@@ -2379,11 +2274,7 @@ _task_py() { # _task_py <mode> [args...]: the Build task operations, in scripts/
 
 _jget() { # _jget <json> <key> -> the value (lists and objects as JSON); the JSON goes in on stdin, so a large
           # verdict (thousands of paths) never meets the argument size limit
-  printf '%s' "$1" | python3 -I -c "
-import json, sys
-v = json.load(sys.stdin).get(sys.argv[1], '')
-s = json.dumps(v) if isinstance(v, (list, dict)) else ('' if v is None else str(v))
-sys.stdout.buffer.write((s + '\\n').encode('utf-8', 'surrogateescape'))" "$2"
+  printf '%s' "$1" | python3 -I "$SCRIPTS_DIR/json_ops.py" jget "$2"
 }
 
 _task_load() { # _task_load <N>: sets _T_SPEC _T_PLAN _T_CTX _T_ABS for task N, or returns 1 with the reason
@@ -2441,10 +2332,7 @@ _task_start_body() {
     why="it is already $status"
   else
     local ready max
-    ready="$(cmd_schedule 2>/dev/null | python3 -I -c "
-import json, sys
-n = int(sys.argv[1])
-print(1 if any(l.strip().startswith('{') and json.loads(l).get('task') == n for l in sys.stdin) else 0)" "$n")"
+    ready="$(cmd_schedule 2>/dev/null | python3 -I "$SCRIPTS_DIR/groups_ops.py" task-ready "$n")"
     if [[ "$ready" != "1" ]]; then
       max="$(_cfg_get build.grouped.max-parallel 4)"; [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
       why="$(_task_py why "$_T_PLAN" "$GROUPS_FILE" "$n" "$max")"
@@ -2768,13 +2656,7 @@ for x in (a[5], a[6]):
   # F1: a task reopened with group-gate feedback answers it by passing: the CLI records the feedback-resolved row
   # that gate build requires, and marks the reopen answered so task show stops printing it
   local fid
-  for fid in $(python3 -I -c "
-import json, sys
-try:
-    t = (json.load(open(sys.argv[1])).get('tasks') or {}).get(sys.argv[2]) or {}
-except Exception:
-    t = {}
-print(' '.join(str(r['feedback']) for r in (t.get('reopened') or []) if r.get('feedback') and not r.get('resolved')))" "$GROUPS_FILE" "$n"); do
+  for fid in $(python3 -I "$SCRIPTS_DIR/groups_ops.py" open-feedback "$GROUPS_FILE" "$n"); do
     _json_append "$(_evidence_file build)" "$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" feedback-resolved-row "$fid" "$n")"
   done
   _groups_mutate "
@@ -2807,13 +2689,7 @@ cmd_integrate() {
     echo "FAIL: no grouped run to integrate (temper group start first)" >&2
     return 1
   fi
-  local iv; iv="$(python3 -I -c "
-import json, sys
-try:
-    i = json.load(open(sys.argv[1])).get('integration') or {}
-    print(i.get('verdict', ''), i.get('head', ''))
-except Exception:
-    print('')" "$GROUPS_FILE")"
+  local iv; iv="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" integration-head "$GROUPS_FILE")"
   if [[ "${iv%% *}" == "PASS" ]]; then
     if [[ "${iv#* }" != "$(git rev-parse HEAD 2>/dev/null)" ]]; then   # Q7: commits since the last integrate: the suite runs again
       local s rf; s="$(_jget "$(_task_py integplan "$(_grouped_parse "$spec_path/tasks.md")" "$GROUPS_FILE")" integration)"
@@ -2866,10 +2742,7 @@ except Exception:
     ugl="$(printf '%s\n' "$ufull" | cut -c1-7 | paste -sd' ' -)"
     [[ -z "$ufull" ]] && continue
     unk="${unk:+$unk; }$ug: $ugl"
-    foreign="$(python3 -I -c "
-import json, sys
-d = json.loads(sys.argv[1]); d[sys.argv[2]] = [x for x in sys.argv[3].split() if x]
-print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
+    foreign="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" foreign-add "$foreign" "$ug" "$ufull")"
   done
   if [[ -n "$unk" ]]; then
     _integ_record FAIL "commit(s) not made by the CLI and not accepted: $unk" "" "" "$foreign" || true
@@ -3164,13 +3037,7 @@ gate_build() {
   # Build runs in groups: a run with a tasks.md is integrated by `temper integrate` (a /temper:fix run has none)
   if [[ -n "$spec_path" && -f "$spec_path/tasks.md" ]]; then
     local integ
-    integ="$(python3 -I -c "
-import json, sys
-try:
-    i = json.load(open(sys.argv[1])).get('integration') or {}
-except Exception:
-    i = {}
-print('%s|%s' % (i.get('verdict', ''), i.get('reason', '')))" "$GROUPS_FILE")"
+    integ="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" integration-verdict "$GROUPS_FILE")"
     if [[ "${integ%%|*}" == "PASS" ]]; then
       reqs+=("$(_req "integration" 1 "groups merged, suite and interfaces verified (temper integrate)")")
     elif [[ -z "${integ%%|*}" && -n "$(cmd_state_get built_before "")" ]]; then
@@ -3223,13 +3090,7 @@ _ev_latest_claim_exit() { # _ev_latest_claim_exit <stage> <keyword-regex>
   local stage="$1" keyword="$2"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I -c "
-import json, sys, re
-file, keyword = sys.argv[1:3]
-entries = json.load(open(file))
-hits = [e for e in entries if re.search(keyword, e.get('claim') or '', re.I)]
-print(('%s|%s' % (hits[-1].get('exit_code'), hits[-1].get('claim') or '')) if hits else '')
-" "$file" "$keyword"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" latest-claim-exit "$file" "$keyword"
 }
 
 _review_code() { # _review_code save|compare: the tracked files of the project (outside .temper and .claude) and HEAD as
@@ -3576,7 +3437,7 @@ gate_commit() {
     local touched=""
     if [[ -n "$patterns" ]]; then
       local pats=() declared_list
-      declared_list="$(python3 -I -c "import json,sys; print('\\n'.join(sorted({f for t in json.loads(sys.argv[1]).get('tasks', []) for f in t.get('files', [])})))" "$plan_json")"
+      declared_list="$(python3 -I "$SCRIPTS_DIR/commit_rows.py" declared-list "$plan_json")"
       IFS=$'\x1f' read -r -a pats <<< "$patterns"
       while IFS= read -r f; do
         [[ -z "$f" ]] && continue
@@ -3684,24 +3545,11 @@ cmd_gate() {
   if [[ "$record" != "1" ]]; then
     echo "  (not recorded: a run of $run_spec is active, and this verdict is of $spec_path_override)"
     # The gate of a standalone /temper:intent ran: the debt its session owes (verify-stage-gate.sh) is paid.
-    python3 -I -c "
-import json, os, sys
-try:
-    if json.load(open(sys.argv[1])).get('stage') == sys.argv[2]:
-        os.remove(sys.argv[1])
-except Exception:
-    pass" "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
+    python3 -I "$SCRIPTS_DIR/state_ops.py" pending-done "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
   fi
   # --brief (9.8.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
   # passed row was context the session read again on every later turn.
-  python3 -I -c "
-import json, sys
-for r in json.loads(sys.argv[1]):
-    if r['pass'] and sys.argv[2] == '1':
-        continue
-    mark = 'v' if r['pass'] else 'x'
-    print(f\"  [{mark}] {r['name']} — {r['detail']}\")
-" "$reqs_json" "$brief"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" print-rows "$reqs_json" "$brief"
 
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
 }
@@ -3741,12 +3589,7 @@ cmd_status() { # temper status [--json] [--spec-path P]
   printf '%s\n' "$out" > "$STATUS_FILE" 2>/dev/null || true
   local models; models="$(python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --source 2>/dev/null)"
   if [[ "$as_json" == "true" ]]; then
-    python3 -I -c "
-import json, sys
-d = json.loads(sys.argv[1])
-d['models'] = [{'stage': l.split('=', 1)[0], 'model': l.split('=', 1)[1].rsplit(' (', 1)[0], 'source': l.rsplit(' (', 1)[1].rstrip(')')}
-               for l in sys.argv[2].splitlines() if '=' in l and ' (' in l]
-print(json.dumps(d))" "$out" "$models"
+    python3 -I "$SCRIPTS_DIR/report_ops.py" status-json "$out" "$models"
   else
     python3 -I "$SCRIPTS_DIR/report_ops.py" status-text "$out" "$models"
   fi
@@ -3775,10 +3618,7 @@ cmd_override() {
   # additionally puts a human permission prompt between an agent and this command.
   local by="the person"
   local entry
-  entry=$(python3 -I -c "
-import json, sys
-print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3], 'ts': sys.argv[4]}))
-" "$stage" "$reason" "$by" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/state_ops.py" override-entry "$stage" "$reason" "$by" "$(_now)")
   _json_append "$OVERRIDES_FILE" "$entry"
   echo "OK: override recorded for '$stage' by $by: $reason"
 }
@@ -3918,9 +3758,7 @@ cmd_adhoc() {
   esac
   _lock_release
   # a change that re-runs the Review agent takes the Review code snapshot now, after the change: Review then does not fail on it
-  if [[ "$sub" == "close" && $rc -eq 0 ]] && python3 -I -c "
-import json, sys
-sys.exit(0 if 'review' in (json.load(open(sys.argv[1])).get('adhoc_done') or {}).get('steps', []) else 1)" "$STATE_FILE"; then
+  if [[ "$sub" == "close" && $rc -eq 0 ]] && python3 -I "$SCRIPTS_DIR/state_ops.py" adhoc-review "$STATE_FILE"; then
     _review_code save || true
   fi
   return $rc
@@ -4005,11 +3843,7 @@ cmd_report() {
       cat "$GATES_FILE"
     else
       # gates.json as it is, plus a "usage" key only when usage rows exist
-      python3 -I -c "
-import json, sys
-d = json.load(open(sys.argv[1]))
-d['usage'] = json.loads(sys.argv[2])
-print(json.dumps(d, indent=2))" "$GATES_FILE" "$usage_json"
+      python3 -I "$SCRIPTS_DIR/report_ops.py" report-json "$GATES_FILE" "$usage_json"
     fi
     return
   fi
@@ -4028,12 +3862,7 @@ print(json.dumps(d, indent=2))" "$GATES_FILE" "$usage_json"
 # each launch once.
 _usage_append() { # _usage_append <stage> <model> <ms> <task> <group>
   local row
-  row="$(python3 -I -c "
-import json, sys
-a = sys.argv[1:]
-def num(x): return int(x) if x.isdigit() else None
-print(json.dumps({'stage': a[0], 'model': a[1] or None, 'ms': num(a[2]),
-                  'task': num(a[3]), 'group': a[4] or None, 'ts': a[5]}))" "$1" "$2" "$3" "$4" "$5" "$(_now)")" || return 1
+  row="$(python3 -I "$SCRIPTS_DIR/report_ops.py" usage-row "$1" "$2" "$3" "$4" "$5" "$(_now)")" || return 1
   _ensure_dirs
   _json_append "$USAGE_FILE" "$row"
 }

@@ -62,9 +62,55 @@ def set_path(argv):
     os.replace(tmp, argv[1])
 
 
+def read_valid(argv):
+    import json, sys
+    try:
+        json.load(open(argv[1]))
+        print(open(argv[1]).read())
+    except Exception:
+        print(argv[2])
+
+
+def append_row(argv):
+    import json, os, sys
+    try:
+        d = json.load(open(argv[1]))
+        if not isinstance(d, list):
+            d = []
+    except Exception:
+        d = []
+    d.append(json.loads(argv[2]))
+    tmp = '%s.tmp.%d' % (argv[1], os.getpid())
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, argv[1])
+
+
+def same_file(argv):
+    import os, sys; sys.exit(0 if os.path.realpath(argv[1]) == os.path.realpath(argv[2]) else 1)
+
+
+def req(argv):
+    import json, sys
+    print(json.dumps({'name': argv[1], 'pass': argv[2] == '1', 'detail': argv[3]}))
+
+
+def jget(argv):
+    import json, sys
+    v = json.load(sys.stdin).get(argv[1], '')
+    s = json.dumps(v) if isinstance(v, (list, dict)) else ('' if v is None else str(v))
+    sys.stdout.buffer.write((s + '\n').encode('utf-8', 'surrogateescape'))
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('get_path', get_path),
     ('set_path', set_path),
+    ('read_valid', read_valid),
+    ('append_row', append_row),
+    ('same_file', same_file),
+    ('req', req),
+    ('jget', jget),
 )}
 
 

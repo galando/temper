@@ -185,6 +185,18 @@ def plan_digest(argv):
     print(hashlib.sha256(json.dumps(core, sort_keys=True).encode('utf-8')).hexdigest())
 
 
+def plan_hash_recorded(argv):
+    import json, sys
+    for p in argv[1:]:
+        try:
+            h = json.load(open(p)).get('plan_hash')
+        except Exception:
+            h = None
+        if h:
+            print(h)
+            break
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('unfenced_scenarios', unfenced_scenarios),
     ('cross_repo_recorded', cross_repo_recorded),
@@ -194,6 +206,7 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('tier_lines', tier_lines),
     ('uncovered_scenarios', uncovered_scenarios),
     ('plan_digest', plan_digest),
+    ('plan_hash_recorded', plan_hash_recorded),
 )}
 
 
