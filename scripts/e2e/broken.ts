@@ -24,13 +24,15 @@
 //     trace steps back to Plan; the last question is commit.confirm, with the red test and the first flaky test on the
 //     commit card; at most 4 dialogs.
 //   broken-flaky (plain), row D14: the second flaky test fails once at the first gate that runs it on another tree; the
-//     CLI ran it once more before any agent, the ledger holds a row that calls it flaky, and no agent was launched for it.
+//     CLI ran it once more at once (the next mvn call is the same command on the same tree, before any agent), the
+//     ledger holds a row that calls it flaky, and no agent was launched for it.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 import { MVN, POM, recordOf, toolRuns, withRemote } from './faketools'
+import type { ToolRun } from './faketools'
 import { orchestrate } from './loop'
 import { defaultPerson, idOf, withoutSetup, worldCheck } from './persons'
 import { expect, mavenAgents, mavenScript, planMd, promise, startMaven, stepsBackToPlan, tasksMd, withCheckLines } from './slow'
@@ -136,6 +138,16 @@ function flakyFailure(db: string, log: string): { at: number; args: string } {
   return { at, args: at >= 0 ? runs[at]!.args : '' }
 }
 
+// The rerun of row D14 (WP22 step 9: once more at once, on the same tree): the mvn call right after the failure at `at`
+// is the same command on the tree of the failure, before the next agent launch. `launchAt` is the number of tool runs
+// before that launch, or null when none came after the failure.
+export function reranAtOnce(runs: ToolRun[], at: number, launchAt: number | null): boolean {
+  const failed = runs[at]
+  const again = runs[at + 1]
+  if (failed === undefined || again === undefined) return false
+  return again.args === failed.args && again.tree !== '' && again.tree === failed.tree && (launchAt === null || at + 1 < launchAt)
+}
+
 export const brokenFlaky = (w: World): void => {
   withRemote(w)
   const p = startBroken(w, true)
@@ -164,15 +176,14 @@ export const brokenFlaky = (w: World): void => {
     }
     return rows
   }
-  // The rerun: the same command, after the failure and before the next agent launch.
+  // The rerun: the next mvn call, on the same tree, before the next agent launch.
   const check = (where: string): void => {
     const f = flakyFailure(p.db, p.log)
     if (f.at < 0) return
     const next = launches.find(l => l.runs > f.at)
     const runs = toolRuns(p.log)
-    const again = runs.findIndex((r, i) => i > f.at && r.args === f.args)
-    expect(again >= 0 && (next === undefined || again < next.runs),
-      `D14 ${FLAKY_LATER} failed in \`mvn ${f.args}\` and the CLI did not run it once more before ${next ? `launching ${next.type}` : where}`)
+    expect(reranAtOnce(runs, f.at, next?.runs ?? null),
+      `D14 ${FLAKY_LATER} failed in \`mvn ${f.args}\` and the CLI did not run it once more at once, on the same tree, before ${next ? `launching ${next.type}` : where} (the next call: ${runs[f.at + 1]?.line ?? 'none'})`)
     const fixers = launches.filter(l => l.runs > f.at && ['temper:temper-build', 'temper:temper-env'].includes(l.type))
     expect(fixers.length === 0, `D14 no agent is launched for the flaky test (${fixers.map(l => l.type).join(', ')})`)
   }
@@ -254,6 +265,22 @@ function check(): number {
   eq(`the late flaky test passes after a commit of the spec alone: the code is still on the base`, suite(), 0)
   sh('echo "class Shape { }" > backend/src/Shape.java && git add -A && git commit -qm code')
   eq(`the late flaky test fails once, the first time it runs on another code tree, and passes after`, [suite(), suite()], [1, 0])
+  const real = toolRuns(log)
+  eq('each line of the tool log carries the tree it ran on, and a run again at once on it is the rerun of D14',
+    [real.every(r => /^[0-9a-f]{40}$/.test(r.tree)), reranAtOnce(real, real.length - 2, null)], [true, true])
+  // made up tool logs: the failure is the first line
+  const made = (...lines: string[]): ToolRun[] => {
+    const f = path.join(dir, 'made.log')
+    fs.writeFileSync(f, lines.map(l => `mvn ${l} exit=0 port=\n`).join(''))
+    return toolRuns(f)
+  }
+  const fail = 'verify -DskipITs jdk=24 db=up tree=t1'
+  eq('D14 rerun: the same command later, after another call, is no rerun (what the head of phase 2 passed with)',
+    reranAtOnce(made(fail, 'verify jdk=24 db=up tree=t1', fail), 0, null), false)
+  eq('D14 rerun: the next call on the same tree is the rerun', reranAtOnce(made(fail, fail), 0, null), true)
+  eq('D14 rerun: the next call on another tree is no rerun', reranAtOnce(made(fail, 'verify -DskipITs jdk=24 db=up tree=t2'), 0, null), false)
+  eq('D14 rerun: another command next, on the same tree, is no rerun', reranAtOnce(made(fail, 'test -Dtest=ShapeTest jdk=24 db=up tree=t1'), 0, null), false)
+  eq('D14 rerun: the next call after an agent launch is no rerun', reranAtOnce(made(fail, fail), 0, 1), false)
   fs.rmSync(dir, { recursive: true, force: true })
   console.log(`broken --check: ${fails === 0 ? 'PASS' : `FAIL (${fails})`}`)
   return fails === 0 ? 0 : 1

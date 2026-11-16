@@ -28,7 +28,8 @@
 // (src/test/java under the pom's folder) a run with no filter runs Shape and Bytes only once their test file is there, as
 // Maven runs the tests that exist; the project of the replay has no such folder, and its suite names both from the start.
 //
-// Each call is one line of MOCK_LOG, written when it ends: `mvn <args> jdk=<n> db=<up|down> exit=<code> port=<port>`.
+// Each call is one line of MOCK_LOG, written when it ends:
+//   `mvn <args> jdk=<n> db=<up|down> tree=<HEAD^{tree} where it ran> exit=<code> port=<port>`.
 // A whole suite run is a line with no -Dtest=. A run the CLI's runner kills at its limit (a SIGKILL to its process
 // group, scripts/run_env.py) cannot write its own line: while MOCK_SLOW_S is set, a watcher in a process group of its
 // own writes it with exit=124, the code the runner reports for a time out.
@@ -41,7 +42,7 @@ import type { World } from './world'
 
 export const MVN = `#!/usr/bin/env bash
 args="$*"
-pre="mvn $args jdk=\${TOOL_JDK:-21} db=$([ -f "$MOCK_DB/up" ] && echo up || echo down)"
+pre="mvn $args jdk=\${TOOL_JDK:-21} db=$([ -f "$MOCK_DB/up" ] && echo up || echo down) tree=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo none)"
 post="port=\${IT_POSTGRES_PORT:-}"
 mark="$MOCK_DB/.ended.$$"
 if [ -n "\${MOCK_SLOW_S:-}" ]; then
@@ -149,13 +150,13 @@ export function installTools(w: World): Tools {
 }
 
 // One line of the tool log, read back.
-export type ToolRun = { line: string; args: string; exit: number | null; suite: boolean }
+export type ToolRun = { line: string; args: string; exit: number | null; suite: boolean; tree: string }
 export function toolRuns(log: string): ToolRun[] {
   if (!fs.existsSync(log)) return []
   return fs.readFileSync(log, 'utf8').split('\n').filter(l => l.startsWith('mvn ')).map(line => {
     const exit = / exit=(\d+) port=/.exec(line)
     const args = line.replace(/^mvn /, '').replace(/ jdk=.*$/, '')
-    return { line, args, exit: exit ? Number(exit[1]) : null, suite: !/-Dtest=/.test(args) }
+    return { line, args, exit: exit ? Number(exit[1]) : null, suite: !/-Dtest=/.test(args), tree: / tree=(\S+)/.exec(line)?.[1] ?? '' }
   })
 }
 
