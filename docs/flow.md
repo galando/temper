@@ -333,13 +333,16 @@ A finished run leaves one line in the project. `temper state clear` appends it t
 ```
 
 `ended` is `committed` when the commit gate's verdict is PASS, else `cleared`. The steps back come from
-`feedback-loops.json`, the launches and the agent seconds from `usage.json` (the agents recorded with their stage and
-time), the skips from `overrides.json`. The asks are the questions the CLI asked: each time the flow writes a view whose
-`ask` is set, `.temper/asked.json` records `<run id>:<step>:<question id>` once, with the stage and the kind, so `next`
-run twice at one step counts one; a set of Blocking questions counts one for every four. Follow up dialogs (More
-options, a reason, a name) are asked by the carrier and are not seen here, so `asks` counts the CLI's questions, not
-every dialog a person saw. Both files are run files git ignores; `runs.jsonl` survives `state init` and `state clear`,
-and neither decides a gate row.
+`feedback-loops.json`, which keeps one record a pair of stages: its iteration is the steps back it made. The launches
+and the agent seconds come from `usage.json` (the agents recorded with their stage and time); a row of a task gate is
+no launch, except the gate of a task an earlier conversation left running, which records that launch with its time.
+The skips come from `overrides.json`. The asks are the questions the CLI asked: each time `temper next` (which
+`temper go` and the run driver call) answers with a question, `.temper/asked.json` records
+`<run id>:<step>:<question id>:<digest of its text>` once, with the stage and the kind, so `next` run twice at one step
+counts one and the one question of two groups at one step counts two; the view another command writes records none. A
+set of Blocking questions counts one for every four. Follow up dialogs (More options, a reason, a name) are asked by
+the carrier and are not seen here, so `asks` counts the CLI's questions, not every dialog a person saw. Both files are
+run files git ignores; `runs.jsonl` survives `state init` and `state clear`, and neither decides a gate row.
 
 The end to end scenarios count the dialogs a person saw, the launches by agent type, the steps the CLI took by itself,
 the steps back, the hand backs of the run driver and the runs of the whole suite; `scripts/e2e/floor.json` holds those

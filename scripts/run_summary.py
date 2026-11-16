@@ -2,7 +2,7 @@
 
   python3 run_summary.py append TEMPER_DIR NOW     `temper state clear` calls it before it deletes the run's files: one
                                                    JSON line goes to TEMPER_DIR/runs.jsonl, which keeps its last 200
-  run_summary.record_ask(TEMPER_DIR, view)         flow_view.write_view records the question a view asks
+  run_summary.record_ask(TEMPER_DIR, next)         flow.run_view records the question `temper next` hands the carrier
 
 The line: {"v": 1, "at", "run", "slug", "command", "version", "mode", "ended", "asks": {"n", "by_stage", "by_kind"},
 "steps_back": [{"from", "to", "n"}], "launches": {"by_stage"}, "seconds", "agent_seconds", "skips"}. It is made from the
@@ -11,13 +11,16 @@ recorded with their stage and time), overrides.json (the skips), gates.json (`en
 verdict is PASS, else `cleared`) and asked.json. A launch is a usage row of an agent stage. A row of a task gate is no
 launch unless it has a time: the gate of a task an earlier conversation left running, which counts for Build.
 
-asked.json holds the questions the CLI asked, once each: when the flow writes a view whose `ask` is set, the key
-`<run id>:<step>:<question id>` is recorded with the stage and the kind, so `next` run twice at one step counts one. A set
-of Blocking questions counts one for every four (a dialog holds four). Follow up dialogs (More options, a reason, a name)
+asked.json holds the questions the CLI asked, once each: when `temper next` (which `temper go` and the run driver call)
+answers with a question, the key `<run id>:<step>:<question id>:<digest of its text>` is recorded with the stage and the
+kind, so `next` run twice at one step counts one, and the one question of two groups at one step counts two. The view
+another command writes hands no question and records none. A set of Blocking questions counts one for every four (a
+dialog holds four). Follow up dialogs (More options, a reason, a name)
 are asked by the carrier and are not seen here: the count is the CLI's questions. Neither file decides a gate row;
 runs.jsonl survives `state init` and `state clear`. Every failure here is silent: the summary never stops a run.
 Standard library only.
 """
+import hashlib
 import json
 import os
 import sys
@@ -26,6 +29,7 @@ from datetime import datetime, timezone
 
 KEEP = 200
 ASKED = "asked.json"
+NOTE = "\n\nNote from Claude (not from Temper):"   # flow.py add_note
 RUNS = "runs.jsonl"
 PLUGIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -46,16 +50,20 @@ def write_json(path, doc):
     os.replace(tmp, path)
 
 
-def record_ask(temper_dir, doc):
-    """Record the question a view asks, once for its run, step and id (and a Blocking set, one for every four)."""
-    run = doc.get("run") if isinstance(doc.get("run"), dict) else None
-    if run is None or run.get("id") is None:
+def record_ask(temper_dir, nxt):
+    """Record the question `temper next` hands the carrier (`nxt`, its answer), once for its run, step, id and text; a
+    Blocking set counts one for every four."""
+    run = nxt.get("run") if isinstance(nxt.get("run"), dict) else None
+    if run is None or run.get("id") is None or nxt.get("action") != "ask":
         return
     found = []
-    ask = doc.get("ask") if isinstance(doc.get("ask"), dict) else None
+    ask = nxt.get("ask") if isinstance(nxt.get("ask"), dict) else None
     if ask is not None and ask.get("id"):
-        found.append((str(ask["id"]), str(ask.get("kind") or ""), 1))
-    blocking = doc.get("blocking_asks") if isinstance(doc.get("blocking_asks"), list) else []
+        # the text tells apart one question about two groups or tasks at one step; a note of Claude's is no new one
+        text = str((ask.get("question") or {}).get("question") or "").split(NOTE)[0]
+        digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+        found.append(("%s:%s" % (ask["id"], digest), str(ask.get("kind") or ""), 1))
+    blocking = nxt.get("blocking_asks") if isinstance(nxt.get("blocking_asks"), list) else []
     if blocking:
         found.append(("intent.blocking", "blocking", (len(blocking) + 3) // 4))
     if not found:

@@ -146,6 +146,23 @@ _c41_q="$(nx "d['ask']['id']")"
 assert_eq "summary: the line counts the questions the CLI asked once each" "intent.accept 1 1 1 no" \
   "$_c41_q $(_c41_last 'd["asks"]["n"], d["asks"]["by_stage"].get("intent"), d["asks"]["by_kind"].get("gate")' | tr -d "(),") $([[ -f .temper/asked.json ]] && echo yes || echo no)"
 
+# one question about two groups at one step is two questions; a view written by any other command asks nothing
+_c41_groups() { # _c41_groups <G1 confirmed: "" or a time>: both groups passed their gate, the first confirmed or not
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w1", "gate": {"verdict": "PASS"}%s}, "G2": {"status": "passed", "worktree": "w2", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G2"}}}\n' \
+    "${1:+, \"confirmed\": \"$1\"}" > .temper/groups.json
+}
+declare -F gp_base >/dev/null || source "$TESTS_DIR/case-helpers-5.sh"
+fresh; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; gp_base
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+_c41_groups ""
+_c41_q="$(nx "d['ask']['id']") $(nx "d['run']['step']")"
+"$TEMPER" evidence add --stage build --phase note --kind input --claim 'a view written, no question handed' >/dev/null 2>&1
+_c41_groups "t"
+_c41_q="$_c41_q $(nx "d['ask']['question']['question'].split(' (')[0]") $(nx "d['run']['step']")"
+"$TEMPER" state clear >/dev/null
+assert_eq "summary: one question about two groups at one step counts two" "group.pass 2 Group G2 2 2 {'group': 2}" \
+  "$_c41_q $(_c41_last 'd["asks"]["n"]') $(_c41_last 'd["asks"]["by_kind"]')"
+
 setup
 _at review
 "$TEMPER" state loop review build --reason 'a finding to repair' >/dev/null
