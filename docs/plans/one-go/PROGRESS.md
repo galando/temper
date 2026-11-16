@@ -12,6 +12,23 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 
 | Check | Result | Seconds |
 |---|---|---|
+| `quality-check.sh` | All checks passed | 6 |
+| `validate-docs.sh` | PASS 10, FAIL 0 | 0 |
+| `validate-readme.sh` | PASS 5, FAIL 0 | 0 |
+| `validate-plugin.sh` | PASS 31, FAIL 0 | 1 |
+| `validate-panels.py` | pass | 0 |
+| `validate-directory.sh` | OK | 4 |
+| `selftest/test-validate-directory.sh` | PASS 77, FAIL 0 | 22 |
+| `check-mod-calls.sh` | OK, 20 calls | 4 |
+| `selftest/test-check-mod-calls.sh` | PASS 24, FAIL 0 | 2 |
+| `check-known-limits.sh` | PASS 20, FAIL 0 | 1 |
+| `claude plugin test .` | 1774 tests across 40 files, all pass | 37 |
+| `claude plugin validate --strict .` | Validation passed | 5 |
+| `tsc -p tsconfig.mod.json` (types made with 2.1.287) | no output | 3 |
+| `e2e/ab-replay.sh` | 9.8.4 against the base: questions 8, 8, 4; launches 10, 7, 7; agent minutes 191, 92, 92 | 51 |
+| selftest, parallel (`run-selftest.sh`) | PASS 2879, FAIL 0 | 882 |
+| end to end, `run.ts all` (one process) | 69 mode lines PASS, 23 flows identical, e2e: all passed | 2498 |
+| bytes | `scripts/temper` 260,504; `scripts/flow.py` 205,631; `CHANGELOG.md` 246,956; `view-fixtures.ts` 259,060; `view-fixtures-2.ts` 78,629 | |
 
 ## Packages
 
