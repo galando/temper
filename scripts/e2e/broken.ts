@@ -25,7 +25,8 @@
 //     commit card; at most 4 dialogs.
 //   broken-flaky (plain), row D14: the second flaky test fails once at the first gate that runs it on another tree; the
 //     CLI ran it once more at once (the next mvn call is the same command on the same tree, before any agent), the
-//     ledger holds a row that calls it flaky, and no agent was launched for it.
+//     ledger holds a row that calls it flaky, and no agent was launched for it; the last question is commit.confirm,
+//     and its commit card has a row that names it as flaky.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -89,6 +90,9 @@ export const cardRows = (card: Json | null): string[] =>
 // A commit card with a row for each name.
 export const commitCardLists = (card: Json | null, names: string[]): boolean =>
   card?.kind === 'commit' && names.every(n => cardRows(card).some(r => r.includes(n)))
+// A commit card with a row that names the test and calls it flaky (row D14: shown at the commit).
+export const commitCardFlaky = (card: Json | null, name: string): boolean =>
+  card?.kind === 'commit' && cardRows(card).some(r => r.includes(name) && /flaky/i.test(r))
 // The setup: block of a config, as it stands in the file.
 const setupBlock = (config: string): string => {
   const m = /^setup:\n(?:(?:[ \t].*)?\n)*/m.exec(config)
@@ -212,8 +216,12 @@ export const brokenFlaky = (w: World): void => {
   }
   const base = defaultPerson()
   let n = 0
+  let lastId = ''
+  let lastCard: Json | null = null
   const person: Person = (ask, wd) => {
     n++
+    lastId = idOf(ask)
+    lastCard = viewCard(wd)
     ledgers = read(wd)
     check(`asking ${idOf(ask)}`)
     expect(n <= 12, `D14 the run asked more than 12 questions and ${FLAKY_LATER} never failed (${idOf(ask)})`)
@@ -235,6 +243,9 @@ export const brokenFlaky = (w: World): void => {
   check('the end of the run')
   expect(flakyFailure(p.db, p.log).at >= 0, `D14 ${FLAKY_LATER} failed at no gate: the fixture planted no fault`)
   flakyRow('the end of the run')
+  expect(lastId === 'commit.confirm', `D14 the last question is commit.confirm (${lastId || 'none'})`)
+  expect(commitCardFlaky(lastCard, FLAKY_LATER),
+    `D14 the commit card at commit.confirm shows ${FLAKY_LATER} as flaky (its rows: ${JSON.stringify(cardRows(lastCard)).slice(0, 200)})`)
   worldCheck(w)
 }
 
@@ -309,6 +320,14 @@ function check(): number {
     shown({ question: { question: 'Commit?' }, card: commit }).includes(RED),
     commitCardLists({ ...commit, kind: 'approval' }, [RED, FLAKY]),
   ], [false, false, false])
+  const later = (text: string, kind = 'commit'): Json => ({ kind, sections: [{ id: 'suite', rows: [{ text }] }] })
+  eq('D14 card: the commit card shows the late flaky test only in a row that names it and calls it flaky', [
+    commitCardFlaky(later(`${FLAKY_LATER} flaky: failed once, passed at once`), FLAKY_LATER),
+    commitCardFlaky(later(`${FLAKY_LATER} passed`), FLAKY_LATER),
+    commitCardFlaky(later(`${FLAKY} flaky`), FLAKY_LATER),
+    commitCardFlaky(later(`${FLAKY_LATER} flaky`, 'stop'), FLAKY_LATER),
+    commitCardFlaky(null, FLAKY_LATER),
+  ], [true, false, false, false, false])
   fs.rmSync(dir, { recursive: true, force: true })
   console.log(`broken --check: ${fails === 0 ? 'PASS' : `FAIL (${fails})`}`)
   return fails === 0 ? 0 : 1
