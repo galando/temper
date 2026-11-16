@@ -166,6 +166,12 @@ meaning. Tests, the policy, the driver and the scripted persons select by id and
 | `plan.command` | a command the plan wrote fails or times out on the base; one site with `base.red` | WP21 | WP25 |
 | `repair.stop` | a repair that the rule may not resolve or that was reverted | WP24 | none |
 | `config.tidy` | the one time config question | WP29 | none |
+| `intent.branch` | the run's branch exists from an earlier run: continue on it or on a new branch | WP04 | none |
+| `build.ungrouped` | `tasks.md` has tasks and no group: Plan runs again to write them in groups | WP04 | none |
+| `group.change` | which task of a passed group changes, after the group question's Change | WP04 | none |
+| `pipeline.pass`, `pipeline.fail` | the Pipeline stage: every job passed; a job failed, the result is missing or the fix limit is reached | WP04 | none |
+| `adhoc.fail` | the Review of a small change made at Check or Commit failed | WP04 | none |
+| `run.walked` | a stage an earlier session ran, checked and asked, not run, when a door entered the run later | WP04 | none |
 
 Question kinds: `gate`, `group`, `resume`, `drift`, `blocking`, `context`, `reason`, `name`. Option kinds: `more`,
 `accept`, `cancel`, `carry`, `type`. The `needs` kinds of WP16 are the three that stay in the driver (`more`,
@@ -189,6 +195,26 @@ Question kinds: `gate`, `group`, `resume`, `drift`, `blocking`, `context`, `reas
 | `revert-repair` | "Revert the repair" | WP24 | none |
 | `add-file` | "Add the file to the task", the person's `plan patch` | WP25 | none |
 | `tidy-config`, `keep-config` | the two answers of `config.tidy` | WP29 | none |
+| `choice-4` | the fourth ready answer of a question, as `choice-1` to `choice-3`: a reason, a task, a finding | WP04 | none |
+| `grill-me`, `teach-me` | the skill options: Grill Me, Teach Me | WP04 | none |
+| `html-review`, `share-review` | "Open HTML review", "Share HTML review" of the plan | WP04 | none |
+| `revise-plan` | "Revise the plan": Plan fixes or contests the open findings of the fresh review | WP04 | none |
+| `fresh-review`, `fresh-again` | "Fresh review first"; "Run the fresh review again" | WP04 | none |
+| `find-setup` | "Let an agent find the setup", the other answer to a fault of the environment beside `add-setup` | WP04 | none |
+| `walk-through` | "Walk through step by step" at the Design question | WP04 | none |
+| `change` | "Change something" at a passed Build or Fix, "Change" at a passed group: the person says what to change | WP04 | none |
+| `depth-review` | "Architecture Depth Review" at Review | WP04 | none |
+| `commit-pr`, `commit-stacked-prs` | "Commit and open PR", "Commit and open stacked PRs" | WP04 | none |
+| `config-suggestions` | "Review config suggestions" at a passed Check | WP04 | none |
+| `restore-tests` | "Restore the locked tests" a builder changed | WP04 | none |
+| `end-run`, `apply-fix` | the Pipeline answers: "End the run"; "Apply the fix and push" | WP04 | none |
+| `continue-on-branch`, `new-branch` | the answers of `intent.branch` | WP04 | none |
+| `merge-groups` | "Merge the groups" again, after foreign commits were kept or taken out | WP04 | none |
+| `take-out`, `keep-commits` | take out or keep commits the CLI did not make | WP04 | none |
+| `accept-done` | "Accept it as done" at `task.covered` | WP04 | none |
+| `twice-the-time`, `fix-group`, `change-command` | at `group.fail`: the gate again with twice the time; one fix agent on the merged work; the person types the group's command | WP04 | none |
+| `add-to-plan` | "Add to plan" at `commit.fail`: the files changed outside the plan belong to it | WP04 | none |
+| `include-left-out` | "Include what is left out" at `plan.context` | WP04 | none |
 
 An option of the head keeps the id WP04 gave it. WP04 adds one line here for every id it gives to a question or an
 option of the head that these tables do not name. An option a later spec adds with a label and no id gets its id by
