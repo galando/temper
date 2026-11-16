@@ -1,0 +1,50 @@
+temper — the deterministic spine of the Temper plugin
+
+Usage:
+  temper init
+  temper state <init|get|set|advance|loop|archive|clear> ...
+  temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
+  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
+  temper panel plan | design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
+  temper brief [--text TEXT | --stdin]   (.temper/brief.md: the code the request reaches, for Plan, Design, RCA)
+  temper model <intent|plan|design|build|review|check|rca|fix> | --all
+  temper override <stage> --reason "..."
+  temper report [--json]
+  temper status [--json] [--spec-path P]
+  temper bands [--json]
+  temper metrics append <series> <value>
+  temper config get <dot.path> [default]
+  temper config init                      (write .claude/temper.config from the plugin's default, when it is missing)
+  temper model task | task-escalation   (grouped Build: the task agent's model and its escalation model)
+  temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
+  temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)
+  temper group report [--json]    (grouped Build: the measurement report)
+  temper group fix G<n> [--commit] (a failed group: one fix agent on its merged tree; --commit commits its work)
+  temper output <stage>|G<n>      (read only: the gate's failed rows and its last run's output, or a group's last Validate)
+  temper task <start|show|test|gate|blocked> N  (grouped Build: one task's lifecycle)
+  temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
+  temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
+  temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
+  temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
+  temper report --end | --no-html (at the commit: the report for the person, then their No to the page)
+  temper intent accept|complete   (the Status header of the run's intent.md)
+  temper intent carry '<question>' (the person's Carry forward: a Blocking open question becomes Deferred)
+  temper intent answer '<question>' '<answer>' [...]  (the person's answers: into Decisions, out of Open Questions)
+  temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
+  temper group continue G<n>      (the person's Continue at a group question)
+  temper park --verdict V --reason R      (an armed run stops for the person)
+  temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
+  temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
+  temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
+  temper plan preflight                   (run every command of the plan on HEAD again; the plan gate reads it)
+  temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)
+  temper doctor                           (toolchain, setup block and services; only reads)
+  temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
+  temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
+  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
+  temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
+  temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
+                                                             (the acceptance tests written from the intent before Build)
+  temper drift [--json]                   (where the code moved away from the finished specs; read only)
+  temper guards install                   (install the Temper commit hook: scripts/guards/install.sh)
+  temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)

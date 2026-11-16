@@ -268,9 +268,9 @@ _now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 _ensure_dirs() { mkdir -p .temper/evidence; }   # the project's .temper and its evidence folder
 
-# ---------------------------------------------------------------------------
+# ---
 # Minimal JSON helpers (python3 stdlib only — no jq / pyyaml dependency)
-# ---------------------------------------------------------------------------
+# ---
 
 _json_read() { # _json_read <file> <default-json>
   local file="$1" default="$2"
@@ -447,10 +447,10 @@ _json_append() { # _json_append <file> <entry-json>  (file holds a JSON array)
   return $rc
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # Config (a small YAML subset — indentation-nested maps/lists, flow lists).
 # The v7 config is ~25 lines; this parser is intentionally not general-purpose YAML.
-# ---------------------------------------------------------------------------
+# ---
 
 _cfg_get() { # _cfg_get <dot.path> [default]
   local path="$1" default="${2:-}"
@@ -458,7 +458,7 @@ _cfg_get() { # _cfg_get <dot.path> [default]
   python3 "$SCRIPTS_DIR/config_yaml.py" "$CONFIG_FILE" "$path" "$default" 2>/dev/null || echo "$default"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # model — resolve which model a stage runs on.
 #
 # v7 replaced the v6 `models.routing`/`models.tiers` config with fixed `model:`
@@ -470,7 +470,7 @@ _cfg_get() { # _cfg_get <dot.path> [default]
 # So: the frontmatter stays the source of truth for defaults (no table to drift out of
 # sync with it), an optional flat `models.{stage}` config key overrides it, and the
 # lookup lives here — one deterministic call, no algorithm in prose.
-# ---------------------------------------------------------------------------
+# ---
 
 _agent_file() { # <stage> -> its brief, each path written out in full (an unknown stage has none)
   case "$1" in
@@ -555,9 +555,9 @@ cmd_model() {
   echo "$m"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # init
-# ---------------------------------------------------------------------------
+# ---
 
 # The CLI's run files under .temper/, which init lists in the clone's info/exclude (one list, so the setup check sees an
 # older project that lacks a newer one)
@@ -565,14 +565,6 @@ _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json o
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
 security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/"
 
-_excludes_current() { # 0 when the clone's info/exclude lists every run file init writes (or this is no git repository)
-  local ex pre p
-  ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" || return 0
-  [[ "$ex" != "/info/exclude" ]] || return 0
-  pre="$(_prefix_glob)"
-  for p in $_RUN_FILES; do grep -qxF "/${pre}.temper/$p" "$ex" 2>/dev/null || return 1; done
-  grep -qxF "/${pre}.claude/worktrees/" "$ex" 2>/dev/null
-}
 
 cmd_init() {
   _ensure_dirs
@@ -608,9 +600,9 @@ _same_file() { # _same_file <a> <b> -> 0 when both name the same path once every
   python3 -I "$SCRIPTS_DIR/json_ops.py" same-file "$1" "$2"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # state
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch NAME]
   local slug="${1:-}"; shift || true
@@ -1188,9 +1180,9 @@ cmd_state() {
   esac
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # evidence
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_evidence_add() {
   local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind=""
@@ -1406,10 +1398,10 @@ cmd_evidence() {
   esac
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # config — scriptable read access to .claude/temper.config (the same parser
 # every gate uses, exposed so hook scripts and CI steps never re-implement it).
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_config() {
   local sub="${1:-}"; shift || true
@@ -1425,9 +1417,9 @@ cmd_config() {
   esac
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # gate — the whole point. Deterministic PASS/FAIL, evidence-backed.
-# ---------------------------------------------------------------------------
+# ---
 
 _gate_write_verdict() { # _gate_write_verdict <stage> <verdict> <requirements-json-array>
   local stage="$1" verdict="$2" reqs="$3" rc
@@ -3554,11 +3546,11 @@ cmd_gate() {
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # status — per-criterion pass/open view of intent.md against the evidence ledger,
 # written to .temper/status.json after every gate (the mods UI reads it; nothing
 # here is a verdict — gates.json owns those).
-# ---------------------------------------------------------------------------
+# ---
 
 _status_write() { # _status_write <spec-path> -> writes .temper/status.json, prints it
   local spec_path="$1" out
@@ -3595,9 +3587,9 @@ cmd_status() { # temper status [--json] [--spec-path P]
   fi
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # override
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_override() {
   local stage="${1:-}"; shift || true
@@ -3623,7 +3615,7 @@ cmd_override() {
   echo "OK: override recorded for '$stage' by $by: $reason"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # intent accept|complete|carry: the header of the run's intent.md, written by the CLI (ADR 0013).
 # carry '<question>': the person's Carry forward on a Blocking question (9.8.0): its label turns to
 # `Deferred: (carried forward at the Intent gate)`, so the question stays on record, later gates name it, and it no
@@ -3632,7 +3624,7 @@ cmd_override() {
 # is the acceptance; Temper reads no name or email from git). complete: **Status:** completed plus
 # **Completed:** today.
 # Idempotent: an accepted intent stays as it is.
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_intent() {
   local sub="${1:-}"
@@ -3682,25 +3674,6 @@ cmd_park() {
   echo "OK: parked at $stage ($verdict); the report is in .temper/autonomy-report.md"
 }
 
-# The setup a project still lacks, as the calls that make it (each is idempotent): the config, the .temper
-# scaffold, and the commit gate, which is in place when git's pre-commit hook is the kept Temper hook
-# (temper-gate/pre-commit in the git folder), names this plugin's CLI, and is of this version (it gates every
-# project the commit touches, reading a rename by both its names, and runs its Python isolated from the project's
-# files). Prints one call per line.
-_setup_calls() {
-  [[ -f "$CONFIG_FILE" ]] || echo "$PLUGIN_ROOT/scripts/temper config init"
-  # the scaffold, and the run files kept out of git status (a run's end removes gates.json, so that file is no sign)
-  { [[ -d "$TEMPER_DIR" ]] && _excludes_current; } || echo "$PLUGIN_ROOT/scripts/temper init"
-  git rev-parse --git-dir >/dev/null 2>&1 || return 0
-  local hdir hook; hdir="$(git rev-parse --git-path hooks 2>/dev/null)"; hook="$hdir/pre-commit"
-  if [[ "$hook" != */temper-gate/pre-commit || ! -f "$hook" ]] \
-     || [[ "$(sed -n 2p "$hook" 2>/dev/null)" != "# Temper native pre-commit hook"* ]] \
-     || ! grep -qF "$PLUGIN_ROOT/scripts/temper" "$hook" 2>/dev/null \
-     || ! grep -qF '"--cached", "--name-only", "--no-renames"' "$hook" 2>/dev/null \
-     || ! grep -qF 'python3 -I ' "$hook" 2>/dev/null; then
-    echo "$PLUGIN_ROOT/scripts/temper guards install"
-  fi
-}
 
 # temper plan review --answer '<text>' [--focus '<area>']... [--redo]: the person's answer to the Context check, written into
 # plan.md's Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand. --redo (9.8.0): the answer
@@ -3798,9 +3771,9 @@ _view_write() {
     --config-file "$CONFIG_FILE" --now "$(_now)" >/dev/null 2>&1 || true
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # report
-# ---------------------------------------------------------------------------
+# ---
 
 # _report_end <shown|html|none>: the end of the run, at a passed Commit only. --end records that the report was printed
 # for the person (temper next then asks whether to write the page), --html or --no-html records their answer (next then
@@ -3907,7 +3880,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
   echo "OK: usage recorded ($stage)"
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # metrics — deterministic metric ingestion for the bands monitor.
 #
 # `temper metrics append <series> <value>` appends one numeric point to
@@ -3917,7 +3890,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
 # appended series is band-able by name (`bands.metrics: [coverage, my_series]`).
 # External sources (CI failure rate, post-deploy 5xx) enter the loop the same
 # way: a pipeline step calls append, the scheduled bands check does the rest.
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_metrics() {
   local sub="${1:-}"; shift || true
@@ -3971,7 +3944,7 @@ PY
   esac
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # bands — closing the loop (deterministic drift detection, no model).
 #
 # Watches the history arrays in .temper/metrics.json against control bands
@@ -3988,7 +3961,7 @@ PY
 # baseline (sigma = 0) treats any deviation as 3sigma — a perfectly stable
 # series moving at all is out of band by definition. History points may be
 # bare numbers or objects carrying a numeric `value`/`coverage`/`count`/`pct`.
-# ---------------------------------------------------------------------------
+# ---
 
 cmd_bands() {
   _ensure_dirs
@@ -4014,9 +3987,9 @@ cmd_bands() {
   return $rc
 }
 
-# ---------------------------------------------------------------------------
+# ---
 # main
-# ---------------------------------------------------------------------------
+# ---
 
 # check run | check detect (9.8.0): Check, run by the CLI (scripts/check_run.py). `run` runs the suite with coverage, each
 # scenario's Test: command, the mutation score of the changed lines and, for a fix, the regression proof, and records a
@@ -4138,58 +4111,7 @@ main() {
             *) echo "FAIL: usage: temper panel plan | design | rca <rca.md> | task <N>..." >&2; false ;;
           esac ;;
     ""|-h|--help)
-      cat <<'EOF'
-temper — the deterministic spine of the Temper plugin
-
-Usage:
-  temper init
-  temper state <init|get|set|advance|loop|archive|clear> ...
-  temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
-  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
-  temper panel plan | design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
-  temper brief [--text TEXT | --stdin]   (.temper/brief.md: the code the request reaches, for Plan, Design, RCA)
-  temper model <intent|plan|design|build|review|check|rca|fix> | --all
-  temper override <stage> --reason "..."
-  temper report [--json]
-  temper status [--json] [--spec-path P]
-  temper bands [--json]
-  temper metrics append <series> <value>
-  temper config get <dot.path> [default]
-  temper config init                      (write .claude/temper.config from the plugin's default, when it is missing)
-  temper model task | task-escalation   (grouped Build: the task agent's model and its escalation model)
-  temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
-  temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)
-  temper group report [--json]    (grouped Build: the measurement report)
-  temper group fix G<n> [--commit] (a failed group: one fix agent on its merged tree; --commit commits its work)
-  temper output <stage>|G<n>      (read only: the gate's failed rows and its last run's output, or a group's last Validate)
-  temper task <start|show|test|gate|blocked> N  (grouped Build: one task's lifecycle)
-  temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
-  temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
-  temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
-  temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
-  temper report --end | --no-html (at the commit: the report for the person, then their No to the page)
-  temper intent accept|complete   (the Status header of the run's intent.md)
-  temper intent carry '<question>' (the person's Carry forward: a Blocking open question becomes Deferred)
-  temper intent answer '<question>' '<answer>' [...]  (the person's answers: into Decisions, out of Open Questions)
-  temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
-  temper group continue G<n>      (the person's Continue at a group question)
-  temper park --verdict V --reason R      (an armed run stops for the person)
-  temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
-  temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
-  temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
-  temper plan preflight                   (run every command of the plan on HEAD again; the plan gate reads it)
-  temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)
-  temper doctor                           (toolchain, setup block and services; only reads)
-  temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
-  temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
-  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
-  temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
-  temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
-                                                             (the acceptance tests written from the intent before Build)
-  temper drift [--json]                   (where the code moved away from the finished specs; read only)
-  temper guards install                   (install the Temper commit hook: scripts/guards/install.sh)
-  temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
-EOF
+      cat "$SCRIPTS_DIR/temper-help.txt"
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
   esac

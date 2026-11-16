@@ -215,7 +215,7 @@ _git_list() { # _git_list <git folder>: every file and folder in it, sorted, but
 _cli_files() { # _cli_files <folder>: copies the CLI and the files it runs into a throwaway plugin's scripts folder
   local m
   cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" \
-    "$REPO_ROOT/scripts/flow.py" "$1"
+    "$REPO_ROOT/scripts/flow.py" "$REPO_ROOT/scripts/temper-help.txt" "$1"
   for m in $CLI_MODULES; do cp "$REPO_ROOT/$m" "$1"; done
 }
 _cli_text() { # the text of the CLI and of its Python modules
