@@ -71,9 +71,24 @@ export function startBroken(w: World, later: boolean): { log: string; db: string
 }
 export const agents = () => mavenAgents({ plan: planMd(), tasks: tasksMd('', INTEGRATION) })
 
-// The text the person reads at a question: the question, its options and the card.
+// The text the person reads at a question: the question and its options. The card is not on the ask.
 const shown = (ask: Json): string =>
-  [String(ask.question?.question ?? ''), ...((ask.options ?? []) as Json[]).map(o => `${o.label} ${o.description ?? ''}`), JSON.stringify(ask.card ?? '')].join('\n')
+  [String(ask.question?.question ?? ''), ...((ask.options ?? []) as Json[]).map(o => `${o.label} ${o.description ?? ''}`)].join('\n')
+// The card of a question: it sits on `next` and in the view (contracts.md, `card`), so the person reads it from
+// .temper/view.json when the question is asked, as accept.ts does.
+export const viewCard = (wd: World): Json | null => {
+  try {
+    return wd.exists('.temper/view.json') ? ((wd.json('.temper/view.json').card ?? null) as Json | null) : null
+  } catch {
+    return null
+  }
+}
+// The text of each row of each section of a card.
+export const cardRows = (card: Json | null): string[] =>
+  ((card?.sections ?? []) as Json[]).flatMap(s => ((s?.rows ?? []) as Json[]).map(r => String(r?.text ?? '')))
+// A commit card with a row for each name.
+export const commitCardLists = (card: Json | null, names: string[]): boolean =>
+  card?.kind === 'commit' && names.every(n => cardRows(card).some(r => r.includes(n)))
 // The setup: block of a config, as it stands in the file.
 const setupBlock = (config: string): string => {
   const m = /^setup:\n(?:(?:[ \t].*)?\n)*/m.exec(config)
@@ -85,12 +100,14 @@ export const brokenFirstRun = (w: World): void => {
   const p = startBroken(w, false)
   const rec = recordOf(w)!
   const asked: Json[] = []
+  const cards: (Json | null)[] = []   // the card of the view at each question
   const types = (): string[] => rec.agents.map(a => a.type)
   let redNamed = false
   let redBeforePlan = false
   const base = defaultPerson(ALLOWED)
   const person: Person = (ask, wd) => {
     asked.push(ask)
+    cards.push(viewCard(wd))
     const text = shown(ask)
     if (asked.length === 1) {
       expect(rec.agents.length === 0, `D13 the first question is asked with no agent launched (launched: ${types().join(', ')}; asked ${idOf(ask)})`)
@@ -118,7 +135,9 @@ export const brokenFirstRun = (w: World): void => {
   expect(back.length === 0, `D13 no call of the trace steps back to Plan (${back[0] ?? ''})`)
   const last = asked[asked.length - 1]
   expect(last !== undefined && idOf(last) === 'commit.confirm', `D13 the last question is commit.confirm (${last ? idOf(last) : 'none'})`)
-  expect(shown(last!).includes(RED) && shown(last!).includes(FLAKY), `D13 the commit card lists the red test ${RED} and the flaky test ${FLAKY}`)
+  const card = cards[cards.length - 1] ?? null
+  expect(commitCardLists(card, [RED, FLAKY]),
+    `D13 the commit card of the view at commit.confirm lists the red test ${RED} and the flaky test ${FLAKY} in its rows (${JSON.stringify(cardRows(card)).slice(0, 200)})`)
   expect(asked.length <= 4, `D13 the run asks at most 4 dialogs (${asked.length}: ${asked.map(idOf).join(', ')})`)
   expect(withoutSetup(w.read('.claude/temper.config')) === withoutSetup(p.initConfig), 'D13 the config changed only in a setup: block, which the person added')
   // WP07: the dialogs as the floor counts them, and the planner launched once (no step back to Plan)
@@ -281,6 +300,15 @@ function check(): number {
   eq('D14 rerun: the next call on another tree is no rerun', reranAtOnce(made(fail, 'verify -DskipITs jdk=24 db=up tree=t2'), 0, null), false)
   eq('D14 rerun: another command next, on the same tree, is no rerun', reranAtOnce(made(fail, 'test -Dtest=ShapeTest jdk=24 db=up tree=t1'), 0, null), false)
   eq('D14 rerun: the next call after an agent launch is no rerun', reranAtOnce(made(fail, fail), 0, 1), false)
+  // the card the person reads: the view's, never a field of the ask
+  const view = (card: Json | null): World => ({ exists: () => true, json: () => ({ card }) }) as unknown as World
+  const commit = { kind: 'commit', sections: [{ id: 'rule_log', rows: [{ text: `${RED} red at the base` }, { text: `${FLAKY} flaky` }] }] }
+  eq('D13 card: the commit card of the view lists the red and the flaky test in its rows', commitCardLists(viewCard(view(commit)), [RED, FLAKY]), true)
+  eq('D13 card: names in the question text, or in a card on the ask, are not the commit card', [
+    commitCardLists(viewCard(view(null)), [RED, FLAKY]),
+    shown({ question: { question: 'Commit?' }, card: commit }).includes(RED),
+    commitCardLists({ ...commit, kind: 'approval' }, [RED, FLAKY]),
+  ], [false, false, false])
   fs.rmSync(dir, { recursive: true, force: true })
   console.log(`broken --check: ${fails === 0 ? 'PASS' : `FAIL (${fails})`}`)
   return fails === 0 ? 0 : 1
