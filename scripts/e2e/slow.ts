@@ -300,6 +300,10 @@ export const slowFirstRun = (w: World): void => {
   expect(back.length === 0, `D11 no call of the trace steps back to Plan (${back[0] ?? ''})`)
   const cfg = w.exists('.claude/temper.config') ? w.read('.claude/temper.config') : ''
   expect(cfg === p.initConfig, 'D11 .claude/temper.config at the end is byte equal to the file temper init left')
+  // WP07: the dialogs as the floor counts them (a Blocking or a More dialog is one too), and the planner launched once
+  expect(w.counts.dialogs === 2, `D11 the run asks 2 dialogs (${w.counts.dialogs}: ${JSON.stringify(w.counts.by_stage)})`)
+  const planners = w.counts.launches['temper:temper-plan'] ?? 0
+  expect(planners === 1, `D11 the run never steps back to Plan: temper:temper-plan is launched once (${planners})`)
   worldCheck(w)
 }
 
