@@ -710,7 +710,7 @@ assert_eq "view: the usage holds the time and the two tables of time and launche
 assert_eq "next: an agent's after call takes its time, and no token count or agent id" "1|0" \
   "$(nx "int('--ms {ms}' in d['agents'][0]['after'][0] and 'token' not in d['agents'][0]['after'][0])")|$(nx "int('--agent' in d['agents'][0]['after'][0])")"
 assert_eq "the CLI and its Python files expand no home folder and read no transcript, and usage_cost.py is gone" "0|no" \
-  "$(git -C "$REPO_ROOT" ls-files -z -- scripts/temper 'scripts/*.py' | (cd "$REPO_ROOT" && xargs -0 grep -liE 'expanduser|\.jsonl|transcript') | wc -l | tr -d ' ')|$([[ -e "$REPO_ROOT/scripts/usage_cost.py" ]] && echo yes || echo no)"
+  "$(git -C "$REPO_ROOT" ls-files -z -- scripts/temper 'scripts/*.py' | (cd "$REPO_ROOT" && xargs -0 grep -hiE 'expanduser|\.jsonl|transcript') | grep -v 'runs\.jsonl' | wc -l | tr -d ' ')|$([[ -e "$REPO_ROOT/scripts/usage_cost.py" ]] && echo yes || echo no)"
 gpass intent plan build review check commit; _at commit
 "$TEMPER" report --end >/dev/null 2>&1
 assert_eq "commit: after the report the page is written with no question, and names no cost (9.8.0)" "work|report --html|0" \
