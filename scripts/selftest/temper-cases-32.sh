@@ -72,8 +72,7 @@ assert_eq "tooling: the runner refuses a bad commit and a shard with no value" "
 
 # --- room (WP02): the code moved out of scripts/temper into Python modules, and the room that leaves ---
 _t32_cli="$REPO_ROOT/scripts/temper"
-assert_eq "room: scripts/temper leaves 40,000 bytes free" "yes" \
-  "$([[ $(wc -c < "$_t32_cli") -le 222144 ]] && echo yes || echo "no: $(wc -c < "$_t32_cli" | tr -d ' ') bytes")"
+# the room of 40,000 bytes is the cap cli_bytes of scripts/caps.json from WP05 on (final 222144, case file 41)
 assert_eq "room: the CLI holds at most one Python heredoc" "yes" \
   "$([[ $(grep -c "<<'PY'" "$_t32_cli") -le 1 ]] && echo yes || echo "no: $(grep -c "<<'PY'" "$_t32_cli")")"
 assert_eq "room: the new modules run isolated" "ok" \

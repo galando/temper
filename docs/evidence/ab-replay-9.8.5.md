@@ -27,7 +27,7 @@ times per launch (Plan 12, a Build task 25, a Build fix pass 40, Review 3, Inten
 |--------------------------|------:|------:|------:|
 | shipped (committed)      | yes   | yes   | yes   |
 | the High defect in the commit | **yes** | no | no |
-| questions to the person  | 8     | 8     | **4** |
+| questions to the person  | 10    | 9     | **5** |
 | repairs of the shell by hand | 2 | 0     | 0     |
 | setup block, one click   | -     | 1     | 1     |
 | agent launches           | 10    | 7     | 7     |
@@ -43,10 +43,15 @@ before any code: the plan's own gate named the filtered verify, the preflight na
 click added the setup block (checked first on the failing commands). That is 3 fewer agent launches and about half the
 agent time.
 
-**Less back and forth.** The question count is the same with the default settings, but the questions differ: 9.8.4's
+**Less back and forth.** With the default settings 9.8.5 asks one question fewer, and the questions differ: 9.8.4's
 person also had to find two environment faults in the logs and repair the shell by hand, and saw two group failures
-that recommended a fix that could not work. With the policy on, 9.8.5 asks 4 questions: Intent, the setup click, the
-plan (where the run is armed), the commit.
+that recommended a fix that could not work. With the policy on, 9.8.5 asks 5 questions: Intent, the setup click, the
+Context check, the plan (where the run is armed), the commit.
+
+Printed again by WP05 of the 9.8.5 build: the scripted Plan agent now writes the Context Map as `agents/plan.md` tells
+a planner to (`- reviewed: pending`, and the Context check as an Open Question), so each run asks the Context check at
+each plan: once on 9.8.5, twice on 9.8.4, whose loop back to Plan writes the plan again. Every other number is as it
+was.
 
 ## What this does not show
 

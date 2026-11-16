@@ -5,6 +5,26 @@ All notable changes to Temper are documented here. The plugin version lives in
 
 ## v9.8.5: a run that asks twice
 
+**The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
+mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the
+CLI took by itself, the steps back, the hand backs of the run driver and the runs of the whole suite.
+`bun scripts/e2e/run.ts <mode> <name> --floor scripts/e2e/floor.json` compares them exactly, `--write-floor` writes
+them, and `scripts/check_floor.py` refuses a `final` above its first committed value; the entry `replay` holds the
+replay of the measured run and `replay_base` the numbers of the base (`10e965a`) on it, which
+`bash scripts/e2e/ab-replay.sh 10e965a` checks. A new scenario, `default-run`, is the run the floor counts.
+`scripts/caps.json` holds the growth caps (question and option sites, option labels, question ids, gate rows, briefs,
+listed commands and skills, config lines, prompt bytes, `cli_bytes` and README lines), each with `now` equal to the
+measure and a `final` nobody raises, checked by `scripts/check_caps.py` in `scripts/quality-check.sh`; the room case of
+`temper-cases-32.sh` is now the cap `cli_bytes`. `scripts/stops.json` lists the stops an unattended run must keep. The
+fixtures write `- reviewed: pending` and the Context check line, as a real planner does, so every scenario meets the
+Context check; the plain loop asks Blocking questions four to a dialog, as the driver does; a fixture's whole suite
+runs behind one script that counts its runs (`TEMPER_E2E_COUNT`). `temper state clear` appends one line a run to
+`.temper/runs.jsonl` (`scripts/run_summary.py`: the CLI's questions once each, by stage and kind, the steps back, the
+launches, the time, the skips), which keeps 200 lines and survives `state init`. The bench writes the question id, the
+move and a dialog index on each line of `person.jsonl` and which code ran into `run.json`; `bench/agentlog.py` and
+`bench/scorecard.py` make the scorecard and hold one arm against the pass lines of part H (`--gate`). CI runs the job
+Floor and caps. Its cases are in `temper-cases-41.sh`.
+
 **Ids in the protocol (WP04).** Every question that `temper next --json`, `temper go` and `.temper/view.json` carry has
 an `id` from one registry (`QUESTIONS` in `scripts/flow_base.py`, which also says what decision the question asks for)
 and a `kind`; every option has an `id` from a closed list (`OPTION_IDS`), a `kind` where a reader acts on it (`more`,

@@ -563,7 +563,7 @@ cmd_model() {
 # older project that lacks a newer one)
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
-security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/"
+security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/ runs.jsonl asked.json"
 
 
 cmd_init() {
@@ -1134,8 +1134,9 @@ cmd_state_clear() {
   fi
   [[ -n "$out" ]] && archived_note=" — gate ledger archived to $out"
   [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
+  python3 -I "$SCRIPTS_DIR/run_summary.py" append "$TEMPER_DIR" "$(_now)" 2>/dev/null || true   # one line a run, in runs.jsonl
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json .temper/asked.json
   rm -rf .temper/evidence
   # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
   _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true

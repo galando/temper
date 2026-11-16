@@ -2,7 +2,8 @@
 # ab-replay.sh [base-ref]: the replay of the measured run (scripts/e2e/replay.ts) on the version before a change and on
 # this tree, side by side. base-ref defaults to 7c7a1c1 (9.8.4, the base of the 9.8.5 work). It checks the base out
 # into a throwaway worktree, runs the same scripted agents and person against both, prints one table, and removes the
-# worktree. Needs bun. Nothing here touches the project's own .temper or branches.
+# worktree. Needs bun. Nothing here touches the project's own .temper or branches. With the base 10e965a it also
+# holds the base column against replay_base of scripts/e2e/floor.json (scripts/check_floor.py --replay-base).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
@@ -41,3 +42,8 @@ for d in runs:
     print("\n%s %s agents: %s" % (d["label"], d["version"], d["agent_launches"]))
     print("  repairs by hand: %s" % (d["manual_repairs"] or "none"))
 PY
+# 9.8.5 (WP05): the harness of this tree must still drive the CLI of the base to the numbers recorded for it. When the
+# base is 10e965a, its column is held against the entry replay_base of scripts/e2e/floor.json, and a difference fails.
+if [[ "$(git -C "$ROOT" rev-parse --verify --quiet "$BASE^{commit}")" == "$(git -C "$ROOT" rev-parse --verify --quiet "10e965a^{commit}")" ]]; then
+  python3 -I "$ROOT/scripts/check_floor.py" --replay-base "$OUT/base.json"
+fi

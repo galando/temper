@@ -45,7 +45,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP02 | done | `a6c5708` | 2026-11-16 | seven modules out of the CLI, output byte equal to the base by the capture of 43 states |
 | WP03 | done | `3b037fa` | 2026-11-16 | flow.py a facade over seven modules; the capture of 43 states and the 69 traces equal to the base |
 | WP04 | done | `7fe865f` | 2026-11-16 | 35 question ids and 51 option ids in flow_base; the ids of every dialog sit beside it, never inside |
-| WP05 | todo | | | |
+| WP05 | done | `fbc75ec` | 2026-11-16 | floor of default-run 8 dialogs and 6 launches in every mode, fix 4 and 3; caps file, stops list, run summary, replay base 9 questions and 7 launches |
 | WP06 | todo | | | |
 | WP07 | todo | | | |
 | WP08 | todo | | | |
@@ -100,4 +100,8 @@ None.
 - 2026-11-16 WP04: one assertion of the base changed on purpose, case 16 `go's question keeps only what the answer runs` (the spec adds `move` to what `go` keeps); for `changed-tests.md` when WP07 makes it.
 - 2026-11-16 WP04: `view-fixtures.ts` is 199,901 bytes, 99 under the 200,000 of case 32; the next package that grows the view moves views to the second module.
 - 2026-11-16 WP04: a defect of the base, not fixed: `contextCheck()` of `runview.ts` reads `c.question` as text while the CLI writes a dict there, so it is always null; the context question still reaches the mod when it is the view's `ask`.
+- 2026-11-16 WP05: the faithful fixtures count the Context check dialog, so the replay asks one more question than the page of the base said: 9.8.4 10, the base 9, the base with the policy 5 (it was 8, 8 and 4).
+- 2026-11-16 WP05: `done.md` gives no `final` for `question_ids` and `config_comment_keys`; each `final` is today's value (35 and 46).
+- 2026-11-16 WP05: the replay entry of the floor bounds only the agent types its `final` names; a scenario's `launches` bound every type.
+- 2026-11-16 WP05: a failed `temper gate` call inside an answer now counts as a verdict in the plain loop too, as in the driver.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
