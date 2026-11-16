@@ -141,11 +141,13 @@ APPROVE BEFORE ANY CODE IS WRITTEN                      login-lockout · risk M
 You asked: "lock accounts after too many failed logins"
 
 WHAT WILL BE TRUE (5 criteria; each gets a test written and locked first)
- 1. 5 failed logins in 15 min lock the account for 15 min        [your answer]
+ 1. 5 failed logins in 15 min lock the account for 15 min
  2. A locked account gets 423 and the unlock time
  3. A successful login resets the count
- 4. The lock is per account, not per IP                          [your answer]
- 5. Admins are locked like everyone else             [assumed: no rule given]
+ 4. The lock is per account, not per IP
+ 5. Admins are locked like everyone else
+YOUR ANSWERS: lock after 5 tries in 15 min; lock per account
+ASSUMED (no rule given): admins are locked like everyone else
 NOT IN SCOPE: unlock by email, CAPTCHA, limits per IP
 
 WHAT WILL CHANGE (4 files; any other file asks you first)
@@ -157,8 +159,8 @@ WHAT WILL CHANGE (4 files; any other file asks you first)
 HOW IT IS CHECKED
  your suite: npm test (48 s, passes on the current code); coverage may not drop below 71%
 
-FROM HERE: about 7 min and $0.90. You are asked again only if a check still
-fails after one repair, and at the commit. Nothing is pushed.
+FROM HERE: about 7 min (from this project's earlier runs). You are asked again
+only if a check still fails after one repair, and at the commit. Nothing is pushed.
 ```
 
 Options: "Approve and build (Recommended)", "Change something", "Ask me at every stage", "More options". Today the
@@ -440,7 +442,8 @@ and slow suites.
 
 ## 8. Rules the plan never breaks
 
-1. Before the approval a run writes only its spec folder: no project file, no branch, no commit.
+1. Before the approval a run writes only its spec folder and Temper's own run files: no project file, no branch, no
+   commit.
 2. The approval is of what was shown; a later change to the intent or the plan fails the gates until you approve again.
 3. Only an option you picked starts an unattended run; a step back, a skip or an accepted finding ends it.
 4. An unattended run never plans again, changes a gate's command, the intent or the approved file set, skips a check,
