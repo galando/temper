@@ -51,6 +51,11 @@ def questions(v):
         walk(where + ".change", a.get("change"))
 
     walk("ask", v.get("ask"))
+    dr = v.get("drift")
+    if isinstance(dr, dict):
+        # the Scope drift question: its options are labels, and the ids sit beside them in drift_ids
+        q = {"options": [{"label": x} for x in dr.get("options") or []]}
+        out.append(("drift",) + beside(q, {"id": dr.get("id"), "kind": dr.get("kind"), "options": dr.get("drift_ids")}))
     cc = v.get("context_check")
     if isinstance(cc, dict):
         out.append(("context_check", cc, cc.get("options") or []))
@@ -163,8 +168,8 @@ assert_eq "ids: every question has an id of the registry and a kind, and the reg
 assert_eq "ids: option ids are unique in a question and come from the closed list" "ok" "$(_i40 options 2>&1)"
 assert_eq "ids: recommended is true exactly where the label ends in the suffix, and absent elsewhere" "ok" "$(_i40 rec 2>&1)"
 assert_eq "ids: at most one recommended option in a question and its More question together" "ok" "$(_i40 one 2>&1)"
-assert_eq "ids: the walker reaches the More, accept and change questions of a gate, so the checks above see them" "ok" \
-  "$(REACH="ask.more ask.accept ask.change" _i40 reach 2>&1)"
+assert_eq "ids: the walker reaches the More, accept and change questions and the Scope drift question" "ok" \
+  "$(REACH="ask.more ask.accept ask.change drift" _i40 reach 2>&1)"
 assert_eq "ids: the question that goes to the dialog has no new key" "ok" "$(_i40 dialog 2>&1)"
 assert_eq "ids: no dialog the CLI writes holds a key the question tool refuses" "ok" "$(_i40 keys 2>&1)"
 assert_eq "ids: only opt() and set_rec() know the suffix" "ok" "$(FLOW_FILES="$FLOW_FILES" _i40 suffix 2>&1)"
@@ -216,5 +221,7 @@ gpass intent
 assert_eq "ids: a Blocking question carries intent.blocking beside its question, its choices and Carry forward by id" \
   "intent.blocking|blocking|choice-1,choice-2,carry|carry|header,multiSelect,options,question" \
   "$(nx "b = d['blocking_asks'][0]; i = b['question_ids']; o = i['options']; '|'.join([i['id'], i['kind'], ','.join(x['id'] for x in o), o[-1]['kind'], ','.join(sorted(b['question']))])")"
-assert_eq "ids: the resume and the Scope drift questions of the view have their ids" "run.restart|resume|start-over,cancel|scope.drift|drift" \
-  "$(vw "r = d['restart']; '|'.join([r['id'], r['kind'], ','.join(o['id'] for o in r['options']), d['drift']['id'], d['drift']['kind']])")"
+assert_eq "ids: the resume and the Scope drift questions of the view have their ids" \
+  "run.restart|resume|start-over,cancel|scope.drift|drift|Add to plan=add-to-plan,Revert=revert,Allow once=allow-once" \
+  "$(vw "r = d['restart']; x = d['drift']; '|'.join([r['id'], r['kind'], ','.join(o['id'] for o in r['options']), x['id'], x['kind'],
+    ','.join('%s=%s' % (l, i['id']) for l, i in zip(x['options'], x['drift_ids']))])")"

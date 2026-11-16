@@ -291,7 +291,7 @@ Build does. With the key absent or `ask`, every gate after Build asks, as before
 | `blocking` | the Blocking open questions |
 | `blocking_asks` | 9.8.0: the same questions as the session asks them (see `temper next`); the mod lets the session ask these |
 | `restart` | the `Temper resume` question |
-| `drift` | the `Scope drift` question's header, the first line prefix (`Outside the plan:`) and its three options; 9.8.5: id `scope.drift`, kind `drift` |
+| `drift` | the `Scope drift` question's header, the first line prefix (`Outside the plan:`) and its three options; 9.8.5: id `scope.drift`, kind `drift`, and `drift_ids`, the ids of the three options at their places |
 | `guard` | what the guard needs: `{stage, spec, slug, fix_run, grouped, armed, autonomy_enabled, plan_files, step, run_id, trivial_exit, prefix}`; `plan_files` are the files the person approved at the plan gate (before it, the plan's files as they are); `prefix` is the project's folder from the top of its git repository (`packages/app/`, or empty) |
 | `plan` | `{approved, files, groups: [{id, title, files}]}` |
 | `fresh` | 9.7.6: the fresh review of the plan, `null` when it does not apply: `{paraphrase, missing, stale, findings: [{id, severity, lens, claim, state, cite}]}`; `missing` names each lens and reviewer with no completion row (`readiness A`); `state` is `open`, `resolved`, `accepted`, `contested` or `escalated`; `cite` is a contest's checked citation |
