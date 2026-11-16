@@ -30,6 +30,7 @@ What users have is 9.8.4 (`7c7a1c1`).
 | `scripts/stops.json` | the stops an unattended run must keep | WP05 (the list), WP07 (the checks) | WP10, WP11, WP12, WP24 and WP29 add stops |
 | `scripts/run_summary.py` | one line a finished run | WP05 | WP15 (a time estimate), WP17 (the trivial line), WP23 (counts by class) |
 | `bench/agentlog.py`, `bench/scorecard.py` | the scorecard of a bench round | WP05 | WP32 |
+| the counts of the e2e `World` | `w.counts` (`dialogs`, `by_stage`, `by_kind`, `launches`, `auto`, `back`, `handbacks`, `suite_runs`), `w.finalCounts()`, `w.guardAsk(questions, stage, kind)` (one dialog), `w.countLaunch(type)`, and `launchByHand(w, agents, type)` in `scripts/e2e/scenarios.ts` for an agent a scenario launches outside the loop | WP05 | WP06, WP07 and every scenario that asks or launches outside `orchestrate` |
 | `scripts/e2e/faketools.ts`, `scripts/e2e/slow.ts`, `scripts/e2e/broken.ts`, `scripts/e2e/persons.ts`, `scripts/e2e/xfail.ts` | the fake tool chain, the two scripted projects, the scripted persons, the expected to fail rule | WP06 | WP07, WP11, WP19 to WP23 |
 | `scripts/selftest/expected-fail.txt` | the checks still expected to fail | WP06 (four lines), WP07 (the rest) | each package takes off the lines it makes pass |
 | `scripts/e2e/accept.ts` | the acceptance scenarios of `done.md` | WP07 | the packages of section 9; the reviewers of WP32 add scenarios |
