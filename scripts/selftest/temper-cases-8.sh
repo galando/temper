@@ -385,7 +385,7 @@ REASON="it is \`touch PWNED6\` and it's fine"; Q="${REASON//\'/\'\\\'\'}"
 ( bash -c "${CALL//\{reason\}/$Q}" ) >/dev/null 2>&1
 assert_eq "round 2, 10: a reason put in its placeholder as the page says is kept as written, and runs nothing" "0|1" \
   "$([[ -e PWNED6 ]] && echo 1 || echo 0)|$(grep -c 'touch PWNED6' .temper/overrides.json)"
-assert_eq "round 2, 10: no call of flow.py puts a placeholder of the person's text in double quotes" "0" "$(grep -cE '\"\{(reason|text)\}|#\{K\}: \{text\}\"' "$REPO_ROOT/scripts/flow.py")"
+assert_eq "round 2, 10: no call of flow.py puts a placeholder of the person's text in double quotes" "0" "$(_flow_text | grep -cE '\"\{(reason|text)\}|#\{K\}: \{text\}\"')"
 # 11. A commit row of its own (blast radius) is not cleared by an override of the commit check (9.8.5, Q8: the same question
 # came back after it), so the override is not offered there; Add to plan is.
 fresh; _walk_to_commit; gfail commit "blast radius" "changed outside declared files: src/x"

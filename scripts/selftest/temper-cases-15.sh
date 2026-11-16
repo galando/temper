@@ -553,7 +553,7 @@ assert_eq "9.8.0: a fix run's failed Review asks to loop back to Fix, as its fir
 _at check; gpass review check
 assert_eq "9.8.0: a fix run's small change says there is no loop back to Fix" "1|0" \
   "$(nx "o = [x for x in d['ask']['options'] + d['ask'].get('more', {}).get('options', []) if x['label'] == 'Make a small change'][0]; str(int('no loop back to Fix' in o['description'])) + '|' + str(int('Build' in o['description']))")"
-assert_eq "9.8.0: the page question is gone from the CLI (the page is written with no question)" "0" "$(grep -c 'def page_question' "$REPO_ROOT/scripts/flow.py")"
+assert_eq "9.8.0: the page question is gone from the CLI (the page is written with no question)" "0" "$(_flow_text | grep -c 'def page_question')"
 setup
 
 # --- 9.8.0: earlier attempts' branches leave `git branch`, and old ones are dropped (state clear) ---

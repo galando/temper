@@ -39,6 +39,8 @@ temper/
 ├── skills/                  # Skill definitions (temper-core, grill-me, ...)
 ├── packs/                   # Rule packs, stack files, guardrails pack
 ├── scripts/                 # temper CLI (the deterministic spine), flow.py, guards/, selftest/
+│                            # the flow: flow.py, the facade, over flow_base.py, flow_run.py, flow_ask.py,
+│                            # flow_work.py, flow_build.py, flow_commit.py, flow_view.py
 │                            # the CLI's Python modules: json_ops.py, state_ops.py, ledger_ops.py, spec_text.py,
 │                            # commit_rows.py, report_ops.py, groups_ops.py; its help text: temper-help.txt
 ├── templates/               # Artifact templates (intent/plan/design/config)
@@ -91,6 +93,7 @@ with TypeScript 5.6) and `bash scripts/check-mod-calls.sh`.
 
 1. Create the command in `commands/`, named after the command. A stage command is a door into
    `/temper` (about 900 bytes, like `commands/plan.md`); what comes next belongs in `scripts/flow.py`
+   and its `flow_*.py` modules
 2. Put long methodology in `reference/` and a stage agent's brief in `agents/`
 3. Update `.claude-plugin/plugin.json`
 4. Update the commands table in README.md and the command's section in `docs/commands.md`

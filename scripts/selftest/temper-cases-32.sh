@@ -1,5 +1,5 @@
 # Case file 32 (the one go build, phase 1): sourced by test-temper.sh after the case files before it. The cases read
-# files of the repository and run no CLI call. Tokens: tooling: (WP01), room: (WP02), flow: (WP03).
+# files of the repository and run no CLI call. Tokens: tooling: (WP01), room: (WP02, WP03), flow: (WP03).
 
 # --- tooling (WP01): the runner finds its case files, the shards, the fixtures, the helpers, names, changelog, gate, CI ---
 _t32_sel="$REPO_ROOT/scripts/selftest"
@@ -95,4 +95,45 @@ for m in mods:
 print("; ".join(bad) or "ok")
 PY
 )"
+# --- room and flow (WP03): scripts/flow.py is a facade over seven modules; behaviour unchanged ---
+_t32_sc="$REPO_ROOT/scripts"
+assert_eq "room: flow.py is a facade and no flow module is large" "ok" \
+  "$(_t32_big="$(cd "$_t32_sc" && { [[ $(wc -c < flow.py) -le 32768 ]] || echo "flow.py $(wc -c < flow.py | tr -d ' ') bytes"
+     for f in flow_*.py; do [[ ! -f "$f" || $(wc -c < "$f") -le 65536 ]] || echo "$f $(wc -c < "$f" | tr -d ' ') bytes"; done; })"
+     echo "${_t32_big:-ok}")"
+assert_eq "flow: the names other code reads are still on the module" "ok" \
+  "$(python3 -c "
+import sys; sys.path.insert(0, sys.argv[1]); import flow
+names = ['Run', 'Builder', 'MOVES', 'SEQ', 'VERSION', 'view', 'write_view', 'scoped_notes', 'same_failure', 'open_concerns',
+         'concern_blocks', 'plan_files', 'advance_ok', 'design_accept', 'changed_files', 'run_next', 'run_view']
+miss = [n for n in names if not hasattr(flow, n)] + ['Builder.' + n for n in ('opt', 'ADHOC_STAGES', 'report_steps', 'review_notes')
+                                                     if not hasattr(flow.Builder, n)]
+print(' '.join(miss) or 'ok')" "$_t32_sc" 2>&1)"
+assert_eq "flow: the modules import one way" "ok" \
+  "$(python3 -I - "$_t32_sc" <<'PY'
+import ast, glob, os, sys
+bad = []
+for path in sorted(glob.glob(os.path.join(sys.argv[1], "flow*.py"))):
+    name = os.path.basename(path)
+    text = open(path, encoding="utf-8").read()
+    if "sys.path" in text:
+        bad.append("%s names sys.path" % name)
+    for x in ast.walk(ast.parse(text)):
+        mods = [a.name for a in x.names] if isinstance(x, ast.Import) else [x.module or ""] if isinstance(x, ast.ImportFrom) else []
+        if isinstance(x, ast.ImportFrom) and any(a.name == "*" for a in x.names):
+            bad.append("%s has a star import" % name)
+        if name != "flow.py" and "flow" in mods:
+            bad.append("%s imports flow" % name)
+        if name == "flow_base.py" and any(m.startswith("flow_") for m in mods):
+            bad.append("flow_base.py imports %s" % ",".join(m for m in mods if m.startswith("flow_")))
+print("; ".join(bad) or "ok")
+PY
+)"
+_t32_fd="$WORKDIR/t32-flow"; mkdir -p "$_t32_fd/empty"
+_t32_pf="$(cd "$_t32_fd" && python3 "$_t32_sc/flow.py" plan-files "$_t32_fd/empty" 2>&1; echo "rc=$?")"
+_t32_ao="$(cd "$_t32_fd" && python3 "$_t32_sc/flow.py" advance-ok intent_complete plan 2>&1; echo "rc=$?")"
+(cd "$_t32_fd" && python3 "$_t32_sc/flow.py" >/dev/null 2>&1); _t32_nw=$?
+assert_eq "flow: each word of flow.py still answers" "[]|rc=0|1|rc=1|2" \
+  "$(printf '%s' "$_t32_pf" | tr '\n' '|')|$(printf '%s' "$_t32_ao" | grep -c 'no active run')|$(printf '%s' "$_t32_ao" | tail -1)|$_t32_nw"
+unset _t32_sc _t32_fd _t32_pf _t32_ao _t32_nw
 unset _t32_sel _t32_files _t32_list _t32_shards _t32_cl _t32_old _t32_out _t32_rc _t32_wf _t32_cli _k

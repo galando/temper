@@ -94,7 +94,7 @@ assert_eq "F3: no say string in flow.py holds an instruction for Claude" "" \
 import re, sys
 src = open(sys.argv[1]).read()
 bad = [m for m in re.findall(r'\"say\": (.+)', src) if re.search(r'after calls|conversation|launch|run its', m, re.I)]
-print('; '.join(bad))" "$REPO_ROOT/scripts/flow.py")"
+print('; '.join(bad))" <(_flow_text))"
 
 # --- F10. The Intent gate fails while a Blocking question is open ---
 _blockrow() { python3 -c "

@@ -24,10 +24,10 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 a model. `git commit` is blocked by a native pre-commit hook (and, with the guardrails pack,
 an in-agent PreToolUse hook) whenever a gate is FAIL and unoverridden: see `packs/guardrails/rules.md`.
 
-**One flow (ADR 0012, ADR 0013).** `temper next --json` (`scripts/flow.py`) says what comes next,
-with each gate's exact question and options; `commands/temper.md` is a loop over it. The CLI writes
-`.temper/view.json` after every change, the one file of the CLI's the mod reads. The person decides
-each gate only in the `Temper gate` question, with the mod or without it, in every mode; the mod
+**One flow (ADR 0012, ADR 0013).** `temper next --json` (`scripts/flow.py` and its `flow_*.py` modules)
+says what comes next, with each gate's exact question and options; `commands/temper.md` is a loop
+over it. The CLI writes `.temper/view.json` after every change, the one file of the CLI's the mod reads.
+The person decides each gate only in the `Temper gate` question, with the mod or without it, in every mode; the mod
 counts an answer only on an exact match for the CLI's run and step, guards, and draws the run (its
 bar decides nothing). With the mod loaded, the mod also carries a run itself (the run driver,
 `hooks/temper-mod/core/driver.ts`): it runs the CLI's calls, launches its agents and asks its questions, and hands
@@ -57,9 +57,9 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
   `scripts/plan_review.py` (renders and merges the HTML plan review).
 - Known mistakes: a gate-mechanics change is an edit of the CLI (`scripts/temper` or its module) plus a
   `test-temper.sh` case, not a prompt edit; new CLI logic goes into a module and one line into the bash
-  file; what comes next, a gate's options and the grouped Build loop are `scripts/flow.py` (a case
-  in `temper-cases-8.sh`; regenerate `scripts/selftest/view-fixtures.ts` with `make-view-fixtures.sh`
-  when the view changes), never a list in a page; hooks must fail OPEN except their one
+  file; what comes next, a gate's options and the grouped Build loop are `scripts/flow.py` and its
+  `flow_*.py` modules (a case in `temper-cases-8.sh`; regenerate `scripts/selftest/view-fixtures.ts`
+  with `make-view-fixtures.sh` when the view changes), never a list in a page; hooks must fail OPEN except their one
   detected-violation path; never re-add per-stage logic to `commands/temper.md` or
   `commands/fix.md` — it belongs in that stage's own brief in `agents/` (including the
   stage's return box: a brief must never point a clean-context subprocess at an

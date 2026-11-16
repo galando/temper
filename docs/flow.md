@@ -3,7 +3,10 @@
 Two outputs of the `temper` CLI carry the whole flow of a run ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
 
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
-Both are computed by `scripts/flow.py` from the run's own files; nothing else decides what comes next.
+Both are computed by `scripts/flow.py` and its `flow_*.py` modules from the run's own files; nothing else decides what
+comes next. `flow.py` is the facade: `Builder`, `core_next` and the words the CLI starts it with. `flow_base.py` holds
+the tables (`SEQ`, `MOVES`) and the readers, `flow_run.py` the class `Run`, `flow_ask.py`, `flow_work.py`,
+`flow_build.py` and `flow_commit.py` the four parts of `Builder`, and `flow_view.py` the view.
 
 - `temper next --json` prints the next action, with the full view. The orchestrator runs
   `temper go` instead (9.8.0, `scripts/go.py`): it runs the CLI's own steps itself (an `auto` action's
