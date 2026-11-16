@@ -6,181 +6,181 @@
    "id": "design.tasks-changed",
    "where": "Design",
    "trigger": "Design changed the plan's tasks: the changed tasks need the approval",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "design.concerns",
    "where": "Design",
    "trigger": "open areas of concern: a true decision",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "gate.failed",
    "where": "Design, Build",
    "trigger": "the stage's gate failed",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "task.manual",
    "where": "Build",
    "trigger": "a manual task: only the person can confirm it",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "build.foreign",
    "where": "Build",
    "trigger": "commits the CLI did not make on a group's branch: keeping them is the person's",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "build.remerge",
    "where": "Build",
    "trigger": "merging the groups again after such commits were settled",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "group.parked",
    "where": "Build",
    "trigger": "a parked group (a task out of attempts, a blocked task, an agent's commits)",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "group.fail-typed",
    "where": "Build",
    "trigger": "a failed group check whose recommended option needs typing or is Save for later",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "group.fail-back",
    "where": "Build",
    "trigger": "a failed group check whose recommended option is a step back to Plan",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "task.env",
    "where": "Build",
    "trigger": "a task that failed on the environment (asked, the run stays armed)",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "build.ungrouped",
    "where": "Build",
    "trigger": "tasks.md has tasks and no groups",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "scope.drift",
    "where": "Build",
    "trigger": "a DRIFT row in a fix pass panel: never answered for the person",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "review.unfinished",
    "where": "Review",
    "trigger": "a failed row with no open finding at medium or above, or a spent repeat budget",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "check.setup",
    "where": "Check",
    "trigger": "a setup fault, a missing measurement, the locked acceptance tests, or a spent repeat budget",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "check.person-criterion",
    "where": "Check",
    "trigger": "a criterion only the person can confirm",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "commit.always",
    "where": "Commit",
    "trigger": "the commit question, always",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "commit.fail",
    "where": "Commit",
    "trigger": "the commit gate failed",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "plan.after-back",
    "where": "Plan",
    "trigger": "the plan question again after any step back to Plan",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.override",
    "where": "any stage",
    "trigger": "temper override: a skip of a failed check",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.plan-review",
    "where": "Plan",
    "trigger": "temper plan review or plan patch: the Context check answer, a change to the approved plan",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.task-confirm",
    "where": "Build",
    "trigger": "temper task confirm or task accept: a manual task confirmed, a covered task accepted",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.adhoc-open",
    "where": "Review, Check",
    "trigger": "temper adhoc open: a small change",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.acceptance-reopen",
    "where": "Build, Check",
    "trigger": "temper acceptance reopen: the locked acceptance tests reopened",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.branch",
    "where": "Intent",
    "trigger": "temper state set branch: the run's branch",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.accept-foreign",
    "where": "Build",
    "trigger": "temper group reopen with --accept-foreign: keeping a task agent's commits",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.evidence-accept",
    "where": "Review",
    "trigger": "temper evidence accept or evidence clear: accepting a finding, clearing a ledger",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.leave-intent-plan",
    "where": "Intent, Plan",
    "trigger": "temper state advance intent_complete or plan_complete: leaving Intent or Plan",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.loop",
    "where": "any stage",
    "trigger": "temper state loop, state init, state clear, state archive: a step back, starting over, ending the run",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.arm",
    "where": "Plan",
    "trigger": "temper state set run_mode to anything but interactive: arming an unattended run",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
    "id": "person.step-back",
    "where": "any stage",
    "trigger": "temper state set next_stage to an earlier stage: a step back",
-   "check": ""
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   }
  ]
 }

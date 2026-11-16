@@ -4,6 +4,20 @@
 # through _flow_text, or names the files by FLOW_FILES (paths from the repository root), so a moved method is still read.
 FLOW_FILES="scripts/flow.py scripts/flow_base.py scripts/flow_run.py scripts/flow_ask.py scripts/flow_work.py
 scripts/flow_build.py scripts/flow_commit.py scripts/flow_view.py"
+_unattended() { # _unattended <stage>: a fresh unattended run at <stage> (intent, plan, design, build, review, check or
+                # commit), each stage before it passed. At the head that is an armed run under autonomy.policy: decide, as
+                # _pol of temper-cases-28.sh builds it; WP11 changes this body, never the cases that call it (WP07).
+  fresh; printf 'autonomy:\n  policy: decide\n' >> .claude/temper.config
+  [[ "$1" == design ]] && : > .temper/specs/demo/design.md
+  local s prev=intent
+  for s in plan design build review check commit; do
+    [[ "$s" == design && "$1" != design ]] && continue
+    [[ "$prev" == "$1" ]] && break
+    gpass "$prev"; "$TEMPER" state advance "${prev}_complete" "$s" >/dev/null 2>&1
+    prev="$s"
+  done
+  "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+}
 _flow_text() { # the text of flow.py and of its modules, one after another
   local m
   for m in $FLOW_FILES; do cat "$REPO_ROOT/$m"; done
