@@ -46,7 +46,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP03 | done | `3b037fa` | 2026-11-16 | flow.py a facade over seven modules; the capture of 43 states and the 69 traces equal to the base |
 | WP04 | done | `7fe865f` | 2026-11-16 | 35 question ids and 51 option ids in flow_base; the ids of every dialog sit beside it, never inside |
 | WP05 | done | `fbc75ec` | 2026-11-16 | floor of default-run 8 dialogs and 6 launches in every mode, fix 4 and 3; caps file, stops list, run summary, replay base 9 questions and 7 launches |
-| WP06 | todo | | | |
+| WP06 | done | `8b57b10` | 2026-11-16 | slow and broken scripted projects, four scenarios on the list, the expected to fail rule of the scenarios; whole selftest PASS 2710 |
 | WP07 | todo | | | |
 | WP08 | todo | | | |
 | WP09 | todo | | | |
@@ -105,4 +105,7 @@ None.
 - 2026-11-16 WP05: the replay entry of the floor bounds only the agent types its `final` names; a scenario's `launches` bound every type.
 - 2026-11-16 WP05: a failed `temper gate` call inside an answer now counts as a verdict in the plain loop too, as in the driver.
 - 2026-11-16 CI: the run of `ba13ee3` failed case 9 `the CLI and its Python files expand no home folder and read no transcript`, because WP05's `runs.jsonl` matched its `.jsonl` pattern; the case now leaves out lines that name `runs.jsonl` (for `changed-tests.md`). `quick` had not run case files 8 and 9, so from here the whole selftest runs before every progress commit.
+- 2026-11-16 WP06: the slow project keeps the replay's pom with JaCoCo bound, because the plan gate's row `maven group verify` refuses a Maven group without it; "no coverage tool" means no coverage command Temper can run.
+- 2026-11-16 WP06: `temper init` writes no config, so the fixtures also run `temper config init`, as `/temper:init` does.
+- 2026-11-16 WP06: `scripts/check_floor.py` accepts a floor entry with only a `final` while its scenario is on the expected to fail list; `--final` still fails on it.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
