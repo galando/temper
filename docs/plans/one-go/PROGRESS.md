@@ -32,6 +32,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | after WP01: `verify.sh quick` with case file 5 touched | PASS | 811 |
 | after WP01: bytes | `view-fixtures.ts` 187,069; `view-fixtures-2.ts` 57,975; `CHANGELOG.md` 109,834; `scripts/temper` and `scripts/flow.py` unchanged | |
 | after WP02: `scripts/temper` | 214,545 bytes (45,959 freed); one quoted heredoc left; the capture of 43 states equal to the base | |
+| after WP03: flow modules | `flow.py` 13,377; `flow_base.py` 12,650; `flow_run.py` 22,454; `flow_ask.py` 54,466; `flow_work.py` 32,007; `flow_build.py` 42,599; `flow_commit.py` 15,335; `flow_view.py` 15,785; capture and traces equal to the base | |
+| CI after WP01 and WP02 | the run of `63cfed7` green in 12 min 20 s of wall time; the run of `3c00a7c` was cancelled by the next push; the step `Type check the mod` green | 740 |
 | bytes | `scripts/temper` 260,504; `scripts/flow.py` 205,631; `CHANGELOG.md` 246,956; `view-fixtures.ts` 259,060; `view-fixtures-2.ts` 78,629 | |
 
 ## Packages
@@ -41,7 +43,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP00 | done | `2992cad` | 2026-11-16 | baseline green, every number as the kit says |
 | WP01 | done | `3f8a47e` | 2026-11-16 | CI in shards with cancel and one gate job, verify.sh, fixtures one view a line, older changelog moved |
 | WP02 | done | `a6c5708` | 2026-11-16 | seven modules out of the CLI, output byte equal to the base by the capture of 43 states |
-| WP03 | todo | | | |
+| WP03 | done | `3b037fa` | 2026-11-16 | flow.py a facade over seven modules; the capture of 43 states and the 69 traces equal to the base |
 | WP04 | todo | | | |
 | WP05 | todo | | | |
 | WP06 | todo | | | |
@@ -90,4 +92,5 @@ None.
 - 2026-11-16 WP01: `run.ts` now exits 2 for an unknown flag or scenario name; before, an unknown name was a FAIL inside the run.
 - 2026-11-16 WP02: the capture also differed between runs on the key of `.temper/preflight.json`, a hash over the fixture's HEAD; the capture writes it as fixed text.
 - 2026-11-16 WP02: the optional docstrings of step 4 were not written; the room target was met without them.
+- 2026-11-16 WP03: the spec's line ranges were off at four edges, only comments and blank lines; case 13 and case 18 read the flow text through a list `FLOW_FILES` and `_flow_text` of `case-helpers.sh`.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
