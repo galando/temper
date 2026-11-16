@@ -10,30 +10,42 @@ function by its name, with the module table of WP03 (`ask` and the option makers
 in `scripts/flow_view.py`). The owner's reading of WP08 is `docs/plans/one-go/pr-115-fixes.md`: one decision for each
 defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/plans/one-go/evidence/v-pr115.md`.
 
+The brief is `docs/plans/one-go/README.md`, and every shared name below is the one `docs/plans/one-go/contracts.md`
+fixes. In the build order of the brief's section 5, WP08 is package 9 (after WP07), and WP24 and WP25 are packages
+25 and 26 (after WP23). Each package ends as the brief's section 4 says: the package commit, then the small
+progress commit, in one push.
+
 ## WP08 The defects of pull request #115: fixed, removed, or made safe
 
 - **Goal:** No item of the merge list reproduces. Each of M1 to M16 and F1 to F4 is fixed, removed, or made safe until
   the later package that rebuilds its area, and each has a check that fails at the head. A default scripted run asks
   no more than 9.8.4 did and recommends no loop that 9.8.4 did not.
-- **Depends on:** WP01 (room in the fixture file), WP02 (room in `scripts/temper`), WP03, WP04 (the option ids
-  `it-is-the-code` and `check-again`), WP05 (the floor counts the flips), WP07 (the checks `D41` to `D57` and the
-  expected to fail list).
+- **Depends on:** WP01 (room in the fixture file), WP02 (room in `scripts/temper`), WP03, WP04 (the registry
+  `OPTION_IDS` of `scripts/flow_base.py`, to which this package adds the option ids `it-is-the-code` and
+  `check-again`), WP05 (the floor counts the flips), WP07 (the checks `D41` to `D57` and the expected to fail
+  list).
 - **Lane:** `flow core`.
 - **Touches:** `scripts/temper` (`cmd_integrate`, `_integ_record`, `_go_back`, `cmd_task_gate`, `_RUN_FILES`, the `rm`
   line of `state clear`, the two `doctor` help lines), `scripts/flow_ask.py`, `scripts/flow_work.py`,
   `scripts/flow_build.py`, `scripts/flow_commit.py`, `scripts/flow.py`, `scripts/task_ops.py`, `scripts/preflight.py`,
-  `scripts/decisions.py`, `scripts/config_yaml.py`, `templates/temper.config.default`, `agents/check.md`,
+  `scripts/decisions.py`, `scripts/config_yaml.py`, `scripts/flow_base.py` (two entries of `OPTION_IDS`),
+  `templates/temper.config.default`, `agents/check.md`,
   `reference/check.md`, `agents/plan.md`, `hooks/temper-mod/core/session.ts`, `hooks/temper-mod/core/rules.ts`,
   `tests/mod/session.test.ts`, `tests/mod/v975.test.ts`, `tests/mod/guard.test.ts`,
-  `scripts/selftest/temper-cases-8.sh`, `-22.sh`, `-23.sh`, `-24.sh`, `-25.sh`, `-26.sh`, `-27.sh`, `-28.sh`,
-  `-31.sh`, `-45.sh`, `scripts/selftest/expected-fail.txt`, both view fixture files, `scripts/e2e/scenarios.ts`,
+  `scripts/selftest/temper-cases-8.sh`, `-11.sh`, `-22.sh`, `-23.sh`, `-24.sh`, `-25.sh`, `-26.sh`, `-27.sh`,
+  `-28.sh`, `-31.sh`, `-45.sh`, `scripts/selftest/expected-fail.txt`, both view fixture files,
+  `scripts/e2e/scenarios.ts`,
   `scripts/e2e/replay.ts`, `scripts/e2e/floor.json`, `docs/flow.md`, `docs/commands.md`,
   `docs/plans/one-go/changed-tests.md`, `docs/plans/one-go/PROGRESS.md`, `CHANGELOG.md`.
 - **Tests first:** WP07 wrote one assertion a promise in `scripts/selftest/temper-cases-45.sh` (tokens `D41` to
-  `D57c`; `D32b` is in `-44.sh`), and they are on `scripts/selftest/expected-fail.txt`. This package makes them pass
+  `D57d`; `D32b` is in `-44.sh`), and they are on `scripts/selftest/expected-fail.txt`. This package makes them pass
   and takes each off the list in the commit that makes it pass. Beside them it adds the narrow cases below, each in
   the case file that already builds the state. Each must fail at the head before its fix. Where a case rewrites an
   assertion that states the old behaviour on purpose, list the old name in `docs/plans/one-go/changed-tests.md`.
+  `docs/plans/one-go/contracts.md` section 10 reserves case file 47 for this package; it stays unused unless a
+  case needs a file of its own. `D55` asserts only "never an environment fault, never an agent" and passes here.
+  The three ways on as options of a question are row `D99` of `docs/plans/one-go/done.md`, which passes at WP21:
+  no line stays on the list for WP21 under the token `D55`.
   1. M1, `temper-cases-25.sh`, after the integrate block (`:50-66`):
      `m1 integrate: a suite broken after a pass fails, is repaired, and passes again`. A PASS record as at `:53-59`,
      then a commit that makes the Integration command exit 1: `temper integrate` exits 0, the record has `verdict`
@@ -43,7 +55,8 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
   2. M1, `temper-cases-26.sh`, beside `:43`: `m1 the fix pass names the failure`. With a loop record that carries a
      finding and an integration record at FAIL, the fix pass prompt holds the finding line and the line
      `What failed: integrate:`.
-  3. M1, `scripts/e2e/scenarios.ts`, scenario `fixBreaksSuite`, three modes: the scripted reviewer leaves one High
+  3. M1, `scripts/e2e/scenarios.ts`, scenario `fix-breaks-suite` (the function `fixBreaksSuite`), three modes:
+     the scripted reviewer leaves one High
      finding, the person takes the recommended loop back, the scripted fix agent breaks the Integration suite once,
      the run asks the Build question, the second pass repairs it, and the run reaches the commit. Assert that no call
      of the trace failed with `not something we can merge` and that the fix agent ran twice.
@@ -112,6 +125,8 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
       `only the Validates and the Integration line run`: each command of the plan appends its name to a counter file,
       and after the gate the file holds no task Test and no scenario Test. Add `one total limit`: two Validates of
       `sleep 2` under a limit of 3: the first runs and the second is `not checked: the total limit of 3 s was spent`.
+      F4 has a token of its own, `D57d`, which passes here. The final form of M15, M16 and F4 (the plan gate runs
+      no command, a slow one asks the question `plan.command`) is row `D99`, which passes at WP21.
   21. M16, `temper-cases-22.sh`, after `:61-67`: `a stored failure is not returned`: a Validate that reads a marker
       file fails as an environment fault; the marker is written; the next `preflight.py row` call runs the command
       again and passes. `:61` stays: a stored pass is still read. `temper-cases-27.sh`, beside `:48`:
@@ -125,18 +140,21 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
       `reuse: a failure is never kept`; `reuse: a tree with an uncommitted change runs again`;
       `reuse: another command, another tree and another setup block each run again`;
       `reuse: the output of a reused pass says so`.
-  25. The policy path (U21), `scripts/e2e/scenarios.ts`, scenario `policyRun`, plain and mod mode: the config gets
+  25. The policy path (U21), `scripts/e2e/scenarios.ts`, scenario `policy-run` (the function `policyRun`), plain
+      and mod mode: the config gets
       `autonomy.policy: decide` in a second `autonomy:` block, the person arms at the plan question, one group check
       fails once, the reviewer leaves one High finding. Assert: one launch of `temper:temper-plan`, one group fix
       launch, no call `state loop build plan`, no question between the approval and the commit question, the change
-      committed. Driver mode waits for WP09: `scripts/go.py:108-109` reports a failed `group gate` as an error and the
-      driver hands the run back.
+      committed. Driver mode is left to WP09: `scripts/go.py:108-109` reports a failed `group gate` as an error and
+      the driver hands the run back.
   26. Run files (U19), `temper-cases-45.sh` or the case file of `temper init`:
       `the run files of 9.8.5 are listed and cleared`: after `temper init`, `.git/info/exclude` holds
       `preflight.json`, `setup-tried.json` and `decisions.json`; after `temper state clear` none of the three is left
       under `.temper`.
 - **Mechanism:** one commit a defect where the files allow it; M2 with F1, M15 and M16 with F4, and M3 to M6 each go
-  together. Run `bash scripts/verify.sh quick` after each.
+  together. Run `bash scripts/verify.sh quick` after each. Each of these commits carries `(wp08)` in its subject.
+  The last one is the package commit; after it comes the small progress commit, and one push for both
+  (`docs/plans/one-go/README.md` section 4).
   1. **M1, `cmd_integrate`** (`scripts/temper:3301-3433`). Today the rerun after a PASS records FAIL and returns 1
      (`:3323`); the next call no longer sees PASS (`:3316`), falls into the merge (`:3387-3397`) and fails for good,
      because the PASS deleted the group branches (`:3430`). Change three things. `_integ_record` (`:3292-3298`) writes
@@ -220,8 +238,11 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
   18. **Run files (U19).** Add `preflight.json setup-tried.json decisions.json` to `_RUN_FILES`
       (`scripts/temper:632-634`) and to the `rm -f` of `state clear` (`:1448`).
   19. **Hand on the follow ups.** Copy section 3 of `docs/plans/one-go/pr-115-fixes.md` into
-      `docs/plans/one-go/PROGRESS.md` as one open line a follow up with its package. The package that closes one ticks
-      it; WP32 fails its own review while a line is open and not marked dropped.
+      `docs/plans/one-go/PROGRESS.md` as one open line a follow up with its package, under the heading "Follow ups
+      of pull request 115" (the format is in `docs/plans/one-go/session-mechanics.md` section 5). The package that
+      closes one ticks
+      it; WP32 reads the list in its first step, and a line that is open and not marked dropped is not done: its
+      text of the pull request says so.
 - **Removed:** the backup push of the mod; the offer and the launch of the environment agent; the Medium loop as a
   recommendation and as a policy move; the failing form of the row `tasks agree with decisions` and its question
   branch; the task Tests and scenario Tests of the preflight; the class `environment fault` for a time out; the two
@@ -231,12 +252,13 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
   (`temper doctor`, `task gate --no-env`); `templates/temper.config.default` (`:109` and `:146-148` say the new
   rules); `agents/plan.md:100-105` (the row runs the Validates and the Integration line under one limit);
   `agents/check.md`; `reference/check.md`; `CHANGELOG.md` (the entry of 10.0.0: one line a defect);
-  `docs/plans/one-go/changed-tests.md`; `docs/plans/one-go/PROGRESS.md`. ADR 0018 is not edited here: WP21 adds the
-  record that amends it.
+  `docs/plans/one-go/changed-tests.md`; `docs/plans/one-go/PROGRESS.md`. ADR 0018 is not edited here: the record
+  that amends it, `docs/decisions/0020-checks-judged-against-the-project.md`, is left to WP21.
 - **Done when:**
   - `bash scripts/verify.sh quick` is green, and `bash scripts/verify.sh full` is green at the end of the phase.
-  - `grep -c "D4[1-9]\|D5[0-7]\|D32b" scripts/selftest/expected-fail.txt` prints 0.
-  - `bun scripts/e2e/run.ts all fixBreaksSuite` and `bun scripts/e2e/run.ts both policyRun` pass.
+  - `grep -c "D4[1-9]\|D5[0-7]\|D32b" scripts/selftest/expected-fail.txt` prints 0: `D55` and `D57d` pass here,
+    and what WP21 adds to them is row `D99`, a token of its own.
+  - `bun scripts/e2e/run.ts all fix-breaks-suite` and `bun scripts/e2e/run.ts both policy-run` pass.
   - `claude plugin test .`, `tsc -p tsconfig.mod.json` and `bash scripts/check-mod-calls.sh` pass.
   - `bash scripts/e2e/ab-replay.sh` shows no more questions and no more recommended loops than its 9.8.4 column.
   - `python3 scripts/check_floor.py` holds with the values this package lowered, and none raised.
@@ -278,15 +300,19 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
   `tree_key`), WP23 (the locked acceptance tests and coverage inside `integrate`; `scripts/failure.py`).
 - **Lane:** `flow core`.
 - **Touches:** `scripts/repair_ops.py` (new), `scripts/temper` (the word `repair`, `cmd_evidence_add`, `gate_commit`,
-  `gate_review`, `_setup_calls`), `scripts/findings.py`, `scripts/adhoc_ops.py`, `scripts/loop_step.py`,
-  `scripts/flow_base.py` (`MOVES`, the registry of WP04), `scripts/flow_ask.py`, `scripts/flow_work.py`,
+  `gate_review`), `scripts/cli_ctx.py` (`setup_calls`), `scripts/findings.py`, `scripts/adhoc_ops.py`,
+  `scripts/loop_step.py`,
+  `scripts/flow_base.py` (`MOVES`, and the registry of WP04: `QUESTIONS` gains `repair.stop`, `OPTION_IDS` gains
+  `repair-again` and `revert-repair`), `scripts/flow_ask.py`, `scripts/flow_work.py`,
   `scripts/flow.py`, `scripts/flow_view.py`, `scripts/card.py`, `scripts/guards/install.sh` (only if the hook body
   changes, see the traps), `agents/build.md`, `agents/review.md`, `hooks/temper-mod/core/rules.ts`,
   `hooks/temper-mod/core/runview.ts`, `hooks/temper-mod/adapter.ts`, `tests/mod/guard.test.ts`, `dialog.test.ts`,
-  `view.test.ts`, `hardening.test.ts`, `audit.test.ts`, a new case file, `scripts/selftest/temper-cases-45.sh`,
+  `view.test.ts`, `hardening.test.ts`, `audit.test.ts`, the new case file `scripts/selftest/temper-cases-65.sh`,
+  `scripts/selftest/temper-cases-45.sh`,
   `-46.sh`, `-8.sh`, `-9.sh`, `-11.sh`, `-13.sh`, `-15.sh`, `-25.sh`, `-28.sh`, `scripts/selftest/expected-fail.txt`,
   both view fixture files, `scripts/e2e/accept.ts`, `scripts/e2e/scenarios.ts`, `scripts/e2e/replay.ts`,
-  `scripts/e2e/floor.json`, `scripts/stops.json`, a new decision record, `docs/flow.md`, `docs/trust.md`,
+  `scripts/e2e/floor.json`, `scripts/stops.json`, the new decision record
+  `docs/decisions/0021-a-finding-is-repaired-in-its-stage.md`, `docs/flow.md`, `docs/trust.md`,
   `reference/review.md`, `reference/check.md`, `reference/autonomy.md`, `commands/temper.md`,
   `templates/temper.config.default`, `.claude/CLAUDE.md`, `CHANGELOG.md`.
 - **Tests first:**
@@ -299,7 +325,8 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
      the commit); `case 45 D37c` (a repair diff that removes a line of a test file that existed at the reviewed HEAD
      is never resolved by rule: the run stops and the question shows the removed lines); `case 46 D64a` and `D64b`
      (see mechanism 7).
-  2. A new selftest case file (the next free number; the runner of WP01 finds it), names `repair:`:
+  2. A new selftest case file, `scripts/selftest/temper-cases-65.sh` (the number
+     `docs/plans/one-go/contracts.md` section 10 reserves; the runner of WP01 finds it), names `repair:`:
      - `repair: start is refused outside its conditions`, one assertion each: the gate passed; a failed row is not on
        the repairable list; no completion row; HEAD is not the reviewed HEAD; the tree is dirty; a stage of the run
        was skipped; the budget has no room; a finding is contested; a finding's file is under a sensitive path; the
@@ -332,7 +359,8 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
      (`scripts/selftest/temper-cases-8.sh:111, 172, 177`, `temper-cases-13.sh:126`, `temper-cases-15.sh:361, 521`),
      the policy cases (`temper-cases-28.sh:12-20`, by now cases of the default run), the small change cases of
      `temper-cases-9.sh`, `-11.sh` and `-15.sh` that name the window's guard fact.
-  4. `scripts/e2e/scenarios.ts`: `coverageDrop` of WP19 now asserts the repair in place (no call
+  4. `scripts/e2e/scenarios.ts`: `coverage-drop` (the function `coverageDrop`) of WP19 now asserts the repair in
+     place (no call
      `state loop check build`). `scripts/e2e/replay.ts final` with the floor `replay` (`D58`): the High defect is
      repaired in its stage, 0 loops are recommended and Plan is launched once.
   5. `tests/mod`: `repair start` typed by an agent or the session is refused; inside a repair window a write to a file
@@ -344,6 +372,11 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
   `docs/plans/one-go/evidence/prototypes/v-repair-in-place-exp-work.diff` is empty. The verifier ran three facts in a
   clone: a change at Review keeps Build's ledger and verdict (X2), `integrate` runs again at the Review stage when
   HEAD moved (X3), and the hook refuses a code commit at Review (X5b).
+  0. **Two facts first, in a clone, before any code of this package.** (a) Under the CLI's lock run `git commit`
+     with the installed hook: if `gate commit --from-hook` waits on the lock, step 6.5 writes the token under the
+     lock, releases it, commits, and takes the lock again to clear the token and record the commit. (b) Install the
+     guardrails pack's hooks and make one commit from a script as the CLI will: note whether it is asked. Write
+     both results into `docs/plans/one-go/PROGRESS.md`.
   1. **Where the code goes.** All of it in `scripts/repair_ops.py`, standard library only. `scripts/temper` gets the
      word `repair` with `start`, `test`, `commit`, `close`, `revert` and `status`, each one line in the form WP02 set,
      under the CLI's lock, with the identity arguments of `_git_id_args` for a commit.
@@ -366,7 +399,9 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
        (its Fix agent commits nothing, so no reviewed HEAD exists);
      - nothing of the never by rule list (mechanism 12) holds.
 
-     It then spends one step of the budget, and writes `repair` into the run state:
+     It then spends one step of the budget (`python3 scripts/budget.py spend`; the key is the budget key of the
+     failure, its record's `scope`, as `docs/plans/one-go/contracts.md` section 8 says), and writes `repair` into
+     the run state:
 
      ```
      {"n": 1, "stage": "review", "base": "<HEAD>", "base_tree": "<tree>", "findings": [3], "rows": ["..."],
@@ -392,11 +427,14 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
         `changed: 0`, close the window, launch no recheck; the run asks (the rule of `scripts/group_fix.py:79-86`).
      3. Every changed file must be in `approved_files` or match the test pattern of `scripts/temper:4174`, and none
         may be in the spec folder, the config, the git folder, a locked acceptance test, a dependency manifest or
-        lockfile, a CI file, or under a sensitive path. One that is: nothing is committed, the change stays in the
-        working tree, and the run asks the Scope drift question for that file.
+        lockfile, a CI file, or under a sensitive path (the one matcher, `match` of `scripts/sensitive.py`, which
+        WP11 made). One that is: nothing is committed, the change stays in the
+        working tree, and the run asks the Scope drift question (`scope.drift`) for that file.
      4. The one test rule: a diff that deletes a test file, or removes a line from a test file that existed at
         `repair.base`, is never resolved by rule. Nothing is committed and the run asks, showing the removed lines;
-        the options are Revert the repair (recommended), Loop back to Build, Save for later.
+        the options are Revert the repair (recommended), Loop back to Build, Save for later. The question has the
+        id `repair.stop`, and the first option the id `revert-repair`; the other two keep the ids of the head
+        (`back`, `save`).
      5. Stage exactly those files, write `repair.token = {"parent": HEAD, "tree": <git write-tree>}`, commit with the
         message `fix(<slug>): repair N at <stage>`, clear the token, record the commit in `repairs` of the run state
         and in `cli_commits` of `.temper/groups.json`, close the window, and take the Review snapshot again
@@ -412,10 +450,13 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
      commit. It never applies to the final commit: `repair start` refuses at the commit stage, so no token exists
      there. The carve out lives in the CLI, which the installed hook calls (`gate commit --from-hook`), so a hook
      installed by 9.8.5 gets it with no new install (`D64a`: it still blocks a commit under a failed gate). `D64b`:
-     when this build changed the hook body (`scripts/guards/install.sh:167-272`), `_setup_calls`
-     (`scripts/temper:4551-4555`) tests for one string only the new body has and asks for `temper guards install`.
-     When no package changed the hook body, `D64b` asserts that a hook of 9.8.5 is not asked to install again; correct
-     its row of `docs/plans/one-go/done.md` to say so and write the reason into `docs/plans/one-go/PROGRESS.md`.
+     when this build changed the hook body (`scripts/guards/install.sh:167-272`), `setup_calls`
+     (`scripts/cli_ctx.py:106`, the hook tests at `:117-129`) tests for one string only the new body has and asks
+     for `temper guards install`. The bash twin `_setup_calls` (`scripts/temper:4551-4555`) was dead code at the
+     head and went with WP02, so the live function is the one to change.
+     When no package changed the hook body, `D64b` asserts that a hook of 9.8.5 is not asked to install again. Row
+     `D64` of `docs/plans/one-go/done.md` states both cases, and its case reads from `git diff 10e965a` of the
+     installer which of the two holds.
   8. **The recheck.** A section `Re-check:` in `agents/review.md`, as `agents/plan-review.md:49` has for the plan; no
      new agent. Launched by the flow after `repair commit`, on Sonnet at effort medium, with `check ahead` as its
      `before` call (`scripts/flow.py:1375-1378`). The CLI writes the diff from `repair.base` to the repair commit into
@@ -432,13 +473,16 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
      of step 6.6 passed on the repair tree; for `proof: test` a RED before the fix and a GREEN after it by the CLI on
      unchanged test files. The CLI then calls the resolve function of WP18 inside itself with `fixed_by` the repair
      commit, and adds the fifth condition there (a recheck row written after the commit). No model calls
-     `evidence resolve`. Then it compares with `repair.before` and reverts (step 10) when: a row that passed before
+     `evidence resolve`. From WP18 until this package that call refuses every commit
+     (`docs/plans/one-go/README.md` section 4); the repair commit recorded here is the first it takes. Then it
+     compares with `repair.before` and reverts (step 10) when: a row that passed before
      the repair fails after it; the open blocking findings are not fewer; the recheck names a new blocking finding;
      the recheck did not complete.
   10. **`repair revert`.** The CLI's own commit that restores `repair.base_tree` (a token with the repair commit as
       parent and the base tree, through the same carve out). It checks that the tree of the new HEAD equals
       `base_tree`, runs `integrate` and `gate build` on it (the pass is reused by its key), takes the snapshot again,
-      records the revert in `repairs`, and the run asks one question that names what broke.
+      records the revert in `repairs`, and the run asks one question that names what broke (the same id,
+      `repair.stop`).
   11. **A failure at Check.** The table of `docs/plans/one-go/evidence/v-repair-in-place.md`, section 6, holds. A red
       suite, a scenario row or an acceptance evidence row of class `code`: one repair by rule; the fixer gets the
       failed row with its whole kept output; no new failing test is asked for, the CLI's failed row is the RED. A
@@ -452,8 +496,9 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
       whose class is not `code`; anything under a sensitive path, and any run whose plan touches one (risk H: named in
       the approval, nothing there is repaired by rule); a diff that removes test lines.
   13. **The budget.** One repair by rule a stage (Review, Check), counted in the one budget of WP10 with no exemption
-      a caller can set. One more on the person's click, the option "Repair again" (move `repair`, the call
-      `repair start --stage S --again`); then the option is gone. The same finding or the same failed row open after a
+      a caller can set. One more on the person's click, the option "Repair again" (the id `repair-again`, move
+      `repair`, the call `repair start --stage S --again`); then the option is gone. The same finding or the same
+      failed row open after a
       repair is not recommended again (`same_failure`, `scripts/flow.py:756, 856`). With the budget spent the question
       offers Accept a finding, Override and continue, Loop back to Build and Save for later: the loop back stays as
       the way out and is never taken by rule.
@@ -469,7 +514,9 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
       read) and `repairs` (the numbers between). The commit gate's tree row passes when each verdict is of the
       committed tree, or of a tree that differs from it only by repair commits the CLI recorded whose reruns passed
       and whose recheck completed. Any other difference fails it and names both trees.
-  16. **The card.** Each repair is a row of `rule_log`, added through `scripts/card.py`: the finding's text, the files
+  16. **The card.** Each repair is an entry of the rule log with the kind `repair`, appended to
+      `.temper/rule-log.json` through `scripts/rule_log.py append` and to no other writer, and shown by the card
+      section `rule_log` of `scripts/card.py`, where this package adds its rows: the finding's text, the files
       and the count of lines changed, the recheck's answer, and the revert when there was one.
   17. **The mod.** `repair start` is person only unless it is the CLI's own action
       (`hooks/temper-mod/core/rules.ts:460-461, 476-497`); `repair commit`, `close` and `revert` pass only as calls of
@@ -479,38 +526,44 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
 - **Removed:** the loop back to Build as a rule move for a blocking finding; the forced failing test for a finding
   that has no behaviour to test (it came from the wipe of the ledger at a step back,
   `scripts/temper:1876-1896, 3633-3645`); the cut of a finding to 200 characters in a repair prompt.
-- **Documents in the same change:** a new decision record with the next free number: a finding is repaired in its
+- **Documents in the same change:** a new decision record,
+  `docs/decisions/0021-a-finding-is-repaired-in-its-stage.md` (the number of `docs/plans/one-go/contracts.md`
+  section 11; extended later by WP25, which adds its decision to it): a finding is repaired in its
   stage; a verdict is of the tree it judged or of a tree whose difference the CLI checked and a reader rechecked; it
   amends ADR 0009 (a second carve out) and ADR 0011 resolution 1 (the list of commits the CLI makes in an unattended
-  run), and says that ADR 0012 point 3 still holds for a step back. Then `docs/flow.md` (the Review and Check
+  run), and says that ADR 0012 point 3 still holds for a step back. Its line of amended records is the one of
+  `docs/plans/one-go/contracts.md` section 11: 0009, 0011 and 0013. Then `docs/flow.md` (the Review and Check
   sections, the list of what a rule may do), `docs/trust.md` (what resolves a finding; what the recheck does not
   prove: a defect outside the changed lines is caught only by the CLI's runs), `reference/review.md`,
   `reference/check.md`, `reference/autonomy.md`, `commands/temper.md` (the line on a finding), the header of
   `templates/temper.config.default` (`:138-141`), `.claude/CLAUDE.md` (Known mistakes: a finding is resolved by
   `repair close`, never by a brief), `CHANGELOG.md`.
 - **Done when:** `bash scripts/verify.sh quick` is green;
-  `bun scripts/e2e/run.ts all repair-finding repair-worse coverageDrop` passes; neither the two listed scenarios nor
+  `bun scripts/e2e/run.ts all repair-finding repair-worse coverage-drop` passes; neither the two listed scenarios nor
   `D37b`, `D37c`, `D64a` and `D64b` are left on `scripts/selftest/expected-fail.txt`;
   `bun scripts/e2e/replay.ts final` passes;
   `python3 scripts/check_floor.py` holds with `repair-finding.dialogs` at 2 and one full Review launch;
   `python3 scripts/check_caps.py` holds; the mod's three checks pass;
   `git grep -n "evidence resolve" agents commands reference` prints nothing.
+  The rows this package turns green are listed under its id in "Rows by package" of `docs/plans/one-go/done.md`;
+  that section wins over this list.
 - **Traps:**
   1. `repair commit` holds the CLI's lock while git runs the hook, and the hook starts a second CLI process for
-     `gate commit --from-hook`. Check in a clone that this call does not wait on the lock (the depth count of
-     `scripts/temper:396` is per process); if it does, make the commit after the lock is released and write the token
-     under it.
+     `gate commit --from-hook`. Whether this call waits on the lock (the depth count of `scripts/temper:396` is per
+     process) is decided by step 0 of the mechanism, before any code: if it does, the commit is made after the lock
+     is released and the token is written under it.
   2. The guardrails pack has a second commit hook inside the agent (`scripts/guards/block-uncommitted-gate.sh`). The
-     CLI's own `git commit` is no tool call, so it is not asked; no verifier ran it. Run one repair with the pack's
-     hooks installed before this package is called done.
+     CLI's own `git commit` is no tool call, so it should not be asked; no verifier ran it. Decided by step 0 of
+     the mechanism. Run one repair with the pack's hooks installed before this package is called done.
   3. The fixer must not be able to write the recheck's rows early. The order rule of step 8 is the hold without the
      mod; do not rely on telling the agents apart.
   4. The narrow recheck reads the diff, not the code around it. A project with a thin suite gets less than a second
      full Review gave; `docs/trust.md` must say so, and the fall back to a full Review must stay.
   5. Labels move at the failed Review and Check questions: regenerate both fixture files (the views `review-fail`,
      `check-fail` and the unattended ones) and fix the pinned labels in one commit.
-  6. The caps: this package adds one option label ("Repair again"), one question site (the repair stop) and one gate
-     row (`repair commit`). Each must take the place of one that went; a cap this package cannot meet is written to
+  6. The caps: this package adds one option label ("Repair again"), one question site (the repair stop, with the
+     one new question id `repair.stop`) and one gate row (`repair commit`). Each must take the place of one that
+     went; a cap this package cannot meet is written to
      `docs/plans/one-go/PROGRESS.md`, never raised.
   7. `scripts/stops.json` lists the stops an unattended run keeps. Every entry of the never by rule list is one; add
      each with the name of its assertion, or `case 46 D76` fails.
@@ -527,17 +580,21 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
   the plan gate, and a full replan keeps the built tasks whose approved fields did not change.
 - **Depends on:** WP08, WP10 (the budget), WP11, WP12 (the approval's digests and its record), WP15
   (`scripts/card.py`), WP21 (a patched command runs once on the base), WP23 (the failure record and its kinds
-  `blocked-task` and `no-validate`), WP24 (the sensitive path rule it shares).
+  `blocked-task` and `no-validate`), WP24 (the sensitive path rule it shares, on the matcher `scripts/sensitive.py`
+  that WP11 made).
 - **Lane:** `flow core`.
-- **Touches:** `scripts/plan_amend.py` (new), `scripts/plan_patch.py`, `scripts/tasks_md.py`, `scripts/plan_rows.py`,
+- **Touches:** `scripts/plan_amend.py` (new), `scripts/plan_patch.py`, `scripts/approval.py` (`plan_digest`),
+  `scripts/tasks_md.py`, `scripts/plan_rows.py`,
   `scripts/temper` (`cmd_plan`, `_plan_digest`, `_go_back`, `_groups_reset`, the step that leaves Plan),
   `scripts/groups_ops.py`, `scripts/task_ops.py` (the kept refs), `scripts/flow_run.py`, `scripts/flow_build.py`
   (`parked`, `group_failed`), `scripts/card.py`, `hooks/temper-mod/core/rules.ts`, `tests/mod/guard.test.ts`,
   `scripts/selftest/temper-cases-20.sh`, `-29.sh`, `-45.sh`, `-46.sh`, `scripts/selftest/expected-fail.txt`, both view
   fixture files, `scripts/e2e/scenarios.ts`, `scripts/stops.json`, `agents/plan.md`, `agents/build-task.md`,
-  `docs/flow.md`, `docs/grouped-build.md`, `docs/commands.md`, `reference/autonomy.md`, the decision record of WP11 or
-  a new one, `CHANGELOG.md`.
-- **Tests first:**
+  `docs/flow.md`, `docs/grouped-build.md`, `docs/commands.md`, `reference/autonomy.md`, the two decision records
+  `docs/decisions/0019-a-run-that-asks-twice.md` and `docs/decisions/0021-a-finding-is-repaired-in-its-stage.md`,
+  `scripts/flow_base.py` (`OPTION_IDS` gains `add-file`), `CHANGELOG.md`.
+- **Tests first:** `docs/plans/one-go/contracts.md` section 10 reserves case file 66 for this package; its cases go
+  into the files 20, 29 and 46, as below, and 66 stays unused unless a case needs a file of its own.
   1. From the list of WP07, made to pass here: `case 46 D26a` (the amendment and each refusal), `D26b` (a command line
      and a file outside the approved set are refused by `plan amend` and taken by `plan patch`), `D26c` (the approved
      record is byte equal before and after an amendment and a patch; `amendments.json` gains one entry each), `D26d`
@@ -564,19 +621,23 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
      which Task 1 is unchanged and Task 2 has a new Test line, the approval restores Task 1 as passed with its commit
      on the group branch, and Task 2 runs again; a changed group Depends restores nothing of that group or of the
      groups that depend on it; a kept task whose commit is no longer in the kept ref is not restored.
-  6. `scripts/e2e/scenarios.ts`, scenario `blockedTaskAmended`, three modes: a scripted task agent records
+  6. `scripts/e2e/scenarios.ts`, scenario `blocked-task-amended` (the function `blockedTaskAmended`), three modes:
+     a scripted task agent records
      `task blocked` for a file an earlier task of its group declares. Assert: no question, no launch of
      `temper:temper-plan`, the task runs again and passes, the commit card lists the amendment. Scenario
-     `blockedOutsidePlan`, plain mode: the file is declared by no task; the run asks, and the scripted answer takes
+     `blocked-outside-plan` (the function `blockedOutsidePlan`), plain mode: the file is declared by no task; the
+     run asks, and the scripted answer takes the option `add-file`, whose call is
      `plan patch task N --add-file F`.
   7. `tests/mod/guard.test.ts`: `plan patch` typed by an agent stays refused (`rules.ts:481`); `plan amend` typed by
      an agent passes the guard, and the CLI's own refusals are what hold it.
 - **Mechanism:** the split is blocker B3 of `docs/plans/one-go/evidence/red-safety.md`; the steps are section 4 of
   `docs/plans/one-go/evidence/v-failure-budget.md`. Where the two differ the red team wins: `plan amend` is not a
   person only call, because its whole effect is bounded by the CLI whoever calls it.
-  1. **One digest (U24).** The digest has three copies: `_plan_digest` (`scripts/temper:2163-2174`), `digest`
-     (`scripts/plan_patch.py:25-35`) and `plan_core_digest` of the flow. Put one function into `scripts/tasks_md.py`
-     and have the three call it; `scripts/selftest/temper-cases-29.sh:8` keeps guarding it.
+  1. **One digest (U24).** The digest has three copies at the head: `_plan_digest` (`scripts/temper:2163-2174`),
+     `digest` (`scripts/plan_patch.py:25-35`) and `plan_core_digest` of the flow. The one function is `plan_digest`
+     of `scripts/approval.py`: WP12 moved the digest there first (`docs/plans/one-go/contracts.md` section 14), so
+     no second one is put into `scripts/tasks_md.py`. Have every copy that is left call it;
+     `scripts/selftest/temper-cases-29.sh:8` keeps guarding it.
   2. **The record.** `evidence/approved-tasks.json` is the plan as the person approved it. It is written at the
      approval (`scripts/temper:1144`) and at a later approval only (a replan's, or the Design answer of `:1185-1209`),
      never by an amendment or a patch. A new file `.temper/evidence/amendments.json`, a list, is appended by both
@@ -597,13 +658,15 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
        `scripts/plan_patch.py:102-111`);
      - another task M of the same group declares F, and F is in `approved_files`;
      - F is not a test file M declares (the pattern of `scripts/temper:4174`), not a locked acceptance test, and not
-       under a sensitive path;
+       under a sensitive path (`match` of `scripts/sensitive.py`);
      - Task N is neither running nor passed (a blocked task is parked, `scripts/temper:3147-3149`);
      - the field by field compare of the result with the current plan (the logic of `tasks_change_summary`,
        `scripts/flow.py:155-181`) shows `Task N gains F` and the new Depends entry and nothing else: no group, no
        group Depends, no command and no other task differs, and no task that passed loses a file;
      - `plan_rows.py` and `gate_rows.py plan-rows` pass on the result; on a failed row the file is restored;
-     - the budget of WP10 has room; the call spends one step of class `plan`.
+     - the budget of WP10 has room; the call spends one step with the key `task:<N>` and the kind `plan amend`
+       (`python3 scripts/budget.py spend`). The budget has keys and kinds and no classes
+       (`docs/plans/one-go/contracts.md` section 14).
 
      Then it writes the file in one rename, moves the two hashes, appends the entry, writes the plan ledger row
      `plan amended by rule: Task N gains F (Task M declares it)` with a label that is not `PERSON`, and reopens Task N
@@ -612,9 +675,11 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
      `fails`, `fix_tries` and `fix_empty`. The Depends on M is what keeps the reopen's restore from undoing M's work.
   4. **Where the rule takes it.** In `parked`, the blocked branch (`scripts/flow.py:2095-2111`): when every blocked
      record (`scripts/task_blocked.py:55-56`) names an owner and `plan_amend.can` holds for each, the next action is
-     `auto` with the `plan amend` calls, in every mode; it is the CLI's own action and it is on the card. When it does
-     not hold, the run asks. A file no task declares: the first option is "Add the file to the task", the person's
-     `plan patch task N --add-file F`. A file of a later task or of another group, and a group parked twice with no
+     `auto` with the `plan amend` calls, in every mode; it is the CLI's own action and it is on the card, as an
+     entry of the rule log with the kind `amend`, appended through `scripts/rule_log.py append`. When it does
+     not hold, the run asks. A file no task declares: the first option is "Add the file to the task" (the id
+     `add-file`), the person's `plan patch task N --add-file F`. A file of a later task or of another group, and a
+     group parked twice with no
      blocked record: the first option is Loop back to Plan, which is the person's and which an unattended run never
      takes. WP27 later puts a narrow revision behind that option.
   5. **`plan patch`, completed.** It stays the person's (`hooks/temper-mod/core/rules.ts:481`). Changes in
@@ -649,9 +714,13 @@ defect. Ids `M1` to `M16`, `F1` to `F4` and `U1` to `U29` are those of `docs/pla
   `group keep`), `reference/autonomy.md` (the closed list: a rule may add to a task a file the same group already
   owns, and nothing else of the plan), `agents/plan.md` (a group needs a Validate), `agents/build-task.md` (when to
   record `task blocked`), the header of `templates/temper.config.default` (`:138-141`: "never plans again by itself"
-  stays true and gains the one exception by name), the decision record that holds the closed list, `CHANGELOG.md`.
-- **Done when:** `bash scripts/verify.sh quick` is green; `bun scripts/e2e/run.ts all blockedTaskAmended` and
-  `bun scripts/e2e/run.ts plain blockedOutsidePlan` pass; `grep -c "D26\|D39c" scripts/selftest/expected-fail.txt`
+  stays true and gains the one exception by name), the decision record that holds the closed list
+  (`docs/decisions/0019-a-run-that-asks-twice.md`: this package adds the one exception to its decision 3), the
+  record `docs/decisions/0021-a-finding-is-repaired-in-its-stage.md` that WP24 made (this package adds its
+  decision on `plan amend` and `plan patch` to it), `CHANGELOG.md`.
+- **Done when:** `bash scripts/verify.sh quick` is green, and `bash scripts/verify.sh full` is green at the end of
+  the phase (this package ends phase 6); `bun scripts/e2e/run.ts all blocked-task-amended` and
+  `bun scripts/e2e/run.ts plain blocked-outside-plan` pass; `grep -c "D26\|D39c" scripts/selftest/expected-fail.txt`
   prints 0; `python3 scripts/check_caps.py` holds (the new row takes the place the `preflight` row left);
   `claude plugin test .` passes; `cmp` of `evidence/approved-tasks.json` before and after an amendment in the scenario
   prints nothing.

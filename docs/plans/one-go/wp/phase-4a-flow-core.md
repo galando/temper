@@ -3,12 +3,21 @@
 This file holds the specs of work packages WP09 to WP14: the verdict marker, the one budget, the run to the commit,
 the approval bound to what was shown, the rule that leaves Intent, and Design as questions in front of the approval.
 
+The brief is `docs/plans/one-go/README.md`, and every shared name below is the one `docs/plans/one-go/contracts.md`
+fixes. Every `file:line` is of the head `10e965a`. WP02 and WP03 land before these packages and move code: find each
+function by its name, with the module table of WP03 (`Run` is in `scripts/flow_run.py`, `ask` and the option makers
+in `scripts/flow_ask.py`, `policy_move` and `stage_work` in `scripts/flow_work.py`, the Build questions in
+`scripts/flow_build.py`, the commit question in `scripts/flow_commit.py`, `Builder.next` and `core_next` in
+`scripts/flow.py`, the view in `scripts/flow_view.py`, and the tables `MOVES` and `SEQ` with the registries
+`QUESTIONS` and `OPTION_IDS` in `scripts/flow_base.py`).
+
 ## The order inside phase 4, and why
 
-Build the packages of phase 4 in this order, one commit each: WP09, WP10, WP18, WP14, WP11, WP12, WP13, then WP15,
-WP16 and WP17 (WP15 to WP18 are in `docs/plans/one-go/wp/phase-4b-cards-handback-fix.md`). Run
-`bash scripts/verify.sh quick` at the end of each, and `bash scripts/verify.sh full` once after WP13 and once after
-WP17. All ten packages are in the lane `flow core`, so none of them runs beside another.
+Build the packages of phase 4 in the order of the brief's section 5: WP09, WP10, WP18, WP14, WP11, WP12, WP13, then
+WP15, WP16 and WP17 (WP15 to WP18 are in `docs/plans/one-go/wp/phase-4b-cards-handback-fix.md`). Each package ends
+as the brief's section 4 says: `bash scripts/verify.sh quick` green, then the package commit, then the small
+progress commit, in one push. Run `bash scripts/verify.sh full` once after WP13 and once after WP17. All ten
+packages are in the lane `flow core`, so none of them runs beside another.
 
 1. **WP09 first.** A run that goes on by itself asks nobody at a passed check, so the first failed check is where a
    carrier must hold the run. At the head a failed `group gate` or `integrate` exits 1 with no `-> FAIL` text
@@ -21,7 +30,9 @@ WP17. All ten packages are in the lane `flow core`, so none of them runs beside 
    counted nowhere (`scripts/temper:1455-1492`, `scripts/group_fix.py:68-69`). The budget must refuse inside the
    call, and the flow must ask before it offers a call that would be refused, before anything runs unattended.
 3. **WP18 third.** Once the Review question is gone, the Review gate is the only look at the change before the
-   commit. Its two holes close first.
+   commit. Its two holes close first. From WP18 on `temper evidence resolve` refuses every call, until WP24 records
+   a repair commit. This is meant (the brief's section 4): until then a blocking finding ends by the person's
+   accept, or by the one counted loop back to Build of WP11 and a second Review. No test loosens the check.
 4. **WP14 before WP11.** With Design in the run the option that starts the unattended run sits on the Design
    question (`scripts/flow.py:726-730`) and the plan question has none (`:681-689`). That variant was never run in
    a prototype (`docs/plans/one-go/evidence/v-auto-advance.md`, section 6, item 3). After WP14 Design follows only
@@ -35,15 +46,17 @@ WP17. All ten packages are in the lane `flow core`, so none of them runs beside 
 7. **WP13 last of this file.** After it a clean scripted run asks two dialogs.
 
 A check of `scripts/selftest/expected-fail.txt` leaves the list in the commit of the package named for it below.
+A check that passed earlier is simply not on the list (`docs/plans/one-go/done.md`, note 7).
 If one still fails there for a reason that belongs to a later package, do not weaken it: name that package on its
 line of the list and in `docs/plans/one-go/PROGRESS.md`.
 
 One decision record covers the phase: `docs/decisions/0019-a-run-that-asks-twice.md`. WP10 creates it with the
-status Accepted and its own decision. WP14, WP11, WP12 and WP13 each add one numbered decision in their own commit.
+status Accepted and its own decision. WP14, WP11, WP12 and WP13 each add one numbered decision in their own package
+commit, and WP25 later adds the one exception to decision 3.
 It amends ADR 0011 (resolution 1 and the invariant list), ADR 0012 (decision 4), ADR 0013 (decision 1) and ADR 0016
 (one row of its table).
 
-Names of this phase that later packages use by role:
+Names of this phase that later packages use (`docs/plans/one-go/contracts.md` holds them all):
 
 | Role | Name | Owner |
 |---|---|---|
@@ -56,10 +69,11 @@ Names of this phase that later packages use by role:
 | the sensitive path matcher | `scripts/sensitive.py`, key `autonomy.park-on-touch` | WP11 |
 | the digest arguments | `--shown <file name>=<digest>` on `state advance`, `--digest <digest>` on `intent accept` | WP12 |
 | the gate row of the binding | `intent unchanged since the approval` | WP12 |
+| the write rule before the approval with the mod off | `scripts/guards/hold_before_approval.py`, kept only if the directory accepts it | WP12 |
 | the option that asks for Design | option id `run-design` | WP14 |
 
-Words such as "armed" and "parked" stay in every text that has them today. WP31 takes them out of user text. Do not
-rename a label, a `say` line or a state key in this phase; write new text without the two words.
+Words such as "armed" and "parked" stay in every text that has them today. Taking them out of user text is left to
+WP31. Do not rename a label, a `say` line or a state key in this phase; write new text without the two words.
 
 ## WP09 A verdict is a verdict for every carrier
 
@@ -69,12 +83,13 @@ rename a label, a `say` line or a state key in this phase; write new text withou
   question with no hand back.
 - **Depends on:** WP02, WP03, WP04, WP07, WP08.
 - **Lane:** `flow core`.
-- **Touches:** `scripts/temper`, `scripts/go.py`, `hooks/temper-mod/core/driver.ts`, `scripts/e2e/loop.ts`,
+- **Touches:** `scripts/temper`, `scripts/go.py`, the flow modules (one comment, step 9),
+  `hooks/temper-mod/core/driver.ts`, `scripts/e2e/loop.ts`, `scripts/e2e/scenarios.ts` (`policy-run` in driver mode),
   `commands/temper.md`, `commands/fix.md`, `docs/flow.md`, `scripts/selftest/temper-cases-50.sh` (new),
   `tests/mod/driver.test.ts`, `scripts/selftest/expected-fail.txt`, `scripts/e2e/floor.json`, `CHANGELOG.md`.
 - **Tests first:**
-  1. `scripts/selftest/temper-cases-50.sh` (new; take the next free number from 50 up if it is taken). Every name
-     starts with `verdict:`. States are built with `fresh`, `gpass`, `gfail` and `nx` of
+  1. `scripts/selftest/temper-cases-50.sh` (new; `docs/plans/one-go/contracts.md` section 10 reserves the number).
+     Every name starts with `verdict:`. States are built with `fresh`, `gpass`, `gfail` and `nx` of
      `scripts/selftest/case-helpers.sh`, and a `groups.json` written as `_polg` writes it
      (`scripts/selftest/temper-cases-28.sh:33-38`).
      - `verdict: gate prints the marker as its last line`: after `temper gate intent` on a passing and on a failing
@@ -106,6 +121,9 @@ rename a label, a `say` line or a state key in this phase; write new text withou
   3. From `scripts/selftest/expected-fail.txt`: the scenario `integrate-fail` of `scripts/e2e/accept.ts` (row `D07`
      of `docs/plans/one-go/done.md`) passes in driver mode and leaves the list here. `group-fail` and
      `group-fail-twice` stay listed until WP16 (row `D06`).
+  4. `scripts/e2e/scenarios.ts`: the scenario `policy-run`, which WP08 wrote for plain and mod mode and left to
+     this package for driver mode, passes in driver mode too: its failed group check is a recorded verdict, and the
+     driver does not hand the run back.
 - **Mechanism:**
   1. **The marker.** One line on stdout, alone on its line, printed after the record is written:
      `VERDICT: <scope> <verdict>`. The scope is `gate:<stage>`, `task:<N>`, `group:<G>` or `integrate`. The verdict
@@ -130,9 +148,12 @@ rename a label, a `say` line or a state key in this phase; write new text withou
      bounds a verdict that never changes.
   6. **The driver.** One exported pure function `recordedVerdict(call, out)` with the rule of step 5. `runAll`
      (`hooks/temper-mod/core/driver.ts:255-264`, the test at `:261`) and the after calls (`:432`) use it in place
-     of the two `-> FAIL` tests; `taskVerdict` (`:80-82`) becomes a call of it. WP16 removes what is left.
+     of the two `-> FAIL` tests; `taskVerdict` (`:80-82`) becomes a call of it. What then remains of them is
+     left to WP16.
   7. **The scripted loop.** `scripts/e2e/loop.ts:18-25` reads the marker by the same rule, for any call, not only
-     the agent's gate call.
+     the agent's gate call. Keep the old reading as the way back for a CLI that prints no marker: when the output
+     of a gate call holds no `VERDICT:` line, `-> FAIL` still tells a verdict. The replay drives 9.8.4 and 9.8.5
+     through `orchestrate` of this file (`scripts/e2e/replay.ts:20, 363`).
   8. **The page.** `commands/temper.md`, in the paragraph on `temper go` (`:69-75`) and in "A refused call"
      (`:171-172`), and the same place of `commands/fix.md`: a call that prints a `VERDICT:` line recorded a
      verdict; it is no failure whatever its exit code; run the calls after it, then `temper go`.
@@ -141,13 +162,14 @@ rename a label, a `say` line or a state key in this phase; write new text withou
   10. **What the marker may decide.** Only whether a carrier goes on to ask `temper next`. The next step always
       comes from `temper next`, which reads the recorded verdict. A carrier reads the marker only from a call it
       ran itself, never from an agent's text (`docs/plans/one-go/evidence/red-safety.md`, m2).
-- **Removed:** the `-> FAIL` tests of `scripts/go.py:109`, `hooks/temper-mod/core/driver.ts:261` and `:432`, and
-  `scripts/e2e/loop.ts:25`.
-- **Documents in the same change:** `docs/flow.md` (the marker, in the section on `temper go`); `CHANGELOG.md`;
-  one line in `docs/plans/one-go/PROGRESS.md`.
+- **Removed:** the `-> FAIL` tests of `scripts/go.py:109` and of `hooks/temper-mod/core/driver.ts:261` and `:432`.
+  The one of the scripted loop stays as the way back of step 7.
+- **Documents in the same change:** `docs/flow.md` (the marker, in the section on `temper go`); `CHANGELOG.md`.
+  The line of the package in `docs/plans/one-go/PROGRESS.md` is the progress commit that follows the package
+  commit, in one push (`docs/plans/one-go/README.md` section 4).
 - **Done when:**
   - `bash scripts/verify.sh quick` is green.
-  - `bun scripts/e2e/run.ts driver integrate-fail` passes and `integrate-fail` is off the list.
+  - `bun scripts/e2e/run.ts driver integrate-fail policy-run` passes and `integrate-fail` is off the list.
   - `claude plugin test .` is green, `tsc -p tsconfig.mod.json` is clean, `bash scripts/check-mod-calls.sh` still
     prints 20 calls.
   - `bun scripts/e2e/run.ts all full-run default-run fix --floor scripts/e2e/floor.json` exits 0.
@@ -160,7 +182,8 @@ rename a label, a `say` line or a state key in this phase; write new text withou
     (`gate_build`, `scripts/temper:3613`). The Build question follows (`scripts/flow.py:764-765`). WP08 made the
     rerun path of a merged run return to the Build gate; do not undo that.
   - `scripts/temper` has 1,640 bytes of room at the head; WP02 frees 40 KB. This package adds about ten lines.
-  - `scripts/e2e/replay.ts` drives the 9.8.4 plugin through its own `go.py`; nothing of it reads the marker.
+  - `scripts/e2e/replay.ts` drives the old plugin through `orchestrate` of `scripts/e2e/loop.ts`. After this
+    package run `bash scripts/e2e/ab-replay.sh 10e965a` and see the base column as it was.
   - The fixtures do not change: `next` and the view are as before.
 - **Size:** S.
 
@@ -174,7 +197,8 @@ rename a label, a `say` line or a state key in this phase; write new text withou
 - **Lane:** `flow core`.
 - **Touches:** `scripts/budget.py` (new), `scripts/temper` (the dispatcher, the word `budget`, `_RUN_FILES`,
   `cmd_state_clear`, `cmd_state_loop`), `scripts/loop_step.py`, the flow modules (`Run.can_loop`,
-  `Run.loop_budget`, `round_limit`, `Builder.next`, the registry of WP04, `MOVES`),
+  `Run.loop_budget`, `round_limit`, `Builder.next`, and in `scripts/flow_base.py` the registries `QUESTIONS` and
+  `OPTION_IDS` of WP04 and the table `MOVES`),
   `hooks/temper-mod/core/rules.ts`, `tests/mod/guard.test.ts`, `tests/mod/audit.test.ts`,
   `docs/decisions/0016-the-mod-answer-audit.md`, `docs/decisions/0019-a-run-that-asks-twice.md` (new),
   `templates/temper.config.default`, `.claude/temper.config`, `reference/status.md`,
@@ -225,9 +249,11 @@ rename a label, a `say` line or a state key in this phase; write new text withou
      The limit of a key is `budget.per-failure` (2 in code) plus the grants of that key. The limit of the run is
      `budget.per-run` (6 in code) plus every grant. A record of another run id counts as empty. Add the file to
      `_RUN_FILES` (`scripts/temper:632-634`) and to the `rm -f` of `cmd_state_clear` (`:1448`).
-  2. **The key.** Until WP23 writes typed failure records, a failure is the check that failed: `gate:<stage>`,
-     `group:<G>`, `task:<N>`, `acceptance`, `pipeline`. WP23 replaces the key by its record's key and moves the
-     counts into its file.
+  2. **The key.** A failure is the check that failed: `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance`,
+     `pipeline`. A failed `integrate` has no key of its own: it spends its repeat under `gate:build`, and that is
+     the `scope` of its failure record. The keys and the counts stay in this file to the end: the typed failure
+     record of WP23 takes the budget key as its `scope` and moves no count (`docs/plans/one-go/contracts.md`
+     section 14).
   3. **What spends.** One table in `scripts/budget.py`, `SPENDS`, read by the CLI and by the flow:
 
      | Call | Spends when | Key | Kind |
@@ -288,11 +314,11 @@ rename a label, a `say` line or a state key in this phase; write new text withou
       `GUARDED_SAMPLES` (`:119-123`) gain `.temper/budget.json`. ADR 0016 gets the row (kind `budget grant`,
       question `run.budget`) and the fixtures get a view with the question (a new state in
       `scripts/selftest/make-view-fixtures.sh`).
-  11. **The keys.** New, both with their default in code and as commented lines in the template:
-      `budget.per-failure` and `budget.per-run`. Gone from `templates/temper.config.default` and from
-      `.claude/temper.config`: `fix.max-loops` (template `:48-51`), `feedback.enabled` (`:115-116`),
-      `loops.max-per-type` (`:118-119`), `autonomy.budget.max-total-loops` and `max-stages` (`:151-153`). A config
-      that still holds one is not an error; WP29 names it once.
+  11. **The keys.** New, both with their default in code and as commented lines in the template: `budget.per-failure`
+      and `budget.per-run` (WP29 later keeps both in its table of defaults and out of its short template). Gone from
+      `templates/temper.config.default` and from `.claude/temper.config`: `fix.max-loops` (template `:48-51`),
+      `feedback.enabled` (`:115-116`), `loops.max-per-type` (`:118-119`), `autonomy.budget.max-total-loops` and
+      `max-stages` (`:151-153`). A config that still holds one is not an error; WP29 names it once.
   12. **The list of stops.** Add the stop `budget spent` to `scripts/stops.json` with the name of its check.
 - **Removed:** `loop_step.budget`, `Run.loop_budget`, the per pair refusal, the five config keys above and their
   text in `reference/status.md`.
@@ -314,7 +340,8 @@ rename a label, a `say` line or a state key in this phase; write new text withou
     WP09 is not printed for it: a refusal is no verdict.
   - The limits that only move a recommendation stay: the text compare of `scripts/flow.py:755-756` and `:855-856`,
     the group counters at `:1981-1991`, the `reopened` mark at `:2117`. They choose the option; the budget is the
-    bound. Do not delete them here; WP23 folds them into the failure record.
+    bound. Do not delete them here. WP22 and WP23 keep them as well: from WP22 the questions read the reuse store
+    first, and WP23 does not rewrite the question logic around its record.
   - `scripts/budget.py` needs the verdict and the skip of a stage. Import the `Run` class of the flow (after WP03,
     `scripts/flow_run.py`) so the skip rule exists once.
   - Tests that state the old behaviour on purpose: every assertion on `BLOCKED: max iterations` and on
@@ -334,7 +361,8 @@ rename a label, a `say` line or a state key in this phase; write new text withou
 - **Goal:** A default run launches no Design agent at any tier or risk. What Design asked becomes questions that
   Plan writes and the person answers in front of the approval. The plan is written under each first choice, and
   the plan gate fails only for another answer the tasks do not follow yet.
-- **Depends on:** WP03, WP04, WP07, WP08 (its flip F2), WP10. Built before WP11.
+- **Depends on:** WP03, WP04, WP07, WP08 (its flip F2), WP10.
+  Extended later by WP11, which is built after this package and calls `Builder.may_run_alone()`.
 - **Lane:** `flow core`.
 - **Touches:** the flow modules (`Run.has_design`, the plan question, `advance_ok`, `Builder.next`),
   `scripts/decisions.py`, `scripts/answer_ops.py`, `scripts/fresh_review.py`, `scripts/temper` (`gate_design`,
@@ -366,7 +394,8 @@ rename a label, a `say` line or a state key in this phase; write new text withou
   2. `scripts/e2e/scenarios.ts`: `designRun` starts its Design by the option `run-design`; the floor entry `design`
      keeps its Design launch. Every other entry of `scripts/e2e/floor.json` has no `temper:temper-design`.
   3. From the list: the scenario `design-on-ask` (row `D20`) passes and leaves it here. `vague-run` (row `D04`)
-     keeps failing on its dialog count until WP13; see the last trap.
+     keeps failing on its dialog count until WP13, the package its row of `docs/plans/one-go/done.md` names, and
+     stays on the list until then.
 - **Mechanism:**
   1. **`Run.has_design`** (`scripts/flow.py:251-266`): true for a `/temper:temper` run when `design.md` exists
      (`:254-255`), when the run is at Design or has a Design verdict (`:256-257`), or when the state key
@@ -431,9 +460,6 @@ rename a label, a `say` line or a state key in this phase; write new text withou
     add it to the mod's tables.
   - A plan of risk H now launches the fresh reviewers by rule: the floor entry of every scenario with `riskH`
     gains those launches. Move the `now` values in the same commit.
-  - Row `D04` of `docs/plans/one-go/done.md` names WP14 as the package after which it passes. With the order of
-    this file its dialog count needs WP11 and WP13: correct its last column to WP13 in this commit, and leave
-    `vague-run` on the list until then.
 - **Size:** M.
 
 ## WP11 The approval runs to the commit by default
@@ -499,9 +525,10 @@ rename a label, a `say` line or a state key in this phase; write new text withou
      passes `--taken-up` on its first `go` and never again; a view whose `run.parked` turns from null to a stage
      gives one toast.
   3. `scripts/e2e/scenarios.ts`: `full-run` and every scenario that tests a later gate's question take the person
-     who picks `ask-every-stage`; `default-run` keeps the person who takes the recommended option; `armedRun`
-     (`:445-462`) is rewritten as the default run with one failed group. The scenario `ask-every-stage` (row
-     `D17`) must still pass.
+     who picks `ask-every-stage` (`stagePerson` of `scripts/e2e/persons.ts`); `default-run` keeps the person who
+     takes the recommended option; `armedRun` (`:445-462`, the scenario `armed-run`) is rewritten as the default
+     run with one failed group. The scenario `policy-run` of WP08 loses its `autonomy.policy` block and stays, as
+     a default run. The scenario `ask-every-stage` (row `D17`) must still pass.
   4. From the list: `D16`, `D18a`, `D18b`, `D18c`, `D19`, `D32a`, `D32d`, `D33a`, `D33b`, `D39d`, `D60c` and the
      scenario `stop-keeps-mode` (`D32c`) pass and leave it here; `D32b` left with WP08. `group-fail-twice` holds
      its assertion `D33c` from here and stays listed until WP16 for row `D06`. The floor of `default-run` drops by
@@ -534,6 +561,8 @@ rename a label, a `say` line or a state key in this phase; write new text withou
      - `approve-run` is left out when the stage was skipped, when Design follows the plan question (the Design
        question is then the approval, and the plan question keeps `:681-689`), and when `may_run_alone()` of WP14
        says no.
+     - When the person asked for Design, the Design question is the approval: it carries the approval card (WP15)
+       and the digests (`--shown`, WP12) exactly as `plan.approve` does.
      `armed_text` becomes one sentence: the run goes on by itself, a passed check moves on, a failed check gets
      one repair and then asks, the commit asks, nothing is pushed.
   5. **Passed checks move on.** In `core_next` the block of `scripts/flow.py:2441-2472` becomes one: an armed run
@@ -551,7 +580,9 @@ rename a label, a `say` line or a state key in this phase; write new text withou
        path, when the budget of WP10 already holds a repeat for `gate:<stage>`, or when that key has no room. Else
        it is the `auto` call `state loop <stage> build --reason 'rule: <reason>'` of `:1160-1161`. So a blocking
        finding gets one counted loop back to Build, and a second one asks. WP24 replaces the body of this method
-       by the repair in place, and nothing else of this package.
+       by the repair in place, and nothing else of this package. Until WP24 nothing resolves a finding by rule:
+       `temper evidence resolve` refuses every call since WP18, so a blocking finding ends by the person's accept
+       or by this one counted loop back and a second Review.
   7. **The Build stops** keep their code; each calls one method `stop(stage, reason)`, the lifted `park` of
      `scripts/flow.py:1153-1155`. Changes: `env_task` (`:1857-1870`) and `no_groups` (`:1621-1633`) call `stop`
      first in an armed run, so no question waits without a record. `group_failed` (`:1963-1972`) takes the option
@@ -640,7 +671,7 @@ rename a label, a `say` line or a state key in this phase; write new text withou
       | 18 | Plan | the plan question after any step back to Plan | `:2441` | stays; the mode is off after it |
       | 19 | any | the budget of WP10 has no room for the next repeat | new | the question `run.budget` |
       | 20 | Build, Review | a failed check in a plan with a sensitive path | new | no repair by rule |
-      | 21 | Check | only the mutation row failed | new | stays until WP19 makes it information |
+      | 21 | Check | only the mutation row failed | new | stays until WP19 makes the score information; WP19 then takes this row off the list, with a line in decision 3 of `docs/decisions/0019-a-run-that-asks-twice.md` |
       | 22 | any | the person took the run up again | new | the stage's question, once |
 
       Not stops: a task an earlier task built is taken as done (`scripts/flow.py:1837-1842`); a passed group goes on
@@ -649,18 +680,19 @@ rename a label, a `say` line or a state key in this phase; write new text withou
   `Stage by stage (Recommended)` and `Autonomous Build: run Build unattended`; the unattended run of Build alone;
   the write of `run_mode` in `cmd_park`; the dead end sentence of the failed commit question; `_glob_touch_match`.
 - **Documents in the same change:** `docs/decisions/0019-a-run-that-asks-twice.md`, decision 3: the closed list of
-  what a rule may do and may never do (the frame, decision 2), what starts and what ends the unattended run, the
-  table of stops, and that removing a stop needs a decision record. `reference/autonomy.md` (nearly whole: `:15-16`,
-  `:18-19`, `:30`, `:35-39`); the header of the autonomy block of the template (`:133-144`) and one commented
-  line `run.default`; `docs/flow.md:224-235`; `README.md:30`; `.claude/CLAUDE.md` (the paragraph on Autonomous
-  Build and "The person decides each gate"); `docs/grouped-build.md`; `docs/mod.md`; `docs/auto-mode.md`;
+  what a rule may do and may never do (`docs/plans/one-go/README.md` section 3, decision 2), what starts and what ends
+  the unattended run, the table of stops, and that removing a stop needs a decision record. `reference/autonomy.md`
+  (nearly whole: `:15-16`, `:18-19`, `:30`, `:35-39`); the header of the autonomy block of the template (`:133-144`)
+  and one commented line `run.default`; `docs/flow.md:224-235`; `README.md:30`; `.claude/CLAUDE.md` (the paragraph on
+  Autonomous Build and "The person decides each gate"); `docs/grouped-build.md`; `docs/mod.md`; `docs/auto-mode.md`;
   `docs/trust.md` (Temper pushes only after the person chose a pull request option at the commit question);
   `commands/temper.md:117-119`; the sentences `scripts/check-known-limits.sh` holds; `CHANGELOG.md`.
 - **Done when:**
   - `bash scripts/verify.sh quick` is green; both fixture modules are regenerated.
   - `bun scripts/e2e/run.ts all --floor scripts/e2e/floor.json` exits 0 with the plain and mod traces equal (the
     whole suite: nearly every trace moved).
-  - `python3 scripts/check_done.py` shows `D16`, `D18`, `D19`, `D32`, `D33` and `D60` as ok.
+  - `python3 scripts/check_done.py` shows `D16`, `D18`, `D19`, `D32` and `D60` as ok; `D33a` and `D33b` are off
+    the list, and row `D33` is whole only after WP16 and WP21 (`docs/plans/one-go/contracts.md` section 13).
   - `claude plugin test .`, `tsc -p tsconfig.mod.json` and `bash scripts/check-mod-calls.sh` (20 calls) are green.
   - `grep -n 'autonomy.policy\|def policy' scripts/*.py` prints nothing.
 - **Traps:**
@@ -694,6 +726,7 @@ rename a label, a `say` line or a state key in this phase; write new text withou
 - **Touches:** `scripts/approval.py` (new), `scripts/temper` (`cmd_state_advance`, `cmd_state_set`, `cmd_intent`,
   `gate_build`, `gate_check`, `gate_commit`), the flow modules (`leave_intent`, `leave_plan`, `to_branch`, the
   Intent question, the plan question, `policy_move`), `hooks/temper-mod/core/rules.ts`, `tests/mod/guard.test.ts`,
+  `scripts/guards/hold_before_approval.py` (new; kept only as step 9 says), `hooks/hooks.json` (its entry),
   `scripts/selftest/temper-cases-53.sh` (new), `scripts/selftest/make-view-fixtures.sh`, both fixture modules,
   `scripts/e2e/scenarios.ts`, `scripts/caps.json`, `scripts/stops.json`, `scripts/selftest/expected-fail.txt`,
   `docs/decisions/0019-a-run-that-asks-twice.md`, `docs/flow.md`, `docs/trust.md`,
@@ -702,7 +735,8 @@ rename a label, a `say` line or a state key in this phase; write new text withou
   1. `scripts/selftest/temper-cases-53.sh` (new), names start with `bound:`.
      - `bound: the approving options carry both digests`: the last call of `approve-run` and of `ask-every-stage`
        ends in `--shown intent.md=<H1> --shown tasks.md=<H2>`, and the two values equal
-       `python3 scripts/approval.py digest` of the files.
+       `python3 scripts/approval.py digest` of the files. The same holds for the approving options of the Design
+       question in a run where the person asked for Design, and a stale digest is refused there too.
      - `bound: a stale digest is refused and nothing advances`: change a criterion after `next`, run the calls;
        `state advance` exits 1, the stage is still Plan, no branch and no commit were made by it.
      - `bound: the advance records intent_hash beside plan_hash`, also when no `--shown` was given.
@@ -720,10 +754,22 @@ rename a label, a `say` line or a state key in this phase; write new text withou
        advance; after them `git log` has one more commit, on the run's branch.
      - `bound: with the mod off a project file cannot be committed before the approval`: with the commit hook
        installed, `git commit` of a staged source file at Plan is refused.
+     - `bound: with the mod off a project file cannot be written before the approval`: the classic hook of step 9,
+       `python3 -I scripts/guards/hold_before_approval.py`, fed the input of a PreToolUse call that writes a source
+       file in a project whose run is at Plan and not yet approved, prints one answer with `permissionDecision`
+       `deny`. It prints nothing and exits 0 for a write into the run's spec folder, for the same write once the
+       run is at Build, with no run active, in a fix run before its approval, for a shell command that writes
+       the same file, in a folder that is no Temper project, and for an input it cannot
+       read. Feed it as the cases of `block_stdin_wait.py` do (`scripts/selftest/temper-cases-16.sh:307-324`). If
+       step 9 drops the hook, this case goes with it.
   2. `tests/mod/guard.test.ts`: a write to the run's `intent.md` is refused at Build, Review, Check and Commit
      and allowed at Intent, Plan and Design.
   3. From the list: `D30b`, `D30c`, `D31a`, `D31b`, `D31c` and the scenario `approval-first` (`D30a`) pass and
-     leave it here.
+     leave it here. Taking `approval-first` off the list arms the shared assert of row `D105` (`worldCheck`,
+     `docs/plans/one-go/contracts.md` section 8) in every scenario of `scripts/e2e/accept.ts`,
+     `scripts/e2e/slow.ts` and `scripts/e2e/broken.ts`: from this commit a failure of it fails the scenario and
+     no longer only reports. Before the package commit run every scenario of the three files that is already
+     off the list, and repair in the product what the assert finds.
 - **Mechanism:**
   1. **What is hashed.** `scripts/approval.py`:
      - `intent_digest(path)`: SHA 256 of the text of `intent.md` without the lines the CLI writes itself, those
@@ -746,7 +792,10 @@ rename a label, a `say` line or a state key in this phase; write new text withou
      `intent.md` exists with the status `draft`. `intent accept --digest <H1>` (`cmd_intent`,
      `scripts/temper:4437-4505`) refuses the same way before it writes. The arguments are optional, so a call
      without them still records what it found; with the mod the option's calls are matched word for word, so the
-     click is bound to the digests the question carried.
+     click is bound to the digests the question carried. When the person asked for Design, the Design question is
+     the approval (WP11 step 4) and carries the digests exactly as `plan.approve` does: `leave_design`
+     (`scripts/flow.py:1093-1097`) puts the same two `--shown` arguments on `state advance design_complete`, which
+     compares and refuses in the same way before it writes.
   4. **The flow.** `leave_plan` (`scripts/flow.py:567-571`) computes both digests in the same `next` call that
      builds the question and puts them on its advance. The card of WP15 is built in that call too, from the same
      reads.
@@ -771,15 +820,40 @@ rename a label, a `say` line or a state key in this phase; write new text withou
   8. **The mod.** `hooks/temper-mod/core/rules.ts`, beside the rule for `tasks.md` (`:245-247`): from Build on a
      write to the run's `intent.md` is refused, with a text that names the step back to Plan. `GUARD_KEYS` (`:335`)
      gains `intent_hash`. The CLI's own writes are not tool writes and stay possible.
+  9. **Without the mod: a classic hook holds the write rule (the plan's item 3e).** With the mod loaded its rule
+     refuses a project file write before the approval (`stageWriteRuleCore`,
+     `hooks/temper-mod/core/rules.ts:238-275`); with no mod loaded nothing does. Add
+     `scripts/guards/hold_before_approval.py`, a classic PreToolUse hook of the plugin: one entry in
+     `hooks/hooks.json` beside `block_stdin_wait.py` (`hooks/hooks.json:14-24`), with a matcher for the tools that
+     write a file, and a clause in the description at `hooks/hooks.json:2`. It answers as that hook does: one JSON
+     answer on standard output with `permissionDecision` `deny` and the reason, or nothing. Its one refusal: the
+     folder is a Temper project, a feature run (`/temper:temper`) is active, the run is not yet approved (it is at
+     Intent, Plan or Design), and the call writes a project file, which is a path outside `.temper/` that the
+     mod's rule for that stage would refuse too. It holds only for those three stages of a feature run and only
+     for the tools that write a file. A fix run (before `rca.approve` as after it) and a shell command that
+     writes a file are outside it, and `docs/trust.md` says so. On every other path it fails open, with no output
+     and exit 0: no run, a fix run, a run from Build on, a tool that is not one of the file writers,
+     a path under the run's spec folder or under `.temper/`, a state file it cannot read, an input it cannot
+     parse, any error of its own. It only ever refuses, and it never changes the input of a tool call.
+     The hook is kept only if `claude plugin validate --strict .` and `bash scripts/validate-directory.sh` both
+     accept the plugin with it. If either refuses it, drop the hook: delete the script, its entry in
+     `hooks/hooks.json` and its case, and write one line under "Found on the way" in
+     `docs/plans/one-go/PROGRESS.md`. `docs/trust.md` then says that with the mod off the commit hook alone holds
+     rule 1 (the case `D30c`).
 - **Removed:** the branch and the commit of the step that leaves Intent; the branch clash question; the twin of
   the plan digest in the flow.
 - **Documents in the same change:** `docs/decisions/0019-a-run-that-asks-twice.md`, decision 4 (what the approval
   binds, and that nothing checks the click with the mod off); `docs/flow.md` (the arguments, the row, the state
   key); `docs/trust.md` (with the mod the click is checked against the digests, without it the gates still fail
-  on a later change); `CHANGELOG.md`.
+  on a later change; and, when the hook of step 9 is kept, that it holds the write rule before the approval with
+  the mod off, beside `block_stdin_wait.py` at `docs/trust.md:24`, for the stages Intent, Plan and Design of a
+  feature run and for the tools that write a file only: a fix run and a shell command are outside it);
+  `CHANGELOG.md`.
 - **Done when:**
   - `bash scripts/verify.sh quick` is green; both fixture modules are regenerated (every approving option's last
     call changed).
+  - `claude plugin validate --strict .` and `bash scripts/validate-directory.sh` exit 0 with the hook of step 9 in
+    `hooks/hooks.json`, or the hook is gone and `docs/plans/one-go/PROGRESS.md` holds its one line.
   - `bun scripts/e2e/run.ts all approval-first default-run full-run branch-clash branch-clash-carry` passes.
   - `python3 scripts/check_caps.py` exits 0 with `gate_rows` moved by one in `now`.
 - **Traps:**
@@ -798,6 +872,9 @@ rename a label, a `say` line or a state key in this phase; write new text withou
   - Until WP13 the Intent question still accepts the intent, so `Accepted-by` keeps its text here.
   - `approved-tasks.json` lives in `.temper/evidence` (`scripts/temper:1144`); it is not a ledger and no step
     back may clear it.
+  - The hook of step 9 is a script under the directory rules (`scripts/validate-directory.sh:17-34`), and a hook
+    fails open except on its one detected violation (`.claude/CLAUDE.md`, known mistakes). It must refuse no path
+    that the mod's own rule lets through before Build, or the two carriers hold two rules.
 - **Size:** M.
 
 ## WP13 The run leaves Intent by rule; the approval accepts the intent
@@ -836,13 +913,15 @@ rename a label, a `say` line or a state key in this phase; write new text withou
      - `intent rule: a draft with scenarios passes the Intent gate once tasks.md exists`.
      - `context: a clean pending map passes the row and asks nothing`.
      - `context: a map with a gap still asks under auto when a line cannot be shown whole` (a flagged line of 95
-       characters).
+       characters). This case holds until WP15: the card then shows a line of any length whole, and WP15 rewrites
+       the case to the final rule of row `D02b` of `docs/plans/one-go/done.md`.
      - `context: a flagged map that fits is folded`: no `context_check`, the approval's text holds each flagged
        line whole, the approving calls hold `plan review --answer`, and after them `plan.md` holds
        `reviewed: human` and an answer line that says it was given at the approval.
      - `context: always still asks`, and `context: off never asks`.
-  2. `scripts/e2e/scenarios.ts`: `contextCheck` (`:343-357`) keeps its own question by a flagged line too long to
-     show; a new variant folds a short one.
+  2. `scripts/e2e/scenarios.ts`: `contextCheck` (`:343-357`, the scenario `context-check`) keeps its own question
+     by a flagged line too long to show; a new variant folds a short one. The long line keeps the question only
+     until WP15, which gives the scenario the config line `plan.context-check: always` to keep it.
   3. From the list: the scenarios `two-dialogs` (row `D01`) and `vague-run` (row `D04`) pass and leave it here.
      `default-run` drops to 2 dialogs in the three modes: its `now` equals its `final`.
 - **Mechanism:**
@@ -897,7 +976,10 @@ rename a label, a `say` line or a state key in this phase; write new text withou
      the approving options run `plan review --answer 'As planned (at the approval, N flagged lines shown)'`, so
      the record says where the answer was given and how many lines were shown, and `Include what is left out`
      (`:2312-2318`) joins the More list. Else the Context check stays its own question. `context_check` stays in
-     `next` and the view as null when not asked. WP15 widens "shown whole" to the card.
+     `next` and the view as null when not asked. WP15 widens "shown whole" to the card. What holds at the end is
+     row `D02b`: the answer is recorded at the approval only when the `context` section of the card holds every
+     flagged line; a card whose section is cut records no answer and the Context check is asked; `always` still
+     asks.
   9. **The row `no scenarios in draft`** (`scripts/intent_draft_rows.py:169-173`) passes when `tasks.md` is beside
      the intent: Plan wrote those scenarios. Without this a draft fails its gate on the two paths that compute
      it again, a door that walks Intent and a step back to it.

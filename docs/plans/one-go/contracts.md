@@ -35,7 +35,7 @@ the name of this page: `scripts/caps.json`. Every `file:line` of the specs is of
 | `scripts/rule_log.py` | appends to the record of what a rule decided | WP11 | WP15 reads it for the cards; WP24 and WP25 append |
 | `scripts/sensitive.py` | the one matcher of sensitive paths: `match`, `declared` | WP11 | WP15, WP24, WP25, WP27 |
 | `scripts/approval.py` | `intent_digest`, `plan_digest`, the row of the binding | WP12 | WP13, WP17, WP25 |
-| `scripts/guards/hold_before_approval.py` | the write rule before the approval with the mod off | WP12, only if the directory accepts it | none |
+| `scripts/guards/hold_before_approval.py` | the write rule before the approval with the mod off: only the stages Intent, Plan and Design of a feature run, only the tools that write a file | WP12, only if the directory accepts it | none |
 | `scripts/card.py`, `scripts/selftest/cards/` | the cards as data and as text; three golden texts | WP15 | WP17, WP19, WP20, WP22, WP24, WP25 and WP27 add rows here and nowhere else |
 | `scripts/trivial.py` | the trivial verdict and its bound | WP17 | none |
 | `scripts/baseline.py` | the environment check, the baseline, the limits | WP20 | WP21 (plan commands), WP22, WP23 |
@@ -62,7 +62,7 @@ Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command f
 | `temper state advance plan_complete <next> --shown intent.md=<digest> --shown tasks.md=<digest>`; `temper intent accept --digest <digest>`; `python3 scripts/approval.py digest`, `row`, `check` | WP12 | WP13, WP17 (`rca.md` in the place of `intent.md`), WP25 |
 | `temper state set want_design true` | WP14 | WP15 |
 | `temper card` | WP15 | WP17 |
-| `temper spec branch --new NAME`, `--carry NAME`, `--if-protected`; `temper group take-out G SHA...`; `temper group feedback G --text T`; `temper drift ask --path P --why W --change C` | WP16 | WP17 (`--if-protected`) |
+| `temper spec branch --carry NAME`, `--if-protected`; `temper group take-out G SHA...`; `temper group feedback G --text T`; `temper drift ask --path P --why W --change C` | WP16 | WP17 (`--if-protected`) |
 | `temper intent trivial --why TEXT` and `--close` | WP17 | none |
 | `temper review files`; `temper evidence add --read FILE`; `temper evidence resolve --fixed-by <commit>`, a commit and never a note | WP18 | WP24 |
 | `python3 scripts/check_run.py coverage-verdict`; `python3 scripts/gate_rows.py check-rows` | WP19 | WP23 |
@@ -147,7 +147,7 @@ meaning. Tests, the policy, the driver and the scripted persons select by id and
 | `commit.confirm`, `commit.fail` | the commit question; the failed commit gate | WP04 | WP08, WP11, WP15 |
 | `intent.accept`, `intent.fail`, `intent.blocking` | asked only when the run does not leave Intent by rule | WP04 | WP13 |
 | `plan.fail`, `plan.context` | the failed plan gate; the Context check when it is not folded | WP04 | WP08, WP13, WP14, WP20 |
-| `design.pass`, `design.fail` | Design, when the person asked for it | WP04 | WP14 |
+| `design.pass`, `design.fail` | Design, when the person asked for it; `design.pass` is then the approval, with the approval card and the digests of `plan.approve` | WP04 | WP14, WP11, WP12, WP15 |
 | `build.pass`, `build.fail`, `build.foreign`, `fix.pass`, `fix.fail` | Build and Fix | WP04 | WP11, WP23 |
 | `group.pass`, `group.fail`, `group.parked` | the group questions | WP04 | WP10, WP11, WP20, WP25 |
 | `task.covered`, `task.manual`, `task.env` | the task questions | WP04 | WP08, WP21 |
@@ -182,7 +182,8 @@ Question kinds: `gate`, `group`, `resume`, `drift`, `blocking`, `context`, `reas
 | `add-file` | "Add the file to the task", the person's `plan patch` | WP25 | none |
 | `tidy-config`, `keep-config` | the two answers of `config.tidy` | WP29 | none |
 
-An option of the head keeps the id WP04 gave it. An option a later spec adds with a label and no id gets its id by
+An option of the head keeps the id WP04 gave it. WP04 adds one line here for every id it gives to a question or an
+option of the head that these tables do not name. An option a later spec adds with a label and no id gets its id by
 the rule above, in that package, with one line in this table.
 
 ## 6. Gate rows and override names
@@ -213,7 +214,7 @@ Override names beside the stage names: `sensitive-path:<path>` (WP11), `base-sui
 |---|---|---|
 | `run.default`: `to-commit`, `ask` or `never-unattended` | WP11 | a live line of the template from WP29; `autonomy.enabled: false` reads as `ask` |
 | `budget.per-failure` (2), `budget.per-run` (6) | WP10 | defaults in code; in the table of WP29, not in its template |
-| `models.<agent>`, `models.high.<agent>`, `models.task`, `models.task-escalation` | WP27 | old names `build.grouped.task-model` and `build.grouped.escalation-model` stay readable |
+| `models.<agent>`, `models.high.<agent>`, `models.task`, `models.task-escalation` | WP27 | old names `build.grouped.task-model` and `build.grouped.escalation-model` stay readable; after WP27 the default table has one writer, the bench block of WP32 |
 | `upgrade.asked` | WP29 | written by `config tidy --keep` |
 | `check.coverage-threshold` | the head | from WP19 it counts only when the project's config holds it |
 | `autonomy.park-on-touch` | the head | the key keeps its spelling; user text says "sensitive paths" |
@@ -234,13 +235,14 @@ Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT
 | the verdict marker | a stdout line `VERDICT: <scope> <PASS or FAIL or PARKED>`; the scope is `gate:<stage>`, `task:<N>`, `group:<G>` or `integrate` | WP09 | `scripts/go.py`, the driver, `scripts/e2e/loop.ts`, the command pages; WP16 |
 | the gate's last line | `verify quick: PASS` or `FAIL`, and the same for `full` and `final` | WP01 | the session |
 | the expected to fail lines | `XFAIL: <name>`, `UNEXPECTED PASS: <name>`, a total `XFAIL: <n>`; for a scenario `XFAIL <name> [<mode>]` | WP06, WP07 | `scripts/check_done.py` |
+| the world check of row `D105` | `withRemote(w)` in `scripts/e2e/faketools.ts`: a bare `origin` and a fake `gh`. `worldCheck(w)` in `scripts/e2e/persons.ts`: the shared assert, every message starts with `D105`. While a line of `approval-first` is on the expected to fail list it only reports, as `XFAIL world <scenario> [<mode>]` | WP06 | every scenario of `accept.ts`, `slow.ts` and `broken.ts`; `scripts/check_done.py`; WP12 takes `approval-first` off the list, and from then on a failure of it fails the scenario |
 | the budget's answer | `OK: repeat <n> of <m> for <key>` or `BLOCKED: <key> was repeated ...` | WP10 | the callers of section 2 |
-| budget keys | `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance`, `pipeline` (WP10); `plan-revise:<reason>` (WP27) | WP10 | a failure record's `scope` is its budget key (WP23) |
+| budget keys | `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance`, `pipeline` (WP10); `plan-revise:<reason>` (WP27) | WP10 | a failure record's `scope` is its budget key (WP23); a failed `integrate` spends its repeat under `gate:build`, and that is the `scope` of its record |
 | rule log kinds | `advance`, `repair`, `group fix`, `covered`, `stop`, `answer`, `ended` (WP11); `amend` (WP25) | WP11 | the card section `rule_log` |
 | failure classes | `environment`, `command`, `plan`, `code`, `not measured`; the kinds are a closed list in `scripts/failure.py` | WP23 | WP24 (`code`), WP25 (`blocked-task`, `no-validate`) |
 | card kinds and marks | `approval`, `commit`, `stop`; the marks of WP15 step 1 | WP15 | the mod's drawing |
 | prompt lines the CLI writes | `Drift decision:` (WP16), `Repair in place:` and the brief section `Re-check:` (WP24), `Affected tasks:` (WP27), `Packs:` (WP29) | as named | the briefs |
-| selftest helpers | `_unattended <stage>` (WP07; WP11 changes its body), `ev_red` and `ev_green` (WP30) | as named | the case files |
+| selftest helpers | `_unattended <stage>` (WP07; WP11 changes its body), `_base_known` (WP20: the baseline is on record as not run, so no case of the base meets the new first step), `ev_red` and `ev_green` (WP30) | as named | the case files |
 
 ## 9. Scenario names
 
@@ -255,7 +257,7 @@ name is what `bun scripts/e2e/run.ts <mode> <name>` takes, what `scripts/e2e/flo
 | `slow-first-run`, `slow-at55` | `scripts/e2e/slow.ts` | WP06 | WP19 (coverage), WP20 (limits, the base value), WP21, WP22 (run counts), WP23 (`D11`) |
 | `broken-first-run`, `broken-flaky` | `scripts/e2e/broken.ts` | WP06 | WP20, WP21 (`D13`), WP22 (`D14`) |
 | `two-dialogs`, `vague-run` | `scripts/e2e/accept.ts` | WP07 | WP13 |
-| `approval-first` | `scripts/e2e/accept.ts` | WP07 | WP12; WP20 adds the two places a baseline writes |
+| `approval-first` | `scripts/e2e/accept.ts` | WP07 | WP12, which so arms the shared assert of `D105` in every scenario (section 8); WP20 adds the two places a baseline writes |
 | `integrate-fail` | `scripts/e2e/accept.ts` | WP07 | WP09 |
 | `budget-stop` | `scripts/e2e/accept.ts` | WP07 | WP10 |
 | `design-on-ask` | `scripts/e2e/accept.ts` | WP07 | WP14 |
@@ -290,12 +292,12 @@ makes pass. A token is the first word of an assertion name and is never shared b
 | 41 | WP05 | `floor:`, `caps:`, `summary:` |
 | 42 | WP06, reserved; its checks are scenarios and `scripts/e2e/xfail.ts` | |
 | 43 | WP07 | `xfail:`, `done:` |
-| 44, 45, 46 | WP07 | the tokens of `done.md` (`D02b` to `D76`) |
+| 44, 45, 46 | WP07 | the tokens of `done.md` (`D02b` to `D104`) |
 | 47 | WP08, reserved; its cases go into the files that build the state and into 45 | |
 | 48, 49 | spare | |
 | 50, 51, 52, 53, 54, 55 | WP09, WP10, WP11, WP12, WP13, WP14, in this order | `verdict:`, `budget:`, `run:`, `bound:`, `intent rule:` and `context:`, `design:` |
 | 56, 57, 58 | WP15, WP16, WP17 | `card:`; the cases of WP16; `fix:` and `trivial:` |
-| 59 | WP18, reserved; its cases go into 1, 2 and 5 | |
+| 59 | WP18: its new cases, with state builders of their own. Files 1, 2 and 5 are edited only where an assertion of the base changes, each listed in `changed-tests.md` | as its spec names them |
 | 60, 61, 62, 63, 64 | WP19, WP20, WP21, WP22, WP23 | `w19` to `w23` |
 | 65 | WP24 | `repair:` |
 | 66 | WP25, reserved; its cases go into 20, 29 and 46 | `amend:`, `patch:`, `replan:` |
@@ -305,6 +307,10 @@ makes pass. A token is the first word of an assertion name and is never shared b
 | 80 | WP32 | `final:` |
 | 81 to 89 | the checks the reviewers of WP32 add | |
 | 90 to 99 | a repair of CI or of a defect found on the way that needs a file of its own | |
+
+After an edit of case file 5: `bash scripts/selftest/make-helpers-5.sh > scripts/selftest/case-helpers-5.sh`, then
+`TEMPER_CASES_ONLY="6 31" bash scripts/selftest/test-temper.sh`, and run `quick` as a background command: file 5
+alone takes 13 minutes.
 
 ## 11. Decision records
 
@@ -332,24 +338,21 @@ number: the row names of the CLI, of the Python scripts and of `scripts/gate_row
 comes), or 12 if WP27 finds the Check brief no longer launched. Its `final` is 13. It never ends at 10.
 
 Keys of a scenario in `scripts/e2e/floor.json`, for each mode: `dialogs`, `by_stage`, `by_kind`, `launches` by agent
-type with `launch_total` as their sum, `auto`, `back`, `handbacks`, `suite_runs`; and the entry `replay`. The floor
-holds no count of gate rows. A `final` is never raised by the build session; a cap or a floor it cannot meet is a
-recorded blocker in `docs/plans/one-go/PROGRESS.md` with the measured number.
+type with `launch_total` as their sum, `auto`, `back`, `handbacks`, `suite_runs`; and the entry `replay`, which
+also holds `shipped`, `defect_in_commit`, `bad_validate_line_in_plan_at_end` and its launches by type (`done.md`
+row `D58`); and the entry `replay_base`, the numbers of 9.8.5 on the same replay, which the base column of
+`bash scripts/e2e/ab-replay.sh 10e965a` must equal in every `full` (WP05 records them and adds the check; from
+WP08 on a package can move the column). The floor holds no count of gate rows. A `final` is never raised by the
+build session; a cap or a floor it cannot meet is a recorded blocker in `docs/plans/one-go/PROGRESS.md` with the
+measured number.
 
-## 13. Rows of `done.md` that the build order moves
+## 13. Rows of `done.md` and the build order
 
-The last column of `docs/plans/one-go/done.md` names the package after which a row passes. Where the build order of
-`docs/plans/one-go/README.md` section 5 makes that later, the line of the expected to fail list names the package
-below and the row is noted under "Found on the way" in `docs/plans/one-go/PROGRESS.md`. Nobody edits the row.
-
-| Row | Passes after | Why |
-|---|---|---|
-| `D04` (`vague-run`) | WP13 | WP14 is built before WP11 and WP13, and the dialog count needs both |
-| `D12` (`slow-at55`) | WP20 | the base value of coverage and the limits come from the baseline |
-| `D33` | `D33a` and `D33b` after WP11; `group-fail-twice` after WP16; `broken-first-run` after WP21 | the row is whole only then |
-| `D34d` | WP18 | its row keeps the name `review completed`; no row `review covered the diff` is added |
-| `D55` | WP08 for "never an environment fault, never an agent"; WP21 for the three ways on as options of a question | WP08 only makes the preflight safe |
-| `D64b` | WP24 | when no package changed the body of the commit hook it asserts that a hook of 9.8.5 is not asked to install again |
+`docs/plans/one-go/done.md` was audited after the build order was fixed: its last column and its section "Rows by
+package" name the package after which each row passes, for `D04`, `D12`, `D33`, `D34d`, `D55` and `D64b` too. Where
+a spec cites this section for a moved row, read that column; nothing is to be noted under "Found on the way" for
+it. Where a spec's "Done when" names another row or another package, `done.md` wins. No package edits `done.md`,
+but for a check name that WP07 corrects and lists in `changed-tests.md`.
 
 ## 14. Names chosen where the specs differed
 
@@ -365,7 +368,7 @@ below and the row is noted under "Found on the way" in `docs/plans/one-go/PROGRE
 | the registry of ids | `scripts/flow_base.py` | WP29 said `scripts/flow_ids.py`; WP04 put the registry into the base module |
 | the cap on gate rows | `gate_rows` | WP26 said `gate_rows_cli`; WP05 and `done.md` have one key |
 | the cap on hand back kinds | `handback_kinds` in `scripts/caps.json` | WP16 said a line `hand back kinds: 7`; it is counted from the flow's `NEEDS`, so the checker names no file of the mod |
-| the row for a short Review | `review completed` | `done.md` says `review covered the diff`; WP18 adds no row, so the cap on gate rows does not move |
+| the row for a short Review | `review completed` | an earlier draft of `done.md` said `review covered the diff`; WP18 adds no row, so the cap on gate rows does not move |
 | the matcher of sensitive paths | `scripts/sensitive.py` | WP15 and WP27 named it by role, as a module of WP02 or of WP15; WP11 creates it |
 | the one plan digest | `plan_digest` of `scripts/approval.py` | WP25 said `scripts/tasks_md.py`; WP12 moves the function first |
 | the budget store | `.temper/budget.json`, to the end | WP10 and WP23 each said the counts might move into the failure record; they stay, and the record's `scope` is the budget key |

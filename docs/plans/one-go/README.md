@@ -14,9 +14,15 @@ Done means all of these, and nothing less:
 
 1. Every check of `docs/plans/one-go/done.md` passes.
 2. The list of checks still expected to fail is empty.
-3. `bash scripts/verify.sh full` is green, and CI on the pull request is green.
+3. `bash scripts/verify.sh final` ends `verify final: PASS` on a fresh work tree of the pushed head, and CI on the
+   pull request is green.
 4. `docs/plans/one-go/PROGRESS.md` shows every work package as done, with its commit.
 5. The pull request text carries the scorecard and says plainly what was not measured.
+
+A row that needs the owner (`done.md` note 11), a bench line that ran and missed, a cap recorded as one that
+cannot be met (note 5), a check recorded as wrong, whose line stays on the list (`done.md`, "How to read a red
+row", item 6), and a package whose line says `blocked` are not yours to close: each is done when the pull request
+text names it under "Not done". Spend no time bending a mechanism to reach one.
 
 ## 2. Start here
 
@@ -56,7 +62,8 @@ The owner settled these. Do not ask about them and do not reopen them.
    is three times the measured time on the base. The planted bug score is information.
 4. **One route.** Design concerns are questions in front of the approval; the Design stage runs only when asked. The
    spec route of ADR 0017 is not built. The planner stays on Opus behind a config key until a bench round says
-   otherwise. Build task agents default to Sonnet, with a key for Haiku.
+   otherwise. If the owner's first message allows the bench, WP32 runs the model test and may change the planner's
+   default below risk H by the rule of its spec. Build task agents default to Sonnet, with a key for Haiku.
 5. **A small surface.** Defaults move into code. The config template shrinks to about 10 live lines. On the first run
    after the upgrade one question offers to remove config lines that only repeat old defaults. Two listed commands,
    `/temper:temper` and `/temper:fix`; `draft`, `status`, `report`, `init` and `pack` become words of
@@ -76,7 +83,7 @@ The owner settled these. Do not ask about them and do not reopen them.
   pass. A check that cannot pass yet goes on the expected to fail list (`scripts/selftest/expected-fail.txt`), which
   the gate reads: a listed check that fails is reported and not red; a listed check that passes is red until you take
   it off the list. You never skip, disable or weaken a check to get green, and you never loosen a gate of the product.
-- **One gate script.** `bash scripts/verify.sh quick` (under 3 minutes: the validators, the changed selftest case
+- **One gate script.** `bash scripts/verify.sh quick` (about 3 minutes: the validators, the changed selftest case
   files, the floor and the caps, the type check) ends every package. `bash scripts/verify.sh full` (the parallel
   selftest, the end to end suite in every mode, the mod's tests, every validator) ends every phase.
 - **One package at a time in the flow core.** Each package has a spec (section 5). Do what its spec says, in its
@@ -89,6 +96,8 @@ The owner settled these. Do not ask about them and do not reopen them.
   commit: the work, its tests and its documents, with the package id in the scope of the subject. Then the progress
   commit: only `docs/plans/one-go/PROGRESS.md`, with the line of the package set to `done` and the hash of the package
   commit, which a commit cannot name by itself. Then one push for both. WP00 and WP32 say where they differ.
+  Checkpoints between them are allowed and pushed, and from WP08 on the whole selftest runs in the background
+  before the progress commit (`session-mechanics.md` section 6).
 - **End every phase the same way:** `bash scripts/verify.sh full` green, then an independent review of the phase's
   whole diff by agents that did not write it, against the specs and the eleven rules of section 6. Fix what they
   find before the next phase.
@@ -115,10 +124,10 @@ The owner settled these. Do not ask about them and do not reopen them.
 - **Write as the repository does.** Documents are plain prose: no hyphen or dash in prose (write "test first", "read
   only", "run again"), no contraction, no markdown link (a path in a code span), lines of at most 120 characters.
   Code spans and code blocks are free. A document changes in the same commit as the behaviour it describes.
-- **When you are blocked.** Only two things need the owner: a credential for the bench round, and anything a host
-  refuses. Write what you need in one line in PROGRESS.md, say it once in your reply, and go on with every package
-  that does not depend on it. A cap or a floor you cannot meet is such a line too, with the measured number: you
-  never raise a `final`.
+- **When you are blocked.** Only two things need the owner: the word that the bench may run, with the access it
+  runs on (section 10), and anything a host refuses. Write what you need in one line in PROGRESS.md, say it once
+  in your reply, and go on with every package that does not depend on it. A cap or a floor you cannot meet is
+  such a line too, with the measured number: you never raise a `final`.
 
 ## 5. The order
 
@@ -154,7 +163,7 @@ the unattended run would sit on a question no prototype ran.
 | 5 | WP04 | Ids in the protocol | WP01, WP03 | serial | `v-mod-driver.md`, `dev-efficiency.md`, `v-failure-budget.md` |
 | 6 | WP05 | The floor, the caps, faithful fixtures, the run summary | WP01, WP04 | serial | `v-targets-scorecard.md`, `red-feasibility.md` |
 | 7 | WP06 | Two scripted projects: slow, and broken | WP04, WP05 | its five new files may be written beside WP05; merged after WP05 | `red-bad-runs.md`, `v-targets-scorecard.md`, `pr-env.md` |
-| 8 | WP07 | The acceptance scenarios and the rule checks, failing first | WP04, WP05, WP06 | its new files may be written beside WP06, and its three rule case files beside each other; merged after WP06; `full` ends phase 2 | every `v-*.md` report, `red-safety.md` |
+| 8 | WP07 | The acceptance scenarios and the rule checks, failing first | WP04, WP05, WP06 | its new files may be written beside WP06, and its three rule case files beside each other; merged after WP06; `full` ends phase 2 | every `v-*.md` report, `red-safety.md`, the specs of the packages its rows name |
 | 9 | WP08 | The defects of pull request #115 | WP01 to WP05, WP07 | serial; `full` ends phase 3 | `v-pr115.md`, and `pr-115-fixes.md` of this folder |
 | 10 | WP09 | A verdict is a verdict for every carrier | WP02, WP03, WP04, WP07, WP08 | serial | `v-mod-driver.md`, `v-auto-advance.md` |
 | 11 | WP10 | One budget in the CLI | WP02, WP03, WP04, WP07, WP08, WP09 | serial | `v-failure-budget.md` |
@@ -216,7 +225,8 @@ Each has at least one automated check in `done.md`. The phase reviews test every
 2. The approval is of what was shown; a later change to the intent or the plan fails the gates until approved again.
 3. Only an option the person picked starts an unattended run; a step back, a skip or an accepted finding ends it.
 4. An unattended run never plans again, changes a gate's command, the intent or the approved file set, skips a check,
-   accepts a finding, writes the config, pushes, opens a pull request or makes the final commit.
+   accepts a finding, answers a scope drift, writes the config, pushes, opens a pull request or makes the final
+   commit.
 5. Every verdict is computed by the CLI from runs the CLI made or the person confirmed, and names the tree it judged.
 6. A failure's class picks the next step, never a verdict. A check that was not measured is shown as not measured.
 7. Tests come first, and the tests that gate the code are written and locked by an agent that did not write it.
@@ -244,8 +254,10 @@ Each has at least one automated check in `done.md`. The phase reviews test every
 One pull request to `main`, opened as a draft when WP00 is pushed and kept current. Its text has: what a user sees
 change; the scorecard table (dialogs, launches, repeats and suite runs of the scripted runs, before and after); the
 list of tests changed on purpose, with the reason for each; what was not measured (cost and time, unless the bench
-round ran); what a user of 9.8.5 must know; the list of decisions of section 3; what section 9 says is not built;
-and the items of section 10. Pull requests #115 and #116 are inside it: say so, and leave closing them to the owner.
+round ran; when it ran, the scorecard of all its arms and which planner the release ships with, and why); what a
+user of 9.8.5 must know; the list of decisions of section 3; what section 9 says is not built; and the items of
+section 10. Pull request #116 is the plan and this kit (branch `ccr-88156f39-u643ta`). The text says that it
+supersedes #115 and #116, whose commits are inside it; closing them is left to the owner.
 
 ## 9. Not built in this pass
 
@@ -258,11 +270,14 @@ write the wish under "Found on the way" in PROGRESS.md.
   changes a guard table.
 - **One tree per chain:** a chain of tasks built in the group's one worktree ("Later"). Its gain is unmeasured.
 - **The planner on a cheaper model** (the plan's items 1c and 5e). WP27 builds the table and the keys
-  (`models.plan`, `models.high.plan`), and both columns keep Opus. The change waits for the bench round.
+  (`models.plan`, `models.high.plan`), and both columns keep Opus. The change is decided by the model test of
+  WP32 when the owner's first message allows the bench; else it waits.
 - The rest of the plan's "Later" list, and the spec route of ADR 0017.
 
 One item of the plan is built only if the host allows it: the classic hook that holds the write rule before the
-approval when the mod is not loaded (item 3e). It is one step of WP12, and that step says when to drop it.
+approval when the mod is not loaded (item 3e). It is one step of WP12, and that step says when to drop it. It
+holds only for the stages Intent, Plan and Design of a feature run and only for the tools that write a file: a fix
+run and a shell command are outside it, and `docs/trust.md` says so.
 
 ## 10. Items for the owner
 
@@ -272,9 +287,11 @@ The build session does none of these. WP31 and WP32 write them into PROGRESS.md 
   are recorded again.
 - **The price figures.** The README keeps the measured figures of 9.8 and says so. Figures of 10.0.0 come from the
   scorecard, and only when the bench round ran.
-- **The bench credential.** A key for the model API in the session's environment and the word that about 80 dollars
-  and 6 hours may be spent (`docs/plans/one-go/session-mechanics.md` section 9). Without it part H of `done.md` stays
-  open and the pull request text says so. The one real Maven or Gradle project of row `D97` is the owner's to order.
+- **The bench.** The owner's first message is where the bench is allowed: one sentence that says it may run and
+  on what access (a key in the session's environment, or the session's own model access). That sentence is also
+  the word that about 110 to 125 dollars and 9 to 11 hours may be spent on the two rounds and the model test
+  (`docs/plans/one-go/session-mechanics.md` section 9). Without it part H of `done.md` stays open and the pull
+  request text says so. The one real Maven or Gradle project of row `D97` is the owner's to order.
 - **Closing pull requests #115 and #116.** Both are inside this one.
 - **Marking the pull request ready,** merging it and pushing the tag.
 - A branch rule that names the old CI checks (WP01 renames two), and any cap or floor the session recorded as one it

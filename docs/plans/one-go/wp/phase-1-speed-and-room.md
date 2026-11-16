@@ -3,13 +3,16 @@
 This file holds WP01 (CI, the gate script, fixture layout, changelog), WP02 (code out of `scripts/temper`) and WP03
 (the split of `scripts/flow.py`). None of the three changes what a run does, asks or prints.
 
+The brief is `docs/plans/one-go/README.md`; the shared names below are those of `docs/plans/one-go/contracts.md`.
+Each package ends as section 4 of the brief says: the package commit, then the small progress commit, in one push.
+
 ## WP01 CI split and cancel, one gate script, fixtures one view per line, older changelog entries moved
 
 **Goal:** A push gets its CI answer in about 10 minutes (a median under 12, no run over 20) and a superseded run is
-cancelled. One script gives the same answer locally: `scripts/verify.sh quick` in under 3 minutes after a package,
+cancelled. One script gives the same answer locally: `scripts/verify.sh quick` in about 3 minutes after a package,
 `scripts/verify.sh full` at the end of a phase. The fixture file and the changelog get room with no change of content.
 
-**Depends on:** none.
+**Depends on:** WP00.
 
 **Lane:** flow core (it rewrites the fixture files and the selftest runner that every later package uses).
 
@@ -23,7 +26,8 @@ cancelled. One script gives the same answer locally: `scripts/verify.sh quick` i
 - `scripts/selftest/make-view-fixtures.sh`, `scripts/selftest/view-fixtures.ts`, `scripts/selftest/view-fixtures-2.ts`
 - `scripts/e2e/run.ts`, `scripts/e2e/world.ts`
 - `CHANGELOG.md`, `docs/history/changelog-before-9.7.md` (new), `docs/history/README.md`
-- `CONTRIBUTING.md`, `.claude/CLAUDE.md`, `docs/mods-testing.md`, `docs/plans/one-go/PROGRESS.md`
+- `CONTRIBUTING.md`, `.claude/CLAUDE.md`, `docs/mods-testing.md`
+- `docs/plans/one-go/PROGRESS.md` (WP00 created it; this package only adds its numbers to it)
 
 **Tests first:** all in the new case file `scripts/selftest/temper-cases-32.sh` (bash cases with the helpers of
 `case-helpers.sh`; it reads files of the repository and runs no CLI call). Write the eight cases, see seven fail and
@@ -43,12 +47,14 @@ case 5 pass, then make the change.
    imported, a function or a class, or assigned in a function under a `global` statement) or be a builtin, and a
    star import fails the file. It passes today on all 49 files (prototyped); it is the guard WP02 and WP03 lean on.
 6. `tooling: the changelog starts at 9.7.0 and the older entries are in docs/history`. `CHANGELOG.md` has no
-   heading `## v9.6` and is below 131,072 bytes; `docs/history/changelog-before-9.7.md` has the heading `## v9.6.8`
-   and `## v5.0.1`. Fails today.
+   heading `## v9.6` and is below 196,608 bytes; `docs/history/changelog-before-9.7.md` has the heading `## v9.6.8`
+   and `## v5.0.1`. Fails today. The line leaves room for the 10.0.0 entry, to which every package adds (the
+   9.8.0 entry alone is 37,629 bytes).
 7. `tooling: verify.sh names quick and full and refuses another word`. `bash scripts/verify.sh bogus` exits 2 and
    its text names both words. Fails today: no such script.
 8. `tooling: the workflow cancels a superseded pull request run and ends in one gate job`. A grep of
-   `.github/workflows/quality.yml` finds `concurrency:`, `cancel-in-progress:` and a job with `if: always()`.
+   `.github/workflows/quality.yml` finds `concurrency:`, `cancel-in-progress:` and a job with `if: always()`,
+   and the `changes` job names `github.base_ref`.
 
 The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it is and is the proof of step 4 below.
 
@@ -60,20 +66,24 @@ The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it
    says 2 runs with 3 and 8 with 9. `--fast` becomes every number from 10 up. Add three words: `--list` (print the
    groups the chosen tier would run, one per line, and exit 0), `--shard K/N` (of the groups in order, keep those
    whose index modulo N is K minus 1) and `--touched [REV]` (only the case files that themselves differ from REV,
-   default `HEAD`, or are untracked). `--changed` keeps its map (`:42-46`) and loses nothing else. Correct the stale
-   comment at `:33`, which still says 5 runs with 6.
+   default `HEAD`, or are untracked; a changed `temper-cases-5.sh` or `case-helpers-5.sh` also selects 6 and 31).
+   `--changed` keeps its map (`:42-46`) and loses nothing else. Correct the stale comment at `:33`, which still
+   says 5 runs with 6.
 2. **The serial runner sources what it finds** (`scripts/selftest/test-temper.sh:235-265`). Replace the 31 lines by
    one loop over the same discovery. A file that goes on from the one before (3, 6 and 9; the comment at `:227`)
    is sourced without `_fresh_fixture`; keep those three numbers in one variable beside the loop. The three safety
    assertions (`:268-271`) and the total line (`:275`) stay. Add the new case file 32 by creating it; no list changes.
 3. **Case file 6 stops running case file 5** (`docs/plans/one-go/evidence/dev-efficiency.md` section 2.5). The
    generator copies a helper up to the first line that is exactly `}` (`scripts/selftest/make-helpers-5.sh:17-26`).
-   Four helpers of `scripts/selftest/temper-cases-5.sh` do not end so (`gg_ready_g1` at `:793`, `gi_int` at `:896`,
-   `gr_json` at `:1036`, `h5_hook` at `:1263`), so 214 assertion lines of case file 5 are in the generated file and
-   run again when case file 6 runs alone (`scripts/selftest/temper-cases-6.sh:11`). Close each of the four helpers
-   with a line that is exactly `}` (for `h5_hook` move its comment to the line above), then regenerate with
-   `bash scripts/selftest/make-helpers-5.sh > scripts/selftest/case-helpers-5.sh`. The drift case at
-   `scripts/selftest/temper-cases-31.sh:34-35` stays. I chose the edit of four helpers over a smarter generator:
+   Six helpers of `scripts/selftest/temper-cases-5.sh` do not end so (`gg_ready_g1` at `:793`, `gi_int` at `:896`,
+   `gr_json` at `:1036`, `us_json` at `:1107`, `h5_hook` at `:1263`, `slow_hook` at `:1330`; `us_json` and
+   `slow_hook` show only once the ones before them are closed), so 214 assertion lines of case file 5 are in the
+   generated file and run again when case file 6 runs alone (`scripts/selftest/temper-cases-6.sh:11`). Close each
+   of the six with a line that is exactly `}` (for `h5_hook` and `slow_hook` move the comment to the line above),
+   then regenerate with `bash scripts/selftest/make-helpers-5.sh > scripts/selftest/case-helpers-5.sh`. With all
+   six closed the generated file has 291 lines and no assertion, and case file 6 alone passes with 114 assertions
+   (rehearsed at `10e965a`; with four closed, test 4 still counts 102). The drift case at
+   `scripts/selftest/temper-cases-31.sh:34-35` stays. I chose the edit of six helpers over a smarter generator:
    it makes the generator's stated rule true and changes no assertion.
 4. **One view per line** (`scripts/selftest/make-view-fixtures.sh:329`). Replace the one print of
    `json.dumps(views, indent=1, sort_keys=True)` by: the export line ending in `{`, then one line per view in sorted
@@ -86,24 +96,30 @@ The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it
    `npx -p typescript@5.6 tsc --noEmit --strict --target es2023 view-fixtures.ts view-fixtures-2.ts`.
    Keep the two files; together they are 245,044 bytes, too close to the limit to merge.
 5. **End to end: shards, a time limit, a trace dump** (`scripts/e2e/run.ts`, `scripts/e2e/world.ts`).
-   In `run.ts` (`:9-11`) accept `--shard K/N` before the scenario names and keep the scenarios of `SCENARIOS` (`:7`)
-   whose index modulo N is K minus 1; every mode of a scenario stays in one process, because the check that the
-   flow is equal with the mod and without it compares two traces of one process (`:28-31`). When the variable
+   In `run.ts` (`:9-11`) accept flags anywhere after the mode (here `--shard K/N`; WP05 adds `--floor FILE` and
+   `--write-floor FILE`) and keep the scenarios of `SCENARIOS` (`:7`) whose index modulo N is K minus 1; every
+   mode of a scenario stays in one process, because the check that the flow is equal with the mod and without it
+   compares two traces of one process (`:28-31`). When the variable
    `TEMPER_E2E_TRACE_DIR` is set, write each finished trace, calls included, to `<dir>/<scenario>.<mode>.txt` with
    the world's folder replaced by `/project` (tried on `full-run` and `small-change` in plain mode: two runs are
-   byte equal). In `world.ts` record the start time in the constructor (`:33-38`) and make `next()` (`:122-126`)
-   throw `the scenario ran over its time limit of N s` once `TEMPER_E2E_LIMIT_S` seconds (default 300) have passed.
+   byte equal). Besides the world's folder, replace every commit id (7 to 40 hex digits after `git rev-parse`
+   output or in a call) and every time stamp by fixed text, as `snap` does: a trace line holds the first 80
+   characters of every call, and the dump was tried on two scenarios in one mode only. In `world.ts` record the
+   start time in the constructor (`:33-38`) and make `next()` (`:122-126`) throw
+   `the scenario ran over its time limit of N s` once `TEMPER_E2E_LIMIT_S` seconds (default 300) have passed.
    Today only a step count bounds a scenario (`scripts/e2e/loop.ts:163`, `:212`), and a looping scenario took 21
    minutes per mode before it failed (`docs/plans/one-go/evidence/pr-tests-ci.md` section 1.3).
 6. **`scripts/verify.sh`** (new; find the plugin folder as `scripts/quality-check.sh:11-13` does). It runs every
    step, prints one line per step with its seconds and PASS or FAIL, ends with `verify quick: PASS` or `FAIL` (or
-   `full`), and exits 0 only when every step passed. Another word exits 2.
+   `full`), and exits 0 only when every step passed. Another word exits 2. The third word, `final`, is left to
+   WP07, which adds it with its closing checks.
 
    | Step | `quick [REV]` | `full` |
    |---|---|---|
    | `quality-check.sh`, `validate-directory.sh`, `validate-docs.sh`, `validate-readme.sh`, `validate-plugin.sh`, `validate-panels.py`, `check-known-limits.sh` | yes | yes |
    | `check-names.py` over the tracked Python scripts | yes | yes |
    | selftest | `run-selftest.sh --touched REV` | `run-selftest.sh` (every file, in parallel) |
+   | both fixture compares (the output of `bash scripts/selftest/make-view-fixtures.sh` piped into `cmp - scripts/selftest/view-fixtures.ts`, and the same with `extra` and `view-fixtures-2.ts`) | only when a file under `scripts` outside `scripts/selftest` changed: the fixtures the mod's tests read are what the CLI writes now (about 40 seconds, 29 measured for the first) | inside case file 8 |
    | end to end | `bun scripts/e2e/run.ts both full-run`, only when a file under `scripts` outside `scripts/selftest` changed | `run.ts all` as shards side by side, one per CPU up to 4 |
    | the mod | `claude plugin test .` and `check-mod-calls.sh`, only when a `.ts` or `.tsx` file changed | `claude plugin test .`, `claude plugin validate --strict .`, `test-check-mod-calls.sh`, `check-mod-calls.sh` |
    | type check | see below | see below |
@@ -113,7 +129,10 @@ The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it
    `npx -p typescript@5.6 tsc -p tsconfig.mod.json` when `.claude-plugin/types/claude-code/index.d.ts` exists (make
    it first the way `.github/workflows/quality.yml:112-117` does). When that file cannot be made, run the same
    compiler on copies of the two fixture files alone and print one line that says the full type check is left to
-   CI. Later packages add their own steps here (WP05 adds the floor and the caps).
+   CI. The dry run could make the file: `docs/plans/one-go/session-mechanics.md` section 1 says how (Claude Code
+   2.1.287 through `npx`), so expect the whole type check to run locally. Later packages add their own steps
+   here: WP05 the floor, the caps and the replay with its base column, WP06 the check of the expected to fail
+   rule, WP07 `scripts/check_done.py` and the word `final`, WP32 the compare of the replay against 9.8.5.
 7. **The workflow** (`.github/workflows/quality.yml`). Keep the eight short jobs and their names. Change this:
 
    ```yaml
@@ -130,19 +149,28 @@ The fixtures compare of `scripts/selftest/temper-cases-8.sh:455-458` stays as it
      gate:         # needs every job; if: always(); fails when a needed result is failure or cancelled
    ```
 
+   The `changes` job: the changed files are those of the whole pull request
+   (`git diff --name-only origin/${{ github.base_ref }}...HEAD`, after a fetch of the base branch) and, on `main`,
+   those of the push (`${{ github.event.before }}..${{ github.sha }}`). Never the last commit alone: every push
+   of this build ends with a commit that changes only `docs/plans/one-go/PROGRESS.md`, and a job that read that
+   commit would skip both long suites on every push.
+
    The serial unit job (`:18-24`) and the one end to end job with its 60 minute limit (`:81-96`) go. Pin the
    manifest job to the version the mod job uses: `:77` installs with no version, `:107` installs `2.1.287`. Runs on
    `main` are never cancelled, so each commit there keeps a result. With the groups in number order, shard 4 of 6
    holds case file 5 (with 12, 18, 24 and 30) and is the longest. The serial job took 24.7 to 33.1 minutes and the
    end to end job 30.5 (`docs/plans/one-go/evidence/dev-efficiency.md` section 1.2); a sixth and a quarter of that,
-   plus the long pole, is where the 10 minutes come from. It is an estimate until the first run.
+   plus the long pole, is where the 10 minutes come from. It is an estimate until the first run. When a shard
+   passes 10 minutes of wall time in CI, raise the matrix count of that suite in the next package commit (the
+   flag takes any N) and write it into PROGRESS.md; the e2e suite more than doubles during the build.
 8. **The changelog.** Move `CHANGELOG.md` from line 1159 (`## v9.6.8`, the first entry before 9.7.0) to the end
    into `docs/history/changelog-before-9.7.md`, under front matter like `docs/history/tokenomics.md` has, and add
    one closing line to `CHANGELOG.md` that names the new file. 109,769 bytes stay (it was 246,956, with 15,188
    free) and 137,187 move. Add one entry to `docs/history/README.md` in that file's own style.
-9. **Write the base numbers into `docs/plans/one-go/PROGRESS.md`**: the serial total of the selftest, the parallel
+9. **Add the base numbers to `docs/plans/one-go/PROGRESS.md`**: the serial total of the selftest, the parallel
    total before and after step 3, the seconds of `verify.sh quick` and `full`, and the bytes of the four files of
-   the Traps table. Later packages compare against them.
+   the Traps table. Later packages compare against them. WP00 created the file with its baseline table; this
+   package adds lines to it, replaces none and does not create it.
 
 **Removed:** the four hand lists of case files (`run-selftest.sh:34`, `:37`, `:49`; `test-temper.sh:235-265`); the
 serial CI unit job; the single 60 minute end to end job; 214 assertion lines from `case-helpers-5.sh`; the entries
@@ -155,7 +183,10 @@ before 9.7.0 from `CHANGELOG.md` (moved, not deleted).
 **Done when:**
 
 - `bash scripts/verify.sh full` ends with `verify full: PASS`, and `bash scripts/verify.sh quick` with nothing
-  changed ends with `verify quick: PASS` in under 180 seconds.
+  changed ends with `verify quick: PASS` in under 180 seconds. Run this closing `full` with
+  `TEMPER_E2E_TRACE_DIR` set and keep the folder: it is the base of WP02.
+- Two runs of `TEMPER_E2E_TRACE_DIR=<dir> bun scripts/e2e/run.ts all` at this commit give folders that `diff -r`
+  finds equal (the closing `full` is one of the two).
 - `bash scripts/selftest/run-selftest.sh` ends with `FAIL: 0`. Its total falls by the assertions that ran twice:
   by the arithmetic of `docs/plans/one-go/evidence/pr-tests-ci.md` section 3 it is 2,879 before step 3 and 2,659
   after it, plus the eight new cases and the three safety assertions of the new file's own process (the serial
@@ -164,10 +195,15 @@ before 9.7.0 from `CHANGELOG.md` (moved, not deleted).
   a second regeneration.
 - `TEMPER_E2E_LIMIT_S=1 bun scripts/e2e/run.ts plain full-run` fails within seconds with the time limit text, and
   `bun scripts/e2e/run.ts all --shard 1/4` passes.
-- The type check: the compile of the two fixture files alone exits 0 locally, and the step `Type check the mod` of
-  the Mod job is green in CI on this commit.
+- The type check: with the types made as `docs/plans/one-go/session-mechanics.md` section 1 says, the whole type
+  check of step 6 exits 0 locally; the compile of the two fixture files alone exits 0 too (it is the fallback
+  where the types cannot be made); and the step `Type check the mod` of the Mod job is green in CI on this commit.
 - On the draft pull request the run of this commit is green, its wall time is under 20 minutes, and a second push
   made while it runs cancels it.
+- What the two points above say of CI (the step `Type check the mod`, and the run on the draft pull request)
+  can only be read off CI. These are read at the start of WP02, when the run has ended, and written into
+  PROGRESS.md under "Found on the way" with the wall time. They do not hold back the `done` mark of this
+  package; a red job is repaired by section 11 of the mechanics before the package commit of WP02.
 
 **Traps:**
 
@@ -191,12 +227,17 @@ before 9.7.0 from `CHANGELOG.md` (moved, not deleted).
 - A workflow level `paths-ignore` would leave a required check waiting for ever. Use the `changes` job and a job
   level `if`; the owner then requires the one `gate` check. The matrix changes the names of the two long checks:
   say so in PROGRESS.md, because a branch rule on the old names must be changed by the owner.
-- Case file 5 alone took over 520 seconds on a shared 4 CPU machine and is the long pole of every shard plan. Do
-  not split it here. If its shard passes 12 minutes in CI, write that into PROGRESS.md and go on.
+- Case file 5 alone takes 783 seconds on the idle 4 CPU machine (445 assertions) and is the long pole of every
+  shard plan. Do not split it here. If its shard passes 12 minutes in CI, write that into PROGRESS.md and go on.
+  Its 13 minutes alone are the floor of every shard plan and of the local `full`; `D88` (a median under 12) is
+  the owner's to judge against that.
 - `verify.sh quick` holds its 3 minutes only while none of the case files 1, 2, 3, 5, 6, 8 and 9 changed. Put new
-  cases into new files from 32 up, never into those.
+  cases into new files from 32 up, never into those. `docs/plans/one-go/contracts.md` section 10 reserves the
+  number of every later package's new case file.
 - The mod type check needs `.claude-plugin/types`, which only a load of the plugin writes. In the container of
-  2026-11-16 (Claude Code 2.1.325, no sign in) that load wrote nothing, so only CI ran the whole type check.
+  2026-11-16 (Claude Code 2.1.325, no sign in) that load wrote nothing, so only CI ran the whole type check. A
+  later dry run found the way: the load through `npx` with Claude Code 2.1.287, the version CI pins, wrote the
+  folder (`docs/plans/one-go/session-mechanics.md` section 1). Use that, once a work tree.
 - The moved changelog text holds three markdown links, all `https`; `validate-docs.sh` rule 2 checks links under
   `docs`, so run it after the move. Lines 1 to 1158 of `CHANGELOG.md` keep their numbers, and the plan and the
   evidence files cite only those.
@@ -244,9 +285,11 @@ standard output, the files written and the exit code are byte equal to the head 
    1.4 MB, about 6.5 minutes on a shared 4 CPU machine; the generator's own output did not change; two runs differed
    only in the one commit id that the `its last commit is` replacement covers.
 2. `scripts/selftest/temper-cases-32.sh`, case `room: scripts/temper leaves 40,000 bytes free`. `wc -c` of the
-   file is at most 222,144. Fails until the last step.
-3. Same file, case `room: the CLI holds one Python heredoc`. `grep -c "<<'PY'" scripts/temper` prints 1 (the
-   metrics block that WP30 deletes). Fails today (19).
+   file is at most 222,144. Fails until the last step. This case lives until WP05. WP05 removes it in the commit
+   that puts `cli_bytes` into `scripts/caps.json` with `final` 222144 and `now` the measure. From then on a
+   package may use the room, and `python3 scripts/check_caps.py --final` holds the line at the end.
+3. Same file, case `room: the CLI holds at most one Python heredoc`. `grep -c "<<'PY'" scripts/temper` prints at
+   most 1 (the metrics block, which WP30 deletes: the count is then 0). Fails today (19).
 4. Same file, case `room: the new modules run isolated`. Every line of `scripts/temper` that starts one of the seven
    new modules starts it as `python3 -I`, and none of the seven holds `sys.path` or a star import.
 5. Case 5 of WP01 (`no script reads a name it does not define`) now reads the seven new modules too, with no edit.
@@ -320,17 +363,23 @@ standard output, the files written and the exit code are byte equal to the head 
    module text as Python saw it. A shell value that was spliced into the text becomes one more argument. Example:
    the patterns at `scripts/temper:4171` and `:4174` read `\\S+` and `\\.` in the bash file and must read `\S+` and
    `\.` in the module.
-6. **Wave 3, only until the target is met:** the 34 smaller `-c` blocks, largest first (8,082 bytes, about 4,100
-   net). The estimate after waves 1 and 2 and step 4 is about 37,300 net against the 38,360 needed, so expect to take
-   the five or six largest. Put the hot helpers (`_json_read` `:278-285`, `_json_append` `:498-512`, `_jget`
+6. **Wave 3, all of it, and step 7 after it, whatever the target says:** the 34 smaller `-c` blocks, largest
+   first (8,082 bytes, about 4,100 net). The later packages add about 10 KB of dispatch lines, flags and rows to
+   the bash file. The estimate after waves 1 and 2 and step 4 is about 37,300 net against the 38,360 needed; with
+   all of wave 3 and the reserve of step 7 the most this package can free is about 45 KB. Write the bytes freed
+   into PROGRESS.md. Put the hot helpers (`_json_read` `:278-285`, `_json_append` `:498-512`, `_jget`
    `:2876-2880`, `_req` `:2006-2009`, the `_ev_last_*` readers `:1906-1939`) into `json_ops.py` and `ledger_ops.py`
    and keep `json_ops.py` small: every call compiles its whole module.
-7. **Reserve, with more risk:** the 16 Python bodies that callers pass to `_groups_mutate` as text (6,394 bytes,
-   first at `scripts/temper:2420-2434`, largest at `:2761-2779`) can become named functions of `groups_ops.py`. Use
-   it only if wave 3 does not reach the target, and say so in PROGRESS.md.
+7. **The reserve, with more risk, taken too (step 6):** the 16 Python bodies that callers pass to
+   `_groups_mutate` as text (6,394 bytes, first at `scripts/temper:2420-2434`, largest at `:2761-2779`) become
+   named functions of `groups_ops.py`. Take it after wave 3, as a commit of its own with the gate of step 8, and
+   say in PROGRESS.md what it freed.
 8. **Order of work and the gate between waves.** After each wave: `bash scripts/verify.sh quick`, then the fast
-   tier (`run-selftest.sh --fast`), then one commit. After the last wave: the capture again and
-   `diff -r <before> <after>`, then `bash scripts/verify.sh full`.
+   tier (`run-selftest.sh --fast`), then one commit with `(wp02)` in its subject, pushed when it is made
+   (`docs/plans/one-go/session-mechanics.md` section 6). After the last wave and the reserve of step 7: the
+   capture again and `diff -r <before> <after>`, then `bash scripts/verify.sh full`. The last of these commits is the
+   package commit; after it comes the small progress commit, and one push for both
+   (`docs/plans/one-go/README.md` section 4).
 9. **The throwaway plugins of the suite.** Eight places copy five named files into a scratch plugin and run `init`,
    `state init`, the installer or the commit hook there: `scripts/selftest/test-temper.sh:216`,
    `temper-cases-2.sh:1094`, `temper-cases-3.sh:94`, `:394`, `:565`, `:943`, `temper-cases-4.sh:92`, `:272`. Those
@@ -341,8 +390,8 @@ standard output, the files written and the exit code are byte equal to the head 
     and `:273`, `temper-cases-9.sh:571`, `temper-cases-13.sh:28`. After an edit of `temper-cases-5.sh` regenerate
     `case-helpers-5.sh` (the drift case of `temper-cases-31.sh:34-35`).
 
-**Removed:** 38 or more Python blocks from `scripts/temper`; the help heredoc; `_setup_calls` and
-`_excludes_current`; 30 long rule lines. Nothing a run can reach is removed.
+**Removed:** the 72 Python blocks of waves 1 to 3 from `scripts/temper`, and the 16 bodies of step 7 as text;
+the help heredoc; `_setup_calls` and `_excludes_current`; 30 long rule lines. Nothing a run can reach is removed.
 
 **Documents in the same change.** `.claude/CLAUDE.md:53` and `:55-56`: the rule becomes "gate logic lives in the CLI
 (the script and its Python modules), never in a prompt", and a change of gate mechanics is an edit of the CLI or of
@@ -358,8 +407,8 @@ modules. One line in PROGRESS.md with the bytes before and after.
   lines of a Python traceback that name a file and a line (replace those in the capture by fixed text).
 - `git diff --exit-code scripts/selftest/view-fixtures.ts scripts/selftest/view-fixtures-2.ts` after a regeneration
   prints nothing.
-- `TEMPER_E2E_TRACE_DIR=<dir> bash scripts/verify.sh full`, run at the base of this package and again at its end,
-  gives two trace folders that `diff -r` finds equal.
+- `TEMPER_E2E_TRACE_DIR=<dir> bash scripts/verify.sh full`: the folder the closing `full` of WP01 wrote, and one
+  more at the end, are two trace folders that `diff -r` finds equal.
 - `bash scripts/validate-directory.sh` and `python3 -I scripts/selftest/check-names.py` over the scripts pass.
 
 **Traps:**
@@ -505,7 +554,8 @@ flow file.
 **Traps:**
 
 - **Not in phase 1:** no rename of an option or a label, no ids (WP04), no change of the order of the checks in
-  `core_next` (`flow.py:2360-2482`; its order is the precedence), no question registry, no change of `VERSION`
+  `core_next` (`flow.py:2360-2482`; its order is the precedence), no question registry (left to WP04, which puts
+  `QUESTIONS` and `OPTION_IDS` into `scripts/flow_base.py`; `NEEDS` is left to WP16), no change of `VERSION`
   (`:37`), no cleaning of comments, no merge with the bash twins of a rule. A defect seen on the way goes into
   PROGRESS.md for WP08.
 - Python reports a missing name only when the line runs. `py_compile` and a green fast tier do not prove the
@@ -521,5 +571,9 @@ flow file.
   today, because its sibling imports are missing there too; leave those copies as they are.
 - The mod does not read these files; no table of the mod and no reviewed call changes. If a fixture differs after
   the split, the split changed behaviour: find the cause, never regenerate to make the case pass.
+- The line of test 1 stands for the whole build, and `flow_ask.py` starts at 54 KB of moved code under a line of
+  65,536 bytes. When a later package brings a flow module to its line, that package first splits the module in
+  a commit of its own (a move with no change, proven by the fixture compare and the name check), adds the new
+  file to `flow_files` of `scripts/caps.json` and one line to `contracts.md` section 1. The line is never raised.
 
 **Size:** M.

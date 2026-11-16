@@ -6,6 +6,18 @@ and WP28, WP29, WP30 and WP31 (phase 8, the surface: commands, config, removals,
 Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scripts/temper` and split
 `scripts/flow.py`, so find a cited function by its name first and by its line second.
 
+The brief is `docs/plans/one-go/README.md`, and every shared name below is the one `docs/plans/one-go/contracts.md`
+fixes: the new case files are `scripts/selftest/temper-cases-70.sh` to `temper-cases-75.sh`, one a package in the
+order of this file (the runner of WP01 finds a case file by its name, so no `source` line is added), and the
+decision records have the numbers of its section 11. The packages are built in the order of this file, after WP25.
+Each ends as the brief's section 4 says: `bash scripts/verify.sh quick` green, then the package commit, then the
+small progress commit that sets its line of `docs/plans/one-go/PROGRESS.md`, in one push.
+
+A check leaves `scripts/selftest/expected-fail.txt` in the package commit that makes it pass. A check that passed
+earlier is simply not on the list (`docs/plans/one-go/done.md`, note 7). If one still fails for a reason that
+belongs to a later package, do not weaken it: name that package on its line of the list and in
+`docs/plans/one-go/PROGRESS.md`.
+
 ## WP26 Plan writes what something reads; `tasks.md` only at the simple tier
 
 - **Goal:** The planner writes only what a script, a gate row or a later agent reads. At the simple tier that is
@@ -19,16 +31,16 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
   `templates/intent.md`, `templates/example-intent.md`, `templates/plan.md`, `templates/tasks.md`, `scripts/temper`
   (`gate_plan`, `_cross_repo_recorded`, the `spec deviations` help line) or the module WP02 moved them to,
   `scripts/plan_ops.py`, `scripts/scenario_ops.py`, `scripts/spec_ops.py`, `scripts/intent_draft_rows.py`,
-  `scripts/panel.py`, the flow modules that hold `plan_files`, `context_choices` and `record_steps`,
+  `scripts/panel.py`, the flow modules that hold `plan_files` and `record_steps` (`context_choices` went with WP13),
   `scripts/card.py` (WP15: where it lists files), `scripts/selftest/case-helpers.sh`,
   `scripts/selftest/make-view-fixtures.sh`, both view fixture files, `scripts/selftest/temper-cases-1.sh`, `-2.sh`,
-  `-11.sh`, `-14.sh`, `-16.sh`, a new case file, `scripts/e2e/project.ts`, `scripts/e2e/pyjokes.ts`,
+  `-11.sh`, `-14.sh`, `-16.sh`, `temper-cases-70.sh` (new), `scripts/e2e/project.ts`, `scripts/e2e/pyjokes.ts`,
   `scripts/e2e/replay.ts`, `scripts/e2e/scenarios.ts`, `scripts/caps.json`, `scripts/e2e/floor.json`,
   `docs/flow.md`, `docs/methodology.md`, `docs/ai-native-sdlc.md`, `docs/plans/one-go/changed-tests.md`,
-  `CHANGELOG.md`.
-- **Tests first:** a new selftest case file (take the next free number and add its `source` line as
-  `scripts/selftest/test-temper.sh:235-246` does). Build each state with `fresh`, `gpass`, `nx` and `vw` of
-  `scripts/selftest/case-helpers.sh`.
+  `scripts/selftest/expected-fail.txt`, `CHANGELOG.md`.
+- **Tests first:** `scripts/selftest/temper-cases-70.sh` (new; the hand list of
+  `scripts/selftest/test-temper.sh:235-246` went with WP01, so no `source` line is added). Build each state with
+  `fresh`, `gpass`, `nx` and `vw` of `scripts/selftest/case-helpers.sh`.
   1. `w26 simple tier is tasks.md only`: a spec folder with an accepted `intent.md` (scenarios in the new shape of
      mechanism step 2), a `tasks.md` of one group and two production files, no `plan.md`, tier `simple`.
      `temper gate plan` is PASS, no row is named `cross-repo search recorded`, `blast radius documented` or
@@ -55,15 +67,19 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      `Traced to`.
   10. `w26 no page asks for a cut part`: `git grep` over `agents`, `reference` and `templates` finds none of
       `Cross-Repo Search`, `Files to Create`, `Files to Modify`, `Patterns to Follow`, `Risk Level:`,
-      `Scenario Coverage Checklist`, `Target Users`, `Business Outcome`, `Traced to`, `Given/When/Then`, and
-      `templates/plan.md` holds no `mermaid`.
+      `Scenario Coverage Checklist`, `Target Users`, `Business Outcome`, `Traced to`, `Given/When/Then`,
+      `Approach Decisions`, `## Diagram`, and `templates/plan.md` holds no `mermaid`.
   11. `scripts/e2e/project.ts`: write `PLAN_MD` and `TASKS_MD` (`:4-5`) in the new shape. The scenario
-      `default-run` must end at the commit in the three modes with the same dialogs and launches as before; only
-      the printed row count of the plan gate in `scripts/e2e/floor.json` moves, in this commit.
+      `default-run` must end at the commit in the three modes with the same dialogs and launches as before. No
+      count of `scripts/e2e/floor.json` moves: the floor holds no count of gate rows
+      (`docs/plans/one-go/contracts.md` section 12), and the rows that go are counted by `gate_rows` of
+      `scripts/caps.json`.
   12. Rewrite in the same change the tests that state the old behaviour on purpose, and list each in
       `docs/plans/one-go/changed-tests.md`: `temper-cases-2.sh` (the cross repo row), `-14.sh` (the blast radius
       row), `-11.sh` (the Context Map row with no map), `-1.sh` (`criteria -> scenarios`), `-16.sh` and
       `case-helpers.sh` (`Traced to`).
+  13. From `scripts/selftest/expected-fail.txt`: `D27a` and `D27b` of `scripts/selftest/temper-cases-46.sh` (row
+      `D27`) pass and leave the list here.
 - **Mechanism:** no prototype diff exists for this package; the verifier's experiment (a plan gate with no
   `plan.md`) is in `docs/plans/one-go/evidence/v-lean-front.md`, part 1.3.
   1. **What Intent writes.** Kept, each with its reader: the header lines Status, Author, Created, Ticket and
@@ -95,8 +111,8 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      by the `Test:` line (`agents/check.md:42-44`, `reference/check.md:64`); Build's fix pass writes one test per
      scenario from its `Then` line (`reference/build.md:39-41`). Rewrite step 6 of `agents/plan.md` (`:42-48`)
      and the example of `reference/plan.md:236-247`. The line
-     `- Blocking: Context check: ...` is no longer written (`agents/plan.md:91-92`): its parser has no caller
-     (`context_choices`, `scripts/flow.py:392-396`); delete the parser.
+     `- Blocking: Context check: ...` is no longer written (`agents/plan.md:91-92`): WP13 took it out of the brief
+     and deleted its parser (`context_choices`, `scripts/flow.py:392-396`). Confirm that neither is left.
   3. **`tasks.md`.** Unchanged but for `**Traced to:**`, which is no longer written
      (`templates/tasks.md:26, 36, 52`, `reference/build.md:112`). Its one reader is `scenario_ops.traced`
      (`scripts/scenario_ops.py:30-36`).
@@ -108,10 +124,14 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      ask for three files at every tier today). Above it the file holds only:
      - `## Context Map`: the brief asks for `ignore:` and `gap:` lines; a `use:` line is allowed and counted, never
        asked for (the card of WP15 counts the sources, and a line costs 100 bytes);
-     - `## Approach Decisions`, optional as today (the panel lists the headings, `scripts/panel.py:120-121`);
      - `## Blast Radius`: only what the change reaches outside the declared files; a `[CROSS-REPO]` row keeps its
-       meaning for `risk.cross_repo` (`scripts/risk.py:59-65`);
-     - at the complex tier a `## Diagram` with one fenced `text` block (`scripts/panel.py:144-158` prints it).
+       meaning for `risk.cross_repo` (`scripts/risk.py:59-65`).
+
+     `## Approach Decisions` and `## Diagram` are cut at every tier. Their one reader was the plan panel
+     (`scripts/panel.py:120-121` listed the headings, `scripts/panel.py:144-158` printed the `text` block), and
+     WP15 removed that panel. Cut both from `templates/plan.md` (`:14-31` and `:33-46`), from `reference/plan.md`
+     (`:283-304`, and the clause on the diagram at `:411`) and from the paragraph of `agents/plan.md:121-127`
+     that WP15 rewrote. Delete `ascii_diagram` of `scripts/panel.py` if WP15 left it: it has no caller.
 
      Cut from `templates/plan.md`: Architecture (`:10-12`), the mermaid block (`:35-40`), Files to Create and Files
      to Modify (`:52-62`), Patterns to Follow, Dependencies and Risk Level (`:64-74`). Cut from `agents/plan.md`:
@@ -135,8 +155,9 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      (`agents/plan.md:59-61`), so it meets the row itself. Say the bound in `reference/plan.md:37-40`.
   7. **The files of a plan.** `plan_files` (`scripts/flow.py:2538-2559`) unions the two file tables of `plan.md`
      with the `**File:**` lines. Keep reading the tables (a plan approved by 9.8.5 has them) and say in the
-     docstring that new plans have none. `scripts/panel.py:108-112` and `scripts/drift.py:60` need no change.
-     Drop the `SEARCH` field from the plan panel (`scripts/panel.py:118-119, 132`).
+     docstring that new plans have none. `scripts/drift.py:60` needs no change. The plan panel went with WP15, and
+     with it the file list of `scripts/panel.py:108-112` and the `SEARCH` field of `:118-119, 132`: confirm that
+     `scripts/card.py` took no `SEARCH` row over, and drop it there if it did.
   8. **Deviations.** `spec_ops.deviations` (`scripts/spec_ops.py:70-101`) writes `## Deviations` into `plan.md`
      and exits 1 with no `plan.md` (`:91-94`), at the commit (`scripts/flow.py:2143`). Write the same rows to
      `deviations.md` in the spec folder instead, replacing an earlier file, and never touch `plan.md`. One file
@@ -147,19 +168,25 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      `plan.md` "when the plan has one" (`agents/plan-review.md:24`). The later door's folder rule
      (`commands/temper.md:199-203`) is removed by WP28; until then it reads "the folder that holds `tasks.md`".
   10. **Counts.** Regenerate the fixtures with `scripts/selftest/make-view-fixtures.sh` (its plan has three
-      `Traced to` lines). Run `python3 scripts/check_caps.py` and write the new `now` of `gate_rows_cli`
-      (32 less 3), `prompt_bytes` and the plan gate's printed rows in `scripts/e2e/floor.json`.
+      `Traced to` lines). Run `python3 scripts/check_caps.py` and write the new `now` of `gate_rows` and of
+      `prompt_bytes`. `gate_rows` is the one key for every row name (`docs/plans/one-go/contracts.md` sections 12
+      and 14): this package takes four names out of it, three of the CLI (32 less 3 by the count of the head) and
+      one of `scripts/intent_draft_rows.py`. The floor holds no count of gate rows.
 - **Removed:** the gate rows `criteria -> scenarios`, `cross-repo search recorded`, `blast radius documented` and
-  `target users action chain`; `_cross_repo_recorded`; `context_choices`; the sections named in steps 1, 2 and 4
-  from the three templates and the briefs; the `Traced to:` field; the `## Deviations` section of `plan.md`.
+  `target users action chain`; `_cross_repo_recorded`; `context_choices` (gone since WP13); the sections named in
+  steps 1, 2 and 4 from the three templates and the briefs; the `Traced to:` field; the `## Deviations` section of
+  `plan.md`.
 - **Documents in the same change:** `reference/plan.md` (the artifact list at `:26`, the tiers at `:37-40`, the
   scenario format, the grouped format); `docs/flow.md` (`spec deviations`); `docs/methodology.md` and
   `docs/ai-native-sdlc.md` where they state the three artifact rule; `templates/example-intent.md`;
-  `CHANGELOG.md`; `docs/plans/one-go/changed-tests.md`; one line in `docs/plans/one-go/PROGRESS.md`.
+  `CHANGELOG.md`; `docs/plans/one-go/changed-tests.md`. The line of the package in
+  `docs/plans/one-go/PROGRESS.md` is the progress commit that follows (`docs/plans/one-go/README.md` section 4).
 - **Done when:**
   - `bash scripts/verify.sh quick` is green.
-  - `TEMPER_CASES_ONLY="1 2 5 11 14 16 N" bash scripts/selftest/test-temper.sh` ends `FAIL: 0` (N is the new file).
-  - `python3 scripts/check_caps.py` exits 0 with `gate_rows_cli` at 29.
+  - `TEMPER_CASES_ONLY="1 2 5 11 14 16 70" bash scripts/selftest/test-temper.sh` ends `FAIL: 0`.
+  - `python3 scripts/check_caps.py` exits 0 with `gate_rows` four lower than before this package (at the head the
+    CLI held 32 of the names; 3 of them go here, and one row of `scripts/intent_draft_rows.py`); `D27a` and `D27b`
+    are off the list.
   - `bun scripts/e2e/run.ts all default-run full-run --floor scripts/e2e/floor.json` exits 0.
 - **Traps:**
   - Line `scripts/temper:3560` declares `complexity` for the blast radius row and for the tier row under it.
@@ -186,17 +213,18 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
   an agent of their own.
 - **Depends on:** WP04, WP10, WP15, WP22, WP23, WP26.
 - **Lane:** `flow core`.
-- **Touches:** `agents/plan-revise.md` (new), `.claude-plugin/plugin.json`, `agents/build-task.md`,
-  `agents/check.md`, `agents/intent.md`, `agents/acceptance.md`, `agents/plan.md`, `reference/plan.md`,
-  `reference/build.md`, `reference/check.md`, `templates/intent.md`, `scripts/cli_ctx.py`, `scripts/temper`
-  (`_resolve_model`, `_resolve_task_model`, `_resolve_task_escalation_model`, `cmd_model`, `cmd_risk`),
-  `scripts/risk.py`, `scripts/acceptance.py`, `scripts/intent_draft_rows.py`, `scripts/scenario_ops.py`,
-  `scripts/check_run.py`, `scripts/card.py`, the flow modules that hold `Flow.agent`, `stage_work`,
-  `missing_records`, `criteria`, `task_model` and the Check question, both view fixture files,
-  `tests/mod/session.test.ts`, a new selftest case file, `scripts/e2e/scenarios.ts`, `scripts/e2e/accept.ts`,
+- **Touches:** `agents/plan-revise.md` (new), `.claude-plugin/plugin.json`, `agents/build-task.md`, `agents/check.md`,
+  `agents/intent.md`, `agents/acceptance.md`, `agents/plan.md`, `reference/plan.md`, `reference/build.md`,
+  `reference/check.md`, `templates/intent.md`, `scripts/cli_ctx.py`, `scripts/temper` (`_resolve_model`,
+  `_resolve_task_model`, `_resolve_task_escalation_model`, `cmd_model`, `cmd_risk`), `scripts/risk.py`,
+  `scripts/acceptance.py`, `scripts/intent_draft_rows.py`, `scripts/scenario_ops.py`, `scripts/check_run.py`,
+  `scripts/card.py`, the flow modules that hold `Flow.agent`, `stage_work`, `missing_records`, `criteria`,
+  `task_model` and the Check question, both view fixture files, `tests/mod/session.test.ts`,
+  `scripts/selftest/temper-cases-71.sh` (new), `scripts/e2e/scenarios.ts`, `scripts/e2e/accept.ts`,
   `scripts/e2e/floor.json`, `scripts/caps.json`, `scripts/selftest/expected-fail.txt`, `docs/flow.md`,
-  `docs/grouped-build.md`, `docs/commands.md`, `CHANGELOG.md`.
-- **Tests first:** a new selftest case file.
+  `docs/grouped-build.md`, `docs/commands.md`, `docs/decisions/0022-the-acceptance-tests-keep-their-own-writer.md`
+  (new), `CHANGELOG.md`.
+- **Tests first:** `scripts/selftest/temper-cases-71.sh` (new).
   1. `w27 a note gets the revise agent`: a run at Plan whose `tasks.md` exists, with a person's note recorded as
      the page records a typed change (`commands/temper.md:154-160`: an `evidence add` of kind `input`, then
      `temper state redo plan --reason`). `temper next --json` names one agent of type
@@ -208,7 +236,7 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      `temper:temper-plan`; after a loop back to Intent that passes Plan again it is `temper:temper-plan` too.
   4. `w27 the second failure falls back`: after two revise launches for one reason with the plan gate still FAIL,
      the next launch before the approval is `temper:temper-plan` with the same items. After the approval the
-     same state is the budget question of WP10, never a launch.
+     same state is the budget question of WP10 (`run.budget`), never a launch.
   5. `w27 a code criterion is run by the CLI`: an intent whose criterion `AC-02` has a Validate line of type
      `code` with the command `grep -q "POST /api/reset" src/routes.txt` in backticks, and a tree where the text
      is there.
@@ -237,7 +265,8 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
   11. `tests/mod/session.test.ts`: a launch of `temper:temper-plan-revise` that the view names is allowed on the
       model the view names; the same launch with another prompt is refused as any other is.
   12. `scripts/e2e/accept.ts`: WP07 wrote `revise-narrow` and `criteria-by-cli` failing first. Make them pass
-      and take their lines off `scripts/selftest/expected-fail.txt` in this commit.
+      and take their lines off `scripts/selftest/expected-fail.txt` in this commit, with the line of `D28` of
+      `scripts/selftest/temper-cases-46.sh` (the builders on Sonnet, the planner on Opus behind a key).
 - **Mechanism:** no prototype diff exists for this package; the mechanism of the revise agent is
   `docs/plans/one-go/evidence/v-lean-front.md`, part 4; of the criteria,
   `docs/plans/one-go/evidence/red-bad-runs.md`, finding M9.
@@ -248,7 +277,8 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      those tasks own; never a Success Criterion; the grouped format in ten lines (the field names of
      `templates/tasks.md`), the two byte budgets (`scripts/temper:107-108`), and that `temper gate plan` names
      each failed row with what it wants; run the gate and fix what it names; return `PLAN REVISED {spec path}`
-     and one line per finding as `agents/plan.md:131-132` gives them.
+     and one line per finding as `agents/plan.md:131-132` gives them. It draws no panel and names none: it says
+     that the CLI draws the card (`temper card`), the form `scripts/validate-panels.py` accepts since WP15.
   2. **The prompt, a closed list of lines the CLI writes.** `Follow <plugin>/agents/plan-revise.md exactly.`;
      `Spec path:`; `Reason:` with one of `fresh findings`, `the person's note`, `the context answer`,
      `a decision against the plan`, `a failed plan row`, `a loop back from <stage>`; then every item whole, one
@@ -261,13 +291,13 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      ends there as a full pass: open fresh findings (`:1330-1334`), a note (`:1133`), a loop back (`:1349-1354`).
      Choose the revise agent when `tasks.md` exists, at least one item exists, no loop back passes through Intent
      (`through`, `:1340-1348`), and fewer than two revise launches were made for this reason. Choose the planner
-     otherwise. Its `after` calls are those of the planner: the usage row, `risk` (step 9), `panel plan`,
-     `gate plan`.
-  4. **The fall back.** Count each revise launch through the budget call of WP10 under the id
+     otherwise. Its `after` calls are those of the planner: the usage row, `risk` (step 9), `baseline plan` (WP21)
+     and `gate plan`. The `panel plan` call went with WP15.
+  4. **The fall back.** Count each revise launch through the budget call of WP10 under the key
      `plan-revise:<reason>`. The first failed plan gate after a revise gets one more revise, with the failed
      rows added as items. After the second, before the approval, the next launch is the planner with the same
-     items; after the approval the flow asks the budget question, because a rule never plans again there
-     (rule 4 of the frame).
+     items; after the approval the flow asks the budget question (`run.budget`), because a rule never plans again
+     there (rule 4 of `docs/plans/one-go/README.md` section 6).
   5. **A criterion command.** In `acceptance.parse_criteria` (`scripts/acceptance.py:168-169`) add `vcmd`: the
      first backticked span of the Validate details when the type is `code` or `metric`. In the intent gate the
      row `criteria validate` (`scripts/intent_draft_rows.py:77-105`) also fails such a criterion with no `vcmd`.
@@ -293,11 +323,12 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      `agents/acceptance.md:25`. Add the criterion commands to the `commands` rows of the approval card
      (`scripts/card.py`): the approval is of every command a gate will run.
   9. **Risk.** `risk.compute` (`scripts/risk.py:72-108`): a declared file that matches a pattern of
-     `autonomy.park-on-touch` makes the level H with the reason `sensitive path <file>`. Use the one Python
-     matcher WP15 made of `_glob_touch_match` (`scripts/temper:4008`). `cmd_risk` (`scripts/temper:4625-4639`)
-     passes the patterns. The CLI runs `temper risk` in the `after` calls of the planner and of the revise agent,
-     before `panel plan`; take the instruction to run it out of `agents/plan.md:129`. `--raise` stays the
-     planner's call.
+     `autonomy.park-on-touch` makes the level H with the reason `sensitive path <file>`. WP11 built this already,
+     on the one Python matcher `scripts/sensitive.py` that it made of `_glob_touch_match` (`scripts/temper:4008`),
+     and made `cmd_risk` (`scripts/temper:4625-4639`) pass the patterns: do not build it twice, test 9 holds it.
+     New here: the CLI runs `temper risk` in the `after` calls of the planner and of the revise agent,
+     before `gate plan` (the `panel plan` call went with WP15); take the instruction to run it out of
+     `agents/plan.md:129`. `--raise` stays the planner's call.
   10. **The model table.** In `scripts/cli_ctx.py`, in place of `TASK_DEFAULT`, `ESCALATION_DEFAULT` and
       `RISK_TASK_MODEL` (`:22-24`), one table of two columns, `standard` and `high`:
 
@@ -312,8 +343,12 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
       `models.<agent>`; for `task` and `task-escalation` the old keys `build.grouped.task-model` and
       `build.grouped.escalation-model`; the table. The source it prints is `config` or `table`. The two columns
       are equal today on purpose: the planner stays on Opus until a bench round says otherwise (decision 4 of
-      the frame), and the `high` column is where that round, or a person, sets a cheaper planner below risk H
-      (`models.plan: sonnet` with `models.high.plan: opus`).
+      `docs/plans/one-go/README.md` section 3), and the `high` column is what lets that round, or a person, set
+      a cheaper planner below risk H and keep Opus at risk H (`models.plan: sonnet` with `models.high.plan: opus`;
+      in the table, `sonnet` in the `standard` column and `opus` in the `high` column). This package keeps
+      `opus` in both columns. After it the table has one writer: the bench block of WP32, which may change the
+      planner's default below risk H by the rule of its model test, in one small commit with its test. No other
+      package changes a default of the table.
   11. **One resolver.** `_resolve_model`, `_resolve_task_model` and `_resolve_task_escalation_model`
       (`scripts/temper:567-589`) call `python3 cli_ctx.py models` (`scripts/cli_ctx.py:4`) and hold no default of
       their own. `fresh_work` (`scripts/flow.py:1284-1287`) and `acceptance_work` (`:1411-1414`) take their
@@ -336,9 +371,10 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
 - **Documents in the same change:** `docs/flow.md` (the revise agent as an action, the criterion rows);
   `docs/grouped-build.md` (the builders run on Sonnet; `models.task: haiku` for cents, with the two measured
   figures of `docs/evidence/haiku-sonnet-task-agents.md`); `docs/commands.md` (`temper model`);
-  `reference/plan.md` (Validate types); a decision record "The tests that gate the code are written by an agent
-  that does not write it; `code` and `metric` criteria are commands the CLI runs" (WP31 numbers it);
-  `CHANGELOG.md`; `docs/plans/one-go/PROGRESS.md`.
+  `reference/plan.md` (Validate types); the decision record
+  `docs/decisions/0022-the-acceptance-tests-keep-their-own-writer.md`: "The tests that gate the code are written
+  by an agent that does not write it; `code` and `metric` criteria are commands the CLI runs";
+  `CHANGELOG.md`. The line of the package in `docs/plans/one-go/PROGRESS.md` is the progress commit that follows.
 - **Done when:**
   - `bash scripts/verify.sh quick` is green and `python3 scripts/check_done.py` shows `revise-narrow` and
     `criteria-by-cli` as `ok`.
@@ -371,7 +407,8 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
   either a first word of `/temper:temper` (`draft`, `status`, `report`, `init`, `pack`) or gone (the five doors).
   A first word is taken as a word only in its documented form, so a request that starts with "status" starts a
   run.
-- **Depends on:** WP05, WP07, WP13, WP16, WP17.
+- **Depends on:** WP05, WP07, WP13, WP16, WP17, WP26 (it cut the Target Users section that the draft page no
+  longer asks about).
 - **Lane:** `flow core` (it removes the door code from the CLI and the flow and regenerates the fixtures).
 - **Touches:** `commands/temper.md`, `commands/intent.md`, `commands/plan.md`, `commands/design.md`,
   `commands/build.md`, `commands/review.md`, `commands/check.md`, `commands/status.md`, `commands/init.md`,
@@ -382,11 +419,12 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
   `scripts/guards/stage-marker.sh`, `hooks/hooks.json`, `hooks/temper-mod/core/commands.ts`,
   `hooks/temper-mod/core/session.ts`, `hooks/temper-mod/register.tsx`, `tests/mod/session.test.ts`,
   `tests/mod/dialog.test.ts` and the mod test that covers `parseArgs`, both view fixture files,
-  `scripts/selftest/temper-cases-8.sh`, `-9.sh`, the cases of the stage marker, a new case file,
+  `scripts/selftest/temper-cases-8.sh`, `-9.sh`, the cases of the stage marker, `temper-cases-72.sh` (new),
   `scripts/caps.json`, `docs/commands.md`, `docs/flow.md`, `README.md` (the Commands table and one hook line),
-  `.claude/CLAUDE.md`, `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
-- **Tests first:** a new selftest case file; WP07 holds surface checks in `scripts/selftest/temper-cases-46.sh`,
-  take each one this package makes pass off the expected to fail list.
+  `.claude/CLAUDE.md`, `scripts/selftest/expected-fail.txt`, `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
+- **Tests first:** `scripts/selftest/temper-cases-72.sh` (new). WP07 holds the surface checks of row `D29` in
+  `scripts/selftest/temper-cases-46.sh` (`D29a` to `D29c`): take each one this package makes pass off the expected
+  to fail list, and name WP31 on the line of each that still fails on a retired word.
   1. `w28 two listed commands`: the `commands` of `.claude-plugin/plugin.json` are exactly
      `./commands/temper.md` and `./commands/fix.md`, and `git ls-files commands` prints those two files.
   2. `w28 the words have their pages`: the Arguments table of `commands/temper.md` has a row for each of
@@ -468,7 +506,10 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      `_earlier_build` (`:3607-3631`) and `scripts/earlier_build.py`. Keep the line that refuses
      `state set enter` and `state set built_before` (`:857`): a refused key costs nothing. In the flow delete
      `walked` (`scripts/flow.py:1110-1116`) and its three callers (`:600, 2400, 2431`), and the two readers of
-     `built_before` (`:1402, 1656-1657`). The door case of the Intent question that WP13 kept goes with them.
+     `built_before` (`:1402, 1656-1657`). The door case of the Intent question that WP13 kept goes with them, and
+     so do the two callers added since the head: the condition "no door walked Intent" of `intent_by_rule` (WP13)
+     and the door branch of the baseline (WP20 step 16). `baseline start --env-only` then has no caller in the
+     flow; the flag stays a word of the CLI (`docs/plans/one-go/contracts.md` section 2).
      In `hooks/temper-mod/register.tsx:724-725` the comment on a door goes; the line still drops the request
      for `/temper:fix`. Leave `enter` and `built_before` in the mod's `GUARD_KEYS`
      (`hooks/temper-mod/core/rules.ts:335`; `tests/mod/audit-round4.test.ts:240` holds them): a saved state may
@@ -502,9 +543,11 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
   - `temper-cases-8.sh` and `-9.sh` hold 13 uses of `--enter` that state the door behaviour on purpose. Delete
     those cases and list them; do not turn them into cases of something else.
   - A run that 9.8.5 saved after it came through a door has `enter` in its state. The key is ignored from here:
-    a stage before the door with no verdict runs its agent. Say it in the notice of WP31; it is not an error.
-  - The words `discuss` and `chose` carry the hand back of the driver. WP16 owns their meaning; this package
-    only moves them into the rule of step 5.
+    a stage before the door with no verdict runs its agent. It is not an error. Say it in the `CHANGELOG.md` line
+    of this package; carrying it into what an existing project reads is left to WP31.
+  - The words `discuss` and `chose` carried the hand back of the driver at the head. WP16 owns their meaning: it
+    removed the hand back words `next` and `discuss` and made the note `step KIND OPTION`. This package only
+    moves the words WP16 left into the rule of step 5; it brings none back.
   - `README.md` must keep its Install heading, the heading "What the mod reads and writes" and the line
     `Intent, Plan, Build, Review, Check` before any diagram (`scripts/validate-directory.sh:73-81`).
 - **Size:** L.
@@ -518,17 +561,18 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
 - **Depends on:** WP04, WP08, WP10, WP11, WP13, WP14, WP19, WP21, WP27, WP28.
 - **Lane:** `flow core` (one new question, a new line in agent prompts, the fixtures).
 - **Touches:** `templates/temper.config.default`, `.claude/temper.config`, `scripts/defaults.py` (new),
-  `scripts/config_yaml.py`, `scripts/config_tidy.py` (new), `scripts/check_config_keys.py` (new),
-  `scripts/temper` (`_cfg_get` and its callers, `cmd_config`, a new `cmd_packs`), `scripts/cli_ctx.py`, the flow
-  modules that hold `Run.cfg`, `Flow.agent` and the order of questions, `scripts/flow_ids.py` (WP04),
-  `scripts/stops.json`, `hooks/temper-mod/core/rules.ts`, the mod's audit test of person only calls,
+  `scripts/config_yaml.py`, `scripts/config_tidy.py` (new), `scripts/check_config_keys.py` (new), `scripts/temper`
+  (`_cfg_get` and its callers, `cmd_config`, a new `cmd_packs`), `scripts/cli_ctx.py`, the flow modules that hold
+  `Run.cfg`, `Flow.agent` and the order of questions, `scripts/flow_base.py` (the registries of WP04),
+  `scripts/stops.json`, `hooks/temper-mod/core/rules.ts`, `tests/mod/audit.test.ts` (person only calls),
   `agents/rca.md`, `agents/fix.md`, `reference/plan.md`, `reference/build.md`, `reference/review.md`,
   `reference/check.md`, `reference/design.md`, `reference/fix.md`, `reference/pack.md`,
   `reference/orchestrator-patterns.md`, `scripts/quality-check.sh`, `scripts/selftest/test-temper.sh`,
-  `scripts/selftest/case-helpers.sh`, a new case file, both view fixture files, `scripts/e2e/accept.ts`,
-  `scripts/caps.json`, `docs/commands.md`, `docs/packs.md`, `docs/flow.md`, `docs/enterprise.md`,
-  `docs/recommended-setup.md`, `CHANGELOG.md`.
-- **Tests first:** a new selftest case file.
+  `scripts/selftest/case-helpers.sh`, `scripts/selftest/temper-cases-73.sh` (new), both view fixture files,
+  `scripts/selftest/expected-fail.txt`, `scripts/caps.json`, `docs/commands.md`, `docs/packs.md`, `docs/flow.md`,
+  `docs/enterprise.md`, `docs/recommended-setup.md`, `docs/decisions/0023-two-commands-and-defaults-in-code.md` (new),
+  `CHANGELOG.md`.
+- **Tests first:** `scripts/selftest/temper-cases-73.sh` (new).
   1. `w29 the template has 10 live lines`: `templates/temper.config.default` has exactly the 10 key lines of
      mechanism step 1 that are not comments, at most 25 lines in all, and `temper config init` in an empty
      project writes it byte equal.
@@ -567,7 +611,9 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
   12. `tests/mod`: in the audit table of person only calls, `config tidy` counts only as the picked option of
       the `Temper gate` question the view holds; the same call from the model is refused. Add the fixture view
       of the question in the same change.
-  13. `scripts/e2e/accept.ts`: the cases of `D50` that restore a 9.8.5 config (WP07) pass here; take them off
+  13. `scripts/selftest/temper-cases-46.sh`: the cases of WP07 that read the 9.8.4 and the 9.8.5 template as the
+      project's config (`D61a`, `D61b`, `D62a`, `D62b`, `D62c`), `D63b` (the one time question never flips an
+      existing `autonomy.enabled: false`, as test 8 has it) and `D71` pass here; take them off
       the expected to fail list. `default-run` still asks two dialogs: a fresh project is never asked.
 - **Mechanism:**
   1. **The template.** These lines, and nothing else that is not a comment:
@@ -617,19 +663,21 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      | `run.default` (WP11) | live line | read by the flow |
      | `packs` | live line, default `[security, tdd]` | read by the CLI (step 5); the old default of five packs is in `OLD` |
      | `review.block-on` | live line | `scripts/temper:3814`, `scripts/flow.py:420`; `[critical]` is in `OLD` |
-     | `autonomy.park-on-touch` | live line | `scripts/temper:4204`, `scripts/risk.py` (WP27), the card |
+     | `autonomy.park-on-touch` | live line | `scripts/temper:4204`, `scripts/sensitive.py` and `scripts/risk.py` (WP11), the card |
      | `models.plan`, `models.task` | live lines | the table of WP27; `models.<agent>` and `models.high.<agent>` stay readable |
      | `check.commands.test`, `.coverage` | comment example | `scripts/flow.py:1554`, `scripts/temper:4938` |
      | `setup.run`, `.env`, `.services`, `.tools` | comment example | `scripts/run_env.py:79` |
      | `build.grouped.task-model`, `.escalation-model` | read as old names | `models.task`, `models.task-escalation` |
      | `build.grouped.max-parallel`, `.max-groups`, `.keep-days`, `build.red-before-code` | in the table, not in the template | `scripts/temper:1451, 2207, 3115`, `scripts/flow.py:1678, 1692` |
      | `autonomy.max-blast-radius` | in the table, not in the template | `scripts/temper:3587, 4192` |
+     | `budget.per-failure`, `budget.per-run` (WP10) | in the table, not in the template | `scripts/budget.py` |
+     | `upgrade.asked` (new here) | in the table, not in the template | the question of step 6; written by `config tidy --keep` |
      | `plan.fresh-review`, `-twice`, `-rounds` | in the table, not in the template | `scripts/flow.py:248-249`, `scripts/temper:3599, 4574` |
      | `phases.pipeline` | in the table, not in the template | `scripts/flow.py:233, 2215` |
      | `protect.paths`, `format.cmd` | in the table, not in the template | `scripts/guards/block-protected-paths.sh:50`, `scripts/guards/run-formatter.sh:53` |
      | `check.coverage-threshold` | read when set (WP19); `80` is in `OLD` | the rule `threshold` of WP19 |
      | `plan.context-check` | as WP13 left it; `auto` is in `OLD` | the flagged map is on the approval card |
-     | `feedback.enabled` | as WP10 left it; `true` is in `OLD` | the one budget |
+     | `feedback.enabled` | gone (WP10 removed its reader); in `GONE` | the one budget of WP10 |
      | `autonomy.enabled` | read as `run.default: ask` when `false` (WP11) | `run.default` |
      | `autonomy.policy` | gone | `run.default` |
      | `autonomy.budget.max-total-loops`, `.max-stages` | gone (never read) | the one budget of WP10 |
@@ -639,7 +687,7 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      | `check.mutation-threshold` | gone | the planted bug score is information (WP19) |
      | `stack` | gone | the CLI detects the stack (`scripts/check_run.py:76-144`) |
      | `tools.mode` | gone | none: an agent uses a connected tool when there is one |
-     | `tools.ocr.mode`, `bands.*`, `evidence.claimed-runs` | gone | none (WP30 removes what read them) |
+     | `tools.ocr.mode`, `bands.*`, `evidence.claimed-runs` | gone with WP30: a key that code still reads here stays in `KEYS`, and WP30 adds it to `GONE` when it removes the reader | none |
      | `check.environment` | gone | none: no script reads it; it guarded the Check agent's live step (`reference/check.md:42`), and that page keeps its rule from file names |
 
      Keys that only pages named and nothing reads go from those pages: `tools.label-findings`,
@@ -671,8 +719,8 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      no longer read. Remove them so the new defaults apply? A copy is kept." followed by at most eight of the
      lines, each with what changes, then "and M more". The four that change a run are always among the eight:
      the coverage threshold, `phases.design`, the five packs, `block-on: [critical]`. Options:
-     "Remove them (Recommended)" with the call `temper config tidy --apply`, and "Keep my file" with
-     `temper config tidy --keep`.
+     "Remove them (Recommended)", id `tidy-config`, with the call `temper config tidy --apply`, and
+     "Keep my file", id `keep-config`, with `temper config tidy --keep`.
   7. **What the two calls do.** `scripts/config_tidy.py`. `--apply` reads the file's leaves, drops each leaf
      whose value is in `OLD` for its key and each key of `GONE` with no replacement, moves a renamed key to its
      new name, turns `autonomy.enabled: false` into `run.default: ask`, copies the old file to
@@ -700,8 +748,9 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
 - **Documents in the same change:** `docs/commands.md`: one table of every key of `KEYS` (generated by
   `temper config show --markdown`, so it cannot drift) and the table of step 3 as "what became of an old key";
   `docs/packs.md` (two default packs, two tiers); `docs/flow.md` (the question and its two calls);
-  `docs/enterprise.md:99-176` and `docs/recommended-setup.md:13, 94` (the dead keys); a decision record "Defaults
-  live in code; an old config is asked about once" (WP31 numbers it); `CHANGELOG.md`.
+  `docs/enterprise.md:99-176` and `docs/recommended-setup.md:13, 94` (the dead keys); the decision record
+  `docs/decisions/0023-two-commands-and-defaults-in-code.md` ("Defaults live in code; an old config is asked about
+  once", with the two commands and the words of WP28); `CHANGELOG.md`.
 - **Done when:**
   - `bash scripts/verify.sh quick` is green; `python3 scripts/check_config_keys.py` exits 0.
   - `python3 scripts/check_caps.py` exits 0 with `config_live_keys` at 10 and `config_lines` at 25 or fewer.
@@ -729,6 +778,9 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
     such a line as it is.
   - `Flow.agent` builds the prompt the mod compares word for word with the launch. The `Packs:` line must be in
     the view's prompt, which it is when it is added in `Flow.agent`; never add it in the page.
+  - The live line `plan: opus` of the template restates the table of WP27, and a config line wins over the
+    table. If the model test of WP32 changes the planner's default, its commit turns this line into a comment in
+    the template and in this repository's own config (WP32 step 7 (e)); this package changes nothing for it.
 - **Size:** L.
 
 ## WP30 Packs, skills and dormant machinery removed
@@ -750,8 +802,9 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
   `-31.sh` and every case file that simulates a test run with `evidence add`, `.gitignore`, `CONTRIBUTING.md`,
   `docs/packs.md`, `docs/recommended-setup.md`, `docs/trust.md`, `docs/directory-submission.md`,
   `docs/privacy.html`, `docs/commands.md`, `docs/flow.md`, `docs/plans/ocr-notes/` (deleted), `scripts/caps.json`,
+  `scripts/selftest/temper-cases-74.sh` (new), `docs/decisions/0024-what-version-10-removed.md` (new),
   `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
-- **Tests first:** a new selftest case file.
+- **Tests first:** `scripts/selftest/temper-cases-74.sh` (new).
   1. `w30 no stack pack`: `git ls-files packs/stacks` prints nothing, and no tracked file but the CHANGELOG and
      `docs/history` holds `packs/stacks`.
   2. `w30 two skills`: the `skills` of `.claude-plugin/plugin.json` are `./skills/grill-me` and
@@ -834,11 +887,11 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
 - **Removed:** `packs/stacks/` (6 files); three skills; `scripts/bands.py`, `temper bands`,
   `temper metrics append`; every instruction on OCR, review memory and metrics in the reference pages;
   `evidence.claimed-runs` and the `count` mode of `scripts/runs.py`; `docs/plans/ocr-notes/`.
-- **Documents in the same change:** `docs/packs.md`, `CONTRIBUTING.md`, `docs/recommended-setup.md`,
-  `docs/trust.md`, `docs/directory-submission.md`, `docs/privacy.html`, `docs/commands.md` (no `temper bands`,
-  no `temper metrics`), `docs/flow.md:257` (the sentence on `claimed-runs: count`); a decision record "What 10.0.0
-  removed, and what a project that used it does" that amends ADR 0006 (WP31 numbers it); `CHANGELOG.md`, with a
-  line for each removed piece and what replaces it or that nothing does.
+- **Documents in the same change:** `docs/packs.md`, `CONTRIBUTING.md`, `docs/recommended-setup.md`, `docs/trust.md`,
+  `docs/directory-submission.md`, `docs/privacy.html`, `docs/commands.md` (no `temper bands`, no `temper metrics`),
+  `docs/flow.md:257` (the sentence on `claimed-runs: count`); the decision record
+  `docs/decisions/0024-what-version-10-removed.md` ("What 10.0.0 removed, and what a project that used it does"),
+  which amends ADR 0006; `CHANGELOG.md`, with a line for each removed piece and what replaces it or that nothing does.
 - **Done when:**
   - `bash scripts/verify.sh full` is green: this package ends the changes to code, and it touches every case
     file through the helpers of step 8.
@@ -846,6 +899,8 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
     exit 0; `python3 scripts/check_config_keys.py` exits 0.
   - `python3 scripts/check_caps.py` exits 0 with `listed_skills` at 2.
   - `wc -c scripts/temper` is at least 3,000 bytes lower than before this package.
+  - The rows this package turns green are listed under its id in "Rows by package" of
+    `docs/plans/one-go/done.md`; that section wins over this list.
 - **Traps:**
   - Step 8 is the long part: do it first, with the key still read, and see the selftest green; then delete the
     key. A case that fails after the switch was resting on a claim.
@@ -874,15 +929,18 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
 - **Touches:** `scripts/words.json` (new), `scripts/check_words.py` (new), `scripts/quality-check.sh`, the flow
   modules and `scripts/panel.py` and `scripts/card.py` where a label or a text holds a retired word,
   `hooks/temper-mod/core/commands.ts` and the mod's drawn texts, one mod test, both view fixture files,
-  `scripts/temper` (`_RUN_FILES`, `cmd_init`), a new selftest case file, `scripts/check-known-limits.sh`,
+  `scripts/temper` (`_RUN_FILES`, `cmd_init`), `scripts/selftest/temper-cases-75.sh` (new),
+  `scripts/selftest/expected-fail.txt`, `scripts/check-known-limits.sh`,
   `scripts/validate-docs.sh`, `.claude-plugin/plugin.json`, `README.md`, `docs/getting-started.md`,
   `docs/index.md`, `docs/index.html`, `docs/commands.md`, `docs/flow.md`, `docs/mod.md`, `docs/trust.md`,
   `docs/auto-mode.md`, `docs/grouped-build.md`, `docs/packs.md`, `docs/enterprise.md`,
   `docs/recommended-setup.md`, `docs/context-hygiene.md`, `docs/directory-submission.md`,
   `docs/ai-native-sdlc.md`, `docs/methodology.md`, `reference/autonomy.md`, `agents/review.md`,
-  `commands/temper.md`, `CONTRIBUTING.md`, `.claude/CLAUDE.md`, `docs/decisions/` (new records and status
-  lines), `CHANGELOG.md`, `docs/plans/one-go/PROGRESS.md`.
-- **Tests first:** a new selftest case file, and `python3 scripts/check_words.py` in `scripts/quality-check.sh`.
+  `commands/temper.md`, `CONTRIBUTING.md`, `.claude/CLAUDE.md`, `docs/decisions/` (`0025-one-route.md`, new; the
+  part of `0020` on WP19 and WP20; the status lines), `CHANGELOG.md`, `docs/plans/one-go/PROGRESS.md` (the items
+  for the owner).
+- **Tests first:** `scripts/selftest/temper-cases-75.sh` (new), and `python3 scripts/check_words.py` in
+  `scripts/quality-check.sh`.
   1. `w31 at most 12 words`: `scripts/words.json` holds at most 12 entries under `words`; the part
      `## The words` of `docs/getting-started.md` has one line for each and no other entry.
   2. `w31 no retired word in a question`: for every view of the two fixture files (one view a line since WP01),
@@ -909,6 +967,8 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      "224" nor "about 10 KB"; `docs/trust.md` holds no "ten Python scripts".
   8. `bash scripts/validate-directory.sh`, `bash scripts/validate-readme.sh`, `bash scripts/validate-docs.sh`
      and `bash scripts/check-known-limits.sh` exit 0.
+  9. From `scripts/selftest/expected-fail.txt`: what is left of row `D29` (`D29a` to `D29c` of
+     `scripts/selftest/temper-cases-46.sh`) passes and leaves the list here.
 - **Mechanism:**
   1. **The 12 words.** `scripts/words.json`:
 
@@ -984,28 +1044,28 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
      script and its Python modules), never in a prompt", lose the two on doors, and gain "before a fault adds a
      row, a question, a key or an agent, show that the failing step cannot be removed or merged" and "a cap of
      `scripts/caps.json` is raised only in a pull request of its own".
-  7. **What only the mod holds.** Rule 11 of the frame: add to `docs/trust.md` the sentence that with the mod
-     off nothing but the page's rule holds that a person, not the model, picked an option, and add a
-     `need TRUST` line for it to `scripts/check-known-limits.sh`.
-  8. **Decision records.** In `docs/decisions/`, in the house form of ADR 0018. A record an earlier package
-     wrote is checked against its row and not written twice; take the next free number, from 0019.
+  7. **What only the mod holds.** Rule 11 of `docs/plans/one-go/README.md` section 6: add to `docs/trust.md` the
+     sentence that with the mod off nothing but the page's rule holds that a person, not the model, picked an
+     option, and add a `need TRUST` line for it to `scripts/check-known-limits.sh`.
+  8. **Decision records.** In `docs/decisions/`, in the house form of ADR 0018. The files and their numbers are
+     those of `docs/plans/one-go/contracts.md` section 11. A record an earlier package wrote is read against its
+     row and not written twice. This package writes `0025`, adds to `0020` what WP19 and WP20 decided, and takes
+     no other number.
 
-     | Record | Owed by | It amends |
-     |---|---|---|
-     | A run asks twice: the approval starts the run to the commit; `run.default` | WP11 | 0012 decision 4, 0013 decision 1, 0011 where it says a run is armed only at the plan gate |
-     | The approval is bound to what was shown; the run leaves Intent by rule | WP12, WP13 | 0013 |
-     | One budget for every repeat | WP10 | 0011 (the loop limits) |
-     | Checks judged against the project; the environment check; plan commands run once on the base | WP19 to WP21 | 0018 (the preflight) |
-     | A finding is repaired in its stage; `plan amend` and `plan patch` | WP24, WP25 | 0013 (what a rule may do) |
-     | One route: Design on request, the plan contract, the spec route not built | WP14, WP26 | 0017 |
-     | The acceptance tests keep their own writer; `code` and `metric` criteria are commands | WP27 | none |
-     | Two commands and their words; defaults in code; the one time config question | WP28, WP29 | 0012 (doors), 0005 (the marked command) |
-     | What 10.0.0 removed | WP30 | 0006 |
+     | File | Holds | Written by | It amends |
+     |---|---|---|---|
+     | `0019-a-run-that-asks-twice.md` | one budget for every repeat; Design only when asked; a run asks twice: the approval starts the run to the commit, `run.default`; the approval is bound to what was shown; the run leaves Intent by rule | WP10, then WP14, WP11, WP12 and WP13; WP25 adds one exception | 0011 (the loop limits, and where it says a run is armed only at the plan gate), 0012 decision 4, 0013 decision 1, 0016 |
+     | `0020-checks-judged-against-the-project.md` | plan commands run once on the base; the environment check and the baseline; checks judged against the project | WP21; this package adds what WP19 and WP20 decided | 0018 (the preflight) |
+     | `0021-a-finding-is-repaired-in-its-stage.md` | a finding is repaired in its stage; `plan amend` and `plan patch` | WP24, WP25 | 0009, 0011, 0013 (what a rule may do) |
+     | `0022-the-acceptance-tests-keep-their-own-writer.md` | the acceptance tests keep their own writer; `code` and `metric` criteria are commands | WP27 | none |
+     | `0023-two-commands-and-defaults-in-code.md` | two commands and their words; defaults in code; the one time config question | WP29, with the commands of WP28 | 0012 (doors), 0005 (the marked command) |
+     | `0024-what-version-10-removed.md` | what 10.0.0 removed | WP30 | 0006 |
+     | `0025-one-route.md` | one route: Design on request (WP14), the plan contract (WP26), the spec route not built | this package | 0017 |
 
      Status lines to set: 0002 "Rejected (never built)"; 0003 and 0004 "Accepted" (shipped in 8.0.0); 0006
-     "Superseded" by the last record; 0017 "Rejected: not built (10.0.0)"; 0005, 0011, 0012, 0013 and 0018 keep
-     "Accepted" and get one line "Amended by" with the record. In 0011 correct the task block budget to 2,048
-     bytes (`scripts/temper:108`).
+     "Superseded" by `0024`; 0017 "Rejected: not built (10.0.0)"; 0005, 0011, 0012, 0013 and 0018 keep
+     "Accepted" and get one line "Amended by" with the record, and so do 0009 and 0016, which `0021` and `0019`
+     amend. In 0011 correct the task block budget to 2,048 bytes (`scripts/temper:108`).
   9. **CHANGELOG.** One entry, heading `## v10.0.0: a run that asks twice`, in the form of the 9.8.5 entry
      (`CHANGELOG.md:6`). Parts: what a run looks like now (the two questions, the two cards, a failed check);
      what an existing project meets (the notice, the config question, a run saved by 9.8, the installed commit
@@ -1022,9 +1082,10 @@ Every `file:line` is of the head `10e965a`. WP02 and WP03 move code out of `scri
 - **Removed:** the retired words from every text a user reads; the part "See it" of the README until the videos
   are recorded again; the emoji examples of `docs/getting-started.md` and `docs/commands.md`; the status
   "Proposed" from four records.
-- **Documents in the same change:** this package is the documents. Its last act is the line in
-  `docs/plans/one-go/PROGRESS.md` that names what is left for the owner: the two videos, and the README's price
-  figures if the bench round did not run.
+- **Documents in the same change:** this package is the documents. Its last act, in the progress commit that
+  follows the package commit (`docs/plans/one-go/README.md` section 4), is the line in
+  `docs/plans/one-go/PROGRESS.md` that names what is left for the owner (the brief's section 10): the two videos,
+  and the README's price figures if the bench round did not run.
 - **Done when:**
   - `bash scripts/verify.sh full` is green, with `python3 scripts/check_words.py` inside
     `scripts/quality-check.sh`.

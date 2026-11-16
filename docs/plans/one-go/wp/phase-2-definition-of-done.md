@@ -2,6 +2,9 @@
 
 This file holds the specs of work packages WP04, WP05, WP06 and WP07.
 They build the ids, the counters, the two scripted projects and the checks every later package is judged by.
+The brief is `docs/plans/one-go/README.md`. Every shared name below is the one `docs/plans/one-go/contracts.md`
+fixes. Each package ends as section 4 of the brief says: the package commit, then the small progress commit, in
+one push.
 
 ## WP04 Ids in the protocol
 
@@ -16,7 +19,7 @@ They build the ids, the counters, the two scripted projects and the checks every
   `hooks/temper-mod/core/runview.ts`, `hooks/temper-mod/core/driver.ts`, `hooks/temper-mod/core/decisions.ts`,
   `scripts/e2e/loop.ts`, `scripts/e2e/scenarios.ts`, `scripts/e2e/replay.ts`, `scripts/selftest/view-fixtures.ts`,
   `scripts/selftest/view-fixtures-2.ts`, `scripts/selftest/temper-cases-40.sh` (new), `tests/mod/ids.test.ts` (new),
-  `docs/flow.md`, `CHANGELOG.md`.
+  `docs/flow.md`, `CHANGELOG.md`, `docs/plans/one-go/contracts.md` (section 5: one line for each id step 3 adds).
 - **Tests first:**
   1. `scripts/selftest/temper-cases-40.sh` (new; WP01 made the runner find case files, so no list is edited).
      Every case name starts with `ids:`. The cases read both generated
@@ -59,20 +62,28 @@ They build the ids, the counters, the two scripted projects and the checks every
      names, because `docs/plans/one-go/done.md` and WP07 select by them: `intent.accept` (`:634`), `intent.fail`
      (`:638`), `rca.approve` (`:617`), `plan.approve` (every variant of `:673-689`), `plan.fail` (`:697-700`),
      `design.pass` (`:729`), `design.fail` (`:738-740`), `build.pass` and `fix.pass` (`:751`), `build.fail` and
-     `fix.fail` (`:762-764`), `review.pass` (`:786, 805`), `check.pass` (`:821`), `check.fail` (`:834-874`),
+     `fix.fail` (`:762-764`), `review.pass` (`:786`), `review.fail` (`:805`), `check.pass` (`:821`), `check.fail`
+     (`:834-874`),
      `commit.confirm` (`:2244`), `commit.fail` (`:2246-2275`), `group.pass` (`:1943`), `group.fail`
      (`group_failed`, `:1957`), `group.parked` (`parked`, `:2067`), `task.covered` (`:1832`), `task.manual`
      (`:1872`), `task.env` (`:1857-1870`), `build.foreign` (`:1772`), `plan.context` (`context_question`,
      `:2306`), `run.restart` (`restart`, `:2279`), `intent.blocking` (`blocking_asks`, `:2478`), `scope.drift`
      (`drift_info`, `:2850`). Name the rest by the rule. A follow up question takes its parent's id and a suffix:
-     `.more`, `.accept`, `.reason`, `.name`.
+     `.more`, `.accept`, `.reason`, `.name`. The closed list is section 5 of `docs/plans/one-go/contracts.md`;
+     later packages add `run.budget`, `base.red`, `plan.command`, `repair.stop` and `config.tidy` to the registry
+     when they add the question.
   3. **Option ids.** One id per meaning, kept when the label changes. Fixed names: `approve-run` for the option
      whose move is `arm` (`:674-675, 726-728`); `ask-every-stage` for the plain approval of the plan (`:673`,
      `:682-688`); `continue` for a passed stage's first option; `commit`; `back`; `redo`; `override`; `save`
      (`save()`, `:483-485`); `more`; `accept-finding`; `small-change`; `confirm`; `as-planned`; `carry`; `cancel`;
-     `type`; `add-setup` (`:1197`); `start-over`. Later packages add `grant-more`, `go-on-anyway`,
-     `it-is-the-code`, `check-again`, `repair-first`, `run-design` and `correct-test` to the same list when they add
-     the option.
+     `type`; `add-setup` (`:1197`); `start-over`. Later packages add `it-is-the-code` and `check-again` (WP08),
+     `grant-more` (WP10), `run-design` (WP14), `go-on-anyway` (WP20), `more-time` (WP21), `run-anyway` (WP22),
+     `correct-test` (WP23), `repair-again` and `revert-repair` (WP24), `add-file` (WP25), `tidy-config` and
+     `keep-config` (WP29) to the same list when they add the option; the table is section 5 of
+     `docs/plans/one-go/contracts.md`. The head has 71 distinct labels and far fewer fixed names: the rest get
+     their ids by the rule. Every id this package gives to a question or an option of the head that the tables
+     of `contracts.md` section 5 do not name is added there, one line each, in this commit: the persons of WP07
+     and the later packages read that page.
   4. **`opt()` (`:459-481`).** New keyword `oid`, required, refused when it is not in `OPTION_IDS`, in the way an
      unknown move is refused at `:460-461`. `opt()` sets `recommended` from the label it is given (true when the
      label ends in the suffix) and takes an optional `kind`. Call sites keep their label text. The options of the
@@ -114,8 +125,9 @@ They build the ids, the counters, the two scripted projects and the checks every
   `CHANGELOG.md`; one line in `docs/plans/one-go/PROGRESS.md`.
 - **Done when:**
   - `bash scripts/verify.sh quick` is green.
-  - A throwaway script removes `id`, `kind` and `recommended` from the new fixture modules and the result is byte
-    equal to the modules of the commit before. This is the proof that no label, call or order moved.
+  - A throwaway script removes `id`, `kind` and `recommended` from question and option objects only (the head
+    already has `id` on groups, tasks and findings and `kind` in two views) and the result is byte equal to the
+    modules of the commit before. This is the proof that no label, call or order moved.
   - `claude plugin test .` is green, `tsc -p tsconfig.mod.json` is clean, `bash scripts/check-mod-calls.sh` still
     prints 20 calls.
   - `bun scripts/e2e/run.ts all full-run fix armed-run` passes with the plain and mod traces equal.
@@ -152,19 +164,23 @@ They build the ids, the counters, the two scripted projects and the checks every
 - **Touches:** `scripts/e2e/world.ts`, `scripts/e2e/loop.ts`, `scripts/e2e/run.ts`, `scripts/e2e/project.ts`,
   `scripts/e2e/pyjokes.ts`, `scripts/e2e/replay.ts`, `scripts/e2e/scenarios.ts`, `scripts/e2e/floor.json` (new),
   `scripts/check_floor.py` (new), `scripts/caps.json` (new), `scripts/check_caps.py` (new), `scripts/stops.json`
-  (new), `scripts/run_summary.py` (new), `scripts/temper` (two lines), the flow's `write_view`,
+  (new), `scripts/run_summary.py` (new), `scripts/temper` (two lines), `scripts/flow_view.py` (`write_view`),
   `scripts/quality-check.sh`, `scripts/verify.sh`, `.github/workflows/quality.yml`, `bench/run.mjs`,
   `bench/agentlog.py` (new), `bench/scorecard.py` (new), `bench/report.py`, `bench/README.md`,
-  `scripts/selftest/temper-cases-41.sh` (new), `docs/flow.md`, `.claude/CLAUDE.md`, `CHANGELOG.md`.
+  `scripts/selftest/temper-cases-41.sh` (new), `scripts/selftest/temper-cases-32.sh` (one case of WP02 goes,
+  step 8), `scripts/e2e/ab-replay.sh` (step 7), `docs/flow.md`, `.claude/CLAUDE.md`, `CHANGELOG.md`.
 - **Tests first:**
   1. `scripts/selftest/temper-cases-41.sh` (new), names start with `floor:`, `caps:` or `summary:`.
      - `caps: every cap is measured and equals its now value` (`python3 scripts/check_caps.py` exits 0).
      - `caps: a now value one above the measure fails, and one below fails` (copy the file, change one number).
      - `caps: a now value above its final fails only in the final mode`.
-     - `caps: a final value above the same key at HEAD fails` (a raise is refused; the first commit of the file
-       is exempt).
+     - `caps: a final value above its first committed value fails` (in a throwaway git folder with two commits:
+       a raise is refused also after it was committed; a key with no earlier commit is exempt).
+     - `floor: a final value above its first committed value fails` (the same rule in `scripts/check_floor.py`).
      - `floor: a count that differs from the file fails with the scenario, the mode and both numbers`
        (`python3 scripts/check_floor.py` on a made up counts file).
+     - `floor: the base column of the replay equals replay_base` (`python3 scripts/check_floor.py --replay-base`
+       on a made up line: equal passes, one number moved fails with its name).
      - `floor: every check that scripts/stops.json names exists` (the name is found by `grep -rF` in
        `scripts/selftest` or `scripts/e2e`; a stop with no check yet is allowed here and closed by WP07).
      - `summary: state clear appends one line to .temper/runs.jsonl and the line survives state init`.
@@ -202,6 +218,8 @@ They build the ids, the counters, the two scripted projects and the checks every
      until WP11 moves `full-run` to the person who asks at every stage; keep both entries of the floor.
   5. **`scripts/e2e/run.ts`.** Two flags: `--floor FILE` compares each finished scenario's counts with the file and
      fails on any difference; `--write-floor FILE` writes the `now` values. A scenario with no entry fails.
+     `--write-floor` is refused together with `--shard`: the file is written by one process. Both flags may stand
+     anywhere after the mode, as WP01 made `run.ts` read them.
   6. **`scripts/e2e/floor.json`.** The shape:
 
      ```json
@@ -217,15 +235,30 @@ They build the ids, the counters, the two scripted projects and the checks every
                                   "temper:temper-review": 1 } } },
            "driver": { "now": { "dialogs": 8, "handbacks": 0 }, "final": { "dialogs": 2, "handbacks": 0 } } } },
        "replay": { "now": { "questions": 8, "agent_launch_total": 7, "loops_recommended": 1, "manual_repairs": 0,
-                            "setup_clicks": 1, "agent_minutes_estimate": 92 },
-                   "final": { "questions": 3, "agent_launch_total": 7, "loops_recommended": 0, "manual_repairs": 0,
-                              "setup_clicks": 1, "agent_minutes_estimate": 92 } } }
+                            "setup_clicks": 1, "agent_minutes_estimate": 92, "shipped": true,
+                            "defect_in_commit": false },
+                   "final": { "questions": 3, "agent_launch_total": 7,
+                              "agent_launches": { "temper:temper-plan": 1 }, "loops_recommended": 0,
+                              "manual_repairs": 0, "setup_clicks": 1, "agent_minutes_estimate": 92,
+                              "shipped": true, "defect_in_commit": false,
+                              "bad_validate_line_in_plan_at_end": false } },
+       "replay_base": { "questions": 8, "agent_launch_total": 7, "loops_recommended": 1, "manual_repairs": 0,
+                        "setup_clicks": 1, "agent_minutes_estimate": 92, "shipped": true,
+                        "defect_in_commit": false } }
      ```
 
      `now` is compared exactly, so the file never drifts above or below the truth. `final` is the number of
      `docs/plans/one-go/done.md`; `bash scripts/verify.sh final` fails while a `now` value is above its `final`
      (in `launches`, a type that `final` does not name stands at 0; `launch_total` is the sum).
-     A package that lowers a count lowers `now` in the same commit. Nothing raises a `final`.
+     A package that lowers a count lowers `now` in the same commit. Nothing raises a `final`:
+     `scripts/check_floor.py` refuses a `final` above its value in the commit that first added the key, as
+     `scripts/check_caps.py` does (step 8).
+     The `replay` entry holds every key row `D58` of `done.md` names: besides the counts, `shipped`,
+     `defect_in_commit`, `bad_validate_line_in_plan_at_end` and `agent_launches`, the launches by agent type, in
+     `now` (read off the first run) and in `final`. A count of `final` is an upper bound; `true` and `false` must
+     be equal. The lists the replay prints (`loops_recommended`, `manual_repairs`) are held as their lengths.
+     `replay_base` holds the same keys for the CLI of `10e965a`, read off `bash scripts/e2e/ab-replay.sh 10e965a`
+     after step 4. It has no `now` and no `final`, it is compared exactly, and no package changes it.
      Measured at the head in a clone, to check the first write against: `default-run` 8 dialogs and 6 launches in
      all three modes; `full-run` 7 and 6 (before step 4); `design` 8 and 7; `armed-run` 4, 6, and 3 steps by the
      CLI; `fix` 4 dialogs and 3 launches in driver mode. In plain mode `fix` counts 2 launches, because the scenario
@@ -234,6 +267,12 @@ They build the ids, the counters, the two scripted projects and the checks every
   7. **The replay in the gate.** `bash scripts/verify.sh full` runs `bun scripts/e2e/replay.ts final`, takes the
      last line, and `python3 scripts/check_floor.py --replay` compares it with the `replay` entry. The values
      above are those of `docs/evidence/ab-replay-9.8.5.md:26-35`.
+     The same step of `full` runs `bash scripts/e2e/ab-replay.sh 10e965a` (about 55 seconds). The script gets
+     one check: when its base is `10e965a`, it hands the JSON line of its base run to
+     `python3 scripts/check_floor.py --replay-base`, which compares it with the entry `replay_base` and fails the
+     script on a difference. The harness of this tree must still drive the CLI of 9.8.5 to the same numbers: from
+     WP08 on a package can move them only by breaking what the two sides share (`scripts/e2e/loop.ts`, the
+     persons), and `full` then says so at the next phase gate and not at WP32.
   8. **`scripts/caps.json` and `scripts/check_caps.py`.** Python 3 and git only, under a second, called from
      `scripts/quality-check.sh` as one more block before the summary (`:158`). Each key has `now` and `final`.
      The keys and how each is measured (the measure is code in the script, named in a comment beside the key):
@@ -243,7 +282,7 @@ They build the ids, the counters, the two scripted projects and the checks every
      | `question_sites` | calls of `self.question(` and `self.with_more(` in the flow modules | 53 (41 and 12) |
      | `option_sites` | calls of `self.opt(` in the flow modules | 89 |
      | `option_labels` | distinct first arguments of those calls | 71 |
-     | `question_ids` | entries of `QUESTIONS` in the base module of the flow | set by WP04 |
+     | `question_ids` | entries of `QUESTIONS` in the base module of the flow, `scripts/flow_base.py` | set by WP04 |
      | `gate_rows` | distinct `_req "<name>"` names of the CLI, distinct `row("<name>"` names of `scripts/*.py` and `name = "` lines of `gate_rows.py`, added up | 55 (32, 19 and 4) |
      | `agent_briefs` | files of `agents/*.md` | 13 |
      | `listed_commands` | `commands` of `.claude-plugin/plugin.json` | 11 |
@@ -253,14 +292,18 @@ They build the ids, the counters, the two scripted projects and the checks every
      | `config_lines` | lines of the same file | 171 |
      | `prompt_bytes` | bytes of `commands/*.md`, `agents/*.md` and `reference/**/*.md` | 307,712 |
      | `pack_skill_bytes` | bytes of the markdown under `packs` and `skills` | 79,658 |
-     | `cli_bytes` | bytes of `scripts/temper` | set after WP02 |
+     | `cli_bytes` | bytes of `scripts/temper` | the measure after WP02 as `now`, 222144 as `final`; and delete the case `room: scripts/temper leaves 40,000 bytes free` of case file 32 in this commit |
 
      The regular expressions are in `docs/plans/one-go/evidence/v-targets-scorecard.md` section 5; the values in
      the last column were counted again at the head and agree. Take the file list of the flow from one key of the
      file (`flow_files`), so WP03's module names are stated once.
-     Three rules in the script: `now` equals the measure; a `final` in the working tree is not above the same
-     `final` at `HEAD`; in the final mode no `now` is above its `final`. The `final` values are part F of
-     `docs/plans/one-go/done.md`.
+     Three rules in the script: `now` equals the measure; a `final` is not above its value in the commit that
+     first added the key, which the history of the file gives; in the final mode no `now` is above its `final`.
+     A rule that read only `HEAD` would be passed by the very commit that raises a value. The `final` values are
+     part F of `docs/plans/one-go/done.md`; that each `final` of the caps and of the floor equals the number of
+     that table is checked by `python3 scripts/check_done.py --final` (WP07, `D75b`).
+     From this commit on `cli_bytes` is a cap like the others: a package may use the room WP02 made, `now`
+     follows the measure, and the line of 222,144 bytes is held at the end by `--final`.
   9. **`scripts/stops.json`.** A list of `{ "id", "where", "trigger", "check" }`: the 18 stops of
      `docs/plans/one-go/evidence/v-auto-advance.md` section 2 and the person only calls of
      `hooks/temper-mod/core/rules.ts:476-497`. `check` names the case or scenario that walks the stop and is empty
@@ -275,16 +318,21 @@ They build the ids, the counters, the two scripted projects and the checks every
       (`scripts/temper:632-634`) so git ignores them; add `asked.json` to the `rm -f`, after the line is written,
       and keep `runs.jsonl` out of it. Neither file decides a gate row.
       The asks: when the flow writes a view whose `ask` is set (`write_view`, `scripts/flow.py:2885`, beside the
-      call of `write_named`), it records `<run id>:<step>:<question id>` in `.temper/asked.json` once, with the
+      call of `write_named`; since WP03 in `scripts/flow_view.py`), it records
+      `<run id>:<step>:<question id>` in `.temper/asked.json` once, with the
       stage and the kind; a Blocking set counts one for every four questions. Follow up dialogs (More, a reason)
       are asked by the carrier and are not seen here: the page says the count is the CLI's questions.
-  11. **The bench scorecard.** No package of the frame owns it and part H of `done.md` needs it, so it is here.
+  11. **The bench scorecard.** No other package of the brief (`docs/plans/one-go/README.md` section 5) owns it and
+      part H of `done.md` needs it, so it is here.
       `bench/run.mjs:167, 187-188`: write the question id, the `move` and a dialog index on each line of
       `person.jsonl`; `:248-264`: add the plugin version, the commit, the Claude Code version and mod on or off to
       `run.json`. `bench/agentlog.py`: the four helpers of `bench/compare_models.py:25-108`, with the agent type
       matched whole. `bench/scorecard.py`: `scorecard.json` for a results folder, and `--gate FILE` that compares
       it with the pass lines of part H and writes `docs/evidence/scorecard-10.0.0.json`. `bench/report.py:14`:
-      free arm names; median, minimum and maximum beside the mean. Test it on a made up results folder: no model.
+      free arm names; median, minimum and maximum beside the mean. The scorecard takes several results folders
+      and keeps one block an arm, by name: the model test of WP32 is a third arm in a folder of its own. `--gate`
+      holds one arm against the pass lines: the one `--arm NAME` names, by default the round after. WP32 names
+      the arm of the planner the release ships with. Test it on a made up results folder: no model.
   12. **CI.** One job `Floor and caps` in `.github/workflows/quality.yml`: bun as the e2e job pins it (`:92-94`),
       then the two floor commands of step 3 and `python3 scripts/check_caps.py`. `bash scripts/verify.sh quick`
       runs `default-run` and `fix` in plain mode with `--floor`; `full` runs every scenario with it.
@@ -296,9 +344,13 @@ They build the ids, the counters, the two scripted projects and the checks every
 - **Done when:**
   - `bash scripts/verify.sh quick` is green and prints the floor and the caps blocks.
   - `bun scripts/e2e/run.ts all --floor scripts/e2e/floor.json` exits 0 (this is the whole end to end suite: run it
-    once here, as the phase gate).
+    once here, in the background; the `full` that ends phase 2 comes after WP07, as
+    `docs/plans/one-go/README.md` section 5 says).
   - `python3 scripts/check_caps.py` exits 0 and `bash scripts/quality-check.sh` stays under 30 seconds.
-  - `bun scripts/e2e/replay.ts final | tail -1` agrees with the `replay` entry.
+  - `bun scripts/e2e/replay.ts final | tail -1` agrees with the `replay` entry, and
+    `bash scripts/e2e/ab-replay.sh 10e965a` exits 0 with its base column equal to the entry `replay_base`.
+  - `TEMPER_CASES_ONLY=32 bash scripts/selftest/test-temper.sh` no longer holds the case
+    `room: scripts/temper leaves 40,000 bytes free`, and `scripts/caps.json` holds `cli_bytes` with `final` 222144.
   - `python3 bench/scorecard.py` runs on the made up folder of its test.
 - **Traps:**
   - After step 4 every scenario asks one more question. A scenario person that answers by question text may stop at
@@ -314,8 +366,11 @@ They build the ids, the counters, the two scripted projects and the checks every
   - `scripts/quality-check.sh` must need python3 and git only (`:3-6`): the floor needs bun and is its own step.
   - `scripts/check_caps.py` and `scripts/check_floor.py` are scripts: no path with a folder named `hooks`,
     `tests`, `mod`, `core` or `ui`, no `glob` call, no wildcard after a variable, no `..` after a variable
-    (`scripts/validate-directory.sh:17-34`). List files with `git ls-files` and a pathspec. The mod's counts
-    (reviewed calls, hand back kinds) stay in `scripts/check-mod-calls.sh` and in `tests/mod`.
+    (`scripts/validate-directory.sh:17-34`). List files with `git ls-files` and a pathspec. The mod's count of
+    reviewed calls stays in `scripts/check-mod-calls.sh` and in `tests/mod`. The count of hand back kinds is not
+    built here: it is left to WP16, which adds the key `handback_kinds` to `scripts/caps.json` and counts it from
+    `NEEDS` of `scripts/flow_base.py`, so the checker names no file of the mod
+    (`docs/plans/one-go/contracts.md` section 12).
   - `.temper/runs.jsonl` must survive `state init` and `state clear`; U19 of
     `docs/plans/one-go/evidence/v-pr115.md` is the same list missing three files.
   - The view fixtures do not change here. If `write_view` changes what it writes into the view, regenerate them.
@@ -336,7 +391,10 @@ They build the ids, the counters, the two scripted projects and the checks every
   `scripts/e2e/persons.ts` (new), `scripts/e2e/xfail.ts` (new), `scripts/e2e/replay.ts`, `scripts/e2e/run.ts`,
   `scripts/e2e/floor.json`, `scripts/selftest/expected-fail.txt` (new, four lines), `scripts/verify.sh`.
 - **Tests first:** the scenarios are the tests. Each is registered in `scripts/e2e/run.ts` and listed in
-  `scripts/selftest/expected-fail.txt` with the package that makes it pass. Before them, the scenario half of the
+  `scripts/selftest/expected-fail.txt` with the package that makes it pass: `slow-first-run` WP23, `slow-at55`
+  WP20 (the last column of row `D12`), `broken-first-run` WP21, `broken-flaky` WP22. Each of the four starts
+  with a bare `origin` and a fake `gh` and calls the shared assert of row `D105` (steps 1 and 5); what `D11`,
+  `D13` and `D105` of `done.md` say is part of the lists below (its note 8). Before them, the scenario half of the
   expected to fail mechanism that WP07 defines (its mechanism, steps 1 and 3) is built and checked here, because
   these scenarios are its first users: `bun scripts/e2e/xfail.ts --check` asserts, on made up input, the four
   outcomes (listed and throws, listed and passes, not listed and throws, not listed and passes) and the reader of
@@ -344,16 +402,19 @@ They build the ids, the counters, the two scripted projects and the checks every
   1. `slow-first-run`, modes plain and driver (`D11` of `done.md`). The default person. It asserts: the questions
      asked are `plan.approve` and `commit.confirm` and no other; no line of the tool log has exit 124; the log
      holds at most 3 whole suite runs; the Check gate passed with the coverage row in the state not measured;
-     `.claude/temper.config` at the end is byte equal to the file `temper init` left.
+     no call of its trace steps back to Plan; `.claude/temper.config` at the end is byte equal to the file
+     `temper init` left.
   2. `slow-at55`, mode plain (`D12`). The same project with `check.commands.test` and `check.commands.coverage`
      set before the run; the coverage command runs the suite and prints the line of `backend/coverage-total.txt`,
      which holds `TOTAL 100 45 55%` on the base. It asserts: Check passes at 55%. A second pass of the scenario, in
      which the scripted builder writes 50% into that file, asserts: Check fails with a row that names the drop.
   3. `broken-first-run`, modes plain and driver (`D13`). It asserts, in this order: the first question is asked
      with no agent launched and names the tool version and the service; its recommended option adds the setup
-     block; the red test is named in a question before `temper:temper-plan` is launched; no launch of
-     `temper:temper-env` and no fix pass of `temper:temper-build` in the whole run; the run ends at the commit
-     with the red test and the first flaky test listed on the commit card.
+     block; the block written to the config is byte equal to the block that question showed; the red test is
+     named in a question before `temper:temper-plan` is launched; no launch of `temper:temper-env` and no fix pass
+     of `temper:temper-build` in the whole run; no call of its trace steps back to Plan; the last question is
+     `commit.confirm`, with the red test and the first flaky test listed on the commit card; the run asks at most
+     4 dialogs.
   4. `broken-flaky`, mode plain (`D14`). The second flaky test passes on the base and fails once at the first
      gate that runs it on another tree. It asserts: the CLI ran it once more before any agent, the ledger holds
      a row that calls it flaky, and no agent was launched for it.
@@ -369,6 +430,10 @@ They build the ids, the counters, the two scripted projects and the checks every
      - `MOCK_FLAKY_LATER`: a class that passes on the base tree and fails the first time it runs on another tree.
        The script keeps its marks as files under `MOCK_DB`, keyed by `git rev-parse HEAD^{tree}`.
      Every call stays one line of `MOCK_LOG`; add the exit code to the line.
+     The same file gets `withRemote(w)`: the fake `gh` that logs its calls and the bare `origin` that
+     `prAndPipeline` builds (`scripts/e2e/scenarios.ts:258-265`), as one exported function. Every scenario of
+     `scripts/e2e/slow.ts`, `scripts/e2e/broken.ts` and `scripts/e2e/accept.ts` calls it before its project
+     starts, so a push or a pull request that a run makes is seen in the world (`D105`).
   2. **The slow project (`scripts/e2e/slow.ts`).** `backend/pom.xml` and no build file in the root: the shape
      the measured run had, which `detect()` cannot read (`scripts/check_run.py:76, 140-141`). JDK right, no
      service. One group of two tasks in a chain, so the three suite runs of the promise are the base, the group
@@ -392,6 +457,14 @@ They build the ids, the counters, the two scripted projects and the checks every
      true and throws `unexpected question <id>` at a question whose id is not in `allowed`. A scenario that is
      still expected to fail then fails at its first extra question, in seconds, and never walks 400 steps.
      `stagePerson` takes `ask-every-stage` at `plan.approve` and the recommended option elsewhere.
+     The same file holds the shared assert of row `D105`, `worldCheck(w)`. Both persons take its picture of the
+     project when they meet the approval (`plan.approve`, `rca.approve`); every scenario of the three files ends
+     with one call of it. It asserts what the row says, at the approval and at the last question, from the
+     project itself (git, the `gh` log, the files) and never from the names of calls, and each message starts
+     with `D105`. Rule 1 cannot hold in the world before WP12, while rows that pass earlier (`D07`, `D08`, `D17`,
+     `D20`) use the same scenarios. So while a line of `approval-first` is on the expected to fail list, the
+     shared assert prints what it found as `XFAIL world <scenario> [<mode>]: <line>` and returns; once WP12 has
+     taken that line off, a failure of it fails the scenario.
   6. **The list and the scenario runner.** Create `scripts/selftest/expected-fail.txt` and the handling of it in
      `scripts/e2e/run.ts`, as steps 1 and 3 of WP07's mechanism say; the decision is a pure function of
      `scripts/e2e/xfail.ts`. `bash scripts/verify.sh quick` runs `bun scripts/e2e/xfail.ts --check`.
@@ -419,7 +492,8 @@ They build the ids, the counters, the two scripted projects and the checks every
   - `.claude/temper.config` is compared with what `temper init` wrote, after the template of the day. When WP29
     shrinks the template the compare still holds; a compare with a stored copy would not.
   - The broken project's setup block reaches the config by the person's answer. Assert that the config changed
-    only in a `setup:` block; that is rule 4 of the frame seen from the outside.
+    only in a `setup:` block; that is rule 4 of the brief (`docs/plans/one-go/README.md` section 6) seen from
+    the outside.
 - **Size:** M.
 
 ## WP07 The acceptance scenarios and the eleven rule checks, written failing first
@@ -440,7 +514,12 @@ They build the ids, the counters, the two scripted projects and the checks every
 - **Tests first:** this package is tests. The table of `docs/plans/one-go/done.md` is its list: write every check
   of the table that is a `scenario` item or a `case 44`, `case 45` or `case 46` item, with its token as the first
   word of its name.
-  First write the checks of the mechanism itself, in `scripts/selftest/temper-cases-43.sh`, names `xfail:`:
+  For each row read "Tests first" and "Mechanism" of the package in its last column: the calls that build its
+  state are named there and in `contracts.md` section 2. Note 8 of `done.md` is part of this spec, and of the
+  specs of WP05 and WP06: it lists the tokens the audit added (`D02b` to `D105`), and every one is written here,
+  failing first.
+  First write the checks of the mechanism itself, in `scripts/selftest/temper-cases-43.sh`, names `xfail:` and
+  `done:`:
   1. `xfail: a listed selftest check that fails is counted apart and the file still ends FAIL: 0`.
   2. `xfail: a listed selftest check that passes is a failure that names the list`.
   3. `xfail: a check that is not listed and fails is a failure` (the list never hides an unlisted failure).
@@ -449,7 +528,16 @@ They build the ids, the counters, the two scripted projects and the checks every
   5. `xfail: an entry that matches no check is a failure` (a stale line cannot stay).
   6. `xfail: the final mode fails while the list has an entry`.
   7. `done: every row of done.md that needs no model names a check that exists`.
-  8. `done: a removed or changed assertion of a test of the base fails until changed-tests.md lists it`.
+  8. `done: a removed or changed assertion of a test of the base fails until changed-tests.md lists it`, and the
+     same name with another expected value fails until it is listed.
+  9. `done: a token that left the list cannot come back` (a throwaway git folder: the line is taken off in one
+     commit and added again in the next).
+  10. `done: a token is a whole word` (`D10` does not match an assertion named `D100`), and
+      `done: a line of the list names a token of the table or a scenario of the three files`.
+  11. `done: the final mode compares each final with the number of done.md` (`D75b`: a `final` of a made up caps
+      file that differs from the value after `=` fails, and so does one above its first committed value).
+  12. `done: a scenario of the three files that does not call the shared assert fails` (`D105`), and
+      `done: a changed check of done.md fails until it is listed` (`D84b`, the second base).
   Each runs the runner on a throwaway copy of a two case file or a two scenario map, never on the real suite.
 - **Mechanism:**
   1. **The list.** `scripts/selftest/expected-fail.txt`, tracked, one check a line, `#` for a comment:
@@ -482,21 +570,36 @@ They build the ids, the counters, the two scripted projects and the checks every
      list, and fails when: a row that needs no model names no check; a `case` token is not found in its case file
      or a `scenario` name is not found in `scripts/e2e` (`grep -F`); a line of the list matches no check; a row id
      is used twice; a test file holds `.skip(`, `.only(` or `.todo(` (found with `git grep` and the pathspecs
-     `*.test.ts` and `*.test.tsx`). A `mod` item is not looked up: the mod's own suite runs every test file. With
-     `--final` it also fails when the list has an entry. It prints one line a row: the id, `ok`,
+     `*.test.ts` and `*.test.tsx`); a line of the list whose token is not a token of the table of `done.md` or
+     whose scenario is not one WP06 or WP07 created (a scenario of `scripts/e2e/accept.ts`, `slow.ts` or
+     `broken.ts`; `contracts.md` section 9); and, where the history is there (not in a checkout of depth 1), a
+     line that an earlier commit of the branch had taken off the list (`git log -p` of the file shows it removed
+     and added again). A token is compared as a whole word, so `D10` never matches `D100`. A scenario of the
+     three files that does not call the shared assert `worldCheck` fails too (`D105`). A `mod` item is not looked
+     up: the mod's own suite runs every test file. It reads the value an item of the table writes after `=`. With
+     `--final` it also fails when the list has an entry, and it runs `D75b`: each `final` of
+     `scripts/caps.json` and `scripts/e2e/floor.json` equals the value the table writes after `=` for its key,
+     and none is above its value in the commit that first added the key. It prints one line a row: the id, `ok`,
      `expected to fail` or `open`.
   5. **`scripts/check_changed_tests.py`.** It takes the removed lines of `git diff 10e965a` for the pathspecs
      `scripts/selftest/temper-cases-*.sh`, `scripts/selftest/test-temper.sh`, `scripts/e2e/*.ts`, `*.test.ts` and
-     `*.test.tsx` that hold `assert_eq`, `assert_exit`, `expect(` or `test(`, takes the first quoted string of each
-     as the name, and fails for each name that is neither still present unchanged in the tree nor in a code span of
-     `docs/plans/one-go/changed-tests.md`. That file is one table: the name, the file, what changed, why, the
+     `*.test.tsx` that hold `assert_eq`, `assert_exit`, `expect(` or `test(`. For each removed line it takes the
+     first quoted string as the name and the whole statement as the text (a statement that ends in a backslash
+     runs through its last line). It fails when that statement is not in the tree byte for byte and its name is
+     not in a code span of `docs/plans/one-go/changed-tests.md`. A changed expected value under an unchanged name
+     is a changed assertion. That file is one table: the name, the file, what changed, why, the
      package. The generated fixture modules are left out.
+     A second base (`D84b`): for the case files 43 to 46, `scripts/e2e/accept.ts`, `scripts/e2e/slow.ts`,
+     `scripts/e2e/broken.ts` and `docs/plans/one-go/done.md` the base is the commit that first added the file,
+     and an assertion or a row of the table that changed or went since then must be listed too. Without it a
+     failing check of the table could be edited until it passes.
   6. **`scripts/verify.sh`.** `quick` and `full` run `python3 scripts/check_done.py` and print the count of
      expected failures. A new mode `final` is `full`, then `python3 scripts/check_done.py --final`,
      `python3 scripts/check_caps.py --final`, `python3 scripts/check_floor.py --final`,
      `python3 scripts/check_changed_tests.py`, and the bench block: when
      `docs/evidence/scorecard-10.0.0.json` exists it must be inside the lines of part H; when it does not,
-     print `OPEN: the bench gate (needs a credential and about 80 dollars)` and go on.
+     print `OPEN: the bench gate (needs the owner's word and a model access)` and go on. The mode is extended
+     later by WP32, which adds the compare of the replay against 9.8.5 to it.
   7. **How a scenario reads and answers.** The persons are those of `scripts/e2e/persons.ts` (WP06).
      Scenarios select options by id and read results from `next --json`,
      `.temper/view.json`, `.temper/gates.json`, git and the tool logs. They name a CLI call only where the plan
@@ -508,7 +611,11 @@ They build the ids, the counters, the two scripted projects and the checks every
      `group-fail-twice` (`D06`, `D33c`), `integrate-fail` (`D07`), `budget-stop` (`D08`, `D38d`),
      `criteria-by-cli` (`D10`), `ask-every-stage` (`D17`), `design-on-ask` (`D20`), `acceptance-wrong-test`
      (`D21`), `stop-keeps-mode` (`D32c`), `revise-narrow` (`D24`). Every one ends with the shared assert of `D33b`
-     on its own trace. `default-run` of WP05 stays as it is, with no assert of a final number: it must pass at
+     on its own trace. Every one also starts with `withRemote(w)` and ends with `worldCheck(w)`, the shared
+     assert of row `D105` that WP06 wrote into `scripts/e2e/persons.ts`: it only reports until WP12 takes
+     `approval-first` off the list, so a row that passes earlier is not held back by it. The scenarios of
+     `scripts/e2e/slow.ts` and `scripts/e2e/broken.ts` assert what rows `D11` and `D13` say; add here what WP06
+     left out. `default-run` of WP05 stays as it is, with no assert of a final number: it must pass at
      every commit so that the floor keeps counting it, and its `final` values are the failing first device there.
      What each scenario asserts is in its row of `done.md`, and each `expect` starts its message with the token
      of the row it proves, so `scripts/check_done.py` finds it. A scripted agent that plants the fault follows the
@@ -528,18 +635,34 @@ They build the ids, the counters, the two scripted projects and the checks every
      or a recorded stop, never an `auto` that passes it; write the name of the assertion into the stop's `check`.
      Rule 11 is in `scripts/check_done.py`: each of the rows `D30` to `D39` must name a check in a selftest file
      or a scenario that runs in plain mode.
-  10. **Runs saved by 9.8.5.** `scripts/selftest/make-saved-985.sh` runs once, now, while the CLI is still the one
-      of the head: it drives the scripted run of `scripts/selftest/make-view-fixtures.sh` to five points (the plan
-      question; Build with a group running; an armed run in Build; Review with an open finding; a parked run) and
+     The case of `D34d` asserts on the row `review completed`, the name `docs/plans/one-go/contracts.md` section
+     6 fixes; WP18 adds no row.
+     One assertion a token. Where a row names several states under one token (`D05b`, `D18d`, `D31b`, `D32e`,
+     `D33f`), join the results into one `assert_eq`, in the `a|b|c` style of the base. The list works by token: a
+     token of which one half passes today is red as an unexpected pass while listed and red as a failure once
+     taken off.
+  10. **Runs saved by 9.8.5.** `scripts/selftest/make-saved-985.sh` runs once, against a work tree of `10e965a`
+      (`git worktree add --detach`, removed after), because this tree already writes ids and two new run files:
+      there it drives the scripted run of that tree's own `scripts/selftest/make-view-fixtures.sh` to five points
+      (the plan question; Build with a group running; an armed run in Build; Review with an open finding; a
+      parked run) and
       writes every file of `.temper` and of the spec folder at each point into `scripts/selftest/saved-985.json`
       as text. The cases of `D60` restore each and run the new CLI on it. The two old config templates are read
       with `git show 7c7a1c1:templates/temper.config.default` and `git show 10e965a:templates/temper.config.default`.
   11. **Close the loop.** For every check that fails now, add its line to the list with the package that will
-      make it pass. For every check that passes now, leave it off. Then `bash scripts/verify.sh full` is green
-      with a known count of expected failures, and that count goes into `PROGRESS.md`.
+      make it pass. For every check that passes now, leave it off. The package is the one of the last column of
+      `done.md`, and for a single assertion the one "Rows by package" names; the audit of the kit already put
+      `D04`, `D12`, `D33`, `D34d`, `D55` and `D64b` where the build order needs them
+      (`docs/plans/one-go/contracts.md` section 13), so nothing is noted for them. Nobody edits the row. A row
+      that passes in parts has one line for each check. `D33`: `D33a` and `D33b` WP11, `group-fail-twice` WP16,
+      `D33f` and `broken-first-run` WP21. `D55` asserts only "never an environment fault, never an agent", and
+      its line names WP08. The options of a slow plan command are row `D99` (`D99a`, `D99b`), listed for WP21:
+      no line is listed for WP21 under the token `D55`. Then `bash scripts/verify.sh full` is green with a known
+      count of expected failures, and that count goes into `PROGRESS.md`.
 - **Removed:** nothing.
 - **Documents in the same change:** `docs/plans/one-go/done.md` (the check column corrected where a name changed
-  while writing); `docs/plans/one-go/changed-tests.md` (empty table); `.claude/CLAUDE.md`, Known mistakes: a check
+  while writing); `docs/plans/one-go/changed-tests.md` (the table starts with the statements WP02 step 10, WP04
+  and WP05 changed, each with its reason); `.claude/CLAUDE.md`, Known mistakes: a check
   is taken off the expected to fail list by the commit that makes it pass and by no other, and its assertion is
   never weakened to get there; `docs/plans/one-go/PROGRESS.md`.
 - **Done when:**
@@ -547,7 +670,8 @@ They build the ids, the counters, the two scripted projects and the checks every
   - `bun scripts/e2e/run.ts all` exits 0 and prints `XFAIL` for each listed scenario.
   - `python3 scripts/check_done.py` prints a line for every row of `done.md` and exits 0;
     `python3 scripts/check_done.py --final` exits 1 and names the entries of the list.
-  - `python3 scripts/check_changed_tests.py` exits 0 against the base `10e965a`.
+  - `python3 scripts/check_changed_tests.py` exits 0 against the base `10e965a`, with the table of
+    `changed-tests.md` holding the statements WP02 step 10, WP04 and WP05 changed, each with its reason.
   - Each scenario on the list fails in under 10 seconds (time one mode of each).
 - **Traps:**
   - A check that is expected to fail must fail for the reason of its promise, not for a typing mistake. Where a
@@ -556,8 +680,9 @@ They build the ids, the counters, the two scripted projects and the checks every
   - A bash case that calls a command the CLI does not have yet must not abort the file: keep the call inside
     `$( ... )` or end it with `|| true`, and compare the output.
   - A later package may name a call or a row differently from the check. It corrects the name in the check in its
-    own commit. It never changes what is asserted; if the assertion is wrong, it says so in `PROGRESS.md` and in
-    the row of `done.md`, and the pull request text carries it.
+    own commit and lists the change in `changed-tests.md` (`D84b`). It never changes what is asserted; if the
+    assertion is wrong, it says so in `PROGRESS.md`, and the pull request text carries it. The row of `done.md`
+    is not edited (`docs/plans/one-go/README.md` section 4).
   - One scenario may prove several rows; it stays listed until all of them hold. Keep one promise a scenario
     where two packages far apart make the parts pass.
   - `scripts/selftest/run-selftest.sh` runs the pairs 2 with 3 and 8 with 9 in one process (`:33-35`). The list is
@@ -567,8 +692,10 @@ They build the ids, the counters, the two scripted projects and the checks every
     `core` or `ui` at all, comments included (`scripts/validate-directory.sh:17-27`). So the two new scripts and
     every bash case reach the mod's tests only through git pathspecs by file ending, and never name their folder;
     rule 11 forbids a `glob` call in a Python file. Run `bash scripts/validate-directory.sh` before the commit.
-  - The new case files are 43 to 46 and those of this phase 40 and 41; WP01 to WP03 use 32. Other packages take
-    numbers from 50 up, so two packages never write one file.
+  - The new case files are 43 to 46 and those of this phase 40 and 41; WP01 to WP03 use 32, and 42 is reserved
+    for WP06. Other packages take the numbers `docs/plans/one-go/contracts.md` section 10 reserves for them (47
+    for WP08, the rest from 50 up), so two packages never write one file.
   - `scripts/e2e/accept.ts` is a new file so that `scripts/e2e/scenarios.ts` (46,572 bytes) is not edited by every
     package at once.
-- **Size:** L.
+- **Size:** XL: the largest package of the build; give its three rule case files and its scenarios to separate
+  agents, as the brief allows.

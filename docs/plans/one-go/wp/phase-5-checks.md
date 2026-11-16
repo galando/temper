@@ -3,6 +3,24 @@
 This file holds WP19 (checks judged against the project), WP20 (environment check and baseline), WP21 (plan
 commands on the base, the preflight removed), WP22 (one digest and the reuse store) and WP23 (checks in `integrate`).
 
+The brief is `docs/plans/one-go/README.md`, and every shared name below is the one `docs/plans/one-go/contracts.md`
+fixes. Every `file:line` is of the head `10e965a`. WP02 and WP03 land before these packages and move code: find each
+function by its name ("the flow modules" are `scripts/flow.py` and the seven modules WP03 made of it). The five
+packages are built in the order of this file, after WP17. Each ends as the brief's section 4 says:
+`bash scripts/verify.sh quick` green, then the package commit, then the small progress commit, in one push;
+`bash scripts/verify.sh full` after WP23 ends phase 5.
+
+Names this file uses, from `docs/plans/one-go/contracts.md`: the new case files are
+`scripts/selftest/temper-cases-60.sh` to `temper-cases-64.sh`, one a package in this order, and a new file needs no
+`source` line because the runner of WP01 finds it by its name. The scripted projects of WP06 are the scenarios
+`slow-first-run` and `slow-at55` of `scripts/e2e/slow.ts` and `broken-first-run` and `broken-flaky` of
+`scripts/e2e/broken.ts`. The caps file is `scripts/caps.json`, the floor file `scripts/e2e/floor.json`, and the
+cards are built in `scripts/card.py`. A package that rewrites an assertion of the base lists it in
+`docs/plans/one-go/changed-tests.md`, takes each check it makes pass off `scripts/selftest/expected-fail.txt`, and
+writes its lines into `CHANGELOG.md`. A check that passed earlier is simply not on the list
+(`docs/plans/one-go/done.md`, note 7). If one still fails for a reason that belongs to a later package, do not
+weaken it: name that package on its line of the list and in `docs/plans/one-go/PROGRESS.md`.
+
 ## WP19 Checks judged against the project
 
 - **Goal:** Check never fails correct work on a number the project never had, and never passes what nobody measured.
@@ -11,18 +29,20 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
 - **Depends on:** WP02, WP03, WP04, WP06, WP08, WP11, WP15.
 - **Lane:** `flow core`.
 - **Touches:** `scripts/check_run.py`, `scripts/gate_rows.py`, `scripts/temper` (`_req`, `gate_check`, the row printer
-  of `cmd_gate`), the flow modules that hold `Run.failed_rows`, `ask`, `measurement_gap`, `check_markers` and the
-  commit card of WP15, `scripts/output_ops.py`, `scripts/run_report.py`, `hooks/temper-mod/core/runview.ts`,
-  `hooks/temper-mod/core/view.ts`, the mod's drawing of the checks, `tests/mod/drawings.test.tsx`,
-  `tests/mod/hardening.test.ts`, `templates/temper.config.default`, `.claude/temper.config`, `agents/check.md`,
-  `reference/check.md`, `docs/flow.md`, `docs/trust.md`, `README.md`, `scripts/selftest/` (a new case file, cases 1,
-  8, 9, 13, 15, 26, 28 and `test-temper.sh`), both view fixture files, `scripts/e2e/scenarios.ts`,
-  `scripts/e2e/pyjokes.ts`, `scripts/e2e/replay.ts`, the caps file of WP05.
+  of `cmd_gate`), the flow modules that hold `Run.failed_rows`, `ask`, `measurement_gap` and `check_markers`,
+  `scripts/card.py` (the commit card of WP15), `scripts/output_ops.py`, `scripts/run_report.py`,
+  `hooks/temper-mod/core/runview.ts`, `hooks/temper-mod/core/view.ts`, the mod's drawing of the checks,
+  `tests/mod/drawings.test.tsx`, `tests/mod/hardening.test.ts`, `templates/temper.config.default`,
+  `.claude/temper.config`, `agents/check.md`, `reference/check.md`, `docs/flow.md`, `docs/trust.md`, `README.md`,
+  `scripts/selftest/` (`temper-cases-60.sh`, new; cases 1, 8, 9, 13, 15, 26, 28 and 52; `test-temper.sh`), both view
+  fixture files, `scripts/e2e/scenarios.ts`, `scripts/e2e/slow.ts`, `scripts/e2e/pyjokes.ts`, `scripts/e2e/replay.ts`,
+  `scripts/caps.json`, `scripts/stops.json` and `docs/decisions/0019-a-run-that-asks-twice.md` (trap 7),
+  `scripts/selftest/expected-fail.txt`, `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
 - **Tests first:**
-  1. Selftest, a new case file (take the next free number and add its `source` line as
-     `scripts/selftest/test-temper.sh:235-244` does). Case `w19 rule table`: feed
-     `python3 scripts/check_run.py coverage-verdict` one JSON object per row and compare the printed verdict. Rows:
-     12 changed lines of which 10 ran, base 71: pass, rule `changed lines`, floor 71. Base 92, changed lines at 85%:
+  1. Selftest, `scripts/selftest/temper-cases-60.sh` (new; the hand list of `scripts/selftest/test-temper.sh:235-244`
+     went with WP01, so no `source` line is added). Case `w19 rule table`: feed
+     `python3 scripts/check_run.py coverage-verdict` one JSON object per row and compare the printed verdict. Rows: 12
+     changed lines of which 10 ran, base 71: pass, rule `changed lines`, floor 71. Base 92, changed lines at 85%:
      pass, floor 80. 12 changed lines of which 6 ran, base 71: fail. 9 changed lines, total 70.4, base 71: pass, rule
      `total`. Total 69.9, base 71: fail. Line data and no base value: `not measured`. No coverage command:
      `not measured` with the hint. Key set to 80 and total 55: fail, rule `threshold`. Key set and no coverage
@@ -44,18 +64,27 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      `temper check ahead` writes `.temper/evidence/mutation.json` with `"state": "not run"` and a reason, and the
      counter file shows no run for a planted bug. The call returns at once; wait for the file as the helper
      `_ahead_done` waits today (`scripts/selftest/temper-cases-15.sh:451`).
-  8. `scripts/e2e/scenarios.ts`, scenario `slowProjectRun` on the slow project of WP06 (55% coverage, no coverage
-     tool): a default run ends at the commit question with exactly the approval and the commit as dialogs, no stop
-     at Check, and the commit card text holds `coverage: not measured`. Three modes.
-  9. Same file, scenario `coverageDrop`: the scripted builder leaves 12 new lines of which 4 run; the unattended run
-     makes its one counted repair and, when the scripted repair changes nothing, stops with one question that names
-     the row. It never passes on and never takes a second repair by itself.
+  8. `scripts/e2e/slow.ts`, the scenario `slow-first-run` that WP06 wrote on its slow project (55% coverage, no
+     coverage tool): a default run ends at the commit question with exactly the approval and the commit as
+     dialogs, no stop at Check, and the commit card text holds `coverage: not measured`. Plain and driver mode, the
+     two modes WP06 registers for the scripted projects. These
+     assertions pass here; the scenario stays on the expected to fail list until WP23 (row `D11`).
+  9. `scripts/e2e/scenarios.ts`, a new scenario `coverage-drop` (the function `coverageDrop`): the scripted builder
+     leaves 12 new lines of which 4 run; the unattended run makes its one counted repair and, when the scripted
+     repair changes nothing, stops with one question that names the row. It never passes on and never takes a
+     second repair by itself.
   10. `tests/mod/drawings.test.tsx`: a `checks` entry with `state: 'not measured'` is drawn with its own mark, and a
       `check_markers` entry `mutation` with state `info` is drawn as information.
   11. Rewrite, in the same change, every test that states the old behaviour on purpose. They match on
       `coverage >= threshold`, `coverage tool missing`, `recorded coverage 'none'` or `mutation score >= threshold`:
       `scripts/selftest/temper-cases-15.sh` (the most), `-1`, `-8`, `-9`, `-13`, `-26`, `-28`, `test-temper.sh`,
       `scripts/e2e/pyjokes.ts`, `scripts/e2e/replay.ts`, `scripts/e2e/scenarios.ts`, `tests/mod/hardening.test.ts`.
+      List each one that is of the base in `docs/plans/one-go/changed-tests.md`. The case of WP11
+      `run: a failed Check whose only failed row is the mutation row stops` (`scripts/selftest/temper-cases-52.sh`)
+      goes with the row; trap 7 says what becomes of its stop.
+  12. From `scripts/selftest/expected-fail.txt`: `D35b`, `D35c` and `D35d` of `scripts/selftest/temper-cases-44.sh`
+      pass and leave the list here. `slow-at55` (row `D12`) stays listed with WP20 named: its base value comes from
+      the baseline (`docs/plans/one-go/contracts.md` section 13).
 - **Mechanism:**
   1. **The third state of a gate row.** A row is `{name, pass, detail}` today, written by `_req`
      (`scripts/temper:2004-2010`) and by `gate_rows.row` (`scripts/gate_rows.py:23-24`). Add the form
@@ -134,12 +163,14 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
 - **Documents in the same change:** `reference/check.md:46` and `:179` (the coverage rule and the two measurements
   the gate needs), `docs/flow.md` (the Check rows and `check_markers` at `:285`), `README.md:35`, `agents/check.md`
   (no word that a missing coverage value fails the gate), `docs/trust.md` (one paragraph: what "not measured" means,
-  and that the planted bug score gates nothing), `docs/getting-started.md:233` (the key in the sample config).
-- **Done when:** the new case file and cases 1, 8, 9, 13, 15, 26 and 28 pass under
+  and that the planted bug score gates nothing), `docs/getting-started.md:233` (the key in the sample config),
+  `CHANGELOG.md`.
+- **Done when:** `scripts/selftest/temper-cases-60.sh` and cases 1, 8, 9, 13, 15, 26 and 28 pass under
   `bash scripts/selftest/run-selftest.sh --changed`; `claude plugin test .` and `tsc -p tsconfig.mod.json` pass;
   `grep -rn "mutation-threshold\|coverage tool missing\|mutation score >=" scripts agents templates reference` prints
-  nothing; `scripts/verify.sh quick` is green; the scenarios `slowProjectRun` and `coverageDrop` have left the
-  expected to fail list of WP07.
+  nothing; `bash scripts/verify.sh quick` is green; `coverage-drop` passes in three modes and the coverage
+  assertions of `slow-first-run` pass in plain and driver mode, while the scenario itself stays on the list until
+  WP23; `D35b`, `D35c` and `D35d` have left `scripts/selftest/expected-fail.txt`.
 - **Traps:**
   1. The view changes (`checks` gains `state`, `check_markers` gains an entry): regenerate both fixture files with
      `scripts/selftest/make-view-fixtures.sh`, or the mod's tests fail on a stale view.
@@ -147,12 +178,16 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      `scripts/gate_rows.py`; this package must leave `scripts/temper` smaller than it found it.
   3. A coverage row with `exit_code: null` must not count as a test run: `runs.check` already skips rows whose exit
      is not a number (`scripts/runs.py:50`), but `check_markers` reads `exit_code` (`scripts/flow.py:2609-2612`).
-  4. The caps file of WP05 is compared exactly. This package removes one gate row and one config key and adds none:
-     lower the two numbers in the same commit.
+  4. `scripts/caps.json` (WP05) is compared exactly. This package removes one gate row and one config key and adds
+     none: lower the two numbers in the same commit.
   5. `scripts/selftest/temper-cases-15.sh` holds assertions on `check ahead` that WP22 rewrites again. Change here
      only the lines on coverage and mutation.
   6. Do not turn "no passing test run" into the third state. Tests that never ran stay a failed row; only coverage
      and the planted bug score change in this package.
+  7. Stop 21 of `scripts/stops.json` (WP11: only the mutation row failed) names a row this package deletes, so the
+     stop can no longer happen and its check is gone. A stop leaves the list only with a decision record (row
+     `D76`): take row 21 out of `scripts/stops.json` and out of the table of stops in decision 3 of
+     `docs/decisions/0019-a-run-that-asks-twice.md`, with one line there that says why. Take out no other stop.
 - **Size:** M.
 
 ## WP20 Environment check, baseline and limits
@@ -164,17 +199,23 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
 - **Lane:** `flow core`.
 - **Touches:** `scripts/baseline.py` (new), `scripts/doctor.py`, `scripts/check_run.py`, `scripts/run_env.py`,
   `scripts/task_ops.py`, `scripts/temper` (one dispatch line for `baseline`, `cmd_override`, the limits of
-  `cmd_group_gate`, `cmd_task_test` and `cmd_integrate`, the cleanup in `cmd_state_clear` and `state init`), the
-  flow modules that hold `core_next`, `ask`, `build_work`, `group_failed`, `setup_offer` and the view,
-  `hooks/temper-mod/core/rules.ts` (`personOnly`), `tests/mod/guard.test.ts`, `scripts/selftest/` (a new case file,
-  case 8, and every case that asserts the setup offer at the plan gate or the option with twice the time: cases 23
-  and 27 and the group question's cases), both view fixture files, `scripts/e2e/scenarios.ts`, `scripts/e2e/replay.ts`,
-  `docs/flow.md`, `docs/commands.md`, `docs/trust.md`, `reference/autonomy.md`, the caps and floor files of WP05.
+  `cmd_group_gate`, `cmd_task_test` and `cmd_integrate`, the cleanup in `cmd_state_clear` and `state init`), the flow
+  modules that hold `core_next`, `ask`, `build_work`, `group_failed`, `setup_offer` and the view,
+  `scripts/flow_base.py` (the question id and the option id of this package), `scripts/card.py` (the baseline line),
+  `hooks/temper-mod/core/rules.ts` (`personOnly`), `tests/mod/guard.test.ts`, `scripts/selftest/`
+  (`temper-cases-61.sh`, new; case 8, and every case that asserts the setup offer at the plan gate or the option with
+  twice the time: cases 23 and 27 and the group question's cases), `scripts/selftest/case-helpers.sh` and
+  `scripts/selftest/make-view-fixtures.sh` (step 18), both view fixture files,
+  `scripts/e2e/scenarios.ts`, `scripts/e2e/slow.ts`, `scripts/e2e/broken.ts`, `scripts/e2e/accept.ts`
+  (`approval-first`), `scripts/e2e/replay.ts`, `docs/flow.md`, `docs/commands.md`, `docs/trust.md`,
+  `reference/autonomy.md`, `scripts/caps.json`, `scripts/e2e/floor.json`, `scripts/selftest/expected-fail.txt`,
+  `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
 - **Tests first:**
-  1. Selftest, a new case file. Case `w20 owner order`: `python3 scripts/check_run.py owner` prints the configured
-     command when `check.commands.test` is set; else the detected one; else, for a project whose only build file is
-     `backend/pom.xml`, `cd backend && mvn -q verify` with source `detected`; else the plan's Integration line when a
-     `tasks.md` is given; with two build files one folder down it prints none and says why.
+  1. Selftest, `scripts/selftest/temper-cases-61.sh` (new). Case `w20 owner order`:
+     `python3 scripts/check_run.py owner` prints the configured command when `check.commands.test` is set; else the
+     detected one; else, for a project whose only build file is `backend/pom.xml`, `cd backend && mvn -q verify` with
+     source `detected`; else the plan's Integration line when a `tasks.md` is given; with two build files one folder
+     down it prints none and says why.
   2. Case `w20 environment check`: a `pom.xml` one folder down that asks for JDK 24 and a fake `java` that prints
      version 21 gives a fault that names the file, the need and what the shell has. A `setup.services` entry on a
      closed port gives a second fault. The call ends in under 5 s (assert on the measured time) and starts no suite
@@ -189,8 +230,8 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      the worktree cannot be made.
   6. Case `w20 red base question`: `temper next --json` on a red base before Plan gives one question with the id
      `base.red`; with a project file that names a JDK, its text holds the exact proposed block and the first option
-     adds it; without one the options are run again, go on anyway and save for later. No agent was launched. The
-     add call with another block's hash writes nothing.
+     (`add-setup`) adds it; without one the options are run again (`check-again`), go on anyway (`go-on-anyway`)
+     and save for later (`save`). No agent was launched. The add call with another block's hash writes nothing.
   7. Case `w20 go on is a recorded skip`: after `temper baseline accept-red --reason x`, `.temper/overrides.json`
      holds a row for `base-suite` by the person; a later suite run that fails with the base's fail lines only gives
      the row `tests pass` the state `skipped`; one new fail line gives a failed row.
@@ -201,13 +242,17 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      limit, and after a second time out the run asks.
   10. Case `w20 fix run and door`: a fix run with a red base of kind `red-base` asks nothing and records it; a fix
       run whose setup line fails asks; a door into Review runs the environment check and no suite.
-  11. `scripts/e2e/scenarios.ts`, scenario `brokenProjectRun` on the broken project of WP06: the wrong tool version
-      and the service that is down are named before the first agent; after the scripted repair of both, the one
-      failing test is named as a red base before Plan is launched; no agent is launched for any of them. Three modes.
-  12. Same file, scenario `slowProjectRun` (from WP19), more assertions: no limit is hit, the baseline line of the
-      approval card says `running` when the approval comes first, and the first group gate reads the result.
-  13. Same file, scenario `redBaseAfterApproval`: the baseline turns red while the first task agent works; no new
-      task agent is launched, the work in flight is kept, and the run stops with the red base question and a notice.
+  11. `scripts/e2e/broken.ts`, the scenario `broken-first-run` that WP06 wrote on its broken project: the wrong
+      tool version and the service that is down are named before the first agent; after the scripted repair of
+      both, the one failing test is named as a red base before Plan is launched; no agent is launched for any of
+      them. Plain and driver mode. These assertions pass here; the scenario leaves the list with WP21 (row `D13`):
+      until then the plan gate still runs the Validate on the red base.
+  12. `scripts/e2e/slow.ts`, the scenario `slow-first-run`, more assertions: no limit is hit, the baseline line of
+      the approval card says `running` when the approval comes first, and the first group gate reads the result.
+      `slow-at55` (row `D12`) passes and leaves the list here: its base value is the coverage of the baseline.
+  13. `scripts/e2e/scenarios.ts`, a new scenario `red-base-after-approval` (the function `redBaseAfterApproval`):
+      the baseline turns red while the first task agent works; no new task agent is launched, the work in flight
+      is kept, and the run stops with the red base question and a notice.
   14. `scripts/e2e/replay.ts`: the JDK fault of the measured Java run is named before the Intent agent is launched,
       where the head names it at the plan gate.
   15. `tests/mod/guard.test.ts`: `baseline accept-red` is refused outside the person's answer.
@@ -267,16 +312,16 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      baseline still in flight, because it needs the measured time for its own limit (`limit_for` does the waiting,
      up to the baseline's own limit).
   8. **The red base question.** One function in the flow, id `base.red`, asked in `core_next` whenever the result is
-     `red` and no answer is stored. A fault of the environment check is asked before the first agent. A red suite
-     that ends while the Intent agent works is asked when that agent returns, before Plan is launched; one that is
-     known before the approval is asked before it, so the approval never hides a red base. Its text: the command,
-     the exit, the seconds, the fault or the first fail lines, and the exact proposed block when there is one (run
-     line through `run_env.mask`, variables, services). Options: `base.add-setup` "Add this setup block and run it
-     again", first and recommended, only when the config has no block and `doctor.propose` gives one (the test of
-     `setup_offer`, `scripts/flow.py:1192-1199`, without its read of `preflight.json`); calls
-     `doctor --propose --write --expect <hash>`, then `baseline start --again`. `base.again` "Run it again", for a
-     repair made by hand. `base.go-on` "Go on anyway", with a reason; call `baseline accept-red --reason '{reason}'`.
-     `base.save` "Save for later". One fault is one dialog.
+     `red` and no answer is stored. A fault of the environment check is asked before the first agent. A red suite that
+     ends while the Intent agent works is asked when that agent returns, before Plan is launched; one that is known
+     before the approval is asked before it, so the approval never hides a red base. Its text: the command, the exit,
+     the seconds, the fault or the first fail lines, and the exact proposed block when there is one (run line through
+     `run_env.mask`, variables, services). Options, by the ids of `docs/plans/one-go/contracts.md` section 5:
+     `add-setup` "Add this setup block and run it again", first and recommended, only when the config has no block and
+     `doctor.propose` gives one (the test of `setup_offer`, `scripts/flow.py:1192-1199`, without its read of
+     `preflight.json`); calls `doctor --propose --write --expect <hash>`, then `baseline start --again`. `check-again`
+     "Run it again", for a repair made by hand. `go-on-anyway` "Go on anyway", with a reason; call
+     `baseline accept-red --reason '{reason}'`. `save` "Save for later". One fault is one dialog.
   9. **The block that is written is the block that was shown.** At the head `checked` refuses to write unless the
      preflight stored a fault (`scripts/doctor.py:471-478`), and at run start it stored none. From this package on
      `--propose --write` writes the proposed block when its hash (`block_hash`, `scripts/doctor.py:403-405`) is the
@@ -316,31 +361,45 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
       the base, no red base question. Limits and the coverage base come from the store when it holds the base tree.
   17. **Cleanup.** `temper baseline clean` removes the worktree. `state clear` and `state init` call it; WP21 calls
       it when the plan's commands have run.
+  18. **The suite's own runs.** No case of the base may see the new first step. Add one helper `_base_known` to
+      `scripts/selftest/case-helpers.sh` that writes `.temper/evidence/baseline.json` with `result` `unknown` and
+      `why` `not run in the selftest`; `fresh`, `m_setup` and every state builder that calls `state init` call it
+      right after that call, and `scripts/selftest/make-view-fixtures.sh` writes the same file after each of its
+      own `state init` calls (the first is at `:114`), for every fixture but the ones this package adds to show
+      the baseline. Case file 61 removes the file where it tests the start itself. Before the package commit run
+      the whole parallel selftest once in the background; a case of the base that still differs is repaired, or
+      listed in `docs/plans/one-go/changed-tests.md` with its reason.
 - **Removed:** the option "Run the gate again with twice the time"; the offer of the setup block at a failed plan
   gate (`scripts/flow.py:693-699`), which moves into `base.red`; the fixed limits as the only limits.
 - **Documents in the same change:** `docs/flow.md` (a section "The environment check and the baseline" in place of
   the first half of `:132-155`), `docs/commands.md` (`temper baseline`), `docs/trust.md` (the baseline runs the
   project's test command before any approval; "go on anyway" is a skip that only the mod ties to a click; a reused
-  green base is as old as its date), `reference/autonomy.md` (a red base after the approval is a stop).
-- **Done when:** the new case file passes; `brokenProjectRun`, `redBaseAfterApproval` and the added assertions of
-  `slowProjectRun` pass in three modes; `bash scripts/selftest/make-view-fixtures.sh` leaves no diff after it was
-  run; `claude plugin test .`, `tsc -p tsconfig.mod.json` and `bash scripts/check-mod-calls.sh` pass;
-  `scripts/verify.sh quick` is green; the floor file of WP05 still shows 2 dialogs for a clean feature run.
+  green base is as old as its date), `reference/autonomy.md` (a red base after the approval is a stop),
+  `CHANGELOG.md`.
+- **Done when:** `scripts/selftest/temper-cases-61.sh` passes; `red-base-after-approval` passes in three modes;
+  the assertions this package adds to `broken-first-run` and `slow-first-run` pass in plain and driver mode, while
+  the two scenarios stay on the list until WP21 and WP23; `slow-at55` is off the list;
+  `bash scripts/selftest/make-view-fixtures.sh` leaves no diff after it was run; `claude plugin test .`,
+  `tsc -p tsconfig.mod.json` and `bash scripts/check-mod-calls.sh` pass; `bash scripts/verify.sh quick` is green;
+  `scripts/e2e/floor.json` still shows 2 dialogs for a clean feature run.
 - **Traps:**
   1. Rule 1 says a run writes only its spec folder before the approval. The baseline writes a detached worktree
      under `.claude/worktrees/` and a file under `.temper/evidence/`: no project file, no branch, no commit. The
-     rule check of WP07 must allow exactly these two places, and case `w20 where it runs` holds the rest.
+     rule check of WP07 (the scenario `approval-first`, `D30a`) must allow exactly these two places: add them
+     there, and case `w20 where it runs` holds the rest.
   2. A failed call that is no gate is an error for `temper go` (`scripts/go.py:108-114`), and the driver hands an
      error back. `baseline start` must exit 0 whatever happens and must return in seconds: the suite runs in its
      own process. `temper go` also stops when the same calls would run twice (`scripts/go.py:98-103`), so the file
      must exist after the call, whatever the result.
-  3. A scripted run must not race the background process. Give `baseline.py` one switch read from the environment
-     that makes `start` run the suite in the foreground, and set it in `scripts/e2e/` and in the selftest helpers.
+  3. A scripted run must not race the background process. Give `baseline.py` one switch read from the environment,
+     `TEMPER_BASELINE_FOREGROUND`, that makes `start` run the suite in the foreground, and set it in `scripts/e2e/`
+     and in the selftest helpers. WP21 uses the same switch for the plan's commands.
   4. `doctor.propose` starts `docker info` and walks up to 6,000 files (`scripts/doctor.py:98-106, 73-87`). The
      environment check must not call it; only the red base question does.
-  5. The first action of every run changes, so every fixture and every scenario that asserts the first step changes.
+  5. The first action of a run with no baseline file changes, so every scenario that asserts the first step
+     changes. Step 18 keeps the cases of the base and their fixtures away from it.
   6. Count the sites: this package adds the question `base.red` and removes the setup offer at Plan and one option
-     at the group question. The caps file must not rise.
+     at the group question. No number of `scripts/caps.json` may rise.
   7. With `cd <folder> &&` in front, a coverage command writes its report under that folder. Join the report path
      with the folder, or the value is read as absent and coverage is "not measured" for no reason.
   8. The store entry is keyed by a clean tree until WP22 (`scripts/run_env.py:133-141`). Compute the key before the
@@ -360,46 +419,58 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
   `scripts/check_run.py`, `scripts/task_ops.py`, `scripts/temper` (`gate_plan`, `cmd_plan`, the `doctor` line), the
   flow modules that hold `ask` for Plan, `stage_work`, `setup_offer`, `env_agent_work`, `core_next`, `env_task` and
   `group_failed`, `agents/env.md` (deleted), `.claude-plugin/plugin.json`, `agents/plan.md`,
-  `templates/temper.config.default`, `scripts/selftest/temper-cases-22.sh`, `-23.sh`, `-24.sh`, `-27.sh` and a new
-  case file, both view fixture files, `scripts/e2e/scenarios.ts`, `scripts/e2e/replay.ts`, `docs/flow.md`,
-  `docs/commands.md`, `reference/plan.md`, a new decision record that amends ADR 0018, the caps file of WP05.
+  `templates/temper.config.default`, `scripts/selftest/temper-cases-22.sh`, `-23.sh`, `-24.sh`, `-27.sh` and
+  `temper-cases-62.sh` (new), both view fixture files, `scripts/e2e/scenarios.ts`, `scripts/e2e/slow.ts`,
+  `scripts/e2e/replay.ts`, `scripts/flow_base.py` (the question id and the option id of this package),
+  `docs/flow.md`, `docs/commands.md`, `reference/plan.md`,
+  `docs/decisions/0020-checks-judged-against-the-project.md` (new; it amends ADR 0018), `scripts/caps.json`,
+  `scripts/selftest/expected-fail.txt`, `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
 - **Tests first:**
-  1. Selftest, a new case file. Case `w21 the plan gate runs nothing`: every command of the demo plan appends to a
-     counter file; `temper gate plan` leaves it empty and prints no row named `preflight`.
+  1. Selftest, `scripts/selftest/temper-cases-62.sh` (new). Case `w21 the plan gate runs nothing`: every command of
+     the demo plan appends to a counter file; `temper gate plan` leaves it empty and prints no row named
+     `preflight`.
   2. Case `w21 which commands run`: after `temper baseline plan` the counter shows one run each for a group Validate
      and for an Integration line whose text is not the owner's; none for a task Test, a scenario Test, a command
      equal to the owner's test text, or a Validate that names a file a task creates.
   3. Case `w21 where and how long`: the run's folder is the baseline worktree; a Validate that sleeps past
      `TEMPER_TASK_TEST_TIMEOUT_S=1` gives the result `timeout`, never the class `environment`, and the question
-     offers more time, another command and a skip with a reason, and no setup block.
+     (`plan.command`) offers more time (`more-time`), another command and a skip with a reason, and no setup block.
   4. Case `w21 binary rule`: exit 0 is `pass` with its seconds stored; exit 1 on a green base is `fail`, class
      `command`; exit 1 on a red base is `fails like the base` and raises no second question; exit 125 and an
      unresolved first word are class `environment`. An output that holds the words `Connection refused` changes
      none of these.
-  5. Case `w21 a failed result is not final`: after the fault is repaired, the option "Run it again" runs the
-     command again and the result is `pass`.
+  5. Case `w21 a failed result is not final`: after the fault is repaired, the option "Run it again"
+     (`check-again`) runs the command again and the result is `pass`.
   6. Case `w21 no environment agent`: no question holds "Let an agent find the setup", `temper next` never returns
      an agent of type `temper:temper-env`, and `temper doctor --candidate x` is a usage error.
   7. Case `w21 task gate, sure signs only`: a GREEN run that prints `Connection refused` with exit 1 and no declared
      service is FAIL and spends the attempt; the same with a declared service that does not answer is ENV, and the
-     question still has the option of WP08 that sends the task back to its agent.
-  8. `scripts/e2e/scenarios.ts`, scenario `planCommandFails`: the scripted planner writes a Validate that fails on
-     the base; the person is asked before any task agent is launched, the scripted answer patches the command, and
-     Build goes on with every task kept. Three modes.
+     question still has the option `it-is-the-code` of WP08 that sends the task back to its agent.
+  8. `scripts/e2e/scenarios.ts`, a new scenario `plan-command-fails` (the function `planCommandFails`): the scripted
+     planner writes a Validate that fails on the base; the person is asked before any task agent is launched, the
+     scripted answer patches the command, and Build goes on with every task kept. Three modes.
   9. `scripts/e2e/replay.ts`: the filtered `verify` is caught by the row `maven filtered verify` as today. And in
-     `slowProjectRun`: the fake suite runs on the base once, not twice, because the plan's Validate is the owner's
-     text and `baseline plan` then has nothing to run.
+     `slow-first-run` (`scripts/e2e/slow.ts`): the fake suite runs on the base once, not twice, because the plan's
+     Validate is the owner's text and `baseline plan` then has nothing to run.
   10. Rewrite `scripts/selftest/temper-cases-22.sh` (the preflight's classes and store), `-23.sh` and `-27.sh` (the
-      setup block's check and the environment agent) and the preflight lines of `-24.sh` to the cases above.
+      setup block's check and the environment agent) and the preflight lines of `-24.sh` to the cases above, and
+      list each rewritten assertion in `docs/plans/one-go/changed-tests.md`.
+  11. From `scripts/selftest/expected-fail.txt`: the scenario `broken-first-run` (row `D13`, and with it the last
+      part of row `D33`) passes and leaves the list here. So do the checks of row `D99` in
+      `scripts/selftest/temper-cases-45.sh`: the plan gate runs no command, and a slow one asks `plan.command` with
+      its three ways on as options. `D55` (never an environment fault, never an agent) passed at WP08 and keeps
+      passing: no line of the list names WP21 under that token.
 - **Mechanism:**
   1. **The plan gate.** Delete the two lines that add the `preflight` row (`scripts/temper:3600-3601`). The Plan
      agent runs `temper gate plan` itself before it returns (`agents/plan.md:59-61`); from here on that call is
      static. The two Maven rows stay (`scripts/gate_rows.py:150-212`).
-  2. **`temper baseline plan`.** A new entry of `scripts/baseline.py` that starts a background process and exits 0.
-     It is an `after` call of the Plan agent, placed before `panel plan`, so `gate plan` stays the last call and the
-     action's gate (`scripts/flow.py:1379-1383`). The same call follows a fresh reviewer, a revision and a
-     `plan patch` answer (`scripts/flow.py:2021-2027`). It only runs a command that has no result yet, so a second
-     call is cheap. When the first Build action finds a command with no result, it makes the call itself.
+  2. **`temper baseline plan`.** A new entry of `scripts/baseline.py` that starts a background process and exits 0. It
+     is an `after` call of the Plan agent, placed before `gate plan`, which stays the last call and the action's gate
+     (`scripts/flow.py:1379-1383`; the `panel plan` call that stood between them went with WP15). The same call
+     follows a fresh reviewer, a revision and a `plan patch` answer (`scripts/flow.py:2021-2027`). It only runs a
+     command that has no result yet, so a second call is cheap. When the first Build action finds a command with no
+     result, it makes the call itself. The switch `TEMPER_BASELINE_FOREGROUND` of WP20 keeps it in the foreground for
+     the tests.
   3. **Which commands.** From `commands` (`scripts/preflight.py:44-61`, moved into `scripts/baseline.py`): the
      group Validates and the Integration line only. Left out: a text equal to the owner's test text (the baseline
      ran it), and a command that names a declared file that is not on the base (the test at
@@ -421,15 +492,16 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      resolves the first word of each segment (`programs`) in one shell call under the setup block. A program that
      does not resolve is an environment fault shown in `base.red`. This is the one static check on a command that
      cannot run on the base.
-  7. **The question.** The function of `base.red` gains the scope `plan-command`, asked by `ask` for Plan when the
-     gate passed and a result is `fail` or `timeout`, and by `build_work` when the result comes after the approval.
-     Text: the command, where the plan wrote it, the exit, the seconds, the first fail lines. Options before the
-     approval: "Revise the plan" (the call `state redo plan` with the failure as its reason), "Change the command"
-     (a typed answer, `plan patch`), "Skip this check" with a reason (`baseline skip --cmd C --reason R`, an
-     override row named `plan-command`), "Save for later". For a time out, "Allow it more time" comes first: it
-     stores a limit in `limits` of the file. After the approval no new task agent is launched and the question
-     keeps its options, with the loop back to Plan in place of "Revise the plan". An unattended run makes a
-     recorded stop there: it may never change a gate's command, and it never plans again.
+  7. **The question.** The function of `base.red` gains the scope `plan-command`, with the question id `plan.command`
+     (one site with `base.red`). It is asked by `ask` for Plan when the gate passed and a result is `fail` or
+     `timeout`, and by `build_work` when the result comes after the approval. Text: the command, where the plan wrote
+     it, the exit, the seconds, the first fail lines. Options before the approval: "Revise the plan" (the call
+     `state redo plan` with the failure as its reason), "Change the command" (a typed answer, `plan patch`), "Skip
+     this check" with a reason (`baseline skip --cmd C --reason R`, an override row named `plan-command`), "Save for
+     later" (`save`). For a time out, "Allow it more time" (`more-time`) comes first: it stores a limit in `limits` of
+     the file. After the approval no new task agent is launched and the question keeps its options, with the loop back
+     to Plan in place of "Revise the plan". An unattended run makes a recorded stop there: it may never change a
+     gate's command, and it never plans again.
   8. **A result still running** is shown on the approval card as `running`. Nothing waits for it except the first
      group gate of the group whose Validate it is.
   9. **What stays of `scripts/preflight.py`.** Two functions move to `scripts/run_env.py`: `programs` (`:64-70`),
@@ -454,8 +526,8 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
       of `setup_offer` (`scripts/flow.py:1200-1204`), the state key `env_agent`, the model name `env` (read at
       `scripts/flow.py:1222`) and `setup-proposal.yaml`. When no rule proposes a block, the question says what is
       missing, in the words of the fault. `setup_offer` is still called at Check (`scripts/flow.py:844`): there it
-      loses its read of `preflight.json` (`:1189-1191`) and offers the block as `base.add-setup` does, shown whole
-      and bound by hash.
+      loses its read of `preflight.json` (`:1189-1191`) and offers the block as the option `add-setup` of
+      `base.red` does, shown whole and bound by hash.
   13. **ENV at a task gate.** The verdict's ENV branch (`scripts/task_ops.py:758-767`) calls the cut down
       `env_fault`, so only the three sure signs give ENV. The way out that WP08 added to `env_task`
       (`scripts/flow.py:1857-1870`) stays.
@@ -467,14 +539,18 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
   and the model name `env`; the four classes and their text patterns; `agents/env.md` and the agent type
   `temper:temper-env`; `doctor --candidate`; the option "Let an agent find the setup"; the state key `env_agent`.
 - **Documents in the same change:** `docs/flow.md:132-155` and `:201` (the preflight section becomes "A command the
-  plan wrote", and the environment rule is the three sure signs), `docs/commands.md:212-263` (`temper doctor`
-  without `--candidate`, no `temper plan preflight`), `reference/plan.md` (what a Validate must be),
-  `agents/plan.md`, the config template, one new decision record with the next free number that amends ADR 0018
-  (decision 2 is replaced, decision 3 is narrowed to the three sure signs, decision 4 is corrected: `doctor` writes
-  the block the person chose; say why in ten lines and cite `docs/plans/one-go/evidence/pr-env.md`).
-- **Done when:** the command below prints nothing; `bash scripts/validate-directory.sh` passes (the manifest lists
-  no missing brief); the new case file and cases 22, 23, 24 and 27 pass; `planCommandFails` passes in three modes;
-  `claude plugin test .` passes; `scripts/verify.sh quick` is green.
+  plan wrote", and the environment rule is the three sure signs), `docs/commands.md:212-263` (`temper doctor` without
+  `--candidate`, no `temper plan preflight`), `reference/plan.md` (what a Validate must be), `agents/plan.md`, the
+  config template, `CHANGELOG.md`, and the new decision record
+  `docs/decisions/0020-checks-judged-against-the-project.md`, which amends ADR 0018 (decision 2 is replaced, decision
+  3 is narrowed to the three sure signs, decision 4 is corrected: `doctor` writes the block the person chose; say why
+  in ten lines and cite `docs/plans/one-go/evidence/pr-env.md`). WP31 later adds to it what WP19 and WP20 decided.
+- **Done when:** the command below prints nothing; `bash scripts/validate-directory.sh` passes (the manifest lists no
+  missing brief); `scripts/selftest/temper-cases-62.sh` and cases 22, 23, 24 and 27 pass; `plan-command-fails` passes
+  in three modes; `broken-first-run` passes and is off the list; `claude plugin test .` passes;
+  `bash scripts/verify.sh quick` is green.
+  The rows this package turns green are listed under its id in "Rows by package" of `docs/plans/one-go/done.md`;
+  that section wins over this list.
 
   ```
   grep -rn "preflight\|temper-env\|env_agent\|setup-tried\|--candidate" \
@@ -487,10 +563,10 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      a connection error spends the attempt) and delete the rest with the code.
   2. `scripts/check_run.py:36` and `scripts/task_ops.py:19` import `preflight` at the top. Delete the file only in
      the commit that changes both, or every Check and every task gate stops.
-  3. The caps file of WP05 counts briefs, keys, question sites and option labels. This package removes one brief,
-     the two `plan.preflight` keys, the model name `env` and the label "Let an agent find the setup", and adds no
-     site (the scope `plan-command` is the site `base.red`). Reuse the labels that exist ("Revise the plan", "Save
-     for later") and lower the numbers the file counts.
+  3. `scripts/caps.json` (WP05) counts briefs, keys, question sites and option labels. This package removes one brief
+     (`agent_briefs` is 12 after it), the two `plan.preflight` keys, the model name `env` and the label "Let an agent
+     find the setup", and adds no site (the scope `plan-command` is the site `base.red`). Reuse the labels that exist
+     ("Revise the plan", "Save for later") and lower the numbers the file counts.
   4. `scripts/e2e/replay.ts` scripts the measured Java run around the preflight (its fake `mvn` prints the enforcer
      text, `:34`). The JDK fault must now come from the mock's `pom.xml` through the environment check. The mock's
      pom holds `<requireJavaVersion><version>[24,)` (`scripts/e2e/replay.ts:80`), which the reader of
@@ -512,14 +588,17 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
 - **Lane:** `flow core`.
 - **Touches:** `scripts/run_env.py`, `scripts/check_run.py`, `scripts/scenario_ops.py`, `scripts/task_ops.py`,
   `scripts/baseline.py`, `scripts/temper` (`_gate_write_verdict`, `cmd_check`, the `--fresh` flag of
-  `cmd_group_gate` and `cmd_integrate`), the flow modules that hold `stage_work`, `ask` for Check and the commit
-  card, `hooks/temper-mod/core/rules.ts` (only if WP08 left the store unguarded), `tests/mod/guard.test.ts`,
-  `scripts/selftest/` (a new case file, cases 5, 11, 15, 16 and 25), `scripts/e2e/scenarios.ts`,
-  `scripts/e2e/replay.ts`, `docs/trust.md`, `docs/flow.md`, `reference/check.md`.
+  `cmd_group_gate` and `cmd_integrate`), the flow modules that hold `stage_work` and `ask` for Check,
+  `scripts/flow_base.py` (the option id `run-anyway`), `scripts/card.py` (the commit card),
+  `hooks/temper-mod/core/rules.ts` (only if WP08 left the store unguarded), `tests/mod/guard.test.ts`,
+  `scripts/selftest/` (`temper-cases-63.sh`, new; cases 5, 11, 15, 16 and 25), `scripts/e2e/scenarios.ts`,
+  `scripts/e2e/slow.ts`, `scripts/e2e/broken.ts`, `scripts/e2e/floor.json` (`suite_runs`),
+  `scripts/e2e/replay.ts`, `docs/trust.md`, `docs/flow.md`, `reference/check.md`,
+  `scripts/selftest/expected-fail.txt`, `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
 - **Tests first:**
-  1. Selftest, a new case file for the runner. Every case counts runs with a counter file the test command appends
-     to. Case `w22 one tree, two places`: the same command in a group worktree and in the project folder with the
-     same content is one run, and the second row carries `reused` and the same `tree`.
+  1. Selftest, `scripts/selftest/temper-cases-63.sh` (new), for the runner. Every case counts runs with a counter file
+     the test command appends to. Case `w22 one tree, two places`: the same command in a group worktree and in the
+     project folder with the same content is one run, and the second row carries `reused` and the same `tree`.
   2. Case `w22 byproducts`: a command that leaves `__pycache__` and a `.coverage` file the project does not ignore
      is reused on the second call (the head runs it again, `scripts/run_env.py:135-138`).
   3. Case `w22 what ends a pass`: an edit of a tracked file, a new untracked file, a removed file, another command
@@ -540,9 +619,14 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      `.temper/gates.json` holds `tree`, and an edit of a tracked file changes it.
   10. Rewrite the five assertions on `check ahead` and adopt in `scripts/selftest/temper-cases-15.sh`: with a suite
       that leaves `.coverage`, the run made beside Review is used by `check run` (one suite run in all).
-  11. `scripts/e2e/scenarios.ts`: add a run count to `threeGroups` and to `slowProjectRun`: the suite runs at most
-      once per group plus once on the base, and each scenario test at most twice.
+  11. Add a run count (the floor key `suite_runs`) to `threeGroups` of `scripts/e2e/scenarios.ts` (the scenario
+      `three-groups`) and to `slow-first-run` of `scripts/e2e/slow.ts`: the suite runs at most once per group plus
+      once on the base, and each scenario test at most twice.
   12. `tests/mod/guard.test.ts`: a write to `temper-results.json` in the git folder is refused.
+  13. From `scripts/selftest/expected-fail.txt`: the scenario `broken-flaky` of `scripts/e2e/broken.ts` (row
+      `D14`), and `D15`, `D34b` and `D34c` of `scripts/selftest/temper-cases-44.sh` pass and leave the list
+      here. `D34a` stays listed for WP30, which removes the last key that counted a claim. List the rewritten
+      assertions of test 10 in `docs/plans/one-go/changed-tests.md`.
 - **Mechanism:**
   1. **The digest.** Add `tree_key(wt, byproducts)` to `scripts/run_env.py`: the git tree of the work tree as it
      is (tracked files with their content now, every untracked file git does not ignore), without `.temper/`,
@@ -610,17 +694,22 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
       background run away whenever the suite left a file such as `.coverage`
       (`scripts/check_run.py:788, 797, 764-771`).
   11. **"Run it anyway".** One flag, `--fresh`, on `check run`, `group gate` and `integrate`: the call runs whatever
-      the store holds. It is the person's option only (id `check.fresh`, under More options of the Check and commit
-      questions and of a failed check's question), it spends one repeat of the budget of WP10, and its row carries
-      `forced`. An unattended run never takes it.
+      the store holds. It is the person's option only (option id `run-anyway`, under More options of the Check
+      and commit questions and of a failed check's question), it spends one repeat of the budget of WP10, and its
+      row carries `forced`. An unattended run never takes it.
 - **Removed:** `tree_digest`, `ahead_paths`, `adopt` and `.temper/check/ahead.json`; the clean tree rule of
   `result_key`; the direct `run_cmd` calls at the sites of step 5.
 - **Documents in the same change:** `docs/trust.md` (what a reused pass proves and what it cannot see; one run per
   tree is the guarantee one CI run gives, weaker than the repeats of 9.8.5), `docs/flow.md` (the digest and the
-  store in ten lines, the rows `reused`, `flaky`, `forced`), `reference/check.md:190-194` (one suite run).
-- **Done when:** the new case file and cases 5, 11, 15, 16 and 25 pass; the run counts of `threeGroups` and
-  `slowProjectRun` hold in three modes; `grep -n "tree_digest\|adopt(" scripts/*.py` prints nothing;
-  `claude plugin test .` passes; `scripts/verify.sh quick` is green.
+  store in ten lines, the rows `reused`, `flaky`, `forced`), `reference/check.md:190-194` (one suite run),
+  `CHANGELOG.md`.
+- **Done when:** `scripts/selftest/temper-cases-63.sh` and cases 5, 11, 15, 16 and 25 pass; the run counts of
+  `three-groups` hold in three modes and those of `slow-first-run` in plain and driver mode; `broken-flaky`, `D15`,
+  `D34b` and `D34c` are off
+  the list; `grep -n "tree_digest\|adopt(" scripts/*.py` prints nothing; `claude plugin test .` passes;
+  `bash scripts/verify.sh quick` is green.
+  The rows this package turns green are listed under its id in "Rows by package" of `docs/plans/one-go/done.md`;
+  that section wins over this list.
 - **Traps:**
   1. Never put a tracked file, a declared file or a test in the byproduct list: that is where a stale pass comes
      from (`docs/plans/one-go/evidence/red-safety.md`, M13). Case 4 holds it.
@@ -655,13 +744,15 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
   `_archive_ledger`), the flow modules that hold `build_work`, `ask` for Build and Check, `setup_fault`,
   `acc_failure`, `acc_triage`, `acceptance_triage_work`, `acceptance_options`, `acceptance_fix_work`,
   `fault_lines`, `feedback_lines`, `group_fix_work`, `stage_work`, `core_next` and the view, `agents/acceptance.md`,
-  `agents/build-task.md`, `scripts/selftest/` (a new case file, cases 8, 11, 15, 16, 25 and 26), both view fixture
-  files, `scripts/e2e/scenarios.ts`, `scripts/e2e/replay.ts`, `docs/flow.md`, `docs/grouped-build.md`,
-  `reference/check.md`, `reference/autonomy.md`.
+  `agents/build-task.md`, `scripts/selftest/` (`temper-cases-64.sh`, new; cases 8, 11, 15, 16, 25 and 26), both
+  view fixture files, `scripts/e2e/scenarios.ts`, `scripts/e2e/replay.ts`, `scripts/flow_base.py` (the option id
+  `correct-test`), `scripts/run_summary.py` (counts by class), `scripts/e2e/floor.json`, `docs/flow.md`,
+  `docs/grouped-build.md`, `reference/check.md`, `reference/autonomy.md`, `scripts/selftest/expected-fail.txt`,
+  `docs/plans/one-go/changed-tests.md`, `CHANGELOG.md`.
 - **Tests first:**
-  1. Selftest, a new case file. Case `w23 what integrate runs`: after `temper integrate` on a one group run the
-     Build ledger holds, in this order, the suite row in the owner's run text, a coverage row, one row per scenario
-     test and the acceptance row; the counter file shows one run of each.
+  1. Selftest, `scripts/selftest/temper-cases-64.sh` (new). Case `w23 what integrate runs`: after `temper integrate`
+     on a one group run the Build ledger holds, in this order, the suite row in the owner's run text, a coverage row,
+     one row per scenario test and the acceptance row; the counter file shows one run of each.
   2. Case `w23 the Build gate reads them`: a failing acceptance row leaves the integration verdict PASS and fails
      `temper gate build` on the row `acceptance tests written before Build`; a coverage drop fails it on
      `coverage`; coverage not measured does not.
@@ -671,29 +762,37 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
   4. Case `w23 triage first, in every mode`: with a failing locked test at the Build gate, `temper next --json`
      returns the triage agent, also when the run is unattended (the head skips it there, `scripts/flow.py:1471`).
   5. Case `w23 the triage picks the step`: verdict `code`: one fix pass as the CLI's own action, one repeat spent.
-     Verdict `test`: a question whose option "Correct the acceptance test" is the person's, and no agent that
-     changes code. No verdict: the question.
+     Verdict `test`: a question whose option "Correct the acceptance test" (`correct-test`) is the person's, and
+     no agent that changes code. No verdict: the question.
   6. Case `w23 setup at Build`: a suite that exits 125 at `integrate` gives the setup question at Build with no
      fix agent; the second identical failure recommends "Save for later"; the option that says it is the code
-     launches the fix pass.
+     (`it-is-the-code`) launches the fix pass.
   7. Case `w23 a fix run`: after the Fix agent's `after` calls the Build ledger holds the suite row and the
      regression proof; a red suite fails the Build gate before any Review agent is launched.
   8. Case `w23 the record`: a failed group gate, a failed `integrate`, a blocked task and a red base each append
-     one record with every field of the format; `class` is one of the five; the record of the group gate is still
+     one record with every field of the format; `class` is one of the five; the record of the failed `integrate`
+     has the `scope` `gate:build`; the record of the group gate is still
      there after `temper state loop build plan`.
   9. Case `w23 a class never changes a verdict`: a record of class `environment` leaves its gate FAIL; it is
      resolved only by a pass of the same check on another key or by the person's skip with a reason.
   10. Case `w23 the record is archived`: `temper state archive` writes the records into the spec folder's
       `gate-ledger.json`, and `temper state clear` leaves that file.
-  11. `scripts/e2e/scenarios.ts`, scenario `acceptanceAtBuild`: a wrong locked test is met at `integrate`; one
-      triage launch, one dialog, one writer launch, then Review; no builder launch for it. Three modes.
-  12. Same file, scenario `setupAtBuild`: an environment fault at `integrate` in an unattended run is a recorded
-      stop with the setup question and no fix agent.
-  13. Same file, `fixRun`: assert that the suite ran before the Review agent was launched.
-  14. `scripts/e2e/replay.ts`: the run that looped at Check on a wrong acceptance test ends with one dialog.
+  11. `scripts/e2e/accept.ts`, the scenario `acceptance-wrong-test` that WP07 wrote (row `D21`): a wrong locked test
+      is met at `integrate`; one triage launch, one dialog, one writer launch, then Review; no builder launch for it.
+      Three modes.
+  12. `scripts/e2e/scenarios.ts`, a new scenario `setup-at-build` (the function `setupAtBuild`): an environment fault
+      at `integrate` in an unattended run is a recorded stop with the setup question and no fix agent.
+  13. Same file, `fixRun` (the scenario `fix`): assert that the suite ran before the Review agent was launched.
+  14. `scripts/e2e/replay.ts` gets no acceptance test here. It records the acceptance step as skipped (`:237`),
+      and a wrong locked test there would be a fourth question against row `D58` (3 questions) and the floor
+      entry `replay`. The run that looped at Check on a wrong acceptance test is held by `acceptance-wrong-test`
+      of test 11 alone; `bun scripts/e2e/replay.ts final` keeps its 3 questions.
   15. Rewrite the eleven acceptance assertions of `scripts/selftest/temper-cases-15.sh` and the SETUP cases of
       `-26.sh` to the stage they now happen at; keep the rule of WP08 that a second identical setup fault does not
-      recommend the same repair.
+      recommend the same repair. List each rewritten assertion in `docs/plans/one-go/changed-tests.md`.
+  16. From `scripts/selftest/expected-fail.txt`: the scenarios `acceptance-wrong-test` (row `D21`) and
+      `slow-first-run` (row `D11`), and `D35a` of `scripts/selftest/temper-cases-44.sh`, pass and leave the list
+      here.
 - **Mechanism:**
   1. **`build-checks`.** Add the entry `build-checks ROOT SPEC LEDGER BASE COMMAND` to `scripts/check_run.py`. Through
      the runner of WP22 it records into the Build ledger, in this order: the suite in the owner's run text, with
@@ -736,11 +835,11 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
      question (`scripts/check_run.py:516, 519, 638`) name the stage the run is at.
   7. **The setup question at Build.** `setup_fault` (`scripts/flow.py:1229-1234`) reads the ledger of the stage the
      run is at. The SETUP branch of the Check question (`:837-851`) becomes one function used by the failed Build
-     question first and by Check second. Options: add the proposed block when the config has none and `propose`
-     gives one, with the exact block in the text; "I repaired it: run the checks again" (`integrate`, then
-     `gate build`; the kept failure runs again because its class is `environment`); "It is the code", which
-     launches the fix pass; "Save for later", recommended when the same fault came back (the rule of WP08 for
-     M10). An unattended run makes a recorded stop here; it repairs no environment.
+     question first and by Check second. Options: add the proposed block (`add-setup`) when the config has none and
+     `propose` gives one, with the exact block in the text; "I repaired it: run the checks again" (`check-again`;
+     `integrate`, then `gate build`; the kept failure runs again because its class is `environment`); "It is the code"
+     (`it-is-the-code`), which launches the fix pass; "Save for later" (`save`), recommended when the same fault came
+     back (the rule of WP08 for M10). An unattended run makes a recorded stop here; it repairs no environment.
   8. **What Check still does.** On the tree `integrate` left: `check run` writes the suite, coverage, scenario and
      acceptance rows from the store, each marked `reused` with its key and tree, so the rows of `gate_check` keep
      their evidence (`scripts/temper:3869-3945`); no command runs. On a tree that changed after `integrate` (a
@@ -764,7 +863,7 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
 
       ```
       {"id": "F3", "ts": "...", "stage": "build",
-       "scope": "base | plan-command | task:4 | group:G1 | integrate | gate:check",
+       "scope": "base | plan-command | task:4 | group:G1 | gate:build | gate:check",
        "check": "suite | validate | task-test | scenario | acceptance | coverage | interfaces | regression
                  | row:<name>",
        "cmd": "...", "exit": 1, "ran_by": "cli | person", "tree": "<digest>", "setup": "<digest>", "limit_s": 600,
@@ -773,6 +872,10 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
        "why": "<at most 300 characters>", "fail_lines": [], "row": "build#412", "n": 1, "step": "", "resolved": null}
       ```
 
+      `scope` is the budget key of WP10 wherever the failure has one, spelled the same (`gate:<stage>`,
+      `group:<G>`, `task:<N>`, `acceptance`, `pipeline`; `docs/plans/one-go/contracts.md` section 8). A failed
+      `integrate` spends its repeat under the key `gate:build`, so `gate:build` is the `scope` of its record, and
+      the field `check` says which check of `integrate` failed.
       Choice of place: under `.temper/evidence/` the mod guards it already (`hooks/temper-mod/core/rules.ts:110`), a
       step back leaves it (`scripts/temper:1876-1896` empties the stage ledgers, and the reset of `groups.json` does
       not reach it), and `_archive_ledger` (`scripts/temper:1341`) copies it into `gate-ledger.json`.
@@ -797,10 +900,11 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
   14. **Who reads it.** The step of 5. The prompt builders `fault_lines` (`scripts/flow.py:1236-1246`),
       `feedback_lines` (`:1248`) and `group_fix_work` (`:2048`), which take `why` and `fail_lines` from it. The
       loop record: `loop_step` names record ids where it copies text by three collectors today
-      (`scripts/loop_step.py:35-53`). The budget of WP10: `n` is the count per key; if WP10 keeps its counts in a
-      file of its own, move them here and delete that file. `scripts/output_ops.py`, the view (the open records:
+      (`scripts/loop_step.py:35-53`). The budget of WP10: `n` is the count the budget holds for the record's
+      `scope`; the counts stay in `.temper/budget.json` to the end and are not moved here
+      (`docs/plans/one-go/contracts.md` section 14). `scripts/output_ops.py`, the view (the open records:
       class, why, step), the report, the commit card (each record's `step` is what a rule did), and the run
-      summary of WP05 (counts by class).
+      summary of WP05 (`scripts/run_summary.py`: counts by class).
 - **Removed:** the first run of the locked acceptance tests at Check; the armed run's skip of the triage; a fix
   pass on an environment fault; the second suite run and the second run of every scenario test on the merged tree;
   the three collectors of `scripts/loop_step.py` as the only memory of a failure.
@@ -809,12 +913,15 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
   `reference/check.md` (what Check still runs), `reference/autonomy.md` (what a rule does at a failed Build gate,
   class by class), `agents/acceptance.md` (the triage and the correction name the stage they are at),
   `agents/build-task.md` and the line the flow gives builders (`scripts/flow.py:1436-1441`: "must pass at
-  integration" is now true; "Check fails a change" becomes "the Build gate fails a change").
-- **Done when:** the new case file and cases 8, 11, 15, 16, 25 and 26 pass; `acceptanceAtBuild`, `setupAtBuild` and
-  `fixRun` pass in three modes; `bun scripts/e2e/run.ts both` reports every scenario identical with the mod and
-  without it; on `slowProjectRun` the suite ran at most three times and no limit was hit; on `brokenProjectRun`
-  every fault was named before Build with no agent launched for it; `scripts/verify.sh full` is green (this
-  package ends the phase).
+  integration" is now true; "Check fails a change" becomes "the Build gate fails a change"), `CHANGELOG.md`.
+- **Done when:** `scripts/selftest/temper-cases-64.sh` and cases 8, 11, 15, 16, 25 and 26 pass;
+  `acceptance-wrong-test`, `setup-at-build` and `fix` pass in three modes, and the first is off the list;
+  `bun scripts/e2e/run.ts both` reports every scenario identical with the mod and without it; on `slow-first-run` the
+  suite ran at most three times and no limit was hit, and it is off the list; on `broken-first-run` every fault was
+  named before Build with no agent launched for it; `bash scripts/verify.sh full` is green (this package ends phase
+  5).
+  The rows this package turns green are listed under its id in "Rows by package" of `docs/plans/one-go/done.md`;
+  that section wins over this list.
 - **Traps:**
   1. `scripts/temper` is near the file limit and `cmd_integrate` is 130 lines of it. This package must leave the
      file smaller: the order of the checks lives in `scripts/check_run.py`, the rows in `scripts/gate_rows.py`, the
@@ -824,7 +931,7 @@ commands on the base, the preflight removed), WP22 (one digest and the reuse sto
   3. M1 of the merge list (a fix pass that breaks the suite strands the run) lives in the branch at
      `scripts/temper:3316-3327`. WP08 repaired it there; carry that repair into the one `build-checks` call.
   4. The Build gate gains two rows and the Check and Build questions change stage: regenerate both fixture files,
-     and update the floor file of WP05 only where a count truly changed (dialogs on a clean run must not).
+     and update `scripts/e2e/floor.json` only where a count truly changed (dialogs on a clean run must not).
   5. `scripts/selftest/temper-cases-15.sh` simulates Check with hand written ledgers. Rows now need `tree` and
      `reused` to be read as reused; a helper in `scripts/selftest/case-helpers.sh` saves forty edits.
   6. The record file must be listed where the run files are listed for archive and for the view, and it must not

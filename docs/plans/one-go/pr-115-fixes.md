@@ -7,7 +7,10 @@ request gave and what stays of it.
 
 The ids are those of `docs/plans/one-go/evidence/v-pr115.md`, the report that reproduced the defects. Every
 `file:line` is of the head of the pull request, `10e965a`. The work itself is package WP08 of the one pass build; its
-spec is `docs/plans/one-go/wp/phase-3-and-6-pr115-and-repairs.md`.
+spec is `docs/plans/one-go/wp/phase-3-and-6-pr115-and-repairs.md`. The brief of the build is
+`docs/plans/one-go/README.md`: its section 3 holds the settled decisions this page rests on (decision 9 is this
+pull request), and its section 5 the order in which the packages named below are built. The ids of questions and
+options and the names of scenarios are those of `docs/plans/one-go/contracts.md`.
 
 ## 1. The answer in brief
 
@@ -44,7 +47,7 @@ scripted run in `scripts/e2e/`. The token in brackets is the row of `docs/plans/
 
 | Id | What goes wrong for a user | Where | Default path | Decision | The fix, or what "safe" is | Its test |
 |---|---|---|---|---|---|---|
-| M1 | After a loop back to Build, a fix that breaks the Integration suite strands the run for good. `integrate` can never pass again, also after the code is repaired, and the fix agent is launched again with no question and no count | `scripts/temper:3316-3327, 3387-3397, 3430`; `scripts/flow.py:1658-1671` | yes | FIX NOW | The integration record remembers that the groups were merged. A later `integrate` then only runs the suite again and never tries the merge of a branch that is gone. A failed rerun is recorded and the Build question is asked, which stops at the second identical failure. The fix agent is told what failed | `temper-cases-25.sh`, case `m1 integrate`; scenario `fixBreaksSuite` in three modes (`D41`) |
+| M1 | After a loop back to Build, a fix that breaks the Integration suite strands the run for good. `integrate` can never pass again, also after the code is repaired, and the fix agent is launched again with no question and no count | `scripts/temper:3316-3327, 3387-3397, 3430`; `scripts/flow.py:1658-1671` | yes | FIX NOW | The integration record remembers that the groups were merged. A later `integrate` then only runs the suite again and never tries the merge of a branch that is gone. A failed rerun is recorded and the Build question is asked, which stops at the second identical failure. The fix agent is told what failed | `temper-cases-25.sh`, case `m1 integrate`; scenario `fix-breaks-suite` in three modes (`D41`) |
 | M2 | A passed Review with an open Medium finding shows a "More options" that holds only itself and one other option. Accept a finding, Grill Me, Teach Me and Save for later cannot be reached | `scripts/flow.py:925-930, 943-947` | yes | FIX NOW | Teach Me gives way to the small change at every passed Review with an open finding, and a More question that exists is never built again from the visible options | `temper-cases-25.sh:46-48` rewritten; a case over every fixture view (`D42`) |
 | M3 | In an unattended run under the policy, the agent that should fix a failed group check is never launched | `scripts/flow.py:1754` | no (policy on) | REPLACED BY WP11 | Safe: one condition, so the fix agent is launched. WP11 turns the policy into the default run and rebuilds its rules | `temper-cases-28.sh` (`D43`) |
 | M4 | Under the policy one failed group check ends in a step back to Plan with nobody asked: the whole Build is thrown away and the planner runs again. Four documents say this never happens | `scripts/flow.py:1966-1972, 2003-2005` | no (policy on) | REPLACED BY WP11 | Safe: the rule never takes an option that goes back. It stops and asks. This is the rule the owner settled: an unattended run never plans again | `temper-cases-28.sh` (`D44`) |
@@ -58,8 +61,8 @@ scripted run in `scripts/e2e/`. The token in brackets is the row of `docs/plans/
 | M12 | With the mod on, the session may push during a run to any remote from any source, as long as the branch is named `temper-backup/`. Nothing in the product uses it | `hooks/temper-mod/core/session.ts:123-134, 154` | yes (the guard) | REMOVE | The code that goes: `BACKUP_DEST` and `backupPush` (`session.ts:120-134`), its call (`:154`), its two allowed test lines, the paragraph at `docs/flow.md:259-260`. Every push during a run is refused again | `tests/mod/session.test.ts` (`D52`) |
 | M13 | A setup block is one shell line that then runs before every command of every gate. It can reach your config without you seeing it: in the agent path you click before the draft exists; the check passes a block that fakes the tool; and the call that writes it is not yours alone | `scripts/flow.py:1200-1204, 1220-1225`; `scripts/preflight.py:227-243`; `scripts/doctor.py:457-483` | yes | REMOVE | The environment agent goes. WP08 removes its option, its launch and its dispatch (`scripts/flow.py:1200-1227, 2377-2379`); WP21 deletes its brief `agents/env.md`, its manifest line and `doctor --candidate`. Fixed now: `doctor` with `--write` is a call only your answer can cause, and the question shows every line of the block. No cheap check catches a faked tool: your reading of the block is the control | `tests/mod/v975.test.ts`; `temper-cases-27.sh` (`D53a`, `D53b`) |
 | M14 | Three new files decide gate rows and the mod guards none of them: the store of reused passes, `.temper/preflight.json` and `.temper/decisions.json` | `hooks/temper-mod/core/rules.ts:108-122` | yes (the guard) | FIX NOW | The three files, and `.temper/setup-tried.json`, join the guarded list. WP22 and WP23 keep the rule for each file they add | `tests/mod/guard.test.ts` (`D54`) |
-| M15 | A plan command that takes over 300 s fails the plan gate as an "environment fault", and the remedy on offer cannot make a command faster | `scripts/preflight.py:31, 80-81` | yes | REPLACED BY WP21 | Safe: a time out is "not checked". The row passes and names the three ways on: more time, another command, a skip with a reason. WP21 removes the preflight; a slow command then gets its own question | `temper-cases-22.sh` (`D55`) |
-| M16 | A failed preflight is stored and returned again after you repaired the environment. No option checks again | `scripts/preflight.py:165-171`; `scripts/flow.py:693-701` | yes | REPLACED BY WP21 | Safe: only a pass is stored, and the failed plan question gets "Check again". WP21 keeps the rule in its own form | `temper-cases-22.sh`; `temper-cases-27.sh` (`D56a`, `D56b`) |
+| M15 | A plan command that takes over 300 s fails the plan gate as an "environment fault", and the remedy on offer cannot make a command faster | `scripts/preflight.py:31, 80-81` | yes | REPLACED BY WP21 | Safe: a time out is "not checked". The row passes and names the three ways on: more time, another command, a skip with a reason. WP21 removes the preflight; a slow command then gets its own question, `plan.command` | `temper-cases-22.sh` (`D55`: never an environment fault, never an agent. The final form, a question with the three ways on as options, is row `D99`, which passes after WP21) |
+| M16 | A failed preflight is stored and returned again after you repaired the environment. No option checks again | `scripts/preflight.py:165-171`; `scripts/flow.py:693-701` | yes | REPLACED BY WP21 | Safe: only a pass is stored, and the failed plan question gets "Check again". WP21 keeps the rule in its own form | `temper-cases-22.sh`; `temper-cases-27.sh` (`D56a`, `D56b`; the final form is row `D99`) |
 
 ### 2.2 The 4 changed defaults
 
@@ -68,27 +71,28 @@ scripted run in `scripts/e2e/`. The token in brackets is the row of `docs/plans/
 | F1 | A passed Review with an open Medium finding recommends "Loop back to Build" | Each loop is a fix agent, a second whole Review and Check again, 4 dialogs. 9.8.4 recommended "Continue to Check" | `scripts/flow.py:779-788, 1141, 1167` | FIX NOW | A Medium finding recommends "Continue to Check" and is listed where you commit. A High or critical one still gets the repair; WP24 makes that repair cheap | `temper-cases-25.sh`, `temper-cases-28.sh` (`D57a`) |
 | F2 | Any answered Design question fails the Design gate until `tasks.md` changes, and planning again is recommended | Plan and Design again, both on Opus, also when the answer is the rule the plan already has | `scripts/decisions.py:40-69`; `scripts/flow.py:733-739` | REPLACED BY WP14 | Safe: the row passes with a note. The answers still go to every Build task. WP14 makes Design concerns questions in front of the approval | `temper-cases-25.sh:21` rewritten (`D57b`) |
 | F3 | A High finding fails Review (`review.block-on` is `critical, high`) | A High finding stops the run at Review | `scripts/temper:3814`; `templates/temper.config.default:31` | KEPT | Nothing. It is the one accuracy gain the replay of #115 shows: 9.8.4 committed the High defect. The key stays yours | holds at the head (`D57c`) |
-| F4 | The plan gate runs every Validate, every task Test, the Integration line and every scenario Test once, 300 s each, with no limit on the total, inside the Plan agent's own call | Many extra runs before the plan question; a task's Test cannot pass on code that is not written yet | `scripts/preflight.py:44-61, 189-210` | REPLACED BY WP21 | Safe: only the Integration line and the group Validates run, under one total limit. WP21 moves the run out of the gate and out of the agent's turn | `temper-cases-22.sh` (with `D55`) |
+| F4 | The plan gate runs every Validate, every task Test, the Integration line and every scenario Test once, 300 s each, with no limit on the total, inside the Plan agent's own call | Many extra runs before the plan question; a task's Test cannot pass on code that is not written yet | `scripts/preflight.py:44-61, 189-210` | REPLACED BY WP21 | Safe: only the Integration line and the group Validates run, under one total limit. WP21 moves the run out of the gate and out of the agent's turn | `temper-cases-22.sh` (`D57d`, a token of its own; the final form is row `D99`) |
 
 ### 2.3 Two tests the pull request lacked
 
 CI was green on #115 because no test walked these paths. WP08 adds both.
 
-- One scripted run with the policy on, a failed group check and a High finding: scenario `policyRun` in
+- One scripted run with the policy on, a failed group check and a High finding: scenario `policy-run` in
   `scripts/e2e/scenarios.ts`.
 - One selftest for the store of reused passes, in `scripts/selftest/temper-cases-23.sh`.
 
 ## 3. The 29 smaller points
 
 The build takes 24, keeps one as shipped and names it to you, and drops four. WP08 writes each line below into
-`docs/plans/one-go/PROGRESS.md`; the package named closes it. Where the spec of a named package does not carry the
+`docs/plans/one-go/PROGRESS.md`; the package named closes it, and WP32 reads the list at the end: a line still open
+goes into the text of the pull request. Where the spec of a named package does not carry the
 point in its own words, the point is still that package's.
 
 | Id | What | Decision |
 |---|---|---|
 | U1 | A plan patch keeps the marks of a failed fix, so the next failure still blames the command | WP25 |
 | U2 | A patched command skips the plan's checks; a Validate patched to `true` passes; the patch is not shown as a change of the approved plan | WP25 (the static rows on the result, the record, the commit card) and WP21 (the patched command runs once on the current code) |
-| U3 | `evidence void` is read in one place only | Dropped. WP30 removes claimed runs, so every run that counts is one the CLI made; a wrong kept pass is met by the counted "run it anyway" of WP22 |
+| U3 | `evidence void` is read in one place only | Dropped. WP30 removes claimed runs, so every run that counts is one the CLI made; a wrong kept pass is met by the counted "run it anyway" of WP22 (the option `run-anyway`) |
 | U4 | The store of reused passes has no test; its key has no tool versions | WP08 (the test) and WP22 (the key, and a record of every reuse) |
 | U5 | `temper go` reports a failed group check or `integrate` as an error, so the mod hands the run back | WP09 |
 | U6 | After one stop the run asks at every stage for good | WP11 |
