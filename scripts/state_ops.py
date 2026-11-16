@@ -209,6 +209,80 @@ def review_code(argv):
     print(', '.join(sorted(changed)[:5]))
 
 
+def state_init(argv):
+    import json, os, sys, uuid
+    d = {
+        'stage': 'started',
+        'spec': argv[1],
+        'spec_path': f'.temper/specs/{argv[1]}',
+        'branch': argv[2],
+        'command': argv[3],
+        'next_stage': 'intent' if argv[3] == 'temper' else 'rca',
+        'run_mode': 'interactive',
+        'artifacts': ['intent.md', 'tasks.md'] if argv[3] == 'temper' else ['rca.md'],
+        'updated': argv[4],
+        # ADR 0012: the run and the step a decision of the person belongs to. step counts every change of next_stage.
+        'run_id': uuid.uuid4().hex[:16],
+        'step': 0,
+        'started': argv[4],
+    }
+    # ADR 0013: the feature as the person gave it (the Intent brief's input), and a door's stage
+    if argv[6]: d['feature'] = argv[6]
+    if argv[7] and argv[3] == 'temper':
+        d['enter'] = argv[7]
+        # A door's run takes the tier Plan recorded: plan.md's Complexity line, else intent.md's (Intent's first guess)
+        import re
+        for name in ('plan.md', 'intent.md'):
+            try:
+                text = open(os.path.join(d['spec_path'], name), encoding='utf-8', errors='replace').read()
+            except OSError:
+                continue
+            m = re.search(r'^\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*(trivial|simple|medium|complex)\b', text, re.I | re.M)
+            if m:
+                d['complexity'] = m.group(1).lower()
+                break
+    json.dump(d, open(argv[5], 'w'), indent=2)
+
+
+def approve_plan(argv):
+    import json, os, sys
+    p = argv[1]
+    d = json.load(open(p))
+    try:
+        files = json.loads(argv[2])
+    except ValueError:
+        files = []
+    d['approved_files'] = files if isinstance(files, list) else []
+    if argv[3]:
+        d['plan_hash'] = argv[3]
+    else:
+        d.pop('plan_hash', None)
+    tmp = '%s.tmp.%d' % (p, os.getpid())
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, p)
+
+
+def approve_design_tasks(argv):
+    import json, os, sys
+    p = argv[1]
+    d = json.load(open(p))
+    try:
+        files = json.loads(argv[2])
+    except ValueError:
+        files = []
+    if isinstance(files, list):
+        d['approved_files'] = files
+    d['plan_hash'] = argv[3]
+    d['tasks_changed_by_design'] = True
+    tmp = '%s.tmp.%d' % (p, os.getpid())
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, p)
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('migrate_legacy', migrate_legacy),
     ('state_next', state_next),
@@ -216,6 +290,9 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('archive_ledger', archive_ledger),
     ('state_redo', state_redo),
     ('review_code', review_code),
+    ('state_init', state_init),
+    ('approve_plan', approve_plan),
+    ('approve_design_tasks', approve_design_tasks),
 )}
 
 

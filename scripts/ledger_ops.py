@@ -98,11 +98,75 @@ def last_green(argv):
         print('%s|%s' % (hits[-1].get('exit_code'), hits[-1].get('claim') or ''))
 
 
+def evidence_entry(argv):
+    import json, sys
+    claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, kind, ts = argv[1:]
+    e = {'claim': claim, 'cmd': cmd or None,
+         'exit_code': int(exit_code) if exit_code != '' else None,
+         'artifact': artifact or None, 'sha256': artifact_hash or None,
+         'value': (float(value) if value != '' else None),
+         'severity': severity or None, 'phase': phase or None, 'scenario': scenario or None,
+         'criterion': criterion or None, 'label': label, 'ts': ts}
+    if confidence != '':
+        e['confidence'] = float(confidence)
+    if kind:
+        e['kind'] = kind
+    print(json.dumps(e))
+
+
+def evidence_list(argv):
+    import json, sys
+    for i, e in enumerate(json.load(open(argv[1])), 1):
+        mark = 'OK ' if (e.get('exit_code') in (0, None)) else 'ERR'
+        line = f"#{i} [{e.get('label')}] {mark} {e.get('claim')}" + (f" [void: {e['voided'].get('reason')}]" if isinstance(e.get('voided'), dict) else '')
+        if e.get('severity'):
+            line += f" (severity: {e.get('severity')})"
+        if e.get('resolved'):
+            line += f" [resolved: {e['resolved'].get('fixed_by')}]"
+        if e.get('accepted'):
+            line += f" [accepted: {e['accepted'].get('reason')}]"
+        if e.get('cmd'):
+            line += f" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})"
+        if e.get('scenario'):
+            line += f" [scenario: {e.get('scenario')}]"
+        print(line)
+
+
+def run_entry(argv):
+    import json, sys
+    claim, cmd, exit_code, severity, label, phase, scenario, criterion, ts = argv[1:]
+    e = {'claim': claim, 'cmd': cmd, 'exit_code': int(exit_code), 'artifact': None,
+         'sha256': None, 'value': None, 'severity': severity or None,
+         'phase': phase or None, 'scenario': scenario or None, 'criterion': criterion or None,
+         'label': label, 'executed_by': 'cli', 'ts': ts}
+    print(json.dumps(e))
+
+
+def feedback_resolved_row(argv):
+    import json, sys, time
+    print(json.dumps({'claim': 'feedback #%s: applied — Task %s re-ran after group reopen and passed its task gate' % (argv[1], argv[2]),
+                      'cmd': None, 'exit_code': 0, 'artifact': None, 'sha256': None, 'value': None, 'severity': None,
+                      'phase': 'feedback-resolved', 'scenario': None, 'criterion': None, 'label': 'PROVEN', 'task': int(argv[2]),
+                      'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))
+
+
+def confirm_row(argv):
+    import json, sys, time
+    print(json.dumps({'claim': 'Task %s confirmed by %s' % (argv[1], argv[2]), 'cmd': None, 'exit_code': 0, 'artifact': None,
+                      'sha256': None, 'value': None, 'severity': None, 'phase': 'confirm', 'scenario': None, 'criterion': None,
+                      'label': 'PROVEN', 'task': int(argv[1]), 'executed_by': 'person', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('evidence_resolve', evidence_resolve),
     ('evidence_accept', evidence_accept),
     ('feedback_answered', feedback_answered),
     ('last_green', last_green),
+    ('evidence_entry', evidence_entry),
+    ('evidence_list', evidence_list),
+    ('run_entry', run_entry),
+    ('feedback_resolved_row', feedback_resolved_row),
+    ('confirm_row', confirm_row),
 )}
 
 

@@ -17,7 +17,8 @@ REPO_ROOT="${TESTS_DIR%/scripts/selftest}"
 TEMPER="$REPO_ROOT/scripts/temper"
 # The Python modules the CLI runs, by name: a case that copies the CLI copies them too (_cli_files), and a case that
 # proves a text is absent from the CLI reads them too (_cli_text)
-CLI_MODULES="scripts/state_ops.py scripts/ledger_ops.py scripts/spec_text.py scripts/commit_rows.py scripts/groups_ops.py"
+CLI_MODULES="scripts/json_ops.py scripts/state_ops.py scripts/ledger_ops.py scripts/spec_text.py scripts/commit_rows.py
+scripts/report_ops.py scripts/groups_ops.py"
 WORKDIR="$(mktemp -d)" || exit 1
 WORKDIR="$(cd -P "$WORKDIR" && pwd)" || exit 1   # physical, as the scripts see their own folders
 # A CLI call from outside this folder is refused (exit 3), config and model included, and the real .temper is left as it was.

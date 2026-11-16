@@ -25,8 +25,49 @@ def glob_touch_match(argv):
     sys.exit(0 if re.match("^" + "".join(out) + "$", target) else 1)
 
 
+def override_covers(argv):
+    import json, sys
+    def load(p, default):
+        try:
+            d = json.load(open(p))
+            return d if isinstance(d, type(default)) else default
+        except Exception:
+            return default
+    over, gates, stage = load(argv[1], []), load(argv[2], {}), argv[3]
+    v = gates.get(stage)
+    vts = str(v.get('ts') or '') if isinstance(v, dict) else ''
+    sys.exit(0 if any(isinstance(o, dict) and o.get('stage') == stage and (not vts or not o.get('ts') or str(o.get('ts')) >= vts)
+                      for o in over) else 1)
+
+
+def blast_radius(argv):
+    import json, os, re, sys
+    plan = json.loads(argv[1]); spec = argv[2].rstrip('/')
+    declared = {f for t in plan.get('tasks', []) for f in t.get('files', [])}
+    try:
+        rows = json.load(open(argv[3]))
+    except Exception:
+        rows = []
+    allowed = set()
+    for r in rows if isinstance(rows, list) else []:
+        m = re.match(r'^drift (\S+): (Add to plan|Allow once)\b', str(r.get('claim') or ''), re.I)
+        if m:
+            allowed.add(m.group(1))
+    test = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\.py$|_test\.(py|go)$|\.(test|spec)\.[cm]?[jt]sx?$|Tests?\.(java|kt|cs)$|_spec\.rb$')
+    def ok(p):
+        if spec and (p == spec or p.startswith(spec + '/')): return True
+        if p.startswith('.temper/') or p.startswith('.claude/worktrees/'): return True   # run state the CLI owns
+        return p in declared or p in allowed or bool(test.search(p))
+    changed = [l.strip() for l in sys.stdin if l.strip()]
+    bad = [c for c in changed if not ok(c)]
+    if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]) + (' (and %d more)' % (len(bad) - 5) if len(bad) > 5 else ''))
+    else: print('PASS %d changed, all declared' % len(changed))
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('glob_touch_match', glob_touch_match),
+    ('override_covers', override_covers),
+    ('blast_radius', blast_radius),
 )}
 
 

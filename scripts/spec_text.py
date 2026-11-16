@@ -128,12 +128,72 @@ def intent_status(argv):
     print('OK: intent.md is %s' % want)
 
 
+def tier_lines(argv):
+    import os, re, sys
+    sp, mode, tier = argv[1], argv[2], argv[3].strip().lower()
+    rx = re.compile(r'^(\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*)(trivial|simple|medium|complex)\b', re.I | re.M)
+    if tier not in ('trivial', 'simple', 'medium', 'complex'):
+        sys.exit(0)
+    for name in ('intent.md', 'plan.md'):
+        p = os.path.join(sp, name)
+        try:
+            text = open(p, encoding='utf-8', errors='surrogateescape').read()
+        except OSError:
+            continue
+        said = [m.group(2).lower() for m in rx.finditer(text)]
+        other = [s for s in said if s != tier]
+        if not other:
+            continue
+        if mode == 'check':
+            print('%s says %s' % (name, other[0]))
+            continue
+        new = rx.sub(lambda m: m.group(1) + tier, text)
+        tmp = '%s.tmp.%d' % (p, os.getpid())
+        with open(tmp, 'w', encoding='utf-8', errors='surrogateescape') as f:
+            f.write(new)
+        os.replace(tmp, p)
+        print('OK: %s now says Complexity %s (it said %s)' % (name, tier, other[0]))
+
+
+def uncovered_scenarios(argv):
+    import json, re, sys
+    intent_path, ev_path = argv[1:3]
+    names = []
+    for line in open(intent_path):
+        m = re.match(r'^\s*Scenario:\s*(.+?)\s*$', line)
+        if m:
+            names.append(m.group(1))
+    covered = set()
+    try:
+        entries = json.load(open(ev_path))
+        covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
+    except Exception:
+        pass
+    missing = [n for n in names if n not in covered]
+    print('\x1f'.join(missing))
+
+
+def plan_digest(argv):
+    import hashlib, json, sys
+    m = json.loads(argv[1])
+    def n(p):
+        p = p.strip()
+        return p[2:] if p.startswith('./') else p
+    core = {'tasks': [{'n': t['n'], 'group': t['group'], 'files': [n(f) for f in t['files']], 'depends': t['depends'], 'test': t['test']} for t in m['tasks']],
+            'groups': [{'id': g['id'], 'depends': g['depends'], 'validate': g['validate'], 'interfaces': g['interfaces'], 'context': g['context'], 'tasks': g['tasks']} for g in m['groups']],
+            'integration': m['integration']}
+    print(hashlib.sha256(json.dumps(core, sort_keys=True).encode('utf-8')).hexdigest())
+
+
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('unfenced_scenarios', unfenced_scenarios),
     ('cross_repo_recorded', cross_repo_recorded),
     ('task_box', task_box),
     ('intent_carry', intent_carry),
     ('intent_status', intent_status),
+    ('tier_lines', tier_lines),
+    ('uncovered_scenarios', uncovered_scenarios),
+    ('plan_digest', plan_digest),
 )}
 
 

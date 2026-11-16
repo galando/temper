@@ -290,26 +290,7 @@ except Exception:
 
 _json_get_path() { # _json_get_path <file> <dot.path> [default]
   local file="$1" path="$2" default="${3:-}"
-  python3 -I -c "
-import json, sys
-path, default = sys.argv[2], sys.argv[3]
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    print(default); sys.exit(0)
-cur = d
-for k in path.split('.'):
-    if isinstance(cur, dict) and k in cur:
-        cur = cur[k]
-    else:
-        print(default); sys.exit(0)
-if isinstance(cur, (dict, list)):
-    print(json.dumps(cur))
-elif isinstance(cur, bool):
-    print('true' if cur else 'false')  # bash compares lowercase — never emit Python's True/False
-else:
-    print(cur if cur is not None else default)
-" "$file" "$path" "$default" 2>/dev/null || echo "$default"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" get-path "$file" "$path" "$default" 2>/dev/null || echo "$default"
 }
 
 # Write lock for the shared run files under .temper/. A mkdir lock (portable: macOS has no flock):
@@ -458,35 +439,7 @@ _lock_release() {
 _json_set_path() { # _json_set_path <file> <dot.path> <value> <default-json>
   local file="$1" path="$2" value="$3" default="$4" rc
   _lock_acquire
-  python3 -I -c "
-import json, os, sys
-path, value, default = sys.argv[2], sys.argv[3], sys.argv[4]
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    d = json.loads(default)
-# auto-typing: true/false/int/float pass through, else string
-if value in ('true', 'false'):
-    v = (value == 'true')
-else:
-    try:
-        v = int(value)
-    except ValueError:
-        try:
-            v = float(value)
-        except ValueError:
-            v = value
-cur = d
-keys = path.split('.')
-for k in keys[:-1]:
-    cur = cur.setdefault(k, {})
-cur[keys[-1]] = v
-tmp = '%s.tmp.%d' % (sys.argv[1], os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-os.replace(tmp, sys.argv[1])
-" "$file" "$path" "$value" "$default"
+  python3 -I "$SCRIPTS_DIR/json_ops.py" set-path "$file" "$path" "$value" "$default"
   rc=$?
   _lock_release
   return $rc
@@ -740,40 +693,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
   [[ -n "$branch" ]] || branch="feature/$slug"
   [[ "$command" == "fix" ]] && [[ "$branch" == "feature/$slug" ]] && branch="fix/$slug"
-  python3 -I -c "
-import json, os, sys, uuid
-d = {
-    'stage': 'started',
-    'spec': sys.argv[1],
-    'spec_path': f'.temper/specs/{sys.argv[1]}',
-    'branch': sys.argv[2],
-    'command': sys.argv[3],
-    'next_stage': 'intent' if sys.argv[3] == 'temper' else 'rca',
-    'run_mode': 'interactive',
-    'artifacts': ['intent.md', 'tasks.md'] if sys.argv[3] == 'temper' else ['rca.md'],
-    'updated': sys.argv[4],
-    # ADR 0012: the run and the step a decision of the person belongs to. step counts every change of next_stage.
-    'run_id': uuid.uuid4().hex[:16],
-    'step': 0,
-    'started': sys.argv[4],
-}
-# ADR 0013: the feature as the person gave it (the Intent brief's input), and a door's stage
-if sys.argv[6]: d['feature'] = sys.argv[6]
-if sys.argv[7] and sys.argv[3] == 'temper':
-    d['enter'] = sys.argv[7]
-    # A door's run takes the tier Plan recorded: plan.md's Complexity line, else intent.md's (Intent's first guess)
-    import re
-    for name in ('plan.md', 'intent.md'):
-        try:
-            text = open(os.path.join(d['spec_path'], name), encoding='utf-8', errors='replace').read()
-        except OSError:
-            continue
-        m = re.search(r'^\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*(trivial|simple|medium|complex)\b', text, re.I | re.M)
-        if m:
-            d['complexity'] = m.group(1).lower()
-            break
-json.dump(d, open(sys.argv[5], 'w'), indent=2)
-" "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
+  python3 -I "$SCRIPTS_DIR/state_ops.py" state-init "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
   echo "Note: the run $slug owns this folder; separate work goes in a worktree (claude --worktree <name>), which gives it its own run."
 }
@@ -924,32 +844,7 @@ cmd_state_set() {
 # `state init --enter` reads them. check prints each file whose line names another tier ("intent.md says simple");
 # write sets each such line to the tier (a tier outside the four is not written) and prints what it changed.
 _tier_lines() {
-  python3 -I -c "
-import os, re, sys
-sp, mode, tier = sys.argv[1], sys.argv[2], sys.argv[3].strip().lower()
-rx = re.compile(r'^(\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*)(trivial|simple|medium|complex)\b', re.I | re.M)
-if tier not in ('trivial', 'simple', 'medium', 'complex'):
-    sys.exit(0)
-for name in ('intent.md', 'plan.md'):
-    p = os.path.join(sp, name)
-    try:
-        text = open(p, encoding='utf-8', errors='surrogateescape').read()
-    except OSError:
-        continue
-    said = [m.group(2).lower() for m in rx.finditer(text)]
-    other = [s for s in said if s != tier]
-    if not other:
-        continue
-    if mode == 'check':
-        print('%s says %s' % (name, other[0]))
-        continue
-    new = rx.sub(lambda m: m.group(1) + tier, text)
-    tmp = '%s.tmp.%d' % (p, os.getpid())
-    with open(tmp, 'w', encoding='utf-8', errors='surrogateescape') as f:
-        f.write(new)
-    os.replace(tmp, p)
-    print('OK: %s now says Complexity %s (it said %s)' % (name, tier, other[0]))
-" "$1" "$2" "${3:-}"
+  python3 -I "$SCRIPTS_DIR/spec_text.py" tier-lines "$1" "$2" "${3:-}"
 }
 
 _run_seq() { # the run's own stage sequence, with the commit stage last (a fix run has its own)
@@ -1052,25 +947,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     # The approved tasks as parsed, so a later question can name what changed (the Design question, 9.8.0)
     [[ -n "$digest" ]] && mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$spec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
     _lock_acquire
-    python3 -I -c "
-import json, os, sys
-p = sys.argv[1]
-d = json.load(open(p))
-try:
-    files = json.loads(sys.argv[2])
-except ValueError:
-    files = []
-d['approved_files'] = files if isinstance(files, list) else []
-if sys.argv[3]:
-    d['plan_hash'] = sys.argv[3]
-else:
-    d.pop('plan_hash', None)
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\\n')
-os.replace(tmp, p)
-" "$STATE_FILE" "$files" "$digest"
+    python3 -I "$SCRIPTS_DIR/state_ops.py" approve-plan "$STATE_FILE" "$files" "$digest"
     _lock_release
     if [[ -z "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
       local head; head="$(git rev-parse HEAD 2>/dev/null || true)"
@@ -1096,24 +973,7 @@ os.replace(tmp, p)
       if [[ -n "$ddigest" && "$ddigest" != "$(_json_get_path "$STATE_FILE" plan_hash "")" ]]; then
         local dfiles; dfiles="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$dspec" 2>/dev/null || echo '[]')"
         _lock_acquire
-        python3 -I -c "
-import json, os, sys
-p = sys.argv[1]
-d = json.load(open(p))
-try:
-    files = json.loads(sys.argv[2])
-except ValueError:
-    files = []
-if isinstance(files, list):
-    d['approved_files'] = files
-d['plan_hash'] = sys.argv[3]
-d['tasks_changed_by_design'] = True
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\\n')
-os.replace(tmp, p)
-" "$STATE_FILE" "$dfiles" "$ddigest"
+        python3 -I "$SCRIPTS_DIR/state_ops.py" approve-design-tasks "$STATE_FILE" "$dfiles" "$ddigest"
         _lock_release
         mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$dspec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
         echo "OK: the tasks Design changed are approved with the design"
@@ -1222,17 +1082,7 @@ _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.js
       _task_py keep "$slug" replan "$ts" "$g" "$branch" >/dev/null \
         || echo "WARN: could not move $branch aside; delete it before the re-planned run starts $g" >&2
     fi
-  done < <(python3 -I -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception:
-    d = {}
-for g, e in sorted((d.get('groups') or {}).items()):
-    print('\t'.join([d.get('slug') or '', g, e.get('worktree') or '', e.get('branch') or '']))
-for n, e in sorted((d.get('tasks') or {}).items()):   # a task's own worktree, kept by a park or still running
-    if e.get('worktree') or e.get('branch'):
-        print('\t'.join([d.get('slug') or '', 'T' + n, e.get('worktree') or '', e.get('branch') or '']))" "$GROUPS_FILE")
+  done < <(python3 -I "$SCRIPTS_DIR/groups_ops.py" groups-reset-rows "$GROUPS_FILE")
   mkdir -p .temper/archive
   mv "$GROUPS_FILE" ".temper/archive/groups-$ts.json" && echo "OK: grouped run reset for the re-plan (groups.json -> .temper/archive/groups-$ts.json)"
 }
@@ -1418,21 +1268,7 @@ cmd_evidence_add() {
     artifact_hash="$(python3 -I -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
   fi
   local entry
-  entry=$(python3 -I -c "
-import json, sys
-claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, kind, ts = sys.argv[1:]
-e = {'claim': claim, 'cmd': cmd or None,
-     'exit_code': int(exit_code) if exit_code != '' else None,
-     'artifact': artifact or None, 'sha256': artifact_hash or None,
-     'value': (float(value) if value != '' else None),
-     'severity': severity or None, 'phase': phase or None, 'scenario': scenario or None,
-     'criterion': criterion or None, 'label': label, 'ts': ts}
-if confidence != '':
-    e['confidence'] = float(confidence)
-if kind:
-    e['kind'] = kind
-print(json.dumps(e))
-" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -1452,23 +1288,7 @@ cmd_evidence_list() {
   if [[ "$as_json" == "true" ]]; then
     cat "$file"
   else
-    python3 -I -c "
-import json, sys
-for i, e in enumerate(json.load(open(sys.argv[1])), 1):
-    mark = 'OK ' if (e.get('exit_code') in (0, None)) else 'ERR'
-    line = f\"#{i} [{e.get('label')}] {mark} {e.get('claim')}\" + (f\" [void: {e['voided'].get('reason')}]\" if isinstance(e.get('voided'), dict) else '')
-    if e.get('severity'):
-        line += f\" (severity: {e.get('severity')})\"
-    if e.get('resolved'):
-        line += f\" [resolved: {e['resolved'].get('fixed_by')}]\"
-    if e.get('accepted'):
-        line += f\" [accepted: {e['accepted'].get('reason')}]\"
-    if e.get('cmd'):
-        line += f\" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})\"
-    if e.get('scenario'):
-        line += f\" [scenario: {e.get('scenario')}]\"
-    print(line)
-" "$file"
+    python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-list "$file"
   fi
 }
 
@@ -1563,15 +1383,7 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || (set -C; echo '[]' > "$file") 2>/dev/null || true
   local entry
-  entry=$(python3 -I -c "
-import json, sys
-claim, cmd, exit_code, severity, label, phase, scenario, criterion, ts = sys.argv[1:]
-e = {'claim': claim, 'cmd': cmd, 'exit_code': int(exit_code), 'artifact': None,
-     'sha256': None, 'value': None, 'severity': severity or None,
-     'phase': phase or None, 'scenario': scenario or None, 'criterion': criterion or None,
-     'label': label, 'executed_by': 'cli', 'ts': ts}
-print(json.dumps(e))
-" "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" run-entry "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim (cli-executed, exit $exit_code)"
   return 0
@@ -1794,23 +1606,7 @@ _intent_uncovered_scenarios() { # _intent_uncovered_scenarios <intent.md> <stage
                                  # not recorded as covered (exit_code 0) in the ledger
   local intent="$1" stage="$2"
   local file; file="$(_evidence_file "$stage")"
-  python3 -I -c "
-import json, re, sys
-intent_path, ev_path = sys.argv[1:3]
-names = []
-for line in open(intent_path):
-    m = re.match(r'^\s*Scenario:\s*(.+?)\s*$', line)
-    if m:
-        names.append(m.group(1))
-covered = set()
-try:
-    entries = json.load(open(ev_path))
-    covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
-except Exception:
-    pass
-missing = [n for n in names if n not in covered]
-print('\x1f'.join(missing))
-" "$intent" "$file"
+  python3 -I "$SCRIPTS_DIR/spec_text.py" uncovered-scenarios "$intent" "$file"
 }
 
 _req() { # _req <label> <bool 0|1> <detail> -> emits one requirement json line to stdout, and echoes pass/fail
@@ -1938,16 +1734,7 @@ _grouped_parse() { # _grouped_parse <tasks.md>
 # H3: the approved grouped plan, as a digest. Task blocks (File, Depends, Test), group Validate/Interfaces/Context
 # and Integration count; titles, prose and checkbox ticks do not, so the CLI's own tick is no change.
 _plan_digest() { # _plan_digest <parsed-plan-json>
-  python3 -I -c "
-import hashlib, json, sys
-m = json.loads(sys.argv[1])
-def n(p):
-    p = p.strip()
-    return p[2:] if p.startswith('./') else p
-core = {'tasks': [{'n': t['n'], 'group': t['group'], 'files': [n(f) for f in t['files']], 'depends': t['depends'], 'test': t['test']} for t in m['tasks']],
-        'groups': [{'id': g['id'], 'depends': g['depends'], 'validate': g['validate'], 'interfaces': g['interfaces'], 'context': g['context'], 'tasks': g['tasks']} for g in m['groups']],
-        'integration': m['integration']}
-print(hashlib.sha256(json.dumps(core, sort_keys=True).encode('utf-8')).hexdigest())" "$1"
+  python3 -I "$SCRIPTS_DIR/spec_text.py" plan-digest "$1"
 }
 
 # Refuses (returns 1) when the plan changed since the person approved it: the digest `state advance plan_complete`
@@ -2415,16 +2202,7 @@ except Exception:
   # task of G that is not running is checked, whichever task is named, and the group's own worktree too (a task that
   # is running has its range checked by its own gate)
   local cwts=("$wt") cwt t
-  while IFS= read -r t; do [[ -n "$t" && -d "$t" ]] && cwts+=("$t"); done < <(python3 -I -c "
-import json, sys
-try:
-    ts = json.load(open(sys.argv[1])).get('tasks') or {}
-except Exception:
-    ts = {}
-for k in sorted(ts, key=lambda x: int(x) if x.isdigit() else 0):
-    v = ts[k]
-    if v.get('group') == sys.argv[2] and v.get('status') != 'running' and v.get('worktree'):
-        print(v['worktree'])" "$GROUPS_FILE" "$g")
+  while IFS= read -r t; do [[ -n "$t" && -d "$t" ]] && cwts+=("$t"); done < <(python3 -I "$SCRIPTS_DIR/groups_ops.py" kept-worktrees "$GROUPS_FILE" "$g")
   local kind val acc_all=() bad_all=() fcall=""
   for cwt in "${cwts[@]}"; do
     fc="$(_task_py foreigncheck "$(pwd -P)/$cwt" "$left" "$accept" "$GROUPS_FILE" "$g")" || return 1
@@ -2997,12 +2775,7 @@ try:
 except Exception:
     t = {}
 print(' '.join(str(r['feedback']) for r in (t.get('reopened') or []) if r.get('feedback') and not r.get('resolved')))" "$GROUPS_FILE" "$n"); do
-    _json_append "$(_evidence_file build)" "$(python3 -I -c "
-import json, sys, time
-print(json.dumps({'claim': 'feedback #%s: applied — Task %s re-ran after group reopen and passed its task gate' % (sys.argv[1], sys.argv[2]),
-                  'cmd': None, 'exit_code': 0, 'artifact': None, 'sha256': None, 'value': None, 'severity': None,
-                  'phase': 'feedback-resolved', 'scenario': None, 'criterion': None, 'label': 'PROVEN', 'task': int(sys.argv[2]),
-                  'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))" "$fid" "$n")"
+    _json_append "$(_evidence_file build)" "$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" feedback-resolved-row "$fid" "$n")"
   done
   _groups_mutate "
 for r in (d['tasks'][a[0]].get('reopened') or []):
@@ -3174,11 +2947,7 @@ cmd_task_confirm() {
   local rc=$?
   _lock_release
   [[ $rc -eq 0 ]] || return $rc
-  _json_append "$(_evidence_file build)" "$(python3 -I -c "
-import json, sys, time
-print(json.dumps({'claim': 'Task %s confirmed by %s' % (sys.argv[1], sys.argv[2]), 'cmd': None, 'exit_code': 0, 'artifact': None,
-                  'sha256': None, 'value': None, 'severity': None, 'phase': 'confirm', 'scenario': None, 'criterion': None,
-                  'label': 'PROVEN', 'task': int(sys.argv[1]), 'executed_by': 'person', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))" "$n" "$by")"
+  _json_append "$(_evidence_file build)" "$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" confirm-row "$n" "$by")"
   echo "OK: Task $n confirmed by $by"
 }
 
@@ -3643,20 +3412,7 @@ _override_covers() { # _override_covers <stage> -> 0 when a skip of the person c
                      # skip does not cover it. The flow never runs a gate again after its skip (it gates a stage only while
                      # nobody skipped it), and a step back moves the skip out (_redo_from). A skip or verdict written without
                      # a time (an older run) is compared by stage alone.
-  python3 -I -c "
-import json, sys
-def load(p, default):
-    try:
-        d = json.load(open(p))
-        return d if isinstance(d, type(default)) else default
-    except Exception:
-        return default
-over, gates, stage = load(sys.argv[1], []), load(sys.argv[2], {}), sys.argv[3]
-v = gates.get(stage)
-vts = str(v.get('ts') or '') if isinstance(v, dict) else ''
-sys.exit(0 if any(isinstance(o, dict) and o.get('stage') == stage and (not vts or not o.get('ts') or str(o.get('ts')) >= vts)
-                  for o in over) else 1)
-" "$OVERRIDES_FILE" "$GATES_FILE" "$1" 2>/dev/null
+  python3 -I "$SCRIPTS_DIR/commit_rows.py" override-covers "$OVERRIDES_FILE" "$GATES_FILE" "$1" 2>/dev/null
 }
 
 _project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder,
@@ -3795,29 +3551,7 @@ gate_commit() {
   [[ -n "$gspec" && -f "$gspec/tasks.md" ]] && plan_json="$(_grouped_parse "$gspec/tasks.md")"
   if [[ -n "$gspec" && -f "$gspec/tasks.md" ]]; then
     local gverdict
-    gverdict="$(_changed_since_base | python3 -I -c "
-import json, os, re, sys
-plan = json.loads(sys.argv[1]); spec = sys.argv[2].rstrip('/')
-declared = {f for t in plan.get('tasks', []) for f in t.get('files', [])}
-try:
-    rows = json.load(open(sys.argv[3]))
-except Exception:
-    rows = []
-allowed = set()
-for r in rows if isinstance(rows, list) else []:
-    m = re.match(r'^drift (\\S+): (Add to plan|Allow once)\\b', str(r.get('claim') or ''), re.I)
-    if m:
-        allowed.add(m.group(1))
-test = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\\.py$|_test\\.(py|go)$|\\.(test|spec)\\.[cm]?[jt]sx?$|Tests?\\.(java|kt|cs)$|_spec\\.rb$')
-def ok(p):
-    if spec and (p == spec or p.startswith(spec + '/')): return True
-    if p.startswith('.temper/') or p.startswith('.claude/worktrees/'): return True   # run state the CLI owns
-    return p in declared or p in allowed or bool(test.search(p))
-changed = [l.strip() for l in sys.stdin if l.strip()]
-bad = [c for c in changed if not ok(c)]
-if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]) + (' (and %d more)' % (len(bad) - 5) if len(bad) > 5 else ''))
-else: print('PASS %d changed, all declared' % len(changed))
-" "$plan_json" "${gspec#"$REPO_ROOT"/}" "$(_evidence_file build)")"
+    gverdict="$(_changed_since_base | python3 -I "$SCRIPTS_DIR/commit_rows.py" blast-radius "$plan_json" "${gspec#"$REPO_ROOT"/}" "$(_evidence_file build)")"
     if [[ "$gverdict" == PASS* ]]; then
       reqs+=("$(_req "blast radius" 1 "${gverdict#PASS }")")
     else
@@ -4014,18 +3748,7 @@ d['models'] = [{'stage': l.split('=', 1)[0], 'model': l.split('=', 1)[1].rsplit(
                for l in sys.argv[2].splitlines() if '=' in l and ' (' in l]
 print(json.dumps(d))" "$out" "$models"
   else
-    python3 -I -c "
-import json, sys
-for c in json.loads(sys.argv[1])['criteria']:
-    ev = '; '.join(c['evidence']) if c['evidence'] else 'no evidence'
-    print('  [%s] %s (%s) — %s' % ('v' if c['status'] == 'passed' else ' ', c['id'], c['priority'], ev))
-print('Models')
-for l in sys.argv[2].splitlines():
-    if '=' in l and ' (' in l:
-        name, rest = l.split('=', 1)
-        model, src = rest.rsplit(' (', 1)
-        print('  %-16s %-18s %s' % (name, model, src.rstrip(')')))
-" "$out" "$models"
+    python3 -I "$SCRIPTS_DIR/report_ops.py" status-text "$out" "$models"
   fi
 }
 
@@ -4291,53 +4014,8 @@ print(json.dumps(d, indent=2))" "$GATES_FILE" "$usage_json"
     return
   fi
   # The two file paths cross as argv, never as Python source: the project path may hold a quote.
-  python3 -I -c "
-import json, sys
-d = json.load(open(sys.argv[1]))
-try:
-    overrides = json.load(open(sys.argv[2]))
-except Exception:
-    overrides = []
-accepted = [o for o in overrides if str(o.get('stage', '')).startswith('foreign-commit:')]
-overridden = {o['stage'] for o in overrides if o not in accepted}
-print('Stage    Verdict  Evidence')
-print('-------  -------  --------')
-for stage in ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit']:
-    g = d.get(stage)
-    if not g:
-        continue
-    tag = g['verdict'] + (' (overridden)' if stage in overridden and g['verdict'] == 'FAIL' else '')
-    print(f\"{stage:<8} {tag}\")
-    for r in g.get('requirements', []):
-        mark = 'v' if r['pass'] else 'x'
-        print(f\"           [{mark}] {r['name']} — {r['detail']}\")
-if overridden:
-    print()
-    print(f'{len(overridden)} gate(s) overridden by a human — see .temper/overrides.json')
-if accepted:
-    print()
-    print('Agent commits kept by a human (group reopen --accept-foreign):')
-    for o in accepted:
-        _, grp, sha = (str(o['stage']).split(':', 2) + ['', ''])[:3]
-        print('  %s in group %s, by %s: %s' % (sha[:7], grp, o.get('by', '?'), o.get('reason', '')))
-" "$GATES_FILE" "$OVERRIDES_FILE"
-  [[ -z "$usage_json" ]] || python3 -I -c "
-import json, sys
-u = json.loads(sys.argv[1])
-def n(v): return '-' if v is None else str(v)
-seq = ['intent', 'rca', 'plan', 'design', 'build', 'task', 'fix', 'review', 'check']
-in_run = lambda kv: (seq.index(kv[0]) if kv[0] in seq else len(seq), kv[0])
-print()
-print('Usage (the time Claude Code gave for each agent)')
-w = max([10] + [len(k) for k in list(u['by_stage']) + list(u['by_model'])])   # a full model id is wider than a stage
-print('  %-*s %6s %12s  %s' % (w, 'stage', 'rows', 'ms', 'model'))
-for k, v in sorted(u['by_stage'].items(), key=in_run):
-    print('  %-*s %6d %12s  %s' % (w, k, v['rows'], n(v['ms']), ', '.join(v.get('models') or []) or '-'))
-print('  %-*s %6s %12s' % (w, 'model', 'rows', 'ms'))
-for k, v in u['by_model'].items():
-    print('  %-*s %6d %12s' % (w, k, v['rows'], n(v['ms'])))
-t = u['total']
-print('  %-*s %6d %12s' % (w, 'total', t['rows'], n(t['ms'])))" "$usage_json"
+  python3 -I "$SCRIPTS_DIR/report_ops.py" report-table "$GATES_FILE" "$OVERRIDES_FILE"
+  [[ -z "$usage_json" ]] || python3 -I "$SCRIPTS_DIR/report_ops.py" report-usage "$usage_json"
   [[ "$end" == "true" ]] && _report_end shown
   return 0
 }
