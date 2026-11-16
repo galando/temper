@@ -50,14 +50,16 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
   `claude plugin test .`, `tsc -p tsconfig.mod.json` (TypeScript 5.6, as CI runs it) and
   `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
 - Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
-  `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic
-  spine — gate logic lives HERE, never in a prompt) · `scripts/guards/` ·
+  `reference/` (methodology) · `packs/` (rules) · `scripts/temper` and its Python modules
+  (`json_ops.py`, `state_ops.py`, `ledger_ops.py`, `spec_text.py`, `commit_rows.py`, `report_ops.py`,
+  `groups_ops.py`, run as `python3 -I`): the deterministic spine, the CLI; gate logic lives in the CLI,
+  never in a prompt · `scripts/guards/` ·
   `scripts/plan_review.py` (renders and merges the HTML plan review).
-- Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
-  `test-temper.sh` case, not a prompt edit; what comes next, a gate's options and the grouped
-  Build loop are `scripts/flow.py` (a case in `temper-cases-8.sh`; regenerate
-  `scripts/selftest/view-fixtures.ts` with `make-view-fixtures.sh` when the view changes), never
-  a list in a page; hooks must fail OPEN except their one
+- Known mistakes: a gate-mechanics change is an edit of the CLI (`scripts/temper` or its module) plus a
+  `test-temper.sh` case, not a prompt edit; new CLI logic goes into a module and one line into the bash
+  file; what comes next, a gate's options and the grouped Build loop are `scripts/flow.py` (a case
+  in `temper-cases-8.sh`; regenerate `scripts/selftest/view-fixtures.ts` with `make-view-fixtures.sh`
+  when the view changes), never a list in a page; hooks must fail OPEN except their one
   detected-violation path; never re-add per-stage logic to `commands/temper.md` or
   `commands/fix.md` — it belongs in that stage's own brief in `agents/` (including the
   stage's return box: a brief must never point a clean-context subprocess at an
