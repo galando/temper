@@ -427,6 +427,13 @@ assert_eq "round 3, 4: no placeholder of text stands in double quotes in a call 
 fresh; "$TEMPER" init >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "init: view.json is listed in the clone's info/exclude, so it is never an untracked file of the project" "1|0" \
   "$(grep -cx '/.temper/view.json' "$(git rev-parse --git-common-dir)/info/exclude")|$(git status --porcelain --untracked-files=all | grep -c 'view.json')"
+# WP08 (U19): the run files pull request 115 added are local run state too, and a cleared run leaves none of them
+_ex="$(git rev-parse --git-common-dir)/info/exclude"
+_u19_listed="$(for f in preflight.json setup-tried.json decisions.json; do grep -qxF "/.temper/$f" "$_ex" && echo yes || echo no; done | paste -sd' ' -)"
+for f in preflight.json setup-tried.json decisions.json; do echo '{}' > ".temper/$f"; done
+"$TEMPER" state clear >/dev/null 2>&1
+assert_eq "the run files of pull request 115 are listed and cleared" "yes yes yes|0" \
+  "$_u19_listed|$(for f in preflight.json setup-tried.json decisions.json; do [[ -e ".temper/$f" ]] && echo "$f"; done | wc -l | tr -d ' ')"
 
 # --- a /temper:fix run ---
 setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1

@@ -64,3 +64,31 @@ OUT="$("$TEMPER" integrate 2>&1)"
 assert_eq "9.8.5 integrate: a new commit runs the Integration suite again and records the new HEAD" "1|True|$(git rev-parse HEAD)" \
   "$(cat .git/integ-count 2>/dev/null | wc -l | tr -d ' ')|$(grep -q 'Integration suite ran again' <<<"$OUT" && echo True || echo False)|$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['integration']['head'])")"
 rm -f more.txt
+
+# --- WP08 (M1): after a pass, a commit that breaks the Integration suite is recorded and asked; a repair passes ---
+printf '%s\n' '# Tasks: demo' '' '**Integration:** `test ! -e broken.txt`' '' '## Group G1: Core' '**Depends:** none' '**Validate:** `true`' \
+  '**Context:**' 'The demo group.' '' '### Task 1: first task' '**File:** `src/a.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- a holds' '- [ ] done' | m_setup
+python3 - <<'PY'
+import json, subprocess
+head = subprocess.run(['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE).stdout.decode().strip()
+d = json.load(open('.temper/groups.json'))
+for g in d.get('groups', {}).values():
+    g['status'] = 'passed'; g['gate'] = {'verdict': 'PASS'}; g['confirmed'] = 't'
+for t in d.get('tasks', {}).values():
+    t['status'] = 'passed'
+d['integration'] = {'verdict': 'PASS', 'reason': '', 'group': None, 'files': [], 'ts': 'x', 'head': head}
+json.dump(d, open('.temper/groups.json', 'w'))
+PY
+# as a PASS of integrate leaves the run: the group worktree removed and the group branch deleted
+for _wt in $(git worktree list --porcelain | sed -n 's/^worktree //p' | tail -n +2); do git worktree remove --force "$_wt" >/dev/null 2>&1; done
+git branch -D temper/demo/G1 >/dev/null 2>&1
+echo x > broken.txt; git add broken.txt; git commit -q -m "a fix that breaks the suite"
+O1="$("$TEMPER" integrate 2>&1)"; rc1=$?
+REC="$(python3 -c "import json; i = json.load(open('.temper/groups.json'))['integration']; print('%s|%s' % (i.get('verdict'), i.get('merged')))")"
+O2="$("$TEMPER" gate build 2>&1)"
+NX="$(nx "d['action'] + '|' + str(d.get('stage'))")"
+git rm -q broken.txt; git commit -q -m "the repair"
+O3="$("$TEMPER" integrate 2>&1)"; rc3=$?
+assert_eq "m1 integrate: a suite broken after a pass fails, is repaired, and passes again" \
+  "0|FAIL|True|True|ask|build|0|PASS|False" \
+  "$rc1|$REC|$(grep -q -- '-> FAIL' <<<"$O2" && grep -q '^ *\[x\] integration ' <<<"$O2" && echo True || echo False)|$NX|$rc3|$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['integration']['verdict'])")|$(grep -q 'not something we can merge' <<<"$O1$O2$O3" && echo True || echo False)"
