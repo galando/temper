@@ -48,6 +48,7 @@ def questions(v):
         follow(where, a.get("options") or [])
         walk(where + ".more", a.get("more"))
         walk(where + ".accept", a.get("accept"))
+        walk(where + ".change", a.get("change"))
 
     walk("ask", v.get("ask"))
     cc = v.get("context_check")
@@ -94,6 +95,10 @@ elif mode == "one":
             n = sum(1 for o in opts + ((q.get("more") or {}).get("options") or []) if o.get("recommended"))
             if n > 1:
                 bad.append("%s %s: %d" % (name, where, n))
+elif mode == "reach":
+    # the walker reaches each kind of question the fixture views carry, so the modes above look at every one of them
+    seen = {re.sub(r"\[\d+\]|/[^/]*/", "", where) for _, v in views() for where, _, _ in questions(v)}
+    bad = ["%s not reached" % w for w in os.environ["REACH"].split() if w not in seen]
 elif mode == "dialog":
     for name, v in views():
         def walk(where, a):
@@ -158,6 +163,8 @@ assert_eq "ids: every question has an id of the registry and a kind, and the reg
 assert_eq "ids: option ids are unique in a question and come from the closed list" "ok" "$(_i40 options 2>&1)"
 assert_eq "ids: recommended is true exactly where the label ends in the suffix, and absent elsewhere" "ok" "$(_i40 rec 2>&1)"
 assert_eq "ids: at most one recommended option in a question and its More question together" "ok" "$(_i40 one 2>&1)"
+assert_eq "ids: the walker reaches the More, accept and change questions of a gate, so the checks above see them" "ok" \
+  "$(REACH="ask.more ask.accept ask.change" _i40 reach 2>&1)"
 assert_eq "ids: the question that goes to the dialog has no new key" "ok" "$(_i40 dialog 2>&1)"
 assert_eq "ids: no dialog the CLI writes holds a key the question tool refuses" "ok" "$(_i40 keys 2>&1)"
 assert_eq "ids: only opt() and set_rec() know the suffix" "ok" "$(FLOW_FILES="$FLOW_FILES" _i40 suffix 2>&1)"
