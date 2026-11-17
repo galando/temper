@@ -155,6 +155,22 @@ _c43_list 'selftest:D01 WP09 D01'; _c43_commit "$_c43/root" "listed again"
 r3="$(_c43_done)|$(grep -c 'selftest:D01 was taken off the list by an earlier commit and is on it again' "$_c43/done.out")"
 assert_eq "done: a token that left the list cannot come back" "0 0 1|1" "$r1 $r2 $r3"
 
+# a check taken off in one form cannot come back in another: an e2e line stands for its (scenario, mode) pairs
+# (phase 2 review, F8)
+_c43_root
+_c43_list 'e2e:two-up:plain WP08 D01'; _c43_commit "$_c43/root" "listed in plain"
+sed -i '/^e2e:two-up:plain /d' "$_c43/root/scripts/selftest/expected-fail.txt"; _c43_commit "$_c43/root" "plain passes"
+_c43_list 'e2e:two-up WP09 D01'; _c43_commit "$_c43/root" "listed in every mode"
+r1="$(_c43_done)|$(grep -c 'e2e:two-up was taken off the list by an earlier commit' "$_c43/done.out")"
+_c43_root
+_c43_list 'e2e:two-up WP08 D01'; _c43_commit "$_c43/root" "listed in every mode"
+sed -i 's/^e2e:two-up WP08 D01$/e2e:two-up:mod WP08 D01/' "$_c43/root/scripts/selftest/expected-fail.txt"
+_c43_commit "$_c43/root" "plain passes"
+r2="$(_c43_done)"
+_c43_list 'e2e:two-up:plain WP09 D01'; _c43_commit "$_c43/root" "plain listed again"
+r2="$r2 $(_c43_done)|$(grep -c 'e2e:two-up:plain was taken off the list by an earlier commit' "$_c43/done.out")"
+assert_eq "done: a check taken off the list cannot come back in another form" "1|1 0 1|1" "$r1 $r2"
+
 _c43_root
 sed -i 's/`case 11 D01`/`case 12 D10`/' "$_c43/root/docs/plans/one-go/done.md"
 r1="$(_c43_done)|$(grep -c '^D01 FAIL: case 12 D10 ' "$_c43/done.out")"

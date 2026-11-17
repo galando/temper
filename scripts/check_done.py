@@ -11,7 +11,8 @@ It reads the table under the heading "The table" of `docs/plans/one-go/done.md` 
   - a `scenario <name>` item names a scenario that no file of `scripts/e2e` registers (its quoted name as a key);
   - a line of the list matches no check, names a token that is not a token of the table, or names a scenario that is
     not one of `scripts/e2e/accept.ts`, `scripts/e2e/slow.ts` or `scripts/e2e/broken.ts`;
-  - a line of the list was taken off it by an earlier commit and is on it again (from `git log -p` of the list; a
+  - a check of the list was taken off it by an earlier commit and is on it again, in any form (an e2e line stands for
+    its scenario in each mode it names, every mode when it names none; from `git log -p` of the list; a
     checkout with no history shows no such commit);
   - a test file of the mod (the pathspecs `*.test.ts` and `*.test.tsx`) holds `.skip(`, `.only(` or `.todo(`;
   - a scenario of those three files does not call the shared assert `worldCheck` (row D105), in its own body or in a
@@ -352,8 +353,18 @@ def read_list(text):
     return out, errors
 
 
+def units(check):
+    """The checks a line of the list stands for: a selftest token as it is; an e2e line as (scenario, mode) pairs, a
+    line with no mode standing for each of plain, mod and driver. So a check taken off in one form is the same check
+    when it comes back in another."""
+    parts = check.split(":")
+    if parts[0] == "e2e" and len(parts) in (2, 3) and parts[1]:
+        return {("e2e", parts[1], m) for m in ([parts[2]] if len(parts) == 3 else MODES)}
+    return {("line", check)}
+
+
 def came_back(root, current):
-    """The checks of the list that an earlier commit took off it and that are on it again."""
+    """The checks of the list that an earlier commit took off it and that are on it again (in any form)."""
     code, out = git(root, "log", "-p", "--reverse", "--no-color", "--format=%x00COMMIT %H", "--", LIST)
     if code != 0:
         return []
@@ -367,11 +378,11 @@ def came_back(root, current):
             if not body:
                 continue
             if line.startswith("-"):
-                removed.add(body[0])
+                removed |= units(body[0])
             elif line.startswith("+"):
-                added.add(body[0])
+                added |= units(body[0])
         gone |= removed - added
-    return sorted(c for c in current if c in gone)
+    return sorted(c for c in current if units(c) & gone)
 
 
 # ---- the finals (D75b) ---------------------------------------------------------------------------------------------------
