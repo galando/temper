@@ -334,3 +334,55 @@ describe('the files that turn a gate row', () => {
     }
   })
 })
+
+// 9.8.5 (WP10): one budget in the CLI. Only the person grants more repeats, at the question at the limit (run.budget,
+// option grant-more); the record of the repeats, .temper/budget.json, is the CLI's to write.
+describe('the budget: only the person grants more, and its record is the CLI\'s', () => {
+  const GRANT = `${CLI} budget grant --key gate:check --reason "{reason}"`
+  const grant = (key: string, reason = 'x'): string => `${CLI} budget grant --key ${key} --reason "${reason}"`
+  test('budget grant outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['plan', 'build', 'review', 'check'] as const) {
+      expect(bash(ctx(stage), grant(`gate:${stage}`, 'the next try is different')), stage).toEqual({ deny: ONLY_USER })
+    }
+    // no other call of an answer lets it through: the step back of the same question is not a grant
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), grant('gate:check'))).toEqual({ deny: ONLY_USER })
+  })
+
+  test('budget grant passes as the call of the answer, word for word: the same key, one reason', () => {
+    const c = ctx('check', { allowed: [GRANT] })
+    expect('allow' in bash(c, grant('gate:check', 'I changed something outside the run'))).toBe(true)
+    const other = "cd x && /a/b/scripts/temper budget grant --key gate:check --reason 'the next try is different'"
+    expect('allow' in bash(c, other)).toBe(true)
+    for (const cmd of [
+      grant('gate:build'),
+      grant('group:G1'),
+      `${grant('gate:check')} --key gate:build`,
+      `${grant('gate:check')} && ${grant('gate:check', 'y')} --key task:1`,
+    ]) {
+      expect(isDeny(bash(c, cmd)), cmd).toBe(true)
+    }
+  })
+
+  test('an unquoted glob that could spell budget or grant is refused; printing the record is not the person\'s', () => {
+    for (const cmd of [`${CLI} b?dget grant --key gate:check --reason x`, `${CLI} budget gr?nt --key gate:check`]) {
+      expect(isDeny(bash(ctx('check'), cmd)), cmd).toBe(true)
+    }
+    expect('allow' in bash(ctx('check'), `${CLI} budget`)).toBe(true)
+  })
+
+  test('during a run a write of .temper/budget.json is refused: an editing tool, a redirect, an rm, a glob', () => {
+    const f = '.temper/budget.json'
+    const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ') && r.deny.includes('by hand')
+    for (const stage of ['plan', 'build', 'review', 'check'] as const) {
+      for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), f, tool)), `${stage} ${tool}`).toBe(true)
+      expect(guarded(write(ctx(stage), `/repo/${f}`)), `${stage} absolute`).toBe(true)
+      for (const cmd of [`echo '{}' > ${f}`, `printf x >> ${f}`, `rm ${f}`, `rm -f ${f}`, `cp /tmp/b.json ${f}`]) {
+        expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+      }
+    }
+    for (const cmd of ['rm .temper/bu?get.json', 'rm -f .temper/budg*.json']) {
+      expect(isDeny(bash(ctx('build'), cmd)), cmd).toBe(true)
+    }
+  })
+})

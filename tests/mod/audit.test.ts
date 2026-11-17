@@ -42,9 +42,11 @@ const kindOf = (call: string): string | null => {
   if (w[0] === 'task' && (w[1] === 'confirm' || w[1] === 'accept')) return `task ${w[1]}`
   if (w[0] === 'adhoc' && w[1] === 'open') return 'adhoc open'
   if (w[0] === 'state' && w[1] === 'set' && w[2] === 'branch') return 'state set branch'
+  if (w[0] === 'budget' && w[1] === 'grant') return 'budget grant'
   return null
 }
-const REQUIRED = ['override', 'plan review', 'task confirm', 'task accept', 'adhoc open', 'state set branch']
+const REQUIRED = ['override', 'plan review', 'task confirm', 'task accept', 'adhoc open', 'state set branch',
+  'budget grant']
 
 describe('the mod answer audit: every option of every question is reachable, and its calls are judged by the rule', () => {
   const seen = new Set<string>()
@@ -117,5 +119,65 @@ describe('a manual task\'s name question (9.8.0)', () => {
     expect(said('Type it below')).toEqual([])
     expect(said('Cancel')).toEqual([])
     expect(said('Gal').map(a => a.kind === 'gate' ? a.reason : '')).toEqual(['Gal'])
+  })
+})
+
+// 9.8.5 (WP10): the question at the limit of the budget (ADR 0016, the row of the kind budget grant). The fixture view
+// `check-budget` is a run at a failed Check whose key gate:check was repeated twice: `temper next` asks run.budget.
+describe('the question at the limit of the budget: budget grant only on the exact match', () => {
+  const NAME = 'check-budget'
+  const read = (): RunView | null => (ALL[NAME] === undefined ? null : parseRunView(JSON.stringify(ALL[NAME])))
+  const said = (rv: RunView, a: Ask, option: Option): Option[] => {
+    const q = a.question.question
+    const questions = [{ header: a.question.header, question: q, multiSelect: false }]
+    const annotations = { [q]: { notes: 'the next try is different' } }
+    const result = { result: { questions, answers: { [q]: option.label }, annotations } }
+    return answersIn(result, rv)
+      .filter(x => x.kind === 'gate' && x.option.label === option.label)
+      .map(x => (x as { option: Option }).option)
+  }
+  const judge = (rv: RunView, allowed: string[], command: string): boolean =>
+    !('deny' in evaluate(ctx(rv, allowed), { tool: 'Bash', input: { command } } as never))
+
+  test(`the fixture view ${NAME} asks run.budget, with Save for later first and Allow two more`, () => {
+    const rv = read()
+    expect(rv).not.toBeNull()
+    expect(rv?.ask?.id).toBe('run.budget')
+    expect(rv?.ask?.question.header).toBe('Temper gate')
+    expect(rv?.ask?.options[0]?.id).toBe('save')
+    expect(rv?.ask?.options[0]?.recommended).toBe(true)
+    const grant = rv?.ask?.options.find(o => o.id === 'grant-more')
+    expect(grant?.label).toBe('Allow two more')
+    expect(grant?.move).toBe('grant')
+    expect((grant?.calls ?? []).filter(c => kindOf(c) === 'budget grant').length).toBe(1)
+  })
+
+  test('the grant passes as the answer Allow two more, and as no other answer, no other key and no other words', () => {
+    const rv = read()
+    const a = rv?.ask ?? null
+    expect(a).toBeTruthy()
+    if (rv === null || a === null) return
+    const grant = a.options.find(o => o.id === 'grant-more')
+    expect(grant).toBeTruthy()
+    if (!grant) return
+    const call = fill(grant.calls.find(c => kindOf(c) === 'budget grant') ?? '')
+    expect(call).toMatch(/\/scripts\/temper budget grant --key gate:check --reason /)
+    const found = said(rv, a, grant)
+    expect(found.length).toBeGreaterThan(0)
+    const written = [...(found[0] as Option).calls, ...(found[0] as Option).steps]
+    expect(judge(rv, written, call)).toBe(true)
+    expect(judge(rv, [], call)).toBe(false)
+    // the calls of every other answer of the question, and of its More question, do not let it through
+    for (const o of [...a.options, ...(a.more?.options ?? [])]) {
+      if (o.id === 'grant-more' || o.move === null) continue
+      const other = said(rv, a.more !== null && a.more.options.includes(o) ? a.more : a, o)
+      const calls = other.length > 0 ? [...(other[0] as Option).calls, ...(other[0] as Option).steps] : o.calls
+      expect(judge(rv, calls, call), o.label).toBe(false)
+    }
+    // the exact match: another key, a second key, or a grant with no reason is another call
+    for (const cmd of [call.replace('--key gate:check', '--key group:G1'), `${call} --key gate:build`,
+      call.replace(/ --reason .*$/, '')]) {
+      expect(judge(rv, written, cmd), cmd).toBe(false)
+    }
   })
 })
