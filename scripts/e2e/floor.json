@@ -2261,16 +2261,15 @@
      "launches": {
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
-      "temper:temper-check": 1,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
       "temper:temper-review": 2
      },
-     "launch_total": 8,
+     "launch_total": 7,
      "auto": 0,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -2291,16 +2290,15 @@
      "launches": {
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
-      "temper:temper-check": 1,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
       "temper:temper-review": 2
      },
-     "launch_total": 8,
+     "launch_total": 7,
      "auto": 0,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -2321,16 +2319,15 @@
      "launches": {
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
-      "temper:temper-check": 1,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
       "temper:temper-review": 2
      },
-     "launch_total": 8,
+     "launch_total": 7,
      "auto": 9,
      "back": 0,
      "handbacks": 1,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },

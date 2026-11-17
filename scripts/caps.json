@@ -12,17 +12,17 @@
  ],
  "caps": {
   "question_sites": {
-   "now": 52,
+   "now": 51,
    "final": 53,
    "measure": "measure_question_sites: calls of self.question( and self.with_more( in the flow files"
   },
   "option_sites": {
-   "now": 87,
+   "now": 89,
    "final": 89,
    "measure": "measure_option_sites: calls of self.opt( in the flow files"
   },
   "option_labels": {
-   "now": 71,
+   "now": 72,
    "final": 71,
    "measure": "measure_option_labels: distinct first arguments (a string) of those calls"
   },
@@ -57,7 +57,7 @@
    "measure": "measure_config_live_keys: key lines of the config template that are not comments"
   },
   "config_comment_keys": {
-   "now": 46,
+   "now": 48,
    "final": 46,
    "measure": "measure_config_comment_keys: commented key lines of the config template"
   },
@@ -67,7 +67,7 @@
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 307704,
+   "now": 307699,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
@@ -77,7 +77,7 @@
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 214571,
+   "now": 214549,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },
