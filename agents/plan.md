@@ -97,12 +97,13 @@ orchestrator's conversation carries over except the prompt you were launched wit
   it is on PATH, and needs a new surefire report for each class. `temper gate plan` names a Maven group that breaks this, also
   after `cd backend &&` or with `./mvnw`. A `verify` with a `-Dtest=` or `-Dit.test=` filter can never meet a JaCoCo rule for
   the whole BUNDLE: the gate's `maven filtered verify` row fails it; use `test` for a filter, or add `-Djacoco.skip=true`.
-- The plan gate's `preflight` row runs every Validate, task Test, Integration and scenario `Test:` command once on HEAD, in a
-  throwaway worktree, with the project's `setup:` block. Each command gets a class: passes, needs new code (fine: the code is
-  not written yet), environment fault, or command fault (the tests pass and a later step fails). The last two fail the gate
-  with the real error: fix the command, or tell the person what the environment lacks. Pick commands that end within
-  `plan.preflight-timeout` (300 s): a group's Validate runs the tests that group can break, not a suite that takes longer.
-  The result is stored and read again while HEAD and the commands are unchanged; `temper plan preflight` runs it again.
+- The plan gate's `preflight` row runs each group's Validate and the Integration line once on HEAD, in a throwaway
+  worktree, with the project's `setup:` block, under one limit for all, `plan.preflight-timeout` (300 s); no task or
+  scenario Test runs. Each command gets a class: passes, needs new code (fine), not checked (over the limit; the row
+  passes), environment fault, or command fault (the tests pass and a later step fails). The last two fail the gate
+  with the real error: fix the command, or tell the person what the environment lacks. A group's Validate runs the
+  tests that group can break, not a long suite. Only a pass is stored, read while HEAD and the commands hold;
+  `temper plan preflight` runs it again.
 - Every scenario carries a `Test:` line: a scoped shell command that proves it on the merged tree and names the test a
   task of `tasks.md` writes. Build runs each one and records a row; a criterion with `Validate: scenario` passes only
   from that row, never from a `Traced to:` line. `temper gate plan` names every scenario with none.

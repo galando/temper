@@ -45,9 +45,9 @@ _dp; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 gfail plan "preflight" "1 command(s): 1 environment fault
 environment fault \`mvn verify\`: needs JDK [24,) (found 21.0.12)"
 printf '{"env_faults": [{"cmd": "mvn verify", "files": null, "why": "needs JDK [24,) (found 21.0.12)"}], "limit": 30}\n' > .temper/preflight.json   # as the gate stores it
-assert_eq "9.8.5 propose: the failed plan question's first option adds the block, runs the preflight again and gates the plan" \
+assert_eq "9.8.5 propose: the failed plan question offers the option that adds the block, runs the preflight again and gates the plan" \
   "Add the proposed setup block (Recommended)|doctor --propose --write|plan preflight|gate plan|True" \
-  "$(PATH="$PWD/fakepg:$PATH" nx "o = d['ask']['options'][0]; '|'.join([o['label']] + [c.split('temper ', 1)[1] for c in o['calls']] + [str('IT_POSTGRES_PORT=5432' in o['description'])])")"
+  "$(PATH="$PWD/fakepg:$PATH" nx "o = [x for x in d['ask']['options'] if x.get('id') == 'add-setup'][0]; '|'.join([o['label']] + [c.split('temper ', 1)[1] for c in o['calls']] + [str('IT_POSTGRES_PORT=5432' in o['description'])])")"
 # WP08 (M16): after the person repaired the environment, one option checks again: the preflight, then the plan gate
 assert_eq "9.8.5 preflight: the failed plan question offers check-again" "plan|check-again|plan preflight|gate plan" \
   "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; os_ = (a.get('options') or []) + ((a.get('more') or {}).get('options') or []); \

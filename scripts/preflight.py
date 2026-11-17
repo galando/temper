@@ -1,14 +1,17 @@
-"""preflight.py: the plan gate's "preflight" row: every command of the plan, run once on the clean base (HEAD).
+"""preflight.py: the plan gate's "preflight" row: the Validates and the Integration line of the plan, run once on HEAD.
 
   python3 preflight.py row SPEC PROJECT CONFIG LEDGER    prints the row as JSON (a stored result while it is current)
   python3 preflight.py run SPEC PROJECT CONFIG LEDGER    runs the commands again and stores the result (temper plan preflight)
 
-Each distinct Validate, task Test, Integration and scenario Test command runs in a detached worktree of HEAD (a Maven task
-Test through maven_loop, as Build runs it), which is removed after. A command is sorted into one class: passes, environment
-fault, command fault or needs new code (the tests of new code fail on the base). Only the two faults fail the row.
-plan.preflight-timeout (default 300 s) limits each command; plan.preflight-skip "<reason>" skips the run, once in the ledger.
-The preflight runs once per plan: its result is stored in .temper/preflight.json with a key made of HEAD, the
-command texts, the setup block and the time limit, and the gate reads it while that key is unchanged.
+Each distinct Validate and Integration command runs in a detached worktree of HEAD, which is removed after. No task
+Test and no scenario Test runs: they need code that is not written yet (WP08, F4). A command is sorted into one class:
+passes, environment fault, command fault, needs new code or not checked. Only the two faults fail the row.
+plan.preflight-timeout (default 300 s) is one limit for the whole row: each command gets what is left of it, and a
+command over it is not checked (a time out is no environment fault, WP08 M15): the row passes and names the three ways
+on.
+plan.preflight-skip "<reason>" skips the run, once in the ledger.
+The result is stored in .temper/preflight.json with a key made of HEAD, the command texts, the setup block and the time
+limit; the gate reads a stored pass while that key is unchanged, and a stored failure runs again (WP08 M16).
 Standard library only.
 """
 import json
@@ -22,7 +25,6 @@ import time
 
 import hashlib
 
-import acceptance
 import config_yaml
 import maven_loop
 import run_env
@@ -30,7 +32,9 @@ import tasks_md
 
 DEFAULT_TIMEOUT = 300
 PLACEHOLDER = re.compile(r"^\{\S[^{}]*\}$")   # a template's unfilled `{full suite command}` is no command
-CLASSES = ("passes", "needs new code", "environment fault", "command fault")
+CLASSES = ("passes", "needs new code", "not checked", "environment fault", "command fault")
+WAYS_ON = ("    ways on: a longer plan.preflight-timeout, another command (temper plan patch), "
+           "or a skip with a reason (plan.preflight-skip)")
 ENV_PATTERNS = (r"Unsupported class file major version", r"release version \d+ not supported", r"invalid target release",
                 r"Connection refused", r"could not connect to server")
 CMD_PATTERNS = (r"Rule violated for bundle", r"Coverage checks have not been met", r"Unknown lifecycle phase",
@@ -42,16 +46,11 @@ def row(ok, detail):
 
 
 def commands(spec):
-    """[(command, maven task files or None)] distinct, in plan order."""
+    """[(command, None)] distinct, in plan order: each group's Validate and the Integration line. A task Test and a
+    scenario Test need code that is not written yet, so neither runs here (WP08, F4)."""
     plan = tasks_md.parse(os.path.join(spec, "tasks.md"))
     found = [(g["validate"], None) for g in plan["groups"]]
-    found += [(t["test"], t["files"]) for t in plan["tasks"] if not t["manual"]]
     found.append((plan.get("integration") or "", None))
-    try:
-        lines = open(os.path.join(spec, "intent.md"), encoding="utf-8").read().splitlines()
-        found += [(b["cmd"], None) for b in acceptance.scenario_blocks(lines)]
-    except OSError:
-        pass
     seen, out = set(), []
     for cmd, files in found:
         cmd = (cmd or "").strip()
@@ -96,10 +95,13 @@ def env_fault(out, rc, cmd, limit=None, timeout_is_env=True):
     return ""
 
 
-def classify(cmd, out, rc, limit, declared, wt):
-    """(class, reason) for one run."""
+def classify(cmd, out, rc, limit, declared, wt, spent=False):
+    """(class, reason) for one run. A time out is not checked, never an environment fault (WP08, M15): over the limit,
+    or (spent) over what the earlier commands left of the one total limit."""
     if rc == 0:
         return "passes", ""
+    if rc == 124:
+        return "not checked", ("the total limit of %s s was spent" if spent else "over %s s") % limit
     why = env_fault(out, rc, cmd, limit)
     if why:
         return "environment fault", why
@@ -167,7 +169,7 @@ def make_row(spec, project, config, ledger, fresh=False):
     if not fresh:
         try:
             kept = json.load(open(store, encoding="utf-8"))
-            if kept.get("key") == key:
+            if kept.get("key") == key and kept["row"].get("pass") is True:   # a stored failure runs again (WP08, M16)
                 return kept["row"]
         except (OSError, ValueError, KeyError, AttributeError):
             pass
@@ -187,21 +189,29 @@ def run_all(project, cmds, declared, limit, setup):
 
 
 def run_classes(project, cmds, declared, limit, setup):
-    """[(cmd, files, class, why, output)] of each command on a throwaway worktree of HEAD, or None with no commit."""
+    """[(cmd, files, class, why, output)] of each command on a throwaway worktree of HEAD, or None with no commit.
+    limit is one total: each command gets what the earlier ones left of it, and one that finds none left does not
+    run."""
     tmp = tempfile.mkdtemp(prefix="temper-preflight-")
     wt = os.path.join(tmp, "base")
     if git(project, "worktree", "add", "--detach", wt, "HEAD").returncode != 0:
         shutil.rmtree(tmp, ignore_errors=True)
         return None
-    results = []
+    results, used = [], 0.0
     try:
         for cmd, files in cmds:
+            left = limit - used
+            if left <= 0:
+                results.append((cmd, files, "not checked", "the total limit of %s s was spent" % limit, ""))
+                continue
+            start = time.monotonic()
             if files is not None and maven_loop.is_maven(cmd):
-                raw, rc = maven_loop.run(wt, limit, cmd, files, setup)
+                raw, rc = maven_loop.run(wt, left, cmd, files, setup)
             else:
-                raw, rc = run_env.run_cmd(wt, limit, [cmd], setup)
+                raw, rc = run_env.run_cmd(wt, left, [cmd], setup)
+            used += time.monotonic() - start
             out = raw.decode("utf-8", "replace")
-            cls, why = classify(cmd, out, rc, limit, declared, wt)
+            cls, why = classify(cmd, out, rc, limit, declared, wt, spent=left < limit)
             results.append((cmd, files, cls, why, out))
     finally:
         git(project, "worktree", "remove", "--force", wt)
@@ -217,7 +227,10 @@ def format_row(runs):
     counts = ["%d %s" % (n, c) for c in CLASSES for n in [sum(1 for r in results if r[1] == c)] if n]
     lines = ["%d command(s): %s" % (len(results), ", ".join(counts))]
     for cmd, cls, why, out in results:
-        if cls != "passes":
+        if cls == "not checked":
+            lines.append("not checked: %s `%s`" % (why, cmd[:120]))
+            lines.append(WAYS_ON)
+        elif cls != "passes":
             lines.append("%s `%s`%s" % (cls, cmd[:120], ": " + why if why else ""))
             if cls != "needs new code":
                 lines.append(quote(out))
