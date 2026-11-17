@@ -166,16 +166,83 @@ def has_scenario(files, name):
     return any(reg.search(t) for t in files.values())
 
 
+def split_top(text):
+    """The parts of the text split on commas outside brackets, strings and comments."""
+    parts, cur, depth, i, quote = [], [], 0, 0, None
+    while i < len(text):
+        ch = text[i]
+        if quote is not None:
+            cur.append(ch)
+            if ch == "\\" and i + 1 < len(text):
+                cur.append(text[i + 1])
+                i += 1
+            elif ch == quote:
+                quote = None
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = len(text) if end < 0 else end
+            continue
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = len(text) if end < 0 else end + 2
+            continue
+        elif ch in "'\"`":
+            quote = ch
+            cur.append(ch)
+        elif ch in "([{":
+            depth += 1
+            cur.append(ch)
+        elif ch in ")]}":
+            depth -= 1
+            cur.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    parts.append("".join(cur))
+    return [x.strip() for x in parts if x.strip()]
+
+
+KEY = re.compile(r"^(?:'([^']*)'|\"([^\"]*)\"|(%s))\s*:\s*(.*)$" % IDENT, re.S)
+
+
 def registered(src):
-    """{scenario name: function name} of a scenario file: the entries of its objects named *SCENARIOS, else of every
-    object entry whose key is a lower case name joined by hyphens and whose value is a function or { run: function }."""
-    entry = re.compile(r"['\"]([a-z0-9]+(?:-[a-z0-9]+)+)['\"]\s*:\s*(?:\{\s*run\s*:\s*)?(%s)" % IDENT)
+    """{scenario name: entry} of a scenario file. The entries of its objects named *SCENARIOS: each key (quoted or bare)
+    and its value, a function name or { run, ... } whose run is a function name or a function written in place. An
+    entry is {"fn": name or None, "inline": the text of a function written in place or None, "error": what cannot be
+    read or None}. A file with no such object: every object entry whose key is a lower case name joined by hyphens and
+    whose value is a function or { run: function }."""
     out = {}
     for m in re.finditer(r"(?:const|let)\s+\w*SCENARIOS\b[^\n]*=\s*\{", src):
         block = braced(src, m.end() - 1) or ""
-        out.update({k: v for k, v in entry.findall(block)})
+        for part in split_top(block[1:-1]):
+            k = KEY.match(part)
+            if k is None:
+                out[part.split("\n")[0][:60]] = {"fn": None, "inline": None, "error": "an entry that cannot be read"}
+                continue
+            name, value = next(g for g in k.groups()[:3] if g is not None), k.group(4).strip()
+            entry = {"fn": None, "inline": None, "error": None}
+            run = value
+            if value.startswith("{"):
+                run = None
+                for field in split_top(value[1:-1] if value.endswith("}") else ""):
+                    f = KEY.match(field)
+                    if f is not None and f.group(3) == "run":
+                        run = f.group(4).strip()
+            if run is None:
+                entry["error"] = "an entry with no run"
+            elif re.fullmatch(IDENT, run):
+                entry["fn"] = run
+            elif re.match(r"^(?:async\s+)?(?:function\b|\(|%s\s*=>)" % IDENT, run):
+                entry["inline"] = run
+            else:
+                entry["error"] = "a run that is neither a function of the file nor a function written in place"
+            out[name] = entry
     if not out:
-        out = {k: v for k, v in entry.findall(src)}
+        entry = re.compile(r"['\"]([a-z0-9]+(?:-[a-z0-9]+)+)['\"]\s*:\s*(?:\{\s*run\s*:\s*)?(%s)" % IDENT)
+        out = {k: {"fn": v, "inline": None, "error": None} for k, v in entry.findall(src)}
     return out
 
 
@@ -213,12 +280,15 @@ def body_of(src, ident):
     return src[k:end if end >= 0 else len(src)]
 
 
-def calls_world_check(src, ident, seen=None, depth=0):
+def calls_world_check(src, ident, seen=None, depth=0, body=None):
+    """True when the function (or, with body, the function written in place) calls worldCheck, in its own body or in a
+    function of the same file it calls."""
     seen = set() if seen is None else seen
-    if ident in seen or depth > 4:
-        return False
-    seen.add(ident)
-    body = body_of(src, ident)
+    if body is None:
+        if ident in seen or depth > 4:
+            return False
+        seen.add(ident)
+        body = body_of(src, ident)
     if body is None:
         return False
     if re.search(r"\bworldCheck\s*\(", body):
@@ -384,8 +454,8 @@ def main(argv):
     three = {}
     for f in THREE:
         if f in e2e:
-            for name, fn in registered(e2e[f]).items():
-                three[name] = (f, fn)
+            for name, entry in registered(e2e[f]).items():
+                three[name] = (f, entry)
     floor_doc, caps_doc = load_json(root, FLOOR), load_json(root, CAPS)
     finals = {}
     finals.update(finals_of(CAPS, caps_doc))
@@ -486,10 +556,12 @@ def main(argv):
             problems.append("a test is skipped: %s" % line)
 
     # D105: every scenario of the three files calls the shared assert
-    for name, (f, fn) in sorted(three.items()):
-        if not calls_world_check(e2e[f], fn):
+    for name, (f, entry) in sorted(three.items()):
+        if entry["error"] is not None:
+            problems.append("D105: %s/%s registers %s: %s" % (E2E, f, name, entry["error"]))
+        elif not calls_world_check(e2e[f], entry["fn"], body=entry["inline"]):
             problems.append("D105: the scenario %s of %s/%s (%s) does not call the shared assert worldCheck"
-                            % (name, E2E, f, fn))
+                            % (name, E2E, f, entry["fn"] or "a function written in place"))
 
     if final:
         for _, check, _, _, _ in lst:

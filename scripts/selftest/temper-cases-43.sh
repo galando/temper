@@ -185,6 +185,26 @@ sed -i 's/^  worldCheck(w)$/  void w/' "$_c43/root/scripts/e2e/accept.ts"
 assert_eq "done: a scenario of the three files that does not call the shared assert fails" "1|1|1" \
   "$(_c43_done)|$(grep -c 'D105: the scenario two-up of scripts/e2e/accept.ts (twoUp) does not call the shared assert' "$_c43/done.out")|$(grep -c 'D105: the scenario two-down' "$_c43/done.out")"
 
+# D105 reads every entry of the object, whatever its key and the order of its fields: a key with no hyphen, run after
+# modes, a run written in place; an entry it cannot read fails (phase 2 review, F3)
+_c43_root
+cat >> "$_c43/root/scripts/e2e/accept.ts" <<'TS'
+export const lateOne = (w: World): void => { void w }
+export const repairX = (w: World): void => { void w }
+TS
+sed -i "s/^  'two-down': { run: twoDown, modes: \['plain'\] },$/&\\
+  'late-one': { modes: ['plain'], run: lateOne },\\
+  repair: { run: repairX, modes: ['plain'] },\\
+  'in-place': { run: (w: World) => { void w }, modes: ['plain'] },\\
+  'no-run': { modes: ['plain'] },/" "$_c43/root/scripts/e2e/accept.ts"
+r1="$(_c43_done)"
+for x in 'the scenario late-one of' 'the scenario repair of' 'the scenario in-place of' 'registers no-run: an entry with no run'; do
+  r1="$r1|$(grep -c "D105: .*$x" "$_c43/done.out")"
+done
+sed -i 's/{ run: (w: World) => { void w }/{ run: (w: World) => { worldCheck(w) }/' "$_c43/root/scripts/e2e/accept.ts"
+assert_eq "done: the shared assert rule reads every entry of the scenario object, and fails one it cannot read" \
+  "1|1|1|1|1 0" "$r1 $(_c43_done >/dev/null; grep -c 'D105: the scenario in-place' "$_c43/done.out")"
+
 # --- check_changed_tests.py on a made up repository: the base, then the work tree ---
 _c43_ct() { # _c43_ct <base>: check_changed_tests.py on $_c43/ct against the base; prints its exit code
   python3 -I "$REPO_ROOT/scripts/check_changed_tests.py" --root "$_c43/ct" --base "$1" > "$_c43/ct.out" 2>&1
