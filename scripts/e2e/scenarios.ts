@@ -527,7 +527,8 @@ export const saveAndResume = (w: World): void => {
   expect(!w.exists('.temper/build-state.json'), 'the resumed run went to its end')
 }
 
-// A medium change: Design runs between Plan and Build.
+// WP14: Design runs only when the person asks for it. A medium plan adds no stage by itself; the person picks the
+// option run-design of the approval (in its More list), and Design runs between Plan and Build.
 export const designRun = (w: World): void => {
   startProject(w)
   const agents: Record<string, Agent> = {
@@ -535,12 +536,28 @@ export const designRun = (w: World): void => {
     'temper:temper-plan': (wd, a) => {
       AGENTS['temper:temper-plan']!(wd, a)
       t(wd, 'state set complexity medium')
-      t(wd, "risk --raise H --reason 'the scenario wants Design (9.8.0: medium runs Design at risk H)'")
     },
     'temper:temper-design': wd => wd.write(`${SPEC}/design.md`, '# Design: CI report\n\n## Architecture\n\nTwo small modules.\n\n## Areas of Concern\n\nNone flagged — the change is two new files.\n'),
   }
   const asked: string[] = []
-  orchestrate(w, script({ agents, person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) } }))
+  let picked = false
+  const byId = (ask: Json, id: string): Json | undefined => (ask.options as Json[]).find(o => o.id === id)
+  const person: Person = (ask, wd) => {
+    asked.push(String(ask.question.question))
+    if (!picked && (ask.id === 'plan.approve' || ask.id === 'plan.approve.more')) {
+      const run = byId(ask, 'run-design')
+      if (run) {
+        picked = true
+        return run.label
+      }
+      const more = byId(ask, 'more')
+      if (more && ask.more) return more.label
+      throw new Error(`the approval offers no run-design (${(ask.options as Json[]).map(o => o.id).join(', ')})`)
+    }
+    return recommended(ask, wd)
+  }
+  orchestrate(w, script({ agents, person }))
+  expect(picked, 'the person asked for Design with the option run-design of the approval')
   expect(asked.some(q => q.startsWith('Design: the check passed')), 'the Design question was asked')
   expect(/work:design/.test(w.trace.join('\n')), 'the Design agent ran between Plan and Build')
 }
