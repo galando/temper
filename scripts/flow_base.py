@@ -99,7 +99,9 @@ OPTION_IDS = frozenset((
     "walk-through", "change", "depth-review", "commit-pr", "commit-stacked-prs", "config-suggestions", "restore-tests",
     "correct-test", "end-run", "apply-fix", "continue-on-branch", "new-branch", "merge-groups", "take-out",
     "keep-commits", "accept-done", "twice-the-time", "fix-group", "change-command", "add-to-plan", "include-left-out",
-    "revert", "allow-once", "check-again"))
+    "revert", "allow-once",
+    # WP08
+    "check-again", "it-is-the-code"))
 
 
 def question_entry(qid):

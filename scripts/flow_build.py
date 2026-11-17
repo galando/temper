@@ -115,7 +115,7 @@ class BuildPart:
         # run whose code an earlier run built (built_before, from the walked Build's check) mends it the same way.
         before = r.state.get("built_before") and not rg
         if (integ and gid and all(gpass(g) for g in gid)) or before:
-            lines = self.feedback_lines() or self.fault_lines()
+            lines = self.feedback_lines() + self.fault_lines()   # M1: the finding and what failed since
             if not lines and not r.notes("build", "input"):
                 # 9.8.5 (S7): a fix pass with no fault in its prompt fixes nothing (a measured launch said so): the CLI
                 # checks Build again, and a failure there names the fault for the next pass
@@ -323,9 +323,14 @@ class BuildPart:
         text = ("Task %d (%s) failed on the environment, not on its code: %s. Its attempt and its work are kept. "
                 "Repair the environment (temper doctor shows it; the setup: block of .claude/temper.config applies it), "
                 "then check it again?" % (n, title, why or "no reason recorded"))
-        opts = [self.opt("Check it again (Recommended)", "Run the task's test again on the kept work and gate it; no attempt is spent.",
-                         move="redo", calls=[self.c("task test %d --phase green" % n), self.c("task gate %d --model %s" % (n, model))], oid="redo"),
-                self.save()]
+        again = self.opt("Check it again (Recommended)", "Run the task's test again on the kept work and gate it; no attempt is spent.",
+                         move="redo", calls=[self.c("task test %d --phase green" % n), self.c("task gate %d --model %s" % (n, model))], oid="redo")
+        # M9: the fault may be the code's (a bug that prints Connection refused): the gate reads the failed GREEN it has
+        code = self.opt("It is the code", "Send the task back to its agent: the attempt is spent, as a failed test spends it.",
+                        move="redo", calls=[self.c("task gate %d --model %s --no-env" % (n, model))], oid="it-is-the-code")
+        opts = [again, code, self.save()]
+        if (info.get("env_fault") or {}).get("again"):   # the same fault after a check again: never the same advice twice
+            opts = [self.set_rec(opts[2], True), self.set_rec(again, False), code]
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="task.env")}
 
     def manual_task(self, n, plan):

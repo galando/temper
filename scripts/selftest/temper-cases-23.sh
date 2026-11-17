@@ -17,6 +17,15 @@ assert_eq "9.8.5 setup: a failing run line is exit 125 with temper-setup: FAIL, 
 assert_eq "9.8.5 setup: a credential assignment in the run line is masked when shown" "TOKEN=<left out> X=1 go" "$(_re x "print(run_env.mask('TOKEN=abc X=1 go'))")"
 assert_eq "9.8.5 setup: the config template documents the setup block and the preflight keys" "3" \
   "$(grep -cE '^# *(setup:|  preflight-timeout:|  preflight-skip:)' "$REPO_ROOT/templates/temper.config.default")"
+# WP08 (M8): the reader merges a repeated key, and the template has no empty key that hides a documented block
+# (only the first block from "# build:" to its keep-days line: the fix comments out the empty build key too)
+awk '!d && /^# build:$/ {on = 1} on {sub(/^# /, "")} on && /keep-days:/ {on = 0; d = 1} {print}' \
+  "$REPO_ROOT/templates/temper.config.default" > .claude/temper.config
+assert_eq "the template with the grouped block uncommented keeps it" "claude-haiku-5-5" \
+  "$("$TEMPER" config get build.grouped.task-model 2>&1)"
+{ cat "$REPO_ROOT/templates/temper.config.default"; printf 'autonomy:\n  policy: decide\n'; } > .claude/temper.config
+assert_eq "two autonomy blocks keep park-on-touch" "**/auth/**,**/payment/**,**/billing/**|decide" \
+  "$("$TEMPER" config get autonomy.park-on-touch 2>&1 | tr '\037' ',')|$("$TEMPER" config get autonomy.policy 2>&1)"
 
 # --- 9.8.5: every agent prompt carries the setup block (flow.plugin_line) ---
 fresh
@@ -44,3 +53,26 @@ fresh
 assert_eq "9.8.5 doctor: no block says so" "True" "$("$TEMPER" doctor 2>&1 | grep -c '^Setup block: none' | sed 's/^1$/True/')"
 assert_eq "9.8.5 doctor: --help lists it" "1" "$("$TEMPER" --help 2>&1 | grep -c '^  temper doctor ')"
 rm -rf jdk24
+
+# --- WP08 (U4): the store of reused passes (run_env.run_cached), a test of shipped code ---
+fresh; mkdir -p rs; git -C rs init -q; echo a > rs/a.txt; git -C rs add a.txt; git -C rs -c user.name=t -c user.email=t@e commit -q -m base
+_rk() { # _rk <command> <setup json>: one run_cached call in rs; prints the exit, ran or reused, and the first output line
+  _re x "import json; o, rc, r = run_env.run_cached(sys.argv[2], 10, [sys.argv[3]], json.loads(sys.argv[4])); print('%d|%s|%s' % (rc, 'reused' if r else 'ran', (o.decode().splitlines() or [''])[0]))" "$PWD/rs" "$1" "$2"
+}
+_rn() { cat "rs/.git/$1" 2>/dev/null | wc -l | tr -d ' '; }
+assert_eq "reuse: a pass on a clean tree is kept and the second call does not run" "0|ran|0|reused|1" \
+  "$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f1-2)|$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f1-2)|$(_rn cnt)"
+assert_eq "reuse: a failure is never kept" "1|ran|1|ran|2" \
+  "$(_rk 'echo f >> .git/cntf; exit 1' '{}' | cut -d'|' -f1-2)|$(_rk 'echo f >> .git/cntf; exit 1' '{}' | cut -d'|' -f1-2)|$(_rn cntf)"
+echo changed > rs/a.txt
+assert_eq "reuse: a tree with an uncommitted change runs again" "ran|ran|3" \
+  "$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)|$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)|$(_rn cnt)"
+git -C rs checkout -q -- a.txt
+_other="$(_rk 'echo r >> .git/cnt; true' '{}' | cut -d'|' -f2)"
+echo b > rs/b.txt; git -C rs add b.txt; git -C rs -c user.name=t -c user.email=t@e commit -q -m more
+_tree="$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)"
+_setup="$(_rk 'echo r >> .git/cnt' '{"run": "true"}' | cut -d'|' -f2)"
+assert_eq "reuse: another command, another tree and another setup block each run again" "ran|ran|ran|6" "$_other|$_tree|$_setup|$(_rn cnt)"
+assert_eq "reuse: the output of a reused pass says so" "0|reused|True" \
+  "$(_rk 'echo r >> .git/cnt' '{}' | python3 -c "import sys; rc, how, line = sys.stdin.read().rstrip('\n').split('|', 2); print('%s|%s|%s' % (rc, how, line.startswith('[temper: the same command passed on this same tree at') and 'reused, not run again' in line))")"
+rm -rf rs

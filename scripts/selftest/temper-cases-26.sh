@@ -42,6 +42,15 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "FAIL", "reason": "integration suite failed (exit 1): make it"}}\n' > .temper/groups.json
 assert_eq "9.8.5 S7: a fix pass after a failed integrate carries the integrate verdict" "work|True" \
   "$(nx "d['action'] + '|' + str('What failed: integrate: integration suite failed (exit 1): make it' in d['agents'][0]['prompt'])")"
+python3 - <<'PY'
+import json
+json.dump({"version": 1, "history": [], "active_loops": [{"id": "loop-1", "from_stage": "review", "to_stage": "build", "reason": "x",
+           "iteration": 1, "max_iterations": 2, "started": "2026-01-01T00:00:00Z", "at": "2026-01-01T00:00:00Z",
+           "findings": ["src/a.ts:3 a missing null check"]}]}, open('.temper/feedback-loops.json', 'w'))
+PY
+assert_eq "m1 the fix pass names the failure" "work|True|True" \
+  "$(nx "p = d['agents'][0]['prompt']; d['action'] + '|' + str('src/a.ts:3 a missing null check' in p) + '|' + str('What failed: integrate: integration suite failed (exit 1): make it' in p)")"
+rm -f .temper/feedback-loops.json
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 assert_eq "9.8.5 S7: with no fault named anywhere, the CLI checks Build again and launches no agent" "auto|True|0" \
   "$(nx "d['action'] + '|' + str(d['calls'][-1].endswith('gate build')) + '|' + str(len(d.get('agents') or []))")"

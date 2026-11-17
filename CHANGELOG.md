@@ -110,6 +110,10 @@ limit, three fix agents that changed nothing) showed most of them again. Each ch
   names a longer `plan.preflight-timeout`, another command (`temper plan patch`) and `plan.preflight-skip`.
 - **M16 (wp08).** A failed preflight is never read back from `.temper/preflight.json`: the next gate runs it again, and
   the failed plan question offers `Check again` (`plan preflight`, then `gate plan`) first.
+- **M1 (WP08).** A suite broken after a pass is recorded at Build and asked; integrate passes again once repaired.
+- **M8 (WP08).** The config reader merges a key written twice; the template has no empty `build:` or `evidence:` key.
+- **M9 (WP08).** A task held on an environment fault offers It is the code; the same fault twice recommends Save.
+- **U19 (WP08).** `preflight.json`, `setup-tried.json` and `decisions.json` are run files: excluded, and cleared.
 
 ## v9.8.4: the faults one failed run exposed
 
