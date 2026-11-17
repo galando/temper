@@ -220,7 +220,8 @@ twice the time" is recommended only at the first time-out; later it is offered, 
 `<script>: SETUP: <reason>`, or the preflight's environment rule: a JDK out of range, `Connection refused`, a failed
 setup line), Check records a `setup fault: <reason>` row beside the red suite row, so the gate still fails. The
 question says `SETUP`, offers `Repair the environment and run again (Recommended)` first, and never recommends a loop
-back. Rows no longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe` warnings).
+back. The same fault after Check ran again recommends `Save for later`, first, and the repair loses its mark. Rows no
+longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe` warnings).
 
 **Overrides at the commit gate.** `Override and commit` clears a failed stage gate the commit gate names. It never
 cleared the commit gate's own rows (blast radius, scope, park-on-touch), so it is no longer offered for them; the question

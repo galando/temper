@@ -500,9 +500,15 @@ class AskPart:
                     self.set_rec(fix, False)
                     if add["id"] == "add-setup":
                         add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
-                return self.question(GATE_HEADER, "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. "
-                                     "%s run Check again?" % (setup, "Add the proposed setup block and" if add else "Repair it and"), stage=stage,
-                                     options=([add] if add else []) + [fix, self.save()] + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
+                # M10 of WP08: the same fault after Check ran again is not repaired again by the recommendation
+                redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+                opts = ([add] if add else []) + [fix, self.save()]
+                text = "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. %s run Check again?" % (
+                    setup, "Add the proposed setup block and" if add else "Repair it and")
+                if redo.get("stage") == "check" and same_failure(str(redo.get("reason") or ""), ("SETUP: " + setup)[:300]):
+                    opts = [self.set_rec(self.save(), True)] + [self.set_rec(o, False) for o in opts[:-1]]
+                    text = "Check: SETUP: the environment was not ready (%s). It failed the same way after Check ran again: repair it, or save the run for later?" % setup
+                return self.question(GATE_HEADER, text, stage=stage, options=opts + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
             gap = self.measurement_gap(r.failed_rows("check"))
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times
