@@ -520,10 +520,11 @@ export const groupFail = (w: World): void => {
   expect(w.counts.handbacks === 0, `D06 a failed group check hands nothing back (${w.counts.handbacks} hand backs)`)
   expect(launchesOf(w, 'temper:temper-build').length === 1, `D06 the fix agent is launched once (${launchesOf(w, 'temper:temper-build').length})`)
   expect(launchesOf(w, 'temper:temper-plan').length === 1, `D06 temper:temper-plan is launched once in the run (${launchesOf(w, 'temper:temper-plan').length})`)
-  // no question of the group after the approval: the failed check is fixed by rule (group.pass after a passed group,
-  // and the questions of the stages, are other rows' promises)
-  const groupAsks = afterApproval(seen).filter(i => i.startsWith('group.') && i !== 'group.pass')
-  expect(groupAsks.length === 0 && ended(w), `D06 the fixed group goes on to the commit with no question (${groupAsks.join(', ') || 'not ended'})`)
+  // no question of the Build stage after the approval (a group, build or task question, build.fail among them): the
+  // failed check is fixed by rule (group.pass after a passed group, and the questions of the later stages, are other
+  // rows' promises)
+  const buildAsks = afterApproval(seen).filter(i => /^(group|build|task)\./.test(i) && i !== 'group.pass')
+  expect(buildAsks.length === 0 && ended(w), `D06 the fixed group goes on to the commit with no question (${buildAsks.join(', ') || 'not ended'})`)
   ruleLogCovers(w, seen)
   ownAutos(w)
   worldCheck(w)
