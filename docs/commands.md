@@ -246,9 +246,9 @@ the commands that failed). A block that did not fix them is remembered and not o
 
 **The block reaches the config only by your answer.** `temper doctor` reads; `temper doctor --propose --write` adds the
 block, and the mod lets it run only as the call of the option you picked. When the preflight or Check fails on the
-environment and the project has no block, the question's first option is `Add the proposed setup block`, and the
-question shows every line of the block (the run line with its secrets masked). A block that fakes a tool passes the
-CLI's check, so your reading of it is the control. Only a block that fixed the failing commands reaches the config.
+environment and the project has no block, the question offers `Add the proposed setup block` (at the plan question
+after `Check again`, at Check first), and the question shows every line of the block (the run line with its secrets
+masked). A block that fakes a tool passes the CLI's check, so your reading of it is the control. Only a block that fixed the failing commands reaches the config.
 What no source can make (a missing licence, a secret, a VPN, a JDK the machine does not have and the project cannot
 fetch) is said in plain words instead.
 
