@@ -23,8 +23,6 @@ selftest:D44                   WP08           D44
 selftest:D46                   WP08           D46
 selftest:D47a                  WP08           D47
 selftest:D47b                  WP08           D47
-selftest:D48a                  WP08           D48
-selftest:D48b                  WP08           D48
 selftest:D49                   WP08           D49
 selftest:D50                   WP08           D50
 selftest:D51                   WP08           D51
