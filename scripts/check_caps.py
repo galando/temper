@@ -8,7 +8,8 @@ docs/plans/one-go/done.md (row D108 for `readme_lines`). Three rules:
      same commit, and one that removes some lowers it, so the file never drifts above or below the truth;
   2. a `final` is never above its value in the commit of the file that first added the key (read from the history of
      the file in git; a key no commit holds yet is exempt): a rule that read only the file as it is would be passed by
-     the very commit that raises a value;
+     the very commit that raises a value. A removed bound is a raised one: a final of that first commit that the file
+     no longer holds (its key deleted), or holds as no number (null), fails too;
   3. with --final, no `now` is above its `final`.
 
   python3 scripts/check_caps.py [--final] [--caps FILE]
@@ -165,6 +166,28 @@ def finals(doc):
     return {k: v["final"] for k, v in (doc.get("caps") or {}).items() if isinstance(v, dict) and "final" in v}
 
 
+def number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def raised(cur, first):
+    """The lines for each final of first that cur raised, dropped or holds as no number: a removed bound is a raised
+    one, so deleting a cap or setting its final to null fails as raising it does (a key first does not hold is exempt,
+    as is one whose first committed final was no number)."""
+    out = []
+    for k, f in sorted(first.items()):
+        if not number(f):
+            continue
+        if k not in cur:
+            out.append("%s: its final is removed, its first committed value is %s: a final is never removed" % (k, f))
+        elif not number(cur[k]):
+            out.append("%s: final %s is no number, its first committed value is %s: a final is never removed"
+                       % (k, json.dumps(cur[k]), f))
+        elif cur[k] > f:
+            out.append("%s: final %s is above its first committed value %s: a final is never raised" % (k, cur[k], f))
+    return out
+
+
 def first_values(path):
     """{key: final} at the commit of the file that first added each key, oldest commit first."""
     d = os.path.dirname(os.path.abspath(path))
@@ -205,7 +228,7 @@ def main(argv):
         if fn is None:
             problems.append("%s: no measure in scripts/check_caps.py" % k)
             continue
-        if not isinstance(c, dict) or not isinstance(c.get("now"), int) or not isinstance(c.get("final"), int):
+        if not isinstance(c, dict) or type(c.get("now")) is not int or type(c.get("final")) is not int:
             problems.append("%s: needs a whole number now and final" % k)
             continue
         got = fn(doc)
@@ -215,10 +238,7 @@ def main(argv):
             problems.append("%s: now %d is above its final %d" % (k, c["now"], c["final"]))
     for k in sorted(set(MEASURES) - set(caps)):
         problems.append("%s: measured here, and the file holds no cap for it" % k)
-    first = first_values(path)
-    for k, v in sorted(finals(doc).items()):
-        if k in first and isinstance(v, int) and isinstance(first[k], int) and v > first[k]:
-            problems.append("%s: final %d is above its first committed value %d: a final is never raised" % (k, v, first[k]))
+    problems += raised(finals(doc), first_values(path))
     for p in problems:
         print("FAIL caps: %s" % p)
     if not problems:

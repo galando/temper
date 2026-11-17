@@ -11,12 +11,16 @@ It reads the table under the heading "The table" of `docs/plans/one-go/done.md` 
   - a `scenario <name>` item names a scenario that no file of `scripts/e2e` registers (its quoted name as a key);
   - a line of the list matches no check, names a token that is not a token of the table, or names a scenario that is
     not one of `scripts/e2e/accept.ts`, `scripts/e2e/slow.ts` or `scripts/e2e/broken.ts`;
-  - a line of the list was taken off it by an earlier commit and is on it again (from `git log -p` of the list; a
+  - a check of the list was taken off it by an earlier commit and is on it again, in any form (an e2e line stands for
+    its scenario in each mode it names, every mode when it names none; from `git log -p` of the list; a
     checkout with no history shows no such commit);
   - a test file of the mod (the pathspecs `*.test.ts` and `*.test.tsx`) holds `.skip(`, `.only(` or `.todo(`;
   - a scenario of those three files does not call the shared assert `worldCheck` (row D105), in its own body or in a
     function of the same file it calls;
-  - one of the rows `D30` to `D39` names neither a case nor a scenario that runs in plain mode (rule 11, row D40).
+  - one of the rows `D30` to `D39` names neither a case nor a scenario that runs in plain mode (rule 11, row D40);
+  - a scenario of the three files registers no mode, or modes it cannot read; a row names a mode for one of them that
+    it does not register; or a line `e2e:<scenario>:<mode>` names a mode the scenario does not run. A scenario item
+    with no mode words means the modes the scenario registers, and rule 11 reads those.
 A `mod` item is not looked up: the mod's own suite runs every test file. A `gate` and a `bench` item are not run here.
 
 With `--final` it also fails while the list has an entry, and it runs D75b: each `final` of `scripts/caps.json` and
@@ -128,6 +132,7 @@ def items_of(check):
         if words[0] == "scenario":
             ms = MODES_AFTER.match(after)
             item["modes"] = re.findall(r"plain|mod|driver", ms.group(1)) if ms else list(MODES)
+            item["modes_named"] = ms is not None
         items.append(item)
     return items
 
@@ -166,17 +171,111 @@ def has_scenario(files, name):
     return any(reg.search(t) for t in files.values())
 
 
+def split_top(text):
+    """The parts of the text split on commas outside brackets, strings and comments."""
+    parts, cur, depth, i, quote = [], [], 0, 0, None
+    while i < len(text):
+        ch = text[i]
+        if quote is not None:
+            cur.append(ch)
+            if ch == "\\" and i + 1 < len(text):
+                cur.append(text[i + 1])
+                i += 1
+            elif ch == quote:
+                quote = None
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = len(text) if end < 0 else end
+            continue
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = len(text) if end < 0 else end + 2
+            continue
+        elif ch in "'\"`":
+            quote = ch
+            cur.append(ch)
+        elif ch in "([{":
+            depth += 1
+            cur.append(ch)
+        elif ch in ")]}":
+            depth -= 1
+            cur.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    parts.append("".join(cur))
+    return [x.strip() for x in parts if x.strip()]
+
+
+KEY = re.compile(r"^(?:'([^']*)'|\"([^\"]*)\"|(%s))\s*:\s*(.*)$" % IDENT, re.S)
+
+
 def registered(src):
-    """{scenario name: function name} of a scenario file: the entries of its objects named *SCENARIOS, else of every
-    object entry whose key is a lower case name joined by hyphens and whose value is a function or { run: function }."""
-    entry = re.compile(r"['\"]([a-z0-9]+(?:-[a-z0-9]+)+)['\"]\s*:\s*(?:\{\s*run\s*:\s*)?(%s)" % IDENT)
+    """{scenario name: entry} of a scenario file. The entries of its objects named *SCENARIOS: each key (quoted or bare)
+    and its value, a function name or { run, ... } whose run is a function name or a function written in place. An
+    entry is {"fn": name or None, "inline": the text of a function written in place or None, "modes": the modes it
+    registers (a list literal, or the name of a const list of the file) or None, "error": what cannot be read or None}.
+    A file with no such object: every object entry whose key is a lower case name joined by hyphens and whose value is
+    a function or { run: function }."""
     out = {}
     for m in re.finditer(r"(?:const|let)\s+\w*SCENARIOS\b[^\n]*=\s*\{", src):
         block = braced(src, m.end() - 1) or ""
-        out.update({k: v for k, v in entry.findall(block)})
+        for part in split_top(block[1:-1]):
+            k = KEY.match(part)
+            if k is None:
+                out[part.split("\n")[0][:60]] = {"fn": None, "inline": None, "error": "an entry that cannot be read"}
+                continue
+            name, value = next(g for g in k.groups()[:3] if g is not None), k.group(4).strip()
+            entry = {"fn": None, "inline": None, "modes": None, "error": None}
+            run, modes = value, None
+            if value.startswith("{"):
+                run = None
+                for field in split_top(value[1:-1] if value.endswith("}") else ""):
+                    f = KEY.match(field)
+                    if f is not None and f.group(3) == "run":
+                        run = f.group(4).strip()
+                    elif f is not None and f.group(3) == "modes":
+                        modes = f.group(4).strip()
+            entry["modes"] = modes_of(src, modes)
+            if entry["modes"] is None:
+                entry["error"] = "an entry whose modes cannot be read (a list of plain, mod and driver)"
+            elif not entry["modes"]:
+                entry["error"] = "an entry that registers no mode"
+            if run is None:
+                entry["error"] = "an entry with no run"
+            elif re.fullmatch(IDENT, run):
+                entry["fn"] = run
+            elif re.match(r"^(?:async\s+)?(?:function\b|\(|%s\s*=>)" % IDENT, run):
+                entry["inline"] = run
+            else:
+                entry["error"] = "a run that is neither a function of the file nor a function written in place"
+            out[name] = entry
     if not out:
-        out = {k: v for k, v in entry.findall(src)}
+        entry = re.compile(r"['\"]([a-z0-9]+(?:-[a-z0-9]+)+)['\"]\s*:\s*(?:\{\s*run\s*:\s*)?(%s)" % IDENT)
+        out = {k: {"fn": v, "inline": None, "modes": list(MODES), "error": None} for k, v in entry.findall(src)}
     return out
+
+
+def modes_of(src, value):
+    """The modes of a `modes:` value: a list literal of quoted modes, or the name of a const list of the file. None when
+    it is missing, or is anything else, or names a word that is no mode."""
+    if value is None:
+        return None
+    if re.fullmatch(IDENT, value):
+        m = re.search(r"\bconst\s+%s\s*(?::[^=\n]+)?=\s*(\[[^\]]*\])" % re.escape(value), src)
+        if m is None:
+            return None
+        value = m.group(1)
+    if not (value.startswith("[") and value.endswith("]")):
+        return None
+    words = split_top(value[1:-1])
+    found = [w[1:-1] for w in words if len(w) >= 2 and w[0] == w[-1] and w[0] in "'\""]
+    if len(found) != len(words) or any(w not in MODES for w in found):
+        return None
+    return found
 
 
 def braced(src, i):
@@ -213,12 +312,15 @@ def body_of(src, ident):
     return src[k:end if end >= 0 else len(src)]
 
 
-def calls_world_check(src, ident, seen=None, depth=0):
+def calls_world_check(src, ident, seen=None, depth=0, body=None):
+    """True when the function (or, with body, the function written in place) calls worldCheck, in its own body or in a
+    function of the same file it calls."""
     seen = set() if seen is None else seen
-    if ident in seen or depth > 4:
-        return False
-    seen.add(ident)
-    body = body_of(src, ident)
+    if body is None:
+        if ident in seen or depth > 4:
+            return False
+        seen.add(ident)
+        body = body_of(src, ident)
     if body is None:
         return False
     if re.search(r"\bworldCheck\s*\(", body):
@@ -251,8 +353,18 @@ def read_list(text):
     return out, errors
 
 
+def units(check):
+    """The checks a line of the list stands for: a selftest token as it is; an e2e line as (scenario, mode) pairs, a
+    line with no mode standing for each of plain, mod and driver. So a check taken off in one form is the same check
+    when it comes back in another."""
+    parts = check.split(":")
+    if parts[0] == "e2e" and len(parts) in (2, 3) and parts[1]:
+        return {("e2e", parts[1], m) for m in ([parts[2]] if len(parts) == 3 else MODES)}
+    return {("line", check)}
+
+
 def came_back(root, current):
-    """The checks of the list that an earlier commit took off it and that are on it again."""
+    """The checks of the list that an earlier commit took off it and that are on it again (in any form)."""
     code, out = git(root, "log", "-p", "--reverse", "--no-color", "--format=%x00COMMIT %H", "--", LIST)
     if code != 0:
         return []
@@ -266,11 +378,11 @@ def came_back(root, current):
             if not body:
                 continue
             if line.startswith("-"):
-                removed.add(body[0])
+                removed |= units(body[0])
             elif line.startswith("+"):
-                added.add(body[0])
+                added |= units(body[0])
         gone |= removed - added
-    return sorted(c for c in current if c in gone)
+    return sorted(c for c in current if units(c) & gone)
 
 
 # ---- the finals (D75b) ---------------------------------------------------------------------------------------------------
@@ -384,8 +496,8 @@ def main(argv):
     three = {}
     for f in THREE:
         if f in e2e:
-            for name, fn in registered(e2e[f]).items():
-                three[name] = (f, fn)
+            for name, entry in registered(e2e[f]).items():
+                three[name] = (f, entry)
     floor_doc, caps_doc = load_json(root, FLOOR), load_json(root, CAPS)
     finals = {}
     finals.update(finals_of(CAPS, caps_doc))
@@ -432,7 +544,16 @@ def main(argv):
                 name = it["words"][0] if it["words"] else ""
                 if not has_scenario(e2e, name):
                     missing.append("scenario %s (no file of %s registers it)" % (name, E2E))
-                elif name in list_scen:
+                    continue
+                own = three[name][1]["modes"] if name in three else None
+                if own is not None:   # a scenario of the three files runs only in the modes it registers
+                    if it["modes_named"]:
+                        for mode in it["modes"]:
+                            if mode not in own:
+                                missing.append("scenario %s %s (the scenario registers the modes %s only)"
+                                               % (name, mode, ", ".join(own)))
+                    it["modes"] = [m for m in it["modes"] if m in own]
+                if name in list_scen:
                     listed = True
             elif it["kind"] in ("floor", "caps") and it["value"] is not None and not final_keys(it):
                 opened.append("%s %s has no final yet" % (it["kind"], " ".join(it["words"])))
@@ -474,6 +595,10 @@ def main(argv):
                     n, check, ", ".join("%s/%s" % (E2E, f) for f in THREE)))
             if mode is not None and mode not in MODES:
                 problems.append("line %d of the list: %s names no mode" % (n, check))
+            elif mode is not None and name in three and three[name][1]["modes"] is not None \
+                    and mode not in three[name][1]["modes"]:
+                problems.append("line %d of the list: %s names a mode the scenario does not run (it registers %s)"
+                                % (n, check, ", ".join(three[name][1]["modes"])))
     for check in came_back(root, [c for _, c, _, _, _ in lst]):
         problems.append("%s was taken off the list by an earlier commit and is on it again: a line never comes back"
                         % check)
@@ -486,10 +611,12 @@ def main(argv):
             problems.append("a test is skipped: %s" % line)
 
     # D105: every scenario of the three files calls the shared assert
-    for name, (f, fn) in sorted(three.items()):
-        if not calls_world_check(e2e[f], fn):
+    for name, (f, entry) in sorted(three.items()):
+        if entry["error"] is not None:
+            problems.append("D105: %s/%s registers %s: %s" % (E2E, f, name, entry["error"]))
+        elif not calls_world_check(e2e[f], entry["fn"], body=entry["inline"]):
             problems.append("D105: the scenario %s of %s/%s (%s) does not call the shared assert worldCheck"
-                            % (name, E2E, f, fn))
+                            % (name, E2E, f, entry["fn"] or "a function written in place"))
 
     if final:
         for _, check, _, _, _ in lst:

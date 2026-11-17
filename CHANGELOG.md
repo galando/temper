@@ -33,8 +33,8 @@ mod's run driver and the scripted persons select by these fields and never by la
 read the `(Recommended)` suffix. No label changed, the view stays version 1, and the mod still reads a view with no ids.
 An id is a lookup: an answer still counts only on the exact header, question, label, run and step. No question that
 goes to the dialog holds a new key, since the question tool refuses one: the ids of a reason, name or Blocking question
-sit beside it (`reason_ids`, `answer_ids`, `question_ids`). Its cases are in `temper-cases-40.sh` and
-`tests/mod/ids.test.ts`.
+sit beside it (`reason_ids`, `answer_ids`, `question_ids`), and the ids of the Scope drift options beside its list of
+labels (`drift_ids`). Its cases are in `temper-cases-40.sh` and `tests/mod/ids.test.ts`.
 
 One real run on a Java 24 Maven project (3.2 hours of agent time, 12 tasks) lost most of its time to faults that existed
 before any code was written, and a Temper run on this very change (a plan line that could never finish in its time

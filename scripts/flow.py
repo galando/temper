@@ -19,9 +19,10 @@ import shlex
 import sys
 
 import fresh_review
+import run_summary
 
 from flow_base import (
-    FRESH_ROWS, GATE_HEADER, LABEL, VERSION, advance_ok, blocking_asks, design_accept, goes_on, on_model, plan_files)
+    FRESH_ROWS, GATE_HEADER, LABEL, TEMPER, VERSION, advance_ok, blocking_asks, design_accept, goes_on, on_model, plan_files)
 from flow_run import changed_files, project_facts, Run
 from flow_view import view, write_view
 # the names other code reads on this module (cli_ctx.py, answer_ops.py, panel.py, drift.py, the cases)
@@ -253,6 +254,11 @@ def run_view(ctx):
         nxt = {"action": "error", "say": "temper next failed: %s" % e}
     doc = view(run, nxt)
     doc["written"] = ctx.get("now")
+    if ctx.get("asked"):   # the view of `temper next`: its question is the one the carrier is handed (run summary)
+        try:
+            run_summary.record_ask(TEMPER, nxt)
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass   # the count of the summary never stops a view
     write_view(doc)
 
 if __name__ == "__main__":

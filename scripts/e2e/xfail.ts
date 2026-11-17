@@ -85,9 +85,11 @@ export function listed(entries: Entry[], scenario: string, mode: string): Entry 
   return entries.find(e => e.suite === 'e2e' && e.name === scenario && (e.mode === null || e.mode === mode)) ?? null
 }
 
-// The e2e entries that name no scenario the runner knows (a stale line cannot stay).
-export function stale(entries: Entry[], scenarios: string[]): Entry[] {
-  return entries.filter(e => e.suite === 'e2e' && !scenarios.includes(e.name))
+// The e2e entries that name no scenario the runner knows, or a mode their scenario never runs in (a stale line cannot
+// stay). `modes` holds the modes of each scenario that runs only in the modes it names; any other runs in every mode.
+export function stale(entries: Entry[], scenarios: string[], modes: Record<string, string[]> = {}): Entry[] {
+  return entries.filter(e => e.suite === 'e2e' &&
+    (!scenarios.includes(e.name) || (e.mode !== null && modes[e.name] !== undefined && !modes[e.name]!.includes(e.mode))))
 }
 
 export type Verdict = { failed: boolean; line: string; listed: boolean }
@@ -158,6 +160,11 @@ function check(): number {
     { failed: false, listed: false, line: 'PASS full-run [plain] (3 steps, 0 refusals)' })
   eq('the compare and the floor skip a listed scenario, in any mode it runs', [skipsCompare(entries, 'slow-first-run', ['plain', 'mod']), skipsCompare(entries, 'slow-first-run', ['mod']), skipsCompare(entries, 'full-run', ['plain', 'mod'])], [true, false, false])
   eq('an e2e entry that names no scenario is stale', stale(entries, ['two-dialogs', 'full-run']).map(e => e.text), ['e2e:slow-first-run:plain'])
+  eq('an e2e entry whose mode its scenario never runs in is stale; a scenario that names no modes runs in every mode', [
+    stale(entries, ['two-dialogs', 'slow-first-run'], { 'slow-first-run': ['mod'] }).map(e => e.text),
+    stale(entries, ['two-dialogs', 'slow-first-run'], { 'slow-first-run': ['plain', 'driver'], 'two-dialogs': ['plain'] }).map(e => e.text),
+    stale(entries, ['two-dialogs', 'slow-first-run']).map(e => e.text),
+  ], [['e2e:slow-first-run:plain'], [], []])
   eq('the list of this tree reads', (() => {
     try {
       return loadList().every(e => e.suite === 'selftest' || e.suite === 'e2e')

@@ -59,6 +59,26 @@ assert_eq "caps: a final value above its first committed value fails" "yes exit 
   "$(grep -q 'question_sites: final 54 is above its first committed value 53' <<< "$_c41_raise" && echo -n yes; echo -n " ${_c41_raise##*$'\n'}|"
      python3 -I "$_c41_caps" --caps "$_c41_dir/hn/caps.json" >/dev/null 2>&1; echo "exit $?")"
 
+# a removed bound is a raised one (phase 2 fixes): a cap deleted from the file with its measure, or one whose final is
+# set to null, fails as a raised final does (the check is run with the measure taken out, as a commit that deleted both
+# would leave it)
+_c41_hist "$_c41_dir/hd" caps.json "$REPO_ROOT/scripts/caps.json"
+_c41_edit "$_c41_dir/hd/caps.json" 'd["caps"].pop("readme_lines")'
+git -C "$_c41_dir/hd" -c user.name=t -c user.email=t@example.com commit -qam delete
+_c41_del="$(python3 -I -c 'import importlib.util as u, sys
+s = u.spec_from_file_location("check_caps", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)
+m.MEASURES.pop("readme_lines")
+sys.exit(m.main(["--caps", sys.argv[2]]))' "$_c41_caps" "$_c41_dir/hd/caps.json" 2>&1; echo "exit $?")"
+_c41_hist "$_c41_dir/hz" caps.json "$REPO_ROOT/scripts/caps.json"
+_c41_edit "$_c41_dir/hz/caps.json" 'd["caps"]["readme_lines"]["final"] = None'
+git -C "$_c41_dir/hz" -c user.name=t -c user.email=t@example.com commit -qam null
+_c41_null="$(python3 -I "$_c41_caps" --caps "$_c41_dir/hz/caps.json" 2>&1; echo "exit $?")"
+assert_eq "caps: a final deleted with its cap, or set to null, fails as a raised final does" "yes exit 1|yes exit 1" \
+  "$(grep -q 'readme_lines: its final is removed, its first committed value is' <<< "$_c41_del" && echo -n yes
+     echo -n " ${_c41_del##*$'\n'}|"
+     grep -q 'readme_lines: final null is no number, its first committed value is' <<< "$_c41_null" && echo -n yes
+     echo " ${_c41_null##*$'\n'}")"
+
 # --- floor ---
 _c41_hist "$_c41_dir/hf" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
 _c41_edit "$_c41_dir/hf/floor.json" 'd["scenarios"]["default-run"]["plain"]["final"]["dialogs"] += 1'
@@ -67,6 +87,21 @@ assert_eq "floor: a final value above its first committed value fails" "0|1 yes"
   "$(python3 -I "$_c41_floor" --floor "$REPO_ROOT/scripts/e2e/floor.json" >/dev/null 2>&1; echo -n "$?|"
      python3 -I "$_c41_floor" --floor "$_c41_dir/hf/floor.json" > "$_c41_dir/hf.out" 2>&1; echo -n "$? "
      grep -q 'scenarios/default-run/plain/final/dialogs is 3, above its first committed value 2' "$_c41_dir/hf.out" && echo yes || echo no)"
+
+# a final removed or set to null loosens its bound as a raise does; a type a `launches` final no longer names stands at 0
+_c41_drop() { # _c41_drop <name> <python statement over d>: the floor committed, then the statement committed; prints the exit
+  _c41_hist "$_c41_dir/$1" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
+  _c41_edit "$_c41_dir/$1/floor.json" "$2"
+  git -C "$_c41_dir/$1" -c user.name=t -c user.email=t@example.com commit -qam drop
+  python3 -I "$_c41_floor" --floor "$_c41_dir/$1/floor.json" > "$_c41_dir/$1.out" 2>&1; echo -n "$?"
+}
+assert_eq "floor: a final removed or set to null fails, a launch type left out of a launches final does not" "1 yes|1 yes|1|0" \
+  "$(_c41_drop hl 'for e in d["scenarios"]["default-run"].values(): e["final"].pop("launches")'
+     grep -q 'scenarios/default-run/plain/final/launches/temper:temper-plan is removed, its first committed value is 1: a final is never removed' "$_c41_dir/hl.out" && echo -n " yes|" || echo -n " no|"
+     _c41_drop hn 'd["scenarios"]["default-run"]["driver"]["final"]["dialogs"] = None'
+     grep -q 'scenarios/default-run/driver/final/dialogs is null, its first committed value is' "$_c41_dir/hn.out" && echo -n " yes|" || echo -n " no|"
+     _c41_drop hb 'd["scenarios"]["default-run"]["plain"].pop("final")'; echo -n "|"
+     _c41_drop ht 'd["scenarios"]["default-run"]["plain"]["final"]["launches"].pop("temper:temper-review")')"
 
 # a made up counts file: the counts of default-run in plain mode as the floor holds them, then one moved
 python3 -I - "$REPO_ROOT/scripts/e2e/floor.json" "$_c41_dir" <<'PY'
@@ -146,12 +181,55 @@ _c41_q="$(nx "d['ask']['id']")"
 assert_eq "summary: the line counts the questions the CLI asked once each" "intent.accept 1 1 1 no" \
   "$_c41_q $(_c41_last 'd["asks"]["n"], d["asks"]["by_stage"].get("intent"), d["asks"]["by_kind"].get("gate")' | tr -d "(),") $([[ -f .temper/asked.json ]] && echo yes || echo no)"
 
+# one question about two groups at one step is two questions; a view written by any other command asks nothing
+_c41_groups() { # _c41_groups <G1 confirmed: "" or a time>: both groups passed their gate, the first confirmed or not
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w1", "gate": {"verdict": "PASS"}%s}, "G2": {"status": "passed", "worktree": "w2", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G2"}}}\n' \
+    "${1:+, \"confirmed\": \"$1\"}" > .temper/groups.json
+}
+declare -F gp_base >/dev/null || source "$TESTS_DIR/case-helpers-5.sh"
+fresh; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; gp_base
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+_c41_groups ""
+_c41_q="$(nx "d['ask']['id']") $(nx "d['run']['step']")"
+"$TEMPER" evidence add --stage build --phase note --kind input --claim 'a view written, no question handed' >/dev/null 2>&1
+_c41_groups "t"
+_c41_q="$_c41_q $(nx "d['ask']['question']['question'].split(' (')[0]") $(nx "d['run']['step']")"
+"$TEMPER" state clear >/dev/null
+assert_eq "summary: one question about two groups at one step counts two" "group.pass 2 Group G2 2 2 {'group': 2}" \
+  "$_c41_q $(_c41_last 'd["asks"]["n"]') $(_c41_last 'd["asks"]["by_kind"]')"
+
 setup
 _at review
 "$TEMPER" state loop review build --reason 'a finding to repair' >/dev/null
 "$TEMPER" state clear >/dev/null
 assert_eq "summary: the steps back of the run are in the line" "[{'from': 'review', 'n': 1, 'to': 'build'}]" \
   "$(_c41_last 'd["steps_back"]')"
+
+# two steps back from Review to Build are one record of feedback-loops.json, with its iteration at 2
+setup
+_at review
+"$TEMPER" state loop review build --reason 'a finding to repair' >/dev/null
+_at review
+"$TEMPER" state loop review build --reason 'a second finding' >/dev/null
+_c41_it="$(python3 -c 'import json; print([l["iteration"] for l in json.load(open(".temper/feedback-loops.json"))["active_loops"]])')"
+"$TEMPER" state clear >/dev/null
+assert_eq "summary: two steps back of one pair count two" "[2] [{'from': 'review', 'n': 2, 'to': 'build'}]" \
+  "$_c41_it $(_c41_last 'd["steps_back"]')"
+
+# A Build task agent: its own gate of Task 1 (a `task` row), its launch's row (`build`, 2 s), the gate of its after calls
+# (nothing to gate). Then the gate of Task 3, left running by an earlier conversation, with its time (3 s): one launch.
+declare -F st_setup >/dev/null || source "$TESTS_DIR/case-helpers-5.sh"
+st_setup
+st_pass_ready
+"$TEMPER" task gate 1 --model m >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model m --ms 2000 --task 1 >/dev/null
+"$TEMPER" task gate 1 --model m --if-running >/dev/null 2>&1
+"$TEMPER" task start 3 >/dev/null 2>&1
+"$TEMPER" task gate 3 --model m --ms 3000 >/dev/null 2>&1
+_c41_rows="$(python3 -c 'import json; print(",".join(r["stage"] for r in json.load(open(".temper/usage.json"))))')"
+"$TEMPER" state clear >/dev/null
+assert_eq "summary: a task gate is no launch, but for the gate of a task left running" "task,build,task {'build': 2} 5" \
+  "$_c41_rows $(_c41_last 'd["launches"]["by_stage"]') $(_c41_last 'd["agent_seconds"]')"
 
 setup
 python3 -c 'import json; open(".temper/runs.jsonl", "w").write("".join(json.dumps({"v": 1, "n": i}) + "\n" for i in range(205)))'
@@ -163,7 +241,7 @@ assert_eq "summary: the file keeps the last 200 lines" "200 6 1" \
 python3 -I - "$_c41_dir/bench" <<'PY'
 import json, os, sys
 root = sys.argv[1]
-def run(folder, task, arm, rep, cost, wall, dialogs, reviews, back=0, mod=False):
+def run(folder, task, arm, rep, cost, wall, dialogs, reviews, back=0, mod=False, to="plan", blocking=0, blocked=0):
     d = os.path.join(root, folder, "%s__%s__%d" % (task, arm, rep))
     os.makedirs(os.path.join(d, "session", "subagents"), exist_ok=True)
     json.dump({"task": task, "arm": arm, "rep": rep, "cost_usd": cost, "wall_s": wall, "questions": dialogs,
@@ -171,17 +249,38 @@ def run(folder, task, arm, rep, cost, wall, dialogs, reviews, back=0, mod=False)
     json.dump({"hidden_pass": 4, "hidden_total": 4}, open(os.path.join(d, "grade.json"), "w"))
     with open(os.path.join(d, "person.jsonl"), "w") as f:
         for k in range(dialogs):
-            f.write(json.dumps({"dialog": k + 1, "qid": "plan.approve", "move": "back" if k < back else None}) + "\n")
+            f.write(json.dumps({"dialog": k + 1, "qid": "plan.approve", "move": "back" if k < back else None,
+                                "to": to if k < back else None}) + "\n")
+        for k in range(blocking):   # the Blocking questions, four to a dialog
+            f.write(json.dumps({"dialog": dialogs + 1 + k // 4, "qid": "intent.blocking", "move": None}) + "\n")
     for k in range(reviews):
         base = os.path.join(d, "session", "subagents", "agent-%d" % k)
         json.dump({"agentType": "temper:temper-review", "model": "sonnet"}, open(base + ".meta.json", "w"))
         open(base + ".jsonl", "w").write(json.dumps({"timestamp": "2026-01-01T00:00:0%dZ" % k}) + "\n"
                                           + json.dumps({"timestamp": "2026-01-01T00:00:1%dZ" % k}) + "\n")
+    if blocked:   # a build task agent: `task blocked` taken for each task, and one more call the CLI refused
+        base = os.path.join(d, "session", "subagents", "agent-b")
+        json.dump({"agentType": "temper:temper-build-task", "model": "sonnet"}, open(base + ".meta.json", "w"))
+        with open(base + ".jsonl", "w") as f:
+            for n in list(range(1, blocked + 1)) + [blocked + 1]:
+                cmd = "/p/scripts/temper task blocked %d --needs src/x.py --reason 'needs x'" % n
+                f.write(json.dumps({"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "id": "t%d" % n, "name": "Bash", "input": {"command": cmd}}]}}) + "\n")
+                text = "FAIL: src/x.py is a file of Task %d" % n if n > blocked else "OK: Task %d is blocked" % n
+                f.write(json.dumps({"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": "t%d" % n, "content": text}]}}) + "\n")
 for rep in (1, 2):
     run("before", "cent-mismatch", "vanilla", rep, 1.0, 100, 0, 0)
     run("before", "cent-mismatch", "temper", rep, 3.0, 400, 6, 2, back=1)
     run("after", "cent-mismatch", "vanilla", rep, 1.0, 100, 0, 0)
     run("after", "cent-mismatch", "temper", rep, 1.4, 240, 2, 1)
+    # D96 and D90 to D92: a second pair of rounds whose after round blocks a task and steps back to Build only
+    run("b2", "cent-mismatch", "vanilla", rep, 1.0, 100, 0, 0)
+    run("b2", "cent-mismatch", "temper", rep, 1.4, 240, 2, 1, back=1)
+    run("a2", "cent-mismatch", "vanilla", rep, 1.0, 100, 0, 0)
+    run("a2", "vague-refunds", "vanilla", rep, 1.0, 100, 0, 0)
+    run("a2", "cent-mismatch", "temper", rep, 1.4, 240, 2, 1, back=2, to="build", blocking=4, blocked=1)
+    run("a2", "vague-refunds", "temper", rep, 1.4, 240, 2, 1, blocking=4)
 PY
 _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" before after --gate gate.json >/dev/null 2>&1; echo -n "$? "
   python3 -c 'import json; d=json.load(open("gate.json")); l=d["lines"]; print(d["arm"], d["before"], d["plain"], l["bug"]["cost_ratio"], l["bug"]["time_ratio"], l["bug"]["pass"], l["hidden"]["pass"], l["reviews"]["pass"], l["steps_back"]["pass"], l["clear"]["pass"])'
@@ -189,3 +288,8 @@ _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" be
 assert_eq "summary: the bench scorecard holds the round after against the plain arm and the round before" \
   "0 after/temper before/temper after/vanilla 1.4 2.4 True True True True None
 {'temper:temper-review': 2} 1.4" "$_c41_sc"
+_c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" b2 a2 --gate gate2.json >/dev/null 2>&1; echo -n "$? "
+  python3 -c 'import json; l=json.load(open("gate2.json"))["lines"]; s=l["steps_back"]
+print(s["mean"], s["before"], s["blocked"], s["blocked_before"], s["pass"], l["bug"]["runs_over_dialogs"], l["vague"]["runs_over_dialogs"])')"
+assert_eq "summary: the bench counts steps back to Plan and blocked tasks, and more dialogs only on a vague task" \
+  "1 0 1 0.5 0 False 2 0" "$_c41_sc"
