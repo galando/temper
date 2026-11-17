@@ -643,7 +643,8 @@ _d56_n="$(_count45 V)"
 assert_eq "D56b the failed plan question offers check-again" "plan:check-again" \
   "$(_x45 "r = '%s:%s' % (d.get('stage'), 'check-again' if 'check-again' in ids(d) else 'no check-again')")"
 touch "$M45"
-if [[ "$(_x45 "r = 'check-again' in ids(d)")" == True ]]; then _runopt45 check-again; else "$TEMPER" gate plan >/dev/null 2>&1; fi
+# the row call itself, not check-again (which runs a fresh preflight): the stored failure is not returned (M16)
+"$TEMPER" gate plan >/dev/null 2>&1
 assert_eq "D56a after the environment was repaired the check runs the command again and passes: no stored failure is returned" \
   "ran again|passed" \
   "$([[ "$(_count45 V)" -gt "$_d56_n" ]] && echo 'ran again' || echo 'not run again')|$(python3 -c "
