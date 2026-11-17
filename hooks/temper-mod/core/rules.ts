@@ -105,8 +105,11 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   ['gates', /(^|\/)\.temper\/gates\.json$/i],
   ['status', /(^|\/)\.temper\/status\.json$/i],
   ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
-  // The run state, the grouped Build record, the usage record and the view the mod draws: the CLI writes them.
-  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view)\.json$/i],
+  // The run state, the grouped Build record, the usage record and the view the mod draws: the CLI writes them. 9.8.5
+  // (M14): so are the preflight's stored rows, the Design answers and the setup blocks already tried, which turn rows.
+  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view|preflight|decisions|setup-tried)\.json$/i],
+  // The store of reused passes, in the git folder and shared by every worktree: a row in it passes a check unrun.
+  ['gates', /(^|\/)\.git\/temper-results\.json$/i],
   ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
   ['loops', /(^|\/)\.temper\/feedback-loops\.json$/i],
   ['config', /(^|\/)\.claude\/temper\.config$/i],
@@ -120,6 +123,7 @@ const GUARDED_SAMPLES = [
   '.temper', '.temper/specs', '.temper/evidence', '.temper/gates.json', '.temper/status.json', '.temper/overrides.json',
   '.temper/build-state.json', '.temper/groups.json', '.temper/usage.json', '.temper/view.json', '.temper/feedback-loops.json',
   '.temper/evidence/review.json', '.claude/temper.config', '.git/config', '.git/hooks', '.git/hooks/pre-commit', '.git/temper-gate',
+  '.git/temper-results.json', '.temper/preflight.json', '.temper/decisions.json', '.temper/setup-tried.json',
 ]
 // A glob as bash reads it, one segment at a time: `*` and `?` stay inside a segment, and a segment that starts with one
 // does not match a name that starts with a dot (bash's default: `rm -rf *` leaves `.temper` alone).
