@@ -97,6 +97,7 @@ limit, three fix agents that changed nothing) showed most of them again. Each ch
   commands that failed on the environment with it, and they passed. The person still makes one click.
 - **The selftest.** Case file 6 runs on its own (`case-helpers-5.sh`, made by `make-helpers-5.sh`), so the parallel
   runner no longer runs 5 and 6 as one pair.
+- **M1 (WP08).** A suite broken after a pass is recorded at Build and asked; integrate passes again once repaired.
 
 ## v9.8.4: the faults one failed run exposed
 

@@ -115,7 +115,7 @@ class BuildPart:
         # run whose code an earlier run built (built_before, from the walked Build's check) mends it the same way.
         before = r.state.get("built_before") and not rg
         if (integ and gid and all(gpass(g) for g in gid)) or before:
-            lines = self.feedback_lines() or self.fault_lines()
+            lines = self.feedback_lines() + self.fault_lines()   # M1: the finding and what failed since
             if not lines and not r.notes("build", "input"):
                 # 9.8.5 (S7): a fix pass with no fault in its prompt fixes nothing (a measured launch said so): the CLI
                 # checks Build again, and a failure there names the fault for the next pass

@@ -137,7 +137,7 @@ def integration_head(argv):
     import json, sys
     try:
         i = json.load(open(argv[1])).get('integration') or {}
-        print(i.get('verdict', ''), i.get('head', ''))
+        print(i.get('verdict', ''), i.get('head', ''), int(merged(i)))
     except Exception:
         print('')
 
@@ -303,9 +303,18 @@ def feedback_resolved(d, a, task_status):
         if r.get('feedback'): r['resolved'] = True
 
 
+def merged(i):
+    """M1: the groups are merged into the feature branch: a PASS wrote it, a later verdict keeps it, and a PASS of a run
+    saved before the key existed counts as merged."""
+    return bool(i.get('merged', i.get('verdict') == 'PASS'))
+
+
 def integration(d, a, task_status):
+    old = d.get('integration') or {}
     d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
                         'files': [f for f in a[3].split(',') if f], 'ts': a[4], 'head': a[6]}
+    if a[0] == 'PASS' or merged(old):
+        d['integration']['merged'] = True
     if a[5]:
         d['integration']['foreign'] = json.loads(a[5])   # {group: [sha, newest first]}: the person takes them out or keeps them
 
