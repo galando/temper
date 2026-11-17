@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-17 09:17 UTC
+- Watch: one check is scheduled; the next is due 2026-11-17 12:20 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -50,8 +50,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP07 | done | `3d43388` | 2026-11-16 | case files 43 to 46 and 17 acceptance scenarios written failing first; check_done, check_changed_tests, verify.sh final; expected to fail 112 (92 selftest, 20 scenarios) |
 | WP08 | done | `d3f46ff` | 2026-11-17 | the defects of pull request 115 fixed, removed or made safe in four lanes against tests other agents wrote; expected to fail 92 (72 selftest, 20 scenarios); two caps above their final |
 | WP09 | done | `b5a8c0a` | 2026-11-17 | every carrier of a verdict prints `VERDICT: <scope> <verdict>`; go, the driver and the loop read it; integrate-fail off the list, which holds 91 (72 selftest, 19 scenarios); prompt_bytes above its final |
-| WP10 | doing | | | tests `b17aa3b` |
-| WP18 | todo | | | |
+| WP10 | done | `f5c8cef` | 2026-11-17 | one budget in `.temper/budget.json` (2 per failure, 6 per run), refused in the CLI's dispatcher, the question `run.budget` at the limit; D38a, D38b, D38c, D38e and budget-stop off the list, which holds 86 (68 selftest, 18 scenarios) |
+| WP18 | doing | | | tests `172f93a` |
 | WP14 | todo | | | |
 | WP11 | todo | | | |
 | WP12 | todo | | | |
@@ -144,6 +144,11 @@ None.
 - 2026-11-17 WP09: integrate-fail could not pass in driver mode, because its scripted person stopped by answering nothing, which the driver counts as a hand back; it now ends at the same question with `stopAt`, its asserts unchanged. group-fail and group-fail-twice stop the same way, for WP16.
 - 2026-11-17 WP09: the spec names no marker for a task gate that parks its group on a merge conflict; it prints `task:N FAIL`, so the driver does not hand back there.
 - 2026-11-17 decisions taken by me, after the owner's instruction to settle decisions alone: (1) a cap above its final is never raised; later packages lower it where they touch its files, and WP32 cuts what is still above below its final before the final gate. (2) U23 is decided at WP32. (3) WP10: `state init` removes the budget record too; `budget.py room <key>` prints one JSON object; the grep of its Done when leaves out `scripts/selftest`, which keeps the old names on purpose; a step back to Plan spends only when the Build gate failed (the person's own choice otherwise); a call refused later has spent its repeat, as the spec says.
+- 2026-11-17 WP10: decision 3 of my earlier entry was wrong in one part and the builder followed row D08 instead: a step back from Build after a failed or parked group spends under that group's key (kind `step back`), and with no groups under `gate:build`, because budget-stop launched a third fix when the step back to Plan was free. A step back with nothing failed spends nothing.
+- 2026-11-17 WP10: a failed `integrate` spends under `gate:build` through a row of its own (`integrate`, kind `merge again`), counted once per failure with `state redo build`.
+- 2026-11-17 WP10: caps above their final after the package (no final moved): option_sites 90 (89), option_labels 73 (71), question_ids 36 (35), config_comment_keys 49 (46), config_lines 163 (60), config_live_keys 21 (12); prompt_bytes came back below its final (307,449). The last three belong to WP29's short template.
+- 2026-11-17 WP10: the question at the limit appears only where the stage's own question loses an option; at Pipeline past its round limit and at the Build question with no groups the older "limit is reached" questions still ask, with no grant. For WP25 and WP27, which rebuild those questions.
+- 2026-11-17 WP10: the group question still said a plan patch spends no loop; it now says it counts as one repeat (`fix(wp10)` in the merge). ADR 0014 still names `loops.max-per-type`; it is a record of its time and was left.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
