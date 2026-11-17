@@ -183,10 +183,10 @@ the code's, as before: it spends the attempt. Any status move clears the mark.
 
 **A Design answer reaches the tasks.** `temper intent answer 'Design: ...'` keeps the answer with the hash `tasks.md` has
 at that moment (`.temper/decisions.json`, `scripts/decisions.py`). The Design gate's row `tasks agree with decisions`
-fails while `tasks.md` is still that file: the answer may replace a rule a task or a scenario still carries, and the CLI
-cannot read which. The Design question then recommends `Loop back to Plan`; the person may instead override with the
-reason `The tasks already agree`, which the report shows. Each Build task prompt lists the Design answers, newest
-first, as decisions that win over `tasks.md`.
+passes with a note while `tasks.md` is still that file: the note names each answer given after the plan, and says it
+goes to every Build task. Each Build task prompt lists the Design answers, newest first, as decisions that win over
+`tasks.md`. The Design question recommends `Continue to Build`; it no longer recommends `Loop back to Plan` for an
+answer (WP08: planning again ran Plan and Design again, both on Opus, also when the plan already had the rule).
 
 **High findings block.** `review.block-on` defaults to `[critical, high]`. A passed Review with an open finding at
 high or above recommends `Loop back to Build`; with a Medium one it recommends `Continue to Check`, and the passed Check

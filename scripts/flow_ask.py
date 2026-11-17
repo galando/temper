@@ -379,13 +379,6 @@ class AskPart:
                                       [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go, oid="continue"), arm, walk],
                                       [self.skill("grill-me", "Grill Me", "Stress test the design.")] + back_opt() +
                                       [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.", qid="design.pass")
-            if any(x.get("name") == "tasks agree with decisions" for x in rows):
-                # 9.8.5 (Q1): a Design answer replaced a rule the tasks still carry. Plan updates them; or the person says no
-                # task names the old rule (an override with that reason, which the report shows).
-                ov = override_opt(go)
-                self.set_reasons(ov, ["The tasks already agree"] + override_reasons)
-                return self.question(GATE_HEADER, "Design: the check failed (%s). Loop back to Plan so the tasks follow your answers?" % why,
-                                     stage=stage, options=back_opt(rec=True) + [ov, self.save()], qid="design.fail")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
                                  options=back_opt() + [override_opt(go), self.save()], qid="design.fail")
 

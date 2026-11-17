@@ -7,9 +7,9 @@
 
 A Design answer can replace a rule the plan wrote (a source run: the person chose "each job against its own schedule",
 tasks.md kept the 24 hour rule, and three task agents built the old rule). The CLI cannot read whether a task names the
-old rule, so it holds what it can check: tasks.md must change after the answer (Plan updates the tasks), or the person
-says at the Design question that the tasks already agree (an override with a reason, which the report shows). Until
-then the row fails and Build does not start. Standard library only.
+old rule. So every Build task prompt lists the Design answers, newest first, as decisions that win over tasks.md, and
+the row passes with a note that names the answers given after the plan (F2 of WP08: it no longer fails until tasks.md
+changes, which sent the run back to Plan and Design for an answer the plan often already had). Standard library only.
 """
 import hashlib
 import json
@@ -62,11 +62,11 @@ def row(project, spec):
     if not left:
         return {"name": "tasks agree with decisions", "pass": True,
                 "detail": "no Design answer is newer than tasks.md"}
+    # F2 of WP08: the row passes with a note; the answers reach every Build task prompt (prompt below), where they win
     names = "; ".join("%s -> %s" % (e["question"][:140], e["answer"][:140]) for e in left[:4])
-    return {"name": "tasks agree with decisions", "pass": False,
-            "detail": "%d Design answer(s) came after the plan, and tasks.md has not changed since: %s. Loop back to Plan so "
-                      "the tasks and scenarios follow them, or, when no task names the old rule, say so at this question "
-                      "(Override, with your reason)" % (len(left), names + ("; and %d more" % (len(left) - 4) if len(left) > 4 else ""))}
+    return {"name": "tasks agree with decisions", "pass": True,
+            "detail": "%d Design answer(s) came after the plan: %s. They go to every Build task" % (
+                len(left), names + ("; and %d more" % (len(left) - 4) if len(left) > 4 else ""))}
 
 
 def decision_lines(spec):
