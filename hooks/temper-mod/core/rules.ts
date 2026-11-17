@@ -369,7 +369,7 @@ const TOO_MANY_DENY =
 
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
-  'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix', ...STAGES]
+  'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix', ...STAGES]
 
 const GLOB_DENY =
   'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
@@ -471,8 +471,8 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
 }
 
 // The temper calls only the person may cause (ADR 0013), by their words after the script: leaving Intent or Plan, a
-// skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, and starting over or ending
-// the run before it is done.
+// skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, writing a setup block, and
+// starting over or ending the run before it is done.
 function personOnly(w: readonly string[], r: RunFacts): boolean {
   const [a, b, c, d] = w
   if (a === 'override') return true
@@ -487,6 +487,9 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   if (a === 'group' && b === 'reopen') return w.some(x => x === '--accept-foreign' || x.startsWith('--accept-foreign='))
   // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's.
   if (a === 'evidence') return b === 'accept' || b === 'clear'
+  // 9.8.5 (M13): a setup block runs before every command of every gate, so writing one to the config is the person's;
+  // `doctor` and `doctor --propose` only read.
+  if (a === 'doctor') return w.includes('--write')
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true

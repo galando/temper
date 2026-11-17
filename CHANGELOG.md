@@ -38,6 +38,8 @@ labels (`drift_ids`). Its cases are in `temper-cases-40.sh` and `tests/mod/ids.t
 
 - **M12 (WP08).** The backup push of the mod is removed: during a run every push is refused, to a `temper-backup/`
   branch too.
+- **M13 (WP08).** With the mod on, `temper doctor` with `--write` is the person's call: a setup block reaches the
+  config only as the call of the option the person picked; `doctor` and `doctor --propose` still only read.
 
 One real run on a Java 24 Maven project (3.2 hours of agent time, 12 tasks) lost most of its time to faults that existed
 before any code was written, and a Temper run on this very change (a plan line that could never finish in its time
