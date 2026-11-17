@@ -100,6 +100,7 @@ limit, three fix agents that changed nothing) showed most of them again. Each ch
 - **M1 (WP08).** A suite broken after a pass is recorded at Build and asked; integrate passes again once repaired.
 - **M8 (WP08).** The config reader merges a key written twice; the template has no empty `build:` or `evidence:` key.
 - **M9 (WP08).** A task held on an environment fault offers It is the code; the same fault twice recommends Save.
+- **U19 (WP08).** `preflight.json`, `setup-tried.json` and `decisions.json` are run files: excluded, and cleared.
 
 ## v9.8.4: the faults one failed run exposed
 
