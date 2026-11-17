@@ -869,7 +869,9 @@ export const fixBreaksSuite = (w: World): void => {
   }))
   expect(merged.length === 0, `no call failed with "not something we can merge" (${merged.join(', ')})`)
   expect(fixes === 2 && (w.counts.launches['temper:temper-build'] ?? 0) === 2, `the fix agent ran twice (${fixes} passes, ${w.counts.launches['temper:temper-build'] ?? 0} launches)`)
-  expect(asked.some(id => id.startsWith('build.')), `the failed suite asked the Build question (${asked.join(', ')})`)
+  // the question of the broken suite itself, after the first failed Review: build.pass is asked at every Build gate
+  const firstReviewFail = asked.indexOf('review.fail')
+  expect(firstReviewFail >= 0 && asked.slice(firstReviewFail + 1).includes('build.fail'), `the failed suite asked the Build question (${asked.join(', ')})`)
   expect(end.stage === 'commit', `the run reached the commit (${end.action} ${end.stage ?? ''})`)
   expect(String(w.json('.temper/groups.json').integration?.verdict ?? '') === 'PASS', 'integrate passed again on the repaired tree')
 }
