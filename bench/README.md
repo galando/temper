@@ -49,9 +49,9 @@ Arm names are free: an arm that is not one of the five known ones gets its own r
 ## The scorecard
 
 `run.mjs` also writes, on each line of `person.jsonl`, the dialog it was asked in (four Blocking questions in one
-dialog share the index), the question's id and the move of the answer, and in `run.json` which code ran: the plugin's
-version and commit, the Claude Code version and whether the mod was loaded. `agentlog.py` reads the agents of a run from
-Claude Code's own logs (the type matched whole).
+dialog share the index), the question's id, the move of the answer and, for a step back, the stage it goes to, and in
+`run.json` which code ran: the plugin's version and commit, the Claude Code version and whether the mod was loaded.
+`agentlog.py` reads the agents of a run from Claude Code's own logs (the type matched whole).
 
 ```bash
 python3 scorecard.py ~/results-before ~/results-after          # scorecard.json in each folder, and one table
@@ -62,7 +62,9 @@ A block is one arm of one results folder, named `<folder>/<arm>`, so the round b
 the arm `temper`, stay apart, and a third arm (the model test) lives in a folder of its own. `--gate` holds one block
 against the pass lines of part H of `docs/plans/one-go/done.md` (`bug`, `clear`, `vague`, `hidden`, `rules_met`,
 `reviews`, `steps_back`): `--arm NAME` names it, by default the `temper` block of the last folder; `--before` and
-`--plain` name the round before and plain Claude Code. A line with no data says so and is not a pass. A missed line is
+`--plain` name the round before and plain Claude Code. `steps_back` holds the steps back to Plan and the blocked tasks
+(each `temper task blocked N` the CLI took, read from the agents' logs) against the round before; only a vague task has
+one more dialog for every four Blocking answers. A line with no data says so and is not a pass. A missed line is
 reported with its numbers; it is never tuned.
 
 ## Running it

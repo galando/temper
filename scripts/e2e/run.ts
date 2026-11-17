@@ -25,7 +25,7 @@ for (const [name, s] of Object.entries({ ...SLOW_SCENARIOS, ...BROKEN_SCENARIOS,
 // error, so the driver hands the run back).
 ONLY['policy-run'] = ['plain', 'mod']
 // The expected to fail list (scripts/selftest/expected-fail.txt), read once: a line it cannot read, or an e2e line that
-// names no scenario, fails the run at once (scripts/e2e/xfail.ts).
+// names no scenario or a mode its scenario never runs in, fails the run at once (scripts/e2e/xfail.ts).
 let LISTED: ReturnType<typeof loadList> = []
 try {
   LISTED = loadList()
@@ -33,9 +33,9 @@ try {
   console.log(`FAIL: ${(e as Error).message}`)
   process.exit(1)
 }
-const STALE = stale(LISTED, Object.keys(SCENARIOS))
+const STALE = stale(LISTED, Object.keys(SCENARIOS), ONLY)
 if (STALE.length > 0) {
-  console.log(`FAIL: scripts/selftest/expected-fail.txt names no scenario: ${STALE.map(e => `${e.text} (line ${e.line})`).join(', ')}`)
+  console.log(`FAIL: scripts/selftest/expected-fail.txt names no scenario, or a mode it never runs in: ${STALE.map(e => `${e.text} (line ${e.line})`).join(', ')}`)
   process.exit(1)
 }
 
