@@ -118,11 +118,11 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect(bash(ctx('intent'), adv('intent', 'plan'))).toEqual({ deny: ONLY_USER })
     expect(bash(ctx('plan'), adv('plan', 'build'))).toEqual({ deny: ONLY_USER })
     expect('allow' in bash(ctx('intent', { allowed: optionCalls('intent-pass', 'Continue to Plan (Recommended)') }), adv('intent', 'plan'))).toBe(true)
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), adv('plan', 'build'))).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'build'))).toBe(true)
     // The script by any path: the words after it are the call.
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), 'cd x && /a/b/scripts/temper state advance plan_complete build')).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), 'cd x && /a/b/scripts/temper state advance plan_complete build')).toBe(true)
     // Another next stage than the answer names is another call.
-    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Stage by stage (Recommended)') }), adv('plan', 'design')))).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'design')))).toBe(true)
     const design = optionCalls('design-plan-pass', 'Continue to Design (Recommended)')
     expect('allow' in bash(ctx('plan', { allowed: design }), adv('plan', 'design'))).toBe(true)
     expect(isDeny(bash(ctx('plan', { allowed: design }), adv('plan', 'build')))).toBe(true)
@@ -162,10 +162,10 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect(isDeny(bash(ctx('review', { allowed: accept }), `${CLI} evidence accept --stage check --id 1 --reason x`))).toBe(true)
   })
 
-  test('arming autonomy needs the Autonomous answer at the plan gate', () => {
+  test('arming autonomy needs the Approve and build answer at the plan gate', () => {
     const arm = `${CLI} state set run_mode autonomous`
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Autonomous Build: run Build unattended') }), arm)).toBe(true)
-    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Stage by stage (Recommended)') }), arm))).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Approve and build (Recommended)') }), arm)).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Ask me at every stage') }), arm))).toBe(true)
     expect(isDeny(bash(ctx('build'), arm))).toBe(true)
     expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
   })
