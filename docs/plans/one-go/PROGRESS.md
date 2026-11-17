@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-17 06:12 UTC
+- Watch: one check is scheduled; the next is due 2026-11-17 07:15 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -80,6 +80,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 |---|---|---|---|---|---|
 | 1 | `2c48db1` | 2026-11-16 | PASS (selftest 737 s, end to end shards 660, 728, 806 and 522 s, traces kept) | 1625 | no list yet |
 | 2 | `7f2dade` | 2026-11-17 | PASS (selftest 835 s, end to end shards 1376, 1258, 1405 and 1628 s, while the WP08 lanes ran beside it); review: 21 plus 3 findings fixed | 2655 | 113 (93 selftest, 20 e2e) |
+| 3 | `8afc67a` | 2026-11-17 | PASS (selftest 2822 pass, XFAIL 72); review: 8 findings fixed in the merge `0f83802` | 2449 | 92 (72 selftest, 20 e2e) |
 
 ## Blockers
 
@@ -134,6 +135,8 @@ None.
 - 2026-11-17 WP08: `temper-cases-8.sh:359` and `scripts/e2e/replay.ts:309` still append a second `autonomy:` block (spec trap 2); under the merging reader of M8 they pass and no replay number moved, so they were left.
 - 2026-11-17 WP08: M13 (c) sets `shown_block` as a side effect of `setup_offer` and the failed plan question reads it afterwards; WP21 removes that code.
 - 2026-11-17 WP08: the rewrite of case 22 `:37` removed the only selftest of the JDK range quote, the JaCoCo line quote and the naming of an absent file (listed in `changed-tests.md`).
+- 2026-11-17 WP08: CI found case 27 `the question shows the proposed block whole` red where Postgres is not installed: it read `temper next` without the fake pg tools on PATH; fixed in `8afc67a`.
+- 2026-11-17 phase 3 review: 8 findings confirmed, 3 refuted, all fixed in the merge `0f83802`: the mod guards `.temper/check/ahead.json` too (Check adopted its rows without a run), only the preflight's own time out is "not checked" (a command that exits 124 by itself fails), D56a calls `gate plan` itself so it fails without M16, fix-breaks-suite wants `build.fail` after `review.fail`, the M10 question shows the setup block whole while it offers it, and three lines of docs and help.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
