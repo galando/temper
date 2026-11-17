@@ -250,7 +250,7 @@ Plan) when no person is needed for it; a typed command, Save for later or a spen
 missing measurement, a failed acceptance test, a spent budget and the commit park the run for the person, as an armed
 Build does. With the key absent or `ask`, every gate after Build asks, as before.
 
-### Evidence, the lock, a backup push and a note (9.8.5)
+### Evidence, the lock and a note (9.8.5)
 
 - **A reused pass.** A group check or the Integration suite that passed with the same command and setup on the same
   clean tree (`git rev-parse HEAD^{tree}`, no change outside `.temper/`) passes again without running; its row says
@@ -272,8 +272,6 @@ Build does. With the key absent or `ask`, every gate after Build asks, as before
   (`scripts/runs.py`). A run an agent recorded with `evidence add --exit` is a claim and counts nowhere, unless the
   config says `evidence.claimed-runs: count`. `temper evidence void --stage S --id N --reason R` marks a false pass void:
   the row stays, `evidence list` shows `[void: R]`, and it counts in no mode. Only a pass is voided.
-- **A backup push.** During a run the mod lets the session push the run's work to a `temper-backup/` branch
-  (`git push origin HEAD:temper-backup/<name>`); no force, delete, mirror, all or tags. Any other push stays refused.
 - **A note in the question.** `temper state set ask_note '<step>: <text>'` adds the orchestrator's note to the question
   of that step, marked `Note from Claude (not from Temper)`; the options stay the CLI's.
 

@@ -36,6 +36,9 @@ goes to the dialog holds a new key, since the question tool refuses one: the ids
 sit beside it (`reason_ids`, `answer_ids`, `question_ids`), and the ids of the Scope drift options beside its list of
 labels (`drift_ids`). Its cases are in `temper-cases-40.sh` and `tests/mod/ids.test.ts`.
 
+- **M12 (WP08).** The backup push of the mod is removed: during a run every push is refused, to a `temper-backup/`
+  branch too.
+
 One real run on a Java 24 Maven project (3.2 hours of agent time, 12 tasks) lost most of its time to faults that existed
 before any code was written, and a Temper run on this very change (a plan line that could never finish in its time
 limit, three fix agents that changed nothing) showed most of them again. Each change below has its cases in
