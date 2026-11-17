@@ -10,8 +10,8 @@ _repo44() { # a fresh git repository under the run: one source file, every file 
   mkdir -p src; echo 'echo demo' > src/demo.sh; git add -A -- . ':(exclude).temper' ':(exclude).claude'; git commit -q -m base
 }
 _nogit44() { (cd "$WORKDIR" && rm -rf .git src); }   # no commit to stand on: no base commit is read into a state
-_x44() { # _x44 <python code over d, the JSON of temper next, that sets r>: prints r
-  python3 - "$1" "$("$TEMPER" next --json 2>/dev/null)" <<'PY'
+_x44() { # _x44 <python code over d, the JSON of temper next (or of the second argument), that sets r>: prints r
+  python3 - "$1" "${2:-$("$TEMPER" next --json 2>/dev/null)}" <<'PY'
 import json, re, sys
 try:
     d = json.loads(sys.argv[2])
@@ -283,11 +283,16 @@ PY
 )"
 
 # --- D30b, D30c: rule 1, before the approval no branch and no commit ---
+# the calls of the step: of the action, of every option of its question and before and after each launch
+_d30b="cs = ' '.join(list(d.get('calls') or []) + [c for o in opts(d) for c in o.get('calls') or []]
+  + [c for x in d.get('agents') or [] for c in (x.get('before') or []) + (x.get('after') or [])])
+r = 'branch=%s|commit=%s' % ('yes' if 'spec branch' in cs else 'no', 'yes' if 'spec commit' in cs or 'git commit' in cs else 'no')"
+assert_eq "check44: the reader of D30b sees a branch call before a launch and a commit call of a second option" \
+  "branch=yes|commit=no branch=no|commit=yes" \
+  "$(_x44 "$_d30b" '{"action": "work", "agents": [{"type": "temper:temper-plan", "before": ["temper spec branch demo"]}]}') $(
+    _x44 "$_d30b" '{"action": "ask", "ask": {"options": [{"calls": []}, {"calls": ["temper spec commit x"]}]}}')"
 fresh; _repo44; gpass intent
-assert_eq "D30b the step that leaves Intent runs no branch call and no commit call" "branch=no|commit=no" \
-  "$(_x44 "o = (opts(d) or [{}])[0] if d.get('action') == 'ask' else {'calls': d.get('calls') or []}
-cs = ' '.join(o.get('calls') or [])
-r = 'branch=%s|commit=%s' % ('yes' if 'spec branch' in cs else 'no', 'yes' if 'spec commit' in cs or 'git commit' in cs else 'no')")"
+assert_eq "D30b the step that leaves Intent runs no branch call and no commit call" "branch=no|commit=no" "$(_x44 "$_d30b")"
 fresh; _repo44; bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
 gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 echo 'echo early' > src/early.sh; git add src/early.sh >/dev/null 2>&1
