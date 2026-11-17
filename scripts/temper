@@ -1942,10 +1942,14 @@ cmd_group_gate() {
   echo "PASS: group $g"
 }
 
+# 9.8.5 (WP09): the verdict marker, printed once a verdict is recorded; temper go and the driver read it alone.
+# A reader that closed the pipe early (grep -q) never turns the call into a SIGPIPE: the verdict's exit code stands.
+_verdict() { ( trap '' PIPE; echo "VERDICT: $1 $2" ) 2>/dev/null || true; }   # <scope> <PASS|FAIL|PARKED>
+
 _group_gate_record() { # _group_gate_record <G> <PASS|FAIL> <reason> <timeout-s|"">: the group's gate and its status, in one
                        # write: a group is passed exactly while its gate says PASS (finished_at is when it passed). A gate that
                        # fails again after a PASS takes the group back to running; a parked group stays parked.
-  _groups_mutate group-gate "$1" "$2" "$3" "$4" "$(_now)" "${5:-}"
+  _groups_mutate group-gate "$1" "$2" "$3" "$4" "$(_now)" "${5:-}" && _verdict "group:$1" "$2"
 }
 
 # D-08: what a human does about a parked foreign commit; printed by the task gate that parks the group and by a refused reopen.
@@ -2379,6 +2383,7 @@ cmd_task_test() {
 # ledger row, so the tasks still running keep their work until a human resolves the park and reopens the group.
 _task_parked_refuse() { # _task_parked_refuse <N> <test|gate>
   [[ "$(_jget "$_T_CTX" gstatus)" == "parked" ]] || return 0
+  [[ "$2" == gate ]] && _verdict "group:$(_jget "$_T_CTX" group)" PARKED
   echo "FAIL: group $(_jget "$_T_CTX" group) is parked ($(_jget "$_T_CTX" gparked)); task $2 of Task $1 is refused and recorded nothing. Resolve the park, then temper group reopen $(_jget "$_T_CTX" group) --task N" >&2
   return 1
 }
@@ -2486,6 +2491,7 @@ print('\n'.join(json.loads(sys.argv[1])))" "$fshas")
     else
       echo "NEXT: park group $group"
     fi
+    _verdict "task:$n" FAIL
     return 1
   fi
 
@@ -2533,6 +2539,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
       _groups_mutate task-park "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$(_now)" "$group" "$sha" || return 1
       echo "FAIL: $reason"
       echo "NEXT: park group $group"
+      _verdict "task:$n" FAIL
       return 1
     fi
     mrg="$(git -C "$gabs" rev-parse HEAD)"; [[ "$mrg" == "$tip" ]] && mrg=""
@@ -2551,6 +2558,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
   _groups_mutate feedback-resolved "$n" || return 1
   echo "PASS: Task $n"
   echo "NEXT: schedule"
+  _verdict "task:$n" PASS
 }
 
 # temper integrate: merge every passed group branch into the feature branch (dependency order, --no-ff),
@@ -2559,7 +2567,8 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
 # (the worktrees and branches stay for diagnosis). The verdict lives in groups.json 'integration'; gate build
 # reads it. Exit 0 PASS or a rerun, 1 FAIL, 3 a protected branch or an unsatisfied upstream gate (ADR 0009).
 _integ_record() { # _integ_record <verdict> <reason> [group] [files-csv] [foreign-json]
-  _groups_mutate integration "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)"
+  _groups_mutate integration "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)" \
+    && _verdict integrate "$1"
 }
 
 cmd_integrate() {
@@ -3431,6 +3440,8 @@ cmd_gate() {
   # --brief (9.8.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
   # passed row was context the session read again on every later turn.
   python3 -I "$SCRIPTS_DIR/ledger_ops.py" print-rows "$reqs_json" "$brief"
+  # the marker last, of a recorded verdict only; the commit hook's reader is a person
+  [[ "$record" == "1" && "$from_hook" != "1" ]] && _verdict "gate:$stage" "$verdict"
 
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
 }

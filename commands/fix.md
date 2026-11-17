@@ -74,7 +74,8 @@ RCA question ("Proceed to Fix"), then the Fix stage, Review, Check and the commi
 question's exact options. Follow the sections "The loop", "Every question" and "Agents" of
 `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` (read them now; that file was not filled in when you read
 it: wherever it writes the CLAUDE_PLUGIN_ROOT variable, use the folder that holds
-${CLAUDE_PLUGIN_ROOT}/scripts/temper). Two things are this command's own:
+${CLAUDE_PLUGIN_ROOT}/scripts/temper). A call that prints a `VERDICT:` line recorded a verdict, whatever its exit code:
+it is no failure. Two things are this command's own:
 
 - **A change typed at the RCA question** (for example "look at the auth module instead") runs the RCA
   agent again with that direction and the same `RCA file:` line, prints the panel

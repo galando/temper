@@ -1,5 +1,5 @@
 // The scripted orchestrator: commands/temper.md as a loop over `temper next --json`, with scripted agents and a scripted person.
-import { driveFixSync, driveSync } from '../../hooks/temper-mod/core/driver'
+import { driveFixSync, driveSync, recordedVerdict } from '../../hooks/temper-mod/core/driver'
 import type { DriveEnd, GoQuestion, SyncPort } from '../../hooks/temper-mod/core/driver'
 import { Denied, TEMPER, World } from './world'
 import type { Agent, Json, Person } from './world'
@@ -15,8 +15,10 @@ export type Script = {
 
 const looksLikeCommand = (s: string): boolean => /^(\/|git |gh |mkdir |cp |rm |bash |python3 |cd |t=)/.test(s.trim()) && !/each file the run changed|\{each/.test(s)
 
-// F4: a call that exits non-zero stops its action, except an agent's gate call (named `gate`) that printed `-> FAIL`: it recorded a verdict.
-// gateCall 'any': every `temper gate <stage>` call of the list, as the run driver runs an answer's calls (runAll).
+// F4: a call that exits non-zero stops its action, unless it recorded a verdict (9.8.5, WP09): any call whose own
+// marker `VERDICT: <scope> <verdict>` is in its output, by the rule of the driver's recordedVerdict. The way back for
+// a CLI that prints no marker (the replay of 9.8.4 and the base): a gate call (named `gate`, or 'any' for every
+// `temper gate <stage>` call of an answer) whose output holds no VERDICT: line and printed `-> FAIL` recorded one too.
 export function runCalls(w: World, calls: string[], fills: Record<string, string> = {}, gateCall = '', stopOnFail = false): boolean {
   for (const c of calls) {
     const text = w.fill(c, fills)
@@ -24,7 +26,8 @@ export function runCalls(w: World, calls: string[], fills: Record<string, string
     const r = w.run(text)
     w.trace.push(`  call ${text.replace(/^\S*\/scripts\/temper /, 'temper ').slice(0, 80)} -> ${r.code}`)
     const isGate = gateCall === 'any' ? / gate [a-z]+/.test(c) : gateCall !== '' && c === gateCall
-    if (r.code !== 0 && !(isGate && r.out.includes('-> FAIL'))) {
+    const old = isGate && !/^VERDICT: /m.test(r.out) && r.out.includes('-> FAIL')
+    if (r.code !== 0 && recordedVerdict(text, r.out) === null && !old) {
       if (stopOnFail) {
         w.trace.push('  (the call failed: its action stops, and the loop asks `next` again)')
         return false

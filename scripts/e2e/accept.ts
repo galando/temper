@@ -588,15 +588,24 @@ export const integrateFail = (w: World): void => {
   const agents: Record<string, Agent> = { ...AGENTS, 'temper:temper-plan': planner({ tasks: integrationCheck }), 'temper:temper-build': fixer }
   let reached = ''
   const base = defaultPerson()
+  const atQuestion = (wd: World): boolean =>
+    fixedAfterFail || (ran(wd, /\/scripts\/temper integrate\b/) >= 0 && integrationFailed(wd))
   const person: Person = (ask, wd) => {
-    if (fixedAfterFail || (ran(wd, /\/scripts\/temper integrate\b/) >= 0 && integrationFailed(wd))) {
+    if (atQuestion(wd)) {
       reached = idOf(ask)
       return null
     }
     return base(ask, wd)
   }
+  // the scenario ends at the question itself (WP09): in driver mode a person who answers nothing is a hand back of the
+  // driver ("nobody answered the question"), which the count would read as the failed integrate's
+  const stopAt = (wd: World, n: Json): boolean => {
+    if (n.action !== 'ask' || !atQuestion(wd)) return false
+    reached = idOf(n.ask as Json)
+    return true
+  }
   // a failed after call stops its action and the loop asks next, as commands/temper.md says: a hand back is counted
-  promise('D07', () => orchestrate(w, script({ agents, person, afterFailStops: true })))
+  promise('D07', () => orchestrate(w, script({ agents, person, stopAt, afterFailStops: true })))
   expect(ran(w, /\/scripts\/temper integrate\b/) >= 0 && (fixedAfterFail || integrationFailed(w)), 'D07 integrate ran and recorded FAIL')
   expect(reached !== '' && w.counts.handbacks === 0, `D07 a failed integrate is carried to its question with 0 hand backs (${w.counts.handbacks} hand backs; question ${reached || 'none'})`)
   ownAutos(w)

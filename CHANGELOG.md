@@ -16,6 +16,9 @@ All notable changes to Temper are documented here. The plugin version lives in
 - M11 (WP08): when only the commit gate's own row fails, the first option, Check again, runs the gate again.
 - M13 (WP08): the environment agent is no longer offered; the question shows the proposed setup block whole.
 - F2 (WP08): a Design answer newer than the tasks passes its row with a note and goes to every Build task.
+- WP09: a failed group check or a failed integrate is a verdict for every carrier and reaches its question with no
+  hand back. `temper gate`, `task gate`, `group gate` and `integrate` print `VERDICT: <scope> <verdict>` once they
+  recorded one; `temper go` (its new key `verdicts`), the mod's run driver and the scripted loop read that line only.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

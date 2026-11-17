@@ -70,7 +70,8 @@ only where this section says so. When it lists `setup`, run those calls first, e
 Check's run, an armed run's moves) and prints one compact object at the first point that needs you: agents to
 launch, a question to ask, steps to do, a wait, or the end. Its `ran` lists what it ran; say nothing
 about those. It never runs a call only the person may cause: the calls of the option the person
-chose are yours to run, as below. When it prints `action: error`, say its `say` in one line and run
+chose are yours to run, as below. A call that prints a `VERDICT:` line recorded a verdict: it is no failure,
+whatever its exit code. When it prints `action: error`, say its `say` in one line and run
 `temper next --json` once to see the full state. `temper next --json` stays the full view (the mod and
 `/temper:status` read it); the loop only needs `temper go`.
 
@@ -127,9 +128,8 @@ Run the calls of one action in one Bash call, one per line, when they are only `
 
 **A failed call stops its action.** A call or a step that exits non-zero stops the action it belongs to:
 run no later call or step of it, say in one line which one failed, and run `temper next --json` again.
-One exception: an agent's gate call is named `gate` (the last of its `after` calls). When it prints
-`temper gate {stage} -> FAIL`, it has recorded a verdict that `next` asks about, so the action goes on.
-Any other failure of it still stops the action.
+One exception: a call that prints a `VERDICT:` line recorded a verdict that `next` asks about, whatever its
+exit code, so the action goes on: run the calls after it, then `temper go`.
 
 ## Every question
 
@@ -169,7 +169,8 @@ Any other failure of it still stops the action.
   edit those files for an answer. Then the action's `gate` call and `temper go`, all in one Bash call.
   Never list them as text to answer by typing.
 - **A refused call.** When the mod or the CLI refuses a call an answer allowed, run it once more; when
-  it is refused again, say so in one line and ask the question again.
+  it is refused again, say so in one line and ask the question again. A call that printed a `VERDICT:` line was
+  not refused.
 
 ## Agents
 

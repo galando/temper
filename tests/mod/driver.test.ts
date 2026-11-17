@@ -1,16 +1,12 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, recordedVerdict, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
-import * as driverCore from '../../hooks/temper-mod/core/driver'
 
 // WP09: recordedVerdict(call, out) is the rule of `recorded` in scripts/go.py: the verdict when the call is one of
 // `gate <stage>`, `task gate <N>`, `group gate <G>` or `integrate` and the last line of its output that is a marker
-// (`VERDICT: <scope> <PASS or FAIL or PARKED>`) names the call's scope; else none. It is read through the module object
-// until the export exists, so this file type checks while its tests fail.
-const recordedVerdict = (call: string, out: string): unknown =>
-  (driverCore as unknown as { recordedVerdict: (call: string, out: string) => unknown }).recordedVerdict(call, out)
+// (`VERDICT: <scope> <PASS or FAIL or PARKED>`) names the call's scope; else none.
 
 const CLI = '/p/scripts/temper'
 
@@ -215,7 +211,7 @@ describe('the driver carries a run from the request to the end', () => {
       goes: [{ action: 'work', agents: [b] }, { action: 'none', say: 'end' }],
       ends: { ag1: { text: 'TASK 1: stopped: the Cases contradict each other', ms: 5 } },
       fail: call => / task gate 1 /.test(call),
-      out: call => (/ task gate 1 /.test(call) ? 'FAIL: no green run for this task and attempt\nNEXT: park group G1' : ''),
+      out: call => (/ task gate 1 /.test(call) ? 'FAIL: no green run for this task and attempt\nNEXT: park group G1\nVERDICT: task:1 FAIL' : ''),
     })
     const end = await drive(p, CLI, null)
     expect(end).toEqual({ kind: 'done', text: 'end' })
@@ -256,8 +252,8 @@ describe('the driver carries a run from the request to the end', () => {
   })
 
   test('a task gate verdict is told from a call that broke', () => {
-    expect(taskVerdict('/p/scripts/temper task gate 3 --model haiku --if-running', 'FAIL: no green run\nNEXT: retry Task 3 on haiku')).toBe(true)
-    expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'FAIL: group G1 is parked (Task 1 failed 3 attempts); task gate of Task 2 is refused')).toBe(true)
+    expect(taskVerdict('/p/scripts/temper task gate 3 --model haiku --if-running', 'FAIL: no green run\nNEXT: retry Task 3 on haiku\nVERDICT: task:3 FAIL')).toBe(true)
+    expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'VERDICT: group:G1 PARKED\nFAIL: group G1 is parked (Task 1 failed 3 attempts); task gate of Task 2 is refused')).toBe(true)
     expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'Traceback (most recent call last)')).toBe(false)
     expect(taskVerdict('/p/scripts/temper integrate', 'FAIL: interface missing\nNEXT: x')).toBe(false)
   })
@@ -289,7 +285,7 @@ describe('the driver carries a run from the request to the end', () => {
 
   test('a failed call, an error action and a gate that records FAIL', async () => {
     const g = agent('temper:temper-plan', [`${CLI} gate plan --brief`])
-    const { p: p1 } = port({ goes: [{ action: 'work', agents: [g] }, { action: 'none', say: 'end' }], fail: c => c.includes('gate plan'), out: c => (c.includes('gate plan') ? 'temper gate plan -> FAIL' : '') })
+    const { p: p1 } = port({ goes: [{ action: 'work', agents: [g] }, { action: 'none', say: 'end' }], fail: c => c.includes('gate plan'), out: c => (c.includes('gate plan') ? 'temper gate plan -> FAIL\nVERDICT: gate:plan FAIL' : '') })
     expect((await drive(p1, CLI, null)).kind).toBe('done')
     const { p: p2 } = port({ goes: [{ action: 'error', say: 'temper next failed' }] })
     expect(await drive(p2, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'temper next failed' })

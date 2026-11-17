@@ -21,9 +21,6 @@ for (const [name, s] of Object.entries({ ...SLOW_SCENARIOS, ...BROKEN_SCENARIOS,
   SCENARIOS[name] = s.run
   ONLY[name] = s.modes
 }
-// policy-run (WP08) runs in plain and mod mode; its driver mode is WP09's (temper go reports a failed group gate as an
-// error, so the driver hands the run back).
-ONLY['policy-run'] = ['plain', 'mod']
 // The expected to fail list (scripts/selftest/expected-fail.txt), read once: a line it cannot read, or an e2e line that
 // names no scenario or a mode its scenario never runs in, fails the run at once (scripts/e2e/xfail.ts).
 let LISTED: ReturnType<typeof loadList> = []

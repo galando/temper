@@ -527,7 +527,7 @@ class BuildPart:
             lines.append("What failed (the first FAIL lines of its output): %s." % "; ".join(fl))
         a = self.agent("build", lines)
         # the commit clears the group's gate: the next action checks the group as an ordinary call, and a FAIL there asks
-        # the group question again (a group gate prints no `-> FAIL`, so as an agent's gate call a FAIL would stop the run)
+        # the group question again (that call records its verdict and prints its marker, so `temper go` goes on to ask)
         a["after"].append(self.c("group fix %s --commit" % gid))
         return {"action": "work", "stage": "build", "calls": [], "agents": [a],
                 "say": "Build: one fix agent works on group %s's merged tree%s. %s" % (gid, on_model([a]), goes_on(False))}

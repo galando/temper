@@ -86,11 +86,32 @@ export function dialogQuestions(questions: unknown, q: GoQuestion): unknown[] | 
   }]
 }
 
-// A Build task's gate run after its agent (`task gate N`): a failed verdict exits 1 and says what comes next (a retry,
-// a stronger model, the group parked), and a gate refused because the group is parked names the park. Both are the
-// CLI's verdict, which `temper go` turns into the next step or the person's question, never a call that broke.
+// 9.8.5 (WP09): `gate <stage>`, `task gate <N>`, `group gate <G>` and `integrate` print one line once they recorded a
+// verdict, `VERDICT: <scope> <PASS or FAIL or PARKED>`. The rule of `recorded` in scripts/go.py: the verdict when the
+// call is one of the four and the last marker line of its output names the call's scope (a task gate's own task, or any
+// group: a parked group refuses it); else null. Such a call is no failure whatever its exit code: `temper go` asks
+// next. The marker decides only that the driver goes on; what comes next is always the CLI's.
+export function recordedVerdict(call: string, out: string): 'PASS' | 'FAIL' | 'PARKED' | null {
+  const c = /^(?:\S*\/)?temper (?:gate ([a-z]+)|task gate (\d+)|group gate (G\d+)|(integrate))(?:\s|$)/
+    .exec(call.trim())
+  if (c === null) return null
+  const want = c[1] !== undefined ? `gate:${c[1]}`
+    : c[2] !== undefined ? `task:${c[2]}`
+    : c[3] !== undefined ? `group:${c[3]}` : 'integrate'
+  const marks = [...out.matchAll(/^VERDICT: (\S+) (PASS|FAIL|PARKED)$/gm)]
+  const last = marks[marks.length - 1]
+  if (last === undefined) return null
+  const scope = last[1] as string
+  const verdict = last[2] as 'PASS' | 'FAIL' | 'PARKED'
+  const group = /^group:G\d+$/.test(scope)
+  if (verdict === 'PARKED' && !group) return null
+  return scope === want || (want.startsWith('task:') && group) ? verdict : null
+}
+
+// A Build task's gate run after its agent (`task gate N`) that recorded a verdict: a failed one (a retry, a stronger
+// model, the group parked) or one refused because the group is parked. What else it decided is left to WP16.
 export function taskVerdict(call: string, out: string): boolean {
-  return / task gate \d+ /.test(` ${call} `) && (/^NEXT: /m.test(out) || /\bis parked\b/.test(out))
+  return / task gate \d+ /.test(` ${call} `) && recordedVerdict(call, out) !== null
 }
 
 // A CLI panel (`temper panel ...`) as the few rows the driver shows. A mod's log line is one row with the plugin's name
@@ -278,7 +299,7 @@ function* runAll(calls: string[], fills: Record<string, string>): Steps<Ran | nu
   let last: Ran = { code: 0, out: '' }
   for (const c of calls) {
     last = yield* run(fill(c, fills))
-    if (last.code !== 0 && !(/ gate [a-z]+/.test(c) && last.out.includes('-> FAIL'))) return null
+    if (last.code !== 0 && recordedVerdict(fill(c, fills), last.out) === null) return null
   }
   return last
 }
@@ -449,7 +470,8 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
           for (const c of a.after ?? []) {
             const r = yield* run(fill(c, { ms: end.ms === null ? 'none' : String(Math.round(end.ms)) }))
             if (/ panel [a-z]+/.test(c) && r.code === 0) yield* show(compactPanel(r.out).join('\n'))
-            if (r.code !== 0 && !(c === a.gate && r.out.includes('-> FAIL')) && !taskVerdict(c, r.out)) return handback(`an after call of the ${a.type} agent failed`)
+            if (r.code !== 0 && recordedVerdict(c, r.out) === null)
+              return handback(`an after call of the ${a.type} agent failed`)
           }
         }
         if (failed !== null) return handback(failed)

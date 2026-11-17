@@ -56,7 +56,6 @@ e2e:repair-finding             WP24           D05
 e2e:repair-worse               WP24           D37e
 e2e:group-fail                 WP16           D06
 e2e:group-fail-twice           WP16           D06
-e2e:integrate-fail             WP09           D07
 e2e:budget-stop                WP10           D08
 e2e:criteria-by-cli            WP27           D10
 e2e:design-on-ask              WP14           D20

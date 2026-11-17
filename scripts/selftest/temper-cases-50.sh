@@ -56,6 +56,21 @@ assert_eq "verdict: gate prints the marker as its last line" "VERDICT: gate:inte
 assert_eq "verdict: the line temper gate <stage> -> <verdict> is still printed" "1|1|1|1" \
   "$(_v50n "$_v50pass" 'temper gate intent -> PASS')|$(_v50n "$_v50pass" 'VERDICT: gate:intent PASS')|$(
     _v50n "$_v50fail" 'temper gate intent -> FAIL')|$(_v50n "$_v50fail" 'VERDICT: gate:intent FAIL')"
+# the commit hook runs the gate for a person: the verdict is recorded, and no marker is printed
+fresh
+_v50hook="$("$TEMPER" gate intent --from-hook 2>/dev/null)"
+_v50kept="$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['intent']['verdict'])" 2>&1)"
+_v50out="$("$TEMPER" gate intent 2>/dev/null)"
+assert_eq "verdict: a gate the commit hook runs prints no marker" "1|0|PASS|1" \
+  "$(_v50n "$_v50hook" 'temper gate intent -> PASS')|$(grep -c '^VERDICT:' <<<"$_v50hook")|$_v50kept|$(
+    _v50n "$_v50out" 'VERDICT: gate:intent PASS')"
+# a gate of another spec folder is checked and recorded nowhere (its record is 0): no marker
+fresh; mkdir -p .temper/specs/other; cp .temper/specs/demo/intent.md .temper/specs/other/intent.md
+_v50other="$("$TEMPER" gate intent --spec-path .temper/specs/other 2>/dev/null)"
+_v50out="$("$TEMPER" gate intent 2>/dev/null)"
+assert_eq "verdict: a gate that records nothing prints no marker" "1|1|0|1" \
+  "$(_v50n "$_v50other" 'temper gate intent -> PASS')|$(grep -c '(not recorded: ' <<<"$_v50other")|$(
+    grep -c '^VERDICT:' <<<"$_v50other")|$(_v50n "$_v50out" 'VERDICT: gate:intent PASS')"
 
 # --- the marker of `group gate` ---
 _v50run true true; _v50g '"status": "running"' running
