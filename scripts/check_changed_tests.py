@@ -10,8 +10,8 @@ line the statement is taken from the base, a line that ends in a backslash runni
 is its first quoted string. A statement that is in the tree as it was is not a change: each of its lines, its indent
 left out, is a whole line of the tree, in a row, and the lines of a statement of code are looked for among the lines
 of code only (a line that starts with `#` or `//` is a comment), so an assertion commented out or with a word added
-at its end is a change. Any other one fails unless its name is the text of the code span that is the first cell of a row of the
-table of `docs/plans/one-go/changed-tests.md` (a code span elsewhere on that page names nothing).
+at its end is a change. Any other one fails unless its name is the text of the code span that is the first cell of a
+row of the table of `docs/plans/one-go/changed-tests.md` (a code span elsewhere on that page names nothing).
 So a changed expected value under an unchanged name is a changed assertion, and must be listed.
 
 The second base (row D84b): for the case files 43 to 46, `scripts/e2e/accept.ts`, `scripts/e2e/slow.ts`,
