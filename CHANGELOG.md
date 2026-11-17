@@ -53,7 +53,8 @@ labels (`drift_ids`). Its cases are in `temper-cases-40.sh` and `tests/mod/ids.t
 - **M13 (WP08).** With the mod on, `temper doctor` with `--write` is the person's call: a setup block reaches the
   config only as the call of the option the person picked; `doctor` and `doctor --propose` still only read.
 - **M14 (WP08).** The mod guards the files that turn a gate row as it guards the verdicts: the store of reused passes
-  (`.git/temper-results.json`), `.temper/preflight.json`, `.temper/decisions.json` and `.temper/setup-tried.json`.
+  (`.git/temper-results.json`), `.temper/preflight.json`, `.temper/decisions.json`, `.temper/setup-tried.json` and
+  the rows of the Check run made ahead (`.temper/check/ahead.json`), which Check adopts.
 
 One real run on a Java 24 Maven project (3.2 hours of agent time, 12 tasks) lost most of its time to faults that existed
 before any code was written, and a Temper run on this very change (a plan line that could never finish in its time
