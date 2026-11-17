@@ -11,6 +11,7 @@ All notable changes to Temper are documented here. The plugin version lives in
 - M4 (WP08): the policy never takes a step back to Plan; the armed run parks and the step back is yours.
 - M5 (WP08): a step back to Intent, Plan or Design turns the run back to asking at every stage.
 - M6 (WP08): under the policy, a criterion only you can confirm parks the run; the next question is the confirmation.
+- M7 (WP08): the Check brief records the test run with evidence run, and the CLI checks a small change at Check.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

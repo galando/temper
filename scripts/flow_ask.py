@@ -627,6 +627,10 @@ class AskPart:
             a["gate"] = a["after"][-1]
             return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
                     "say": "%s: the Review agent checks your small change%s. %s" % (LABEL.get(r.stage, r.stage), on_model([a]), goes_on(False))}
+        if step == "check" and self.cli_check():
+            # M7 of WP08: the CLI checks the tree itself, with no agent, as stage_work does (a claimed run counts for nothing)
+            return {"action": "work", "stage": r.stage, "calls": [self.c("check run"), self.c("gate check")], "agents": [],
+                    "say": "%s: the CLI checks the tree after your small change (no agent)." % LABEL.get(r.stage, r.stage)}
         if step == "check":
             a = self.agent("check", ["Ad-hoc change: check the tree as it is now; the change touched %s." % files])
             a["after"].append(self.c("gate check"))
