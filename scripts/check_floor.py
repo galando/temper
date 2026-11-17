@@ -22,7 +22,8 @@ runner counts no listed scenario.
 
 Nothing raises a `final`: a `final` above its value in the commit of the file that first added the key fails, read
 from the history of the file in git (a key no commit holds yet is exempt). A rule that read only the file as it is would
-be passed by the very commit that raises a value. In `launches` of a `final`, a type it does not name stands at 0.
+be passed by the very commit that raises a value. A `final` removed, or set to a value that is no number, loosens
+its bound and fails the same way. In `launches` of a `final`, a type it does not name stands at 0.
 A count of `final` is an upper bound; `true` and `false` must be equal. Exit 0 when every rule holds, else 1 (2 for
 a wrong call). Python 3 and git only.
 """
@@ -93,9 +94,15 @@ def first_values(path, pick):
     return out
 
 
-def raised(cur, first):
-    """The lines for each value of cur above its value in first (a bool that differs; a key first does not hold is exempt)."""
+def raised(cur, first, zero=()):
+    """The lines for each value of cur above its value in first (a bool that differs; a key first does not hold is exempt),
+    and for each value of first that cur dropped or holds as no number: a removed bound is a raised one. A type that a
+    `launches` dict of `zero` (the paths of those still there) no longer names stands at 0, which lowers it."""
     out = []
+    for k, f in sorted(first.items()):
+        if f is None or k in cur or k.rsplit("/", 1)[0] in zero:
+            continue
+        out.append("%s is removed, its first committed value is %s: a final is never removed" % (k, json.dumps(f)))
     for k, v in sorted(cur.items()):
         if k not in first:
             continue
@@ -103,9 +110,18 @@ def raised(cur, first):
         if isinstance(v, bool) or isinstance(f, bool):
             if v != f:
                 out.append("%s is %s, its first committed value is %s: a final is never changed" % (k, json.dumps(v), json.dumps(f)))
+        elif isinstance(f, (int, float)) and not isinstance(v, (int, float)):
+            out.append("%s is %s, its first committed value is %s: a final is never removed" % (k, json.dumps(v), f))
         elif isinstance(v, (int, float)) and isinstance(f, (int, float)) and v > f:
             out.append("%s is %s, above its first committed value %s: a final is never raised" % (k, v, f))
     return out
+
+
+def launch_dicts(doc):
+    """The paths of the `launches` dicts of the scenarios' finals (where a type not named stands at 0)."""
+    return {"scenarios/%s/%s/final/launches" % (s, m) for s, modes in (doc.get("scenarios") or {}).items()
+            for m, e in (modes or {}).items()
+            if isinstance(e, dict) and isinstance(e.get("final"), dict) and isinstance(e["final"].get("launches"), dict)}
 
 
 def within(now, final, where):
@@ -291,7 +307,7 @@ def main(argv):
         return 1 if problems else 0
 
     problems += shape(doc)
-    problems += raised(finals(doc), first_values(floor, finals))
+    problems += raised(finals(doc), first_values(floor, finals), launch_dicts(doc))
     if final:
         for s, modes in sorted((doc.get("scenarios") or {}).items()):
             for m, e in sorted((modes or {}).items()):

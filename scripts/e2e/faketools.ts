@@ -19,14 +19,17 @@
 //                           (a test that is red on the current code)
 //   MOCK_FLAKY_BASE         a class that fails the first time it runs at all and passes after (a flaky test)
 //   MOCK_FLAKY_LATER        a class that passes on the base tree and fails once, the first time it runs on another tree
-//                           (a flaky test that a gate meets after the base). The base tree is the tree in
-//                           $MOCK_DB/flaky-later.base (`git rev-parse HEAD^{tree}`), or the first tree it runs on. When
-//                           it fails, $MOCK_DB/flaky-later.failed holds the tree and the number of mvn lines MOCK_LOG had.
+//                           (a flaky test that a gate meets after the base). The tree is the code's: the tree of the
+//                           pom's folder at HEAD (`git rev-parse HEAD:./` there), so a commit of the run's spec or
+//                           config leaves the code on the base. The base tree is the one in $MOCK_DB/flaky-later.base,
+//                           or the first tree it runs on. When it fails, $MOCK_DB/flaky-later.failed holds the tree and
+//                           the number of mvn lines MOCK_LOG had.
 // A class runs when the run has no filter, or when its filter names it. In a project with the Maven layout
 // (src/test/java under the pom's folder) a run with no filter runs Shape and Bytes only once their test file is there, as
 // Maven runs the tests that exist; the project of the replay has no such folder, and its suite names both from the start.
 //
-// Each call is one line of MOCK_LOG, written when it ends: `mvn <args> jdk=<n> db=<up|down> exit=<code> port=<port>`.
+// Each call is one line of MOCK_LOG, written when it ends:
+//   `mvn <args> jdk=<n> db=<up|down> tree=<HEAD^{tree} where it ran> exit=<code> port=<port>`.
 // A whole suite run is a line with no -Dtest=. A run the CLI's runner kills at its limit (a SIGKILL to its process
 // group, scripts/run_env.py) cannot write its own line: while MOCK_SLOW_S is set, a watcher in a process group of its
 // own writes it with exit=124, the code the runner reports for a time out.
@@ -39,7 +42,7 @@ import type { World } from './world'
 
 export const MVN = `#!/usr/bin/env bash
 args="$*"
-pre="mvn $args jdk=\${TOOL_JDK:-21} db=$([ -f "$MOCK_DB/up" ] && echo up || echo down)"
+pre="mvn $args jdk=\${TOOL_JDK:-21} db=$([ -f "$MOCK_DB/up" ] && echo up || echo down) tree=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo none)"
 post="port=\${IT_POSTGRES_PORT:-}"
 mark="$MOCK_DB/.ended.$$"
 if [ -n "\${MOCK_SLOW_S:-}" ]; then
@@ -71,7 +74,7 @@ if runs "\${MOCK_FLAKY_BASE:-}" && [ ! -f "$MOCK_DB/flaky-base.ran" ]; then
   : > "$MOCK_DB/flaky-base.ran"; failed="$failed $MOCK_FLAKY_BASE"
 fi
 if runs "\${MOCK_FLAKY_LATER:-}"; then
-  tree="$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo none)"
+  tree="$(git -C "$root" rev-parse HEAD:./ 2>/dev/null || echo none)"
   [ -f "$MOCK_DB/flaky-later.base" ] || echo "$tree" > "$MOCK_DB/flaky-later.base"
   if [ "$(cat "$MOCK_DB/flaky-later.base")" != "$tree" ] && [ ! -f "$MOCK_DB/flaky-later.failed" ]; then
     echo "$tree $(grep -c '^mvn ' "$MOCK_LOG")" > "$MOCK_DB/flaky-later.failed"; failed="$failed $MOCK_FLAKY_LATER"
@@ -147,13 +150,13 @@ export function installTools(w: World): Tools {
 }
 
 // One line of the tool log, read back.
-export type ToolRun = { line: string; args: string; exit: number | null; suite: boolean }
+export type ToolRun = { line: string; args: string; exit: number | null; suite: boolean; tree: string }
 export function toolRuns(log: string): ToolRun[] {
   if (!fs.existsSync(log)) return []
   return fs.readFileSync(log, 'utf8').split('\n').filter(l => l.startsWith('mvn ')).map(line => {
     const exit = / exit=(\d+) port=/.exec(line)
     const args = line.replace(/^mvn /, '').replace(/ jdk=.*$/, '')
-    return { line, args, exit: exit ? Number(exit[1]) : null, suite: !/-Dtest=/.test(args) }
+    return { line, args, exit: exit ? Number(exit[1]) : null, suite: !/-Dtest=/.test(args), tree: / tree=(\S+)/.exec(line)?.[1] ?? '' }
   })
 }
 

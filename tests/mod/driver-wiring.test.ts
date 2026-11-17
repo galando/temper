@@ -36,7 +36,7 @@ function engine(on: On, w: ReturnType<typeof world>, goes: unknown[], opts: { ag
     spawned.push(e as never)
     return { model: 'opus', agentId: `ag${spawned.length}` }
   })
-  on('agent.list', () => ({ value: spawned.map((s, i) => ({ id: `ag${i + 1}`, description: 'Temper', type: s.subagent_type ?? '', status: (opts.agentStatus ?? 'completed') as 'completed' })) }))
+  on('agent.list', () => ({ value: spawned.map((s, i) => ({ id: `ag${i + 1}`, description: 'Temper', type: s.subagent_type ?? '', status: (opts.agentStatus ?? 'completed') as 'completed' })) as never }))
   on('clock.now', () => ({ value: Date.now() }))
   const logged: string[] = []
   on('ui.log', ($, e) => {

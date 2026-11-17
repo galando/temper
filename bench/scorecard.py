@@ -10,16 +10,19 @@ of WP32 is a third block in a folder of its own. Each block gives, by task kind 
 runs, the cost and the wall time (mean, median, minimum and maximum), the dialogs (the distinct dialog indices of
 person.jsonl, else run.json's `questions`), the hand backs (a run with the mod whose main session took turns), the
 hidden tests, the rules met on a vague task, the launches, seconds and dollars by agent type (bench/agentlog.py, the
-type matched whole), the Reviews a run and the steps back the person chose (an answer whose move is `back`).
+type matched whole), the Reviews a run, the steps back to Plan the person chose (an answer whose move is `back` and
+whose option goes back to Plan, the `to` of its person.jsonl line) and the blocked tasks (the distinct tasks an agent
+marked with `temper task blocked N` and the CLI took).
 
 Cost has one source: the SDK's own result messages, as run.json holds them (`cost_usd`). bench/loop.py prices the same
 requests from Claude Code's logs and its `--check` compares the two; the scorecard reads run.json only.
 
 --gate holds one block against the pass lines of part H of docs/plans/one-go/done.md and writes FILE (the release's is
-docs/evidence/scorecard-9.8.5.json): `bug`, `clear` and `vague` (cost and time against the plain block, the dialogs, no
-clean run handed back), `hidden` (a pass rate not below the round before), `rules_met` (at least 95% on the vague
-tasks), `reviews` (the share of runs with two or more Reviews at most half of the round before) and `steps_back` (not
-above the round before). --arm names the block (default: the `temper` block of the last folder given, the round after);
+docs/evidence/scorecard-9.8.5.json): `bug`, `clear` and `vague` (cost and time against the plain block, no clean run
+handed back; 2 dialogs, and on a vague task one more for every four Blocking answers), `hidden` (a pass rate not below
+the round before), `rules_met` (at least 95% on the vague tasks), `reviews` (the share of runs with two or more Reviews
+at most half of the round before) and `steps_back` (the steps back to Plan and the blocked tasks, each not above the
+round before: row D96). --arm names the block (default: the `temper` block of the last folder given, the round after);
 --before the round before (default: the `temper` block of the first folder, when there are two or more); --plain the
 plain Claude Code block (default: the `vanilla` block of the gated arm's folder, else of any folder). A line with no
 data is `"pass": null`. Exit 1 when a line with data fails. Standard library only; no model call.
@@ -27,6 +30,7 @@ data is `"pass": null`. Exit 1 when a line with data fails. Standard library onl
 import json
 import math
 import os
+import re
 import statistics as st
 import sys
 
@@ -77,6 +81,27 @@ def main_turns(run):
     return len(seen)
 
 
+def blocked_tasks(run):
+    """The distinct tasks the agents marked with `temper task blocked N` that the CLI took (its result no error)."""
+    calls, done = {}, set()
+    for meta in agentlog.metas(run):
+        for m in agentlog.log_lines(meta):
+            for c in (m.get("message") or {}).get("content") or []:
+                if not isinstance(c, dict):
+                    continue
+                if c.get("type") == "tool_use" and c.get("name") == "Bash":
+                    hit = re.search(r"\btask blocked (\d+)\b", str((c.get("input") or {}).get("command") or ""))
+                    if hit:
+                        calls[c.get("id")] = int(hit.group(1))
+                elif c.get("type") == "tool_result" and c.get("tool_use_id") in calls and not c.get("is_error"):
+                    text = c.get("content")
+                    text = text if isinstance(text, str) else " ".join(
+                        str(x.get("text", "")) for x in text or [] if isinstance(x, dict))
+                    if "FAIL:" not in text:
+                        done.add(calls[c["tool_use_id"]])
+    return len(done)
+
+
 def one(run):
     r = read(os.path.join(run, "run.json"), {}) or {}
     g = read(os.path.join(run, "grade.json"), {}) or {}
@@ -102,7 +127,8 @@ def one(run):
         "agent_secs": {t: round(agentlog.subagent_secs(run, t)) for t in types},
         "agent_cost": {t: round(agentlog.kind_cost(run, t), 4) for t in types},
         "reviews": sum(1 for a in ag if a["type"] == "temper:temper-review"),
-        "steps_back": sum(1 for p in person if p.get("move") == "back"),
+        "steps_back": sum(1 for p in person if p.get("move") == "back" and p.get("to") == "plan"),
+        "blocked": blocked_tasks(run),
         "plugin_commit": r.get("plugin_commit"), "plugin_version": r.get("plugin_version"),
     }
 
@@ -125,13 +151,16 @@ def cell(runs):
     return {
         "runs": len(runs), "cost": spread([x["cost"] for x in runs]), "wall": spread([x["wall"] for x in runs]),
         "dialogs": spread([x["dialogs"] for x in runs]),
-        "dialogs_over": sum(1 for x in runs if x["dialogs"] > DIALOGS + math.ceil(x["blocking"] / 4)),
+        # D90 and D91 promise 2 dialogs; only D92, a vague task, one more for every four Blocking answers
+        "dialogs_over": sum(1 for x in runs
+                            if x["dialogs"] > DIALOGS + (math.ceil(x["blocking"] / 4) if x["kind"] == "vague" else 0)),
         "clean_handed_back": sum(1 for x in runs if x["clean"] and x["handed_back"]),
         "hidden_rate": round(hp / ht, 4) if ht else None,
         "rules_met": round(sum(a for a, _ in rules) / max(sum(b for _, b in rules), 1), 4) if rules else None,
         "launches": dict(sorted(launches.items())),
         "two_reviews_share": round(sum(1 for x in runs if x["reviews"] >= 2) / len(runs), 4) if runs else None,
         "steps_back": spread([x["steps_back"] for x in runs]),
+        "blocked": spread([x["blocked"] for x in runs]),
     }
 
 
@@ -187,7 +216,9 @@ def gate(blocks, arm, before, plain):
     sh, sh_b = ((a or {}).get("all") or {}).get("two_reviews_share"), ((b or {}).get("all") or {}).get("two_reviews_share")
     out["reviews"] = {"share": sh, "before": sh_b, "pass": (sh <= sh_b / 2) if sh is not None and sh_b is not None else None}
     sb, sb_b = mean_of(a, "all", "steps_back"), mean_of(b, "all", "steps_back")
-    out["steps_back"] = {"mean": sb, "before": sb_b, "pass": (sb <= sb_b) if sb is not None and sb_b is not None else None}
+    bl, bl_b = mean_of(a, "all", "blocked"), mean_of(b, "all", "blocked")
+    out["steps_back"] = {"mean": sb, "before": sb_b, "blocked": bl, "blocked_before": bl_b,
+                         "pass": (sb <= sb_b and bl <= bl_b) if None not in (sb, sb_b, bl, bl_b) else None}
     return out
 
 

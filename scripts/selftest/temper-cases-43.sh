@@ -97,7 +97,7 @@ function twoDownBody(w: World): void {
 }
 export const twoDown = (w: World): void => twoDownBody(w)
 export const ACCEPT_SCENARIOS: Record<string, { run: (w: World) => void; modes: string[] }> = {
-  'two-up': { run: twoUp, modes: ['plain'] },
+  'two-up': { run: twoUp, modes: ['plain', 'mod'] },
   'two-down': { run: twoDown, modes: ['plain'] },
 }
 TS
@@ -155,6 +155,22 @@ _c43_list 'selftest:D01 WP09 D01'; _c43_commit "$_c43/root" "listed again"
 r3="$(_c43_done)|$(grep -c 'selftest:D01 was taken off the list by an earlier commit and is on it again' "$_c43/done.out")"
 assert_eq "done: a token that left the list cannot come back" "0 0 1|1" "$r1 $r2 $r3"
 
+# a check taken off in one form cannot come back in another: an e2e line stands for its (scenario, mode) pairs
+# (phase 2 review, F8)
+_c43_root
+_c43_list 'e2e:two-up:plain WP08 D01'; _c43_commit "$_c43/root" "listed in plain"
+sed -i '/^e2e:two-up:plain /d' "$_c43/root/scripts/selftest/expected-fail.txt"; _c43_commit "$_c43/root" "plain passes"
+_c43_list 'e2e:two-up WP09 D01'; _c43_commit "$_c43/root" "listed in every mode"
+r1="$(_c43_done)|$(grep -c 'e2e:two-up was taken off the list by an earlier commit' "$_c43/done.out")"
+_c43_root
+_c43_list 'e2e:two-up WP08 D01'; _c43_commit "$_c43/root" "listed in every mode"
+sed -i 's/^e2e:two-up WP08 D01$/e2e:two-up:mod WP08 D01/' "$_c43/root/scripts/selftest/expected-fail.txt"
+_c43_commit "$_c43/root" "plain passes"
+r2="$(_c43_done)"
+_c43_list 'e2e:two-up:plain WP09 D01'; _c43_commit "$_c43/root" "plain listed again"
+r2="$r2 $(_c43_done)|$(grep -c 'e2e:two-up:plain was taken off the list by an earlier commit' "$_c43/done.out")"
+assert_eq "done: a check taken off the list cannot come back in another form" "1|1 0 1|1" "$r1 $r2"
+
 _c43_root
 sed -i 's/`case 11 D01`/`case 12 D10`/' "$_c43/root/docs/plans/one-go/done.md"
 r1="$(_c43_done)|$(grep -c '^D01 FAIL: case 12 D10 ' "$_c43/done.out")"
@@ -185,12 +201,70 @@ sed -i 's/^  worldCheck(w)$/  void w/' "$_c43/root/scripts/e2e/accept.ts"
 assert_eq "done: a scenario of the three files that does not call the shared assert fails" "1|1|1" \
   "$(_c43_done)|$(grep -c 'D105: the scenario two-up of scripts/e2e/accept.ts (twoUp) does not call the shared assert' "$_c43/done.out")|$(grep -c 'D105: the scenario two-down' "$_c43/done.out")"
 
+# D105 reads every entry of the object, whatever its key and the order of its fields: a key with no hyphen, run after
+# modes, a run written in place; an entry it cannot read fails (phase 2 review, F3)
+_c43_root
+cat >> "$_c43/root/scripts/e2e/accept.ts" <<'TS'
+export const lateOne = (w: World): void => { void w }
+export const repairX = (w: World): void => { void w }
+TS
+sed -i "s/^  'two-down': { run: twoDown, modes: \['plain'\] },$/&\\
+  'late-one': { modes: ['plain'], run: lateOne },\\
+  repair: { run: repairX, modes: ['plain'] },\\
+  'in-place': { run: (w: World) => { void w }, modes: ['plain'] },\\
+  'no-run': { modes: ['plain'] },/" "$_c43/root/scripts/e2e/accept.ts"
+r1="$(_c43_done)"
+for x in 'the scenario late-one of' 'the scenario repair of' 'the scenario in-place of' 'registers no-run: an entry with no run'; do
+  r1="$r1|$(grep -c "D105: .*$x" "$_c43/done.out")"
+done
+sed -i 's/{ run: (w: World) => { void w }/{ run: (w: World) => { worldCheck(w) }/' "$_c43/root/scripts/e2e/accept.ts"
+assert_eq "done: the shared assert rule reads every entry of the scenario object, and fails one it cannot read" \
+  "1|1|1|1|1 0" "$r1 $(_c43_done >/dev/null; grep -c 'D105: the scenario in-place' "$_c43/done.out")"
+
+# the modes a scenario of the three files registers are read: a row cannot name a mode it does not run, it cannot run
+# in none, a list line cannot name a mode it does not run, and rule 11 reads the registered modes (phase 2 review, F4)
+_c43_root
+sed -i 's/`scenario two-up` plain/`scenario two-up` plain, driver/' "$_c43/root/docs/plans/one-go/done.md"
+r1="$(_c43_done)|$(grep -c '^D01 FAIL: scenario two-up driver (the scenario registers the modes plain, mod only)' "$_c43/done.out")"
+_c43_root
+sed -i "s/'two-down': { run: twoDown, modes: \['plain'\] }/'two-down': { run: twoDown, modes: [] }/" "$_c43/root/scripts/e2e/accept.ts"
+r2="$(_c43_done)|$(grep -c 'registers two-down: an entry that registers no mode' "$_c43/done.out")"
+_c43_root
+_c43_list 'e2e:two-up:driver WP08 D01'
+r3="$(_c43_done)|$(grep -c 'e2e:two-up:driver names a mode the scenario does not run' "$_c43/done.out")"
+_c43_root
+sed -i 's/^| D01 | one | `case 11 D01`; `scenario two-up` plain |/| D30 | one | `scenario two-up` |/' "$_c43/root/docs/plans/one-go/done.md"
+sed -i "s/'two-up': { run: twoUp, modes: \['plain', 'mod'\] }/'two-up': { run: twoUp, modes: ['mod'] }/" "$_c43/root/scripts/e2e/accept.ts"
+r4="$(_c43_done)|$(grep -c 'D30: rule 11' "$_c43/done.out")"
+assert_eq "done: a row or a list line names no mode its scenario does not register, and rule 11 reads those modes" \
+  "1|1 1|1 1|1 1|1" "$r1 $r2 $r3 $r4"
+
+# a scenario fails for the reason of its own promise: only the scenarios of the rows that promise the list of questions
+# (D01, D02, D03, D04, D05, D37e) hold the person to a list; the others take the recommended option of every question
+# (phase 2 review, F6)
+assert_eq "done: only the scenarios whose rows promise the questions asked hold the scripted person to a list" \
+  "fixTwo,flaggedMap,repairFinding,repairWorse,twoDialogs,vagueRun" "$(python3 -I - "$REPO_ROOT/scripts/e2e/accept.ts" <<'PY'
+import re, sys
+fn, found = None, set()
+for line in open(sys.argv[1], encoding="utf-8"):
+    m = re.match(r"^export const (\w+) = \(w: World\)", line)
+    if m:
+        fn = m.group(1)
+    if re.search(r"\bdefaultPerson\(\s*\[", line):
+        found.add(fn or "?")
+print(",".join(sorted(found)))
+PY
+)"
+
 # --- check_changed_tests.py on a made up repository: the base, then the work tree ---
 _c43_ct() { # _c43_ct <base>: check_changed_tests.py on $_c43/ct against the base; prints its exit code
   python3 -I "$REPO_ROOT/scripts/check_changed_tests.py" --root "$_c43/ct" --base "$1" > "$_c43/ct.out" 2>&1
   echo "$?"
 }
-_c43_ct_listed() { printf '| `%s` | a file | what | why | WP07 |\n' "$1" >> "$_c43/ct/docs/plans/one-go/changed-tests.md"; }
+_c43_ct_listed() { # _c43_ct_listed <name> [file]: a row of the table for the name, in that file (the case file 11)
+  printf '| `%s` | `%s` | what | why | WP07 |\n' "$1" "${2:-scripts/selftest/temper-cases-11.sh}" \
+    >> "$_c43/ct/docs/plans/one-go/changed-tests.md"
+}
 _c43_ct_repo() {
   local d="$_c43/ct"
   rm -rf "$d"; mkdir -p "$d/docs/plans/one-go" "$d/scripts/selftest"
@@ -217,6 +291,45 @@ r5="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED .*T2 two' "$_c43/ct.out")"
 assert_eq "done: a removed or changed assertion of a test of the base fails until changed-tests.md lists it" \
   "0 1 0 1 0 1|1" "$r0 $r1 $r2 $r3 $r4 $r5"
 
+# a name is listed only by the code span that is the first cell of a row: a span in the intro or in another column
+# names nothing (phase 2 review, F1)
+CT_BASE="$(_c43_ct_repo)"
+sed -i '/T1 one/d' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+sed -i '1i This page lists `T1 one` in its intro.\n' "$_c43/ct/docs/plans/one-go/changed-tests.md"
+printf '| %s | a file | `T1 one` was removed | why | WP07 |\n' '`T2 two`' >> "$_c43/ct/docs/plans/one-go/changed-tests.md"
+r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED .*T1 one' "$_c43/ct.out")"
+_c43_ct_listed 'T1 one'
+assert_eq "done: a name counts as listed only in the code span of the first cell of a row of changed-tests.md" \
+  "1|1 0" "$r1 $(_c43_ct "$CT_BASE")"
+
+# a statement is compared whole line by whole line: an assertion commented out, or with a word added at its end, still
+# holds its old text as a part of a line and is a change all the same; so is a row of done.md with a cell added
+# (phase 2 review, F2)
+CT_BASE="$(_c43_ct_repo)"
+sed -i 's/^assert_eq "T1 one"/# &/' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED .*T1 one' "$_c43/ct.out")"
+CT_BASE="$(_c43_ct_repo)"
+sed -i 's/^assert_eq "T1 one" "1" "$(echo 1)"$/& || true/' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+r2="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED .*T1 one' "$_c43/ct.out")"
+CT_BASE="$(_c43_ct_repo)"
+printf '%s\n' '## The table' '' '| Id | Promise | Check | No model call | Passes after |' '|---|---|---|---|---|' \
+  '| D01 | one | `case 44 D01` | yes | WP07 |' > "$_c43/ct/docs/plans/one-go/done.md"
+_c43_commit "$_c43/ct" "the table"
+sed -i 's/^| D01 .*|$/& WP08 |/' "$_c43/ct/docs/plans/one-go/done.md"
+r3="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED docs/plans/one-go/done.md:5 .*: D01$' "$_c43/ct.out")"
+assert_eq "done: an assertion commented out or with a word added at its end, and a row with a cell added, are changes" \
+  "1|1 1|1 1|1" "$r1 $r2 $r3"
+
+# the paths of the diff are read the same under a person's diff.noprefix or diff.mnemonicPrefix: the check never passes
+# with nothing read (phase 2 review, F7)
+CT_BASE="$(_c43_ct_repo)"
+sed -i '/T1 one/d' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+_c43_git "$_c43/ct" config diff.noprefix true
+r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-11.sh:1 .*T1 one' "$_c43/ct.out")"
+_c43_git "$_c43/ct" config --unset diff.noprefix; _c43_git "$_c43/ct" config diff.mnemonicPrefix true
+r2="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-11.sh:1 .*T1 one' "$_c43/ct.out")"
+assert_eq "done: a removed assertion is found under diff.noprefix and under diff.mnemonicPrefix" "1|1 1|1" "$r1 $r2"
+
 # D84b: the second base, the commit that first added the file, for done.md and the case files 43 to 46
 CT_BASE="$(_c43_ct_repo)"
 mkdir -p "$_c43/ct/docs/plans/one-go"
@@ -228,5 +341,30 @@ r0="$(_c43_ct "$CT_BASE")"
 sed -i 's/`case 44 D01`/`case 44 D01` or less/' "$_c43/ct/docs/plans/one-go/done.md"
 sed -i 's/"D01 one" "1"/"D01 one" "0"/' "$_c43/ct/scripts/selftest/temper-cases-44.sh"
 r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED docs/plans/one-go/done.md:5 .*: D01$' "$_c43/ct.out")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-44.sh:1 .*: D01 one$' "$_c43/ct.out")"
-_c43_ct_listed 'D01'; _c43_ct_listed 'D01 one'
+_c43_ct_listed 'D01' docs/plans/one-go/done.md; _c43_ct_listed 'D01 one' scripts/selftest/temper-cases-44.sh
 assert_eq "done: a changed check of done.md fails until it is listed" "0 1|1|1 0" "$r0 $r1 $(_c43_ct "$CT_BASE")"
+
+# a name identifies its statement (phase 2 fixes): three expects share the first quoted string `,` (of `.join(',')`)
+# and two share `a,b`, so the first two are named by their message and the last by `a,c`; a row covers a change only in
+# the file it names; of two expects alike, one changed is a change, though the tree still holds the other
+CT_BASE="$(_c43_ct_repo)"
+mkdir -p "$_c43/ct/scripts/e2e"
+printf '%s\n' "expect(ids.join(',') === 'a,b', \`T3 the questions are a, then b (\${ids.join(', ')})\`)" \
+  "expect(ids.join(',') === 'a,b' && n === 2," "  \`T4 the questions are a, then b, in 2 dialogs (\${n})\`)" \
+  "expect(n === 0, \`T5 nothing is handed back (\${n})\`)" "expect(n === 0, \`T5 nothing is handed back (\${n})\`)" \
+  "expect(ids.join(',') === 'a,c', \`T6 the questions are a, then c (\${ids.join(', ')})\`)" \
+  > "$_c43/ct/scripts/e2e/accept.ts"
+_c43_commit "$_c43/ct" "the scenarios"
+sed -i "6s/'a,c'/'a,d'/" "$_c43/ct/scripts/e2e/accept.ts"
+_c43_ct_listed ',' scripts/e2e/accept.ts
+_c43_ct_listed 'a,c' scripts/e2e/accept.ts
+r1="$(_c43_ct "$CT_BASE")"
+sed -i "1s/=== 'a,b'/!== ''/" "$_c43/ct/scripts/e2e/accept.ts"
+r2="$(_c43_ct "$CT_BASE")|$(grep -cF 'UNLISTED scripts/e2e/accept.ts:1 (base' "$_c43/ct.out")"
+_c43_ct_listed 'T3 the questions are a, then b (${ids.join('"', '"')})' scripts/e2e/slow.ts
+r3="$(_c43_ct "$CT_BASE")|$(grep -cF 'UNLISTED scripts/e2e/accept.ts:1 (base' "$_c43/ct.out")"
+_c43_ct_listed 'T3 the questions are a, then b (${ids.join('"', '"')})' scripts/e2e/accept.ts
+sed -i "5s/n === 0/n >= 0/" "$_c43/ct/scripts/e2e/accept.ts"
+r4="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED scripts/e2e/accept.ts:5 .* #2$' "$_c43/ct.out")"
+assert_eq "done: a name identifies its statement, a row covers its own file, and one of two alike changed is a change" \
+  "0 1|1 1|1 1|1" "$r1 $r2 $r3 $r4"

@@ -21,6 +21,8 @@ RESUME_HEADER = "Temper resume"
 DRIFT_HEADER = "Scope drift"
 DRIFT_PREFIX = "Outside the plan:"
 DRIFT_OPTIONS = ["Add to plan", "Revert", "Allow once"]
+# the ids of the three, at their places: a list of its own beside the options, which readers take as labels
+DRIFT_IDS = [{"id": "add-to-plan"}, {"id": "revert"}, {"id": "allow-once"}]
 FRESH_ROWS = ("fresh review ran", "fresh reader's paraphrase", "no open plan blockers")   # the plan gate rows of fresh_review.py
 SEQ = {"temper": ["intent", "plan", "design", "build", "review", "check", "commit"],
        "fix": ["rca", "fix", "review", "check", "commit"]}
@@ -96,7 +98,8 @@ OPTION_IDS = frozenset((
     "grill-me", "teach-me", "html-review", "share-review", "revise-plan", "fresh-review", "fresh-again", "find-setup",
     "walk-through", "change", "depth-review", "commit-pr", "commit-stacked-prs", "config-suggestions", "restore-tests",
     "correct-test", "end-run", "apply-fix", "continue-on-branch", "new-branch", "merge-groups", "take-out",
-    "keep-commits", "accept-done", "twice-the-time", "fix-group", "change-command", "add-to-plan", "include-left-out"))
+    "keep-commits", "accept-done", "twice-the-time", "fix-group", "change-command", "add-to-plan", "include-left-out",
+    "revert", "allow-once"))
 
 
 def question_entry(qid):
