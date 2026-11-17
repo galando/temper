@@ -13,6 +13,16 @@ the tables (`SEQ`, `MOVES`) and the readers, `flow_run.py` the class `Run`, `flo
   calls, a `work` action's calls) and prints one compact object at the first agent launch, question,
   steps, wait or end: `{action, stage, say, ran, agents | ask, blocking, gate | steps | tasks}`. It
   never runs an option's calls (the person's answer); a failed call stops it with `action: error`.
+  9.8.5, the verdict marker: `temper gate <stage>`, `temper task gate <N>`, `temper group gate <G>` and
+  `temper integrate` print one line on stdout once they recorded a verdict, `VERDICT: <scope> <verdict>`, with the
+  scope `gate:<stage>`, `task:<N>`, `group:<G>` or `integrate` and the verdict `PASS` or `FAIL` (`PARKED` only for
+  `group:<G>`, from a task gate a parked group refuses). Exit codes do not change. A gate the commit hook runs, a
+  gate of another spec folder and a call that recorded nothing print none. `temper go` reads the last marker line of
+  a call's stdout (`recorded()` of `scripts/go.py`): a call that exits non zero is an error only when no marker of
+  its own scope is there (a task gate's own task, or any group), and the marker is read only from a call `temper go`
+  ran itself, never from text. Its object gains `verdicts`, the list of `{scope, verdict}` it read, in order (`[]`
+  when none). The mod's run driver (`recordedVerdict`) and the scripted loop read the marker by the same rule. The
+  marker decides only that a carrier goes on: what comes next is always `temper next`, which reads the record.
   9.8.0, to shrink what every later turn reads again: an agent's gate call is `temper gate <stage> --brief`
   (its failed rows only; the question after it names them); `ask` keeps `question` as it is and, per option,
   only what the answer runs (`label`, `calls`, `steps`, `do`, `stop`, `reason`, `reason_question`,
@@ -67,9 +77,8 @@ commit gate (a change made at Build, or of docs only, runs only the stage's gate
 - **`ask`**: ask `ask.question` with the AskUserQuestion tool exactly as given (header, question,
   options and their descriptions). See "Questions" below.
 - **A failed call stops its action.** A call or step that exits non-zero stops its action, and the loop runs
-  `temper next --json` again. One exception: an agent's gate call, named `gate` (the last of its `after` calls).
-  When it prints `temper gate <stage> -> FAIL`, it has recorded a verdict that `next` asks about, so the action
-  goes on; any other failure of it stops the action.
+  `temper next --json` again. One exception: a call that prints a `VERDICT:` line (above, under `temper go`) has
+  recorded a verdict that `next` asks about, whatever its exit code, so the action goes on.
 - **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
   in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
 - **`auto`**: the CLI's own move: an armed autonomous run, or a step with nothing to decide (9.8.0: the one group of a plan passing, a Build task an earlier task already built in an armed run). Run `calls`, then ask `next` again.

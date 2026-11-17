@@ -16,8 +16,11 @@ It stops, printing one compact JSON object, at the first point that needs the se
 
 It never runs a call only the person may cause: those are the calls of an option of a question, which the session runs
 from the person's answer (and the mod checks word for word). It runs only the calls of the CLI's own actions, which the
-mod lets through today. A call that fails stops it (a gate call that records FAIL is no failure: the verdict is what the
-next question asks about). The full view still goes to .temper/view.json for the mod and /temper:status.
+mod lets through today. A call that fails stops it, unless it recorded a verdict (9.8.5, WP09): `gate`, `task gate`,
+`group gate` and `integrate` print `VERDICT: <scope> <PASS or FAIL or PARKED>` on stdout once the verdict is recorded,
+and a call whose own marker is there is no failure, whatever its exit code: the verdict is what the next question asks
+about. `verdicts` lists the markers read, in order. The full view still goes to .temper/view.json for the mod and
+/temper:status.
 Standard library only.
 """
 import json
@@ -26,6 +29,33 @@ import subprocess
 import sys
 
 MAX_STEPS = 60
+MARKER = re.compile(r"^VERDICT: (\S+) (PASS|FAIL|PARKED)$")
+
+
+def scope_of(call, cli):
+    """The scope a call of the CLI records a verdict for (a task gate: its task, and None for any group), else ''."""
+    m = re.match(re.escape(cli) + r" (?:gate ([a-z]+)|task gate (\d+)|group gate (G\d+)|(integrate))(?:\s|$)", call)
+    if not m:
+        return ""
+    return "gate:" + m.group(1) if m.group(1) else "task:" + m.group(2) if m.group(2) else (
+        "group:" + m.group(3) if m.group(3) else "integrate")
+
+
+def recorded(call, cli, out):
+    """{"scope", "verdict"} when the call is one of the four that record a verdict and the last marker line of its
+    stdout names its scope (a task gate's own task, or any group: a parked group refuses it); else None. Text alone
+    is none."""
+    want = scope_of(call, cli)
+    found = [m for m in (MARKER.match(line) for line in (out or "").splitlines()) if m]
+    if not want or not found:
+        return None
+    scope, verdict = found[-1].group(1), found[-1].group(2)
+    group = re.fullmatch(r"group:G\d+", scope) is not None
+    if verdict == "PARKED" and not group:
+        return None
+    if scope == want or (want.startswith("task:") and group):
+        return {"scope": scope, "verdict": verdict}
+    return None
 
 
 def short(call, cli):
@@ -57,8 +87,9 @@ def slim(a):
     return out
 
 
-def compact(n, ran, cli):
-    out = {"action": n.get("action"), "stage": n.get("stage"), "say": n.get("say", ""), "ran": [short(c, cli) for c in ran]}
+def compact(n, ran, cli, verdicts=()):
+    out = {"action": n.get("action"), "stage": n.get("stage"), "say": n.get("say", ""),
+           "ran": [short(c, cli) for c in ran], "verdicts": list(verdicts)}
     act = n.get("action")
     if act == "work":
         out["agents"] = [dict(a, after=[brief(c, cli) for c in a.get("after") or []], **({"gate": brief(a["gate"], cli)} if a.get("gate") else {}))
@@ -85,13 +116,15 @@ def compact(n, ran, cli):
 
 def main(cli, root):
     ran = []
+    verdicts = []
     last = None
     for _ in range(MAX_STEPS):
         p = subprocess.run([cli, "next", "--json"], cwd=root, capture_output=True, text=True)
         try:
             n = json.loads(p.stdout)
         except ValueError:
-            print(json.dumps({"action": "error", "say": "temper next failed: %s" % (p.stderr or p.stdout)[-300:], "ran": ran}))
+            print(json.dumps({"action": "error", "say": "temper next failed: %s" % (p.stderr or p.stdout)[-300:],
+                              "ran": [short(c, cli) for c in ran], "verdicts": verdicts}))
             return 1
         act = n.get("action")
         mechanical = act == "auto" or (act == "work" and not n.get("agents") and not n.get("steps"))
@@ -99,7 +132,7 @@ def main(cli, root):
         if act in ("auto", "work") and calls and (mechanical or n.get("agents")):
             key = json.dumps([act, n.get("stage"), calls], sort_keys=True)
             if key == last:   # the same calls again: they changed nothing, so stop rather than loop
-                out = compact(n, ran, cli)
+                out = compact(n, ran, cli, verdicts)
                 out["action"], out["say"] = "error", "temper go: the same calls would run twice (%s); run them by hand" % "; ".join(short(c, cli) for c in calls)
                 print(json.dumps(out))
                 return 1
@@ -107,9 +140,11 @@ def main(cli, root):
             for c in calls:
                 r = subprocess.run(["bash", "-c", c], cwd=root, capture_output=True, text=True)
                 ran.append(c)
-                is_gate = c.startswith(cli + " gate ")
-                if r.returncode != 0 and not (is_gate and "-> FAIL" in (r.stdout + r.stderr)):
-                    out = compact(n, ran, cli)
+                v = recorded(c, cli, r.stdout)
+                if v is not None:
+                    verdicts.append(v)
+                if r.returncode != 0 and v is None:
+                    out = compact(n, ran, cli, verdicts)
                     out["action"] = "error"
                     out["say"] = "the call %s failed (exit %d): %s" % (short(c, cli), r.returncode, (r.stderr or r.stdout).strip()[-300:])
                     print(json.dumps(out))
@@ -117,9 +152,10 @@ def main(cli, root):
             if mechanical:
                 continue
             n = dict(n, calls=[])
-        print(json.dumps(compact(n, ran, cli)))
+        print(json.dumps(compact(n, ran, cli, verdicts)))
         return 0
-    print(json.dumps({"action": "error", "say": "temper go: more than %d steps without a stop" % MAX_STEPS, "ran": [short(c, cli) for c in ran]}))
+    print(json.dumps({"action": "error", "say": "temper go: more than %d steps without a stop" % MAX_STEPS,
+                      "ran": [short(c, cli) for c in ran], "verdicts": verdicts}))
     return 1
 
 

@@ -1,8 +1,12 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, recordedVerdict, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
+
+// WP09: recordedVerdict(call, out) is the rule of `recorded` in scripts/go.py: the verdict when the call is one of
+// `gate <stage>`, `task gate <N>`, `group gate <G>` or `integrate` and the last line of its output that is a marker
+// (`VERDICT: <scope> <PASS or FAIL or PARKED>`) names the call's scope; else none.
 
 const CLI = '/p/scripts/temper'
 
@@ -207,7 +211,7 @@ describe('the driver carries a run from the request to the end', () => {
       goes: [{ action: 'work', agents: [b] }, { action: 'none', say: 'end' }],
       ends: { ag1: { text: 'TASK 1: stopped: the Cases contradict each other', ms: 5 } },
       fail: call => / task gate 1 /.test(call),
-      out: call => (/ task gate 1 /.test(call) ? 'FAIL: no green run for this task and attempt\nNEXT: park group G1' : ''),
+      out: call => (/ task gate 1 /.test(call) ? 'FAIL: no green run for this task and attempt\nNEXT: park group G1\nVERDICT: task:1 FAIL' : ''),
     })
     const end = await drive(p, CLI, null)
     expect(end).toEqual({ kind: 'done', text: 'end' })
@@ -248,8 +252,8 @@ describe('the driver carries a run from the request to the end', () => {
   })
 
   test('a task gate verdict is told from a call that broke', () => {
-    expect(taskVerdict('/p/scripts/temper task gate 3 --model haiku --if-running', 'FAIL: no green run\nNEXT: retry Task 3 on haiku')).toBe(true)
-    expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'FAIL: group G1 is parked (Task 1 failed 3 attempts); task gate of Task 2 is refused')).toBe(true)
+    expect(taskVerdict('/p/scripts/temper task gate 3 --model haiku --if-running', 'FAIL: no green run\nNEXT: retry Task 3 on haiku\nVERDICT: task:3 FAIL')).toBe(true)
+    expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'VERDICT: group:G1 PARKED\nFAIL: group G1 is parked (Task 1 failed 3 attempts); task gate of Task 2 is refused')).toBe(true)
     expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'Traceback (most recent call last)')).toBe(false)
     expect(taskVerdict('/p/scripts/temper integrate', 'FAIL: interface missing\nNEXT: x')).toBe(false)
   })
@@ -281,7 +285,7 @@ describe('the driver carries a run from the request to the end', () => {
 
   test('a failed call, an error action and a gate that records FAIL', async () => {
     const g = agent('temper:temper-plan', [`${CLI} gate plan --brief`])
-    const { p: p1 } = port({ goes: [{ action: 'work', agents: [g] }, { action: 'none', say: 'end' }], fail: c => c.includes('gate plan'), out: c => (c.includes('gate plan') ? 'temper gate plan -> FAIL' : '') })
+    const { p: p1 } = port({ goes: [{ action: 'work', agents: [g] }, { action: 'none', say: 'end' }], fail: c => c.includes('gate plan'), out: c => (c.includes('gate plan') ? 'temper gate plan -> FAIL\nVERDICT: gate:plan FAIL' : '') })
     expect((await drive(p1, CLI, null)).kind).toBe('done')
     const { p: p2 } = port({ goes: [{ action: 'error', say: 'temper next failed' }] })
     expect(await drive(p2, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'temper next failed' })
@@ -299,6 +303,61 @@ describe('the driver carries a run from the request to the end', () => {
   test('nobody answers (a session with no one to ask): the conversation takes the run on', async () => {
     const { p } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [{ label: 'Approve' }, { label: 'No' }] } }], answers: [] })
     expect((await drive(p, CLI, null)).kind).toBe('handback')
+  })
+})
+
+describe('a call that printed its own marker recorded a verdict, whatever its exit code (WP09)', () => {
+  const again = `${CLI} group gate G1 --timeout-s 1200`
+  const twice = 'Run the check again with twice the time (Recommended)'
+  const groupFailed = (): GoOut => ({ action: 'ask', stage: 'build', ask: {
+    question: q('Group G1: the check failed. What now?', [twice, 'Save for later']),
+    options: [{ label: twice, calls: [again] }, { label: 'Save for later', stop: true }] } })
+  const integ = `${CLI} integrate`
+  const gate = `${CLI} gate build --brief`
+  const usage = `${CLI} usage add --stage build --model opus --ms {ms}`
+  const fixPass = (): GoOut => ({ action: 'work', stage: 'build',
+    agents: [agent('temper:temper-build', [usage, integ, gate])] })
+  const gateOut = 'temper gate build -> FAIL\n  [x] integration\nVERDICT: gate:build FAIL'
+  const afterFailed = { kind: 'handback', args: 'next', why: 'an after call of the temper:temper-build agent failed' }
+
+  test('a group gate of the person\'s answer that exits 1 with its marker does not hand back', async () => {
+    const out = 'VERDICT: group:G1 FAIL\nFAIL: group G1 Validate failed (exit 1): make test'
+    const { p, log } = port({ goes: [groupFailed(), { action: 'none', say: 'end' }], answers: [twice],
+      fail: c => c === again, out: c => (c === again ? out : '') })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.ran).toEqual([`${CLI} go`, again, `${CLI} go`])
+    expect(recordedVerdict(again, out) == null).toBe(false)
+  })
+
+  test('an after call integrate that exits 1 with its marker does not hand back; the gate after it runs', async () => {
+    const out = 'VERDICT: integrate FAIL\nFAIL: integration suite failed (exit 1): make test'
+    const { p, log } = port({ goes: [fixPass(), { action: 'none', say: 'end' }],
+      fail: c => c === integ || c === gate, out: c => (c === integ ? out : c === gate ? gateOut : '') })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.ran.slice(-3)).toEqual([integ, gate, `${CLI} go`])
+    expect(recordedVerdict(integ, out) == null).toBe(false)
+  })
+
+  test('an after call that exits 1 with no marker hands back, as before', async () => {
+    const out = "FAIL: integrate runs on the run's feature branch 'feature/x' (current branch: 'main')"
+    const { p, log } = port({ goes: [fixPass(), { action: 'none', say: 'end' }],
+      fail: c => c === integ, out: c => (c === integ ? out : '') })
+    expect(await drive(p, CLI, null)).toEqual(afterFailed)
+    expect(log.ran).not.toContain(gate)
+    expect(recordedVerdict(integ, out) == null).toBe(true)
+  })
+
+  test('a marker of another scope hands back', async () => {
+    const other = 'VERDICT: group:G2 FAIL\nFAIL: group G1 Validate failed (exit 1): make test'
+    const { p: p1 } = port({ goes: [groupFailed(), { action: 'none', say: 'end' }], answers: [twice],
+      fail: c => c === again, out: c => (c === again ? other : '') })
+    expect(await drive(p1, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'a call of the answer failed' })
+    const { p: p2, log } = port({ goes: [fixPass(), { action: 'none', say: 'end' }],
+      fail: c => c === integ, out: c => (c === integ ? 'VERDICT: gate:build FAIL' : '') })
+    expect(await drive(p2, CLI, null)).toEqual(afterFailed)
+    expect(log.ran).not.toContain(gate)
+    expect(recordedVerdict(again, other) == null).toBe(true)
+    expect(recordedVerdict(integ, 'VERDICT: gate:build FAIL') == null).toBe(true)
   })
 })
 
