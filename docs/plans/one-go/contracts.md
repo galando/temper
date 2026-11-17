@@ -141,6 +141,7 @@ The view stays version 1: a field is added, none is renamed or removed (`D65`).
 | `typed`, `needs` | a gate question; an option | WP16 | WP17 |
 | `state` beside `pass` in `checks`; the entry `mutation` of `check_markers` | the view | WP19 | WP20 (`skipped`), WP23 |
 | `guard.adhoc_kind` | the view | WP24 | the mod |
+| `drift_ids` beside the options of `drift`, their ids at their places | the view | WP04 | every test |
 
 ## 5. Question ids and option ids: the closed list
 
@@ -216,6 +217,7 @@ Question kinds: `gate`, `group`, `resume`, `drift`, `blocking`, `context`, `reas
 | `twice-the-time`, `fix-group`, `change-command` | at `group.fail`: the gate again with twice the time; one fix agent on the merged work; the person types the group's command | WP04 | none |
 | `add-to-plan` | "Add to plan" at `commit.fail`: the files changed outside the plan belong to it | WP04 | none |
 | `include-left-out` | "Include what is left out" at `plan.context` | WP04 | none |
+| `revert`, `allow-once` | "Revert", "Allow once" at `scope.drift`; its "Add to plan" is `add-to-plan` | WP04 | none |
 
 An option of the head keeps the id WP04 gave it. WP04 adds one line here for every id it gives to a question or an
 option of the head that these tables do not name. An option a later spec adds with a label and no id gets its id by
