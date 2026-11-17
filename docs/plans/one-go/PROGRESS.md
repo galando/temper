@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-17 07:15 UTC
+- Watch: one check is scheduled; the next is due 2026-11-17 09:17 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -49,8 +49,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP06 | done | `8b57b10` | 2026-11-16 | slow and broken scripted projects, four scenarios on the list, the expected to fail rule of the scenarios; whole selftest PASS 2710 |
 | WP07 | done | `3d43388` | 2026-11-16 | case files 43 to 46 and 17 acceptance scenarios written failing first; check_done, check_changed_tests, verify.sh final; expected to fail 112 (92 selftest, 20 scenarios) |
 | WP08 | done | `d3f46ff` | 2026-11-17 | the defects of pull request 115 fixed, removed or made safe in four lanes against tests other agents wrote; expected to fail 92 (72 selftest, 20 scenarios); two caps above their final |
-| WP09 | todo | | | |
-| WP10 | todo | | | |
+| WP09 | done | `b5a8c0a` | 2026-11-17 | every carrier of a verdict prints `VERDICT: <scope> <verdict>`; go, the driver and the loop read it; integrate-fail off the list, which holds 91 (72 selftest, 19 scenarios); prompt_bytes above its final |
+| WP10 | doing | | | tests `b17aa3b` |
 | WP18 | todo | | | |
 | WP14 | todo | | | |
 | WP11 | todo | | | |
@@ -137,6 +137,13 @@ None.
 - 2026-11-17 WP08: the rewrite of case 22 `:37` removed the only selftest of the JDK range quote, the JaCoCo line quote and the naming of an absent file (listed in `changed-tests.md`).
 - 2026-11-17 WP08: CI found case 27 `the question shows the proposed block whole` red where Postgres is not installed: it read `temper next` without the fake pg tools on PATH; fixed in `8afc67a`.
 - 2026-11-17 phase 3 review: 8 findings confirmed, 3 refuted, all fixed in the merge `0f83802`: the mod guards `.temper/check/ahead.json` too (Check adopted its rows without a run), only the preflight's own time out is "not checked" (a command that exits 124 by itself fails), D56a calls `gate plan` itself so it fails without M16, fix-breaks-suite wants `build.fail` after `review.fail`, the M10 question shows the setup block whole while it offers it, and three lines of docs and help.
+- 2026-11-17 CI: case 2 failed once on `8519148` and passed on a rerun of the failed jobs (run 44034578084); it passed locally three times. A flake, not a fix.
+- 2026-11-17 the container restarted while the WP09 builder ran its checks; it was resumed and ran every Done when command again after the CLI's last change.
+- 2026-11-17 WP09: `prompt_bytes` measures 307,886 against its final of 307,712 (13 bytes of room were left before the package; the marker rule went into three pages). No final moved.
+- 2026-11-17 WP09: a marker printed into a pipe that a reader closed early (`| grep -q`) turned the call into exit 141; the one helper `_verdict` ignores SIGPIPE. `verify quick` missed this (it ran case file 50 alone), the whole selftest found it in cases 1 and 25.
+- 2026-11-17 WP09: integrate-fail could not pass in driver mode, because its scripted person stopped by answering nothing, which the driver counts as a hand back; it now ends at the same question with `stopAt`, its asserts unchanged. group-fail and group-fail-twice stop the same way, for WP16.
+- 2026-11-17 WP09: the spec names no marker for a task gate that parks its group on a merge conflict; it prints `task:N FAIL`, so the driver does not hand back there.
+- 2026-11-17 decisions taken by me, after the owner's instruction to settle decisions alone: (1) a cap above its final is never raised; later packages lower it where they touch its files, and WP32 cuts what is still above below its final before the final gate. (2) U23 is decided at WP32. (3) WP10: `state init` removes the budget record too; `budget.py room <key>` prints one JSON object; the grep of its Done when leaves out `scripts/selftest`, which keeps the old names on purpose; a step back to Plan spends only when the Build gate failed (the person's own choice otherwise); a call refused later has spent its repeat, as the spec says.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
