@@ -2401,16 +2401,17 @@ _task_gate_body() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model) model="${2:-}"; shift 2 || true ;;
+      --no-env) export TEMPER_NO_ENV=1; shift ;;   # M9: no ENV
       --ms) ms="${2:-}"; shift 2 || true ;;
-      # 9.8.0: a chain agent gates each task itself; the after call gates only a task it left running, else does nothing.
+      # 9.8.0: a chain agent gates each task itself; the after call gates only a task it left running.
       --if-running) if_running=1; shift ;;
-      # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
+      # passed by the after calls of 9.7.0 to 9.7.3, so a run started then still records; nothing reads it
       --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
   # A gate judges the result of the task's own agent, so it comes after that agent returned, with the model it ran on.
-  # A gate with no model is one run too early (found live: the attempt was spent before the agent ran): refuse it, record nothing.
+  # With no model it is one run too early (found live: the attempt was spent first): refuse it, record nothing.
   if [[ -z "$model" ]]; then
     echo "FAIL: task gate needs --model, the model the agent of Task $n ran on. Gate a task only after its agent has returned. Nothing was recorded." >&2
     return 1
@@ -3748,7 +3749,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
       --task) task="${2:-}"; shift 2 || true ;;
       --group) group="${2:-}"; shift 2 || true ;;
       --fill) fill=1; shift ;;   # 9.8.4: the time of a background agent, from its completion notice (usage_ops.py fill)
-      # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
+      # passed by the after calls of 9.7.0 to 9.7.3, so a run started then still records; nothing reads it
       --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac

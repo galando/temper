@@ -9,6 +9,7 @@ Each word's function takes the arguments the block read as sys.argv, the word fi
 program name. Nothing runs at import.
 """
 import json
+import re
 import sys
 
 
@@ -251,7 +252,11 @@ def task_covered(d, a, task_status):
 
 
 def task_env_fault(d, a, task_status):
-    d['tasks'][a[0]]['env_fault'] = {'reason': a[1], 'ts': a[2]}
+    # M9: `again` counts the same fault in a row, compared as flow_base.same_failure compares (numbers aside)
+    old = d['tasks'][a[0]].get('env_fault') or {}
+    norm = lambda t: re.sub(r'\d+', '#', ' '.join(str(t).split()))
+    again = old.get('again', 0) + 1 if old and norm(old.get('reason', '')) == norm(a[1]) else 0
+    d['tasks'][a[0]]['env_fault'] = {'reason': a[1], 'ts': a[2], 'again': again}
 
 
 def task_awaiting(d, a, task_status):
