@@ -239,6 +239,23 @@ r4="$(_c43_done)|$(grep -c 'D30: rule 11' "$_c43/done.out")"
 assert_eq "done: a row or a list line names no mode its scenario does not register, and rule 11 reads those modes" \
   "1|1 1|1 1|1 1|1" "$r1 $r2 $r3 $r4"
 
+# a scenario fails for the reason of its own promise: only the scenarios of the rows that promise the list of questions
+# (D01, D02, D03, D04, D05, D37e) hold the person to a list; the others take the recommended option of every question
+# (phase 2 review, F6)
+assert_eq "done: only the scenarios whose rows promise the questions asked hold the scripted person to a list" \
+  "fixTwo,flaggedMap,repairFinding,repairWorse,twoDialogs,vagueRun" "$(python3 -I - "$REPO_ROOT/scripts/e2e/accept.ts" <<'PY'
+import re, sys
+fn, found = None, set()
+for line in open(sys.argv[1], encoding="utf-8"):
+    m = re.match(r"^export const (\w+) = \(w: World\)", line)
+    if m:
+        fn = m.group(1)
+    if re.search(r"\bdefaultPerson\(\s*\[", line):
+        found.add(fn or "?")
+print(",".join(sorted(found)))
+PY
+)"
+
 # --- check_changed_tests.py on a made up repository: the base, then the work tree ---
 _c43_ct() { # _c43_ct <base>: check_changed_tests.py on $_c43/ct against the base; prints its exit code
   python3 -I "$REPO_ROOT/scripts/check_changed_tests.py" --root "$_c43/ct" --base "$1" > "$_c43/ct.out" 2>&1

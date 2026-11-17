@@ -134,6 +134,8 @@ function seeing(w: World, person: Person): { person: Person; seen: Seen } {
     },
   }
 }
+// The questions the person met after the approval.
+const afterApproval = (seen: Seen): string[] => seen.ids.slice(seen.ids.lastIndexOf('plan.approve') + 1)
 const cardAt = (seen: Seen, id: string): Json | null => {
   const i = seen.ids.lastIndexOf(id)
   return i >= 0 ? seen.cards[i]! : null
@@ -511,12 +513,17 @@ export const groupFail = (w: World): void => {
     'temper:temper-plan': planner({ tasks: groupCheck }),
     'temper:temper-build': groupFixer(text => `${text.replace(/\n*$/, '\n')}VERSION = 1\n`),
   }
-  const { person, seen } = seeing(w, defaultPerson(['plan.approve', 'commit.confirm']))
+  // the person takes the recommended option of every question: which questions come before the approval is row D01's
+  // promise, not this one's
+  const { person, seen } = seeing(w, defaultPerson())
   promise('D06', () => orchestrate(w, script({ agents, person })))
   expect(w.counts.handbacks === 0, `D06 a failed group check hands nothing back (${w.counts.handbacks} hand backs)`)
   expect(launchesOf(w, 'temper:temper-build').length === 1, `D06 the fix agent is launched once (${launchesOf(w, 'temper:temper-build').length})`)
   expect(launchesOf(w, 'temper:temper-plan').length === 1, `D06 temper:temper-plan is launched once in the run (${launchesOf(w, 'temper:temper-plan').length})`)
-  expect(seen.ids.join(',') === 'plan.approve,commit.confirm' && ended(w), `D06 the fixed group goes on to the commit with no question (${seen.ids.join(', ')})`)
+  // no question of the group after the approval: the failed check is fixed by rule (group.pass after a passed group,
+  // and the questions of the stages, are other rows' promises)
+  const groupAsks = afterApproval(seen).filter(i => i.startsWith('group.') && i !== 'group.pass')
+  expect(groupAsks.length === 0 && ended(w), `D06 the fixed group goes on to the commit with no question (${groupAsks.join(', ') || 'not ended'})`)
   ruleLogCovers(w, seen)
   ownAutos(w)
   worldCheck(w)
@@ -534,7 +541,7 @@ export const groupFailTwice = (w: World): void => {
     'temper:temper-build': groupFixer(text => `${text.replace(/\n*$/, '\n')}# the fix agent tried\n`),
   }
   let stop = ''
-  const base = defaultPerson(['plan.approve'])
+  const base = defaultPerson()
   const { person, seen } = seeing(w, (ask, wd) => {
     if (seen.approvalAt >= 0) {
       stop = shown(ask, (wd.json('.temper/view.json').card ?? null) as Json | null)
@@ -545,7 +552,7 @@ export const groupFailTwice = (w: World): void => {
   promise('D06', () => orchestrate(w, script({ agents, person })))
   expect(w.counts.handbacks === 0, `D06 a failed group check hands nothing back (${w.counts.handbacks} hand backs)`)
   expect(launchesOf(w, 'temper:temper-build').length === 1, `D06 the fix agent is launched once (${launchesOf(w, 'temper:temper-build').length})`)
-  expect(seen.ids.length === 2 && /tried|fix of its merged work did not/i.test(stop),
+  expect(seen.approvalAt >= 0 && afterApproval(seen).length === 1 && /tried|fix of its merged work did not/i.test(stop),
     `D06 when the fix does not pass, one question shows what was tried (${seen.ids.join(', ')}: ${stop.slice(0, 200)})`)
   expect(launchesOf(w, 'temper:temper-plan').length === 1, `D33c temper:temper-plan is launched once in the whole run (${launchesOf(w, 'temper:temper-plan').length})`)
   ownAutos(w)
@@ -647,7 +654,7 @@ export const criteriaByCli = (w: World): void => {
     'temper:temper-check': () => { throw new Error('D10 a Check agent was launched for the code criterion') },
   }
   let ledger = ''
-  const base = defaultPerson(['plan.approve', 'commit.confirm'])
+  const base = defaultPerson()   // the questions asked are not row D10's promise
   const { person } = seeing(w, (ask, wd) => {
     if (idOf(ask) === 'commit.confirm')
       ledger = ['build', 'check'].map(s => (wd.exists(`.temper/evidence/${s}.json`) ? wd.read(`.temper/evidence/${s}.json`) : '[]')).join('\n')
