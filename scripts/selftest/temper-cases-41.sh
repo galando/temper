@@ -59,6 +59,26 @@ assert_eq "caps: a final value above its first committed value fails" "yes exit 
   "$(grep -q 'question_sites: final 54 is above its first committed value 53' <<< "$_c41_raise" && echo -n yes; echo -n " ${_c41_raise##*$'\n'}|"
      python3 -I "$_c41_caps" --caps "$_c41_dir/hn/caps.json" >/dev/null 2>&1; echo "exit $?")"
 
+# a removed bound is a raised one (phase 2 fixes): a cap deleted from the file with its measure, or one whose final is
+# set to null, fails as a raised final does (the check is run with the measure taken out, as a commit that deleted both
+# would leave it)
+_c41_hist "$_c41_dir/hd" caps.json "$REPO_ROOT/scripts/caps.json"
+_c41_edit "$_c41_dir/hd/caps.json" 'd["caps"].pop("readme_lines")'
+git -C "$_c41_dir/hd" -c user.name=t -c user.email=t@example.com commit -qam delete
+_c41_del="$(python3 -I -c 'import importlib.util as u, sys
+s = u.spec_from_file_location("check_caps", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)
+m.MEASURES.pop("readme_lines")
+sys.exit(m.main(["--caps", sys.argv[2]]))' "$_c41_caps" "$_c41_dir/hd/caps.json" 2>&1; echo "exit $?")"
+_c41_hist "$_c41_dir/hz" caps.json "$REPO_ROOT/scripts/caps.json"
+_c41_edit "$_c41_dir/hz/caps.json" 'd["caps"]["readme_lines"]["final"] = None'
+git -C "$_c41_dir/hz" -c user.name=t -c user.email=t@example.com commit -qam null
+_c41_null="$(python3 -I "$_c41_caps" --caps "$_c41_dir/hz/caps.json" 2>&1; echo "exit $?")"
+assert_eq "caps: a final deleted with its cap, or set to null, fails as a raised final does" "yes exit 1|yes exit 1" \
+  "$(grep -q 'readme_lines: its final is removed, its first committed value is' <<< "$_c41_del" && echo -n yes
+     echo -n " ${_c41_del##*$'\n'}|"
+     grep -q 'readme_lines: final null is no number, its first committed value is' <<< "$_c41_null" && echo -n yes
+     echo " ${_c41_null##*$'\n'}")"
+
 # --- floor ---
 _c41_hist "$_c41_dir/hf" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
 _c41_edit "$_c41_dir/hf/floor.json" 'd["scenarios"]["default-run"]["plain"]["final"]["dialogs"] += 1'
