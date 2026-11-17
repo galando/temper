@@ -23,7 +23,6 @@ describe('legitimate Temper CLI flows stay allowed', () => {
     'S=/Users/x/plugin; $S/scripts/temper gate check',
     'S=/Users/x/plugin; "$S"/scripts/temper evidence add --stage build --claim x',
     'scripts/temper evidence run --stage build --claim x --phase red -- bash scripts/selftest/test-temper.sh',
-    'scripts/temper evidence resolve --stage review --id 3 --reason fixed',
     'scripts/temper state get next_stage',
     // (complexity and base_sha are set in Plan and Build only, in the form the orchestrator uses: see hardening.test.ts)
     'scripts/temper state set task 2',
@@ -83,4 +82,34 @@ describe('the setting words say where the person changes the setting', () => {
     })
   }
   test('the spec folder name is used', () => expect(SPEC).toContain('.temper/specs/'))
+})
+
+// WP18: `evidence resolve` is never a tool call. The CLI resolves a finding itself, for its own repair commit (WP24),
+// where no guard sees it; the rule refuses the call at every stage and in an armed run, even as a call written in the
+// options of a question, so no answer of the person and no action of the CLI lets one through.
+describe('evidence resolve is refused for the session and for every agent', () => {
+  const calls = [
+    'scripts/temper evidence resolve --stage review --id 3 --fixed-by 4f1c2ab',
+    'scripts/temper evidence resolve --stage review --id 3 --fixed-by "the fix pass"',
+    'cd demo && ../scripts/temper evidence resolve --stage check --id 1 --fixed-by HEAD',
+    'S=/Users/x/plugin; "$S"/scripts/temper evidence resolve --stage review --id 1 --fixed-by HEAD',
+    'bash scripts/temper evidence resolve --stage review --id 1 --fixed-by HEAD',
+  ]
+  for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+    for (const cmd of calls) test(`at ${stage}: ${cmd}`, () => expect('deny' in run(cmd, stage)).toBe(true))
+  }
+  const written = 'scripts/temper evidence resolve --stage review --id 1 --fixed-by 4f1c2ab'
+  test('a call the options of a question name is refused all the same', () => {
+    const r = evaluate(stateAt('review'), { ...ctx, allowed: [written] }, { tool: 'Bash', input: { command: written } })
+    expect('deny' in r).toBe(true)
+  })
+  test('an armed run is refused all the same', () => {
+    const r = evaluate(stateAt('review'), { ...ctx, autonomous: true }, { tool: 'Bash', input: { command: written } })
+    expect('deny' in r).toBe(true)
+  })
+  test('the control: evidence list and evidence add at Review are allowed', () => {
+    expect('deny' in run('scripts/temper evidence list --stage review', 'review')).toBe(false)
+    const add = `scripts/temper evidence add --stage review --claim 'review completed' --exit 0`
+    expect('deny' in run(add, 'review')).toBe(false)
+  })
 })

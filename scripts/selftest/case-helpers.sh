@@ -272,3 +272,41 @@ _pl() { # _pl: a run at the Pipeline stage after a Commit that opened a pull req
   fresh; gpass intent plan build review check commit; "$TEMPER" state set pr one >/dev/null 2>&1; _at pipeline
 }
 _plctx() { printf '%s\n' "$1" > .temper/specs/demo/pipeline-context.json; }
+
+# WP18: Review's completion row names the files read, and `evidence resolve` takes only a commit the CLI made after the
+# reviewed HEAD. A case that records Review's completion in a project with changed files calls review_done; a case that
+# needs a resolved finding resolves it with the id cli_commit prints.
+review_done() { # review_done [evidence add flags...]: Review's completion row (exit 0), with one --read for each file
+                # `temper review files` prints, so it names every changed file; a project with none passes as
+                # `read 0 of 0 changed files`. When the command fails, the row names no file.
+  local f out args=()
+  if out="$("$TEMPER" review files 2>/dev/null)"; then
+    while IFS= read -r f; do [[ -n "$f" ]] && args+=(--read "$f"); done <<<"$out"
+  fi
+  "$TEMPER" evidence add --stage review --claim 'review completed' --exit 0 --label HEURISTIC \
+    ${args[@]+"${args[@]}"} "$@" >/dev/null 2>&1
+}
+cli_commit() { # cli_commit [file name]: a commit the CLI recorded as its own after the reviewed HEAD, the only kind
+               # `evidence resolve` takes: one file under the run's spec folder (at Review the commit hook lets that
+               # through, and the row `no code changed at Review` does not count it), committed on the branch checked
+               # out, its full id appended to cli_commits of .temper/groups.json. Prints the full id.
+  local spec f sha
+  spec="$("$TEMPER" state get spec_path 2>/dev/null)"; spec="${spec:-.temper/specs/demo}"
+  f="$spec/${1:-repair-note.md}"
+  mkdir -p "$spec"; echo "a repair after $(git rev-parse --short HEAD 2>/dev/null)" >> "$f"
+  git add -f -- "$f" && git commit -q -m 'a commit of the CLI' -- "$f" || return 1
+  sha="$(git rev-parse HEAD)"
+  python3 - "$sha" <<'PY'
+import json, sys
+p = ".temper/groups.json"
+try:
+    d = json.load(open(p))
+except (OSError, ValueError):
+    d = {}
+if not isinstance(d, dict):
+    d = {}
+d.setdefault("cli_commits", []).append(sys.argv[1])
+json.dump(d, open(p, "w"))
+PY
+  echo "$sha"
+}
