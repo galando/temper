@@ -5,6 +5,18 @@ All notable changes to Temper are documented here. The plugin version lives in
 
 ## v9.8.5: a run that asks twice
 
+- M2 (WP08): a passed Review with an open finding keeps every way on in reach, and no More holds a More.
+- F1 (WP08): a Medium finding goes on to Check and is listed where you commit; only High or above loops back.
+- M3 (WP08): under the policy, a failed group check whose fix you asked for launches the group fix agent.
+- M4 (WP08): the policy never takes a step back to Plan; the armed run parks and the step back is yours.
+- M5 (WP08): a step back to Intent, Plan or Design turns the run back to asking at every stage.
+- M6 (WP08): under the policy, a criterion only you can confirm parks the run; the next question is the confirmation.
+- M7 (WP08): the Check brief records the test run with evidence run, and the CLI checks a small change at Check.
+- M10 (WP08): the same environment fault at Check after a run again recommends Save for later, not the repair.
+- M11 (WP08): when only the commit gate's own row fails, the first option, Check again, runs the gate again.
+- M13 (WP08): the environment agent is no longer offered; the question shows the proposed setup block whole.
+- F2 (WP08): a Design answer newer than the tasks passes its row with a note and goes to every Build task.
+
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the
 CLI took by itself, the steps back, the hand backs of the run driver and the runs of the whole suite.
@@ -35,6 +47,13 @@ An id is a lookup: an answer still counts only on the exact header, question, la
 goes to the dialog holds a new key, since the question tool refuses one: the ids of a reason, name or Blocking question
 sit beside it (`reason_ids`, `answer_ids`, `question_ids`), and the ids of the Scope drift options beside its list of
 labels (`drift_ids`). Its cases are in `temper-cases-40.sh` and `tests/mod/ids.test.ts`.
+
+- **M12 (WP08).** The backup push of the mod is removed: during a run every push is refused, to a `temper-backup/`
+  branch too.
+- **M13 (WP08).** With the mod on, `temper doctor` with `--write` is the person's call: a setup block reaches the
+  config only as the call of the option the person picked; `doctor` and `doctor --propose` still only read.
+- **M14 (WP08).** The mod guards the files that turn a gate row as it guards the verdicts: the store of reused passes
+  (`.git/temper-results.json`), `.temper/preflight.json`, `.temper/decisions.json` and `.temper/setup-tried.json`.
 
 One real run on a Java 24 Maven project (3.2 hours of agent time, 12 tasks) lost most of its time to faults that existed
 before any code was written, and a Temper run on this very change (a plan line that could never finish in its time
@@ -97,6 +116,16 @@ limit, three fix agents that changed nothing) showed most of them again. Each ch
   commands that failed on the environment with it, and they passed. The person still makes one click.
 - **The selftest.** Case file 6 runs on its own (`case-helpers-5.sh`, made by `make-helpers-5.sh`), so the parallel
   runner no longer runs 5 and 6 as one pair.
+- **F4 (wp08).** The plan gate's preflight runs each group's Validate and the Integration line only, never a task Test
+  or a scenario Test (they need code not written yet), all under one total `plan.preflight-timeout`.
+- **M15 (wp08).** A preflight command over its limit is `not checked`, never an environment fault: the row passes and
+  names a longer `plan.preflight-timeout`, another command (`temper plan patch`) and `plan.preflight-skip`.
+- **M16 (wp08).** A failed preflight is never read back from `.temper/preflight.json`: the next gate runs it again, and
+  the failed plan question offers `Check again` (`plan preflight`, then `gate plan`) first.
+- **M1 (WP08).** A suite broken after a pass is recorded at Build and asked; integrate passes again once repaired.
+- **M8 (WP08).** The config reader merges a key written twice; the template has no empty `build:` or `evidence:` key.
+- **M9 (WP08).** A task held on an environment fault offers It is the code; the same fault twice recommends Save.
+- **U19 (WP08).** `preflight.json`, `setup-tried.json` and `decisions.json` are run files: excluded, and cleared.
 
 ## v9.8.4: the faults one failed run exposed
 

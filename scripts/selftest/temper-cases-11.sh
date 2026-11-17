@@ -477,13 +477,14 @@ assert_eq "F7: a Validate type checked at Check, and a deferred optional criteri
 rm -rf f7skip
 setup
 
-# --- The audit of the port (F14, F18): Teach Me gives way to the small change at a passed Review with open findings; the Review snapshot; the worktree copy wins through task test ---
+# --- The audit of the port (F14, F18): at a passed Review with open findings the small change is offered (M2 of WP08: Teach Me stays); the Review snapshot; the worktree copy wins through task test ---
 _all_labels() { nx "'|'.join([o['label'] for o in d['ask']['options']] + [o['label'] for o in d['ask'].get('more', {}).get('options', [])])"; }
 fresh; gpass intent plan build review; _at review
 mkdir -p .temper/evidence; printf '[{"claim": "review completed", "severity": null, "label": "PROVEN"}]\n' > .temper/evidence/review.json
 assert_eq "F14: at a passed Review with no finding, Teach Me stays and no small change is offered beside it" "1|1" "$(_all_labels | tr '|' '\n' | grep -c '^Teach Me$')|$(_all_labels | tr '|' '\n' | grep -c '^Make a small change$')"
 printf '[{"claim": "review completed", "severity": null, "label": "PROVEN"}, {"claim": "src/a.sh:3 a style nit", "severity": "low", "label": "HEURISTIC", "confidence": 80}]\n' > .temper/evidence/review.json
-assert_eq "F14: with an open finding Teach Me gives way to Make a small change, in both questions" "0|1" "$(_all_labels | tr '|' '\n' | grep -c '^Teach Me$')|$(_all_labels | tr '|' '\n' | grep -c '^Make a small change$')"
+assert_eq "F14: with an open finding Teach Me stays, Make a small change is offered and the Architecture Depth Review gives way" "1|1|0" \
+  "$(_all_labels | tr '|' '\n' | grep -c '^Teach Me$')|$(_all_labels | tr '|' '\n' | grep -c '^Make a small change$')|$(_all_labels | tr '|' '\n' | grep -c '^Architecture Depth Review$')"
 setup
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
@@ -499,6 +500,16 @@ _at review; "$TEMPER" adhoc open --stage review --reason "a doc fix" >/dev/null 
 "$TEMPER" adhoc close >/dev/null 2>&1
 assert_eq "F14: a change of docs only takes no snapshot" "0" \
   "$(python3 -c "import json; print(int(bool(json.load(open('.temper/build-state.json')).get('review_snapshot'))))")"
+# M7 of WP08: a small change at Check, in a project whose test command the CLI can run, is checked by the CLI with no agent
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+sed -i 's/^check:$/check:\n  commands:\n    test: "true"/' .claude/temper.config
+git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+_at check; "$TEMPER" adhoc open --stage check --reason "fix an off by one" >/dev/null 2>&1
+mkdir -p src; echo changed-again > src/a.sh
+"$TEMPER" adhoc close >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1; gpass review   # the Review step of the change ran and passed: the Check step comes next
+assert_eq "M7: a small change at Check is checked by the CLI" "steps=check,commit|work|check run,gate check|agents=0" \
+  "steps=$(python3 -c "import json; print(','.join((json.load(open('.temper/build-state.json')).get('adhoc_done') or {}).get('steps', [])))")|$(nx "cs = [c.split('temper ', 1)[-1] for c in d.get('calls') or []]; d['action'] + '|' + ','.join(c for c in cs if c in ('check run', 'gate check')) + '|agents=' + str(len(d.get('agents') or []))")"
 setup
 # F18 through task test: a package importable from the project root (PYTHONPATH here) and from the task worktree: the worktree copy wins
 f9_tasks | m_setup

@@ -763,7 +763,7 @@ elif mode == 'verdict':
             and mine[-1].get('exit_code') not in (0, None) and any(red_ok(r) for r in mine[:-1])):
         env_why = preflight.env_fault(mine[-1].get('output') or '', mine[-1].get('exit_code'), mine[-1].get('cmd') or '',
                                       timeout_is_env=False)
-    if env_why:
+    if env_why and os.environ.get('TEMPER_NO_ENV') != '1':   # M9: --no-env, the person said it is the code
         verdict, reason = 'ENV', env_why
     red_cmd = red_tail = ''
     if covered:

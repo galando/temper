@@ -42,6 +42,15 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "FAIL", "reason": "integration suite failed (exit 1): make it"}}\n' > .temper/groups.json
 assert_eq "9.8.5 S7: a fix pass after a failed integrate carries the integrate verdict" "work|True" \
   "$(nx "d['action'] + '|' + str('What failed: integrate: integration suite failed (exit 1): make it' in d['agents'][0]['prompt'])")"
+python3 - <<'PY'
+import json
+json.dump({"version": 1, "history": [], "active_loops": [{"id": "loop-1", "from_stage": "review", "to_stage": "build", "reason": "x",
+           "iteration": 1, "max_iterations": 2, "started": "2026-01-01T00:00:00Z", "at": "2026-01-01T00:00:00Z",
+           "findings": ["src/a.ts:3 a missing null check"]}]}, open('.temper/feedback-loops.json', 'w'))
+PY
+assert_eq "m1 the fix pass names the failure" "work|True|True" \
+  "$(nx "p = d['agents'][0]['prompt']; d['action'] + '|' + str('src/a.ts:3 a missing null check' in p) + '|' + str('What failed: integrate: integration suite failed (exit 1): make it' in p)")"
+rm -f .temper/feedback-loops.json
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 assert_eq "9.8.5 S7: with no fault named anywhere, the CLI checks Build again and launches no agent" "auto|True|0" \
   "$(nx "d['action'] + '|' + str(d['calls'][-1].endswith('gate build')) + '|' + str(len(d.get('agents') or []))")"
@@ -55,6 +64,16 @@ gfail check "tests pass" "the latest run of a test command failed"
 assert_eq "9.8.5 Q6: the Check question says SETUP; repairing the environment is first and recommended; no loop back is recommended" \
   "True|Repair the environment and run again (Recommended)|0" \
   "$(nx "q = d['ask']['question']; '|'.join([str('SETUP: the environment was not ready (no Postgres answering on 127.0.0.1:5432)' in q['question']), q['options'][0]['label'], str(sum(1 for o in q['options'] if o['label'].startswith('Loop back') and o['label'].endswith('(Recommended)')))])")"
+# M10 of WP08: Check ran again after the repair (the redo the CLI keeps) and met the same fault: the same repair is not
+# recommended again, Save for later is
+python3 - <<'PY'
+import json
+p = ".temper/build-state.json"
+d = json.load(open(p)); d["redo"] = {"stage": "check", "reason": "SETUP: no Postgres answering on 127.0.0.1:5432", "ts": "2026-01-01T00:00:00Z"}
+json.dump(d, open(p, "w"), indent=2)
+PY
+assert_eq "9.8.5 M10: SETUP: the same fault after a run again recommends Save for later" "Save for later (Recommended)|0" \
+  "$(nx "o = d['ask']['question']['options'] + (d['ask'].get('more') or {}).get('question', {}).get('options', []); o[0]['label'] + '|' + str(sum(1 for x in o[1:] if x['label'].endswith('(Recommended)')))")"
 assert_eq "9.8.5 Q6: check_run reads a project's SETUP marker, and the JVM's start text leaves a row" "no Postgres answering on 127.0.0.1:5432|ok" \
   "$(python3 -I -c "
 import sys; sys.path.insert(0, sys.argv[1]); import check_run

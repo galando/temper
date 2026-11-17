@@ -800,3 +800,142 @@ export const freshAsk = (w: World): void => {
   expect(/plan fresh start/.test(w.trace.join('\n')), 'the launch was marked by the CLI before the reviewer ran')
   expect(!w.exists('.temper/build-state.json'), 'the run went to its end')
 }
+
+// WP08 (M1, row D41): after a loop back from Review, the fix pass commits a change that breaks the Integration suite.
+// integrate records the failure and the run asks the Build question; the second pass repairs the code, integrate
+// passes again on the merged tree, and the run reaches the commit. No call tries to merge a group branch the first pass
+// deleted.
+const SHAPE_BROKEN = 'def stage_object(stage, verdict, requirements):\n    return {"stage": stage, "verdict": verdict}\n'
+const CALLER_TEST = '\n    def test_the_stage_object_drops_the_caller_list(self):\n' +
+  "        self.assertNotIn('requirements', stage_object('build', 'PASS', [{'name': 'a'}]))\n"
+export const fixBreaksSuite = (w: World): void => {
+  startProject(w)
+  const merged: string[] = []
+  const run = w.run.bind(w)
+  w.run = (command: string, cwd?: string) => {
+    const r = run(command, cwd)
+    if (r.out.includes('not something we can merge')) {
+      merged.push(command)
+      throw new Error(`M1: a call failed with "not something we can merge": ${command.replace(/^\S*\/scripts\/temper /, 'temper ')}\n${r.out.slice(0, 300)}`)
+    }
+    return r
+  }
+  let reviews = 0
+  let fixes = 0
+  const asked: string[] = []
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    // the scripted reviewer: one High finding on its first review, none after
+    'temper:temper-review': wd => {
+      reviews++
+      if (reviews === 1)
+        t(wd, "evidence add --stage review --severity high --label PROVEN --claim 'src/ci_shape.py:2 the stage object keeps the caller list'")
+      t(wd, "evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'")
+    },
+    // the scripted fix agent: its first pass misreads the finding, writes a regression test that the stage object drops
+    // the caller list (RED), and a change that passes it (GREEN) and breaks the shape tests (so the Integration suite);
+    // it runs only the test it wrote. Its second takes the wrong test and change back and runs the shape tests. Each
+    // records its runs with the CLI (a loop back cleared Build's rows, so the first records RED then GREEN, as
+    // agents/build.md step 2 tells a fix pass) and commits its change on the feature branch, as steps 4 and 5 tell it
+    // (git add and git commit in two calls; the commit hook takes it as a build checkpoint). The git calls are a
+    // subagent's: the mod's guard holds them (rules.ts), not the rules of the session.
+    'temper:temper-build': wd => {
+      fixes++
+      const own = 'unit.test_ci_shape.ShapeTest.test_the_stage_object_drops_the_caller_list'
+      if (fixes === 1) {
+        wd.write('unit/test_ci_shape.py', `${wd.read('unit/test_ci_shape.py').replace(/\n*$/, '\n')}${CALLER_TEST}`)
+        const red = t(wd, `evidence run --stage build --phase red --claim 'unit tests' -- python3 -m unittest ${own}`)
+        expect(/exit [1-9]/.test(red.out), `the fix agent's regression test failed first (${red.out.slice(0, 200)})`)
+      } else wd.write('unit/test_ci_shape.py', SHAPE_TEST)
+      wd.write('src/ci_shape.py', fixes === 1 ? SHAPE_BROKEN : SHAPE_CODE)
+      const green = t(wd, `evidence run --stage build --phase green --claim 'unit tests' -- python3 -m unittest ${fixes === 1 ? own : 'unit.test_ci_shape'}`)
+      expect(/exit 0\b/.test(green.out), `the fix agent's own test run passed (${green.out.slice(0, 200)})`)
+      const add = 'git add src/ci_shape.py unit/test_ci_shape.py'
+      for (const c of [add, `git commit -q -m 'fix(ci): pass ${fixes} of the stage object'`]) {
+        wd.guard({ tool: 'Bash', input: { command: c } })
+        const r = wd.run(c)
+        expect(r.code === 0, `the fix agent's call ran: ${c} (${r.out.slice(0, 200)})`)
+      }
+    },
+  }
+  const end = orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      asked.push(String(ask.id ?? ''))
+      return recommended(ask, wd)
+    },
+    afterFailStops: true,
+    stopAt: (_wd, n) => n.stage === 'commit',
+  }))
+  expect(merged.length === 0, `no call failed with "not something we can merge" (${merged.join(', ')})`)
+  expect(fixes === 2 && (w.counts.launches['temper:temper-build'] ?? 0) === 2, `the fix agent ran twice (${fixes} passes, ${w.counts.launches['temper:temper-build'] ?? 0} launches)`)
+  expect(asked.some(id => id.startsWith('build.')), `the failed suite asked the Build question (${asked.join(', ')})`)
+  expect(end.stage === 'commit', `the run reached the commit (${end.action} ${end.stage ?? ''})`)
+  expect(String(w.json('.temper/groups.json').integration?.verdict ?? '') === 'PASS', 'integrate passed again on the repaired tree')
+}
+
+// 9.8.5 (WP08, U21): the policy path end to end, plain and mod mode (driver mode is WP09's: `temper go` reports a failed
+// group gate as an error and the driver hands the run back). `autonomy.policy: decide` comes in a second `autonomy:`
+// block, so after the merge of a repeated key (M8) the template's park-on-touch and max-blast-radius apply too. The
+// person arms the run at the plan question; group G1's check fails once (its Validate also wants a line no task writes,
+// which the group fix agent adds); the first Review leaves one High finding, which fails Review (block-on critical,
+// high) and is repaired by the one loop back to Build the policy takes. The run plans once, launches the group fix once,
+// never steps back to Plan, asks nothing between the approval and the commit question, and commits the change.
+export const policyRun = (w: World): void => {
+  startProject(w, 'autonomy:\n  policy: decide')
+  const g1 = 'python3 -m unittest unit.test_ci_shape'
+  const REPAIRED = 'the caller list is copied'
+  let reviews = 0
+  let groupFixes = 0
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/tasks.md`, wd.read(`${SPEC}/tasks.md`).replace(`**Validate:** \`${g1}\``, `**Validate:** \`${g1} && grep -q VERSION src/ci_shape.py\``))
+    },
+    // agents/build.md: a group fix works in the merged worktree its prompt names. The fix pass of the loop back from
+    // Review has no worktree: test first, it records RED and GREEN with evidence run (the CLI runs the check) around
+    // the repair of the finding.
+    'temper:temper-build': (wd, a) => {
+      const m = /worktree (\S+) \(the merged/.exec(String(a.prompt ?? ''))
+      if (m === null) {
+        const check = `-- grep -q '${REPAIRED}' src/ci_shape.py`
+        t(wd, `evidence run --stage build --claim 'unit tests' --phase red ${check}`)
+        wd.write('src/ci_shape.py', `${wd.read('src/ci_shape.py').replace(/\n*$/, '\n')}# ${REPAIRED}\n`)
+        t(wd, `evidence run --stage build --claim 'unit tests' --phase green ${check}`)
+        return
+      }
+      groupFixes++
+      const wt = path.isAbsolute(m[1]!) ? path.relative(wd.dir, m[1]!) : m[1]!
+      const file = path.join(wt, 'src/ci_shape.py')
+      wd.write(file, `${(wd.exists(file) ? wd.read(file) : SHAPE_CODE).replace(/\n*$/, '\n')}VERSION = 1\n`)
+    },
+    // the reviewer reports the High finding while the code has it
+    'temper:temper-review': wd => {
+      reviews++
+      if (!wd.read('src/ci_shape.py').includes(REPAIRED))
+        t(wd, "evidence add --stage review --severity high --label PROVEN --claim 'src/ci_shape.py:2 the stage object keeps the caller list, so a later change to that list changes the report'")
+      t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`)
+    },
+  }
+  const ids: string[] = []
+  orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      ids.push(String(ask.id ?? ''))
+      const arm = ask.id === 'plan.approve' ? (ask.options as Json[]).find(o => o.id === 'approve-run') : undefined
+      return arm ? String(arm.label) : recommended(ask, wd)
+    },
+  }))
+  const flow = w.trace.join('\n')
+  const approval = ids.indexOf('plan.approve')
+  expect(approval >= 0, `the person armed the run at the plan question (${ids.join(', ')})`)
+  expect((w.counts.launches['temper:temper-plan'] ?? 0) === 1, `temper:temper-plan is launched once (${w.counts.launches['temper:temper-plan'] ?? 0})`)
+  expect(groupFixes === 1, `the group fix agent is launched once for the failed group check (${groupFixes})`)
+  expect(!/state loop build plan/.test(flow), 'no call state loop build plan: the policy never steps back to Plan')
+  expect(reviews === 2 && (flow.match(/state loop review build/g) ?? []).length === 1,
+    `the High finding loops back to Build once and Review runs again (${reviews} reviews)`)
+  expect(ids.slice(approval + 1).join(',') === 'commit.confirm', `no question between the approval and the commit question (${ids.slice(approval + 1).join(', ')})`)
+  expect(!w.exists('.temper/build-state.json') && w.sh('git log --format=%s -1 -- src/ci_shape.py').trim() !== '' && /VERSION = 1/.test(w.sh('git show HEAD:src/ci_shape.py')),
+    'the run ended and the change is committed, the group fix with it')
+}

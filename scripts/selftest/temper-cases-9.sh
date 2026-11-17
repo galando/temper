@@ -348,7 +348,7 @@ for s in intent_complete:plan plan_complete:build build_complete:review; do "$TE
 "$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1
 gpass review
 assert_eq "live run: the passed Review question offers Loop back to Build, and Accept a finding under More options" \
-  "ask|Continue to Check (Recommended)|Loop back to Build|Architecture Depth Review|More options|Accept a finding|1" \
+  "ask|Continue to Check (Recommended)|Loop back to Build|Teach Me|More options|Accept a finding|1" \
   "$(nx "q = d['ask']; '|'.join([d['action']] + [o['label'] for o in q['question']['options']] + [q['more']['question']['options'][0]['label'], str(len(q['accept']['question']['options']) - 1)])")"
 
 # --- live run: the end of the run leaves the committed spec folder as it is, and the report prints first ---

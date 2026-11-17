@@ -115,7 +115,7 @@ class BuildPart:
         # run whose code an earlier run built (built_before, from the walked Build's check) mends it the same way.
         before = r.state.get("built_before") and not rg
         if (integ and gid and all(gpass(g) for g in gid)) or before:
-            lines = self.feedback_lines() or self.fault_lines()
+            lines = self.feedback_lines() + self.fault_lines()   # M1: the finding and what failed since
             if not lines and not r.notes("build", "input"):
                 # 9.8.5 (S7): a fix pass with no fault in its prompt fixes nothing (a measured launch said so): the CLI
                 # checks Build again, and a failure there names the fault for the next pass
@@ -210,7 +210,7 @@ class BuildPart:
             gate = (ginfo.get("gate") or {}).get("verdict")
             if done and not gate:
                 return {"action": "work", "stage": "build", "calls": [self.c("group gate %s" % gidx)], "agents": [], "say": "Group %s is checked." % gidx}
-            if gate == "FAIL" and ginfo.get("fix") and not r.armed():
+            if gate == "FAIL" and ginfo.get("fix") and (not r.armed() or r.policy()):   # M3 of WP08: the policy launches it too
                 return self.group_fix_work(g, ginfo)
             if gate == "FAIL":
                 return self.group_failed(g, ginfo)
@@ -323,9 +323,14 @@ class BuildPart:
         text = ("Task %d (%s) failed on the environment, not on its code: %s. Its attempt and its work are kept. "
                 "Repair the environment (temper doctor shows it; the setup: block of .claude/temper.config applies it), "
                 "then check it again?" % (n, title, why or "no reason recorded"))
-        opts = [self.opt("Check it again (Recommended)", "Run the task's test again on the kept work and gate it; no attempt is spent.",
-                         move="redo", calls=[self.c("task test %d --phase green" % n), self.c("task gate %d --model %s" % (n, model))], oid="redo"),
-                self.save()]
+        again = self.opt("Check it again (Recommended)", "Run the task's test again on the kept work and gate it; no attempt is spent.",
+                         move="redo", calls=[self.c("task test %d --phase green" % n), self.c("task gate %d --model %s" % (n, model))], oid="redo")
+        # M9: the fault may be the code's (a bug that prints Connection refused): the gate reads the failed GREEN it has
+        code = self.opt("It is the code", "Send the task back to its agent: the attempt is spent, as a failed test spends it.",
+                        move="redo", calls=[self.c("task gate %d --model %s --no-env" % (n, model))], oid="it-is-the-code")
+        opts = [again, code, self.save()]
+        if (info.get("env_fault") or {}).get("again"):   # the same fault after a check again: never the same advice twice
+            opts = [self.set_rec(opts[2], True), self.set_rec(again, False), code]
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="task.env")}
 
     def manual_task(self, n, plan):
@@ -420,18 +425,22 @@ class BuildPart:
         reason = " ".join(str(gate.get("reason", "")).split())
         reason = reason if len(reason) <= 300 else reason[:297] + "..."
         fl = self.fail_text(ginfo)
+        stepback = False
         if self.r.armed() and self.r.policy() and not decide:
             # 9.8.5 (U1): under the policy the run takes the recommended option itself when no person is needed for it;
             # a typed command, Save for later or a spent budget park it, as before
             q = self.group_failed(g, ginfo, decide=True)["ask"]
             rec = next((o for o in q["options"] + ((q.get("more") or {}).get("options") or []) if o.get("recommended")), None)
-            if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop"):
+            stepback = bool(rec) and rec.get("move") == "back"   # M4 of WP08: an unattended run never steps back to Plan
+            if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop") and not stepback:
                 why = "policy: group %s failed its check (%s)" % (gid, reason[:200])
                 calls = [c.replace("'{reason}'", "'%s'" % why.replace("'", "")) for c in rec["calls"]]
                 return {"action": "auto", "stage": "build", "calls": calls,
                         "say": "Group %s failed its check; the policy takes \"%s\"." % (gid, self.bare(rec))}
         if self.r.armed() and not decide:  # nobody is there to answer: an armed run parks, as on every stop
             why = (reason[:300] + (" | " + fl if fl else ""))[:1200]   # 9.8.5 (S4): the whole failure, not its first 400 characters
+            if stepback:
+                why = ("a step back to Plan is yours to decide: " + why)[:1200]
             return {"action": "auto", "stage": "build",
                     "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],
                     "say": "Group %s failed its check; the armed run parks for you." % gid}

@@ -5,8 +5,9 @@ description: "Run the project's validation pipeline (tests, build, lint, securit
 # Check: Stack-Aware Validation Pipeline
 
 **Goal:** Run the project's real validation pipeline and record what happened — never
-estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` invocations
-the gate needs; this doc is the methodology behind what to run and how to interpret it.
+estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) carries the exact calls the gate needs
+(`evidence run` for a test run, `evidence add` for a measured value); this doc is the methodology behind what to run
+and how to interpret it.
 
 **Mode:** Check runs as a stage of `/temper` (also when `/temper:check` starts it: the
 command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:

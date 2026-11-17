@@ -391,6 +391,17 @@ assert_eq "round 2, 10: no call of flow.py puts a placeholder of the person's te
 fresh; _walk_to_commit; gfail commit "blast radius" "changed outside declared files: src/x"
 assert_eq "round 2, 11: no Override and commit for the commit gate's own row; Add to plan is first" "Add to plan (Recommended)|0" \
   "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + str(sum(1 for x in o if x['label'] == 'Override and commit'))")"
+# 11b. M11 of WP08: the state of 5 (no plan, so no scope row), at the commit stage and parked: only the commit gate's own
+# row failed, so an option runs the commit gate again, first and with no mark (the question says "then check again").
+fresh; gpass intent plan build review check; _at commit; rm -f .temper/specs/demo/tasks.md
+git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base --no-verify >/dev/null 2>&1
+"$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
+mkdir -p src/auth; echo x > src/auth/login.ts; git add src/auth/login.ts; git -c user.email=t@t -c user.name=t commit -qm auth --no-verify >/dev/null 2>&1
+"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" gate commit >/dev/null 2>&1
+_park8="$(nx "' '.join(d.get('calls') or [])")"; [[ "$_park8" == *" park --verdict "* ]] && bash -c "$_park8" >/dev/null 2>&1
+assert_eq "round 2, 11b: only the commit gate's own row failed: Check again is first" "commit.fail|check-again|False|gate commit" \
+  "$(nx "q = d.get('ask') or {}; o = (q.get('options') or [{}])[0]; '%s|%s|%s|%s' % (q.get('id'), o.get('id'), bool(o.get('recommended')), ((o.get('calls') or ['none'])[-1]).split('temper ', 1)[-1])")"
+git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
 # 12. The Design door of a run with no Design stage enters at Build: the stages before are walked, not run again.
 setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; "$TEMPER" state set complexity simple >/dev/null 2>&1
 assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
@@ -427,6 +438,13 @@ assert_eq "round 3, 4: no placeholder of text stands in double quotes in a call 
 fresh; "$TEMPER" init >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "init: view.json is listed in the clone's info/exclude, so it is never an untracked file of the project" "1|0" \
   "$(grep -cx '/.temper/view.json' "$(git rev-parse --git-common-dir)/info/exclude")|$(git status --porcelain --untracked-files=all | grep -c 'view.json')"
+# WP08 (U19): the run files pull request 115 added are local run state too, and a cleared run leaves none of them
+_ex="$(git rev-parse --git-common-dir)/info/exclude"
+_u19_listed="$(for f in preflight.json setup-tried.json decisions.json; do grep -qxF "/.temper/$f" "$_ex" && echo yes || echo no; done | paste -sd' ' -)"
+for f in preflight.json setup-tried.json decisions.json; do echo '{}' > ".temper/$f"; done
+"$TEMPER" state clear >/dev/null 2>&1
+assert_eq "the run files of pull request 115 are listed and cleared" "yes yes yes|0" \
+  "$_u19_listed|$(for f in preflight.json setup-tried.json decisions.json; do [[ -e ".temper/$f" ]] && echo "$f"; done | wc -l | tr -d ' ')"
 
 # --- a /temper:fix run ---
 setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1

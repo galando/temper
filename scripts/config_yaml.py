@@ -25,7 +25,8 @@ def parse_yaml_subset(text):
         key, _, val = stripped.partition(':')
         key, val = key.strip(), val.strip()
         if val == '':
-            container = {}
+            # M8: a key written twice is one map: a second `autonomy:` block adds to the first, never drops it
+            container = parent[key] if isinstance(parent.get(key), dict) else {}
             parent[key] = container
             stack.append((indent, container))
         elif val.startswith('[') and val.endswith(']'):

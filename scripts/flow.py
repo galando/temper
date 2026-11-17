@@ -87,9 +87,6 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             else:
                 out.update(self.small_change_work(done))
             return out
-        if r.state.get("env_agent") == "requested" and stage in ("plan", "check"):
-            out.update(self.env_agent_work())
-            return out
         if stage == "commit":
             out.update(self.commit())
             if out.get("action") == "ask":

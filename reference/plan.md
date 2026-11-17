@@ -335,13 +335,13 @@ task's `**File:**`: the plan gate fails a task whose `**Test:**` command names a
 argument) that is neither declared by the task nor already in the project, because the task's commit check
 would otherwise reject the new test file as an undeclared change.
 
-**Every command runs before Build.** The plan gate's preflight runs each Validate, task Test, Integration and
-scenario `Test:` command once on the committed base (a throwaway worktree of HEAD), with the project's `setup:`
-block, and sorts each into: passes; needs new code (expected: the code is not written yet); environment fault (a
-JDK out of range, a database that does not answer, a program not on PATH, a failed setup line, the time limit
-`plan.preflight-timeout`, 300 s); command fault (the command itself cannot pass, such as a `verify` filtered with
-`-Dtest=` under a JaCoCo BUNDLE rule: the tests pass, the coverage step fails). The two faults fail the gate with the
-real error. Only the person skips it, with `plan.preflight-skip: "<reason>"` in the config.
+**Each Validate runs before Build.** The plan gate's preflight runs each group's Validate
+and the Integration line once on the committed base (a throwaway worktree of HEAD), with the project's `setup:`
+block, under one limit for all (`plan.preflight-timeout`, 300 s); no task or scenario Test runs. Each is sorted into:
+passes; needs new code (expected); not checked (over the limit; the row passes); environment fault (a JDK out of
+range, a database that does not answer, a program not on PATH, a failed setup line); command fault (the command itself
+cannot pass, such as a `verify` filtered with `-Dtest=` under a JaCoCo BUNDLE rule). The two faults fail the gate with
+the real error. Only the person skips it, with `plan.preflight-skip: "<reason>"` in the config.
 
 **A group passes its own Validate.** A group's worktree holds its own work and the work of the groups it
 depends on, nothing else. So the task that updates an existing test file a group's `**Validate:**` runs

@@ -563,7 +563,8 @@ cmd_model() {
 # older project that lacks a newer one)
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
-security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/ runs.jsonl asked.json"
+security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/ runs.jsonl asked.json \
+preflight.json setup-tried.json decisions.json"
 
 
 cmd_init() {
@@ -1007,19 +1008,18 @@ _fresh_grant() { # 9.8.4: a loop back or a replan to <stage>: one more fresh rev
 _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state loop, a state set next_stage to an earlier
              # stage). One function, so every way back leaves the same run behind (ADR 0012, point 3):
   local to="$1"
-  # - evidence is append-only, so a stale row of a stage that is redone (or, in the parallel-Review+Check window, an
-  #   abandoned background Check run) must not survive to inflate the next gate's count. Belt-and-suspenders with the
-  #   orchestrator's kill-before-clear ordering: the backstop for standalone CLI users with no orchestrator to do the kill.
+  # - evidence is append-only, so a stale row of a stage that is redone (or an abandoned background Check run) must not
+  #   survive to inflate the next gate's count
   _clear_evidence_downstream "$to"
+  local pre=; [[ "$to" =~ ^(intent|plan|design)$ ]] && pre=1
   # - F2: going back before Build re-plans the tasks, so the grouped run starts over
-  if [[ -f "$GROUPS_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]]; then
-    _groups_reset
-  fi
+  [[ -f "$GROUPS_FILE" && -n "$pre" ]] && _groups_reset
   _fresh_grant "$to"
-  # - and the code an earlier run built no longer stands for the plan: Build builds the plan, not a fix pass of it
-  if [[ -f "$STATE_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]] \
-     && [[ -n "$(cmd_state_get built_before "")" ]]; then
-    _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
+  # - the code an earlier run built no longer stands for the plan, and the run asks at every stage again (M5 of WP08;
+  #   ran_unattended stays)
+  if [[ -f "$STATE_FILE" && -n "$pre" ]]; then
+    [[ -n "$(cmd_state_get built_before "")" ]] && _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
+    _json_set_path "$STATE_FILE" run_mode interactive '{}' >/dev/null
   fi
   [[ -f "$STATE_FILE" ]] || return 0
   # - the verdicts and skips of <stage> and every later stage go; P1: the run is at <stage> again, so the
@@ -1135,8 +1135,8 @@ cmd_state_clear() {
   [[ -n "$out" ]] && archived_note=" — gate ledger archived to $out"
   [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
   python3 -I "$SCRIPTS_DIR/run_summary.py" append "$TEMPER_DIR" "$(_now)" 2>/dev/null || true   # one line a run, in runs.jsonl
-  # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json .temper/asked.json
+  # Each target is named, relative to the project (REPO_ROOT is the cwd).
+  rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,preflight,setup-tried,decisions}.json
   rm -rf .temper/evidence
   # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
   _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
@@ -2401,16 +2401,17 @@ _task_gate_body() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model) model="${2:-}"; shift 2 || true ;;
+      --no-env) export TEMPER_NO_ENV=1; shift ;;   # M9: no ENV
       --ms) ms="${2:-}"; shift 2 || true ;;
-      # 9.8.0: a chain agent gates each task itself; the after call gates only a task it left running, else does nothing.
+      # 9.8.0: a chain agent gates each task itself; the after call gates only a task it left running.
       --if-running) if_running=1; shift ;;
-      # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
+      # passed by the after calls of 9.7.0 to 9.7.3, so a run started then still records; nothing reads it
       --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
   # A gate judges the result of the task's own agent, so it comes after that agent returned, with the model it ran on.
-  # A gate with no model is one run too early (found live: the attempt was spent before the agent ran): refuse it, record nothing.
+  # With no model it is one run too early (found live: the attempt was spent first): refuse it, record nothing.
   if [[ -z "$model" ]]; then
     echo "FAIL: task gate needs --model, the model the agent of Task $n ran on. Gate a task only after its agent has returned. Nothing was recorded." >&2
     return 1
@@ -2556,7 +2557,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
 # remove the group worktrees, run the plan's **Integration:** suite in the project, check each **Interfaces:**
 # literal, and on PASS delete the merged branches. A conflict aborts that merge and stops the run before Review
 # (the worktrees and branches stay for diagnosis). The verdict lives in groups.json 'integration'; gate build
-# reads it. Exit 0 PASS, 1 FAIL, 3 a protected branch or an unsatisfied upstream gate (ADR 0009).
+# reads it. Exit 0 PASS or a rerun, 1 FAIL, 3 a protected branch or an unsatisfied upstream gate (ADR 0009).
 _integ_record() { # _integ_record <verdict> <reason> [group] [files-csv] [foreign-json]
   _groups_mutate integration "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}" "$(git rev-parse HEAD 2>/dev/null)"
 }
@@ -2570,14 +2571,14 @@ cmd_integrate() {
     return 1
   fi
   local iv; iv="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" integration-head "$GROUPS_FILE")"
-  if [[ "${iv%% *}" == "PASS" ]]; then
-    if [[ "${iv#* }" != "$(git rev-parse HEAD 2>/dev/null)" ]]; then   # Q7: commits since the last integrate: the suite runs again
+  if [[ "${iv##* }" == 1 ]]; then   # M1: merged; a new commit or a FAIL runs the suite again
+    if [[ "$iv" != "PASS $(git rev-parse HEAD) 1" ]]; then
       local s rf; s="$(_jget "$(_task_py integplan "$(_grouped_parse "$spec_path/tasks.md")" "$GROUPS_FILE")" integration)"
       if [[ -n "$s" ]]; then
         rf="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
         _task_py integrun "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$rf" -- "$s"; local rc=$?
         [[ -s "$rf" ]] && _json_append "$(_evidence_file build)" "$(cat "$rf")"; rm -f "$rf"
-        [[ $rc -eq 0 ]] || { _integ_record FAIL "integration suite failed after new commits (exit $rc): $s"; echo "FAIL: integration suite failed (exit $rc): $s" >&2; return 1; }
+        [[ $rc -eq 0 ]] || { _integ_record FAIL "integration suite failed after new commits (exit $rc): $s"; echo "FAIL: integration suite failed (exit $rc): $s"; return 0; }
       fi
       _integ_record PASS "" || return 1
       echo "OK: new commits since the last integrate; the Integration suite ran again and passed"
@@ -3748,7 +3749,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
       --task) task="${2:-}"; shift 2 || true ;;
       --group) group="${2:-}"; shift 2 || true ;;
       --fill) fill=1; shift ;;   # 9.8.4: the time of a background agent, from its completion notice (usage_ops.py fill)
-      # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
+      # passed by the after calls of 9.7.0 to 9.7.3, so a run started then still records; nothing reads it
       --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
@@ -3972,7 +3973,7 @@ main() {
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
     plan) cmd_plan "$@" ;;
-    doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;;   # only reads; --propose --write adds setup:
+    doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;; # reads; --propose --write adds setup:, as the person's answer
     guards) case "${1:-}" in
               uninstall) python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall ;;
               install) bash "$SCRIPTS_DIR/guards/install.sh" ;;   # 9.8.1: the commit gate, as a setup call of the CLI

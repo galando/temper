@@ -486,7 +486,7 @@ PY
 )"
 fresh; printf 'autonomy:\n  park-on-touch: ["**/auth/**", "**/payment/**"]\n  max-blast-radius: 15\nreview:\n  block-on: [critical]\nautonomy:\n  max-groups: 3\n' > .claude/temper.config
 assert_eq "D48b a key written twice is merged: a second autonomy block keeps the first one's keys" '["**/auth/**", "**/payment/**"]|15|3' \
-  "$("$TEMPER" config get autonomy.park-on-touch 2>/dev/null)|$("$TEMPER" config get autonomy.max-blast-radius 2>/dev/null)|$("$TEMPER" config get autonomy.max-groups 2>/dev/null)"
+  "$("$TEMPER" config get autonomy.park-on-touch 2>/dev/null | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read().rstrip("\n").split("\x1f")))')|$("$TEMPER" config get autonomy.max-blast-radius 2>/dev/null)|$("$TEMPER" config get autonomy.max-groups 2>/dev/null)"
 
 # --- D49 (M9): a code bug that prints Connection refused is not held as an environment fault for good ---
 _tasks45 true true faketest45 | sed 's/^- \[x\] done/- [ ] done/' | m_setup
@@ -635,6 +635,8 @@ assert_eq "D99b a Validate slower than its limit is a time out: plan.command off
 
 _plan45 'MARK' true true true
 M45="$WORKDIR/.git/c45/repaired"
+# the task gets its second case (the plan gate asks two), so the preflight row is the one row of the plan that fails
+sed -i 's/^- a holds$/- a holds\n- an empty input holds/' .temper/specs/demo/tasks.md
 sed -i "s|\`MARK\`|\`$C45 V; test -e $M45 \|\| { echo 'java.net.ConnectException: Connection refused'; exit 1; }\`|" .temper/specs/demo/tasks.md
 _runafter45 "$(_after45)"; "$TEMPER" gate plan >/dev/null 2>&1
 _d56_n="$(_count45 V)"

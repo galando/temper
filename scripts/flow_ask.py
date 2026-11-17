@@ -338,15 +338,22 @@ class AskPart:
             fresh_failed = [x for x in rows if x.get("name") in FRESH_ROWS]
             if fr["applies"] and fresh_failed:
                 return self.fresh_question(fr, why, said, back_opt, override_opt, grill)
+            # WP08 (M16): a failed preflight is never returned from the store, so after the person repaired the
+            # environment one option runs the plan's commands again and checks the plan
+            again = [self.opt("Check again", "Run the plan's commands again (after you repaired the environment) and "
+                              "check the plan.", move="redo", calls=[self.c("plan preflight"), self.c("gate plan")],
+                              oid="check-again")] if any(x.get("name") == "preflight" for x in rows) else []
             env_opt = self.setup_offer(rows)
             if env_opt:
                 # 9.8.5: the preflight hit the environment and the project declares none: one click adds the block that
                 # temper doctor --propose made from the project's own facts, runs the preflight again and checks the plan
-                return self.question(GATE_HEADER, "Plan: the check failed (%s).%s The project's own files say what it needs: "
-                                     "add the proposed setup block (%s) and check again?" % (why, said, env_opt["description"]), stage=stage,
-                                     options=[env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()], qid="plan.fail")
-            return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said), stage=stage,
-                                 options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()], qid="plan.fail")
+                text = ("Plan: the check failed (%s).%s The project's own files say what it needs: add the proposed "
+                        "setup block (%s) and check again?" % (why, said, self.shown_block))
+                opts = again + [env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()]
+            else:
+                text = "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said)
+                opts = again + back_opt() + [override_opt(self.leave_plan()), grill, self.save()]
+            return self.with_more(GATE_HEADER, text, stage, opts[:3], opts[3:], "Plan: more options.", qid="plan.fail")
 
         if stage == "design":
             walk = self.opt("Walk through step by step", "Review the design section by section.",
@@ -379,13 +386,6 @@ class AskPart:
                                       [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go, oid="continue"), arm, walk],
                                       [self.skill("grill-me", "Grill Me", "Stress test the design.")] + back_opt() +
                                       [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.", qid="design.pass")
-            if any(x.get("name") == "tasks agree with decisions" for x in rows):
-                # 9.8.5 (Q1): a Design answer replaced a rule the tasks still carry. Plan updates them; or the person says no
-                # task names the old rule (an override with that reason, which the report shows).
-                ov = override_opt(go)
-                self.set_reasons(ov, ["The tasks already agree"] + override_reasons)
-                return self.question(GATE_HEADER, "Design: the check failed (%s). Loop back to Plan so the tasks follow your answers?" % why,
-                                     stage=stage, options=back_opt(rec=True) + [ov, self.save()], qid="design.fail")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
                                  options=back_opt() + [override_opt(go), self.save()], qid="design.fail")
 
@@ -426,8 +426,9 @@ class AskPart:
                 # keeps one. A typed change is no fix here, since Review writes no code.
                 grill = self.skill("grill-me", "Grill Me", "Stress test the change.")
                 keep = [self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.", oid="accept-finding", kind="accept")] if opens else []
-                # 9.8.5 (Q2): an open finding at medium or above is repaired by default: the loop back to Build is recommended
-                repair = back_opt(rec=True) if any(f["severity"] in ("critical", "high", "medium") for f in opens) else []
+                # 9.8.5 (Q2, F1 of WP08): an open finding at high or above is repaired by default: the loop back to Build is
+                # recommended. A Medium one goes on to Check, listed in the Check question where the person commits.
+                repair = back_opt(rec=True) if any(f["severity"] in ("critical", "high") for f in opens) else []
                 if repair:
                     first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go, oid="continue"), arch]
                 else:
@@ -469,7 +470,8 @@ class AskPart:
                     opts.append(self.opt("Review config suggestions", "Accept, reject or defer each suggestion, then come back here.",
                                          do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again.",
                                          oid="config-suggestions"))
-                return self.with_more(GATE_HEADER, "Check: %s. Commit?" % state_of, stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.",
+                # F1 of WP08: an open finding goes on to Check, so the question where the person commits lists it
+                return self.with_more(GATE_HEADER, "Check: %s%s. Commit?" % (state_of, self.open_listed()), stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.",
                                       qid="check.pass")
             # A measurement nobody took (no coverage run, no test run recorded: a tool is missing) is not a fault of the code:
             # Check runs again once the tool is there, and going back to Build would redo work for nothing.
@@ -498,9 +500,15 @@ class AskPart:
                     self.set_rec(fix, False)
                     if add["id"] == "add-setup":
                         add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
-                return self.question(GATE_HEADER, "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. "
-                                     "%s run Check again?" % (setup, "Add the proposed setup block and" if add else "Repair it and"), stage=stage,
-                                     options=([add] if add else []) + [fix, self.save()] + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
+                # M10 of WP08: the same fault after Check ran again is not repaired again by the recommendation
+                redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+                opts = ([add] if add else []) + [fix, self.save()]
+                text = "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. %s run Check again?" % (
+                    setup, "Add the proposed setup block (%s) and" % self.shown_block if add else "Repair it and")
+                if redo.get("stage") == "check" and same_failure(str(redo.get("reason") or ""), ("SETUP: " + setup)[:300]):
+                    opts = [self.set_rec(self.save(), True)] + [self.set_rec(o, False) for o in opts[:-1]]
+                    text = "Check: SETUP: the environment was not ready (%s). It failed the same way after Check ran again: repair it, or save the run for later?" % setup
+                return self.question(GATE_HEADER, text, stage=stage, options=opts + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
             gap = self.measurement_gap(r.failed_rows("check"))
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times
@@ -574,12 +582,18 @@ class AskPart:
         q = out.get("ask") if "ask" in out else out
         if not isinstance(q, dict) or "options" not in q or any(o["label"] == "Make a small change" for o in q["options"]):
             return out
-        if stage == "review" and q["options"] and q["options"][0]["label"].startswith("Continue") and r.verdict("review") == "PASS" and \
+        more = q.get("more")
+        if stage == "review" and len(q["options"]) >= 4 and more and len(more["options"]) >= 4 and r.verdict("review") == "PASS" and \
                 any(f["state"] == "open" for f in r.findings()):
-            q["options"] = [o for o in q["options"] if o["label"] != "Teach Me"]   # Teach Me gives way to the change
-            if q.get("more"):
-                q["more"]["options"] = [o for o in q["more"]["options"] if o["label"] != "Teach Me"]
-                q["more"]["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["more"]["options"]]
+            # M2 of WP08: at a passed Review with an open finding both questions are full. The Architecture Depth Review gives
+            # way to the small change, and Teach Me takes its place, so Accept a finding, Grill Me, Teach Me and Save for
+            # later all stay in reach (row D42).
+            teach = next((o for o in more["options"] if o["label"] == "Teach Me"), None)
+            at = next((i for i, o in enumerate(q["options"]) if o.get("id") == "depth-review"), None)
+            if teach is not None and at is not None:
+                q["options"][at] = teach
+                more["options"] = [o for o in more["options"] if o is not teach]
+                more["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in more["options"]]
         opt = self.adhoc_option(stage)
         self.follow_ups(opt, q["id"])
 
@@ -593,6 +607,8 @@ class AskPart:
         elif q.get("more") and len(q["more"]["options"]) < 4:
             q["more"]["options"] = put(q["more"]["options"])
             q["more"]["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["more"]["options"]]
+        elif q.get("more"):
+            return out   # M2 of WP08: a full More question is never built again from the visible options
         else:
             first, rest = q["options"][:3], q["options"][3:]
             more = self.question(q["question"]["header"], q["question"]["question"].split("?")[0] + "? More options.", put(rest), stage,
@@ -617,6 +633,10 @@ class AskPart:
             a["gate"] = a["after"][-1]
             return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
                     "say": "%s: the Review agent checks your small change%s. %s" % (LABEL.get(r.stage, r.stage), on_model([a]), goes_on(False))}
+        if step == "check" and self.cli_check():
+            # M7 of WP08: the CLI checks the tree itself, with no agent, as stage_work does (a claimed run counts for nothing)
+            return {"action": "work", "stage": r.stage, "calls": [self.c("check run"), self.c("gate check")], "agents": [],
+                    "say": "%s: the CLI checks the tree after your small change (no agent)." % LABEL.get(r.stage, r.stage)}
         if step == "check":
             a = self.agent("check", ["Ad-hoc change: check the tree as it is now; the change touched %s." % files])
             a["after"].append(self.c("gate check"))

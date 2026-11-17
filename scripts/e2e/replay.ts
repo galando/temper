@@ -243,6 +243,8 @@ function main(): void {
   const cfg = path.join(w.dir, '.claude/temper.config')
   fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80',
     `  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'`))
+  // a second autonomy block merges into the template's (WP08, M8): its park-on-touch and max-blast-radius apply too, and
+  // the mock project touches none of those paths, so the numbers are those of the run with the first block dropped
   if (POLICY) fs.appendFileSync(cfg, '\nautonomy:\n  policy: decide\n')
   w.sh('git add -A && git commit -qm config')
   w.sh(`${TEMPER} init`)
