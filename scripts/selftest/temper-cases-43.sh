@@ -261,7 +261,10 @@ _c43_ct() { # _c43_ct <base>: check_changed_tests.py on $_c43/ct against the bas
   python3 -I "$REPO_ROOT/scripts/check_changed_tests.py" --root "$_c43/ct" --base "$1" > "$_c43/ct.out" 2>&1
   echo "$?"
 }
-_c43_ct_listed() { printf '| `%s` | a file | what | why | WP07 |\n' "$1" >> "$_c43/ct/docs/plans/one-go/changed-tests.md"; }
+_c43_ct_listed() { # _c43_ct_listed <name> [file]: a row of the table for the name, in that file (the case file 11)
+  printf '| `%s` | `%s` | what | why | WP07 |\n' "$1" "${2:-scripts/selftest/temper-cases-11.sh}" \
+    >> "$_c43/ct/docs/plans/one-go/changed-tests.md"
+}
 _c43_ct_repo() {
   local d="$_c43/ct"
   rm -rf "$d"; mkdir -p "$d/docs/plans/one-go" "$d/scripts/selftest"
@@ -338,5 +341,30 @@ r0="$(_c43_ct "$CT_BASE")"
 sed -i 's/`case 44 D01`/`case 44 D01` or less/' "$_c43/ct/docs/plans/one-go/done.md"
 sed -i 's/"D01 one" "1"/"D01 one" "0"/' "$_c43/ct/scripts/selftest/temper-cases-44.sh"
 r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED docs/plans/one-go/done.md:5 .*: D01$' "$_c43/ct.out")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-44.sh:1 .*: D01 one$' "$_c43/ct.out")"
-_c43_ct_listed 'D01'; _c43_ct_listed 'D01 one'
+_c43_ct_listed 'D01' docs/plans/one-go/done.md; _c43_ct_listed 'D01 one' scripts/selftest/temper-cases-44.sh
 assert_eq "done: a changed check of done.md fails until it is listed" "0 1|1|1 0" "$r0 $r1 $(_c43_ct "$CT_BASE")"
+
+# a name identifies its statement (phase 2 fixes): three expects share the first quoted string `,` (of `.join(',')`)
+# and two share `a,b`, so the first two are named by their message and the last by `a,c`; a row covers a change only in
+# the file it names; of two expects alike, one changed is a change, though the tree still holds the other
+CT_BASE="$(_c43_ct_repo)"
+mkdir -p "$_c43/ct/scripts/e2e"
+printf '%s\n' "expect(ids.join(',') === 'a,b', \`T3 the questions are a, then b (\${ids.join(', ')})\`)" \
+  "expect(ids.join(',') === 'a,b' && n === 2," "  \`T4 the questions are a, then b, in 2 dialogs (\${n})\`)" \
+  "expect(n === 0, \`T5 nothing is handed back (\${n})\`)" "expect(n === 0, \`T5 nothing is handed back (\${n})\`)" \
+  "expect(ids.join(',') === 'a,c', \`T6 the questions are a, then c (\${ids.join(', ')})\`)" \
+  > "$_c43/ct/scripts/e2e/accept.ts"
+_c43_commit "$_c43/ct" "the scenarios"
+sed -i "6s/'a,c'/'a,d'/" "$_c43/ct/scripts/e2e/accept.ts"
+_c43_ct_listed ',' scripts/e2e/accept.ts
+_c43_ct_listed 'a,c' scripts/e2e/accept.ts
+r1="$(_c43_ct "$CT_BASE")"
+sed -i "1s/=== 'a,b'/!== ''/" "$_c43/ct/scripts/e2e/accept.ts"
+r2="$(_c43_ct "$CT_BASE")|$(grep -cF 'UNLISTED scripts/e2e/accept.ts:1 (base' "$_c43/ct.out")"
+_c43_ct_listed 'T3 the questions are a, then b (${ids.join('"', '"')})' scripts/e2e/slow.ts
+r3="$(_c43_ct "$CT_BASE")|$(grep -cF 'UNLISTED scripts/e2e/accept.ts:1 (base' "$_c43/ct.out")"
+_c43_ct_listed 'T3 the questions are a, then b (${ids.join('"', '"')})' scripts/e2e/accept.ts
+sed -i "5s/n === 0/n >= 0/" "$_c43/ct/scripts/e2e/accept.ts"
+r4="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED scripts/e2e/accept.ts:5 .* #2$' "$_c43/ct.out")"
+assert_eq "done: a name identifies its statement, a row covers its own file, and one of two alike changed is a change" \
+  "0 1|1 1|1 1|1" "$r1 $r2 $r3 $r4"
