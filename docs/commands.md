@@ -222,7 +222,7 @@ take up a `/temper` run at their stage, so there is one flow to keep right:
 
 The mod lets it run during a run, as any CLI call. Use it when a gate says `environment fault` or `ENV:`.
 
-**How Temper finds the setup of a project it has never seen.** Three sources, one check:
+**How Temper finds the setup of a project it has never seen.** Two sources, one check:
 
 1. **Rules, for common setups** (`temper doctor --propose`): the JDK a Maven enforcer, `<java.version>`, a Gradle
    toolchain, `.java-version` or `.tool-versions` asks for, set by the project's `scripts/ensure-jdk*.sh --export` (else a
@@ -234,22 +234,23 @@ The mod lets it run during a run, as any CLI call. Use it when a gate says `envi
    `.devcontainer/devcontainer.json` features. A CI service starts with Docker when its daemon answers, else with a
    local server of that kind. Only a database variable with a local port or host is taken from a CI `env:`; deploy
    targets and credentials never are.
-3. **The environment agent** (`agents/env.md`), when no rule or CI file describes the project, or their block did not
-   fix the failure. It reads the CI files, the Dockerfile, the Makefile, the README and the failing errors, looks at the
-   machine without changing it, and writes a draft to `{spec}/setup-proposal.yaml`.
+
+The environment agent (`agents/env.md`) is no longer offered or launched (WP08): a block reached the config through
+it before the person had seen the draft. Its brief and `temper doctor --candidate FILE` stay until the preflight goes.
 
 **The check.** A block from any source is written to `.claude/temper.config` only by `--write`, and only after the CLI
 reruns each command the preflight found failing on the environment, with the block, on a throwaway worktree of HEAD,
 and none of them fails on the environment any more. With no stored failing command there is nothing to check, so
 nothing is written, and no block is offered (at Check too: a block is offered there only when the plan's preflight stored
-the commands that failed). A block that did not fix them is remembered and not offered again. `temper doctor --candidate FILE
-[--write]` checks the agent's draft the same way.
+the commands that failed). A block that did not fix them is remembered and not offered again.
 
-**For the person it is one click.** When the preflight or Check fails on the environment and the project has no block,
-the question's first option is `Add the proposed setup block` (sources 1 and 2), or, when no rule fits or that block
-failed its check, `Let an agent find the setup` (source 3, offered once). Either way only a block that fixed the
-failing commands reaches the config. What no source can make (a missing licence, a secret, a VPN, a JDK the machine
-does not have and the project cannot fetch) is said in plain words instead.
+**The block reaches the config only by your answer.** `temper doctor` reads; `temper doctor --propose --write` adds the
+block, and the mod lets it run only as the call of the option you picked. When the preflight or Check fails on the
+environment and the project has no block, the question's first option is `Add the proposed setup block`, and the
+question shows every line of the block (the run line with its secrets masked). A block that fakes a tool passes the
+CLI's check, so your reading of it is the control. Only a block that fixed the failing commands reaches the config.
+What no source can make (a missing licence, a secret, a VPN, a JDK the machine does not have and the project cannot
+fetch) is said in plain words instead.
 
 ### `temper plan patch` (9.8.5)
 

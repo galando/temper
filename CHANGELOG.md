@@ -13,6 +13,8 @@ All notable changes to Temper are documented here. The plugin version lives in
 - M6 (WP08): under the policy, a criterion only you can confirm parks the run; the next question is the confirmation.
 - M7 (WP08): the Check brief records the test run with evidence run, and the CLI checks a small change at Check.
 - M10 (WP08): the same environment fault at Check after a run again recommends Save for later, not the repair.
+- M11 (WP08): when only the commit gate's own row fails, the first option, Check again, runs the gate again.
+- M13 (WP08): the environment agent is no longer offered; the question shows the proposed setup block whole.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

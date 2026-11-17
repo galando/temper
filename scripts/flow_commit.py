@@ -151,6 +151,11 @@ class CommitPart:
         if r.command == "fix" and "check" in failing and r.can_loop("check", "fix"):
             opts.append(self.opt("Loop back to Fix (Recommended)", "Write the fix again; Review and Check run again.", move="back",
                                  calls=[self.c("state loop check fix --reason '{reason}'")], reason=["The check found a real problem"], oid="back"))
+        if own and not outside:
+            # M11 of WP08: the question says "then check again", and this option does it (first, with no mark: what the
+            # row names changes first)
+            opts.append(self.opt("Check again", "Run the commit gate again, once you changed what the row names.", move="redo",
+                                 calls=[self.c("gate commit")], oid="check-again"))
         if not own:
             opts.append(self.opt("Override and commit", "Skip the failed gates with your reason and commit.", move="commitOverride",
                                  calls=[self.c("override %s --reason '{reason}'" % s) for s in failing] + [self.c("gate commit")],

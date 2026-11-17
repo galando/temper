@@ -343,7 +343,7 @@ class AskPart:
                 # 9.8.5: the preflight hit the environment and the project declares none: one click adds the block that
                 # temper doctor --propose made from the project's own facts, runs the preflight again and checks the plan
                 return self.question(GATE_HEADER, "Plan: the check failed (%s).%s The project's own files say what it needs: "
-                                     "add the proposed setup block (%s) and check again?" % (why, said, env_opt["description"]), stage=stage,
+                                     "add the proposed setup block (%s) and check again?" % (why, said, self.shown_block), stage=stage,
                                      options=[env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()], qid="plan.fail")
             return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said), stage=stage,
                                  options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()], qid="plan.fail")
@@ -504,7 +504,7 @@ class AskPart:
                 redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
                 opts = ([add] if add else []) + [fix, self.save()]
                 text = "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. %s run Check again?" % (
-                    setup, "Add the proposed setup block and" if add else "Repair it and")
+                    setup, "Add the proposed setup block (%s) and" % self.shown_block if add else "Repair it and")
                 if redo.get("stage") == "check" and same_failure(str(redo.get("reason") or ""), ("SETUP: " + setup)[:300]):
                     opts = [self.set_rec(self.save(), True)] + [self.set_rec(o, False) for o in opts[:-1]]
                     text = "Check: SETUP: the environment was not ready (%s). It failed the same way after Check ran again: repair it, or save the run for later?" % setup

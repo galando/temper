@@ -168,9 +168,9 @@ line prints `temper-setup: FAIL (exit N)` and exits 125. A variable whose name s
 or shown. Every agent prompt ends with an `Environment setup` line that carries the run line and the variables. No
 block: every command and prompt is as before. The person rarely writes the block: when the preflight or Check fails on
 the environment and there is none, the question offers `Add the proposed setup block (Recommended)`, made by
-`temper doctor --propose` from the project's own files and its CI, or `Let an agent find the setup` when no rule fits;
-either block is written only after the CLI reran the failing commands with it and they no longer fail on the
-environment (`docs/commands.md`).
+`temper doctor --propose` from the project's own files and its CI, and the question shows every line of the block.
+It is written only as the call of that answer, and only after the CLI reran the failing commands with it and they no
+longer fail on the environment (`docs/commands.md`). No agent drafts a block (WP08).
 
 **An environment fault at a task gate.** When the last run of a task's attempt is a failing GREEN, a RED came before
 it, nothing else is wrong, and the output names an environment fault, `temper task gate` prints `ENV: Task N failed on
@@ -225,7 +225,8 @@ longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.
 
 **Overrides at the commit gate.** `Override and commit` clears a failed stage gate the commit gate names. It never
 cleared the commit gate's own rows (blast radius, scope, park-on-touch), so it is no longer offered for them; the question
-says what to change instead, and `Add to plan` stays for files outside the plan.
+says what to change instead, and `Add to plan` stays for files outside the plan. When no file is outside the plan, the
+first option is `Check again` (with no mark), which runs the commit gate again once the change is made (WP08).
 
 **Questions.** A question has four options at most; the CLI puts the rest under `More options`. The Context check
 accepts an answer of up to 2000 characters (the `Include what is left out` option carries the whole list); plan.md

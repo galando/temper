@@ -21,9 +21,6 @@ selftest:D41                   WP08           D41
 selftest:D48a                  WP08           D48
 selftest:D48b                  WP08           D48
 selftest:D49                   WP08           D49
-selftest:D51                   WP08           D51
-selftest:D53a                  WP08           D53
-selftest:D53b                  WP08           D53
 selftest:D55                   WP08           D55
 selftest:D56a                  WP08           D56
 selftest:D56b                  WP08           D56

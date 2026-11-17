@@ -12,7 +12,7 @@ import decisions
 import doctor
 import run_env
 
-from flow_base import LABEL, TEMPER, goes_on, loop_at, on_model, read_json, short_model
+from flow_base import LABEL, TEMPER, goes_on, loop_at, on_model, read_json
 
 
 class WorkPart:
@@ -102,37 +102,14 @@ class WorkPart:
             parts = doctor.parts(block)
             run, env = parts["run"], ", ".join("%s=%s" % kv for kv in parts["env"].items())
             what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
+            # M13 of WP08: the question shows the block whole, line by line (the run line masked), since the person who
+            # reads it is the check: a block that fakes a tool passes the CLI's own
+            self.shown_block = " | ".join(("run: " + run_env.mask(l.strip()[len("run: "):])) if l.strip().startswith("run: ")
+                                          else l.strip() for l in block if l.strip())
             return self.opt("Add the proposed setup block (Recommended)", what + ". Temper first reruns the failing commands with it, "
                             "and adds it only when they no longer fail on the environment.", move="redo",
                             calls=[self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")], oid="add-setup")
-        if self.r.state.get("env_agent") != "tried":
-            # 9.8.5: no rule fits this project (or its block did not fix the failure): an agent reads how the project runs
-            return self.opt("Let an agent find the setup (Recommended)", "An agent reads the project's CI, README and scripts and "
-                            "drafts a setup block; Temper reruns the failing commands with it and adds it only when they pass.",
-                            move="redo", calls=[self.c("state set env_agent requested")], oid="find-setup")
-        return None
-
-    def env_agent_work(self):
-        """9.8.5: the environment agent the person asked for: it drafts {spec}/setup-proposal.yaml; the CLI checks it on the
-        failing commands (doctor --candidate --write) and only a draft that fixes them reaches the config."""
-        r = self.r
-        kept = read_json(os.path.join(TEMPER, "preflight.json"), {})
-        faults = ["`%s`: %s" % (f.get("cmd", ""), f.get("why", "")) for f in (kept.get("env_faults") or [])[:6]] if isinstance(kept, dict) else []
-        if r.stage == "check" and self.setup_fault():
-            faults.append("Check: %s" % self.setup_fault())
-        _, facts = doctor.propose(os.getcwd())
-        draft = os.path.join(r.spec, "setup-proposal.yaml")
-        lines = ["Follow %s/agents/env.md exactly." % self.plugin, "Spec path: %s." % r.spec,
-                 "Failing on the environment: %s." % ("; ".join(faults) or "(see the last gate's rows)"),
-                 "temper doctor --propose found: %s." % ("; ".join(facts) or "nothing"), self.plugin_line()]
-        then = [self.c("plan preflight"), self.c("gate plan")] if r.stage == "plan" else [
-            self.c("state redo %s --reason %s" % (r.stage, shlex.quote("SETUP: the environment agent's block was added")))]
-        model = (r.ctx.get("models") or {}).get("env") or "sonnet"
-        a = {"type": "temper:temper-env", "model": model, "prompt": "\n".join(lines),
-             "after": [self.c("state set env_agent tried"), self.c("usage add --stage %s --model %s --ms {ms}" % (r.stage, model)),
-                       self.c("doctor --candidate %s --write" % shlex.quote(draft))] + then}
-        return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
-                "say": "An agent looks for how this project is set up, on %s. %s" % (short_model(model), goes_on(False))}
+        return None   # M13 of WP08: the environment agent is no longer offered
 
     def setup_fault(self):
         """9.8.5 (Q6): the reason Check's latest run hit the environment (a `setup fault:` row after its last suite row), or ""."""

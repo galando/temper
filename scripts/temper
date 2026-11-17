@@ -1014,8 +1014,8 @@ _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state 
   # - F2: going back before Build re-plans the tasks, so the grouped run starts over
   [[ -f "$GROUPS_FILE" && -n "$pre" ]] && _groups_reset
   _fresh_grant "$to"
-  # - the code an earlier run built no longer stands for the plan (Build builds the plan, not a fix pass of it), and
-  #   the run asks at every stage again (M5 of WP08; ran_unattended stays)
+  # - the code an earlier run built no longer stands for the plan, and the run asks at every stage again (M5 of WP08;
+  #   ran_unattended stays)
   if [[ -f "$STATE_FILE" && -n "$pre" ]]; then
     [[ -n "$(cmd_state_get built_before "")" ]] && _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
     _json_set_path "$STATE_FILE" run_mode interactive '{}' >/dev/null
@@ -3971,7 +3971,7 @@ main() {
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
     plan) cmd_plan "$@" ;;
-    doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;;   # only reads; --propose --write adds setup:
+    doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;; # reads; --propose --write adds setup:, as the person's answer
     guards) case "${1:-}" in
               uninstall) python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall ;;
               install) bash "$SCRIPTS_DIR/guards/install.sh" ;;   # 9.8.1: the commit gate, as a setup call of the CLI
