@@ -160,16 +160,17 @@ assert_exit "commit gate FAILs with an unresolved review finding, no override" 1
 "$TEMPER" gate check >/dev/null 2>&1 || true
 assert_eq "override is recorded and visible in report" "yes" "$("$TEMPER" report | grep 'overridden' >/dev/null && echo yes || echo no)"
 
-# --- state: illegal transitions rejected, loop budget enforced ---
+# --- state: illegal transitions rejected, the budget enforced (WP10: a step back from a failed gate spends one) ---
 setup
 assert_exit "state advance rejects an unknown stage name" 1 "$TEMPER" state advance not_a_real_stage build
 _at build build
 assert_exit "state advance accepts a known stage" 0 "$TEMPER" state advance build_complete review
-assert_exit "state loop allows iterations up to max-per-type" 0 "$TEMPER" state loop review build --reason r1
-_at review
+gfail review "no blocking findings" "1 open high finding"
+assert_exit "state loop allows steps back from a failed gate up to budget.per-failure" 0 "$TEMPER" state loop review build --reason r1
+_at review; gfail review "no blocking findings" "1 open high finding"
 assert_exit "state loop allows the second iteration" 0 "$TEMPER" state loop review build --reason r2
-_at review
-assert_exit "state loop blocks the third iteration (max-per-type: 2)" 1 "$TEMPER" state loop review build --reason r3
+_at review; gfail review "no blocking findings" "1 open high finding"
+assert_exit "state loop blocks the third step back for one failure (budget.per-failure: 2)" 1 "$TEMPER" state loop review build --reason r3
 
 # --- state loop: a /temper run clears the temper sequence from the target stage down ---
 setup

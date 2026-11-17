@@ -385,6 +385,19 @@ verdict(fr, "plan", False, "no open plan blockers", "2 open")
 snap2(fr, "plan-fresh-blocker", "run-fresh")
 
 
+# ---- 9.8.5 (WP10): the question at the limit of the budget: a failed Check run again twice, then failed again ----
+bu = project("budget")
+cli(bu, "state", "init", "pw", "--feature", "Password reset by email")
+at_build(bu)
+for st, nxt in (("build", "review"), ("review", "check")):
+    verdict(bu, st, True)
+    cli(bu, "state", "advance", st + "_complete", nxt)
+for _ in range(2):
+    verdict(bu, "check", False, "tests pass", "exit 1: 2 failed")
+    cli(bu, "state", "redo", "check", "--reason", "the suite again")
+verdict(bu, "check", False, "tests pass", "exit 1: 2 failed")
+snap2(bu, "check-budget", "run-budget")
+
 # A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
 for name in ("armed-review-pass",):
     extra[name] = views.pop(name)

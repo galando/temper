@@ -283,11 +283,6 @@ def approve_design_tasks(argv):
     os.replace(tmp, p)
 
 
-def loop_config(argv):
-    import json, sys
-    print(json.dumps({k: v for k, v in zip(argv[1::2], argv[2::2]) if v != ''}))
-
-
 def grouped_models(argv):
     import json, sys
     d = json.loads(argv[1]); d['task_model'] = argv[2]; d['escalation_model'] = argv[3]
@@ -323,7 +318,6 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('state_init', state_init),
     ('approve_plan', approve_plan),
     ('approve_design_tasks', approve_design_tasks),
-    ('loop_config', loop_config),
     ('grouped_models', grouped_models),
     ('pending_done', pending_done),
     ('override_entry', override_entry),

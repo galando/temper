@@ -15,7 +15,7 @@ import intent_parse
 import plan_ops
 import tasks_md
 from findings import finding_state  # the one state of a finding row, the CLI's own reading (A20)
-import loop_step
+import budget
 
 from flow_base import GATE_OF, SEQ, TEMPER, git, loop_at, open_concerns, read_json, read_text
 
@@ -224,14 +224,14 @@ class Run:
                 return int(l.get("iteration") or 0)
         return 0
 
-    def loop_budget(self, frm, to):
-        # the one rule, the CLI's own (loop_step.budget): Build to Plan once per run, the rest by the config
-        return loop_step.budget(frm, to, self.cfg)
+    def room(self, key):
+        """The room of a budget key, as the CLI counts it (scripts/budget.py): used, limit, run_used, run_limit, ok."""
+        return budget.room(key, budget.Facts(self))
 
     def can_loop(self, frm, to):
-        if not self.on("feedback.enabled", True):
-            return False
-        return self.loop_count(frm, to) < self.loop_budget(frm, to)
+        """A step back that spends nothing (from a gate that did not fail), or one whose key has room: the row of SPENDS."""
+        hit = budget.key_of(["state", "loop", frm, to], budget.Facts(self))
+        return hit is None or self.room(hit[0])["ok"]
 
     def loop_into(self, stage):
         """The latest active step back to `stage`, or None."""

@@ -107,8 +107,8 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
   // The run state, the grouped Build record, the usage record and the view the mod draws: the CLI writes them. 9.8.5
   // (M14): so are the preflight's stored rows, the Design answers, the setup blocks already tried and the rows of the
-  // Check run made ahead (Check adopts them), which turn rows.
-  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view|preflight|decisions|setup-tried|check\/ahead)\.json$/i],
+  // Check run made ahead (Check adopts them), which turn rows. 9.8.5 (WP10): so is the record of the run's repeats.
+  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view|preflight|decisions|setup-tried|budget|check\/ahead)\.json$/i],
   // The store of reused passes, in the git folder and shared by every worktree: a row in it passes a check unrun.
   ['gates', /(^|\/)\.git\/temper-results\.json$/i],
   ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
@@ -125,7 +125,7 @@ const GUARDED_SAMPLES = [
   '.temper/build-state.json', '.temper/groups.json', '.temper/usage.json', '.temper/view.json', '.temper/feedback-loops.json',
   '.temper/evidence/review.json', '.claude/temper.config', '.git/config', '.git/hooks', '.git/hooks/pre-commit', '.git/temper-gate',
   '.git/temper-results.json', '.temper/preflight.json', '.temper/decisions.json', '.temper/setup-tried.json',
-  '.temper/check/ahead.json',
+  '.temper/check/ahead.json', '.temper/budget.json',
 ]
 // A glob as bash reads it, one segment at a time: `*` and `?` stay inside a segment, and a segment that starts with one
 // does not match a name that starts with a dot (bash's default: `rm -rf *` leaves `.temper` alone).
@@ -375,7 +375,8 @@ const TOO_MANY_DENY =
 
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
-  'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix', ...STAGES]
+  'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
+  'budget', 'grant', ...STAGES]
 
 const GLOB_DENY =
   'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
@@ -477,8 +478,8 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
 }
 
 // The temper calls only the person may cause (ADR 0013), by their words after the script: leaving Intent or Plan, a
-// skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, writing a setup block, and
-// starting over or ending the run before it is done.
+// skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, writing a setup block, more
+// repeats than the budget holds, and starting over or ending the run before it is done.
 function personOnly(w: readonly string[], r: RunFacts): boolean {
   const [a, b, c, d] = w
   if (a === 'override') return true
@@ -496,6 +497,8 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   // 9.8.5 (M13): a setup block runs before every command of every gate, so writing one to the config is the person's;
   // `doctor` and `doctor --propose` only read.
   if (a === 'doctor') return w.includes('--write')
+  // 9.8.5 (WP10): more repeats of a failed check than the budget holds are the person's grant, at run.budget.
+  if (a === 'budget') return b === 'grant'
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true

@@ -1,13 +1,10 @@
-"""loop_step.py LOOPS_FILE FROM TO REASON CONFIG TS [LEDGER STATE MUTATION_THRESHOLD]: one step back of `temper state loop`.
+"""loop_step.py LOOPS_FILE FROM TO REASON TS [LEDGER STATE MUTATION_THRESHOLD]: one step back of `temper state loop`.
 
-It counts the step against the pair's budget and keeps what the stage left open (Review's findings, Check's failed runs
-with their output). CONFIG is a JSON object of the config values the budget reads (loops.max-per-type, fix.max-loops; a key
-that is not set is left out). Moved out of scripts/temper so it stays under the plugin directory's 256 KiB file limit.
-Standard library only; importing it runs nothing.
-
-The budget of a step back is one rule, `budget(frm, to, cfg)`, so the CLI that counts the steps and the flow that offers
-them never disagree. A pair's loop stays in active_loops for the whole run: the budget is per run (a step back from Build
-to Plan happens once per run, reference/orchestrator-patterns.md), so a loop never moves to history before the run ends.
+It keeps what the stage left open (Review's findings, Check's failed runs with their output). It counts nothing and
+refuses nothing: a step back from a failed gate spent its repeat of the run's budget in the CLI's dispatcher before this
+ran (scripts/budget.py, ADR 0019 decision 1), and max_iterations is the limit of that key, so the view keeps its n/m.
+A pair's loop stays in active_loops for the whole run. Moved out of scripts/temper so it stays under the plugin
+directory's 256 KiB file limit. Standard library only; importing it runs nothing.
 """
 import json
 import os
@@ -17,18 +14,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from findings import finding_state  # noqa: E402
 
 
-def budget(frm, to, cfg):
-    """How many steps back the run may take from FRM to TO. cfg(key, default) -> str reads the config. Build to Plan is
-    once per run; Check to Build or Fix takes fix.max-loops when it is set; every other pair takes loops.max-per-type
-    (default 2). A value that is not a whole number counts as the default 2."""
-    if frm == "build" and to == "plan":
-        return 1
-    mx = cfg("loops.max-per-type", "2")
-    if frm == "check" and to in ("build", "fix"):
-        mx = cfg("fix.max-loops", mx)
+def limit(frm):
+    """The limit of the key gate:FRM (budget.py); 2 when the record cannot be read."""
     try:
-        return int(mx)
-    except (TypeError, ValueError):
+        import budget
+        return budget.room("gate:%s" % frm, budget.Facts())["limit"]
+    except Exception:
         return 2
 
 
@@ -53,9 +44,9 @@ def group_failures(loops_file):
     return out
 
 
-def step(f, frm, to, reason, cfg, ts, ledger="", state="", mutation_threshold="70"):
+def step(f, frm, to, reason, ts, ledger="", state="", mutation_threshold="70"):
     """One step back; returns (exit code, the line to print)."""
-    max_per_type = budget(frm, to, cfg)
+    max_per_type = limit(frm)
     d = json.load(open(f))
     active = d.get('active_loops', [])
     loop = next((l for l in active if l['from_stage'] == frm and l['to_stage'] == to), None)
@@ -64,11 +55,7 @@ def step(f, frm, to, reason, cfg, ts, ledger="", state="", mutation_threshold="7
                 'to_stage': to, 'reason': reason, 'iteration': 0, 'max_iterations': max_per_type,
                 'started': ts}
         active.append(loop)
-    loop['max_iterations'] = max_per_type   # the budget as it is now (the config may have changed since the first step)
-    if loop['iteration'] >= max_per_type:
-        d['active_loops'] = active
-        json.dump(d, open(f, 'w'), indent=2)
-        return 1, 'BLOCKED: max iterations (%d) reached for %s->%s' % (max_per_type, frm, to)
+    loop['max_iterations'] = max_per_type   # the limit of the key as it is now (a grant raises it)
     loop['iteration'] += 1
     loop['reason'] = reason or loop['reason']
     loop['at'] = ts      # each step writes when it ran: readers order by at, so the latest reason is the one a fix pass reads
@@ -124,18 +111,7 @@ def step(f, frm, to, reason, cfg, ts, ledger="", state="", mutation_threshold="7
 
 
 def main(argv):
-    f, frm, to, reason, config, ts = argv[1:7]
-    try:
-        values = json.loads(config)
-    except ValueError:
-        values = {}
-    if not isinstance(values, dict):
-        values = {}
-
-    def cfg(key, default=""):
-        v = values.get(key)
-        return default if v is None or v == "" else str(v)
-    rc, line = step(f, frm, to, reason, cfg, ts, *argv[7:10])
+    rc, line = step(*argv[1:6], *argv[6:9])
     print(line)
     return rc
 

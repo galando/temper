@@ -93,6 +93,12 @@
    "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {
+   "id": "budget.spent",
+   "where": "Plan, Build, Review, Check, Pipeline",
+   "trigger": "budget spent: the next step repeats a failed check past its limit (2 for one failure, 6 for one run)",
+   "check": "budget: an unattended run at the limit stops"
+  },
+  {
    "id": "commit.always",
    "where": "Commit",
    "trigger": "the commit question, always",
@@ -180,6 +186,12 @@
    "id": "person.step-back",
    "where": "any stage",
    "trigger": "temper state set next_stage to an earlier stage: a step back",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.budget-grant",
+   "where": "every stage",
+   "trigger": "temper budget grant: more repeats of a failed check than the budget holds",
    "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   }
  ]

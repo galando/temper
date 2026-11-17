@@ -73,6 +73,8 @@ assert_exit "A6: run_mode takes interactive or autonomous only" 1 "$TEMPER" stat
 assert_exit "A6: run_mode autonomous is taken" 0 "$TEMPER" state set run_mode autonomous
 assert_exit "A6: pipeline_round counts one up at a time: 3 after round 1 is refused" 1 "$TEMPER" state set pipeline_round 3
 assert_exit "A6: pipeline_round is a number" 1 "$TEMPER" state set pipeline_round two
+# WP10: each call above spent a CI fix round of the budget (a call refused for its own reason has spent its repeat)
+"$TEMPER" budget grant --key pipeline --reason 'the refused calls spent their rounds' >/dev/null 2>&1
 assert_exit "A6: pipeline_round 2 after round 1 is taken" 0 "$TEMPER" state set pipeline_round 2
 assert_exit "A6: pipeline_round never goes down" 1 "$TEMPER" state set pipeline_round 1
 mkdir -p reg; echo 'x' > reg/a_test.sh; echo 'y' > reg/b_test.sh
@@ -171,21 +173,23 @@ _i17 "Logs hold customer names: mask them?" "Logs hold customer names" "Logs hol
 assert_eq "A14: the concern whose title the question names is resolved, not the wordier one" "1|0" \
   "$(sed -n '/^### Logs hold customer names$/,/^### Logs hold customer names in/p' .temper/specs/demo/design.md | grep -c '^resolved: A$')|$(sed -n '/in traces too/,$p' .temper/specs/demo/design.md | grep -c '^resolved:')"
 
-# --- A17, A18. The step back budget: loop_step.budget, the rule temper next offers it by ---
-assert_eq "A17: budget: build->plan once; check->build takes fix.max-loops when set; else loops.max-per-type (default 2)" "1|5|3|2|2" "$(python3 -c "
-import sys
-sys.path.insert(0, sys.argv[1])
-from loop_step import budget
-c = lambda vals: (lambda k, d='': vals.get(k, d))
-print('|'.join(str(x) for x in [budget('build', 'plan', c({'loops.max-per-type': '5'})), budget('check', 'build', c({'loops.max-per-type': '3', 'fix.max-loops': '5'})),
-      budget('review', 'build', c({'loops.max-per-type': '3', 'fix.max-loops': '5'})), budget('review', 'build', c({})), budget('review', 'build', c({'loops.max-per-type': 'x'}))]))" "$REPO_ROOT/scripts")"
+# --- A17, A18. The step back budget: the limit of the key gate:<from> (scripts/budget.py), the rule temper next offers it by ---
+_a17room() { python3 "$REPO_ROOT/scripts/budget.py" room "$1" | python3 -c "import json, sys; print(json.load(sys.stdin)['limit'])"; }
+fresh; _a17="$(_a17room gate:check)"
+printf 'budget:\n  per-failure: 5\n' >> .claude/temper.config; _a17+="|$(_a17room gate:check)|$(_a17room gate:review)"
+sed -i 's/^  per-failure: 5$/  per-failure: x/' .claude/temper.config; _a17+="|$(_a17room gate:review)"
+assert_eq "A17: budget: every key takes budget.per-failure (default 2; a value that is no whole number counts as 2)" "2|5|5|2" "$_a17"
 fresh; gpass intent plan; _at build
 assert_exit "A17: the first step back from Build to Plan is taken" 0 "$TEMPER" state loop build plan --reason x
 _at build
-assert_exit "A17: a second one is refused, as temper next says (build->plan is once per run)" 1 "$TEMPER" state loop build plan --reason y
+assert_exit "A17: a second one is taken too: from a Build that did not fail it spends nothing (WP10)" 0 "$TEMPER" state loop build plan --reason y
+_at build; gfail build "tests pass" "unit failed"; "$TEMPER" state loop build plan --reason z >/dev/null 2>&1
+_at build; gfail build "tests pass" "unit failed"; "$TEMPER" state loop build plan --reason z >/dev/null 2>&1
+_at build; gfail build "tests pass" "unit failed"
+assert_exit "A17: the third from a failed Build is refused, as temper next says (gate:build has no room)" 1 "$TEMPER" state loop build plan --reason w
 fresh; gpass intent plan build review; _at review
 "$TEMPER" state loop review build --reason x >/dev/null 2>&1
-sed -i 's/^  max-per-type: 2$/  max-per-type: 3/' .claude/temper.config
+printf 'budget:\n  per-failure: 3\n' >> .claude/temper.config
 _at review
 "$TEMPER" state loop review build --reason y >/dev/null 2>&1
 assert_eq "A18: each step stores the budget as it is now" "2|3" \

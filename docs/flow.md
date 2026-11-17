@@ -101,7 +101,7 @@ means:
 | `kind` | 9.8.5, only on an option a reader acts on: `more` (opens `more`), `accept` (opens `accept`), `cancel`, `carry`, `type` |
 | `recommended` | 9.8.5, only when true: the recommended option, the one whose label ends in `(Recommended)` |
 | `label`, `description` | as in the question |
-| `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept` (a review finding), `covered` (a Build task an earlier task already built), `keep`, `commitOverride`, `redo`, `pause`, `restart`, or `null` for an option that decides nothing |
+| `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept` (a review finding), `covered` (a Build task an earlier task already built), `keep`, `commitOverride`, `redo`, `pause`, `restart`, `grant` (more repeats, at `run.budget`), or `null` for an option that decides nothing |
 | `calls` | the CLI calls this answer makes, in order; `{reason}` is the person's reason. Every `{...}` text stands inside single quotes: put the text there with each `'` written as `'\''`, so a backquote or a `$` in it stays text |
 | `steps` | for Commit at a parked run: the commit steps |
 | `do` | for an option that decides nothing: what to do, then ask the question again |
@@ -147,8 +147,8 @@ fix agent on the group's merged tree (`temper group fix G<n>`; the agent's work 
 action checks the group again as an ordinary CLI call and a FAIL there asks the question again; see 9.8.5 below for a
 fix that changed nothing). From the second failure on, "Run the
 group's tasks again" is never recommended. The fix is recommended once (`fix_tries`): when it did not make the group
-pass, the loop back to Plan is recommended, or Save for later when that step is spent, so following the
-recommendation always ends.
+pass, the loop back to Plan is recommended. That step back spends the group's budget key, so following the
+recommendation always ends (see the budget below).
 
 To read a failure, the session runs `temper output G<n>` (the group's last Validate run: its command, exit,
 FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed
@@ -255,11 +255,30 @@ shows its first 100.
 
 `temper plan patch G<n>|task N|integration --cmd '<command>'` changes one command line of the approved `tasks.md`
 (a group's Validate, a task's Test, the Integration line) and nothing else (`scripts/plan_patch.py`). The passed tasks
-keep their work, no loop is spent, the approved plan's hash follows the change, a patched group's check runs again, and
+keep their work, the patch spends one repeat of the budget, the approved plan's hash follows the change, a patched group's check runs again, and
 the plan ledger records the old and the new line as the person's. It refuses a `tasks.md` that differs from the
 approved plan in anything else (that is a loop back to Plan). It is the person's: the group question offers `Change
 the group's command`, recommended when the cause is the command (a second time-out, or a fix agent that changed
 nothing), and the person types the command. The mod lets it run only as that answer.
+
+### The budget (9.8.5, ADR 0019)
+
+Every repeat that follows a failed check is counted by the CLI in one record, `.temper/budget.json`, read only through
+`scripts/budget.py`: 2 for one failure (`budget.per-failure`) and 6 for one run (`budget.per-run`). A failure is the
+check that failed, its key: `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance` or `pipeline` (a failed `integrate`
+spends under `gate:build`). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
+gate (from Build, a failed or parked group's key), a group fix, the group's tasks again, more time at a failed group
+check, a plan patch, a task retry, a task checked again after an environment fault, a reopened acceptance test, a CI
+fix round, and a merge again after a failed `integrate`. A change at a passed gate spends nothing. The CLI's dispatcher
+checks the call before it runs: past a limit it prints `BLOCKED: ...`, exits 1 and writes nothing. No flag and no
+variable exempts a call, and a call refused later for its own reason has spent its repeat.
+
+`temper next` never offers a call the budget refuses. A question that would offer one becomes `run.budget` (header
+`Temper gate`): the stage's first sentence, the count, then Save for later (recommended), `Allow two more` (move
+`grant`, the call `temper budget grant --key <key> --reason '{reason}'`, the person's only) and the options of the
+stage's question that spend nothing. An `auto` or `work` action that holds one parks an armed run, or asks the same
+question. After a grant `next` asks the stage's own question again. `temper budget` prints the record. The record
+survives a step back; `state clear` and `state init` remove it. So following the recommendation always ends.
 
 ### The run policy (9.8.5)
 
@@ -268,7 +287,7 @@ person still arms the run at the last question before Build; the option's text t
 passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the question: an
 open finding at high or above loops back to Build with the findings as the reason (a Medium one goes on); a clean Review
 goes on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only
-while `loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. A failed group check during
+while the budget lasts. Nothing is overridden or accepted. A failed group check during
 Build takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again) when no
 person is needed for it; a typed command, Save for later or a spent budget park the run. A recommended step back to Plan
 parks it too: an unattended run never plans again, and the park reason says that the step back is the person's to

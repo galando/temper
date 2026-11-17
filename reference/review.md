@@ -239,8 +239,7 @@ Write `review-context.json`:
 ## Feedback Loop to Build
 
 When fixable issues remain, write them to `review-context.json`. The CLI's Review question
-offers "Loop back to Build" while the loop budget (`loops.max-per-type`, default 2) lasts; once it
-is spent, it offers only "Override and continue" and "Save for later".
+offers "Loop back to Build" while the budget lasts; once it is spent, it asks `run.budget`.
 
 ## Answering a finding without fixing it (9.7.6)
 

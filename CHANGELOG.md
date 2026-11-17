@@ -19,6 +19,13 @@ All notable changes to Temper are documented here. The plugin version lives in
 - WP09: a failed group check or a failed integrate is a verdict for every carrier and reaches its question with no
   hand back. `temper gate`, `task gate`, `group gate` and `integrate` print `VERDICT: <scope> <verdict>` once they
   recorded one; `temper go` (its new key `verdicts`), the mod's run driver and the scripted loop read that line only.
+- WP10: one budget in the CLI (ADR 0019 decision 1). Every repeat that follows a failed check spends one entry of
+  `.temper/budget.json` (`scripts/budget.py`): 2 for one failure and 6 for one run (`budget.per-failure`,
+  `budget.per-run`). A call past a limit prints `BLOCKED: ...`, exits 1 and writes nothing; no flag and no variable
+  exempts it. `temper next` never offers such a call: it asks `run.budget` (Save for later, or `Allow two more`, which
+  only the person answers with `temper budget grant`), and an armed run parks there. `temper budget` prints the record.
+  The keys `fix.max-loops`, `feedback.enabled`, `loops.max-per-type` and `autonomy.budget` are read by nothing; the
+  rule "Build to Plan once per run" is gone, and the budget bounds that step back.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

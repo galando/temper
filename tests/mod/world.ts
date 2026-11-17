@@ -180,7 +180,7 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   // A loop chained with `; exit 1` stays the stand in for a call that failed and changed nothing (see hardening.test.ts).
   if (loop && !failsAfter) {
     if (w.loopsBlocked) {
-      const text = `BLOCKED: max iterations (2) reached for ${loop[1]}->${loop[2]}`
+      const text = `BLOCKED: gate:${loop[1]} was repeated 2 times (limit 2); the person grants more at the question`
       return { result: text, text, isError: true }
     }
     redo(w, loop[2] as string)

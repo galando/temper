@@ -232,7 +232,7 @@ class AskPart:
         back_reasons = ["The check found a real problem"]
 
         def back_opt(rec=False):
-            if not back or not r.can_loop(stage, back):
+            if not back:   # a step back the budget refuses is dropped after (budget_guard), so the question says so
                 return []
             return [self.opt("Loop back to %s%s" % (LABEL[back], " (Recommended)" if rec else ""),
                              "Do %s again; the stages after it are redone too." % LABEL[back], move="back",
@@ -665,11 +665,9 @@ class AskPart:
             LABEL.get(r.stage, r.stage), why, "Loop back to %s?" % LABEL[work] if len(opts) > 2 else "Override it?"), stage=r.stage, options=opts, qid="adhoc.fail")}
 
     def round_limit(self):
-        """The most CI fix rounds (loops.max-per-type, 2 by default): the Pipeline question and the Pipeline agent's launch line use the same."""
-        try:
-            return int(self.r.cfg("loops.max-per-type", "2"))
-        except ValueError:
-            return 2
+        """The most CI fix rounds: the limit of the budget key pipeline (each round's `state set pipeline_round` spends it).
+        The Pipeline question and the Pipeline agent's launch line use the same."""
+        return self.r.room("pipeline")["limit"]
 
     def pipeline_round(self):
         """The CI fix round the run is on (1 before any fix). The flow alone moves it, by one, in the fix steps; a value it

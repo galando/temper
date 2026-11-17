@@ -488,6 +488,9 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
       gfail check "tests pass" "the latest run of a test command failed: the suite"; _stop44 "$_FORBID44|doctor" ;;
     check.person-criterion) _unattended check; sed -i '0,/Validate: scenario/s//Validate: manual/' .temper/specs/demo/intent.md
       gfail check "acceptance evidence" "AC-01 has no supported passing evidence row"; _stop44 "$_FORBID44|state loop" ;;
+    budget.spent|person.budget-grant) _unattended check   # WP10: the third repeat for one failure is no call the run makes
+      for _i44 in 1 2; do gfail check "tests pass" "unit failed"; "$TEMPER" state redo check --reason x >/dev/null 2>&1; done
+      gfail check "tests pass" "unit failed"; _stop44 "$_FORBID44|state (redo|loop) check|budget grant" ;;
     commit.always|person.adhoc-open) _unattended commit; gpass commit; _stop44 "$_FORBID44|adhoc open" ;;
     commit.fail) _unattended commit; gfail commit "files changed outside the plan" "src/outside.sh is in no task"
       _stop44 "$_FORBID44|evidence add" ;;

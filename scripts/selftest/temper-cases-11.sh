@@ -231,7 +231,9 @@ assert_eq "F16: tasks and no groups stops Build with a question and no agent" "a
   "$(nx "'|'.join([d['action'], d['ask']['question']['question'], d['ask']['options'][0]['label'], d['ask']['options'][1]['label']])")"
 assert_eq "F16: Run Plan again is a loop from Build to Plan with a reason" "back|1" \
   "$(nx "d['ask']['options'][0]['move'] + '|' + str(len(d['ask']['options'][0]['calls']))")"
-"$TEMPER" state loop build plan --reason "no groups" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+for _f16 in 1 2; do   # WP10: each Run Plan again from tasks with no groups spends gate:build; two spend it
+  "$TEMPER" state loop build plan --reason "no groups" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+done
 assert_eq "F16: with the loop budget spent the text says to write the groups by hand or save" "1" \
   "$(nx "str(int('write the groups by hand' in d['ask']['question']['question']))")"
 

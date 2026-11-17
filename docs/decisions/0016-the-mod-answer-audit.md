@@ -3,6 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-10-30
 **Amends:** ADR-0012 (the person decides only in the question dialog), ADR-0013
+**Amended by:** ADR-0019 (one row: the kind budget grant)
 
 ## Context
 
@@ -19,6 +20,7 @@ question, or from a question the view no longer held, went unnoticed.
 2. **A test walks every question of every view fixture.** It answers each option through the mod's answer code and checks each
    call of the option against the mod's rule, so a new person-only call without a question fails the suite. A table maps each
    kind (plan review, task accept, task confirm, state set branch, adhoc open, overrides) to the question that allows it.
+   ADR-0019 adds the kind budget grant, allowed only by the option `grant-more` of the question `run.budget`.
 3. **A typed answer maps to a call with that text, quoted.** A subagent's question, and a question with prefilled answers, count
    for nothing.
 4. **The mod still runs nothing and sets nothing.** It allows or refuses a call; it never makes one.

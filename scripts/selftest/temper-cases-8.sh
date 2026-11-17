@@ -114,7 +114,7 @@ assert_eq "next: the accept question lists the open finding by id, with its own 
   "$(nx "o = d['ask']['accept']['options'][0]; '|'.join([o['label'], o['move'], str(o['reason']), o['calls'][0].split('temper ', 1)[1]])")"
 assert_eq "next: the step back is a state loop with the person's reason" "back|state loop review build --reason '{reason}'" \
   "$(nx "o = d['ask']['options'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
-printf 'loops:\n  max-per-type: 1\n' >> .claude/temper.config
+printf 'budget:\n  per-failure: 1\n' >> .claude/temper.config   # WP10: the budget's key, in the place of loops.max-per-type
 "$TEMPER" state loop review build --reason "first" >/dev/null 2>&1
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 gfail review "no blocking findings" "1 open finding"
@@ -588,8 +588,11 @@ _g2c '"fails": 2, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G
 assert_eq "9.8.4 2c: after a fix of the merged tree that did not pass, Loop back to Plan is recommended and the fix is still offered" \
   "Loop back to Plan (Recommended)|Fix the group's merged work|1" \
   "$(nx "o = d['ask']['options']; q = d['ask']['question']['question']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('A fix of its merged work did not make it pass' in q))")"
-"$TEMPER" state loop build plan --reason "x" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
-printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", "fails": 3, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+# WP10: a step back from a failed group check spends group:G1; two spend it, and the question is run.budget
+for _g2ci in 1 2; do
+  "$TEMPER" state loop build plan --reason "x" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", "fails": 3, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+done
 assert_eq "9.8.4 2c: with the step back to Plan spent, Save for later is recommended: no retry is" "Save for later (Recommended)|0" \
   "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + str(sum(1 for x in o if '(Recommended)' in x['label'] and x['label'] != 'Save for later (Recommended)'))")"
 
