@@ -363,6 +363,90 @@
     }
    }
   },
+  "budget-stop": {
+   "plain": {
+    "now": {
+     "dialogs": 8,
+     "by_stage": {
+      "build": 3,
+      "intent": 1,
+      "plan": 4
+     },
+     "by_kind": {
+      "context": 2,
+      "gate": 4,
+      "group": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 2
+     },
+     "launch_total": 7,
+     "auto": 0,
+     "back": 1,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 8,
+     "by_stage": {
+      "build": 3,
+      "intent": 1,
+      "plan": 4
+     },
+     "by_kind": {
+      "context": 2,
+      "gate": 4,
+      "group": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 2
+     },
+     "launch_total": 7,
+     "auto": 0,
+     "back": 1,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 9,
+     "by_stage": {
+      "build": 4,
+      "intent": 1,
+      "plan": 4
+     },
+     "by_kind": {
+      "context": 2,
+      "gate": 4,
+      "group": 2,
+      "reason": 1
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 2
+     },
+     "launch_total": 7,
+     "auto": 7,
+     "back": 1,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   }
+  },
   "context-check": {
    "plain": {
     "now": {
@@ -1983,9 +2067,9 @@
       "temper:temper-review": 1
      },
      "launch_total": 10,
-     "auto": 4,
+     "auto": 13,
      "back": 1,
-     "handbacks": 1,
+     "handbacks": 0,
      "suite_runs": 0
     }
    }

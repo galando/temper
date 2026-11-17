@@ -2974,14 +2974,6 @@ _ev_open_findings() { # _ev_open_findings <stage> <comma-separated severities>
   python3 -I "$SCRIPTS_DIR/findings.py" open-claims "$file" "$sev_csv"
 }
 
-_ev_latest_claim_exit() { # _ev_latest_claim_exit <stage> <keyword-regex>
-                          # -> "<exit_code>|<claim>" of the LAST row matching, or ""
-  local stage="$1" keyword="$2"
-  local file; file="$(_evidence_file "$stage")"
-  [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I "$SCRIPTS_DIR/ledger_ops.py" latest-claim-exit "$file" "$keyword"
-}
-
 _review_code() { # _review_code save|compare: the tracked files of the project (outside .temper and .claude) and HEAD as
                  # Review starts (save, into the run state), or the ones that differ from that since (compare: prints them)
   python3 -I "$SCRIPTS_DIR/state_ops.py" review-code "$1" "$STATE_FILE"
