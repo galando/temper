@@ -182,8 +182,8 @@ A file outside the Build plan is never written first. Build lists it with why it
 change, and Claude asks you the Scope drift question: add the file to the plan, revert (go on
 without it), or allow it once (Claude's why becomes the recorded reason). Each choice is logged.
 This works the same with and without the mod; the mod also refuses the write until you answer.
-A failed Review or Check loops back to Build when you choose so, as many times as the loop budget
-(`loops.max-per-type`, and `fix.max-loops` for Check) allows.
+A failed Review or Check loops back to Build when you choose so, as many times as the budget allows: 2
+repeats for one failure and 6 for the run, then one question where only you allow more (ADR 0019).
 
 ### Stage commands are doors
 

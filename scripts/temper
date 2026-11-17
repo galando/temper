@@ -564,7 +564,7 @@ cmd_model() {
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
 security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/ runs.jsonl asked.json \
-preflight.json setup-tried.json decisions.json"
+preflight.json setup-tried.json decisions.json budget.json"
 
 
 cmd_init() {
@@ -655,7 +655,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
     done
   fi
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json .temper/budget.json
   rm -rf .temper/evidence
   _ensure_dirs
   # Re-scaffold the ledger files empty (same as `temper init`): a cleared run has
@@ -987,13 +987,9 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   local reason=""
   while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="$2"; shift 2 ;; *) shift ;; esac; done
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
-  # The budget is loop_step.budget, the rule temper next offers the step back by: it reads these config values
-  # (fix.max-loops only when the key is set, Decision 5).
-  local cfgjson
-  cfgjson="$(python3 -I "$SCRIPTS_DIR/state_ops.py" loop-config \
-    loops.max-per-type "$(_cfg_get loops.max-per-type "")" fix.max-loops "$(_cfg_get fix.max-loops "")")"
+  # The dispatcher spent the step back's repeat before this ran (budget.py): a step back is never refused here.
   local result
-  result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$cfgjson" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
+  result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
   local rc=$?
   echo "$result"
   [[ $rc -eq 0 ]] || return $rc
@@ -1136,7 +1132,7 @@ cmd_state_clear() {
   [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
   python3 -I "$SCRIPTS_DIR/run_summary.py" append "$TEMPER_DIR" "$(_now)" 2>/dev/null || true   # one line a run, in runs.jsonl
   # Each target is named, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,preflight,setup-tried,decisions}.json
+  rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,preflight,setup-tried,decisions,budget}.json
   rm -rf .temper/evidence
   # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
   _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
@@ -1408,8 +1404,7 @@ cmd_config() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     get) [[ -n "${1:-}" ]] || { echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1; }
-         # fix.max-loops prints the limit `state loop check fix` keeps: the key, else loops.max-per-type, else 2
-         if [[ "$1" == "fix.max-loops" ]]; then _cfg_get "$1" "${2:-$(_cfg_get loops.max-per-type 2)}"; else _cfg_get "$1" "${2:-}"; fi ;;
+         _cfg_get "$1" "${2:-}" ;;
     # 9.8.1: the project's config from the plugin's default, when it has none (a setup call; idempotent).
     init) local own="$REPO_ROOT/.claude/temper.config"
           [[ -f "$own" ]] && { echo "OK: $own is already there"; return 0; }
@@ -3963,8 +3958,13 @@ main() {
        _unsafe_temper_refuse || return 3
        _config_pin ;;
   esac
+  case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
+    "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"plan patch "*|"task retry "*|"task test "*|\
+"acceptance reopen "*|"state set pipeline_round"|"integrate "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
+  esac
   case "$sub" in
     init) cmd_init "$@" ;;
+    budget) python3 -E -s "$SCRIPTS_DIR/budget.py" "$@" ;;
     state) cmd_state "$@" ;;
     evidence) cmd_evidence "$@" ;;
     gate) cmd_gate "$@" ;;

@@ -66,10 +66,12 @@ except ValueError:
 # --- B5: the loops view shows the live budget and the time of the latest step ---
 fresh; gpass intent plan build review; _at review
 printf '{"active_loops": [{"id": "loop-1", "from_stage": "review", "to_stage": "build", "reason": "second", "iteration": 2, "max_iterations": 2, "started": "2026-01-01T00:00:00Z", "at": "2026-01-02T00:00:00Z"}, {"id": "loop-2", "from_stage": "build", "to_stage": "plan", "reason": "p", "iteration": 1, "max_iterations": 2, "started": "2026-01-01T12:00:00Z"}], "history": []}\n' > .temper/feedback-loops.json
-sed -i 's/max-per-type: 2/max-per-type: 3/' .claude/temper.config
+printf 'budget:\n  per-failure: 3\n' >> .claude/temper.config
+python3 -c "import json; json.dump({'v': 1, 'run': json.load(open('.temper/build-state.json'))['run_id'], 'used': [], 'grants': [
+  {'key': 'gate:build', 'n': 2, 'reason': 'r', 'ts': '2026-01-01T00:00:00Z'}]}, open('.temper/budget.json', 'w'))"
 "$TEMPER" next --json >/dev/null 2>&1
-assert_eq "B5: a loop's max is the live budget (config 3), Build to Plan's is its fixed 1, and at is the latest step" \
-  "3|2026-01-02T00:00:00Z|1|2026-01-01T12:00:00Z" \
+assert_eq "B5: a loop's max is the live limit of its key gate:<from> (config 3, Build's with a grant of 2), and at is the latest step" \
+  "3|2026-01-02T00:00:00Z|5|2026-01-01T12:00:00Z" \
   "$(vw "'|'.join(str(x) for l in d['loops'] for x in (l['max'], l['at']))")"
 
 # --- B6: the stages a small change window opens at are adhoc_ops.py's one list; Pipeline opens it from its own question ---
@@ -195,20 +197,30 @@ assert_eq "B13: a group whose gate FAILed is asked about as failed, whatever its
 
 # --- The joins with the CLI: the flow reads the CLI's own rules (loop budget, small change window stages, finding state,
 # the skip that covers a verdict, the intent the CLI completes) ---
-assert_eq "glue: the flow's loop budget, small change window stages and finding state are the CLI's own" "ok" \
+assert_eq "glue: the flow's budget, small change window stages and finding state are the CLI's own" "ok" \
   "$(python3 - "$REPO_ROOT/scripts" <<'PY'
-import sys
+import json, os, shutil, subprocess, sys, tempfile
 sys.path.insert(0, sys.argv[1])
-import flow, loop_step, adhoc_ops, findings, fresh_review
-cfgs = [{}, {"loops.max-per-type": "3"}, {"loops.max-per-type": "3", "fix.max-loops": "5"}, {"loops.max-per-type": "x"}]
-pairs = [("build", "plan"), ("check", "build"), ("check", "fix"), ("review", "build"), ("plan", "intent")]
+import flow, adhoc_ops, findings, fresh_review
+cfgs = ["", "budget:\n  per-failure: 3\n", "budget:\n  per-failure: 3\n  per-run: 5\n", "budget:\n  per-failure: x\n"]
+keys = ["gate:plan", "gate:check", "group:G1", "task:2", "acceptance", "pipeline"]
+used = [{"key": k, "kind": "run again", "ts": "2026-01-01T00:00:00Z"} for k in ("gate:check", "gate:check", "group:G1")]
 bad = []
+here = os.getcwd()
 for c in cfgs:
-    r = flow.Run.__new__(flow.Run)
-    r.cfg = lambda k, d, c=c: c.get(k, d)
-    for f, t in pairs:
-        if flow.Run.loop_budget(r, f, t) != loop_step.budget(f, t, r.cfg):
-            bad.append((c, f, t))
+    d = tempfile.mkdtemp(dir=here)
+    os.chdir(d)
+    os.makedirs(".temper"); os.makedirs(".claude")
+    open(".claude/temper.config", "w").write(c)
+    json.dump({"run_id": "r1", "next_stage": "check"}, open(".temper/build-state.json", "w"))
+    json.dump({"v": 1, "run": "r1", "used": used, "grants": [{"key": "task:2", "n": 2, "reason": "x"}]}, open(".temper/budget.json", "w"))
+    r = flow.Run({})
+    for k in keys:
+        cli = json.loads(subprocess.run([sys.executable, os.path.join(sys.argv[1], "budget.py"), "room", k], capture_output=True, text=True).stdout)
+        if r.room(k) != cli or not isinstance(cli.get("ok"), bool):
+            bad.append((c, k, r.room(k), cli))
+    os.chdir(here)
+    shutil.rmtree(d)
 rows = [{}, {"resolved": {"fixed_by": "x"}}, {"accepted": {"reason": "r"}}, {"contested": {"reason": "c"}}, {"escalated": {"reason": "e"}},
         {"accepted_reason": "never written"}]
 bad += [r for r in rows if fresh_review.state_of(r) != findings.finding_state(r)]

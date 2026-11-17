@@ -55,7 +55,7 @@ Review or Check, where the feature started (before the commit that added its `in
 the branch left main or master), so the work the door reviews is in the diff.
 
 The other run files are the CLI's too: `.temper/gates.json` (each stage's verdict and rows),
-`.temper/overrides.json` (the person's skips), `.temper/feedback-loops.json` (the loop budget),
+`.temper/overrides.json` (the person's skips), `.temper/budget.json` (the repeats),
 `.temper/usage.json` (whole flow usage rows `{stage, model, ms, task, group, ts}`, from
 `temper usage add` after each stage launch and from `temper task gate --ms` for each task
 agent, so each launch is counted once; the time is the total Claude Code gives for the agent, and no
@@ -150,9 +150,10 @@ with failure context.
   the `intent.md` scenario it maps to) → "Loop back to Build". Context:
   `check-context.json`'s `test_failures[]`.
 - **Build → Plan:** Build judges the plan infeasible → "Loop back to Plan", Plan gets the
-  infeasibility context and re-approves. Human-driven only — no circuit breaker, max 1
-  per run. Context: `build-context.json`'s infeasibility reason.
+  infeasibility context and re-approves. The person's only; the budget bounds it.
+  Context: `build-context.json`'s infeasibility reason.
 
-**Budget and clearing:** `temper state loop` enforces the budget (`loops.max-per-type`) and clears
-the evidence, the verdicts and the skips of the stages it redoes. A loop is a normal stage launch that
+**Budget and clearing:** every repeat after a failed check spends the run's budget (ADR 0019, 2 per
+failure, 6 per run); `temper state loop` clears the evidence, the verdicts and the skips of the stages
+it redoes. A loop is a normal stage launch that
 reads the relevant `review-context.json` or `check-context.json` at startup.

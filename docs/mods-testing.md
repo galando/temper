@@ -190,9 +190,9 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   finding" / "Override and continue" / "More options" (Architecture Depth Review, Save for later). Choose Accept a finding, pick the
   finding and a reason: the review check runs again. Choose Loop back to Build with a reason:
   Build runs again, its writes are not refused, and the bar shows Review and Check as to come.
-- [ ] **The loop budget is spent.** Set `loops:` and `  max-per-type: 1` in
-  `.claude/temper.config` and loop back from Review twice. The second time Claude says the
-  budget is spent and asks again with "Override and continue" / "Save for later". Override with
+- [ ] **The budget is spent.** Set `budget:` and `  per-failure: 1` in
+  `.claude/temper.config` and loop back from Review twice. The second time Claude asks the
+  budget question: "Save for later" / "Allow two more" / "Override and continue". Override with
   a reason: Check starts.
 - [ ] **Check FAIL.** A dialog "Loop back to Build" / "Override and continue" / "Save for later".
 - [ ] **Check PASS.** One dialog "Commit (Recommended)" / "Save for later" (and "Review config
@@ -201,7 +201,7 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   in another terminal (the commit gate then wants a design check). A dialog "Override and commit"
   / "Save for later". Choose it and give a reason: the commit is made. Delete the empty
   `design.md` afterwards.
-- [ ] **An autonomous park.** In an armed run, make Review fail twice (the loop budget). Expect
+- [ ] **An autonomous park.** In an armed run, make Review fail three times (the budget). Expect
   the park report, then the dialog of the gate it parked at. Override with a reason: the run goes
   on, nothing is refused.
 - [ ] **Save for later, then go on.** At any gate choose Save for later. With the mod, the bar says

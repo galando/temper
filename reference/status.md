@@ -78,7 +78,7 @@ metric history arrays against rolling mean ± k·sigma bands (config: `bands:` i
 |   per-metric: {metric} z={z} {tier} -> {action}            |
 |   (verbatim from the bands check; insufficient data ->     |
 |    "not enough history yet — bands arm as runs accumulate")|
-| AUTONOMOUS RUNS: mode, park point + reason, loop budget   |
+| AUTONOMOUS RUNS: mode, park point + reason, budget        |
 |   (no autonomy-report.md -> print nothing for this panel) |
 +-------------------------------------------------------+
 ```
@@ -98,10 +98,9 @@ No `gates.json` → "No gate data yet. Run /temper to populate it." — never er
 
 ### Step 2.6: Autonomous Runs Panel (purely additive)
 
-From `.temper/autonomy-report.md` (if present) + `.temper/feedback-loops.json`: run mode
+From `.temper/autonomy-report.md` (if present): run mode
 (from `build-state.json` if a run is active), park point + reason (parsed from the
-report), loop budget used (sum `iteration` across `active_loops[]` + `history[]` vs.
-`autonomy.budget.max-total-loops`). No report → print nothing for this panel.
+report), budget used (`temper budget`). No report → print nothing for this panel.
 
 ### Step 3: Rule-Promotion Prompt (from review memory)
 

@@ -12,12 +12,14 @@ writes a file but .temper/view.json. The schema of both outputs is in docs/flow.
 is a change of VERSION. Standard library only.
 """
 
+import copy
 import json
 import os
 import re
 import shlex
 import sys
 
+import budget
 import fresh_review
 import run_summary
 
@@ -42,7 +44,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
         self.plugin = run.ctx.get("plugin") or ""
 
     def next(self):
-        out = self.core_next()
+        out = self.budget_guard(self.core_next())
         r = self.r
         if r.active and r.stage == "plan":
             cm = r.context()
@@ -57,6 +59,85 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                         out["ask"] = q    # the only failed row is the pending check: ask the check itself, so a refused call can be answered again
         self.add_note(out)
         return out
+
+    # -- the budget (WP10, ADR 0019 decision 1) --
+    def budget_guard(self, out):
+        """Never offer a call the budget refuses (scripts/budget.py). An `auto` or `work` action that holds one parks an
+        armed run, or asks run.budget; a question that holds one becomes run.budget, which keeps the options that spend
+        nothing."""
+        r, facts = self.r, budget.Facts(self.r)
+        calls_of = lambda o: list(o.get("calls") or []) + list(o.get("steps") or [])
+        refused = lambda calls: next((k for c in calls for k in [budget.refused(c, self.cli, facts)] if k), None)
+        if out.get("action") in ("auto", "work"):
+            key = refused(calls_of(out) + [c for a in out.get("agents") or [] for c in (a.get("before") or []) + (a.get("after") or [])])
+            if key is None:
+                return out
+            stage = out.get("stage") or r.stage
+            line = budget.count_line(key, r.room(key))
+            kept = {k: out[k] for k in ("v", "run", "restart") if k in out}
+            if r.armed():
+                kept.update({"action": "auto", "stage": stage, "say": "%s: the budget is spent; the armed run parks for you." % LABEL.get(stage, stage),
+                             "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(
+                                 "%s: the budget is spent: %s" % (LABEL.get(stage, stage), line)))]})
+                return kept
+            kept.update({"action": "ask", "stage": stage, "ask": self.budget_question(stage, "%s: its next step repeats a failed check." % LABEL.get(stage, stage), key, [])})
+            return kept
+        q = out.get("ask") if out.get("action") == "ask" else None
+        if not isinstance(q, dict):
+            return out
+        shown = list(q.get("options") or []) + list((q.get("more") or {}).get("options") or [])
+        subs = [s for s in (q.get("accept"), q.get("change")) if isinstance(s, dict)]
+        key = refused([c for o in shown + [o for s in subs for o in s.get("options") or []] for c in calls_of(o)])
+        if key is None:
+            return out
+        free = [self.set_rec(copy.deepcopy(o), False) for o in shown if o.get("kind") != "more" and o.get("id") != "save"
+                and not any(budget.key_in(c, self.cli, facts) for c in calls_of(o))]
+        nq = self.budget_question(q.get("stage") or r.stage, self.first_sentence(q["question"]["question"]), key, free)
+        for name, s in (("accept", q.get("accept")), ("change", q.get("change"))):
+            if isinstance(s, dict) and any(o.get("kind") == name or o.get("id") == name for o in free):
+                s = self.rehome(copy.deepcopy(s), q["id"], "run.budget")
+                s["options"] = [o for o in s["options"] if not refused(calls_of(o))]
+                s["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in s["options"]]
+                nq[name] = s
+        out["ask"] = nq
+        return out
+
+    def budget_question(self, stage, first, key, free):
+        """run.budget: the stage's first sentence, the count, then Save for later (recommended), Allow two more (the
+        person's grant), and the options of the stage's question that spend nothing."""
+        rm = self.r.room(key)
+        line = budget.count_line(key, rm)
+        if rm["used"] >= rm["limit"]:
+            line += ": " + ", ".join(budget.kinds(key, budget.Facts(self.r)))
+        grant = self.opt("Allow two more", "Two more repeats for %s and for the run; `temper budget` shows your reason." % budget.what(key),
+                         move="grant", calls=[self.c("budget grant --key %s --reason '{reason}'" % key)],
+                         reason=["The next try is different", "I changed something outside the run"], oid="grant-more")
+        return self.question(GATE_HEADER, "%s %s. Save the run for later, or allow two more?" % (first, line),
+                             [self.set_rec(self.save(), True), grant] + free, stage, qid="run.budget")
+
+    @staticmethod
+    def first_sentence(text):
+        """The text up to its first full stop or question mark outside parentheses."""
+        depth = 0
+        for i, ch in enumerate(text):
+            depth += {"(": 1, ")": -1}.get(ch, 0)
+            if ch in ".?" and depth <= 0 and (i + 1 == len(text) or text[i + 1] in " \n"):
+                return text[:i] + "."
+        return text.rstrip(".?") + "."
+
+    @staticmethod
+    def rehome(obj, old, new):
+        """A follow up question moved under another question: its ids and those of its reason and name questions."""
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k == "id" and isinstance(v, str) and (v == old or v.startswith(old + ".")):
+                    obj[k] = new + v[len(old):]
+                else:
+                    Builder.rehome(v, old, new)
+        elif isinstance(obj, list):
+            for v in obj:
+                Builder.rehome(v, old, new)
+        return obj
 
     def add_note(self, out):
         """9.8.5 (U2): the orchestrator's note for the question of this step (`temper state set ask_note '<step>: <text>'`),

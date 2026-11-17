@@ -676,40 +676,48 @@ OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" \
   "$(echo "$OUT" | grep -qE 'blast radius — [0-9]+ file' && echo "$OUT" | grep -qE 'blast radius' && echo yes || echo no)"
 
-# --- mods: check.commands.* and fix.max-loops config keys ---
+# --- mods: check.commands.* and the budget's config key (WP10: budget.per-failure, in the place of fix.max-loops) ---
 setup
-assert_eq "config get fix.max-loops prints the limit the loop keeps when the key is absent (loops.max-per-type)" "2" "$("$TEMPER" config get fix.max-loops)"
+_c2limit() { python3 "$REPO_ROOT/scripts/budget.py" room "$1" | python3 -c "import json, sys; print(json.load(sys.stdin)['limit'])"; }
+assert_eq "config get budget.per-failure prints nothing when absent, and the limit a step back keeps is 2" "|2" \
+  "$("$TEMPER" config get budget.per-failure)|$(_c2limit gate:check)"
 assert_eq "config get check.commands.test prints nothing when absent" "" "$("$TEMPER" config get check.commands.test)"
 cat >> .claude/temper.config <<'CFG'
-fix:
-  max-loops: 4
+budget:
+  per-failure: 4
 CFG
-assert_eq "config get fix.max-loops reads the configured value" "4" "$("$TEMPER" config get fix.max-loops)"
+assert_eq "config get budget.per-failure reads the configured value, and the limit follows it" "4|4" \
+  "$("$TEMPER" config get budget.per-failure)|$(_c2limit gate:check)"
 setup
-printf 'check:\n  commands:\n    test: "npm test"\n    lint: npm run lint\n    typecheck: tsc --noEmit\nfix:\n  max-loops: 3\n' >> .claude/temper.config
+printf 'check:\n  commands:\n    test: "npm test"\n    lint: npm run lint\n    typecheck: tsc --noEmit\nbudget:\n  per-failure: 3\n' >> .claude/temper.config
 assert_eq "config get check.commands.test prints the configured command" "npm test" "$("$TEMPER" config get check.commands.test)"
 assert_eq "config get check.commands.lint prints an unquoted command" "npm run lint" "$("$TEMPER" config get check.commands.lint)"
 assert_eq "config get check.commands.typecheck prints the configured command" "tsc --noEmit" "$("$TEMPER" config get check.commands.typecheck)"
-assert_eq "config get fix.max-loops prints 3 when set to 3" "3" "$("$TEMPER" config get fix.max-loops)"
-# fix.max-loops bounds the check->fix pair only when set; loops.max-per-type stays 2 elsewhere.
+assert_eq "config get budget.per-failure prints 3 when set to 3" "3" "$("$TEMPER" config get budget.per-failure)"
+# budget.per-failure bounds each failed check by its own key; budget.per-run (6) bounds the run.
 "$TEMPER" state init demo --command fix >/dev/null; _at check
-assert_exit "state loop check fix iteration 1 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason a
-_at check
-assert_exit "state loop check fix iteration 2 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason b
-_at check
-assert_exit "state loop check fix iteration 3 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason c
-_at check
-assert_exit "state loop check fix iteration 4 is blocked by fix.max-loops 3" 1 "$TEMPER" state loop check fix --reason d
-_at review
-assert_exit "state loop review fix still stops at loops.max-per-type 2 (key unset for that pair)" 0 "$TEMPER" state loop review fix --reason a
-_at review
+gfail check "tests pass" "unit failed"
+assert_exit "state loop check fix iteration 1 passes under budget.per-failure 3" 0 "$TEMPER" state loop check fix --reason a
+_at check; gfail check "tests pass" "unit failed"
+assert_exit "state loop check fix iteration 2 passes under budget.per-failure 3" 0 "$TEMPER" state loop check fix --reason b
+_at check; gfail check "tests pass" "unit failed"
+assert_exit "state loop check fix iteration 3 passes under budget.per-failure 3" 0 "$TEMPER" state loop check fix --reason c
+_at check; gfail check "tests pass" "unit failed"
+assert_exit "state loop check fix iteration 4 is blocked by budget.per-failure 3" 1 "$TEMPER" state loop check fix --reason d
+_at review; gfail review "no blocking findings" "1 open high finding"
+assert_exit "state loop review fix counts its own key, gate:review, after gate:check is spent" 0 "$TEMPER" state loop review fix --reason a
+_at review; gfail review "no blocking findings" "1 open high finding"
 assert_exit "state loop review fix second iteration passes" 0 "$TEMPER" state loop review fix --reason b
-_at review
-assert_exit "state loop review fix third iteration is blocked" 1 "$TEMPER" state loop review fix --reason c
+_at review; gfail review "no blocking findings" "1 open high finding"
+assert_exit "state loop review fix third iteration passes under budget.per-failure 3" 0 "$TEMPER" state loop review fix --reason c
+_at review; gfail review "no blocking findings" "1 open high finding"
+assert_exit "state loop review fix: the seventh repeat of the run is blocked by budget.per-run 6" 1 "$TEMPER" state loop review fix --reason d
 setup
 "$TEMPER" state init demo --command fix >/dev/null; _at check
-"$TEMPER" state loop check fix --reason a >/dev/null; _at check; "$TEMPER" state loop check fix --reason b >/dev/null; _at check
-assert_exit "with fix.max-loops unset, check fix keeps loops.max-per-type 2" 1 "$TEMPER" state loop check fix --reason c
+gfail check "tests pass" "unit failed"; "$TEMPER" state loop check fix --reason a >/dev/null; _at check
+gfail check "tests pass" "unit failed"; "$TEMPER" state loop check fix --reason b >/dev/null; _at check
+gfail check "tests pass" "unit failed"
+assert_exit "with budget.per-failure unset, check fix keeps 2" 1 "$TEMPER" state loop check fix --reason c
 
 # --- mods: evidence accept stops the review gate counting a finding (with a reason) ---
 setup

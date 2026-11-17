@@ -148,9 +148,8 @@ Write `check-context.json`:
 
 When test failures exist in newly written code, write a targeted fix entry per failure
 (test name, error, file:line, the `intent.md` scenario it maps to) to `check-context.json`.
-The CLI's Check question offers "Loop back to Build" while the loop budget
-(`loops.max-per-type`, default 2) lasts; once it is spent, it offers only "Override and
-continue" and "Save for later".
+The CLI's Check question offers "Loop back to Build" while the budget lasts; once it is
+spent, it asks `run.budget`.
 
 ## Summary + Gate
 

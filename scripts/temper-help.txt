@@ -33,6 +33,7 @@ Usage:
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)
+  temper budget | budget grant --key K --reason R  (the repeats of the run; the person's two more at run.budget)
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)

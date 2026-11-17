@@ -36,7 +36,7 @@ BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "revi
 # Every move an option of a question may carry (the `move` of view.json's options): each is the person's answer, and
 # the mod lets an option's CLI calls through only on that answer. opt() refuses any other, so this list is the checked one.
 MOVES = {"advance", "approve", "arm", "override", "back", "redo", "accept", "covered", "keep", "commitOverride", "restart",
-         "confirm", "drift", "answer", "pause", "adhoc"}
+         "confirm", "drift", "answer", "pause", "adhoc", "grant"}
 
 # 9.8.5 (WP04): the ids of the protocol. Every question of `next`, `go` and view.json has an `id` of QUESTIONS and its
 # `kind`; every option an `id` of OPTION_IDS, a `kind` when a reader acts on it, and `recommended: true` when it is the
@@ -82,6 +82,7 @@ QUESTIONS = {
     "run.walked": {"kind": "gate", "decision": "Whether a stage an earlier session ran is taken as it is or run again."},
     "run.restart": {"kind": "resume", "decision": "Whether the saved run state goes, so a new run starts."},
     "scope.drift": {"kind": "drift", "decision": "Whether a file outside the plan is added to it, reverted or allowed once."},
+    "run.budget": {"kind": "gate", "decision": "Whether the run is saved, or allowed two more repeats of a failed check."},
 }
 # A follow up question takes its parent's id and one of these suffixes: a More question asks its parent's decision, an
 # accept question keeps a finding, a reason question asks the reason the report shows, a name question a typed value.
@@ -101,7 +102,9 @@ OPTION_IDS = frozenset((
     "keep-commits", "accept-done", "twice-the-time", "fix-group", "change-command", "add-to-plan", "include-left-out",
     "revert", "allow-once",
     # WP08
-    "check-again", "it-is-the-code"))
+    "check-again", "it-is-the-code",
+    # WP10
+    "grant-more"))
 
 
 def question_entry(qid):

@@ -188,13 +188,13 @@ def usage(run):
 
 
 def loops(run):
-    """The run's steps back, each with its live budget (the one can_loop decides with, not the max_iterations stored at
-    its first step) and the time of its latest step (the time every reader orders loops by)."""
+    """The run's steps back, each with the live limit of its budget key (gate:<from>, scripts/budget.py) and the time of
+    its latest step (the time every reader orders loops by)."""
     out = []
     for l in run.active_loops():
         frm, to = l.get("from_stage"), l.get("to_stage")
         out.append({"from": frm, "to": to, "reason": l.get("reason"),
-                    "iteration": l.get("iteration"), "max": run.loop_budget(frm, to), "at": loop_at(l) or None})
+                    "iteration": l.get("iteration"), "max": run.room("gate:%s" % frm)["limit"], "at": loop_at(l) or None})
     return out
 
 

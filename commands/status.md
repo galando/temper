@@ -50,7 +50,7 @@ Run /temper to populate it."` Do not error.
 
 ### Feedback Loops Section
 
-If `.temper/feedback-loops.json` exists and `feedback.enabled: true` in temper.config, show:
+If `.temper/feedback-loops.json` exists, show:
 
 ```
 FEEDBACK LOOPS

@@ -140,7 +140,7 @@ project's `.temper/specs/{slug}/review-context.json` or
 **Infeasible plan:** if the plan itself can't work (an API doesn't exist, the
 architecture is incompatible), write the infeasibility reason in `build-context.json` and
 say so in the panel. The person can choose "Loop back to Plan" at the Build question, which
-the CLI writes; the loop budget counts it.
+the CLI writes; the budget counts it.
 
 **Writing framework code:** apply the `source-driven-development` skill when a task
 uses a framework/library API — detect the pinned version, verify the call against
