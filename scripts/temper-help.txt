@@ -36,7 +36,8 @@ Usage:
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
-  temper plan preflight                   (run every command of the plan on HEAD again; the plan gate reads it)
+  temper plan preflight                   (run each group's Validate and the Integration line on HEAD again; the plan
+                                          gate reads it)
   temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)
   temper doctor [--propose [--write]]     (reads the toolchain, setup block and services; --propose prints a block,
                                           --propose --write adds it to the config, only as the call of your answer)

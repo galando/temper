@@ -507,7 +507,9 @@ class AskPart:
                     setup, "Add the proposed setup block (%s) and" % self.shown_block if add else "Repair it and")
                 if redo.get("stage") == "check" and same_failure(str(redo.get("reason") or ""), ("SETUP: " + setup)[:300]):
                     opts = [self.set_rec(self.save(), True)] + [self.set_rec(o, False) for o in opts[:-1]]
-                    text = "Check: SETUP: the environment was not ready (%s). It failed the same way after Check ran again: repair it, or save the run for later?" % setup
+                    # M13 (c): while the block is offered, the question still shows it whole
+                    text = "Check: SETUP: the environment was not ready (%s). It failed the same way after Check ran again: repair it%s, or save the run for later?" % (
+                        setup, ", add the proposed setup block (%s)" % self.shown_block if add else "")
                 return self.question(GATE_HEADER, text, stage=stage, options=opts + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
             gap = self.measurement_gap(r.failed_rows("check"))
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the

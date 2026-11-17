@@ -204,8 +204,8 @@ finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for lat
 
 **Integrate after new commits.** `temper integrate` records the HEAD it passed on, and that the groups are merged.
 Called again once they are merged, it runs the whole Integration command again when HEAD moved since (a fix pass
-committed) or the last verdict was FAIL, records the new verdict, then the scenario tests, as before. It never merges
-the group branches a pass deleted. A rerun that fails records FAIL, prints its `FAIL:` line and exits 0: `gate build`
+committed) or the last verdict was FAIL, records the new verdict and, when it passed, runs the scenario tests, as
+before. It never merges the group branches a pass deleted. A rerun that fails records FAIL, prints its `FAIL:` line and exits 0: `gate build`
 fails the row `integration`, and the Build question holds it. The fix pass that follows gets the findings of the loop
 and what failed since in one prompt.
 

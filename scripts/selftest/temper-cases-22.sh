@@ -56,6 +56,16 @@ assert_eq "9.8.5 preflight: a command over the limit is not checked and passes t
   "preflight|True|True|True|True|True|False" \
   "$(_pfhas 'not checked: over 2 s' 'plan.preflight-timeout' 'plan patch' 'plan.preflight-skip' 'environment fault')"
 assert_eq "9.8.5 preflight: the default time limit is 300 s" "300" "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import preflight; print(preflight.DEFAULT_TIMEOUT)" "$REPO_ROOT/scripts")"
+# WP08 (M15): only the preflight's own time out is not checked. A command that exits 124 by itself, in no time, fails
+# as any other exit code: with an environment error in its output it is an environment fault and fails the row; with
+# none it needs new code. Neither says it ran out of time.
+_pfsetup; PF124="echo 'java.net.ConnectException: Connection refused'; exit 124"
+sed -i "s|^\*\*Validate:\*\* \`true\`\$|**Validate:** \`$PF124\`|" .temper/specs/demo/tasks.md; _pfcommit
+_pf124_env="$(_pfhas 'not checked' 'environment fault `echo' 'Connection refused')"
+_pfsetup; sed -i 's/^\*\*Validate:\*\* `true`$/**Validate:** `exit 124`/' .temper/specs/demo/tasks.md; _pfcommit
+assert_eq "9.8.5 preflight: a command that exits 124 by itself is no time out" \
+  "env=preflight|False|False|True|True|plain=preflight|True|False|True" \
+  "env=$_pf124_env|plain=$(_pfhas 'not checked' '1 needs new code')"
 # WP08 (F4): one limit for the whole row. Two Validates that sleep 2 s each, under a limit of 3 s, with no Integration
 # line: the first runs and writes its letter, the second finds the total spent and never writes its own.
 _pfsetup; second_group; sed -i '/^\*\*Integration:\*\*/d' .temper/specs/demo/tasks.md

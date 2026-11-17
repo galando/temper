@@ -312,7 +312,10 @@ describe('the store of the person\'s decisions', () => {
 // 9.8.5 (WP08, M14): the files of the CLI that can turn a gate row are guarded like the gate verdicts: the store of
 // reused passes, the preflight's stored rows, the Design answers and the setup blocks already tried.
 describe('the files that turn a gate row', () => {
-  const FILES = ['.git/temper-results.json', '.temper/preflight.json', '.temper/decisions.json', '.temper/setup-tried.json']
+  const FILES = [
+    '.git/temper-results.json', '.temper/preflight.json', '.temper/decisions.json', '.temper/setup-tried.json',
+    '.temper/check/ahead.json',
+  ]
   const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ') && r.deny.includes('by hand')
   for (const f of FILES) {
     test(`during a run a Write, a Bash redirect and an rm of ${f} are refused`, () => {
