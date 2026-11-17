@@ -3,7 +3,7 @@
   python3 gate_rows.py intent-blocking INTENT.md   the row for a Blocking question left open in a draft intent
   python3 gate_rows.py intent-rules INTENT.md      the row for the rules checklist (### Rules covered) of a draft intent
   python3 gate_rows.py plan-rows SPEC_DIR PROJECT  the rows added to the plan gate (scenario test commands, the request's
-                                                   routes kept)
+                                                   routes kept, tasks agree with decisions)
   python3 gate_rows.py build-rows SPEC_DIR EVIDENCE.json  the rows added to the build gate (criteria validated)
 
 They live here so scripts/temper stays under the directory's 256 KiB limit. Standard library only.
@@ -14,6 +14,7 @@ import re
 import sys
 
 import acceptance
+import decisions
 import intent_parse
 import tasks_md
 import maven_loop
@@ -330,6 +331,7 @@ def main(argv):
         print(json.dumps(plan_request_routes(argv[2], argv[3])))
         if os.path.isfile(os.path.join(argv[2], "plan.md")):   # a run with no plan.md (the trivial path) has no map to review
             print(json.dumps(plan_ops.gate_row(argv[2], argv[4] if len(argv) == 5 else "auto")))
+        print(json.dumps(decisions.row(argv[3], argv[2])))   # WP14: the answers reach tasks.md before the approval
         print(json.dumps(plan_maven_filtered(argv[2], argv[3])))
         return 0
     if len(argv) == 4 and argv[1] == "build-rows":

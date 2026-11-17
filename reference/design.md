@@ -4,8 +4,7 @@ description: "System design exploration for complex features (optional stage)"
 
 # Design: System Design Phase
 
-**Goal:** Produce system design artifacts for complex/medium features — skipped for
-simple/trivial. Active when `phases.design: true` AND complexity >= medium.
+**Goal:** Produce system design artifacts, when the person asked for Design at the plan approval (WP14).
 
 **Mode:** Design runs as a stage of `/temper` (also when `/temper:design` starts it: the
 command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
@@ -34,12 +33,11 @@ who owns the call. These are the points an analyst would have escalated — a hu
 resolves each one at the design gate, before Build spends anything on the wrong
 answer. Design flags; it never silently picks a side on a policy conflict.
 
-**A concern the person must decide becomes a question with ready answers (9.8.0).** Listing a concern at the gate let
-it pass unread: the person approved the list and the design stayed as it was. For each concern that needs a product
-or policy call (a cap, a role, what happens in an edge case), also add one line to intent.md's `### Open Questions`:
-`- Blocking: Design: {the concern as a concrete question} choices: {recommended} | {other} | {other}`. The CLI asks it
-before the Design question, the answer goes into intent.md's Decisions and into that concern's `resolved:` line, and
-the acceptance tests and Build read it there. A concern that is only a note for the builders stays a concern.
+**A concern the person must decide becomes a question with ready answers (9.8.0).** For a product or policy call
+(a cap, a role, an edge case) also add one line to intent.md's `### Open Questions`: `- Blocking: Design:
+{the concern as a concrete question} choices: {the answer the tasks assume} | {other}`. The CLI asks it before the
+Design question; the answer goes into Decisions and that concern's `resolved:` line. A concern that is only a note
+for the builders stays a concern.
 
 The section is **always present** — when nothing was flagged, write
 `None flagged — {one line on why}` rather than omitting it: an absent section is
@@ -100,6 +98,5 @@ Considered, Consequences. Never delete an ADR; supersede it with a new one refer
 
 ## Skip Conditions
 
-The CLI decides whether a run has a Design stage: it has one when the complexity is Medium or
-Complex and `phases.design` is not `false`, or when the spec folder already holds `design.md`.
-Otherwise the run goes from Plan straight to Build.
+A run has a Design stage only when the person chose `Run Design first` at the plan approval, or the spec folder
+already holds `design.md`. No tier and no risk adds it; otherwise the run goes from Plan to Build.

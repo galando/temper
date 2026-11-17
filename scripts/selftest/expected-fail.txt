@@ -52,7 +52,6 @@ e2e:repair-worse               WP24           D37e
 e2e:group-fail                 WP16           D06
 e2e:group-fail-twice           WP16           D06
 e2e:criteria-by-cli            WP27           D10
-e2e:design-on-ask              WP14           D20
 e2e:acceptance-wrong-test      WP23           D21
 e2e:stop-keeps-mode            WP11           D32c
 e2e:revise-narrow              WP27           D24
@@ -63,7 +62,6 @@ selftest:D15b                  WP22           D15
 selftest:D16                   WP11           D16
 selftest:D18a                  WP11           D18
 selftest:D18c                  WP11           D18
-selftest:D18d                  WP11           D18
 selftest:D19                   WP11           D19
 selftest:D22a                  WP15           D22
 selftest:D22b                  WP15           D22

@@ -38,6 +38,24 @@ by none.
    - **What goes.** `loop_step.budget`, `Run.loop_budget`, the refusal per pair of stages, the rule "Build to Plan once
      per run" and the keys `fix.max-loops`, `feedback.enabled`, `loops.max-per-type`, `autonomy.budget.max-total-loops`
      and `autonomy.budget.max-stages`. A config that still holds one is not an error.
+2. **Design runs only when asked; design concerns are questions in front of the approval (WP14).**
+   - **When Design runs.** A run of `/temper:temper` has the Design stage when the person chose `Run Design first`
+     (option id `run-design`, in the More list of the passed plan question), when the Design door started the run,
+     when `design.md` exists, or when the run is at Design or has a Design verdict, so a run saved there keeps it. The
+     option sets the state key `want_design` and then leaves Plan with `design` as the next stage. No tier, no risk
+     and no setting adds the stage.
+   - **What Design asked.** A policy conflict or a product call is one Blocking line Plan writes into intent.md, the
+     answer the plan assumes as its first choice, and the tasks are written under it. `state advance plan_complete`
+     is refused while one is open, so the person answers each in front of the approval, with the mod or without it.
+   - **The hold moves to the plan gate.** The row `tasks agree with decisions` leaves the Design gate. An answer that
+     is the first choice passes it with a note; another answer fails it until `tasks.md` changes. The first such
+     failure is the CLI's own `state redo plan` (the budget counts it under `gate:plan`); the second asks, with
+     `Revise the plan` recommended.
+   - **Risk H.** A plan of risk H gets the fresh review with no request, and the option that starts the unattended
+     run is offered at risk H only after a complete round on the plan as it is with no open finding at high.
+   - **What goes.** The risk and tier trigger of Design, the state key `intent_asked` and the config key
+     `phases.design`. At the plan question `Run Design first` takes the place of `Teach Me` in a run with no Design,
+     so every option stays within two dialogs.
 
 ## Consequences
 
@@ -45,3 +63,6 @@ by none.
 - The limits that only move a recommendation (the text compare of a run again, the counters of a group, the mark of a
   task run again) stay: they choose the option, and the budget is the bound.
 - The two limits are config keys, so with the mod off an edit of the config during a run raises them.
+- A default run launches no Design agent at any tier or risk. A person who wants Design asks for it with one more
+  dialog (More options) at the approval, or with the Design door.
+- A plan of risk H always costs a fresh review round, two reviewers by default, before the run may go on by itself.

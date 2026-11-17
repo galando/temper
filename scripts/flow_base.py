@@ -104,7 +104,9 @@ OPTION_IDS = frozenset((
     # WP08
     "check-again", "it-is-the-code",
     # WP10
-    "grant-more"))
+    "grant-more",
+    # WP14
+    "run-design"))
 
 
 def question_entry(qid):
@@ -226,6 +228,11 @@ def advance_ok(run, done, nxt):
         return "after %s the next stage of this run is %s, not %s" % (stage, expected, nxt)
     if stage == "rca":
         return None
+    if stage == "plan" and run.blocking():
+        # WP14: what Design asked is now a Blocking question Plan writes; it is answered before the plan is approved, with
+        # the mod or without it
+        return ("intent.md holds %d open Blocking question(s) (%s): answer each with temper intent answer, or carry it "
+                "forward with temper intent carry, before the plan is approved" % (len(run.blocking()), run.blocking()[0][:120]))
     if run.verdict(stage) == "PASS" or run.skip(stage) is not None:
         return None
     v = run.verdict(stage)

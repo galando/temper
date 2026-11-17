@@ -26,7 +26,7 @@ import run_summary
 from flow_base import (
     FRESH_ROWS, GATE_HEADER, LABEL, TEMPER, VERSION, advance_ok, blocking_asks, design_accept, goes_on, on_model, plan_files)
 from flow_run import changed_files, project_facts, Run
-from flow_view import view, write_view
+from flow_view import PERSON_ROWS, view, write_view
 # the names other code reads on this module (cli_ctx.py, answer_ops.py, panel.py, drift.py, the cases)
 from flow_base import MOVES, SEQ, concern_blocks, open_concerns, same_failure, scoped_notes
 from flow_ask import AskPart
@@ -59,6 +59,29 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                         out["ask"] = q    # the only failed row is the pending check: ask the check itself, so a refused call can be answered again
         self.add_note(out)
         return out
+
+    def may_run_alone(self):
+        """WP14 (ADR 0019 decision 2): whether the approval may offer the run that goes on by itself. At risk H only when
+        the fresh review ran on the plan as it is (every lens of the round completed) and left no open finding at high."""
+        r = self.r
+        if (r.state.get("risk") or "").upper() != "H":
+            return True
+        fr = r.fresh()
+        return bool(fr["applies"] and fr["launched"] and not fr["stale"] and not fr["missing"] and not fresh_review.blockers(fr))
+
+    def answers_redo(self):
+        """WP14: the plan gate failed only on answers the tasks do not follow yet (and on rows the person answers): the CLI
+        sends the plan back once by itself. The same answers unmet after that revision are the person's question."""
+        r = self.r
+        names = [x.get("name") for x in r.failed_rows("plan")]
+        why = self.answers_reason()
+        redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+        if (r.verdict("plan") != "FAIL" or "tasks agree with decisions" not in names or not why
+                or any(n not in PERSON_ROWS + ("tasks agree with decisions",) for n in names)
+                or redo.get("stage") == "plan" and same_failure(str(redo.get("reason") or ""), why)):
+            return None
+        return {"action": "work", "stage": "plan", "calls": [self.c("state redo plan --reason %s" % shlex.quote(why))], "agents": [],
+                "say": "Plan: an answer is not the choice the plan assumed; the Plan agent writes the tasks under it."}
 
     # -- the budget (WP10, ADR 0019 decision 1) --
     def budget_guard(self, out):
@@ -217,6 +240,10 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             ready = all(x.get("name") in FRESH_ROWS + ("context map reviewed",) for x in r.failed_rows("plan"))
             if fresh_review.need_launch(fr) and ready:
                 out.update(self.fresh_work(fr))
+                return out
+            redo = self.answers_redo()
+            if redo:
+                out.update(redo)
                 return out
         if verdict is None and not skipped:
             if self.walked(stage):

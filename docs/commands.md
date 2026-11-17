@@ -437,16 +437,9 @@ Produces a system design document (`design.md`) with:
 
 **When it runs:**
 
-Automatically included in the `/temper` pipeline when:
-- `phases.design: true` in temper.config (default)
-- AND complexity is `medium` or `complex`
-
-**Config:**
-
-```yaml
-phases:
-  design: true    # Set false to always skip design stage
-```
+Only when you ask for it (9.8.5): choose `Run Design first` under More options at the plan approval, or start the run
+with `/temper:design`. No tier and no risk adds it. A question Design would have asked is a Blocking question Plan
+writes, and you answer it before the approval.
 
 ---
 

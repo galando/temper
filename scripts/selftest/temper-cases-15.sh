@@ -206,7 +206,7 @@ assert_exit "9.8.0: plan review --redo records the answer" 0 "$TEMPER" plan revi
 assert_eq "9.8.0: the answer is the person's note for Plan, and the plan verdict is gone (Plan runs again)" "1|yes" \
   "$(python3 -c "import json; print(sum(1 for r in json.load(open('.temper/evidence/plan.json')) if r.get('claim') == 'Context check: Include the export'))")|$(python3 -c "import json; g=json.load(open('.temper/gates.json')); print('yes' if 'plan' not in g else 'no')" 2>/dev/null || echo yes)"
 
-# --- 7. Design on risk; risk kept by the CLI; the unattended run at the last question before Build ---
+# --- 7. No Design on risk (WP14); risk kept by the CLI; the unattended run at the last question before Build ---
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set complexity medium >/dev/null 2>&1
 assert_exit "9.8.0: risk is kept by the CLI (state set risk is refused)" 1 "$TEMPER" state set risk L
@@ -214,9 +214,15 @@ gpass plan
 assert_eq "9.8.0: a medium plan at risk below H skips Design; the plan question offers the unattended run" \
   "Plan: the check passed. Approve the plan and continue to Build?|Stage by stage (Recommended)|Autonomous Build: run Build unattended" \
   "$(nx "q = d['ask']; '|'.join([q['question']['question']] + [o['label'] for o in q['options'][:2]])")"
-"$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1
-assert_eq "9.8.0: at risk H a medium plan runs Design, and the plan question does not offer the unattended run" "Continue to Design (Recommended)|no" \
-  "$(nx "q = d['ask']; o = [x['label'] for x in q['options']] + [x['label'] for x in (q.get('more') or {}).get('options', [])]; q['options'][0]['label'] + '|' + ('yes' if any('Autonomous' in x for x in o) else 'no')")"
+"$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1; fresh_reviewed   # reviewer A only: the round is not complete
+assert_eq "WP14: at risk H a medium plan runs no Design, and before a complete fresh round the plan question does not offer the unattended run" \
+  "Stage by stage (Recommended)|state advance plan_complete build|no" \
+  "$(nx "q = d['ask']; o = [x['label'] for x in q['options']] + [x['label'] for x in (q.get('more') or {}).get('options', [])]; q['options'][0]['label'] + '|' + q['options'][0]['calls'][-1].split('temper ', 1)[1] + '|' + ('yes' if any('Autonomous' in x for x in o) else 'no')")"
+for _l15 in readiness zoom-out comprehension tests; do   # reviewer B completes the round of risk H
+  "$TEMPER" evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim "fresh review completed: $_l15 B" \
+    $([[ $_l15 == readiness ]] && echo "--value $(grep -c '^### Task' .temper/specs/demo/tasks.md)") >/dev/null 2>&1
+done
+"$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design (the option run-design)
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1; gpass design
 assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design" "Autonomous Build: run Build unattended|arm|state set run_mode autonomous" \
   "$(nx "o = d['ask']['options'][1]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1]])")"
@@ -460,17 +466,18 @@ assert_eq "9.8.0: a tree changed since that run is measured again, never adopted
   "$("$TEMPER" check run 2>&1 | grep -q 'adopted' && echo yes || echo no)"
 rm -f src/later.sh
 
-# Design: a complex plan of a fully specified request (Intent asked nothing) skips it unless its risk is H
+# Design (WP14): a complex plan goes on to Build whatever Intent asked and whatever its risk; the person's ask adds it
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set complexity complex >/dev/null 2>&1; gpass plan
 assert_eq "9.8.0: complex, nothing asked at Intent, risk below H: the plan goes on to Build, no Design" "Plan: the check passed. Approve the plan and continue to Build?" \
   "$(nx "d['ask']['question']['question']")"
-python3 -c "
-import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['intent_asked'] = True; json.dump(d, open(p, 'w'))"
-assert_eq "9.8.0: complex and Intent asked the person: Design runs" "Continue to Design (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+"$TEMPER" state set want_design true >/dev/null 2>&1
+assert_eq "WP14: complex and the person asked for Design: Design runs" "Continue to Design (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set complexity complex >/dev/null 2>&1; gpass plan; "$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1
-assert_eq "9.8.0: complex at risk H runs Design even when nothing was asked" "Continue to Design (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
+fresh_reviewed
+assert_eq "WP14: complex at risk H runs no Design when nothing was asked" "Stage by stage (Recommended)|state advance plan_complete build" \
+  "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
 fresh
 cat > .temper/specs/demo/intent.md <<'INT'
 **Status:** draft
@@ -487,8 +494,8 @@ The demo.
 
 - Blocking: Who may run it? choices: Admins only | Clerks and admins (house rule) | Anyone
 INT
-assert_eq "9.8.0: the Intent gate records that the person was asked something" "true" \
-  "$("$TEMPER" gate intent >/dev/null 2>&1; "$TEMPER" state get intent_asked 2>/dev/null)"
+assert_eq "WP14: the Intent gate fails on the open question and records nothing for Design (intent_asked is gone)" "FAIL|" \
+  "$("$TEMPER" gate intent >/dev/null 2>&1; python3 -c "import json; print(json.load(open('.temper/gates.json'))['intent']['verdict'])")|$("$TEMPER" state get intent_asked 2>/dev/null)"
 assert_eq "9.8.0: a choice marked (house rule) is listed first, as the recommended answer" "Who may run it? choices: Clerks and admins (house rule) | Admins only | Anyone" \
   "$(nx "d['blocking'][0]")"
 assert_eq "9.8.0: a draft intent with no Rules covered section fails the rules checklist row, naming every item" "yes" \

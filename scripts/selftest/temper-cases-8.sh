@@ -71,11 +71,11 @@ printf '# Plan\n\n## Files to Modify\n| File | Change |\n|---|---|\n| `src/demo.
 gpass plan
 assert_eq "next: Plan PASS with no Design to follow offers stage by stage or unattended, then Fresh review first (9.8.0)" \
   "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
-assert_eq "next: More options holds the rest, as its own question" "Open HTML review|Grill Me|Teach Me|Save for later" \
+assert_eq "next: More options holds the rest, as its own question, Run Design first in Teach Me's place (WP14)" "Open HTML review|Run Design first|Grill Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 cp .claude/temper.config .claude/temper.config.keep; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
 assert_eq "next: with plan.fresh-review off the Plan question has no Fresh review first" \
-  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Open HTML review|More options|Share HTML review|Grill Me|Teach Me|Save for later" \
+  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Open HTML review|More options|Share HTML review|Run Design first|Grill Me|Save for later" \
   "$(labels)|$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 mv .claude/temper.config.keep .claude/temper.config
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
@@ -94,14 +94,18 @@ assert_eq "next: with autonomy on, the Plan question offers the arming choice" \
   "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
 assert_eq "next: Autonomous arms the run before it advances" "arm|state set run_mode autonomous" \
   "$(nx "o = d['ask']['options'][1]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
-assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Grill Me|Teach Me|Save for later" \
+assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Run Design first|Grill Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH; fresh_reviewed
-assert_eq "next: a medium plan goes on to Design" "Continue to Design (Recommended)|state advance plan_complete design" \
+assert_eq "next: a medium plan at risk H goes on to Build: Design runs only when asked (WP14)" \
+  "Stage by stage (Recommended)|state advance plan_complete build" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
-assert_exit "advance: a medium plan may not skip Design" 1 "$TEMPER" state advance plan_complete build
+"$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design (the option run-design)
+assert_eq "next: a plan whose person asked for Design goes on to Design" "Continue to Design (Recommended)|state advance plan_complete design" \
+  "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
+assert_exit "advance: a run whose person asked for Design may not skip it" 1 "$TEMPER" state advance plan_complete build
 
 # --- Review, Check, the loop budget ---
 fresh; gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
@@ -259,8 +263,7 @@ assert_eq "next: it is a read: the run state is unchanged" "same" "$(cmp -s .tem
 
 # --- Design, Check FAIL, a door's failed stage ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity complex >/dev/null 2>&1
-python3 -c "
-import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['intent_asked'] = True; json.dump(d, open(p, 'w'))"   # Intent asked the person (9.8.0: Design runs)
+"$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design at the approval (WP14: only then it runs)
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "next: Design runs its brief" "temper:temper-design|gate design" "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
 gpass design
@@ -402,7 +405,7 @@ _park8="$(nx "' '.join(d.get('calls') or [])")"; [[ "$_park8" == *" park --verdi
 assert_eq "round 2, 11b: only the commit gate's own row failed: Check again is first" "commit.fail|check-again|False|gate commit" \
   "$(nx "q = d.get('ask') or {}; o = (q.get('options') or [{}])[0]; '%s|%s|%s|%s' % (q.get('id'), o.get('id'), bool(o.get('recommended')), ((o.get('calls') or ['none'])[-1]).split('temper ', 1)[-1])")"
 git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
-# 12. The Design door of a run with no Design stage enters at Build: the stages before are walked, not run again.
+# 12. The Design door is the person's ask for Design (WP14): the stages before it are walked, not run again.
 setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; "$TEMPER" state set complexity simple >/dev/null 2>&1
 assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
   "$(nx "d['action'] + '|' + (d['calls'][0].split('temper ', 1)[1] if d['calls'] else '') + '|' + str(len(d.get('agents') or []))")"

@@ -1,12 +1,13 @@
 ---
-description: "Design a medium or complex feature: starts /temper, or takes up the active run, at Design"
+description: "Design a feature on your ask: starts /temper, or takes up the active run, at Design"
 argument-hint: "[<feature-slug>]"
 ---
 
 # Design
 
 This command is a door into `/temper`: it starts a run at Design, or takes up the run that is
-active, and from there everything happens as `/temper` does it. There is one flow, and it is
+active, and from there everything happens as `/temper` does it. Calling it is the person's ask for Design. There is one
+flow, and it is
 `${CLAUDE_PLUGIN_ROOT}/commands/temper.md`.
 
 Read `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` now and follow it exactly, entering at **Design**

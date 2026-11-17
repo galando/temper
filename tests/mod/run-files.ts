@@ -110,7 +110,6 @@ export function deriveView(get: (path: string) => string | undefined): string | 
   const overrides = (json(get('.temper/overrides.json')) ?? []) as Array<{ stage?: string; reason?: string; by?: string }>
   const config = get('.claude/temper.config') ?? ''
   const autonomy = /autonomy:\s*\n\s+enabled:\s*true/.test(config)
-  const designOn = /phases:\s*\n\s+design:\s*true/.test(config)
   const stage = bs.next_stage === 'done' ? 'commit' : bs.next_stage
   const command = typeof bs.command === 'string' ? bs.command : 'temper'
   const spec = typeof bs.spec_path === 'string' ? bs.spec_path : SPEC
@@ -121,8 +120,9 @@ export function deriveView(get: (path: string) => string | undefined): string | 
   const verdict = (s: string): string | undefined => gates[s]?.verdict
   const result = verdict(stage) === 'PASS' || skipped(stage) ? 'pass' : verdict(stage) === 'FAIL' ? 'fail' : 'work'
   const armed = bs.run_mode === 'autonomous'   // 9.8.0: no setting; the person arms it at the last question before Build
-  // 9.8.0: Design runs for a complex plan, and for a medium one only at risk H (scripts/flow.py has_design)
-  const design = stage === 'design' || verdict('design') !== undefined || ((bs.complexity === 'complex' || (bs.complexity === 'medium' && bs.risk === 'H')) && designOn)
+  // WP14: Design runs only when the person asked for it (want_design), or when design.md exists or the run is at Design or
+  // has its verdict (scripts/flow_run.py has_design); no tier and no risk adds it
+  const design = stage === 'design' || verdict('design') !== undefined || bs.want_design === true || get(`${spec}/design.md`) !== undefined
   let name: string
   if (command === 'fix') name = 'fix-rca'
   else if (armed && `armed-${stage}-${result}` in VIEWS) name = `armed-${stage}-${result}`

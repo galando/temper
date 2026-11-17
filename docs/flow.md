@@ -197,12 +197,25 @@ the code's, as before: it spends the attempt. Any status move clears the mark.
 
 ### Decisions, findings and integrate (9.8.5)
 
-**A Design answer reaches the tasks.** `temper intent answer 'Design: ...'` keeps the answer with the hash `tasks.md` has
-at that moment (`.temper/decisions.json`, `scripts/decisions.py`). The Design gate's row `tasks agree with decisions`
-passes with a note while `tasks.md` is still that file: the note names each answer given after the plan, and says it
-goes to every Build task. Each Build task prompt lists the Design answers, newest first, as decisions that win over
-`tasks.md`. The Design question recommends `Continue to Build`; it no longer recommends `Loop back to Plan` for an
-answer (WP08: planning again ran Plan and Design again, both on Opus, also when the plan already had the rule).
+**Design runs only when asked (WP14, ADR 0019 decision 2).** A run of `/temper:temper` has the Design stage when the
+person chose `Run Design first` (id `run-design`, in the More list of the passed plan question; its calls are
+`temper state set want_design true` and then those that leave Plan, with `design` as the next stage), when the run was
+started by the Design door, when `design.md` exists, or when the run is at Design or has a Design verdict. No tier, no
+risk and no setting adds it: `phases.design` and the state key `intent_asked` are gone. What Design asked is now a
+Blocking question Plan writes into intent.md, `- Blocking: {question} choices: {the answer the plan assumes} | ...`,
+with the tasks written under the first choice. `state advance plan_complete` is refused while one is open, so it is
+answered in front of the approval, with the mod or without it. At risk H the fresh review of the plan applies with no
+request (under `plan.fresh-review: ask`), and the option that starts the unattended run is offered only when a round
+ran on the plan as it is, every lens complete, with no open finding at high (`Builder.may_run_alone`).
+
+**An answer reaches the tasks.** `temper intent answer` given after `tasks.md` exists keeps the answer with the hash
+`tasks.md` has at that moment, and whether it is the first choice of its line (`.temper/decisions.json`,
+`scripts/decisions.py`). The row `tasks agree with decisions` is a row of the plan gate. The first choice passes it with
+a note that names the answers and counts the first choices. Another answer fails it while `tasks.md` is still that
+file. Then `next` is `work` with the one call `temper state redo plan --reason <the answers>`, once (the budget counts
+it under `gate:plan`); the same answers still unmet after that ask the failed plan question, with `Revise the plan`
+recommended and `The tasks already agree` as the first reason of its skip. Each Build task prompt lists the answers,
+newest first, as decisions that win over `tasks.md`. The Design gate has no such row.
 
 **High findings block.** `review.block-on` defaults to `[critical, high]`. A passed Review with an open finding at
 high or above recommends `Loop back to Build`; with a Medium one it recommends `Continue to Check`, and the passed Check

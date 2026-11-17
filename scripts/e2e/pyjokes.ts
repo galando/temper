@@ -4,8 +4,9 @@
 //                    a loop back to Intent that the next Plan agent hears about, a complex plan built on sonnet, a fresh
 //                    review with a tests lens whose medium finding reaches the builder, a group check that fails after
 //                    every task passed (fixed by one fix agent on the merged tree), temper output, a usage time filled late.
-//   pyjokes-full     a medium plan at risk H: two fresh reviewers, a high finding answered and rechecked, Design, a
-//                    critical Review finding that loops back to the Build fix pass, then a /temper:fix run.
+//   pyjokes-full     a medium plan at risk H: two fresh reviewers, a high finding answered and rechecked, no Design
+//                    (WP14: it runs only when asked), a critical Review finding that loops back to the Build fix pass,
+//                    then a /temper:fix run.
 //   pyjokes-blocked  a task whose test needs a file another task declares: `temper task blocked` parks it at once (no
 //                    retry, no escalation) and the person's question recommends the loop back to Plan.
 import fs from 'node:fs'
@@ -312,7 +313,7 @@ export const pyjokesRun = (w: World): void => {
   expect(u1 !== 0 || /filled|recorded/.test(u2), `7d: a late time fills the row recorded without one (${u2.trim()})`)
 }
 
-// ---- pyjokes-full: risk H, a recheck, Design, a Review loop back to Build, then /temper:fix ----
+// ---- pyjokes-full: risk H, a recheck, no Design (WP14), a Review loop back to Build, then /temper:fix ----
 export const pyjokesFull = (w: World): void => {
   const seen = new Seen()
   startPyjokes(w)
@@ -362,7 +363,7 @@ export const pyjokesFull = (w: World): void => {
   expect(qs.some(q => q.startsWith('Plan: the check failed') && q.includes('[Revise the plan (Recommended)')), 'a high fresh finding fails the plan gate and Revise the plan is recommended')
   expect(plan.passes() >= 2 && seen.of('plan-prompt')[1]!.includes('the Case for get_joke names no message'), 'the Plan agent gets the finding to answer')
   expect(rp.some(p => p.includes('Lenses: recheck.') && p.includes('Earlier findings (') && p.includes('Changed task blocks: Task 1.')), 'round 2 is a recheck of the earlier findings on the changed block')
-  expect(seen.of('design-prompt').length === 1, 'Design ran once (risk H)')
+  expect(seen.of('design-prompt').length === 0, 'Design did not run: risk H adds no stage, the person did not ask for it (WP14)')
   const models = seen.of('build-model')
   expect(models.length > 0 && models.every(m => /sonnet/.test(m)), `risk H builds its tasks on sonnet (${models.join('; ')})`)
   expect(seen.of('build-prompt').some(p => p.startsWith('Task 3') && p.includes('Plan review note: [tests] Task 3')), 'the medium finding reaches the builder as a note')

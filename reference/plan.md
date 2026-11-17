@@ -36,9 +36,12 @@ code and add no design question, so they do not count.
 
 **Trivial** (one file, no product problem): no artifacts — say so and implement directly (in
 `/temper` the Intent stage decides this). **Simple** (up to 3 production files, with new functions,
-options or fields in existing modules only): the three files above, and Design is skipped.
+options or fields in existing modules only): the three files above.
 **Medium** (4-10 production files, or a new module, data model or external interface) / **Complex**
-(10+): the three files above, and Design runs. The risk multipliers below still push a tier up.
+(10+): the three files above too. The risk multipliers below still push a tier up. No tier runs Design: it runs
+only when the person asks for it at the approval (`Run Design first`). A policy conflict or a product call becomes
+one line under intent.md's `### Open Questions`, `- Blocking: {question} choices: {the answer the plan assumes} |
+{another}`, and the tasks are written under the first choice (a `(house rule)` choice goes first).
 
 **intent.md usually already exists when you start.** In the orchestrated `/temper`
 flow, the Intent stage wrote it and a human accepted it at the intent gate

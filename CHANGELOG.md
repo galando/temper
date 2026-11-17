@@ -33,6 +33,15 @@ All notable changes to Temper are documented here. The plugin version lives in
   named; `Run Review again` is recommended, and its launch names the unread files. A run saved before 9.8.5 after its
   Review has a completion row with no read list: it fails once, and Review runs again. `evidence resolve` is never a
   tool call with the mod.
+- WP14: Design runs only when you ask for it (ADR 0019 decision 2). A default run launches no Design agent at any
+  tier or risk; the plan approval offers `Run Design first` in its More list, in the place of Teach Me, and
+  `/temper:design` asks for it too. What Design asked is now a Blocking question Plan writes, its first choice the
+  answer the tasks assume, and you answer it before the approval: `state advance plan_complete` is refused while one
+  is open. The row `tasks agree with decisions` moves to the plan gate: the first choice passes it with a note,
+  another answer fails it until `tasks.md` changes, the first time Plan runs again by itself and the second time you
+  are asked, with `Revise the plan` recommended. A plan of risk H gets the fresh review with no request, and the
+  unattended run is offered at risk H only after a complete round with no open High finding. `phases.design` and the
+  state key `intent_asked` are gone; the Architecture Depth pack also reads the plan.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

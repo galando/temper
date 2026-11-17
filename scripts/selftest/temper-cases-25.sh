@@ -1,32 +1,35 @@
 # Release 9.8.5 case file 25: sourced by test-temper.sh after temper-cases-24.sh; its helpers (nx, vw, fresh, gpass, gfail, labels, m_setup) are used here.
 
-# --- 9.8.5 (Q1, F2 of WP08): a Design answer that comes after the plan passes its row with a note and reaches every task ---
-_dq() { # _dq: a run at Design with a plan, design.md and one Blocking Design question open
-  fresh; f9_tasks > .temper/specs/demo/tasks.md
-  printf '# Design\n\n## Areas of Concern\n\n### Which schedule does a job use\n\nThe plan says 24 hours.\n\nowner: the person\n' > .temper/specs/demo/design.md
+# --- 9.8.5 (Q1, F2 of WP08, WP14): an answer that comes after the plan is a row of the plan gate: the first choice passes it
+# with a note, another answer fails it until tasks.md changes, and every answer reaches every task ---
+_dq() { # _dq: a run at Plan with its tasks and one Blocking question Plan wrote for a design concern
+  fresh
   python3 - <<'PY'
 p = '.temper/specs/demo/intent.md'
 s = open(p).read()
 s = s.replace('### Open Questions\n', '### Open Questions\n\n- Blocking: Design: Which schedule does a job use? choices: its own | 24 hours\n', 1)
 open(p, 'w').write(s)
 PY
+  gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 }
-_dq; gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
+_dq
 "$TEMPER" intent answer 'Design: Which schedule does a job use?' 'its own' >/dev/null 2>&1
 assert_eq "9.8.5 decisions: the answer is kept with the hash tasks.md has now" "1" \
   "$(python3 -c "import json; print(len(json.load(open('.temper/decisions.json'))))")"
-"$TEMPER" gate design >/dev/null 2>&1
-assert_eq "9.8.5 decisions: a Design answer newer than the tasks passes its row with a note" \
-  "row=True|names the answer|Continue to Build (Recommended)" \
+"$TEMPER" gate plan >/dev/null 2>&1
+assert_eq "9.8.5 decisions: an answer newer than the tasks that is the first choice passes the plan gate row with a note" \
+  "row=True|names the answer|Stage by stage (Recommended)" \
   "row=$(python3 -c "
 import json
-r = [x for x in (json.load(open('.temper/gates.json')).get('design') or {}).get('requirements') or [] if x.get('name') == 'tasks agree with decisions']
+r = [x for x in (json.load(open('.temper/gates.json')).get('plan') or {}).get('requirements') or [] if x.get('name') == 'tasks agree with decisions']
 print('%s|%s' % (bool(r) and all(x.get('pass') is True for x in r), 'names the answer' if any('Which schedule does a job use?' in str(x.get('detail')) for x in r) else 'no note'))")|$(nx "(d.get('ask') or {}).get('question', {}).get('options', [{}])[0].get('label', 'none')")"
-echo "- the job uses its own schedule" >> .temper/specs/demo/tasks.md
-assert_eq "9.8.5 decisions: once tasks.md changed, the row passes" "PASS" "$("$TEMPER" gate design 2>&1 | grep -q -- '-> PASS' && echo PASS || echo FAIL)"
 assert_eq "9.8.5 decisions: a build task prompt carries the Design decisions" "True" \
   "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import decisions; print('Design: Which schedule does a job use? -> its own' in decisions.prompt('.temper/specs/demo'))" "$REPO_ROOT/scripts")"
+_dq; "$TEMPER" intent answer 'Design: Which schedule does a job use?' '24 hours' >/dev/null 2>&1
+_dq_gate() { local o; o="$("$TEMPER" gate plan 2>&1)"; [[ "$o" == *'-> PASS'* ]] && echo PASS || echo FAIL; }
+_dq_fail="$(_dq_gate)"
+echo "- the job uses its own schedule of 24 hours" >> .temper/specs/demo/tasks.md
+assert_eq "9.8.5 decisions: another answer fails the plan gate until tasks.md changes" "FAIL|PASS" "$_dq_fail|$(_dq_gate)"
 fresh
 assert_eq "9.8.5 decisions: with no Design answer the row passes and the prompt adds nothing" "True|" \
   "$(python3 -I -c "import sys, json; sys.path.insert(0, sys.argv[1]); import decisions; print(str(decisions.row('.', '.temper/specs/demo')['pass']) + '|' + decisions.prompt('.temper/specs/demo'))" "$REPO_ROOT/scripts")"
