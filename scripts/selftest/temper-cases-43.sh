@@ -228,6 +228,24 @@ _c43_ct_listed 'T1 one'
 assert_eq "done: a name counts as listed only in the code span of the first cell of a row of changed-tests.md" \
   "1|1 0" "$r1 $(_c43_ct "$CT_BASE")"
 
+# a statement is compared whole line by whole line: an assertion commented out, or with a word added at its end, still
+# holds its old text as a part of a line and is a change all the same; so is a row of done.md with a cell added
+# (phase 2 review, F2)
+CT_BASE="$(_c43_ct_repo)"
+sed -i 's/^assert_eq "T1 one"/# &/' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED .*T1 one' "$_c43/ct.out")"
+CT_BASE="$(_c43_ct_repo)"
+sed -i 's/^assert_eq "T1 one" "1" "$(echo 1)"$/& || true/' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+r2="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED .*T1 one' "$_c43/ct.out")"
+CT_BASE="$(_c43_ct_repo)"
+printf '%s\n' '## The table' '' '| Id | Promise | Check | No model call | Passes after |' '|---|---|---|---|---|' \
+  '| D01 | one | `case 44 D01` | yes | WP07 |' > "$_c43/ct/docs/plans/one-go/done.md"
+_c43_commit "$_c43/ct" "the table"
+sed -i 's/^| D01 .*|$/& WP08 |/' "$_c43/ct/docs/plans/one-go/done.md"
+r3="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED docs/plans/one-go/done.md:5 .*: D01$' "$_c43/ct.out")"
+assert_eq "done: an assertion commented out or with a word added at its end, and a row with a cell added, are changes" \
+  "1|1 1|1 1|1" "$r1 $r2 $r3"
+
 # D84b: the second base, the commit that first added the file, for done.md and the case files 43 to 46
 CT_BASE="$(_c43_ct_repo)"
 mkdir -p "$_c43/ct/docs/plans/one-go"

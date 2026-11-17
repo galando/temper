@@ -7,8 +7,10 @@ The first base is the commit `10e965a`, the base of the build. The removed lines
 against the base) for the test files (the case files of the selftest, its runner, the scenarios of the end to end
 suite and the test files of the mod) that hold `assert_eq`, `assert_exit`, `expect(` or `test(` are read. For each such
 line the statement is taken from the base, a line that ends in a backslash running on through its last line; its name
-is its first quoted string. A statement that is in the tree as it was (each line compared with its indent left out) is
-not a change. Any other one fails unless its name is the text of the code span that is the first cell of a row of the
+is its first quoted string. A statement that is in the tree as it was is not a change: each of its lines, its indent
+left out, is a whole line of the tree, in a row, and the lines of a statement of code are looked for among the lines
+of code only (a line that starts with `#` or `//` is a comment), so an assertion commented out or with a word added
+at its end is a change. Any other one fails unless its name is the text of the code span that is the first cell of a row of the
 table of `docs/plans/one-go/changed-tests.md` (a code span elsewhere on that page names nothing).
 So a changed expected value under an unchanged name is a changed assertion, and must be listed.
 
@@ -118,16 +120,28 @@ def listed_names(root):
     return names
 
 
+def is_comment(line):
+    s = line.strip()
+    return s.startswith("#") or s.startswith("//")
+
+
 def tree_text(root, specs):
-    """The text of every file of the work tree the pathspecs match, each line with its indent left out."""
+    """(all, code): the lines of every file of the work tree the pathspecs match, each with its indent left out, joined
+    and framed by a newline at each end; `code` leaves out the comment lines (`#` or `//`), so an assertion that was
+    commented out is no longer in it."""
     names = git(root, "ls-files", "-co", "--exclude-standard", "--", *specs).split("\n")
-    parts = []
+    lines = []
     for n in names:
         p = os.path.join(root, n)
         if n and os.path.isfile(p):
             with open(p, encoding="utf-8", errors="replace") as f:
-                parts.append(squeeze(f.read().split("\n")))
-    return "\n".join(parts)
+                lines += [line.strip() for line in f.read().split("\n")]
+    return ("\n" + "\n".join(lines) + "\n", "\n" + "\n".join(x for x in lines if not is_comment(x)) + "\n")
+
+
+def holds(text, lines):
+    """True when the text holds the lines as whole lines, in a row (a part of a line is not enough)."""
+    return "\n" + "\n".join(lines) + "\n" in text
 
 
 def first_added(root, path):
@@ -147,7 +161,7 @@ def changes(root, base, specs, tree, rows=False):
         line = old[n - 1]
         if rows:
             m = re.match(r"^\|\s*(D\d+[a-z]?)\s*\|", line)
-            if m is None or line.strip() in tree:
+            if m is None or holds(tree, [line.strip()]):
                 continue
             found.append((path, n, m.group(1)))
             continue
@@ -157,7 +171,8 @@ def changes(root, base, specs, tree, rows=False):
         if not MARKERS.search(old[start]):
             continue
         st = statement(old, start)
-        if squeeze(st) in tree:
+        # a statement is compared whole line by whole line; one that is code is looked for among the code lines only
+        if holds(tree[0] if is_comment(st[0]) else tree[1], squeeze(st).split("\n")):
             continue
         if (path, start + 1) in seen:
             continue
@@ -194,10 +209,10 @@ def main(argv):
             continue
         if path == DONE:
             done = os.path.join(root, DONE)
-            text = ""
+            text = "\n"
             if os.path.isfile(done):
                 with open(done, encoding="utf-8") as f:
-                    text = "\n".join(line.strip() for line in f.read().split("\n"))
+                    text = "\n" + "\n".join(line.strip() for line in f.read().split("\n")) + "\n"
             found += [(p, n, nm, second[:7]) for p, n, nm in changes(root, second, [path], text, rows=True)]
         else:
             found += [(p, n, nm, second[:7]) for p, n, nm in changes(root, second, [path], tree)
