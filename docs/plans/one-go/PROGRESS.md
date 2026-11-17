@@ -79,6 +79,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | Phase | Commit | Date | Result of `full` | Seconds | Expected to fail |
 |---|---|---|---|---|---|
 | 1 | `2c48db1` | 2026-11-16 | PASS (selftest 737 s, end to end shards 660, 728, 806 and 522 s, traces kept) | 1625 | no list yet |
+| 2 | `7f2dade` | 2026-11-17 | PASS (selftest 835 s, end to end shards 1376, 1258, 1405 and 1628 s, while the WP08 lanes ran beside it); review: 21 plus 3 findings fixed | 2655 | 113 (93 selftest, 20 e2e) |
 
 ## Blockers
 
