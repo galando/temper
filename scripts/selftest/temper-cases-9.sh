@@ -446,18 +446,18 @@ git commit -qm "feat: the code" >/dev/null 2>&1
 assert_eq "live run 6: a door takes the tier from plan.md's Complexity line, not from intent.md's first guess" "medium" \
   "$("$TEMPER" state get complexity)"
 gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; riskH; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: a Review door reads its diff from before the spec's first commit, so committed work is reviewed" "$_r6b|1" \
   "$("$TEMPER" state get base_sha)|$(git diff --name-only "$("$TEMPER" state get base_sha)" | grep -cx r6-code.txt)"
 "$TEMPER" state init demo --enter build >/dev/null 2>&1; gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; riskH; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: a Build door still reads its diff from HEAD (the work is still to come)" "$(git rev-parse HEAD)" \
   "$("$TEMPER" state get base_sha)"
 git checkout -q main; git checkout -q -b feature/other; printf 'more\n' > r6-more.txt; git add r6-more.txt
 git commit -qm "feat: more" >/dev/null 2>&1
 git checkout -q feature/demo -- .temper/specs/demo; git rm -q --cached -r .temper/specs/demo >/dev/null 2>&1   # the spec, never committed here
 "$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; riskH; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: with no spec commit, a Check door reads its diff from where the branch left main" "$_r6b" \
   "$("$TEMPER" state get base_sha)"
 rm -rf .git r6-base.txt r6-code.txt r6-more.txt
@@ -571,7 +571,7 @@ assert_eq "init: the CLI names no settings file, and /temper:init offers no sett
   "$(_cli_text | grep -c 'settings\.json')|$(grep -c 'foreground-agents' "$REPO_ROOT/commands/init.md")"
 
 # --- live runs: the Design question names the open areas of concern, leaving Design records them, design.md is committed ---
-fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1
 for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 cat > .temper/specs/demo/design.md <<'MD'
 # Design: demo
@@ -622,7 +622,7 @@ assert_eq "isolated: a json.py in the project is never run by the CLI, and the C
 rm -f json.py PWNED
 
 # --- live run 11: the resolved line is a paragraph of its own; under a list item concern it stays in that item ---
-fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1
 for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 cat > .temper/specs/demo/design.md <<'MD'
 # Design: demo
@@ -641,7 +641,7 @@ MD
 gpass design; "$TEMPER" state advance design_complete build >/dev/null 2>&1
 assert_eq "design: below a list, the resolved line comes after a blank line, so Markdown keeps it out of the list" "|1" \
   "$(grep -B1 '^resolved: accepted as written' .temper/specs/demo/design.md | head -1)|$(grep -c '^resolved: accepted as written' .temper/specs/demo/design.md)"
-fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1
 for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 cat > .temper/specs/demo/design.md <<'MD'
 # Design: demo

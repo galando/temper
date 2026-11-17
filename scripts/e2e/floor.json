@@ -757,18 +757,18 @@
   "design": {
    "plain": {
     "now": {
-     "dialogs": 9,
+     "dialogs": 10,
      "by_stage": {
       "build": 3,
       "check": 1,
       "design": 1,
       "intent": 1,
-      "plan": 2,
+      "plan": 3,
       "review": 1
      },
      "by_kind": {
       "context": 1,
-      "gate": 6,
+      "gate": 7,
       "group": 2
      },
      "launches": {
@@ -788,18 +788,18 @@
    },
    "mod": {
     "now": {
-     "dialogs": 9,
+     "dialogs": 10,
      "by_stage": {
       "build": 3,
       "check": 1,
       "design": 1,
       "intent": 1,
-      "plan": 2,
+      "plan": 3,
       "review": 1
      },
      "by_kind": {
       "context": 1,
-      "gate": 6,
+      "gate": 7,
       "group": 2
      },
      "launches": {
@@ -819,18 +819,18 @@
    },
    "driver": {
     "now": {
-     "dialogs": 9,
+     "dialogs": 10,
      "by_stage": {
       "build": 3,
       "check": 1,
       "design": 1,
       "intent": 1,
-      "plan": 2,
+      "plan": 3,
       "review": 1
      },
      "by_kind": {
       "context": 1,
-      "gate": 6,
+      "gate": 7,
       "group": 2
      },
      "launches": {
@@ -843,6 +843,38 @@
      },
      "launch_total": 7,
      "auto": 12,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 3
+    }
+   }
+  },
+  "design-on-ask": {
+   "plain": {
+    "now": {
+     "dialogs": 8,
+     "by_stage": {
+      "build": 3,
+      "check": 1,
+      "intent": 1,
+      "plan": 2,
+      "review": 1
+     },
+     "by_kind": {
+      "context": 1,
+      "gate": 5,
+      "group": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-plan-review": 2,
+      "temper:temper-review": 1
+     },
+     "launch_total": 8,
+     "auto": 0,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 3
@@ -2170,11 +2202,10 @@
   "pyjokes-full": {
    "plain": {
     "now": {
-     "dialogs": 16,
+     "dialogs": 15,
      "by_stage": {
       "build": 4,
       "check": 2,
-      "design": 1,
       "fix": 1,
       "intent": 1,
       "plan": 3,
@@ -2183,21 +2214,20 @@
      },
      "by_kind": {
       "context": 1,
-      "gate": 13,
+      "gate": 12,
       "group": 2
      },
      "launches": {
       "temper:temper-acceptance": 1,
       "temper:temper-build": 1,
       "temper:temper-build-task": 2,
-      "temper:temper-design": 1,
       "temper:temper-fix": 1,
       "temper:temper-intent": 1,
       "temper:temper-plan": 2,
       "temper:temper-plan-review": 4,
       "temper:temper-review": 3
      },
-     "launch_total": 16,
+     "launch_total": 15,
      "auto": 0,
      "back": 1,
      "handbacks": 0,
@@ -2206,11 +2236,10 @@
    },
    "mod": {
     "now": {
-     "dialogs": 16,
+     "dialogs": 15,
      "by_stage": {
       "build": 4,
       "check": 2,
-      "design": 1,
       "fix": 1,
       "intent": 1,
       "plan": 3,
@@ -2219,21 +2248,20 @@
      },
      "by_kind": {
       "context": 1,
-      "gate": 13,
+      "gate": 12,
       "group": 2
      },
      "launches": {
       "temper:temper-acceptance": 1,
       "temper:temper-build": 1,
       "temper:temper-build-task": 2,
-      "temper:temper-design": 1,
       "temper:temper-fix": 1,
       "temper:temper-intent": 1,
       "temper:temper-plan": 2,
       "temper:temper-plan-review": 4,
       "temper:temper-review": 3
      },
-     "launch_total": 16,
+     "launch_total": 15,
      "auto": 0,
      "back": 1,
      "handbacks": 0,
@@ -2242,11 +2270,10 @@
    },
    "driver": {
     "now": {
-     "dialogs": 17,
+     "dialogs": 16,
      "by_stage": {
       "build": 4,
       "check": 2,
-      "design": 1,
       "fix": 1,
       "intent": 1,
       "plan": 3,
@@ -2255,7 +2282,7 @@
      },
      "by_kind": {
       "context": 1,
-      "gate": 13,
+      "gate": 12,
       "group": 2,
       "reason": 1
      },
@@ -2263,7 +2290,6 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build": 1,
       "temper:temper-build-task": 2,
-      "temper:temper-design": 1,
       "temper:temper-fix": 1,
       "temper:temper-intent": 1,
       "temper:temper-plan": 2,
@@ -2271,8 +2297,8 @@
       "temper:temper-rca": 1,
       "temper:temper-review": 3
      },
-     "launch_total": 17,
-     "auto": 17,
+     "launch_total": 16,
+     "auto": 16,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0

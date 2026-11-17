@@ -127,7 +127,15 @@ draw one. Put the terminal drawing of the diagram in plan.md's `## Diagram` sect
 lists the `###` headings under `## Approach Decisions` (the template's `### Decision {N}: {chosen approach in one
 line}`), so each names the choice.
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the risk is the letter it prints, never your own estimate. Design runs for a `complex` plan, and for a `medium` one only at risk H (9.8.0): when the change adds or changes a data model or a stored schema, moves money, changes who may do what (roles, permissions), or calls an external system, raise it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk --raise H --reason '<which of these>'`.
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the risk is the letter it prints,
+never your own estimate. When the change adds or changes a data model or a stored schema, moves money, changes who may
+do what (roles, permissions), or calls an external system, raise it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk
+--raise H --reason '<which of these>'`: a plan of risk H gets the fresh review.
+
+**Design runs only when the person asks for it** (WP14). A policy conflict or a product call you meet is one line under
+intent.md's `### Open Questions`: `- Blocking: {question} choices: {the answer the plan assumes} | {another} | ...`.
+Write the tasks under the first choice; a choice marked `(house rule)` is the first one. Another answer sends the plan
+back to you.
 
 Return `PLAN DONE {spec path}` on one line and nothing else; after a fresh review, add one line per finding you
 answered (`#{id}: fixed`, `contested`, `escalated` or `left`).

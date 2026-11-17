@@ -161,7 +161,7 @@ describe('every wait point of the flow audit', () => {
 
   test('the Design gate: Loop back to Plan, or Override and continue', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H', stage: 'plan_complete' }) }
+    const extra = { '.temper/build-state.json': JSON.stringify({ complexity: 'medium', want_design: true, stage: 'plan_complete' }) }
     const w = begin(on, 'design', { plan: 'PASS', design: 'FAIL' }, [why('Override and continue', 'the platform team owns it')], extra)
     await api.session.start(START)
     expect(await sh(api, `${CLI} override design --reason x`)).toBe(ONLY_USER)
@@ -172,7 +172,7 @@ describe('every wait point of the flow audit', () => {
 
   test('the Design gate: Loop back to Plan', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H' }) }
+    const extra = { '.temper/build-state.json': JSON.stringify({ complexity: 'medium', want_design: true }) }
     const w = begin(on, 'design', { plan: 'PASS', design: 'FAIL' }, [why('Loop back to Plan', 'the API changed')], extra)
     await api.session.start(START)
     await ask(api, w)
@@ -279,7 +279,7 @@ describe('every wait point of the flow audit', () => {
 describe('a stage command is a door into /temper', () => {
   test('a run with Design: Plan goes on to Design, not past it', async ($, on) => {
     const api = $ as unknown as Api
-    const extra = { '.claude/temper.config': 'phases:\n  design: true\n', '.temper/build-state.json': JSON.stringify({ complexity: 'medium', risk: 'H' }) }
+    const extra = { '.temper/build-state.json': JSON.stringify({ complexity: 'medium', want_design: true }) }
     const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Design (Recommended)'], extra)
     await api.session.start(START)
     await ask(api, w)

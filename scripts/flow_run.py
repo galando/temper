@@ -162,21 +162,18 @@ class Run:
                                    self.cfg("plan.fresh-review-rounds", "3"))
 
     def has_design(self):
+        """WP14 (ADR 0019 decision 2): a run of /temper:temper has the Design stage only when the person asked for it
+        (the option run-design of the approval sets want_design, or the Design door), when design.md exists, or when the run is at Design or
+        has a Design verdict (a run saved there by 9.8.4 keeps it). No tier, risk or setting adds it: what Design asked is
+        now Blocking questions Plan writes, answered in front of the approval."""
         if self.command != "temper":
             return False
         if self.spec and os.path.isfile(os.path.join(self.spec, "design.md")):
             return True
         if "design" in self.gates or self.stage == "design":
             return True
-        # 9.8.0: Design runs on risk, not on size. A complex plan gets it; a medium one only when its risk is H (temper risk:
-        # a large blast radius, a CRITICAL or HIGH file, or Plan's raise for a data model, money, permissions or an
-        # integration). Before 9.8.0 every medium plan ran Design: minutes per run, and concerns the person only approved.
-        # A complex plan of a request that was fully specified (Intent asked the person nothing) skips it too, unless its
-        # risk is H: the request already settled what Design would ask, and the design concerns were only approved.
-        complexity = (self.state.get("complexity") or "").lower()
-        risk = (self.state.get("risk") or "").upper()
-        asked = bool(self.state.get("intent_asked"))
-        return self.on("phases.design", True) and (risk == "H" and complexity in ("medium", "complex") or (complexity == "complex" and asked))
+        # the person's ask: the option run-design, or the Design door (/temper:design enters the run at Design)
+        return str(self.state.get("want_design")).strip().lower() == "true" or self.state.get("enter") == "design"
 
     def next_of(self, stage):
         s = self.seq()

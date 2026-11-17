@@ -222,9 +222,9 @@ snap(p, "commit-page", "run-pw")
 cli(p, "report", "--no-html")
 snap(p, "commit-record", "run-pw")
 
-# A run with a Design stage (a medium plan at risk H, with phases.design on).
+# A run with a Design stage: the person asked for it with the option run-design of the approval (WP14).
 d = project("design")
-write(d, ".claude/temper.config", "review:\n  block-on: [critical]\nphases:\n  design: true\n")
+write(d, ".claude/temper.config", "review:\n  block-on: [critical]\n")
 cli(d, "state", "init", "pw", "--feature", "Password reset by email")
 write(d, ".temper/specs/pw/intent.md", INTENT.replace("**Complexity:** simple", "**Complexity:** medium"))
 verdict(d, "intent", True)
@@ -232,11 +232,12 @@ cli(d, "state", "advance", "intent_complete", "plan")
 cli(d, "state", "set", "complexity", "medium")
 write(d, ".temper/specs/pw/plan.md", PLAN)
 write(d, ".temper/specs/pw/tasks.md", TASKS)
-cli(d, "risk", "--raise", "H", "--reason", "a medium plan runs Design at risk H (9.8.0)")
 # 9.7.6, plan.fresh-review: ask (the default): nobody asked for the fresh review, so the plan question offers it
 verdict(d, "plan", True)
+cli(d, "state", "set", "want_design", "true")   # the first call of the option run-design
+# the plan question of a run with Design (after a step back from it, say): Continue goes on to Design
 snap(d, "design-plan-pass", "run-design")
-cli(d, "state", "advance", "plan_complete", "design")
+cli(d, "state", "advance", "plan_complete", "design")   # the last call of run-design
 snap(d, "design-work", "run-design")
 verdict(d, "design", False, "API contracts", "no contract for the reset endpoint")
 snap(d, "design-fail", "run-design")

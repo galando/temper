@@ -21,7 +21,7 @@ review has not run on it). An edit of any of the three files after the launch ma
 A lens with no completion row did not review: it is `not run`, never a lens with no findings.
 
 MODE is plan.fresh-review: ask (the default: the plan question offers it, at every tier, and it applies once the person asks
-for it), auto (medium and complex tiers), always, or off. A risk H plan gets two independent reviewers (A and B) unless TWICE
+for it, or with no request at risk H), auto (medium and complex tiers), always, or off. A risk H plan gets two independent reviewers (A and B) unless TWICE
 is false. ROUNDS (plan.fresh-review-rounds, default 3) caps the launches of one run; 9.8.4: a loop back (or a replan) after
 which plan.md or tasks.md changed earns one more round (cap_of). Standard library only.
 """
@@ -114,7 +114,7 @@ def fresh_state(state):
     return f if isinstance(f, dict) else {}
 
 
-def applies(mode, complexity, requested):
+def applies(mode, complexity, requested, risk=""):
     mode = (mode or "ask").strip().lower()
     if mode in ("off", "false", "no"):
         return False
@@ -122,7 +122,9 @@ def applies(mode, complexity, requested):
         return True
     if mode == "auto":
         return (complexity or "").strip().lower() in ("medium", "complex")
-    return bool(requested)     # ask: the person asked for it at the plan question
+    # ask: the person asked for it at the plan question; WP14: a plan of risk H gets it with no request (the run that goes
+    # on by itself is offered at risk H only after a round on the plan as it is)
+    return bool(requested) or (risk or "").strip().upper() == "H"
 
 
 def instances(risk, twice="true"):
@@ -206,8 +208,9 @@ def status(spec, ev_path, state_path, mode, twice="true", rounds_cap="3"):
     m = (mode or "ask").strip().lower()
     now = digest(spec)
     launch = fs.get("launch") if isinstance(fs.get("launch"), dict) else None
-    out = {"mode": m, "applies": applies(m, complexity, fs.get("requested")) and bool(now), "digest": now,
-           "offer": m == "ask" and not fs.get("requested") and bool(now) and state.get("command", "temper") == "temper",
+    out = {"mode": m, "applies": applies(m, complexity, fs.get("requested"), risk) and bool(now), "digest": now,
+           "offer": m == "ask" and not fs.get("requested") and risk.upper() != "H" and bool(now)
+                    and state.get("command", "temper") == "temper",
            "need": [], "done": [], "missing": [], "stale": False, "launched": launch is not None, "recheck": None,
            "rounds": int(fs.get("rounds") or 0), "cap": cap_of(fs, spec, cap)[0], "capped": int(fs.get("rounds") or 0) >= cap_of(fs, spec, cap)[0],
            "paraphrase": "", "paraphrase_short": False, "lazy": [], "findings": [], "contests": []}

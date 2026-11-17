@@ -9,6 +9,7 @@ import shlex
 import subprocess
 
 import adhoc_ops
+import decisions
 import fresh_review
 import intent_parse
 import run_env
@@ -82,10 +83,11 @@ class AskPart:
     def set_reasons(o, reasons):
         """The options of a reason question: each ready reason, then Cancel. The question goes to the dialog as it is, so
         their ids sit beside it, in `reason_ids`, in the same order: `choice-N`, and `cancel` (kind `cancel`: back to the
-        question before)."""
+        question before). Returns the option."""
         o["reason_question"]["options"] = [{"label": x, "description": ""} for x in reasons] + \
             [{"label": "Cancel", "description": "Back to the question before."}]
         o["reason_ids"] = {"options": [{"id": "choice-%d" % (k + 1)} for k in range(len(reasons))] + [{"id": "cancel", "kind": "cancel"}]}
+        return o
 
     @staticmethod
     def set_rec(o, on):
@@ -160,6 +162,17 @@ class AskPart:
         more = self.question(header, more_text, rest, stage, qid=(qid or "") + ".more")
         return self.question(header, text, first[:3] + [more_opt], stage, more=more, qid=qid)
 
+    def revise_opt(self, description, why):
+        """Revise the plan: the Plan agent runs again for the reason (state redo plan)."""
+        return self.opt("Revise the plan", description, move="redo", oid="revise-plan",
+                        calls=[self.c("state redo plan --reason %s" % shlex.quote(why[:300]))])
+
+    def answers_reason(self):
+        """WP14: the reason of the plan's revision for the answers the tasks do not follow yet, or ''."""
+        r = self.r
+        unmet = decisions.unmet(decisions.project_of(r.spec), r.spec) if r.spec else ""
+        return ("the tasks follow your answers: %s" % unmet)[:300] if unmet else ""
+
     # -- the steps that leave Intent and Plan ------------------------------------------------
     def spec_commit(self, message, changes=False):
         """The spec folder's commit, only when it has something to commit: a commit with nothing staged is refused by the
@@ -210,8 +223,8 @@ class AskPart:
         return (self.to_branch() if switch else []) + ([self.c("intent accept")] if has else []) + \
             self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + [self.c("state advance intent_complete plan")]
 
-    def leave_plan(self):
-        r, nxt = self.r, self.r.next_of("plan") or "build"
+    def leave_plan(self, nxt=None):
+        r, nxt = self.r, nxt or self.r.next_of("plan") or "build"
         # Still on another branch (a run whose Intent was left before this step existed, or a switch since): switch now.
         return self.to_branch() + self.spec_commit("docs(plan): approve the plan of %s" % r.slug) + \
             [self.c("state advance plan_complete %s" % nxt)]
@@ -310,34 +323,43 @@ class AskPart:
                     # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
                     text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. Approve the plan and continue to %s?" % (
                         state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", nl)
-                    revise = self.opt("Revise the plan",
-                                      "The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
-                                      move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
-                                          ("fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))[:300]))], oid="revise-plan")
+                    revise = self.revise_opt("The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
+                                             "fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))
                 # 9.8.0: the unattended run is offered at the last question before Build: here when no Design follows,
                 # at the Design question when it does (so every decision is made before the run goes on by itself).
                 if not r.has_design():
+                    # WP14: Design runs only when the person asks for it here. The option takes Teach Me's place in the More
+                    # list, so every option stays within two dialogs (a More list of five made a third level, M2 of PR 115).
+                    design = self.opt("Run Design first", "Approve the plan; Design runs next, and its question is the last "
+                                      "one before Build.", move="approve", oid="run-design",
+                                      calls=[self.c("state set want_design true")] + self.leave_plan("design"))
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go,
-                                      oid="ask-every-stage"),
-                             self.opt("Autonomous Build: run Build unattended", "Approve the plan; " + self.armed_text(),
-                                      move="arm", calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run"), html]
+                                      oid="ask-every-stage")]
+                    if self.may_run_alone():   # WP14: at risk H only after a fresh round on the plan as it is
+                        first.append(self.opt("Autonomous Build: run Build unattended", "Approve the plan; " + self.armed_text(),
+                                              move="arm", calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run"))
                     if revise is not None:   # findings below high: revising is offered, after the ways on
-                        return self.with_more(GATE_HEADER, text, stage, first[:2] + [revise], [html, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                        return self.with_more(GATE_HEADER, text, stage, first + [revise], [html, design, grill, self.save()], "Plan: more options.", qid="plan.approve")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
-                        return self.with_more(GATE_HEADER, text, stage, first[:2] + [self.fresh_offer()], [html, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
-                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                        return self.with_more(GATE_HEADER, text, stage, first + [self.fresh_offer()], [html, design, grill, self.save()], "Plan: more options.", qid="plan.approve")
+                    return self.with_more(GATE_HEADER, text, stage, first + [html], [share, design, grill, self.save()], "Plan: more options.", qid="plan.approve")
+                cont = self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage")
                 if revise is not None:
-                    first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage"), revise, html]
-                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                    return self.with_more(GATE_HEADER, text, stage, [cont, revise, html], [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
                 if fr["offer"]:
-                    first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage"),
-                             self.fresh_offer(), html]
-                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
-                first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage"), html, share]
-                return self.with_more(GATE_HEADER, text, stage, first, [grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                    return self.with_more(GATE_HEADER, text, stage, [cont, self.fresh_offer(), html], [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                return self.with_more(GATE_HEADER, text, stage, [cont, html, share], [grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
             fresh_failed = [x for x in rows if x.get("name") in FRESH_ROWS]
             if fr["applies"] and fresh_failed:
                 return self.fresh_question(fr, why, said, back_opt, override_opt, grill)
+            if any(x.get("name") == "tasks agree with decisions" for x in rows):
+                # WP14 (ADR 0019 decision 2): an answer is not the choice the plan assumed, and the tasks have not changed
+                # since. Plan writes them under it; or the person says no task names the old rule (a skip with that reason).
+                ov = self.set_reasons(override_opt(self.leave_plan()), ["The tasks already agree"] + override_reasons)
+                return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Revise the plan so the tasks follow your answers?" % (
+                    why, said), stage=stage, qid="plan.fail", options=[self.set_rec(self.revise_opt(
+                        "The Plan agent writes the tasks under your answers; then the plan is checked again.", self.answers_reason() or why), True),
+                        ov] + back_opt() + [self.save()])
             # WP08 (M16): a failed preflight is never returned from the store, so after the person repaired the
             # environment one option runs the plan's commands again and checks the plan
             again = [self.opt("Check again", "Run the plan's commands again (after you repaired the environment) and "
@@ -379,11 +401,11 @@ class AskPart:
                     text = text[:-len(" Continue to Build?")].rstrip(".") + ". Design changed the plan's tasks (tasks.md%s); Continue approves them with the design. Continue to Build?" % (
                         ": " + "; ".join(what[:4]) + ("; and %d more" % (len(what) - 4) if len(what) > 4 else "") if what else "")
                     cont = cont[:-1] + "; the changed tasks are approved with the design."
-                arm = self.opt("Autonomous Build: run Build unattended", ("Accept the open concerns as written; " if opens else "") +
-                               self.armed_text(),
-                               move="arm", calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run")
+                arm = [self.opt("Autonomous Build: run Build unattended", ("Accept the open concerns as written; " if opens else "") +
+                                self.armed_text(),
+                                move="arm", calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run")] if self.may_run_alone() else []
                 return self.with_more(GATE_HEADER, text, stage,
-                                      [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go, oid="continue"), arm, walk],
+                                      [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go, oid="continue")] + arm + [walk],
                                       [self.skill("grill-me", "Grill Me", "Stress test the design.")] + back_opt() +
                                       [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.", qid="design.pass")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,

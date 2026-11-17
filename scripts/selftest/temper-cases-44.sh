@@ -222,7 +222,12 @@ _plan44; riskH; fresh_reviewed
 "$TEMPER" evidence add --stage plan --phase fresh --claim '[readiness] Task 1: the plan never checks the input' --severity high \
   --label PROVEN >/dev/null 2>&1
 _d18d_high="$(_x44 "r = opt(d, 'approve-run') is not None")"
-_plan44; riskH; fresh_reviewed; _d18d_clean="$(_x44 "r = opt(d, 'approve-run') is not None")"
+_plan44; riskH; fresh_reviewed
+for _l44 in readiness zoom-out comprehension tests; do   # risk H: reviewer B completes the round too (WP14)
+  "$TEMPER" evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim "fresh review completed: $_l44 B" \
+    $([[ $_l44 == readiness ]] && echo "--value $(grep -c '^### Task' .temper/specs/demo/tasks.md)") >/dev/null 2>&1
+done
+_d18d_clean="$(_x44 "r = opt(d, 'approve-run') is not None")"
 assert_eq "D18d at risk H approve-run needs a fresh round on the plan as it is with no open High finding" \
   "no-round=False|open-high=False|clean-round=True" "no-round=$_d18d_none|open-high=$_d18d_high|clean-round=$_d18d_clean"
 

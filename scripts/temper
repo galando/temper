@@ -1632,8 +1632,7 @@ gate_intent() {
     # A Blocking question still open in a draft (F10, scripts/gate_rows.py): the person answers it before the plan.
     draft_line="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" intent-blocking "$spec_path/intent.md")"
     reqs+=("$draft_line")
-    # 9.8.0: a run whose Intent asked the person something is not fully specified; Design reads this (flow.py has_design)
-    grep -q '"pass": false' <<<"$draft_line" && { all_pass=0; _json_set_path "$STATE_FILE" intent_asked true '{}' >/dev/null 2>&1; }
+    grep -q '"pass": false' <<<"$draft_line" && all_pass=0
     draft_line="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" intent-rules "$spec_path/intent.md")"
     reqs+=("$draft_line")
     grep -q '"pass": false' <<<"$draft_line" && all_pass=0
@@ -2953,15 +2952,13 @@ gate_design() {
   local spec_path="$1"
   local reqs=() all_pass=1
   if [[ ! -f "$spec_path/design.md" ]]; then
-    reqs+=("$(_req "design artifact" 1 "design.md absent — stage skipped (trivial/simple, or phases.design: false)")")
+    reqs+=("$(_req "design artifact" 1 "design.md absent — stage skipped (Design runs only when the person asks for it)")")
   elif grep -qiE '^#+ .*areas of concern' "$spec_path/design.md"; then
     reqs+=("$(_req "concerns flagged" 1 "design.md has an Areas of Concern section ('None flagged — why' counts)")")
   else
     reqs+=("$(_req "concerns flagged" 0 "design.md has no Areas of Concern section — flag conflicts, or state 'None flagged — {why}'")")
     all_pass=0
   fi
-  local d_line; d_line="$(python3 -E -s "$SCRIPTS_DIR/decisions.py" row "$(pwd -P)" "$spec_path")"   # Design answers reach tasks.md
-  reqs+=("$d_line"); grep -q '"pass": false' <<<"$d_line" && all_pass=0
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
 }

@@ -220,6 +220,9 @@ class WorkPart:
             if opens:
                 extra = ["Fresh review findings to answer (reference/plan.md, Answering the fresh review): %s." % "; ".join(
                     "#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:200]) for f in opens)]
+            unmet = decisions.unmet(decisions.project_of(r.spec), r.spec) if r.spec else ""
+            if unmet:   # WP14: an answer other than the choice the plan assumed; the tasks are written under it now
+                extra = extra + ["Answers the tasks do not follow yet: %s. Write the tasks under them." % unmet]
         # A step back to this stage (from Design to Plan, from Review to Intent): the agent runs again for the person's
         # reason, and with what the stage it came from left open.
         back = r.loop_into(stage) if stage not in ("build", "fix") else None

@@ -709,8 +709,10 @@ s = open(p).read()
 open(p, 'w').write(s.replace('### Open Questions\n', '### Open Questions\n\n- Blocking: Design: Which schedule does a job use? choices: its own | 24 hours\n', 1))
 PY
 gpass intent plan; "$TEMPER" state set want_design true >/dev/null 2>&1 || true
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+# WP14: plan_complete is refused while a Blocking question is open, so the question is answered before the plan is left
 "$TEMPER" intent answer 'Design: Which schedule does a job use?' 'its own' >/dev/null 2>&1
+"$TEMPER" state advance plan_complete design >/dev/null 2>&1
 "$TEMPER" gate design >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1
 assert_eq "D57b an answered Design question passes the row tasks agree with decisions with a note, and no step back is recommended" \
   "True|names the answer|not back" "$(python3 -c "
