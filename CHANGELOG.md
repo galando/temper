@@ -5,6 +5,18 @@ All notable changes to Temper are documented here. The plugin version lives in
 
 ## v9.8.5: a run that asks twice
 
+- M2 (WP08): a passed Review with an open finding keeps every way on in reach, and no More holds a More.
+- F1 (WP08): a Medium finding goes on to Check and is listed where you commit; only High or above loops back.
+- M3 (WP08): under the policy, a failed group check whose fix you asked for launches the group fix agent.
+- M4 (WP08): the policy never takes a step back to Plan; the armed run parks and the step back is yours.
+- M5 (WP08): a step back to Intent, Plan or Design turns the run back to asking at every stage.
+- M6 (WP08): under the policy, a criterion only you can confirm parks the run; the next question is the confirmation.
+- M7 (WP08): the Check brief records the test run with evidence run, and the CLI checks a small change at Check.
+- M10 (WP08): the same environment fault at Check after a run again recommends Save for later, not the repair.
+- M11 (WP08): when only the commit gate's own row fails, the first option, Check again, runs the gate again.
+- M13 (WP08): the environment agent is no longer offered; the question shows the proposed setup block whole.
+- F2 (WP08): a Design answer newer than the tasks passes its row with a note and goes to every Build task.
+
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the
 CLI took by itself, the steps back, the hand backs of the run driver and the runs of the whole suite.

@@ -210,7 +210,7 @@ class BuildPart:
             gate = (ginfo.get("gate") or {}).get("verdict")
             if done and not gate:
                 return {"action": "work", "stage": "build", "calls": [self.c("group gate %s" % gidx)], "agents": [], "say": "Group %s is checked." % gidx}
-            if gate == "FAIL" and ginfo.get("fix") and not r.armed():
+            if gate == "FAIL" and ginfo.get("fix") and (not r.armed() or r.policy()):   # M3 of WP08: the policy launches it too
                 return self.group_fix_work(g, ginfo)
             if gate == "FAIL":
                 return self.group_failed(g, ginfo)
@@ -425,18 +425,22 @@ class BuildPart:
         reason = " ".join(str(gate.get("reason", "")).split())
         reason = reason if len(reason) <= 300 else reason[:297] + "..."
         fl = self.fail_text(ginfo)
+        stepback = False
         if self.r.armed() and self.r.policy() and not decide:
             # 9.8.5 (U1): under the policy the run takes the recommended option itself when no person is needed for it;
             # a typed command, Save for later or a spent budget park it, as before
             q = self.group_failed(g, ginfo, decide=True)["ask"]
             rec = next((o for o in q["options"] + ((q.get("more") or {}).get("options") or []) if o.get("recommended")), None)
-            if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop"):
+            stepback = bool(rec) and rec.get("move") == "back"   # M4 of WP08: an unattended run never steps back to Plan
+            if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop") and not stepback:
                 why = "policy: group %s failed its check (%s)" % (gid, reason[:200])
                 calls = [c.replace("'{reason}'", "'%s'" % why.replace("'", "")) for c in rec["calls"]]
                 return {"action": "auto", "stage": "build", "calls": calls,
                         "say": "Group %s failed its check; the policy takes \"%s\"." % (gid, self.bare(rec))}
         if self.r.armed() and not decide:  # nobody is there to answer: an armed run parks, as on every stop
             why = (reason[:300] + (" | " + fl if fl else ""))[:1200]   # 9.8.5 (S4): the whole failure, not its first 400 characters
+            if stepback:
+                why = ("a step back to Plan is yours to decide: " + why)[:1200]
             return {"action": "auto", "stage": "build",
                     "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],
                     "say": "Group %s failed its check; the armed run parks for you." % gid}

@@ -25,10 +25,9 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `intent.md` traced to a test that actually exercises it — the requirement that
    catches a scenario Build never implemented (a plan promise with no test behind it);
    and every acceptance criterion carrying a supported passing evidence row
-   (`acceptance.py check`). Record real results from real commands — never estimate:
+   (`acceptance.py check`). Record real results from real commands, never an estimate (the CLI runs the tests):
    ```
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
-     --claim "tests" --cmd '<the exact test command>' --exit <code> --label PROVEN
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage check --claim "tests" -- <the exact test command>
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
      --claim "coverage" --cmd '<the exact coverage command>' --exit <code> \
      --value <the parsed coverage percentage> --artifact <path to the coverage report> \

@@ -1008,19 +1008,18 @@ _fresh_grant() { # 9.8.4: a loop back or a replan to <stage>: one more fresh rev
 _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state loop, a state set next_stage to an earlier
              # stage). One function, so every way back leaves the same run behind (ADR 0012, point 3):
   local to="$1"
-  # - evidence is append-only, so a stale row of a stage that is redone (or, in the parallel-Review+Check window, an
-  #   abandoned background Check run) must not survive to inflate the next gate's count. Belt-and-suspenders with the
-  #   orchestrator's kill-before-clear ordering: the backstop for standalone CLI users with no orchestrator to do the kill.
+  # - evidence is append-only, so a stale row of a stage that is redone (or an abandoned background Check run) must not
+  #   survive to inflate the next gate's count
   _clear_evidence_downstream "$to"
+  local pre=; [[ "$to" =~ ^(intent|plan|design)$ ]] && pre=1
   # - F2: going back before Build re-plans the tasks, so the grouped run starts over
-  if [[ -f "$GROUPS_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]]; then
-    _groups_reset
-  fi
+  [[ -f "$GROUPS_FILE" && -n "$pre" ]] && _groups_reset
   _fresh_grant "$to"
-  # - and the code an earlier run built no longer stands for the plan: Build builds the plan, not a fix pass of it
-  if [[ -f "$STATE_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]] \
-     && [[ -n "$(cmd_state_get built_before "")" ]]; then
-    _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
+  # - the code an earlier run built no longer stands for the plan, and the run asks at every stage again (M5 of WP08;
+  #   ran_unattended stays)
+  if [[ -f "$STATE_FILE" && -n "$pre" ]]; then
+    [[ -n "$(cmd_state_get built_before "")" ]] && _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
+    _json_set_path "$STATE_FILE" run_mode interactive '{}' >/dev/null
   fi
   [[ -f "$STATE_FILE" ]] || return 0
   # - the verdicts and skips of <stage> and every later stage go; P1: the run is at <stage> again, so the
@@ -3974,7 +3973,7 @@ main() {
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
     plan) cmd_plan "$@" ;;
-    doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;;   # only reads; --propose --write adds setup:
+    doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;; # reads; --propose --write adds setup:, as the person's answer
     guards) case "${1:-}" in
               uninstall) python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall ;;
               install) bash "$SCRIPTS_DIR/guards/install.sh" ;;   # 9.8.1: the commit gate, as a setup call of the CLI

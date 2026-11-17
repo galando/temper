@@ -1687,6 +1687,62 @@
     }
    }
   },
+  "policy-run": {
+   "plain": {
+    "now": {
+     "dialogs": 4,
+     "by_stage": {
+      "commit": 1,
+      "intent": 1,
+      "plan": 2
+     },
+     "by_kind": {
+      "context": 1,
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 2,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 2
+     },
+     "launch_total": 9,
+     "auto": 9,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 6
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 4,
+     "by_stage": {
+      "commit": 1,
+      "intent": 1,
+      "plan": 2
+     },
+     "by_kind": {
+      "context": 1,
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 2,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 2
+     },
+     "launch_total": 9,
+     "auto": 9,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 6
+    }
+   }
+  },
   "pr-and-pipeline": {
    "plain": {
     "now": {

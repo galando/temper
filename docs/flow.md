@@ -175,9 +175,9 @@ line prints `temper-setup: FAIL (exit N)` and exits 125. A variable whose name s
 or shown. Every agent prompt ends with an `Environment setup` line that carries the run line and the variables. No
 block: every command and prompt is as before. The person rarely writes the block: when the preflight or Check fails on
 the environment and there is none, the question offers `Add the proposed setup block (Recommended)`, made by
-`temper doctor --propose` from the project's own files and its CI, or `Let an agent find the setup` when no rule fits;
-either block is written only after the CLI reran the failing commands with it and they no longer fail on the
-environment (`docs/commands.md`).
+`temper doctor --propose` from the project's own files and its CI, and the question shows every line of the block.
+It is written only as the call of that answer, and only after the CLI reran the failing commands with it and they no
+longer fail on the environment (`docs/commands.md`). No agent drafts a block (WP08).
 
 **An environment fault at a task gate.** When the last run of a task's attempt is a failing GREEN, a RED came before
 it, nothing else is wrong, and the output names an environment fault, `temper task gate` prints `ENV: Task N failed on
@@ -190,14 +190,17 @@ the code's, as before: it spends the attempt. Any status move clears the mark.
 
 **A Design answer reaches the tasks.** `temper intent answer 'Design: ...'` keeps the answer with the hash `tasks.md` has
 at that moment (`.temper/decisions.json`, `scripts/decisions.py`). The Design gate's row `tasks agree with decisions`
-fails while `tasks.md` is still that file: the answer may replace a rule a task or a scenario still carries, and the CLI
-cannot read which. The Design question then recommends `Loop back to Plan`; the person may instead override with the
-reason `The tasks already agree`, which the report shows. Each Build task prompt lists the Design answers, newest
-first, as decisions that win over `tasks.md`.
+passes with a note while `tasks.md` is still that file: the note names each answer given after the plan, and says it
+goes to every Build task. Each Build task prompt lists the Design answers, newest first, as decisions that win over
+`tasks.md`. The Design question recommends `Continue to Build`; it no longer recommends `Loop back to Plan` for an
+answer (WP08: planning again ran Plan and Design again, both on Opus, also when the plan already had the rule).
 
 **High findings block.** `review.block-on` defaults to `[critical, high]`. A passed Review with an open finding at
-medium or above recommends `Loop back to Build`; both Review questions name the open findings per level
-(`open findings: 1 high, 2 medium`).
+high or above recommends `Loop back to Build`; with a Medium one it recommends `Continue to Check`, and the passed Check
+question lists the open findings (`open findings: 1 medium` and the first three claims) where the person commits. Both
+Review questions name the open findings per level (`open findings: 1 high, 2 medium`). At a passed Review with an open
+finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for later` are under `More options`, and
+`Teach Me` takes the place of `Architecture Depth Review`.
 
 **Integrate after new commits.** `temper integrate` records the HEAD it passed on, and that the groups are merged.
 Called again once they are merged, it runs the whole Integration command again when HEAD moved since (a fix pass
@@ -227,11 +230,13 @@ twice the time" is recommended only at the first time-out; later it is offered, 
 `<script>: SETUP: <reason>`, or the preflight's environment rule: a JDK out of range, `Connection refused`, a failed
 setup line), Check records a `setup fault: <reason>` row beside the red suite row, so the gate still fails. The
 question says `SETUP`, offers `Repair the environment and run again (Recommended)` first, and never recommends a loop
-back. Rows no longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe` warnings).
+back. The same fault after Check ran again recommends `Save for later`, first, and the repair loses its mark. Rows no
+longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe` warnings).
 
 **Overrides at the commit gate.** `Override and commit` clears a failed stage gate the commit gate names. It never
 cleared the commit gate's own rows (blast radius, scope, park-on-touch), so it is no longer offered for them; the question
-says what to change instead, and `Add to plan` stays for files outside the plan.
+says what to change instead, and `Add to plan` stays for files outside the plan. When no file is outside the plan, the
+first option is `Check again` (with no mark), which runs the commit gate again once the change is made (WP08).
 
 **Questions.** A question has four options at most; the CLI puts the rest under `More options`. The Context check
 accepts an answer of up to 2000 characters (the `Include what is left out` option carries the whole list); plan.md
@@ -250,15 +255,18 @@ nothing), and the person types the command. The mod lets it run only as that ans
 ### The run policy (9.8.5)
 
 `autonomy.policy: decide` in `.claude/temper.config` (only the person writes it) extends an armed run past Build. The
-person still arms the run at the last question before Build; the option's text then says the policy applies. After
-Build passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the
-question: an open finding at medium or above loops back to Build with the findings as the reason; a clean Review goes
-on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only while
-`loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. A failed group check during Build
-takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again, a loop back to
-Plan) when no person is needed for it; a typed command, Save for later or a spent budget park the run. An environment fault (SETUP), a
-missing measurement, a failed acceptance test, a spent budget and the commit park the run for the person, as an armed
-Build does. With the key absent or `ask`, every gate after Build asks, as before.
+person still arms the run at the last question before Build; the option's text then says the policy applies. After Build
+passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the question: an
+open finding at high or above loops back to Build with the findings as the reason (a Medium one goes on); a clean Review
+goes on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only
+while `loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. A failed group check during
+Build takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again) when no
+person is needed for it; a typed command, Save for later or a spent budget park the run. A recommended step back to Plan
+parks it too: an unattended run never plans again, and the park reason says that the step back is the person's to
+decide. A step back to Intent, Plan or Design, by any call, turns the run back to asking at every stage. An environment
+fault (SETUP), a missing measurement, a failed acceptance test, a criterion only the person can confirm (the next
+question is the confirmation), a spent budget and the commit park the run for the person, as an armed Build does. With
+the key absent or `ask`, every gate after Build asks, as before.
 
 ### Evidence, the lock and a note (9.8.5)
 
