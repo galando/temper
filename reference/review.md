@@ -16,10 +16,7 @@ definitions.
 
 **Mode:** Review runs as a stage of `/temper` (also when `/temper:review` starts it: the
 command is a door into `/temper`), in a clean subprocess that never shows an
-`AskUserQuestion`: return the summary, the orchestrator owns the gate. Load the changed files: when `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` returns a sha
-(checkpoint commits already landed, so a plain `git diff --name-only` returns
-nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
-(`git status --porcelain`); otherwise fall back to `git diff --name-only` — plus
+`AskUserQuestion`: return the summary, the orchestrator owns the gate. Load the changed files (`${CLAUDE_PLUGIN_ROOT}/scripts/temper review files` prints them) plus
 `{spec}/intent.md` (if it exists),
 `build-context.json` (if it exists).
 
@@ -221,8 +218,12 @@ top issues as `[{severity}] {file}:{line} — {one-liner}`.
 ledger with the reason, the author (`the person`; Temper reads no name or email from git) and the time; `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review`
 stops counting it and its detail names the accepted count. The reason is required, an
 empty one exits 1 and writes nothing, and a finding already resolved or accepted cannot
-be accepted again. Resolve means fixed; accept means a person chose to keep it. The
-review stage never accepts a finding on its own.
+be accepted again. Resolve means fixed, in a commit the CLI made after Review; accept means
+a person chose to keep it. The review stage never accepts a finding on its own.
+
+**The completion row.** `temper evidence add --stage review --claim 'review completed' --exit 0`
+takes one `--read <file>` for each changed file read whole; the gate fails it while a file of
+`temper review files` is not named.
 
 ## Context Output
 

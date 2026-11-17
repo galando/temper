@@ -26,6 +26,13 @@ All notable changes to Temper are documented here. The plugin version lives in
   only the person answers with `temper budget grant`), and an armed run parks there. `temper budget` prints the record.
   The keys `fix.max-loops`, `feedback.enabled`, `loops.max-per-type` and `autonomy.budget` are read by nothing; the
   rule "Build to Plan once per run" is gone, and the budget bounds that step back.
+- WP18: `temper evidence resolve --fixed-by` takes only a commit the CLI recorded (`cli_commits`) after the reviewed
+  HEAD, on this branch; a note is refused. Until a later release records a repair commit, a finding ends by your
+  accept, or by a loop back and a second Review. Review's completion row names the files it read
+  (`evidence add --read FILE`), and the row `review completed` fails while a file of `temper review files` is not
+  named; `Run Review again` is recommended, and its launch names the unread files. A run saved before 9.8.5 after its
+  Review has a completion row with no read list: it fails once, and Review runs again. `evidence resolve` is never a
+  tool call with the mod.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

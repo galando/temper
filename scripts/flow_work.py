@@ -10,6 +10,7 @@ import shlex
 import check_run
 import decisions
 import doctor
+import findings
 import run_env
 
 from flow_base import LABEL, TEMPER, goes_on, loop_at, on_model, read_json
@@ -212,6 +213,8 @@ class WorkPart:
                 extra = self.feedback_lines()
         if stage == "pipeline":
             extra = ["Round: %s of %s." % (self.pipeline_round(), self.round_limit())]
+        if stage == "review":
+            extra = extra + self.unread_lines()
         if stage == "plan":
             opens = [f for f in r.fresh()["findings"] if f["state"] not in ("resolved", "accepted")]
             if opens:
@@ -268,6 +271,16 @@ class WorkPart:
         a["gate"] = a["after"][-1]
         return {"action": "work", "stage": stage, "calls": [self.c("brief")] if stage in ("plan", "design") else [], "agents": [a],
                 "say": "%s: the %s agent is working%s. %s" % (LABEL.get(stage, stage), LABEL.get(stage, stage), on_model([a]), goes_on(False))}
+
+    def unread_lines(self):
+        """9.8.5 (WP18): Review runs again after a completion row that did not name every changed file: the files it left
+        out, for the second launch (scripts/findings.py holds the set the gate compares)."""
+        row = findings.completion(os.path.join(TEMPER, "evidence", "review.json"))
+        redo = self.r.state.get("redo") or {}
+        if not row or redo.get("stage") != "review" or str(row.get("ts") or "") > str(redo.get("ts") or ""):
+            return []
+        left = findings.unread(row, findings.review_files(self.r.state))
+        return ["The last Review did not read: %s. Read each whole, and name it with --read." % findings.names(left, 40)] if left else []
 
     ACC_LOCK = os.path.join(TEMPER, "evidence", "acceptance-lock.json")
 

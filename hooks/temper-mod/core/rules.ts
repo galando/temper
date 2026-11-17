@@ -184,7 +184,7 @@ function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
     return {
       deny:
         'Temper: the evidence ledger and the loop counter belong to the temper CLI. Do not write them by hand. ' +
-        `Next: use ${cli} evidence add, run or resolve, and ${cli} state loop.`,
+        `Next: use ${cli} evidence add or run, and ${cli} state loop.`,
     }
   }
   if (kind === 'hooks') {
@@ -374,9 +374,13 @@ const TOO_MANY_DENY =
   'Next: write the paths out, or split the command.'
 
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
-const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
+const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
   'budget', 'grant', ...STAGES]
+
+const RESOLVE_DENY =
+  'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
+  `Next: ${ASK} for a decision on the finding.`
 
 const GLOB_DENY =
   'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
@@ -463,6 +467,9 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
         if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(key) }
       }
     }
+    // 9.8.5 (WP18): a finding is resolved by the CLI itself, for its own repair commit, where no guard sees it; no
+    // answer of the person and no armed run makes the call a tool call.
+    if (a === 'evidence' && b === 'resolve') return { deny: RESOLVE_DENY }
     if (!personOnly(w, r)) continue
     // The person's answer at this step, or the CLI's own action, maps to this very call.
     if (ctx.allowed.some(written => sameCall(written, w))) continue

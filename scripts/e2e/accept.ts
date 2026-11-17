@@ -38,7 +38,7 @@ import { BYTES_STUB, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE } from './project
 import { AGENTS, SPEC, buildOne, chained, freshReviewer, launchByHand, script, startProject, t, worktreeOf } from './scenarios'
 import type { FreshFinding } from './scenarios'
 import { expect, promise } from './slow'
-import { TEMPER, World } from './world'
+import { TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
 // ---- what a scenario watches ------------------------------------------------------------------------------------------
@@ -233,9 +233,7 @@ export function repairReviewer(state: { full: number; rechecks: number; reviewed
       if (t(wd, `evidence add --stage review --severity high --label PROVEN --claim '${FINDING.replace(/'/g, "'\\''")}' ${whole}`).code !== 0)
         t(wd, `evidence add --stage review --severity high --label PROVEN --claim '${FINDING.replace(/'/g, "'\\''")}'`)
     }
-    const read = '--read src/ci_shape.py --read src/ci_bytes.py --read unit/test_ci_shape.py --read unit/test_ci_bytes.py'
-    if (t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel' ${read}`).code !== 0)
-      t(wd, "evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'")
+    reviewDone(wd)
   }
 }
 
@@ -330,7 +328,7 @@ export const fixTwo = (w: World): void => {
       wd.write('src/ci_shape.py', SHAPE_CODE)
       t(wd, `evidence run --stage build --phase green --claim 'regression test: the shape keeps its verdict' -- python3 -m unittest unit.test_ci_shape`)
     },
-    'temper:temper-review': wd => t(wd, "evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel' --read src/ci_shape.py --read unit/test_ci_shape.py"),
+    'temper:temper-review': wd => reviewDone(wd),
     'temper:temper-check': wd => {
       t(wd, "evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'")
       t(wd, "evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'")

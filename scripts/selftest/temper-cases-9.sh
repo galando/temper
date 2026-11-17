@@ -535,7 +535,7 @@ mkdir -p src; printf 'echo demo\n' > src/demo.sh; git add src; git commit -qm "t
 fresh_keep() { "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; }
 fresh_keep; gpass intent plan build; _at build
 "$TEMPER" state advance build_complete review >/dev/null 2>&1
-"$TEMPER" evidence add --stage review --claim 'review completed' --label PROVEN --exit 0 >/dev/null 2>&1
+review_done --label PROVEN
 printf 'echo probe\n' > src/demo.sh; git checkout -q -- src/demo.sh; mkdir -p .pytest_cache; echo x > .pytest_cache/v
 assert_eq "live run 9: a probe Review restores, and a cache a test run leaves, change no code" "1" \
   "$("$TEMPER" gate review 2>&1 | grep -c '\[v\] no code changed at Review')"
@@ -547,7 +547,7 @@ assert_eq "live run 9: so does a commit a Review agent makes" "1" "$("$TEMPER" g
 assert_exit "live run 9: the code as Review starts is the CLI's record" 1 "$TEMPER" state set review_snapshot x
 "$TEMPER" state loop review build --reason 'mend it' >/dev/null 2>&1; gpass build
 "$TEMPER" state advance build_complete review >/dev/null 2>&1
-"$TEMPER" evidence add --stage review --claim 'review completed' --label PROVEN --exit 0 >/dev/null 2>&1
+review_done --label PROVEN
 assert_exit "live run 9: back at Review after the fix pass, the code as it now is is the start" 0 "$TEMPER" gate review
 rm -rf .git src .pytest_cache
 

@@ -15,7 +15,7 @@ import { orchestrate, orchestrateFix } from './loop'
 import type { Script } from './loop'
 import { chained, expect, recommended, t, worktreeOf } from './scenarios'
 import { CONTEXT_CHECK_LINE } from './project'
-import { ROOT, TEMPER, World } from './world'
+import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Json } from './world'
 
 const SPEC = '.temper/specs/pyjokes'
@@ -249,7 +249,6 @@ const intentAgent = (seen: Seen) => (w: World, a: Json): void => {
   if (!w.exists(`${SPEC}/intent.md`)) w.write(`${SPEC}/intent.md`, INTENT)
 }
 const acceptance = (w: World): void => { t(w, "acceptance skip --reason 'the e2e driver writes no acceptance tests'") }
-const reviewDone = (w: World): void => { t(w, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`) }
 const groupFix = (w: World, a: Json): boolean => {
   // the fix agent reads the FAIL lines, runs the Validate command, and exports the new name
   const m = /Work only in its worktree (\S+) \(/.exec(String(a.prompt))

@@ -60,28 +60,30 @@ assert_exit "build gate PASSes on RED then GREEN + no unchecked tasks" 0 "$TEMPE
 
 # --- review gate: block-on severity ---
 setup
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 assert_exit "review gate PASSes with no findings" 0 "$TEMPER" gate review
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 assert_exit "review gate FAILs on an open critical finding" 1 "$TEMPER" gate review
 
 # --- review gate: a finding fixed in this run is resolved, not deleted (woningscout #984) ---
-setup
+# 9.8.5 (WP18): resolve takes only a commit the CLI recorded after the reviewed HEAD: a run at Review, and cli_commit
+review_repo rv1; C1FIX="$(cli_commit)"
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 "$TEMPER" evidence add --stage review --claim "missing null check" --severity high >/dev/null
 assert_exit "evidence resolve needs --stage, --id and --fixed-by" 1 "$TEMPER" evidence resolve --stage review --id 1
-assert_exit "evidence resolve rejects an unknown id" 1 "$TEMPER" evidence resolve --stage review --id 9 --fixed-by abc123
+assert_exit "evidence resolve rejects an unknown id" 1 "$TEMPER" evidence resolve --stage review --id 9 --fixed-by "$C1FIX"
 assert_exit "evidence resolve rejects an unknown stage" 1 "$TEMPER" evidence resolve --stage nope --id 1 --fixed-by abc123
 assert_exit "review gate still FAILs before the finding is resolved" 1 "$TEMPER" gate review
-assert_exit "evidence resolve marks the critical finding fixed" 0 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc123
-assert_exit "evidence resolve refuses to resolve the same finding twice" 1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc123
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+assert_exit "evidence resolve marks the critical finding fixed" 0 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by "$C1FIX"
+assert_exit "evidence resolve refuses to resolve the same finding twice" 1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by "$C1FIX"
+review_done --cmd "review panel"
 assert_exit "review gate PASSes once the only blocking finding is resolved" 0 "$TEMPER" gate review
 assert_eq "the resolved row is still in the ledger" "3" "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-assert_eq "evidence list shows the id and the resolver" "yes" "$("$TEMPER" evidence list --stage review | grep '#1 .*\[resolved: abc123\]' >/dev/null && echo yes || echo no)"
+assert_eq "evidence list shows the id and the resolver" "yes" "$("$TEMPER" evidence list --stage review | grep "#1 .*\[resolved: $C1FIX\]" >/dev/null && echo yes || echo no)"
 assert_eq "the gate detail names the resolved count" "yes" "$("$TEMPER" gate review | grep '1 resolved in this run' >/dev/null && echo yes || echo no)"
 "$TEMPER" evidence add --stage review --claim "second injection" --severity critical >/dev/null
 assert_exit "a new unresolved critical finding FAILs the gate again" 1 "$TEMPER" gate review
+cd "$WORKDIR"; rm -rf "$WORKDIR/rv1"
 
 # --- check gate: coverage threshold ---
 setup
@@ -143,7 +145,7 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 _scen
 "$TEMPER" gate build >/dev/null
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
@@ -214,7 +216,7 @@ assert_exit "state loop review fix is accepted in a fix run" 0 "$TEMPER" state l
 assert_eq "a fix-run loop clears the build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
 assert_eq "a fix-run loop clears the review evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
 assert_eq "a fix-run loop clears the check evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/check.json"))))')"
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 assert_exit "the review gate can pass again after the loop" 0 "$TEMPER" gate review
 "$TEMPER" evidence add --stage review --claim "kept" --severity critical >/dev/null
 _at check
@@ -253,7 +255,7 @@ setup
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
 "$TEMPER" gate build >/dev/null
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
@@ -339,7 +341,7 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 _scen
 "$TEMPER" gate build >/dev/null
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
@@ -958,7 +960,7 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 _scen
 "$TEMPER" gate build >/dev/null
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
@@ -1007,7 +1009,7 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 _scen
 "$TEMPER" gate build >/dev/null
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null

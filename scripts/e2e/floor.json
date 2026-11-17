@@ -1403,17 +1403,17 @@
   "full-run": {
    "plain": {
     "now": {
-     "dialogs": 8,
+     "dialogs": 9,
      "by_stage": {
       "build": 3,
       "check": 1,
       "intent": 1,
       "plan": 2,
-      "review": 1
+      "review": 2
      },
      "by_kind": {
       "context": 1,
-      "gate": 5,
+      "gate": 6,
       "group": 2
      },
      "launches": {
@@ -1421,28 +1421,28 @@
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
-      "temper:temper-review": 1
+      "temper:temper-review": 2
      },
-     "launch_total": 6,
+     "launch_total": 7,
      "auto": 0,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
     "now": {
-     "dialogs": 8,
+     "dialogs": 9,
      "by_stage": {
       "build": 3,
       "check": 1,
       "intent": 1,
       "plan": 2,
-      "review": 1
+      "review": 2
      },
      "by_kind": {
       "context": 1,
-      "gate": 5,
+      "gate": 6,
       "group": 2
      },
      "launches": {
@@ -1450,28 +1450,28 @@
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
-      "temper:temper-review": 1
+      "temper:temper-review": 2
      },
-     "launch_total": 6,
+     "launch_total": 7,
      "auto": 0,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
     "now": {
-     "dialogs": 8,
+     "dialogs": 9,
      "by_stage": {
       "build": 3,
       "check": 1,
       "intent": 1,
       "plan": 2,
-      "review": 1
+      "review": 2
      },
      "by_kind": {
       "context": 1,
-      "gate": 5,
+      "gate": 6,
       "group": 2
      },
      "launches": {
@@ -1479,13 +1479,13 @@
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
-      "temper:temper-review": 1
+      "temper:temper-review": 2
      },
-     "launch_total": 6,
+     "launch_total": 7,
      "auto": 11,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
