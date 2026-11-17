@@ -136,7 +136,7 @@ def main(argv):
                  "scenario": None, "criterion": None, "label": "PERSON", "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     os.makedirs(os.path.dirname(os.path.abspath(ledger)), exist_ok=True)
     save(ledger, rows)
-    print("OK: %s is now `%s` (was `%s`); the passed tasks keep their work, and no loop is spent" % (what, cmd, old))
+    print("OK: %s is now `%s` (was `%s`); the passed tasks keep their work" % (what, cmd, old))
     return 0
 
 

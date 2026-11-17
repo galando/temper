@@ -486,10 +486,10 @@ class BuildPart:
         if not save_rec:
             opts.append(save)
         # 9.8.5 (S6): when the cause is the group's command (a time-out again, or a fix that changed nothing), the person
-        # types the command to run instead: one line of tasks.md changes, the passed tasks keep their work, no loop is spent
+        # types the command to run instead: one line of tasks.md changes, the passed tasks keep their work, one repeat is spent (WP10)
         cmd_cause = (timed and not limit) or empty
         patch = self.opt("Change the group's command" + (" (Recommended)" if cmd_cause else ""),
-                         "Type the Validate command group %s should run (now: %s); its check runs again, the tasks keep their work, no loop is spent." % (
+                         "Type the Validate command group %s should run (now: %s); its check runs again, the tasks keep their work; it counts as one repeat." % (
                              gid, (g.get("validate") or "none")[:120]),
                          move="redo", calls=[self.c("plan patch %s --cmd '{answer}'" % gid), self.c("group gate %s" % gid)],
                          answer=("Group command", "Group %s: what Validate command should it run? It runs the tests this group can break, within the time limit." % gid),
