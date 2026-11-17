@@ -29,7 +29,7 @@ import { POM, installTools, toolRuns, withRemote } from './faketools'
 import { orchestrate } from './loop'
 import type { Script } from './loop'
 import { defaultPerson, idOf, worldCheck } from './persons'
-import { ROOT, TEMPER, World } from './world'
+import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
 export const SPEC = '.temper/specs/report'
@@ -195,7 +195,7 @@ export function mavenAgents(plan: { plan?: string; tasks?: string } = {}, after?
     'temper:temper-acceptance': w => { t(w, "acceptance skip --reason 'the scripted project writes no acceptance tests'") },
     'temper:temper-build-task': buildTasks(after),
     'temper:temper-build': () => undefined,
-    'temper:temper-review': w => { t(w, "evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'") },
+    'temper:temper-review': w => reviewDone(w),
     // Check of a version whose CLI found no test command: the agent runs the suite and the scenarios' tests through the
     // CLI; it has no coverage tool to run
     'temper:temper-check': w => {

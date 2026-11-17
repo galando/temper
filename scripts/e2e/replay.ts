@@ -20,7 +20,7 @@ import { POM, installTools } from './faketools'
 import { orchestrate } from './loop'
 import type { Script } from './loop'
 import { CONTEXT_CHECK_LINE } from './project'
-import { ROOT, TEMPER, World } from './world'
+import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json } from './world'
 
 const SPEC = '.temper/specs/report'
@@ -208,15 +208,13 @@ const AGENTS: Record<string, Agent> = {
       record('red')
       w.write('backend/src/Bytes.java', 'class Bytes { int v() { return 2; } /* fixed order */ }\n')
       record('green')
-      const rows = JSON.parse(t(w, 'evidence list --stage review --json').out) as Json[]
-      rows.forEach((r, i) => { if (r.severity === 'high' && !r.resolved) t(w, `evidence resolve --stage review --id ${i + 1} --fixed-by 'the fix pass'`) })
     }
   },
   'temper:temper-review': w => {
     // the defect is in the code until the fix pass mends it: the reviewer reports it while it is there
     if (!/fixed order/.test(w.exists('backend/src/Bytes.java') ? w.read('backend/src/Bytes.java') : ''))
       t(w, "evidence add --stage review --severity high --claim 'backend/src/Bytes.java:1 the byte order breaks AC-03, a constraint of the intent'")
-    t(w, "evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'")
+    reviewDone(w)
   },
   'temper:temper-check': () => undefined,
   'temper:temper-env': () => undefined,

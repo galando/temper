@@ -71,6 +71,13 @@ in a variable, a string another program runs, a script on disk or a commit the h
 (`git merge`, `cherry-pick`, git plumbing) gets through. [The mod](mod.md#what-the-guard-checks-and-what-it-does-not)
 lists these limits, and the mod's tests hold each one, so the docs cannot claim more than the code does.
 
+**What resolves a finding, and what the completion row proves (9.8.5).** A finding is resolved only by
+`temper evidence resolve` for a commit the CLI recorded as its own after the reviewed HEAD, on the run's branch; a note
+or a commit made by hand resolves nothing. Otherwise a finding ends by your accept, or by a loop back and a second
+Review. Review's completion row names the files the reviewer says it read, and the CLI compares those names with the
+changed files. No more: the CLI cannot see the reading. The row turns skipping a file from silence into a false
+statement in the ledger.
+
 
 ## Pull requests and the Pipeline stage (9.7.5)
 

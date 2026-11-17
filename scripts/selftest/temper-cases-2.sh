@@ -564,7 +564,7 @@ setup
 OUT=$("$TEMPER" gate review 2>&1; true)
 assert_eq "an empty findings ledger is not a review" "yes" \
   "$(echo "$OUT" | grep -q 'no review completion evidence' && echo yes || echo no)"
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 "$TEMPER" evidence add --stage review --claim "sql injection in login" --severity critical >/dev/null
 OUT=$("$TEMPER" gate review 2>&1; true)
 assert_eq "the FAIL detail names each open blocking finding" "yes" \
@@ -720,11 +720,11 @@ gfail check "tests pass" "unit failed"
 assert_exit "with budget.per-failure unset, check fix keeps 2" 1 "$TEMPER" state loop check fix --reason c
 
 # --- mods: evidence accept stops the review gate counting a finding (with a reason) ---
-setup
+review_repo rv2; C2FIX="$(cli_commit)"   # 9.8.5 (WP18): resolve takes only a commit the CLI recorded after Review
 git config user.email "acc@example.com"; git config user.name "Acc Person"
 "$TEMPER" evidence add --stage review --claim "weak hash" --severity critical >/dev/null
 "$TEMPER" evidence add --stage review --claim "long method" --severity high >/dev/null
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 assert_exit "evidence accept needs --stage, --id and --reason" 1 "$TEMPER" evidence accept --stage review --id 1
 assert_exit "evidence accept with an empty --reason exits 1" 1 "$TEMPER" evidence accept --stage review --id 1 --reason ""
 assert_eq "an empty --reason writes nothing" "no" "$("$TEMPER" evidence list --stage review --json | grep '"accepted"' >/dev/null && echo yes || echo no)"
@@ -739,8 +739,9 @@ assert_eq "the accepted row is still in the ledger" "3" "$("$TEMPER" evidence li
 assert_eq "evidence list shows [accepted: reason]" "yes" "$("$TEMPER" evidence list --stage review | grep '#1 .*\[accepted: legacy hash, tracked in TICKET-9\]' >/dev/null && echo yes || echo no)"
 assert_exit "review gate PASSes once the only blocking finding is accepted" 0 "$TEMPER" gate review
 assert_eq "the gate detail names the accepted count" "yes" "$("$TEMPER" gate review | grep '1 accepted' >/dev/null && echo yes || echo no)"
-assert_exit "evidence resolve refuses an already accepted finding" 1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc
-assert_exit "evidence accept refuses an already resolved finding" 1 bash -c "'$TEMPER' evidence resolve --stage review --id 2 --fixed-by abc >/dev/null && '$TEMPER' evidence accept --stage review --id 2 --reason r"
+assert_exit "evidence resolve refuses an already accepted finding" 1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by "$C2FIX"
+assert_exit "evidence accept refuses an already resolved finding" 1 bash -c "'$TEMPER' evidence resolve --stage review --id 2 --fixed-by '$C2FIX' >/dev/null && '$TEMPER' evidence accept --stage review --id 2 --reason r"
+cd "$WORKDIR"; rm -rf "$WORKDIR/rv2"
 
 # --- mods: gate intent requires an out-of-scope line and resolved questions ---
 scope_fixture() { # scope_fixture <status> <out-of-scope-bullet-or-empty> <open-questions-body>
@@ -850,14 +851,14 @@ assert_eq "scenario evidence: first covers AC-01 (passed), a later failing row l
   "$(python3 -c 'import json; d=json.load(open(".temper/status.json")); print("|".join(c["status"] for c in d["criteria"]))')"
 # Fail open: an unwritable status.json never changes the verdict.
 setup
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 mkdir -p .temper/status.json
 assert_exit "an unwritable status.json does not change a PASS verdict" 0 "$TEMPER" gate review
 rmdir .temper/status.json
 # No intent.md: nothing to report, no file.
 setup
 rm -f .temper/specs/demo/intent.md .temper/status.json
-"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null 2>&1
 assert_eq "no intent.md means no status.json" "no" "$([[ -f .temper/status.json ]] && echo yes || echo no)"
 assert_exit "temper status --json without intent.md exits 1" 1 "$TEMPER" status --json

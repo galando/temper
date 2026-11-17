@@ -39,6 +39,15 @@ export type Counts = {
   suite_runs: number
 }
 
+// 9.8.5 (WP18): Review's completion row, as a scripted reviewer records it: one --read for each file `temper review files`
+// prints (a CLI before 9.8.5 has no such word, and its row names no file)
+export function reviewDone(w: World, cmd = 'review panel'): void {
+  const t = (args: string): { code: number; out: string } => { w.guardBash(`${TEMPER} ${args}`); return w.run(`${TEMPER} ${args}`) }
+  const r = t('review files')
+  const files = r.code === 0 ? r.out.split('\n').map(x => x.trim()).filter(x => x !== '') : []
+  t(`evidence add --stage review --claim 'review completed' --exit 0 --cmd '${cmd}'${files.map(f => ` --read '${f.replace(/'/g, "'\\''")}'`).join('')}`)
+}
+
 export class World {
   dir: string
   trace: string[] = []

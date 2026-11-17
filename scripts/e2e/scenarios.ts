@@ -5,7 +5,7 @@ import path from 'node:path'
 import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
 import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, CONTEXT_CHECK_LINE, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
-import { ROOT, TEMPER, World } from './world'
+import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
 export const SPEC = '.temper/specs/ci'
@@ -105,9 +105,7 @@ export const AGENTS: Record<string, Agent> = {
   // 9.8.0: the acceptance writer: no test framework of its own in the driver, so it records why there are none.
   'temper:temper-acceptance': w => { t(w, "acceptance skip --reason 'the e2e driver writes no acceptance tests'") },
   'temper:temper-build-task': buildTask,
-  'temper:temper-review': w => {
-    t(w, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`)
-  },
+  'temper:temper-review': w => reviewDone(w),
   'temper:temper-check': w => {
     t(w, `evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
     t(w, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
@@ -672,7 +670,7 @@ export const fixRun = (w: World): void => {
       const green = t(wd, `evidence run --stage build --phase green --claim 'regression test: the shape keeps its verdict' -- python3 -m unittest unit.test_ci_shape`)
       expect(/exit 0\b/.test(green.out), `the fix passes the regression test (${green.out.slice(0, 200)})`)
     },
-    'temper:temper-review': wd => t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`),
+    'temper:temper-review': wd => reviewDone(wd),
     'temper:temper-check': wd => {
       t(wd, `evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
       t(wd, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
@@ -870,7 +868,7 @@ export const fixBreaksSuite = (w: World): void => {
       reviews++
       if (reviews === 1)
         t(wd, "evidence add --stage review --severity high --label PROVEN --claim 'src/ci_shape.py:2 the stage object keeps the caller list'")
-      t(wd, "evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'")
+      reviewDone(wd)
     },
     // the scripted fix agent: its first pass misreads the finding, writes a regression test that the stage object drops
     // the caller list (RED), and a change that passes it (GREEN) and breaks the shape tests (so the Integration suite);
@@ -957,7 +955,7 @@ export const policyRun = (w: World): void => {
       reviews++
       if (!wd.read('src/ci_shape.py').includes(REPAIRED))
         t(wd, "evidence add --stage review --severity high --label PROVEN --claim 'src/ci_shape.py:2 the stage object keeps the caller list, so a later change to that list changes the report'")
-      t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`)
+      reviewDone(wd)
     },
   }
   const ids: string[] = []

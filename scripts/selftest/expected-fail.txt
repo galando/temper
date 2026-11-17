@@ -7,7 +7,6 @@ e2e:slow-at55                  WP20           D12
 e2e:broken-first-run           WP21           D13
 e2e:broken-flaky               WP22           D14
 selftest:D36b                  WP23           D36
-selftest:D37a                  WP18           D37
 selftest:D37b                  WP24           D37
 selftest:D37c                  WP24           D37
 selftest:D37f                  WP24           D37
@@ -83,7 +82,6 @@ selftest:D33f                  WP21           D33
 selftest:D34a                  WP30           D34
 selftest:D34b                  WP22           D34
 selftest:D34c                  WP22           D34
-selftest:D34d                  WP18           D34
 selftest:D35a                  WP23           D35
 selftest:D35b                  WP19           D35
 selftest:D35c                  WP19           D35

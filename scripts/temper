@@ -1182,10 +1182,11 @@ cmd_state() {
 # ---
 
 cmd_evidence_add() {
-  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind=""
+  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind="" reads=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
+      --read) reads+=("$2"); shift 2 ;;
       --claim) claim="$2"; shift 2 ;;
       --confidence) confidence="$2"; shift 2 ;;
       --cmd) cmd="$2"; shift 2 ;;
@@ -1206,6 +1207,7 @@ cmd_evidence_add() {
   [[ "$kind" == input ]] && label=PERSON   # 9.8.5 (U5): the person's own words, not a heuristic
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  [[ ${#reads[@]} -eq 0 || "$stage $claim $severity" == "review review completed " ]] || { echo "FAIL: --read goes only with --stage review --claim 'review completed': the files Review read whole" >&2; return 1; }
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
   if [[ -n "$confidence" ]] && ! [[ "$confidence" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
     echo "FAIL: --confidence takes a number from 0 to 1 (0.85), got '$confidence'" >&2; return 1
@@ -1231,7 +1233,7 @@ cmd_evidence_add() {
     artifact_hash="$(python3 -I -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
   fi
   local entry
-  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"})
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -1255,10 +1257,11 @@ cmd_evidence_list() {
   fi
 }
 
-cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-by "<commit or note>"
+cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-by <commit>
   # Marks one recorded finding as fixed in THIS run. The row is kept — the ledger must
   # still show what was found — but the gate no longer counts it. The alternative was
   # deleting evidence to go green, which QUALITY-GATES forbids (woningscout #984).
+  # 9.8.5 (WP18): only for a commit the CLI recorded after the reviewed HEAD (scripts/findings.py fixed_by).
   local stage="" id="" fixed_by=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1268,11 +1271,12 @@ cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-
       *) shift ;;
     esac
   done
-  [[ -n "$stage" && -n "$id" && -n "$fixed_by" ]] || { echo "FAIL: usage: temper evidence resolve --stage <s> --id <n> --fixed-by \"<commit or note>\" (ids from 'temper evidence list --stage <s>')" >&2; return 1; }
+  [[ -n "$stage" && -n "$id" && -n "$fixed_by" ]] || { echo "FAIL: usage: temper evidence resolve --stage <s> --id <n> --fixed-by <commit> (ids from 'temper evidence list --stage <s>')" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   _ensure_dirs
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
+  fixed_by="$(python3 -I "$SCRIPTS_DIR/findings.py" fixed-by "$fixed_by" "$STATE_FILE" "$GROUPS_FILE")" || return 1
   _lock_acquire
   python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-resolve "$file" "$id" "$fixed_by" "$(_now)"
   local rc=$?
@@ -3011,13 +3015,9 @@ gate_review() {
   fi
   # The Review brief records a completion row even when there are no findings —
   # otherwise an empty ledger is indistinguishable from a review that never ran.
-  local completion; completion="$(_ev_latest_claim_exit review 'review completed')"
-  if [[ -n "$completion" && "${completion%%|*}" == "0" ]]; then
-    reqs+=("$(_req "review completed" 1 "${completion#*|}")")
-  else
-    reqs+=("$(_req "review completed" 0 "no review completion evidence — an empty findings ledger is not a review")")
-    all_pass=0
-  fi
+  # 9.8.5 (WP18): and its read list names every changed file (scripts/findings.py read_check)
+  local done; done="$(python3 -I "$SCRIPTS_DIR/findings.py" read-check "$(_evidence_file review)" "$STATE_FILE")"
+  reqs+=("$(_req "review completed" "${done%% *}" "${done#* }")"); [[ "${done%% *}" == 1 ]] || all_pass=0
   # Review writes no code (its brief; with the mod, a write outside the spec folder is refused): a change a Review agent
   # left in the project's tracked files, or a commit it made, fails the check; a probe it restores leaves none
   local touched; touched="$(_review_code compare)"
@@ -3161,9 +3161,8 @@ _override_covers() { # _override_covers <stage> -> 0 when a skip of the person c
   python3 -I "$SCRIPTS_DIR/commit_rows.py" override-covers "$OVERRIDES_FILE" "$GATES_FILE" "$1" 2>/dev/null
 }
 
-_project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder,
-                   # the ones that do not count toward the blast radius left out (scripts/blast_filter.py, F21)
-  python3 -E -s "$SCRIPTS_DIR/blast_filter.py" project
+_changed_since_base() { # the commit gate's set: changed since base_sha, uncommitted, untracked (F21); review files narrows it
+  python3 -I "$SCRIPTS_DIR/findings.py" since-base "$(cmd_state_get base_sha "")"
 }
 
 _glob_touch_match() { # _glob_touch_match <file> <pattern>  (a project pattern from autonomy.park-on-touch)
@@ -3285,13 +3284,6 @@ gate_commit() {
   # tasks.md declares, a test file, the run's spec folder or Temper's own state, or one the person allowed at a Scope drift
   # question (Add to plan, Allow once: the `drift {path}: {choice}` rows of the Build ledger). Before 9.8.0 an
   # interactive run could commit files nobody planned (an ADR, run state written in docs/); now the person sees them.
-  local base_sha; base_sha="$(cmd_state_get base_sha "")"
-  _changed_since_base() {
-    { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-        git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
-      git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
-    } | _project_names | sort -u
-  }
   local gspec; gspec="$(_spec_path "")"
   local plan_json='{"tasks": []}'
   [[ -n "$gspec" && -f "$gspec/tasks.md" ]] && plan_json="$(_grouped_parse "$gspec/tasks.md")"
@@ -3983,6 +3975,8 @@ main() {
     next) cmd_next "$@" ;;
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
+    review) if [[ "$*" == files ]]; then python3 -I "$SCRIPTS_DIR/findings.py" review-files "$STATE_FILE"
+            else echo "FAIL: usage: temper review files" >&2; false; fi ;;
     plan) cmd_plan "$@" ;;
     doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;; # reads; --propose --write adds setup:, as the person's answer
     guards) case "${1:-}" in
@@ -4018,7 +4012,7 @@ main() {
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor) ;;
+    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor|review) ;;
     next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;

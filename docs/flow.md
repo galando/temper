@@ -211,6 +211,21 @@ Review questions name the open findings per level (`open findings: 1 high, 2 med
 finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for later` are under `More options`, and
 `Teach Me` takes the place of `Architecture Depth Review`.
 
+**What resolves a finding (WP18).** `temper evidence resolve --stage S --id N --fixed-by COMMIT` marks a finding
+resolved only when four things hold: COMMIT is a commit; it is an ancestor of HEAD; it is no ancestor of the reviewed
+HEAD (the `head` of `review_snapshot`, written as the run enters Review; with no snapshot the call is refused); and
+it is in `cli_commits` of `.temper/groups.json`. The mark stores the full id. Each refusal is one `FAIL:` line that
+names the check and the short ids. No commit of the CLI meets the last two yet, so a finding ends by the person's
+accept, or by a loop back to Build and a second Review. With the mod, the call is never a tool call.
+
+**Review names the files it read (WP18).** `temper review files` prints the changed files of the run, one a line: the
+commit gate's set (since `base_sha`, plus uncommitted and untracked files) less `.temper/` and `.claude/` and less
+files that no longer exist; after a small change that runs Review again, that window's files until its gate. The
+completion row takes `--read FILE` once for each file read whole (only with `--stage review --claim 'review
+completed'`). The row `review completed` passes when the latest completion row has exit 0 and names every file
+(`read N of N changed files`); else it fails (`read K of N changed files; not read: ...`), `Run Review again` is
+recommended, and the second launch names the files not read. The repeat spends the budget.
+
 **Integrate after new commits.** `temper integrate` records the HEAD it passed on, and that the groups are merged.
 Called again once they are merged, it runs the whole Integration command again when HEAD moved since (a fix pass
 committed) or the last verdict was FAIL, records the new verdict and, when it passed, runs the scenario tests, as

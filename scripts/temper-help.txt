@@ -4,6 +4,9 @@ Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
+  temper evidence resolve --stage S --id N --fixed-by COMMIT   (only a commit the CLI recorded after the reviewed HEAD)
+  temper evidence add --stage review --claim 'review completed' --exit 0 --read FILE   (once for each file read whole)
+  temper review files                     (read only: the changed files Review must read, the set its gate compares)
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
   temper panel plan | design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
   temper brief [--text TEXT | --stdin]   (.temper/brief.md: the code the request reaches, for Plan, Design, RCA)

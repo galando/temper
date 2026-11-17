@@ -99,8 +99,8 @@ def last_green(argv):
 
 
 def evidence_entry(argv):
-    import json, sys
-    claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, kind, ts = argv[1:]
+    import json, os, sys
+    claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, kind, ts = argv[1:15]
     e = {'claim': claim, 'cmd': cmd or None,
          'exit_code': int(exit_code) if exit_code != '' else None,
          'artifact': artifact or None, 'sha256': artifact_hash or None,
@@ -111,6 +111,8 @@ def evidence_entry(argv):
         e['confidence'] = float(confidence)
     if kind:
         e['kind'] = kind
+    if argv[15:]:   # 9.8.5 (WP18): Review's completion row names the files read, from the project folder
+        e['read'] = list(dict.fromkeys(os.path.normpath(os.path.relpath(r) if os.path.isabs(r) else r) for r in argv[15:] if r.strip()))
     print(json.dumps(e))
 
 

@@ -1074,7 +1074,9 @@ PY
 "$TEMPER" evidence add --stage review --claim "null deref in a.sh" --severity high >/dev/null 2>&1
 "$TEMPER" evidence add --stage review --claim "style nit" --severity low >/dev/null 2>&1
 assert_eq "group report: open review findings are counted from the review ledger" "2" "$(gr_json review_findings_open)"
-"$TEMPER" evidence resolve --stage review --id 2 --fixed-by "abc" >/dev/null 2>&1
+# 9.8.5 (WP18): resolve takes only a commit the CLI recorded after the reviewed HEAD: the snapshot, then such a commit
+python3 -c "import json,subprocess; p='.temper/build-state.json'; d=json.load(open(p)); d['review_snapshot']={'head': subprocess.check_output(['git','rev-parse','HEAD']).decode().strip(), 'files': {}}; json.dump(d, open(p,'w'), indent=2)"
+"$TEMPER" evidence resolve --stage review --id 2 --fixed-by "$(cli_commit)" >/dev/null 2>&1
 assert_eq "group report: a resolved finding is no longer open" "1" "$(gr_json review_findings_open)"
 out="$("$TEMPER" group report 2>&1)"; rc=$?
 assert_eq "group report: the text form prints exit 0 and the headline numbers, and no token count" "0|1|1|0" \
@@ -1397,10 +1399,10 @@ assert_eq "L1: 16 writers racing a stale lock land 16 rows and release the lock"
   "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))" 2>/dev/null || echo invalid)|$([[ -e .temper/.lock ]] && echo yes || echo no)"
 
 # L2: evidence resolve/accept and the gate verdict write under the lock, atomically
-setup; mkdir -p .temper/evidence
+review_repo l2; mkdir -p .temper/evidence; L2FIX="$(cli_commit)"   # one commit of the CLI that every resolve may name
 for i in 1 2 3 4 5 6 7 8; do "$TEMPER" evidence add --stage review --claim "finding $i" --severity high >/dev/null 2>&1; done
 mkdir .temper/.lock
-out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc 2>&1)"
+out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by "$L2FIX" 2>&1)"
 assert_eq "L2: evidence resolve waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
 out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" evidence accept --stage review --id 2 --reason ok 2>&1)"
 assert_eq "L2: evidence accept waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
@@ -1408,7 +1410,7 @@ out="$(TEMPER_LOCK_WAIT_S=1 TEMPER_LOCK_MAX_S=2 "$TEMPER" gate review 2>&1)"
 assert_eq "L2: the gate verdict write waits on the lock, then fails without writing (9.8.5, Q9)" "1" "$(printf '%s' "$out" | grep -c 'FAIL.*lock.*nothing was written')"
 rmdir .temper/.lock
 L2_LOCK_BEFORE="$([[ -e .temper/.lock ]] && echo held || echo free)"
-for i in 3 4 5 6 7 8; do "$TEMPER" evidence resolve --stage review --id "$i" --fixed-by "fix $i" > ".temper/l2.$i.out" 2>&1 & done
+for i in 3 4 5 6 7 8; do "$TEMPER" evidence resolve --stage review --id "$i" --fixed-by "$L2FIX" > ".temper/l2.$i.out" 2>&1 & done
 wait
 l2_n="$(python3 -c "import json; print(len([e for e in json.load(open('.temper/evidence/review.json')) if e.get('resolved') and e['claim'] != 'finding 1']))")"
 # a miss prints what each writer said and whether the lock was free before they started (an intermittent loss is read, not guessed)
@@ -1418,6 +1420,7 @@ assert_eq "L2: six parallel resolves lose none" "6" "$l2_n"
 l2_left="$([[ -e .temper/.lock ]] && echo yes || echo no)"
 [[ "$l2_left" == "no" ]] || l2_left="yes (owner: $(cat .temper/.lock/owner 2>/dev/null || echo none); $(ls -la .temper/.lock 2>&1 | tr '\n' ' ' | cut -c1-300))"
 assert_eq "L2: the lock is released and no temp file is left" "no|0" "$l2_left|$(find .temper -name '*.tmp*' | wc -l | tr -d ' ')"
+cd "$WORKDIR"; rm -rf "$WORKDIR/l2"
 
 # L3: the ready check and the start write share one lock, so a start never overwrites a state that changed
 # while it waited for the lock (here: another process finished Task 2 in the meantime)

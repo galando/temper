@@ -12,10 +12,7 @@ in the plugin folder.
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/review.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-**Which files are "changed":** if `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` prints a sha
-(checkpoint commits land before Review, so a plain `git diff --name-only` returns
-nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
-(`git status --porcelain`). Otherwise fall back to `git diff --name-only`.
+**Which files are "changed":** the ones `${CLAUDE_PLUGIN_ROOT}/scripts/temper review files` prints, one a line.
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/review.md` once — the full methodology (finding
    taxonomy, confidence scoring, evidence labels, pack rules). Follow it exactly; nothing
@@ -23,9 +20,9 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 2. A finding you're not confident enough to judge on this tier (an architectural call, a
    correctness risk you can't fully trace) is worth spawning a nested Agent on Opus to
    re-judge — use your judgment, this isn't a fixed rule.
-3. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` mechanically checks two things: zero *open* findings at or above
-   `review.block-on` severity (default: `critical`), and a recorded `review completed`
-   evidence row. Record every finding as evidence: the ledger is the record of what was
+3. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` checks three things: zero *open* findings at or above
+   `review.block-on` severity (default: `critical,high`), a `review completed` row that
+   names every changed file, and no code changed at Review. Record every finding as evidence: the ledger is the record of what was
    found; report EVERY CRITICAL and HIGH finding in your panel, never only "the top
    issues". You do not change code at Review (with the mod, a write outside the spec
    folder is refused at this stage); the person loops a finding back to Build. The loop
@@ -47,9 +44,9 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    **When the review is done — even if there were NO findings — record:**
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage review \
-     --claim "review completed" --exit 0 --label PROVEN
+     --claim "review completed" --exit 0 --label PROVEN --read <file> --read <file>
    ```
-   An empty findings ledger is not a review; this row is what proves one ran.
+   One `--read` for each changed file you read whole. An empty findings ledger is not a review.
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
@@ -61,8 +58,7 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
   ledger): a finding still there is recorded again. Never clear the ledger to pass the gate.
 - Use `PROVEN` only for a finding an external tool verified. Everything you traced by
   reading is `HEURISTIC`.
-- Checkpoint commits land before Review, so a plain `git diff` shows nothing. Use
-  `base_sha` when it is set.
+- A changed file the `review completed` row does not name with `--read` fails the gate.
 - Code that compiles can still call a method that does not exist or never be wired in.
   Compare each call against the real signature, and check that new code is reachable
   (imported, registered, rendered) from an existing entry point.

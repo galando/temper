@@ -310,3 +310,16 @@ json.dump(d, open(p, "w"))
 PY
   echo "$sha"
 }
+review_repo() { # review_repo <folder>: a project of its own in <folder> of the case folder, a git repository with one
+                # commit, its run at Review by the CLI's own calls (so review_snapshot names that commit), for a case that
+                # resolves a finding with the id cli_commit prints. The case folder's own repository is left as it was;
+                # the case ends with `cd "$WORKDIR"; rm -rf "$WORKDIR/<folder>"`.
+  local s
+  setup; rm -rf "${WORKDIR:?}/$1"; mkdir -p "$WORKDIR/$1"; cp -R .claude .temper "$WORKDIR/$1/"; cd "$WORKDIR/$1" || return 1
+  git init -q .; git config user.email t@example.com; git config user.name T; git commit -q --allow-empty -m base
+  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+  gpass intent plan build
+  for s in intent_complete:plan plan_complete:build build_complete:review; do
+    "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1
+  done
+}
