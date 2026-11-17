@@ -12,8 +12,8 @@ import run_summary
 import tasks_md
 
 from flow_base import (
-    DRIFT_HEADER, DRIFT_OPTIONS, DRIFT_PREFIX, FRESH_ROWS, GATE_HEADER, LABEL, TEMPER, VERSION, criteria, git, loop_at,
-    plan_files, read_json)
+    DRIFT_HEADER, DRIFT_IDS, DRIFT_OPTIONS, DRIFT_PREFIX, FRESH_ROWS, GATE_HEADER, LABEL, TEMPER, VERSION, criteria, git,
+    loop_at, plan_files, read_json)
 
 
 def check_markers(run):
@@ -260,7 +260,8 @@ def view(run, nxt):
 
 
 def drift_info():
-    return {"id": "scope.drift", "kind": "drift", "header": DRIFT_HEADER, "prefix": DRIFT_PREFIX, "options": DRIFT_OPTIONS}
+    return {"id": "scope.drift", "kind": "drift", "header": DRIFT_HEADER, "prefix": DRIFT_PREFIX, "options": DRIFT_OPTIONS,
+            "drift_ids": DRIFT_IDS}
 
 
 AGENTS_NAMED = "agents-named.json"
