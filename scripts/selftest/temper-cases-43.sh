@@ -97,7 +97,7 @@ function twoDownBody(w: World): void {
 }
 export const twoDown = (w: World): void => twoDownBody(w)
 export const ACCEPT_SCENARIOS: Record<string, { run: (w: World) => void; modes: string[] }> = {
-  'two-up': { run: twoUp, modes: ['plain'] },
+  'two-up': { run: twoUp, modes: ['plain', 'mod'] },
   'two-down': { run: twoDown, modes: ['plain'] },
 }
 TS
@@ -204,6 +204,24 @@ done
 sed -i 's/{ run: (w: World) => { void w }/{ run: (w: World) => { worldCheck(w) }/' "$_c43/root/scripts/e2e/accept.ts"
 assert_eq "done: the shared assert rule reads every entry of the scenario object, and fails one it cannot read" \
   "1|1|1|1|1 0" "$r1 $(_c43_done >/dev/null; grep -c 'D105: the scenario in-place' "$_c43/done.out")"
+
+# the modes a scenario of the three files registers are read: a row cannot name a mode it does not run, it cannot run
+# in none, a list line cannot name a mode it does not run, and rule 11 reads the registered modes (phase 2 review, F4)
+_c43_root
+sed -i 's/`scenario two-up` plain/`scenario two-up` plain, driver/' "$_c43/root/docs/plans/one-go/done.md"
+r1="$(_c43_done)|$(grep -c '^D01 FAIL: scenario two-up driver (the scenario registers the modes plain, mod only)' "$_c43/done.out")"
+_c43_root
+sed -i "s/'two-down': { run: twoDown, modes: \['plain'\] }/'two-down': { run: twoDown, modes: [] }/" "$_c43/root/scripts/e2e/accept.ts"
+r2="$(_c43_done)|$(grep -c 'registers two-down: an entry that registers no mode' "$_c43/done.out")"
+_c43_root
+_c43_list 'e2e:two-up:driver WP08 D01'
+r3="$(_c43_done)|$(grep -c 'e2e:two-up:driver names a mode the scenario does not run' "$_c43/done.out")"
+_c43_root
+sed -i 's/^| D01 | one | `case 11 D01`; `scenario two-up` plain |/| D30 | one | `scenario two-up` |/' "$_c43/root/docs/plans/one-go/done.md"
+sed -i "s/'two-up': { run: twoUp, modes: \['plain', 'mod'\] }/'two-up': { run: twoUp, modes: ['mod'] }/" "$_c43/root/scripts/e2e/accept.ts"
+r4="$(_c43_done)|$(grep -c 'D30: rule 11' "$_c43/done.out")"
+assert_eq "done: a row or a list line names no mode its scenario does not register, and rule 11 reads those modes" \
+  "1|1 1|1 1|1 1|1" "$r1 $r2 $r3 $r4"
 
 # --- check_changed_tests.py on a made up repository: the base, then the work tree ---
 _c43_ct() { # _c43_ct <base>: check_changed_tests.py on $_c43/ct against the base; prints its exit code

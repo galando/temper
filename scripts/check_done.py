@@ -16,7 +16,10 @@ It reads the table under the heading "The table" of `docs/plans/one-go/done.md` 
   - a test file of the mod (the pathspecs `*.test.ts` and `*.test.tsx`) holds `.skip(`, `.only(` or `.todo(`;
   - a scenario of those three files does not call the shared assert `worldCheck` (row D105), in its own body or in a
     function of the same file it calls;
-  - one of the rows `D30` to `D39` names neither a case nor a scenario that runs in plain mode (rule 11, row D40).
+  - one of the rows `D30` to `D39` names neither a case nor a scenario that runs in plain mode (rule 11, row D40);
+  - a scenario of the three files registers no mode, or modes it cannot read; a row names a mode for one of them that
+    it does not register; or a line `e2e:<scenario>:<mode>` names a mode the scenario does not run. A scenario item
+    with no mode words means the modes the scenario registers, and rule 11 reads those.
 A `mod` item is not looked up: the mod's own suite runs every test file. A `gate` and a `bench` item are not run here.
 
 With `--final` it also fails while the list has an entry, and it runs D75b: each `final` of `scripts/caps.json` and
@@ -128,6 +131,7 @@ def items_of(check):
         if words[0] == "scenario":
             ms = MODES_AFTER.match(after)
             item["modes"] = re.findall(r"plain|mod|driver", ms.group(1)) if ms else list(MODES)
+            item["modes_named"] = ms is not None
         items.append(item)
     return items
 
@@ -211,9 +215,10 @@ KEY = re.compile(r"^(?:'([^']*)'|\"([^\"]*)\"|(%s))\s*:\s*(.*)$" % IDENT, re.S)
 def registered(src):
     """{scenario name: entry} of a scenario file. The entries of its objects named *SCENARIOS: each key (quoted or bare)
     and its value, a function name or { run, ... } whose run is a function name or a function written in place. An
-    entry is {"fn": name or None, "inline": the text of a function written in place or None, "error": what cannot be
-    read or None}. A file with no such object: every object entry whose key is a lower case name joined by hyphens and
-    whose value is a function or { run: function }."""
+    entry is {"fn": name or None, "inline": the text of a function written in place or None, "modes": the modes it
+    registers (a list literal, or the name of a const list of the file) or None, "error": what cannot be read or None}.
+    A file with no such object: every object entry whose key is a lower case name joined by hyphens and whose value is
+    a function or { run: function }."""
     out = {}
     for m in re.finditer(r"(?:const|let)\s+\w*SCENARIOS\b[^\n]*=\s*\{", src):
         block = braced(src, m.end() - 1) or ""
@@ -223,14 +228,21 @@ def registered(src):
                 out[part.split("\n")[0][:60]] = {"fn": None, "inline": None, "error": "an entry that cannot be read"}
                 continue
             name, value = next(g for g in k.groups()[:3] if g is not None), k.group(4).strip()
-            entry = {"fn": None, "inline": None, "error": None}
-            run = value
+            entry = {"fn": None, "inline": None, "modes": None, "error": None}
+            run, modes = value, None
             if value.startswith("{"):
                 run = None
                 for field in split_top(value[1:-1] if value.endswith("}") else ""):
                     f = KEY.match(field)
                     if f is not None and f.group(3) == "run":
                         run = f.group(4).strip()
+                    elif f is not None and f.group(3) == "modes":
+                        modes = f.group(4).strip()
+            entry["modes"] = modes_of(src, modes)
+            if entry["modes"] is None:
+                entry["error"] = "an entry whose modes cannot be read (a list of plain, mod and driver)"
+            elif not entry["modes"]:
+                entry["error"] = "an entry that registers no mode"
             if run is None:
                 entry["error"] = "an entry with no run"
             elif re.fullmatch(IDENT, run):
@@ -242,8 +254,27 @@ def registered(src):
             out[name] = entry
     if not out:
         entry = re.compile(r"['\"]([a-z0-9]+(?:-[a-z0-9]+)+)['\"]\s*:\s*(?:\{\s*run\s*:\s*)?(%s)" % IDENT)
-        out = {k: {"fn": v, "inline": None, "error": None} for k, v in entry.findall(src)}
+        out = {k: {"fn": v, "inline": None, "modes": list(MODES), "error": None} for k, v in entry.findall(src)}
     return out
+
+
+def modes_of(src, value):
+    """The modes of a `modes:` value: a list literal of quoted modes, or the name of a const list of the file. None when
+    it is missing, or is anything else, or names a word that is no mode."""
+    if value is None:
+        return None
+    if re.fullmatch(IDENT, value):
+        m = re.search(r"\bconst\s+%s\s*(?::[^=\n]+)?=\s*(\[[^\]]*\])" % re.escape(value), src)
+        if m is None:
+            return None
+        value = m.group(1)
+    if not (value.startswith("[") and value.endswith("]")):
+        return None
+    words = split_top(value[1:-1])
+    found = [w[1:-1] for w in words if len(w) >= 2 and w[0] == w[-1] and w[0] in "'\""]
+    if len(found) != len(words) or any(w not in MODES for w in found):
+        return None
+    return found
 
 
 def braced(src, i):
@@ -502,7 +533,16 @@ def main(argv):
                 name = it["words"][0] if it["words"] else ""
                 if not has_scenario(e2e, name):
                     missing.append("scenario %s (no file of %s registers it)" % (name, E2E))
-                elif name in list_scen:
+                    continue
+                own = three[name][1]["modes"] if name in three else None
+                if own is not None:   # a scenario of the three files runs only in the modes it registers
+                    if it["modes_named"]:
+                        for mode in it["modes"]:
+                            if mode not in own:
+                                missing.append("scenario %s %s (the scenario registers the modes %s only)"
+                                               % (name, mode, ", ".join(own)))
+                    it["modes"] = [m for m in it["modes"] if m in own]
+                if name in list_scen:
                     listed = True
             elif it["kind"] in ("floor", "caps") and it["value"] is not None and not final_keys(it):
                 opened.append("%s %s has no final yet" % (it["kind"], " ".join(it["words"])))
@@ -544,6 +584,10 @@ def main(argv):
                     n, check, ", ".join("%s/%s" % (E2E, f) for f in THREE)))
             if mode is not None and mode not in MODES:
                 problems.append("line %d of the list: %s names no mode" % (n, check))
+            elif mode is not None and name in three and three[name][1]["modes"] is not None \
+                    and mode not in three[name][1]["modes"]:
+                problems.append("line %d of the list: %s names a mode the scenario does not run (it registers %s)"
+                                % (n, check, ", ".join(three[name][1]["modes"])))
     for check in came_back(root, [c for _, c, _, _, _ in lst]):
         problems.append("%s was taken off the list by an earlier commit and is on it again: a line never comes back"
                         % check)
