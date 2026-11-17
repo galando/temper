@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-17 15:28 UTC
+- Watch: one check is scheduled; the next is due 2026-11-17 19:53 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -52,8 +52,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP09 | done | `b5a8c0a` | 2026-11-17 | every carrier of a verdict prints `VERDICT: <scope> <verdict>`; go, the driver and the loop read it; integrate-fail off the list, which holds 91 (72 selftest, 19 scenarios); prompt_bytes above its final |
 | WP10 | done | `f5c8cef` | 2026-11-17 | one budget in `.temper/budget.json` (2 per failure, 6 per run), refused in the CLI's dispatcher, the question `run.budget` at the limit; D38a, D38b, D38c, D38e and budget-stop off the list, which holds 86 (68 selftest, 18 scenarios) |
 | WP18 | done | `93c03cf` | 2026-11-17 | `evidence resolve` takes only a commit the CLI made after the reviewed HEAD, denied to every agent by the mod; the Review completion row lists the files read and the gate compares them with `temper review files`; D34d and D37a off the list, which holds 84 (66 selftest, 18 scenarios) |
-| WP14 | doing | | | tests `36d87b1` |
-| WP11 | todo | | | |
+| WP14 | done | `11f874b` | 2026-11-17 | Design runs only on the person's ask (option `run-design`); its concerns are Blocking questions of the plan, held by the plan gate; at risk H the fresh review runs by rule and `approve-run` needs a clean round; design-on-ask and D18d off the list, which holds 82 (65 selftest, 17 scenarios) |
+| WP11 | doing | | | tests `d5df54b` |
 | WP12 | todo | | | |
 | WP13 | todo | | | |
 | WP15 | todo | | | |
@@ -153,6 +153,10 @@ None.
 - 2026-11-17 WP18: `evidence resolve` refuses every call until WP24 records a repair commit, as the phase intends; the refusal names which of the four checks failed, and in a run with no CLI commits it says how a finding ends instead. The replay's resolve call never fired (a loop back empties the Review ledger first), so the base column did not move.
 - 2026-11-17 WP18: the redo option after a short Review still says "The review did not finish"; the question's text carries `read K of N; not read:`. `docs/commands.md` does not list `temper review files` or `--read`; for WP31. The dead helper `_ev_latest_claim_exit` went in `8f4e49e` (cli_bytes 214,975).
 - 2026-11-17 WP14 tests: D18d (listed for WP11) may pass once WP14 lands; it then leaves the list in the WP14 commit, by the rule of the list.
+- 2026-11-17 WP14: the More list of the passed plan question holds seven options in two dialogs; `run-design` took Teach Me's place there (Teach Me stays where Design runs, Grill Me stays). WP13 adds Loop back to Intent to the same list and meets the same limit.
+- 2026-11-17 WP14: `has_design` also reads `enter == design`, so the `/temper:design` door runs Design on a simple run too, as the spec asks.
+- 2026-11-17 WP14: the spec's grep for `intent_asked` and `phases.design` prints the lines of case 55 and case 15 that check the keys are gone; it is run with `--exclude-dir=selftest`. caps after the package: option_labels 74 (final 71), question_sites 53 (its final), option_sites back to its final 89; prompt_bytes 307,686 (final 307,712).
+- 2026-11-17 WP14: `docs/commands.md` and `docs/getting-started.md` still show an old list of plan options with Share HTML review; for WP31.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
