@@ -65,9 +65,6 @@ describe('Bash: the CLI and commands that only read', () => {
     `${CLI} spec commit 'docs(intent): accept pw'`,
     // Seen in round 5 (4 of 4 Sonnet runs): the CLI's path set in a variable, then the calls through it.
     `T=${CLI}\n$T intent answer 'Who?' 'Admin' 'When?' '60 days'\n$T gate intent; \${T} go`,
-    // 9.8.5 (U4): a backup of the run's work, to a temper-backup/ branch only
-    'git push origin HEAD:temper-backup/pw',
-    'git push -u origin feature/pw:refs/heads/temper-backup/pw-g1',
   ]
   for (const c of OK) test(`allows: ${c.split('\n')[0]}`, () => expect(bashWhy(c)).toBe(null))
   const NO: Array<[string, string]> = [
@@ -82,13 +79,21 @@ describe('Bash: the CLI and commands that only read', () => {
     ['find . -name "*.pyc" -delete', 'find'],
     ['echo $(python3 -c "print(1)")', 'python3'],
     ['git branch new-branch', 'git branch'],
-    // 9.8.5 (U4): every other push stays the person's
+    // 9.8.5 (U4): every push stays the person's
     ['git push origin feature/pw', 'git push'],
     ['git push origin HEAD:main', 'git push'],
     ['git push --force origin HEAD:temper-backup/pw', 'git push'],
     ['git push origin +HEAD:temper-backup/pw', 'git push'],
     ['git push origin :temper-backup/pw', 'git push'],
     ['git push --no-verify origin HEAD:temper-backup/pw', 'git push'],
+    // 9.8.5 (WP08, M12): the backup push is gone; a push to a temper-backup/ branch is refused like any other, to any
+    // remote, by any address, from any source.
+    ['git push origin HEAD:temper-backup/pw', 'git push'],
+    ['git push -u origin feature/pw:refs/heads/temper-backup/pw-g1', 'git push'],
+    ['git push https://example.org/x.git HEAD:temper-backup/x', 'git push'],
+    ['git push ssh://git@example.org/x.git HEAD:temper-backup/x', 'git push'],
+    ['git push backup HEAD:temper-backup/x', 'git push'],
+    ['git push origin refs/stash:temper-backup/x', 'git push'],
     ['xargs rm < list.txt', 'xargs'],
     // A program in a variable the guard cannot read: not the CLI set plainly in the same command.
     ['T=$(ls /plugin/scripts/temper)\n$T go', 'write the CLI\'s path out in full'],
