@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-17 12:20 UTC
+- Watch: one check is scheduled; the next is due 2026-11-17 15:28 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -51,8 +51,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP08 | done | `d3f46ff` | 2026-11-17 | the defects of pull request 115 fixed, removed or made safe in four lanes against tests other agents wrote; expected to fail 92 (72 selftest, 20 scenarios); two caps above their final |
 | WP09 | done | `b5a8c0a` | 2026-11-17 | every carrier of a verdict prints `VERDICT: <scope> <verdict>`; go, the driver and the loop read it; integrate-fail off the list, which holds 91 (72 selftest, 19 scenarios); prompt_bytes above its final |
 | WP10 | done | `f5c8cef` | 2026-11-17 | one budget in `.temper/budget.json` (2 per failure, 6 per run), refused in the CLI's dispatcher, the question `run.budget` at the limit; D38a, D38b, D38c, D38e and budget-stop off the list, which holds 86 (68 selftest, 18 scenarios) |
-| WP18 | doing | | | tests `172f93a` |
-| WP14 | todo | | | |
+| WP18 | done | `93c03cf` | 2026-11-17 | `evidence resolve` takes only a commit the CLI made after the reviewed HEAD, denied to every agent by the mod; the Review completion row lists the files read and the gate compares them with `temper review files`; D34d and D37a off the list, which holds 84 (66 selftest, 18 scenarios) |
+| WP14 | doing | | | tests `36d87b1` |
 | WP11 | todo | | | |
 | WP12 | todo | | | |
 | WP13 | todo | | | |
@@ -149,6 +149,10 @@ None.
 - 2026-11-17 WP10: caps above their final after the package (no final moved): option_sites 90 (89), option_labels 73 (71), question_ids 36 (35), config_comment_keys 49 (46), config_lines 163 (60), config_live_keys 21 (12); prompt_bytes came back below its final (307,449). The last three belong to WP29's short template.
 - 2026-11-17 WP10: the question at the limit appears only where the stage's own question loses an option; at Pipeline past its round limit and at the Build question with no groups the older "limit is reached" questions still ask, with no grant. For WP25 and WP27, which rebuild those questions.
 - 2026-11-17 WP10: the group question still said a plan patch spends no loop; it now says it counts as one repeat (`fix(wp10)` in the merge). ADR 0014 still names `loops.max-per-type`; it is a record of its time and was left.
+- 2026-11-17 WP09 and WP10 moved floor counts without writing them: pyjokes in driver mode (hand backs 1 to 0, auto actions 4 to 13, the marker keeps a failed group check in the driver) and budget-stop, which had no entry; `quick` does not compare the floor, so neither package saw it. The WP18 builder found it; both are written in `8f4e49e` with no final moved. From here every builder runs the whole e2e list with `--floor`.
+- 2026-11-17 WP18: `evidence resolve` refuses every call until WP24 records a repair commit, as the phase intends; the refusal names which of the four checks failed, and in a run with no CLI commits it says how a finding ends instead. The replay's resolve call never fired (a loop back empties the Review ledger first), so the base column did not move.
+- 2026-11-17 WP18: the redo option after a short Review still says "The review did not finish"; the question's text carries `read K of N; not read:`. `docs/commands.md` does not list `temper review files` or `--read`; for WP31. The dead helper `_ev_latest_claim_exit` went in `8f4e49e` (cli_bytes 214,975).
+- 2026-11-17 WP14 tests: D18d (listed for WP11) may pass once WP14 lands; it then leaves the list in the WP14 commit, by the rule of the list.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
