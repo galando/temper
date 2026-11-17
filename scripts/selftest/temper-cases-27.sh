@@ -55,7 +55,7 @@ o = ([x for x in os_ if x.get('id') == 'check-again'] or [{}])[0]; \
 '|'.join([str(d.get('stage')), o.get('id', 'none')] + [c.split('temper ', 1)[-1] for c in o.get('calls') or []])")"
 _blk27="$(PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose 2>/dev/null | sed -n '/^setup:/,/^[^ ]/p' | grep -E '^(setup:|  )')"
 assert_eq "9.8.5 propose: the question shows the proposed block whole" "lines>2|missing=none" \
-  "lines$([[ $(grep -c . <<<"$_blk27") -gt 2 ]] && echo '>2' || echo "=$(grep -c . <<<"$_blk27")")|missing=$(PATH="$PWD/fakepg:$PATH" python3 - "$_blk27" "$("$TEMPER" next --json 2>/dev/null)" <<'PY'
+  "lines$([[ $(grep -c . <<<"$_blk27") -gt 2 ]] && echo '>2' || echo "=$(grep -c . <<<"$_blk27")")|missing=$(PATH="$PWD/fakepg:$PATH" python3 - "$_blk27" "$(PATH="$PWD/fakepg:$PATH" "$TEMPER" next --json 2>/dev/null)" <<'PY'
 import json, sys
 d = json.loads(sys.argv[2])
 text = ((d.get("ask") or {}).get("question") or {}).get("question", "")
