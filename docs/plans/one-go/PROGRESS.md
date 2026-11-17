@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-16 23:04 UTC
+- Watch: one check is scheduled; the next is due 2026-11-17 06:12 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -48,7 +48,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP05 | done | `fbc75ec` | 2026-11-16 | floor of default-run 8 dialogs and 6 launches in every mode, fix 4 and 3; caps file, stops list, run summary, replay base 9 questions and 7 launches |
 | WP06 | done | `8b57b10` | 2026-11-16 | slow and broken scripted projects, four scenarios on the list, the expected to fail rule of the scenarios; whole selftest PASS 2710 |
 | WP07 | done | `3d43388` | 2026-11-16 | case files 43 to 46 and 17 acceptance scenarios written failing first; check_done, check_changed_tests, verify.sh final; expected to fail 112 (92 selftest, 20 scenarios) |
-| WP08 | doing | | | four lanes, tests written first by other agents |
+| WP08 | done | `d3f46ff` | 2026-11-17 | the defects of pull request 115 fixed, removed or made safe in four lanes against tests other agents wrote; expected to fail 92 (72 selftest, 20 scenarios); two caps above their final |
 | WP09 | todo | | | |
 | WP10 | todo | | | |
 | WP18 | todo | | | |
@@ -125,4 +125,45 @@ None.
 - 2026-11-17 for WP22: broken-flaky may never pass as WP22 step 9 is written. `MOCK_RED` fails every suite run with no filter on every tree, so "the same command has a pass on the base tree" never holds; WP22 must count a failure known at the base as that pass, or the fixture changes. The fixture now keys the late flaky test on the tree of the code folder (`HEAD:backend`), not `HEAD^{tree}` as the spec of WP06 says.
 - 2026-11-17 for WP13 and WP16: group-fail asks `build.pass` after the approval in plain and mod mode, which is D01's promise; the D06 expect can pass only once D01 holds.
 - 2026-11-17 `check_changed_tests.py` reads a TypeScript `expect(` call for at most 40 lines and counts parentheses outside quoted strings only; neither limit bites today.
+- 2026-11-17 WP08, caps above their `final`, for the owner (note 5 of `done.md` part F; no `final` moved): `option_labels` measures 72 against 71 (the new label "It is the code" of M9), `config_comment_keys` measures 48 against 46 (the commented `# build:` and `# evidence:` blocks of M8, which the spec asks for).
+- 2026-11-17 WP08: the floor of small-change moved in its package commit: `launch_total` 8 to 7 (the Check agent left `launches`) and `suite_runs` 3 to 4, because M7 makes Check of a small change the CLI's `check run`, which really runs the suite where the scripted agent only recorded a run; the run moved, it was not added. The replay is unchanged (9.8.4 10 questions, 9.8.5 9, with the policy 5); `check_floor.py --final` still fails on the replay's questions 9 (final 3) and loops recommended 1 (final 0), which later packages own.
+- 2026-11-17 WP08: the package 4 line of `CHANGELOG.md` still says the mod allows a push to a `temper-backup/` branch, which M12 removed; for WP31. `docs/mod.md` "Person only calls" does not list `doctor --write`; for WP31.
+- 2026-11-17 WP08: `tests/mod/audit.test.ts` has no kind for `doctor ... --write` and no view fixture holds the option `add-setup`, so the audit does not check the setup question's call; WP21 removes that question.
+- 2026-11-17 WP08: case 9 fails three checks with `_walk_to_commit: command not found` when run alone, because the helper lives in `temper-cases-8.sh`; it fails the same way at the base and passes in the whole run.
+- 2026-11-17 WP08: a byte compiled `scripts/__pycache__/guardrails-snippet.cpython-313.pyc` makes case 1 fail (a shipped file names a project settings file); anyone who runs `py_compile` over `scripts/` meets it.
+- 2026-11-17 WP08: `temper-cases-8.sh:359` and `scripts/e2e/replay.ts:309` still append a second `autonomy:` block (spec trap 2); under the merging reader of M8 they pass and no replay number moved, so they were left.
+- 2026-11-17 WP08: M13 (c) sets `shown_block` as a side effect of `setup_offer` and the failed plan question reads it afterwards; WP21 removes that code.
+- 2026-11-17 WP08: the rewrite of case 22 `:37` removed the only selftest of the JDK range quote, the JaCoCo line quote and the naming of an absent file (listed in `changed-tests.md`).
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
+
+## Follow ups of pull request 115
+
+- [ ] U1 (WP25): a plan patch keeps the marks of a failed fix, so the next failure still blames the command.
+- [ ] U2 (WP25, WP21): a patched command skips the plan's checks, a Validate patched to `true` passes, the patch is not shown as a change of the approved plan.
+- [ ] U3 dropped: `evidence void` is read in one place only; WP30 removes claimed runs and WP22 counts "run it anyway".
+- [ ] U4 (WP08 the test, done; WP22 the key and a record of every reuse): the store of reused passes had no test; its key has no tool versions.
+- [ ] U5 (WP09): `temper go` reports a failed group check or `integrate` as an error, so the mod hands the run back.
+- [ ] U6 (WP11): after one stop the run asks at every stage for good.
+- [ ] U7 (WP11, with the budget of WP10): the policy stops where the question recommends a retry.
+- [ ] U8 (WP11): an unattended run cannot end in a pull request.
+- [ ] U9 dropped as its own item: every group failure question has five options; WP10 and WP25 rebuild that question.
+- [ ] U10 (WP21): the preflight runs under the temp folder, Build inside the project.
+- [ ] U11 (WP21): any failure no pattern names passes as "needs new code".
+- [ ] U12 (WP21): a gate call that is ended leaves its worktree and its running command.
+- [ ] U13 (WP20): the proposed setup line `. .venv/bin/activate` fails in every worktree.
+- [x] U14 (WP08): the environment agent's normal "no draft" result is a failed call; gone with the agent (M13).
+- [ ] U15 (WP21): a failed preflight row goes whole into the question.
+- [ ] U16 (WP21): the wrong reason on a red Maven base.
+- [ ] U17 dropped: the proposal treats any mention of a variable as "the code reads it"; the block is shown whole (M13).
+- [ ] U18 (WP29, WP20): secrets are masked by name only; `3.10` reaches a command as `3.1`.
+- [x] U19 (WP08): three run files are not in the exclude list and outlive the run.
+- [ ] U20 (WP08 its own lines, done; WP18 `agents/review.md:27`; WP31 the rest): documents that disagree with the code.
+- [ ] U21 (WP08 the policy run, done; WP07 the scripted promises, done; WP30 the fixture): no end to end test ran the policy, a failing preflight, a setup block or a plan patch; the shared selftest fixture counts claimed runs.
+- [ ] U22 (WP16): the mod counts a typed answer of at most 100 characters; the CLI takes 2,000.
+- [ ] U23 kept as shipped (WP32 names it in the pull request text, for the owner): the Interfaces check matches any `send(msg)`.
+- [ ] U24 (WP25): the plan digest has three copies that must agree.
+- [x] U25 (WP08): the policy's tests ran without `park-on-touch`; the merging reader of M8 keeps it.
+- [ ] U26 (WP21): at Check the setup offer reads the Plan stage's stored faults.
+- [ ] U27 (WP21): the preflight skip row is written outside the CLI's lock.
+- [x] U28 (WP01): a generated copy of test helpers with its own rule.
+- [ ] U29 dropped: housekeeping of the pull request page; the one pull request's text is WP32's.
