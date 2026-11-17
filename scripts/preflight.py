@@ -95,14 +95,15 @@ def env_fault(out, rc, cmd, limit=None, timeout_is_env=True):
     return ""
 
 
-def classify(cmd, out, rc, limit, declared, wt, spent=False):
+def classify(cmd, out, rc, limit, declared, wt, spent=False, timed_out=False):
     """(class, reason) for one run. A time out is not checked, never an environment fault (WP08, M15): over the limit,
-    or (spent) over what the earlier commands left of the one total limit."""
+    or (spent) over what the earlier commands left of the one total limit. timed_out says the preflight stopped the
+    command at its limit; a command that exits 124 by itself fails as any other exit code."""
     if rc == 0:
         return "passes", ""
-    if rc == 124:
+    if timed_out:
         return "not checked", ("the total limit of %s s was spent" if spent else "over %s s") % limit
-    why = env_fault(out, rc, cmd, limit)
+    why = env_fault(out, rc, cmd, limit, timeout_is_env=False)
     if why:
         return "environment fault", why
     for pat in CMD_PATTERNS:
@@ -209,9 +210,12 @@ def run_classes(project, cmds, declared, limit, setup):
                 raw, rc = maven_loop.run(wt, left, cmd, files, setup)
             else:
                 raw, rc = run_env.run_cmd(wt, left, [cmd], setup)
-            used += time.monotonic() - start
+            elapsed = time.monotonic() - start
+            used += elapsed
             out = raw.decode("utf-8", "replace")
-            cls, why = classify(cmd, out, rc, limit, declared, wt, spent=left < limit)
+            # a 124 is the preflight's own time out only when the command used what it was given (WP08, M15)
+            cls, why = classify(cmd, out, rc, limit, declared, wt, spent=left < limit,
+                                timed_out=rc == 124 and elapsed >= left - 0.5)
             results.append((cmd, files, cls, why, out))
     finally:
         git(project, "worktree", "remove", "--force", wt)
