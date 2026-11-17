@@ -338,15 +338,22 @@ class AskPart:
             fresh_failed = [x for x in rows if x.get("name") in FRESH_ROWS]
             if fr["applies"] and fresh_failed:
                 return self.fresh_question(fr, why, said, back_opt, override_opt, grill)
+            # WP08 (M16): a failed preflight is never returned from the store, so after the person repaired the
+            # environment one option runs the plan's commands again and checks the plan
+            again = [self.opt("Check again", "Run the plan's commands again (after you repaired the environment) and "
+                              "check the plan.", move="redo", calls=[self.c("plan preflight"), self.c("gate plan")],
+                              oid="check-again")] if any(x.get("name") == "preflight" for x in rows) else []
             env_opt = self.setup_offer(rows)
             if env_opt:
                 # 9.8.5: the preflight hit the environment and the project declares none: one click adds the block that
                 # temper doctor --propose made from the project's own facts, runs the preflight again and checks the plan
-                return self.question(GATE_HEADER, "Plan: the check failed (%s).%s The project's own files say what it needs: "
-                                     "add the proposed setup block (%s) and check again?" % (why, said, env_opt["description"]), stage=stage,
-                                     options=[env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()], qid="plan.fail")
-            return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said), stage=stage,
-                                 options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()], qid="plan.fail")
+                text = ("Plan: the check failed (%s).%s The project's own files say what it needs: add the proposed "
+                        "setup block (%s) and check again?" % (why, said, env_opt["description"]))
+                opts = again + [env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()]
+            else:
+                text = "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said)
+                opts = again + back_opt() + [override_opt(self.leave_plan()), grill, self.save()]
+            return self.with_more(GATE_HEADER, text, stage, opts[:3], opts[3:], "Plan: more options.", qid="plan.fail")
 
         if stage == "design":
             walk = self.opt("Walk through step by step", "Review the design section by section.",

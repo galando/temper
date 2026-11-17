@@ -104,6 +104,12 @@ limit, three fix agents that changed nothing) showed most of them again. Each ch
   commands that failed on the environment with it, and they passed. The person still makes one click.
 - **The selftest.** Case file 6 runs on its own (`case-helpers-5.sh`, made by `make-helpers-5.sh`), so the parallel
   runner no longer runs 5 and 6 as one pair.
+- **F4 (wp08).** The plan gate's preflight runs each group's Validate and the Integration line only, never a task Test
+  or a scenario Test (they need code not written yet), all under one total `plan.preflight-timeout`.
+- **M15 (wp08).** A preflight command over its limit is `not checked`, never an environment fault: the row passes and
+  names a longer `plan.preflight-timeout`, another command (`temper plan patch`) and `plan.preflight-skip`.
+- **M16 (wp08).** A failed preflight is never read back from `.temper/preflight.json`: the next gate runs it again, and
+  the failed plan question offers `Check again` (`plan preflight`, then `gate plan`) first.
 
 ## v9.8.4: the faults one failed run exposed
 

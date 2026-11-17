@@ -12,7 +12,7 @@
  ],
  "caps": {
   "question_sites": {
-   "now": 53,
+   "now": 52,
    "final": 53,
    "measure": "measure_question_sites: calls of self.question( and self.with_more( in the flow files"
   },
@@ -67,7 +67,7 @@
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 307712,
+   "now": 307704,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },

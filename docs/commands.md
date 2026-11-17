@@ -259,8 +259,9 @@ and spends no loop. You give it as your answer to "Change the group's command" a
 
 ### `temper plan preflight` (9.8.5)
 
-Runs every command of the plan on HEAD again and stores the result the plan gate reads (see `docs/flow.md`). Run it
-when the environment changed and the commands and HEAD did not.
+Runs each group's Validate and the Integration line of the plan on HEAD again and stores the result the plan gate reads
+(see `docs/flow.md`). The failed plan question's `Check again` runs it, then `temper gate plan`, after the environment
+was repaired.
 
 ## `/temper:intent`
 

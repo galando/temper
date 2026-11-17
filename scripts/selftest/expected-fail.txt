@@ -31,12 +31,8 @@ selftest:D50                   WP08           D50
 selftest:D51                   WP08           D51
 selftest:D53a                  WP08           D53
 selftest:D53b                  WP08           D53
-selftest:D55                   WP08           D55
-selftest:D56a                  WP08           D56
-selftest:D56b                  WP08           D56
 selftest:D57a                  WP08           D57
 selftest:D57b                  WP08           D57
-selftest:D57d                  WP08           D57
 selftest:D99a                  WP21           D99
 selftest:D99b                  WP21           D99
 # case file 46: migration, the front, the surface, and the README (WP07)

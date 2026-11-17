@@ -147,18 +147,25 @@ run). It is read only; with the mod on, the session may run the CLI but not `pri
 
 ### The preflight, the setup block and an environment fault (9.8.5)
 
-**The preflight.** `temper gate plan` has a `preflight` row (`scripts/preflight.py`). It runs each distinct Validate,
-task Test, Integration and scenario `Test:` command of the plan once, in a detached worktree of HEAD that it removes
-after, and sorts each result into one of four classes: `passes`; `needs new code` (the tests of code not written yet
-fail on the base; this does not fail the row); `environment fault` (a `temper-setup: FAIL` line, the time limit, the
-Maven enforcer's `which is not in the allowed range` reported as `needs JDK <range> (found <version>)`, an unsupported
-class file version, `Connection refused`, the command's own program not found, an uncached dependency offline);
-`command fault` (`Rule violated for bundle`, `Coverage checks have not been met`, tests that pass followed by
-`BUILD FAILURE`, an unknown phase or option). Either fault fails the row, which quotes the last 20 lines of the output
-plus every `Failed to execute goal` and `Rule violated` line. Each command has `plan.preflight-timeout` seconds (300).
-The result is stored in `.temper/preflight.json` with a key of HEAD, the command texts, the setup block and the time
-limit; every later `gate plan` reads it while that key holds, so the commands run once per plan.
-`temper plan preflight` runs them again. `plan.preflight-skip: "<reason>"`, which only the person writes, skips the row
+**The preflight.** `temper gate plan` has a `preflight` row (`scripts/preflight.py`). It runs each distinct group
+Validate and the Integration line of the plan once, in a detached worktree of HEAD that it removes after. No task Test
+and no scenario `Test:` runs there: they need code that is not written yet. It sorts each result into one of five
+classes: `passes`; `needs new code` (the tests of code not written yet fail on the base; this does not fail the row);
+`not checked` (the command ran over the time limit; this does not fail the row); `environment fault` (a
+`temper-setup: FAIL` line, the Maven enforcer's `which is not in the allowed range` reported as
+`needs JDK <range> (found <version>)`, an unsupported class file version, `Connection refused`, the command's own
+program not found, an uncached dependency offline); `command fault` (`Rule violated for bundle`,
+`Coverage checks have not been met`, tests that pass followed by `BUILD FAILURE`, an unknown phase or option). Either
+fault fails the row, which quotes the last 20 lines of the output plus every `Failed to execute goal` and
+`Rule violated` line. `plan.preflight-timeout` (300 s) is one limit for the whole row: each command gets what the
+commands before it left, and a command that finds none left does not run. A command over the limit is
+`not checked: over N s` or `not checked: the total limit of N s was spent`, never an environment fault, and the row
+names the three ways on: a longer `plan.preflight-timeout`, another command (`temper plan patch`), or a skip with a
+reason (`plan.preflight-skip`). A passed result is stored in `.temper/preflight.json` with a key of HEAD, the command
+texts, the setup block and the time limit; every later `gate plan` reads it while that key holds. A stored failure is
+never read back: the next `gate plan` runs the commands again, so a repaired environment is seen. The failed plan
+question offers `Check again` first whenever the `preflight` row failed: it runs `temper plan preflight`, which runs
+them again, then `temper gate plan`. `plan.preflight-skip: "<reason>"`, which only the person writes, skips the row
 (it passes and says `skipped by the person: <reason>`; the plan ledger gets one row); a skip with no text fails it.
 
 **The setup block.** `setup:` in `.claude/temper.config` holds `run:` (one shell line), `env:`, `services:` and

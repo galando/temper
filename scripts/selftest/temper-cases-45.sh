@@ -635,6 +635,8 @@ assert_eq "D99b a Validate slower than its limit is a time out: plan.command off
 
 _plan45 'MARK' true true true
 M45="$WORKDIR/.git/c45/repaired"
+# the task gets its second case (the plan gate asks two), so the preflight row is the one row of the plan that fails
+sed -i 's/^- a holds$/- a holds\n- an empty input holds/' .temper/specs/demo/tasks.md
 sed -i "s|\`MARK\`|\`$C45 V; test -e $M45 \|\| { echo 'java.net.ConnectException: Connection refused'; exit 1; }\`|" .temper/specs/demo/tasks.md
 _runafter45 "$(_after45)"; "$TEMPER" gate plan >/dev/null 2>&1
 _d56_n="$(_count45 V)"
