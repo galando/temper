@@ -18,9 +18,6 @@ selftest:D38e                  WP10           D38
 selftest:D39c                  WP25           D39
 selftest:D39d                  WP11           D39
 selftest:D41                   WP08           D41
-selftest:D43                   WP08           D43
-selftest:D44                   WP08           D44
-selftest:D46                   WP08           D46
 selftest:D47a                  WP08           D47
 selftest:D47b                  WP08           D47
 selftest:D48a                  WP08           D48
@@ -100,7 +97,6 @@ selftest:D31c                  WP12           D31
 selftest:D31d                  WP25           D31
 selftest:D31e                  WP15           D31
 selftest:D31f                  WP13           D31
-selftest:D32b                  WP08           D32
 selftest:D32d                  WP11           D32
 selftest:D32e                  WP11           D32
 selftest:D33a                  WP11           D33

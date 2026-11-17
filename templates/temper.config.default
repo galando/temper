@@ -145,7 +145,7 @@ autonomy:
   max-blast-radius: 15         # the plan gate splits a group that declares more files than this
   # policy: decide             # when you arm a run, Review and Check decide by fixed rules too: a failed check loops back
   #                            # within the loop budget, findings at high or above are repaired, nothing is overridden;
-  #                            # anything else and the commit still ask you. Default: ask (Review and Check ask you).
+  #                            # a step back to Plan, anything else and the commit ask you. Default: ask (they ask you).
   # Folder-name patterns over paths in your project only (any path before and after).
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
   budget:

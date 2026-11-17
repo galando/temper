@@ -243,15 +243,18 @@ nothing), and the person types the command. The mod lets it run only as that ans
 ### The run policy (9.8.5)
 
 `autonomy.policy: decide` in `.claude/temper.config` (only the person writes it) extends an armed run past Build. The
-person still arms the run at the last question before Build; the option's text then says the policy applies. After
-Build passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the
-question: an open finding at high or above loops back to Build with the findings as the reason (a Medium one goes on); a clean Review goes
-on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only while
-`loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. A failed group check during Build
-takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again, a loop back to
-Plan) when no person is needed for it; a typed command, Save for later or a spent budget park the run. An environment fault (SETUP), a
-missing measurement, a failed acceptance test, a spent budget and the commit park the run for the person, as an armed
-Build does. With the key absent or `ask`, every gate after Build asks, as before.
+person still arms the run at the last question before Build; the option's text then says the policy applies. After Build
+passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the question: an
+open finding at high or above loops back to Build with the findings as the reason (a Medium one goes on); a clean Review
+goes on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only
+while `loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. A failed group check during
+Build takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again) when no
+person is needed for it; a typed command, Save for later or a spent budget park the run. A recommended step back to Plan
+parks it too: an unattended run never plans again, and the park reason says that the step back is the person's to
+decide. A step back to Intent, Plan or Design, by any call, turns the run back to asking at every stage. An environment
+fault (SETUP), a missing measurement, a failed acceptance test, a criterion only the person can confirm (the next
+question is the confirmation), a spent budget and the commit park the run for the person, as an armed Build does. With
+the key absent or `ask`, every gate after Build asks, as before.
 
 ### Evidence, the lock, a backup push and a note (9.8.5)
 

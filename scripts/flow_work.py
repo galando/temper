@@ -79,6 +79,12 @@ class WorkPart:
                 return park("SETUP: " + self.setup_fault())
             if self.measurement_gap(rows) or any(str(x.get("name", "")).startswith("acceptance tests written before Build") for x in rows):
                 return park(why)
+            # M6 of WP08: a criterion only the person can confirm parks (park turns the run interactive), so the next
+            # question is the confirmation; the same match as the Check question's
+            details = " ".join(str(x.get("detail", "")) for x in rows)
+            manual = [c["id"] for c in self.criteria("manual") if re.search(r"\b%s has no supported passing evidence row" % re.escape(c["id"]), details)]
+            if manual:
+                return park("%s: only you can confirm %s" % (why, ", ".join(manual)))
             return loop(why or "the check failed")
         return None
 

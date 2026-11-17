@@ -7,6 +7,10 @@ All notable changes to Temper are documented here. The plugin version lives in
 
 - M2 (WP08): a passed Review with an open finding keeps every way on in reach, and no More holds a More.
 - F1 (WP08): a Medium finding goes on to Check and is listed where you commit; only High or above loops back.
+- M3 (WP08): under the policy, a failed group check whose fix you asked for launches the group fix agent.
+- M4 (WP08): the policy never takes a step back to Plan; the armed run parks and the step back is yours.
+- M5 (WP08): a step back to Intent, Plan or Design turns the run back to asking at every stage.
+- M6 (WP08): under the policy, a criterion only you can confirm parks the run; the next question is the confirmation.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the
