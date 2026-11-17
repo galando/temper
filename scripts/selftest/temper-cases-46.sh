@@ -46,7 +46,8 @@ PY
   git checkout -q -B "${b:-master}" 2>/dev/null
 }
 _drive46() { # drives the run in the current folder with scripted answers and scripted agents, and prints
-             # <end>|asked=<stages asked, in order>|reviews=<Review launches>. The person takes the recommended option of
+             # <end>|asked=<stages asked, in order>|reviews=<Review launches>|first=<the first question or launch>, the
+             # first being ask:<question id> or the launched agent type. The person takes the recommended option of
              # every question (the first when none is); an agent's stage passes, as a gate run writes a verdict
              # (make-view-fixtures.sh); a Build ends with every group and task passed and the integration passed. The
              # end is commit when a question offers the option commit or is commit.confirm, else what stopped it.
@@ -85,7 +86,7 @@ def built():
     json.dump({"version": 1, "slug": st.get("spec", ""), "groups": groups, "tasks": tasks,
                "integration": {"verdict": "PASS"}}, open(".temper/groups.json", "w"))
     gpass("build")
-asked, reviews, end = [], 0, "no commit question after 40 steps"
+asked, reviews, end, first = [], 0, "no commit question after 40 steps", ""
 for _ in range(40):
     r = subprocess.run([temper, "next", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
@@ -102,6 +103,7 @@ for _ in range(40):
         q = d.get("ask") or {}
         opts = q.get("options") or []
         qid = str(q.get("id"))
+        first = first or "ask:%s" % qid
         if qid.split(".")[0] not in asked:
             asked.append(qid.split(".")[0])
         if qid == "commit.confirm" or any(o.get("id") == "commit" for o in opts):
@@ -114,6 +116,7 @@ for _ in range(40):
     elif a in ("auto", "work", "wait"):
         if any(x.get("type") == "temper:temper-review" for x in d.get("agents") or []):
             reviews += 1
+        first = first or next((str(x.get("type")) for x in d.get("agents") or []), "")
         played = a == "wait" or bool(d.get("agents"))
         for c in (d.get("calls") or []) + [x for x in d.get("steps") or [] if x.startswith("/")]:
             if GATE.search(c):
@@ -125,8 +128,15 @@ for _ in range(40):
     else:
         end = "action %s" % a
         break
-print("%s|asked=%s|reviews=%d" % (end, ",".join(asked), reviews))
+print("%s|asked=%s|reviews=%d|first=%s" % (end, ",".join(asked), reviews, first))
 PY
+}
+_d60d_read() { # _d60d_read <the line of _drive46>: "<end> review again" when the first thing after the restore is a
+               # Review launch, before any question and any other launch; a Review of the ordinary fail loop (a
+               # question, Build, then Review) is not it
+  python3 -I -c "import sys
+e, a, r, f = (sys.argv[1].split('|') + ['', '', ''])[:4]
+print(e + (' review again' if f == 'first=temper:temper-review' else ' no review again'))" "$1"
 }
 _d60() { # _d60 <state> <a|c|d>: the saved state of 9.8.4 and of the base, each restored and driven on, joined
   local c out res=""
@@ -135,12 +145,10 @@ _d60() { # _d60 <state> <a|c|d>: the saved state of 9.8.4 and of the base, each 
     case "$2" in
       a) out="${out%%|*}" ;;
       c) out="$(python3 -I -c "import sys
-e, a, r = sys.argv[1].split('|')
+e, a, r = sys.argv[1].split('|')[:3]
 s = a.split('=')[1].split(',')
 print(e + (' asks at every stage' if all(x in s for x in ('build', 'review', 'check')) else ' asked only ' + ','.join(s)))" "$out")" ;;
-      d) out="$(python3 -I -c "import sys
-e, a, r = sys.argv[1].split('|')
-print(e + (' review again' if int(r.split('=')[1]) >= 1 else ' no review again'))" "$out")" ;;
+      d) out="$(_d60d_read "$out")" ;;
     esac
     res+="${res:+|}$([[ $c == 7c7a1c1 ]] && echo 9.8.4 || echo base)=$out"
   done
@@ -502,6 +510,10 @@ assert_eq "D60b Build with a group running, saved by 9.8.4 and by the base, goes
   "9.8.4=commit|base=commit" "$(_d60 build-group a)"
 assert_eq "D60c an armed run in Build saved by 9.8.4 and by the base is taken up asking at every stage, to the commit question" \
   "9.8.4=commit asks at every stage|base=commit asks at every stage" "$(_d60 armed-build c)"
+assert_eq "check46: the reader of D60d takes a Review launch first after the restore, not the Review of the fail loop" \
+  "commit review again|commit no review again" \
+  "$(_d60d_read 'commit|asked=build,check|reviews=1|first=temper:temper-review')|$(
+    _d60d_read 'commit|asked=review,build,check|reviews=1|first=ask:review.fail')"
 assert_eq "D60d Review with an open finding saved by 9.8.4 and by the base runs Review once more and reaches the commit question" \
   "9.8.4=commit review again|base=commit review again" "$(_d60 review-finding d)"
 assert_eq "D60e a parked run saved by 9.8.4 and by the base goes on to the commit question" \

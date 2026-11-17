@@ -54,6 +54,7 @@ selftest:D29b                  WP28           D29
 selftest:D29c                  WP31           D29
 selftest:D29d                  WP31           D29
 selftest:D60c                  WP11           D60
+selftest:D60d                  WP11           D60
 selftest:D61a                  WP29           D61
 selftest:D61b                  WP29           D61
 selftest:D62a                  WP29           D62
