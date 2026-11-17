@@ -51,11 +51,18 @@ def git(root, *args, check=True):
 
 def removed_lines(root, base, specs):
     """[(path, old line number)] of the lines `git diff base` removes, for the pathspecs."""
-    out = git(root, "diff", "--no-color", "--no-ext-diff", "--unified=0", base, "--", *specs)
+    # the prefixes are named, so a person's diff.noprefix or diff.mnemonicPrefix cannot hide the paths
+    out = git(root, "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "--unified=0", base,
+              "--", *specs)
     found, path, old = [], None, 0
     for line in out.split("\n"):
         if line.startswith("--- "):
-            path = line[6:] if line.startswith("--- a/") else None
+            if line.startswith("--- a/"):
+                path = line[6:]
+            elif line.rstrip() == "--- /dev/null":
+                path = None
+            else:
+                raise RuntimeError("git diff names a file this script cannot read: %s" % line)
         elif line.startswith("+++ "):
             continue
         elif line.startswith("@@"):
@@ -200,6 +207,14 @@ def main(argv):
                       capture_output=True).returncode != 0:
         print("check_changed_tests: FAIL: git knows no base %s here (the branch must keep it reachable)" % base)
         return 2
+    try:
+        return check(root, base)
+    except RuntimeError as e:
+        print("check_changed_tests: FAIL: %s" % e)
+        return 1
+
+
+def check(root, base):
     names = listed_names(root)
     tree = tree_text(root, PATHSPECS)
     found = [(p, n, nm, base) for p, n, nm in changes(root, base, PATHSPECS, tree)]

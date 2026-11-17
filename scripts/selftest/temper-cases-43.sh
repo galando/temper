@@ -246,6 +246,16 @@ r3="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED docs/plans/one-go/done.md:5 .*: D0
 assert_eq "done: an assertion commented out or with a word added at its end, and a row with a cell added, are changes" \
   "1|1 1|1 1|1" "$r1 $r2 $r3"
 
+# the paths of the diff are read the same under a person's diff.noprefix or diff.mnemonicPrefix: the check never passes
+# with nothing read (phase 2 review, F7)
+CT_BASE="$(_c43_ct_repo)"
+sed -i '/T1 one/d' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+_c43_git "$_c43/ct" config diff.noprefix true
+r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-11.sh:1 .*T1 one' "$_c43/ct.out")"
+_c43_git "$_c43/ct" config --unset diff.noprefix; _c43_git "$_c43/ct" config diff.mnemonicPrefix true
+r2="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-11.sh:1 .*T1 one' "$_c43/ct.out")"
+assert_eq "done: a removed assertion is found under diff.noprefix and under diff.mnemonicPrefix" "1|1 1|1" "$r1 $r2"
+
 # D84b: the second base, the commit that first added the file, for done.md and the case files 43 to 46
 CT_BASE="$(_c43_ct_repo)"
 mkdir -p "$_c43/ct/docs/plans/one-go"
