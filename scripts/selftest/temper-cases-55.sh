@@ -122,6 +122,7 @@ assert_eq "design: an existing design.md, a run at Design and the person's ask e
 
 # --- the approval offers run-design ---
 _plan55
+git config user.email t@example.com; git config user.name T   # the spec commit of its calls, where git has no identity
 _rd55="$(_x55 "o = opt(d, 'run-design')
 c = (o or {}).get('calls') or []
 r = 'none' if o is None else '%s|%s|first=%s|last=%s' % (o.get('label'), o.get('move'),
