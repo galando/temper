@@ -555,6 +555,30 @@ print("|".join(["offered" if writers and block else "not offered",
 PY
 )"
 _d53b_check="$(_x45 "r = 'agent offered' if 'find-setup' in ids(d) or any('env_agent' in c for o in opts(d) for c in o.get('calls') or []) else 'no agent offered'")"
+# M10 and M13 (c): Check ran again and met the same fault. Save for later is recommended, and while the block is still
+# offered the question still shows every line of it
+python3 - <<'PY'
+import json
+p = ".temper/build-state.json"
+d = json.load(open(p)); d["redo"] = {"stage": "check", "reason": "SETUP: needs JDK [24,) (found 21.0.12)", "ts": "2026-01-01T00:00:00Z"}
+json.dump(d, open(p, "w"), indent=2)
+PY
+assert_eq "D53a the same SETUP fault after Check ran again still offers the block and shows every line of it" \
+  "recommended=save|offered|whole" "$(python3 - "$_d53_block" "$("$TEMPER" next --json 2>/dev/null)" <<'PY'
+import json, sys
+block = [l for l in sys.argv[1].splitlines() if l.strip()]
+try:
+    d = json.loads(sys.argv[2])
+except ValueError:
+    d = {}
+a = d.get("ask") or {}
+text = (a.get("question") or {}).get("question", "")
+opts = list(a.get("options") or []) + list((a.get("more") or {}).get("options") or [])
+print("|".join(["recommended=%s" % next((o.get("id") for o in opts if o.get("recommended")), "none"),
+                "offered" if block and any(o.get("id") == "add-setup" for o in opts) else "not offered",
+                "whole" if block and all(l.strip() in text for l in block) else "not whole"]))
+PY
+)"
 rm -rf backend scripts
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 gfail plan "preflight" "1 command(s): 1 environment fault"
