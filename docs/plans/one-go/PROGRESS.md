@@ -48,7 +48,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP05 | done | `fbc75ec` | 2026-11-16 | floor of default-run 8 dialogs and 6 launches in every mode, fix 4 and 3; caps file, stops list, run summary, replay base 9 questions and 7 launches |
 | WP06 | done | `8b57b10` | 2026-11-16 | slow and broken scripted projects, four scenarios on the list, the expected to fail rule of the scenarios; whole selftest PASS 2710 |
 | WP07 | done | `3d43388` | 2026-11-16 | case files 43 to 46 and 17 acceptance scenarios written failing first; check_done, check_changed_tests, verify.sh final; expected to fail 112 (92 selftest, 20 scenarios) |
-| WP08 | todo | | | |
+| WP08 | doing | | | four lanes, tests written first by other agents |
 | WP09 | todo | | | |
 | WP10 | todo | | | |
 | WP18 | todo | | | |
@@ -117,4 +117,11 @@ None.
 - 2026-11-16 WP07: rows that differ from their package spec, where the case follows the row: D42 (Teach Me stays in reach at a passed Review with an open Medium finding; WP08), D57a (the Medium finding is named at the commit question; WP08 turns it green only with that), D61 (a GONE key is named once by `temper config show`; WP29).
 - 2026-11-16 WP07: passing at the head and so not listed, though `done.md` names a later package: D64b (WP24), D60a, D60b, D60d, D60e; D29b reads the page rule of `commands/temper.md`, because the selftest job cannot run the mod.
 - 2026-11-16 WP07: the merges of the first stage (`3c9dd27`, `e5935e8`) carry no attribution lines; they were not rewritten.
+- 2026-11-16 the container restarted while the phase 2 gate, the phase 2 review and the WP08 test writers ran; the review and the test writers were resumed from their journals, the gate run again. The restart brought Claude Code 2.1.326, whose `AgentInfo` type refused a fake of `tests/mod/driver-wiring.test.ts` under `plugin validate --strict` (a line of the base); fixed in `0543f3b`.
+- 2026-11-17 phase 2 review: 21 findings confirmed, 4 refuted, all fixed in the merges of `p2fixa` to `p2fixd`: the drift options carry ids beside them (`drift_ids`), the case 40 walker reaches `group.change`, the run summary counts no task gate as a launch, counts the question `next` hands the carrier and counts each step back, a `final` of the floor or of the caps is never removed, the bench counts steps back to Plan and blocked tasks, the broken scenarios read the card from the view and want a rerun at once on the same tree, a list line for a mode its scenario never runs is stale, and `check_changed_tests` and `check_done` lost five ways to pass a change unseen. Their checkers found three more (a listed name `,` that covered six expects, a looser D06 expect, the caps `final` gap), fixed in the merge `7f2dade`.
+- 2026-11-17 phase 2 review: D60d passed at the head without its promise; its reader now wants a Review launch first after the restore, so `selftest:D60d` is on the list for WP11 and the list holds 113 (93 selftest, 20 e2e).
+- 2026-11-17 phase 2 review: `view-fixtures.ts` is 192,283 bytes; the view `armed-review-pass` moved to `view-fixtures-2.ts` (72,413).
+- 2026-11-17 for WP22: broken-flaky may never pass as WP22 step 9 is written. `MOCK_RED` fails every suite run with no filter on every tree, so "the same command has a pass on the base tree" never holds; WP22 must count a failure known at the base as that pass, or the fixture changes. The fixture now keys the late flaky test on the tree of the code folder (`HEAD:backend`), not `HEAD^{tree}` as the spec of WP06 says.
+- 2026-11-17 for WP13 and WP16: group-fail asks `build.pass` after the approval in plain and mod mode, which is D01's promise; the D06 expect can pass only once D01 holds.
+- 2026-11-17 `check_changed_tests.py` reads a TypeScript `expect(` call for at most 40 lines and counts parentheses outside quoted strings only; neither limit bites today.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
