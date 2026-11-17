@@ -125,7 +125,7 @@ class CommitPart:
                 return {"action": "work", "stage": "commit", "calls": [self.c("report --html")], "agents": [],
                         "say": "The report page is written (report.html in the spec folder); then the commit."}
             if r.state.get("parked"):
-                return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?", stage="commit", qid="commit.confirm", options=[
+                return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed%s, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?" % self.open_listed(), stage="commit", qid="commit.confirm", options=[
                     self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.report_steps(), oid="commit"), self.save()])}
             return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.report_steps(),
                     "say": "Every gate passed: the report first, then the commit."}

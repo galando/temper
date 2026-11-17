@@ -28,7 +28,7 @@ tools:
     mode: off
 
 review:
-  block-on: [critical, high]  # severities that fail the review gate (9.8.5: high blocks by default)
+  block-on: [critical, high]  # severities that fail the review gate (9.8.5); a finding below them goes on to Check
 
 check:
   coverage-threshold: 80      # the check gate requires recorded coverage >= this
@@ -144,7 +144,7 @@ autonomy:
   # enabled is no longer read (9.8.0): the unattended run is offered at the last question before Build in every run.
   max-blast-radius: 15         # the plan gate splits a group that declares more files than this
   # policy: decide             # when you arm a run, Review and Check decide by fixed rules too: a failed check loops back
-  #                            # within the loop budget, findings at medium or above are repaired, nothing is overridden;
+  #                            # within the loop budget, findings at high or above are repaired, nothing is overridden;
   #                            # anything else and the commit still ask you. Default: ask (Review and Check ask you).
   # Folder-name patterns over paths in your project only (any path before and after).
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]

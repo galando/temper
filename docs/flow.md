@@ -189,8 +189,11 @@ reason `The tasks already agree`, which the report shows. Each Build task prompt
 first, as decisions that win over `tasks.md`.
 
 **High findings block.** `review.block-on` defaults to `[critical, high]`. A passed Review with an open finding at
-medium or above recommends `Loop back to Build`; both Review questions name the open findings per level
-(`open findings: 1 high, 2 medium`).
+high or above recommends `Loop back to Build`; with a Medium one it recommends `Continue to Check`, and the passed Check
+question lists the open findings (`open findings: 1 medium` and the first three claims) where the person commits. Both
+Review questions name the open findings per level (`open findings: 1 high, 2 medium`). At a passed Review with an open
+finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for later` are under `More options`, and
+`Teach Me` takes the place of `Architecture Depth Review`.
 
 **Integrate after new commits.** `temper integrate` records the HEAD it passed on. Called again on a PASS, it runs the
 whole Integration command again when HEAD moved since (a fix pass committed), records the new verdict, then the
@@ -242,7 +245,7 @@ nothing), and the person types the command. The mod lets it run only as that ans
 `autonomy.policy: decide` in `.claude/temper.config` (only the person writes it) extends an armed run past Build. The
 person still arms the run at the last question before Build; the option's text then says the policy applies. After
 Build passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the
-question: an open finding at medium or above loops back to Build with the findings as the reason; a clean Review goes
+question: an open finding at high or above loops back to Build with the findings as the reason (a Medium one goes on); a clean Review goes
 on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only while
 `loops.max-per-type` and the autonomy budget last. Nothing is overridden or accepted. A failed group check during Build
 takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again, a loop back to

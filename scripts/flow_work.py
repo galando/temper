@@ -39,14 +39,15 @@ class WorkPart:
     def armed_text(self):
         if self.r.policy():
             return ("Build, Review and Check run by themselves under your policy (autonomy.policy: decide): a failed check loops "
-                    "back within the loop budget, findings at medium or above are repaired, nothing is overridden; the commit asks you.")
+                    "back within the loop budget, findings at high or above are repaired, nothing is overridden; the commit asks you.")
         return "Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual."
 
     def policy_move(self, stage, verdict):
         """9.8.5 (U1): an armed run under autonomy.policy: decide goes on through Review and Check by fixed rules, the
-        person's once for the run: a failed check loops back to Build while the loop budget lasts, findings at medium or
-        above are repaired, nothing is overridden or accepted. Anything else parks for the person (an environment fault, a
-        missing measurement, the acceptance tests, a spent budget); the commit always asks (commit() parks an armed run)."""
+        person's once for the run: a failed check loops back to Build while the loop budget lasts, findings at high or
+        above are repaired (F1 of WP08: a Medium one goes on), nothing is overridden or accepted. Anything else parks for
+        the person (an environment fault, a missing measurement, the acceptance tests, a spent budget); the commit always
+        asks (commit() parks an armed run)."""
         r = self.r
         rows = r.failed_rows(stage)
         why = "; ".join("%s: %s" % (x.get("name"), " ".join(str(x.get("detail", "")).split())) for x in rows)[:300]
@@ -65,7 +66,7 @@ class WorkPart:
         go = {"action": "auto", "stage": stage, "say": "%s passed; the policy goes on to %s." % (LABEL[stage], LABEL.get(nxt, nxt)),
               "calls": [self.c("state advance %s_complete %s" % (stage, nxt))]}
         if stage == "review":
-            opens = [f for f in r.findings() if f["state"] == "open" and f["severity"] in ("critical", "high", "medium")]
+            opens = [f for f in r.findings() if f["state"] == "open" and f["severity"] in ("critical", "high")]
             if opens:
                 return loop("repair %d open finding(s): %s" % (len(opens), "; ".join(f["claim"][:100] for f in opens[:3])))
             if verdict == "PASS":
@@ -329,6 +330,15 @@ class WorkPart:
             n[f["severity"]] = n.get(f["severity"], 0) + 1
         parts = ["%d %s" % (n[k], k) for k in sorted(n, key=lambda k: order.index(k) if k in order else len(order))]
         return ", open findings: " + ", ".join(parts) if parts else ""
+
+    def open_listed(self):
+        """F1 of WP08: ", open findings: 1 medium: <the first three claims>" for the questions where the person commits
+        (a Medium finding goes on past Review), or "" with none."""
+        opens = [f for f in self.r.findings() if f["state"] == "open"]
+        if not opens:
+            return ""
+        more = "; and %d more" % (len(opens) - 3) if len(opens) > 3 else ""
+        return "%s: %s%s" % (self.finding_counts(opens), "; ".join(f["claim"][:120] for f in opens[:3]), more)
 
     def decisions_line(self):
         text = decisions.prompt(self.r.spec) if self.r.spec else ""
