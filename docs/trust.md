@@ -86,6 +86,7 @@ statement in the ledger.
   prints and sets no token.
 - **Writes.** Only `reference/pr.md` pushes or calls `gh pr create`, after the person chose a pull request option at the Check question.
   Every pull request is a draft; Temper never runs `gh pr ready`. An armed run never pushes.
+  Temper pushes only after the person chose a pull request option at the commit question; the run stops there.
 - **The commit hook** gates the run's branch only. A commit on another branch passes with one line. That is a known limit.
 - **Turning Temper off.** After you disable the plugin, run `temper guards uninstall`. The hook also passes on its own, with one line that names
   the command, once the plugin's files are gone. Temper reads no settings file to find out that a plugin is disabled.

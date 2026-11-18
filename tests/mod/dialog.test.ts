@@ -195,13 +195,15 @@ describe('every wait point of the flow audit', () => {
     expect(state(w).run_mode).toBe('autonomous')
   })
 
-  test('an armed run is Build alone (9.8.0): a failed Check asks the person, and no loop back goes by itself', async ($, on) => {
+  test('the run to the commit (WP11): a failed Check loops back once by rule as the CLI\'s own action, and no other loop back goes', async ($, on) => {
     const api = $ as unknown as Api
-    const cfg = { '.claude/temper.config': 'autonomy:\n  enabled: true\n', '.temper/build-state.json': JSON.stringify({ run_mode: 'autonomous' }) }
-    const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, [], cfg)
+    const state = { run_mode: 'autonomous', unattended_from: 'plan' }   // started at the approval (approve-run)
+    const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, [], { '.temper/build-state.json': JSON.stringify(state) })
     await api.session.start(START)
-    const next = (JSON.parse(viewText(w) ?? '{}') as { next: { action: string } }).next
-    expect(next.action).toBe('ask')
+    const next = (JSON.parse(viewText(w) ?? '{}') as { next: { action: string; calls: string[] } }).next
+    expect(next.action).toBe('auto')
+    expect(next.calls.length).toBe(1)
+    expect(next.calls[0]).toContain("state loop check build --reason 'rule: ")
     expect(await sh(api, `${CLI} state loop check build --reason 'my own words'`)).toBeDefined()
     expect(await write(api, 'src/app.ts')).toContain('Check only runs checks')
   })

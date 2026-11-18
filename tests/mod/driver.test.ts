@@ -274,7 +274,7 @@ describe('the driver carries a run from the request to the end', () => {
     const { p, log } = port({ goes: [{ action: 'work', steps: [`${CLI} state archive`, 'Follow /p/reference/pr.md, section One PR.', `${CLI} state clear`] }] })
     const end = await drive(p, CLI, null)
     expect(end.kind === 'handback' && end.args).toBe('next')
-    expect(log.ran).toEqual([`${CLI} go`])
+    expect(log.ran).toEqual([`${CLI} go --taken-up`])
   })
 
   test('an option the conversation carries out (a skill): recorded, nothing of it run, handed on as chose <label>', async () => {
@@ -283,7 +283,7 @@ describe('the driver carries a run from the request to the end', () => {
       { label: 'Grill Me', calls: [`${CLI} usage note grill`], do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' }] } }], answers: ['Grill Me'] })
     expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'chose Grill Me', why: 'Use the grill-me skill on this stage\'s work, then ask this question again.' })
     expect(log.recorded).toEqual(['Approve? -> Grill Me'])
-    expect(log.ran).toEqual([`${CLI} go`])
+    expect(log.ran).toEqual([`${CLI} go --taken-up`])
   })
 
   test('a failed call, an error action and a gate that records FAIL', async () => {
@@ -328,7 +328,7 @@ describe('a call that printed its own marker recorded a verdict, whatever its ex
     const { p, log } = port({ goes: [groupFailed(), { action: 'none', say: 'end' }], answers: [twice],
       fail: c => c === again, out: c => (c === again ? out : '') })
     expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
-    expect(log.ran).toEqual([`${CLI} go`, again, `${CLI} go`])
+    expect(log.ran).toEqual([`${CLI} go --taken-up`, again, `${CLI} go`])
     expect(recordedVerdict(again, out) == null).toBe(false)
   })
 
@@ -403,7 +403,7 @@ describe('the person interrupts', () => {
   test('the drive stops where it is, says how to take the run up again, and starts no model turn', async () => {
     const { p, log } = port({ goes: [{ action: 'work', steps: [`${CLI} report --end`] }, { action: 'none' }], stop: 1 })
     expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: STOPPED })
-    expect(log.ran).toEqual([`${CLI} go`])
+    expect(log.ran).toEqual([`${CLI} go --taken-up`])
   })
 })
 

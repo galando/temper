@@ -193,6 +193,24 @@
    "where": "every stage",
    "trigger": "temper budget grant: more repeats of a failed check than the budget holds",
    "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "plan.sensitive-path",
+   "where": "Build, Review",
+   "trigger": "a failed check in a plan that declares a sensitive path (autonomy.park-on-touch): no repair by rule",
+   "check": "run: no repair by rule when the plan declares a sensitive path"
+  },
+  {
+   "id": "check.mutation-only",
+   "where": "Check",
+   "trigger": "only the mutation row failed: stays until WP19 makes the score information, with a line in decision 3 of ADR 0019",
+   "check": "run: a failed Check whose only failed row is the mutation row stops"
+  },
+  {
+   "id": "run.taken-up",
+   "where": "any stage",
+   "trigger": "the person took the run up again: the stage's question, once (temper go --taken-up)",
+   "check": "run: a run taken up again asks its stage once"
   }
  ]
 }

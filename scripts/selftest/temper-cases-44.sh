@@ -513,6 +513,14 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
       git commit -q -m 'an earlier run'; git checkout -q master; gpass plan; _stop44 "$_FORBID44|state set branch|spec branch" ;;
     person.evidence-accept) _finding_again44; _stop44 "$_FORBID44|evidence clear" ;;
     person.leave-intent-plan) _unattended plan; gpass plan; _stop44 "$_FORBID44|state advance (intent|plan)_complete" ;;
+    plan.sensitive-path) _unattended build   # WP11 stop 20: the plan declares a file under a sensitive path
+      sed -i 's|^\*\*File:\*\* `src/demo.sh`$|**File:** `src/demo.sh`, `src/auth/login.sh`|' .temper/specs/demo/tasks.md
+      _g44 "$(printf "$_GROUP44" '"fails": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}')"
+      _stop44 "$_FORBID44|group (fix|reopen)" ;;
+    check.mutation-only) _unattended check   # WP11 stop 21: only the mutation row failed
+      gfail check "mutation score >= threshold" "40% of planted bugs caught < 60%"; _stop44 "$_FORBID44|state loop" ;;
+    run.taken-up) _unattended build; gpass build   # WP11 stop 22: the run taken up again asks its stage once
+      "$TEMPER" go --taken-up >/dev/null 2>&1; _stop44 "$_FORBID44|state advance" ;;
     *) echo "no state is built for this stop" ;;
   esac
 }

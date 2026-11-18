@@ -78,8 +78,11 @@ class BuildPart:
         return task_model if int(task.get("attempt") or 1) <= 2 else esc
 
     def no_groups(self):
-        """tasks.md has tasks and no group: Build stops before any group starts, with no agent."""
+        """tasks.md has tasks and no group: Build stops before any group starts, with no agent. A run that goes on by itself
+        records the stop first (WP11), so no question waits without a record."""
         r = self.r
+        if r.armed():
+            return self.stop("build", "tasks.md has tasks but no groups")
         text = "Build stopped: tasks.md has tasks but no groups, so Build cannot run them in isolated groups."
         opts = []
         if r.can_loop("build", "plan"):
@@ -210,13 +213,13 @@ class BuildPart:
             gate = (ginfo.get("gate") or {}).get("verdict")
             if done and not gate:
                 return {"action": "work", "stage": "build", "calls": [self.c("group gate %s" % gidx)], "agents": [], "say": "Group %s is checked." % gidx}
-            if gate == "FAIL" and ginfo.get("fix") and (not r.armed() or r.policy()):   # M3 of WP08: the policy launches it too
+            if gate == "FAIL" and ginfo.get("fix"):   # M3 of WP08: a run that goes on by itself launches it too
                 return self.group_fix_work(g, ginfo)
             if gate == "FAIL":
                 return self.group_failed(g, ginfo)
             if gate == "PASS" and not ginfo.get("confirmed"):
                 if r.armed():
-                    return {"action": "auto", "stage": "build", "calls": [self.c("group continue %s" % gidx)], "say": "Group %s passed; the armed run goes on." % gidx}
+                    return {"action": "auto", "stage": "build", "calls": [self.c("group continue %s" % gidx)], "say": "Group %s passed; the run goes on." % gidx}
                 # 9.8.0: a plan with one group goes on to the merge by itself: the Build question comes right after, and
                 # its "Change something" sends work back. Two questions in a row about the same work were one too many.
                 if len(plan.get("groups", [])) == 1:
@@ -316,7 +319,10 @@ class BuildPart:
     def env_task(self, n, plan, info):
         """A task whose GREEN run failed on the environment (a JDK, a database, the setup block), not on its code: it kept
         its attempt and its worktree. The person repairs the environment; the same work is checked again. Asked in every
-        mode: an armed run cannot repair a toolchain."""
+        mode: a run that goes on by itself cannot repair a toolchain, so it records the stop first (WP11)."""
+        if self.r.armed():
+            return self.stop("build", "Task %d failed on the environment: %s" % (
+                n, " ".join(str((info.get("env_fault") or {}).get("reason", "")).split())[:300] or "no reason recorded"))
         title = next((x.get("title", "") for x in plan.get("tasks", []) if x["n"] == n), "")
         why = " ".join(str((info.get("env_fault") or {}).get("reason", "")).split())[:300]
         model = self.ran_on(info)
@@ -352,9 +358,7 @@ class BuildPart:
             if m:
                 cases.append(m.group(1).strip())
         if r.armed():
-            return {"action": "auto", "stage": "build", "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(
-                "Task %d is a manual task: it needs you to confirm it by hand" % n))],
-                "say": "Task %d is a manual task; the armed run parks for you." % n}
+            return self.stop("build", "Task %d is a manual task: it needs you to confirm it by hand" % n)
         text = "Task %d (%s) is a manual task. Confirm by hand that each Case holds: %s." % (n, t.get("title", ""), "; ".join(cases) or "see the task")
         confirm = self.opt("Confirm", "Every Case holds; the task passes.", move="confirm",
                            calls=[self.c("task confirm %d --by '{answer}'" % n), self.c("task gate %d --model person" % n)],
@@ -425,25 +429,25 @@ class BuildPart:
         reason = " ".join(str(gate.get("reason", "")).split())
         reason = reason if len(reason) <= 300 else reason[:297] + "..."
         fl = self.fail_text(ginfo)
-        stepback = False
-        if self.r.armed() and self.r.policy() and not decide:
-            # 9.8.5 (U1): under the policy the run takes the recommended option itself when no person is needed for it;
-            # a typed command, Save for later or a spent budget park it, as before
+        if self.r.armed() and not decide:
+            # WP11: a run that goes on by itself takes the recommended option itself (chosen by field, never by label) when it
+            # has calls, needs nothing typed, does not save the run and is no step back (WP08), and the group declares no
+            # file under a sensitive path. Anything else is a recorded stop.
             q = self.group_failed(g, ginfo, decide=True)["ask"]
             rec = next((o for o in q["options"] + ((q.get("more") or {}).get("options") or []) if o.get("recommended")), None)
-            stepback = bool(rec) and rec.get("move") == "back"   # M4 of WP08: an unattended run never steps back to Plan
-            if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop") and not stepback:
-                why = "policy: group %s failed its check (%s)" % (gid, reason[:200])
+            files = [f for t in (self.r.plan or {}).get("tasks", []) if t.get("n") in g.get("tasks", []) for f in t.get("files", [])]
+            touched = [f for f in self.r.sensitive() if f in files]
+            if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop") and rec.get("move") != "back" and not touched:
+                why = "rule: group %s failed its check (%s)" % (gid, reason[:200])
                 calls = [c.replace("'{reason}'", "'%s'" % why.replace("'", "")) for c in rec["calls"]]
                 return {"action": "auto", "stage": "build", "calls": calls,
-                        "say": "Group %s failed its check; the policy takes \"%s\"." % (gid, self.bare(rec))}
-        if self.r.armed() and not decide:  # nobody is there to answer: an armed run parks, as on every stop
+                        "say": "Group %s failed its check; the rule takes \"%s\"." % (gid, self.bare(rec))}
             why = (reason[:300] + (" | " + fl if fl else ""))[:1200]   # 9.8.5 (S4): the whole failure, not its first 400 characters
-            if stepback:
-                why = ("a step back to Plan is yours to decide: " + why)[:1200]
-            return {"action": "auto", "stage": "build",
-                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],
-                    "say": "Group %s failed its check; the armed run parks for you." % gid}
+            if rec and rec.get("move") == "back":
+                why = "a step back to Plan is yours to decide: " + why
+            elif touched:
+                why = "the group declares a sensitive path (%s), so nothing is repaired by rule: %s" % (", ".join(touched[:3]), why)
+            return self.stop("build", "group %s failed its check: %s" % (gid, why))
         plan = self.r.plan or {"tasks": []}
         # 9.8.4: how many times the group's check failed, and whether the whole failed while every part passed. A blind
         # rerun of every task was always the recommended answer; a measured run reran a group of 12 tasks five times.

@@ -64,11 +64,13 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
 ## The loop
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper go` and do what its `action` says. Then run it again. Stop
-only where this section says so. When it lists `setup`, run those calls first, each once.
+only where this section says so. When it lists `setup`, run those calls first, each once. When the command
+was typed with no words, the first `temper go` is `temper go --taken-up`: a run that goes on by itself then
+asks the question of its stage once.
 
 **`temper go` (9.8.0)** runs the CLI's own steps itself (gates, starting and merging Build's work,
-Check's run, an armed run's moves) and prints one compact object at the first point that needs you: agents to
-launch, a question to ask, steps to do, a wait, or the end. Its `ran` lists what it ran; say nothing
+Check's run, the moves of the run to the commit) and prints one compact object at the first point that
+needs you: agents to launch, a question to ask, steps to do, a wait, or the end. Its `ran` lists what it ran; say nothing
 about those. It never runs a call only the person may cause: the calls of the option the person
 chose are yours to run, as below. A call that prints a `VERDICT:` line recorded a verdict: it is no failure,
 whatever its exit code. When it prints `action: error`, say its `say` in one line and run
@@ -115,9 +117,9 @@ whatever its exit code. When it prints `action: error`, say its `say` in one lin
   with `stop` ends the turn: the run is saved.
 - **`wait`**: tasks are running. For a task whose agent you launched in this conversation, wait for
   its result, then run its `after` calls. Otherwise (a new conversation) run its `after` calls now.
-- **`auto`**: the CLI's own move (an armed run, or a step with nothing to decide, such as the one group of a plan
-  passing): run its `calls`. Never ask "Shall I...?"; in an armed run the only stop is a park, which `next` turns
-  into a question.
+- **`auto`**: the CLI's own move (the run after the approval goes on to the commit by itself, or a step with
+  nothing to decide): run its `calls`. Never ask "Shall I...?". A stop is the park call; say its `say` in one
+  line, then ask the question that follows.
 - **`broken`**: say its `say` in one line and ask its `restart` question.
 - **`none`** after a commit: the steps printed the report before they cleared the run (a report printed
   now is empty); when the person asked for the page, it is `report.html` in its spec folder. Say where it

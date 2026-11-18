@@ -11,7 +11,8 @@ type Api = {
   command: { run: (a: unknown) => Promise<{ text?: string }> }
 }
 type On = Parameters<typeof world>[0]
-const isGo = (call: string) => /scripts\/temper go$/.test(call)
+// `temper go`, and its first call of a drive with no request (WP11: --taken-up)
+const isGo = (call: string) => /scripts\/temper go( --taken-up)?$/.test(call)
 
 // The engine's side of the driver: `temper go` answers from a list; a state init writes the run state as the CLI does.
 function engine(on: On, w: ReturnType<typeof world>, goes: unknown[], opts: { agentStatus?: string } = {}) {

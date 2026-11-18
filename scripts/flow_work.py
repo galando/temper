@@ -38,55 +38,67 @@ class WorkPart:
                 "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
 
     def armed_text(self):
-        if self.r.policy():
-            return ("Build, Review and Check run by themselves under your policy (autonomy.policy: decide): a failed check loops "
-                    "back within the loop budget, findings at high or above are repaired, nothing is overridden; the commit asks you.")
-        return "Build runs every group and task by itself and parks if it stops. Review and Check then ask you as usual."
+        return ("Approve the plan; the run goes on by itself: a passed check moves on, a failed check gets one repair and then "
+                "asks you, the commit asks you, and nothing is pushed.")
 
-    def policy_move(self, stage, verdict):
-        """9.8.5 (U1): an armed run under autonomy.policy: decide goes on through Review and Check by fixed rules, the
-        person's once for the run: a failed check loops back to Build while the loop budget lasts, findings at high or
-        above are repaired (F1 of WP08: a Medium one goes on), nothing is overridden or accepted. Anything else parks for
-        the person (an environment fault, a missing measurement, the acceptance tests, a spent budget); the commit always
-        asks (commit() parks an armed run)."""
+    def stop(self, stage, reason):
+        """WP11: a recorded stop of a run that goes on by itself: the park call (the stage then asks its own question, and
+        the run goes on by itself after the answer). Its say names the stop."""
+        what = "%s: %s" % (LABEL.get(stage, stage), " ".join(str(reason).split()))
+        return {"action": "auto", "stage": stage, "say": "%s. The run stops here and asks you." % what[:240].rstrip("."),
+                "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(what[:1200]))]}
+
+    def repair(self, stage, reason):
+        """WP11 (ADR 0019 decision 3): the one seam of the repair by rule: one counted loop back to Build (or Fix). It stops
+        when the plan declares a sensitive path, when the budget already holds a repeat for the stage's check, or when that
+        key has no room. WP24 replaces this body by the repair in place."""
+        r = self.r
+        back = "fix" if r.command == "fix" else "build"
+        key = "gate:%s" % (r.gate_of(stage) or stage)
+        if r.sensitive():
+            return self.stop(stage, "the plan touches a sensitive path (%s), so nothing is repaired by rule: %s" % (
+                ", ".join(r.sensitive()[:3]), reason))
+        rm = r.room(key)
+        if rm["used"] >= 1 or not rm["ok"]:
+            return self.stop(stage, "%s after its one repair by rule: %s" % (
+                "it failed again" if rm["used"] >= 1 else "the budget has no room", reason))
+        return {"action": "auto", "stage": stage, "say": "%s: the rule loops back to %s once (%s)." % (LABEL[stage], LABEL[back], reason[:120]),
+                "calls": [self.c("state loop %s %s --reason %s" % (stage, back, shlex.quote(("rule: " + reason)[:300])))]}
+
+    def rule_move(self, stage, verdict):
+        """WP11 (ADR 0019 decision 3): Review and Check of a run that goes on by itself, by the closed list. Review: an open
+        finding at a level of review.block-on takes the repair; a PASS moves on (a finding below the level is carried to
+        the commit question); anything else stops. Check: a PASS moves on; a setup fault, a missing measurement, the
+        acceptance rows, a criterion only the person can confirm and a failed mutation row alone stop; anything else takes
+        the repair. Nothing is skipped or accepted by rule."""
         r = self.r
         rows = r.failed_rows(stage)
         why = "; ".join("%s: %s" % (x.get("name"), " ".join(str(x.get("detail", "")).split())) for x in rows)[:300]
-
-        def park(reason):
-            return {"action": "auto", "stage": stage, "say": "%s: the policy does not decide this; the armed run parks for you." % LABEL[stage],
-                    "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(("%s: %s" % (LABEL[stage], reason))[:1200]))]}
-
-        def loop(reason):
-            if not r.can_loop(stage, "build"):
-                return park("the loop budget is spent: " + reason)
-            return {"action": "auto", "stage": stage, "say": "%s: the policy loops back to Build (%s)." % (LABEL[stage], reason[:120]),
-                    "calls": [self.c("state loop %s build --reason %s" % (stage, shlex.quote(("policy: " + reason)[:300])))]}
-
         nxt = r.next_of(stage)
-        go = {"action": "auto", "stage": stage, "say": "%s passed; the policy goes on to %s." % (LABEL[stage], LABEL.get(nxt, nxt)),
+        go = {"action": "auto", "stage": stage, "say": "%s passed; the run goes on to %s." % (LABEL[stage], LABEL.get(nxt, nxt)),
               "calls": [self.c("state advance %s_complete %s" % (stage, nxt))]}
         if stage == "review":
-            opens = [f for f in r.findings() if f["state"] == "open" and f["severity"] in ("critical", "high")]
+            opens = r.open_findings()
             if opens:
-                return loop("repair %d open finding(s): %s" % (len(opens), "; ".join(f["claim"][:100] for f in opens[:3])))
+                return self.repair(stage, "repair %d open finding(s): %s" % (len(opens), "; ".join(f["claim"][:100] for f in opens[:3])))
             if verdict == "PASS":
                 return go
-            return park(why or "the check failed")
+            return self.stop(stage, why or "the check failed")
         if stage == "check":
             if verdict == "PASS":
                 return go
             if self.setup_fault():
-                return park("SETUP: " + self.setup_fault())
+                return self.stop(stage, "SETUP: " + self.setup_fault())
             if self.measurement_gap(rows) or any(str(x.get("name", "")).startswith("acceptance tests written before Build") for x in rows):
-                return park(why)
-            # M6 of WP08: a criterion only the person can confirm parks (park turns the run interactive), so the next
-            # question is the confirmation; the same match as the Check question's
+                return self.stop(stage, why)
+            # M6 of WP08: a criterion only the person can confirm stops, so the next question is the confirmation
             details = " ".join(str(x.get("detail", "")) for x in rows)
             manual = [c["id"] for c in self.criteria("manual") if re.search(r"\b%s has no supported passing evidence row" % re.escape(c["id"]), details)]
             if manual:
-                return park("%s: only you can confirm %s" % (why, ", ".join(manual)))
-            return loop(why or "the check failed")
+                return self.stop(stage, "%s: only you can confirm %s" % (why, ", ".join(manual)))
+            if rows and all(x.get("name") == "mutation score >= threshold" for x in rows):
+                return self.stop(stage, why)   # stop 21: the score is information only from WP19 on
+            return self.repair(stage, why or "the check failed")
         return None
 
     def setup_offer(self, rows):

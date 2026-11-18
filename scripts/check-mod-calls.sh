@@ -42,7 +42,7 @@ ui.close         closes the pane (a toggle, a pane that would not dock)
 ui.open          opens the pane
 ui.panes         whether the pane is open, read from the engine record of it, which a reload of the module does not lose (a flag of the module went stale)
 ui.resolve       the element table of the surface being drawn (Box, Text, Markdown)
-ui.toast         one toast per stage change
+ui.toast         one toast per stage change, and one when a run that goes on by itself stops
 '
 
 allowed_names() { printf '%s\n' "$ALLOWED" | awk 'NF { print $1 }'; }

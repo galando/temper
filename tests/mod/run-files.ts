@@ -119,7 +119,10 @@ export function deriveView(get: (path: string) => string | undefined): string | 
   const skipped = (s: string) => overrides.find(o => o.stage === s)
   const verdict = (s: string): string | undefined => gates[s]?.verdict
   const result = verdict(stage) === 'PASS' || skipped(stage) ? 'pass' : verdict(stage) === 'FAIL' ? 'fail' : 'work'
-  const armed = bs.run_mode === 'autonomous'   // 9.8.0: no setting; the person arms it at the last question before Build
+  // WP11 (scripts/flow_run.py Run.armed): the run goes on by itself when the person started it at an earlier stage (the
+  // state key unattended_from) and no stop is open (parked)
+  const armed = bs.run_mode === 'autonomous' && typeof bs.unattended_from === 'string' && bs.unattended_from !== '' &&
+    bs.unattended_from !== bs.next_stage && !bs.parked
   // WP14: Design runs only when the person asked for it (want_design), or when design.md exists or the run is at Design or
   // has its verdict (scripts/flow_run.py has_design); no tier and no risk adds it
   const design = stage === 'design' || verdict('design') !== undefined || bs.want_design === true || get(`${spec}/design.md`) !== undefined

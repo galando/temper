@@ -11,20 +11,6 @@ program name. Nothing runs at import.
 import sys
 
 
-def glob_touch_match(argv):
-    import re, sys
-    target, pat = argv[1].lstrip("./"), argv[2]
-    out, i, n = [], 0, len(pat)
-    while i < n:
-        if pat[i:i+3] == "**/": out.append("(?:.*/)?"); i += 3
-        elif pat[i:i+3] == "/**": out.append("(?:/.*)?"); i += 3
-        elif pat[i:i+2] == "**": out.append(".*"); i += 2
-        elif pat[i] == "*": out.append("[^/]*"); i += 1
-        elif pat[i] == "?": out.append("[^/]"); i += 1
-        else: out.append(re.escape(pat[i])); i += 1
-    sys.exit(0 if re.match("^" + "".join(out) + "$", target) else 1)
-
-
 def override_covers(argv):
     import json, sys
     def load(p, default):
@@ -69,7 +55,6 @@ def declared_list(argv):
 
 
 WORDS = {n.replace("_", "-"): f for n, f in (
-    ('glob_touch_match', glob_touch_match),
     ('override_covers', override_covers),
     ('blast_radius', blast_radius),
     ('declared_list', declared_list),

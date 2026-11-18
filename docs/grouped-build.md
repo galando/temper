@@ -17,7 +17,8 @@ Haiku task agents cost about a fourteenth of a Sonnet build agent ([ADR 0013](de
   agent reads only its task (with the test cases Plan wrote for it), its group's Context and one
   existing test of the project as a pattern (a launch carries at most about 14 KB), writes a RED
   then a GREEN test run, and stops. It does not commit.
-- **One human gate per group** (Continue / Change / Stop).
+- **One human gate per group** (Continue / Change / Stop), in a run that asks at every stage. In the run to the commit
+  (Approve and build, the default) a passed group goes on by itself, and a failed one gets one repair by rule.
 
 The `temper` CLI, not a prompt, decides what is ready, what passes and what merges.
 The orchestrator launches every task agent itself, so grouped Build works when subagents
@@ -120,9 +121,9 @@ escalation, and the question recommends the loop back to Plan.
    Review and Check then run as today, and the final feature commit still goes through
    `temper gate commit` and a human.
 
-Nothing is ever pushed. Autonomy may let the CLI make the local task commits and the local
+Nothing is ever pushed. The run to the commit lets the CLI make the local task commits and the local
 integrate merge; it never pushes, never merges to a remote, never re-plans and never makes
-the final feature commit.
+the final feature commit: the commit question always asks (`reference/autonomy.md`).
 
 ## Limits to know about
 

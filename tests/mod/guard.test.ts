@@ -170,11 +170,13 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
   })
 
-  test('an armed run is Build alone (9.8.0): its own move ends the unattended part, and Review loops back only on the person\'s answer', () => {
+  test('the run to the commit (WP11): its own moves keep the mode, and Review loops back by rule only as the CLI\'s own action', () => {
     const own = nextCalls('armed-build-pass')
-    expect(own.map(c => c.replace(/^\S+ /, ''))).toEqual(['state advance build_complete review', 'state set run_mode interactive'])
+    expect(own.map(c => c.replace(/^\S+ /, ''))).toEqual(['state advance build_complete review'])
     for (const c of own) expect('allow' in bash(ctx('build', { allowed: own }), c.replace(/^\S+/, CLI))).toBe(true)
-    expect(nextCalls('armed-review-fail').some(c => c.includes('state loop'))).toBe(false)
+    const loop = nextCalls('armed-review-fail')
+    expect(loop.length === 1 && loop[0]!.includes("state loop review build --reason 'rule: ")).toBe(true)
+    expect('allow' in bash(ctx('review', { allowed: loop }), loop[0]!.replace(/^\S+/, CLI))).toBe(true)
     expect(isDeny(bash(ctx('review'), `${CLI} state loop review build --reason x`))).toBe(true)
   })
 

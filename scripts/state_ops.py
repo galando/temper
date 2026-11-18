@@ -11,6 +11,9 @@ program name. Nothing runs at import.
 import sys
 
 
+SAVED_BY = "9.8.5"   # the version that wrote the run state (state init); a state with none was saved by an older Temper
+
+
 def migrate_legacy(argv):
     import json, os, sys, tempfile
     p = argv[1]
@@ -29,12 +32,84 @@ def migrate_legacy(argv):
         d["run_id"] = uuid.uuid4().hex[:16];  changed = True
     if not isinstance(d.get("step"), int):
         d["step"] = 0;                        changed = True
+    # WP11: a run armed by 9.8.4 or by an earlier 9.8.5 was approved for Build alone: it asks at every stage
+    if d.get("run_mode") == "autonomous" and not d.get("unattended_from"):
+        d["run_mode"] = "interactive";        changed = True
+    # WP11 (row D60): a run saved by an older Temper (no saved_by). Saved after its Review, its completion row names no
+    # file Review read (WP18), so its Review verdict is no verdict of this version: the verdict goes, and Review runs once
+    # more. The stamp is written once, so this happens once.
+    if d.get("saved_by") != SAVED_BY:
+        if "saved_by" not in d and d.get("next_stage") == "review":
+            top = os.path.dirname(p) or "."
+            gp, lp = os.path.join(top, "gates.json"), os.path.join(top, "evidence", "review.json")
+            try:
+                gates = json.load(open(gp))
+            except Exception:
+                gates = {}
+            try:
+                rows = json.load(open(lp))
+            except Exception:
+                rows = []
+            named = any(isinstance(r, dict) and r.get("read") for r in rows if isinstance(rows, list))
+            if isinstance(gates, dict) and "review" in gates and not named:
+                gates.pop("review", None)
+                fd, tmp = tempfile.mkstemp(dir=top)
+                with os.fdopen(fd, "w") as f:
+                    json.dump(gates, f, indent=2); f.write("\n")
+                os.replace(tmp, gp)
+        d["saved_by"] = SAVED_BY;            changed = True
     if not changed:
         sys.exit(0)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p) or ".")
     with os.fdopen(fd, "w") as f:
         json.dump(d, f, indent=2); f.write("\n")
     os.replace(tmp, p)                  # atomic: a truncated migration would LOSE state
+
+
+def may_start(argv):
+    """WP11 (ADR 0019 decision 3): whether `state set run_mode autonomous` may start the unattended run. Only at the
+    approval: the run is at Plan or Design, that stage's gate is PASS and not skipped, and run.default allows it. Prints
+    the reason and exits 1 when it may not."""
+    import json, sys
+    def load(p, default):
+        try:
+            d = json.load(open(p))
+            return d if isinstance(d, type(default)) else default
+        except Exception:
+            return default
+    state, gates, over = load(argv[1], {}), load(argv[2], {}), load(argv[3], [])
+    default, enabled = argv[4].strip().lower(), argv[5].strip().lower()
+    stage = state.get("next_stage") or ""
+    g = gates.get(stage) if isinstance(gates.get(stage), dict) else {}
+    if default == "never-unattended":
+        why = "run.default is never-unattended: this project's runs ask at every stage"
+    elif stage not in ("plan", "design"):
+        why = "the run goes on by itself only from the approval (the person's option at Plan or Design); the run is at %s" % (
+            stage or "no stage")
+    elif g.get("verdict") != "PASS" or any(isinstance(o, dict) and o.get("stage") == stage for o in over):
+        why = "the run goes on by itself only from an approval whose check passed; the %s check did not pass" % stage
+    else:
+        return
+    print(why)
+    sys.exit(1)
+
+
+def park_end(argv):
+    """WP11: the person's answer ends the stop of the stage (`temper park --end`): the mark `parked` goes."""
+    import json, os
+    p = argv[1]
+    try:
+        d = json.load(open(p))
+    except Exception:
+        return
+    if not isinstance(d, dict) or "parked" not in d:
+        return
+    d.pop("parked", None)
+    tmp = '%s.tmp.%d' % (p, os.getpid())
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, p)
 
 
 def state_next(argv):
@@ -225,6 +300,7 @@ def state_init(argv):
         'run_id': uuid.uuid4().hex[:16],
         'step': 0,
         'started': argv[4],
+        'saved_by': SAVED_BY,   # WP11: a state with none was saved by an older Temper (migrate_legacy)
     }
     # ADR 0013: the feature as the person gave it (the Intent brief's input), and a door's stage
     if argv[6]: d['feature'] = argv[6]
@@ -310,6 +386,8 @@ def adhoc_review(argv):
 
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('migrate_legacy', migrate_legacy),
+    ('may_start', may_start),
+    ('park_end', park_end),
     ('state_next', state_next),
     ('redo_from', redo_from),
     ('archive_ledger', archive_ledger),

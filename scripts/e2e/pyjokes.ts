@@ -14,7 +14,7 @@ import path from 'node:path'
 
 import { orchestrate, orchestrateFix } from './loop'
 import type { Script } from './loop'
-import { chained, expect, recommended, t, worktreeOf } from './scenarios'
+import { asksEveryStage, chained, expect, recommended, t, worktreeOf } from './scenarios'
 import { CONTEXT_CHECK_LINE } from './project'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Json } from './world'
@@ -286,7 +286,7 @@ export const pyjokesRun = (w: World): void => {
       seen.note('group-fail', q)
       seen.note('output-G1', wd.run(`${TEMPER} output G1`).out)
     }
-    return recommended(ask, wd)
+    return asksEveryStage(ask, wd)   // WP11: the scenario reads the group question, which only that run asks
   }
   const end = orchestrate(w, { agents, person, instruction: (_w, text) => FINISH.test(text) }, 160)
 
@@ -353,7 +353,7 @@ export const pyjokesFull = (w: World): void => {
   }
   const person = (ask: Json, wd: World): string | { label: string; note?: string } | null => {
     seen.note('question', `${String(ask.question.question)} [${(ask.options as Json[]).map(o => String(o.label)).join(' | ')}]`)
-    return recommended(ask, wd)
+    return asksEveryStage(ask, wd)   // WP11: the scenario reads the Review question, which only that run asks
   }
   const end = orchestrate(w, { agents, person, instruction: (_w, text) => FINISH.test(text) }, 160)
 

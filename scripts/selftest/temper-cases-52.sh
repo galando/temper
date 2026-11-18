@@ -304,8 +304,8 @@ r = 'none' if o is None else '\n'.join(cli)")"
   [[ "$c" == none ]] && { echo "no commit-pr option"; return; }
   while IFS= read -r i; do [[ -n "$i" ]] && bash -c "$i" >/dev/null 2>&1; done <<<"$c"
   for i in 1 2 3 4; do
-    case "$(_x52 "r = 'steps' if d.get('steps') else 'calls' if d.get('action') in ('auto', 'work') and d.get('calls')
-    and not d.get('agents') else d.get('action')")" in
+    case "$(_x52 "r = ('steps' if d.get('steps') else 'calls' if d.get('action') in ('auto', 'work') and d.get('calls')
+    and not d.get('agents') else d.get('action'))")" in
       steps) _x52 "s = d.get('steps') or []
 r = 'capture=%s,one pr=%s' % (any('section Capture' in x for x in s), any('section One PR' in x for x in s))"; return ;;
       calls) _x52 "r = '\n'.join(d.get('calls') or [])" | while IFS= read -r c; do bash -c "$c" >/dev/null 2>&1; done ;;

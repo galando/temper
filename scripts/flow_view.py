@@ -253,6 +253,8 @@ def view(run, nxt):
         "loops": loops(r),
         "skips": [{"stage": o.get("stage"), "reason": o.get("reason"), "by": o.get("by")} for o in r.overrides if isinstance(o, dict)],
         "usage": usage(r),
+        # WP11: what a rule decided since the approval, and every stop and answer (scripts/rule_log.py)
+        "rule_log": [x for x in read_json(os.path.join(TEMPER, "rule-log.json"), []) if isinstance(x, dict)],
         "time": {"started": r.state.get("started") or r.state.get("created"), "updated": r.state.get("updated")},
     }
     return out

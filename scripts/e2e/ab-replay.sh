@@ -15,12 +15,11 @@ git -C "$ROOT" worktree add -q --detach "$OLD" "$BASE"
 # the base runs this tree's replay and harness (the driver is the measuring tool; only the CLI under test differs)
 ( TEMPER_E2E_ROOT="$OLD" bun "$HERE/replay.ts" base | tail -1 > "$OUT/base.json" ) &
 ( bun "$HERE/replay.ts" this | tail -1 > "$OUT/this.json" ) &
-( REPLAY_POLICY=1 bun "$HERE/replay.ts" this+policy | tail -1 > "$OUT/policy.json" ) &
 wait
 python3 -I - "$OUT" <<'PY'
 import json, os, sys
 out = sys.argv[1]
-runs = [json.load(open(os.path.join(out, f + ".json"))) for f in ("base", "this", "policy")]
+runs = [json.load(open(os.path.join(out, f + ".json"))) for f in ("base", "this")]
 rows = [
     ("version", lambda d: d["version"]),
     ("shipped (committed)", lambda d: "yes" if d["shipped"] else "no (" + d["ended"] + ")"),
@@ -35,9 +34,9 @@ rows = [
     ("CLI seconds (fake tools)", lambda d: d["cli_seconds"]),
 ]
 w = max(len(r[0]) for r in rows)
-print("%-*s  %14s  %14s  %14s" % (w, "", "base", "this", "this + policy"))
+print("%-*s  %14s  %14s" % (w, "", "base", "this"))
 for name, f in rows:
-    print("%-*s  %14s  %14s  %14s" % ((w, name) + tuple(str(f(d)) for d in runs)))
+    print("%-*s  %14s  %14s" % ((w, name) + tuple(str(f(d)) for d in runs)))
 for d in runs:
     print("\n%s %s agents: %s" % (d["label"], d["version"], d["agent_launches"]))
     print("  repairs by hand: %s" % (d["manual_repairs"] or "none"))

@@ -14,10 +14,11 @@
 | `/temper:status` | Quality + observability dashboard |
 | `/temper:init` | Seed a project's `.claude/temper.config` (idempotent) |
 
-**Autonomous Build (opt-in):** after approving the plan, `/temper` can run Build
-unattended; Review, Check and the commit keep their questions. Armed at the last question
-before Build (never at invocation); never pushes/merges. With the `autonomy:` block absent or `enabled: false`,
-every gate is the ordinary interactive one. Config: `.claude/temper.config` → `autonomy:`.
+**The run to the commit (default):** the approval's first option, Approve and build, lets the run go
+on by itself to the commit question: a passed check moves on, a failed check gets one repair by rule, every other case
+stops and asks. Started only by that answer (never at invocation); never pushes or merges; the commit always asks.
+`run.default` (`to-commit`, `ask`, `never-unattended`) orders the options; `autonomy.enabled: false` reads as `ask`.
+See `reference/autonomy.md`.
 
 **The deterministic spine (v7):** every gate verdict is computed by `scripts/temper`
 (`temper gate {stage}`) from an evidence ledger (`temper evidence add`), not asserted by
@@ -27,7 +28,8 @@ an in-agent PreToolUse hook) whenever a gate is FAIL and unoverridden: see `pack
 **One flow (ADR 0012, ADR 0013).** `temper next --json` (`scripts/flow.py` and its `flow_*.py` modules)
 says what comes next, with each gate's exact question and options; `commands/temper.md` is a loop
 over it. The CLI writes `.temper/view.json` after every change, the one file of the CLI's the mod reads.
-The person decides each gate only in the `Temper gate` question, with the mod or without it, in every mode; the mod
+The person decides each gate only in the `Temper gate` question, with the mod or without it, in every mode
+(after Approve and build, only at the stops and the commit); the mod
 counts an answer only on an exact match for the CLI's run and step, guards, and draws the run (its
 bar decides nothing). With the mod loaded, the mod also carries a run itself (the run driver,
 `hooks/temper-mod/core/driver.ts`): it runs the CLI's calls, launches its agents and asks its questions, and hands

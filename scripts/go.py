@@ -14,6 +14,9 @@ It stops, printing one compact JSON object, at the first point that needs the se
   {"action": "ask", "stage", "say", "ran": [...], "ask": {the CLI's question, as `next` gives it}, "blocking", "gate"}
   {"action": "wait" | "none" | "broken" | "error", "stage", "say", "ran": [...], ...}
 
+`temper go --taken-up` (WP11), the first call after /temper:temper was typed with no words, first records a stop of a run
+that goes on by itself (`temper park`), so its stage asks the person once.
+
 It never runs a call only the person may cause: those are the calls of an option of a question, which the session runs
 from the person's answer (and the mod checks word for word). It runs only the calls of the CLI's own actions, which the
 mod lets through today. A call that fails stops it, unless it recorded a verdict (9.8.5, WP09): `gate`, `task gate`,
@@ -114,10 +117,26 @@ def compact(n, ran, cli, verdicts=()):
     return out
 
 
-def main(cli, root):
+def taken_up(cli, root, ran):
+    """WP11: `temper go --taken-up` (the run was taken up again with no words): a run that goes on by itself records a
+    stop first, so its stage asks the person its question once."""
+    p = subprocess.run([cli, "next", "--json"], cwd=root, capture_output=True, text=True)
+    try:
+        armed = bool((json.loads(p.stdout).get("run") or {}).get("armed"))
+    except (ValueError, AttributeError):
+        armed = False
+    if armed:
+        c = "%s park --verdict PARKED-NEEDS-DECISION --reason 'the run was taken up again'" % cli
+        subprocess.run(["bash", "-c", c], cwd=root, capture_output=True, text=True)
+        ran.append(c)
+
+
+def main(cli, root, flags=()):
     ran = []
     verdicts = []
     last = None
+    if "--taken-up" in flags:
+        taken_up(cli, root, ran)
     for _ in range(MAX_STEPS):
         p = subprocess.run([cli, "next", "--json"], cwd=root, capture_output=True, text=True)
         try:
@@ -160,4 +179,4 @@ def main(cli, root):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1], sys.argv[2]))
+    sys.exit(main(sys.argv[1], sys.argv[2], sys.argv[3:]))

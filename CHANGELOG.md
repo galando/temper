@@ -42,6 +42,17 @@ All notable changes to Temper are documented here. The plugin version lives in
   are asked, with `Revise the plan` recommended. A plan of risk H gets the fresh review with no request, and the
   unattended run is offered at risk H only after a complete round with no open High finding. `phases.design` and the
   state key `intent_asked` are gone; the Architecture Depth pack also reads the plan.
+- WP11: the approval runs to the commit by default (ADR 0019 decision 3). Its first option, Approve and build, lets the
+  run go on by itself: a passed check moves on, a failed check gets one counted repair by rule (a loop back to Build for
+  a finding at a level of `review.block-on` or a failed Check, the recommended fix of a failed group), and every other
+  case is a recorded stop that asks you, after which the run goes on by itself. The commit question always asks, with
+  commit, a pull request, or a loop back to Build. Ask me at every stage keeps every gate's question. `run.default`
+  (`to-commit`, `ask`, `never-unattended`) orders the two; `autonomy.enabled: false` reads as `ask`. A skip, an
+  accepted finding and a step back to Plan end it. A plan that declares a sensitive path is rated H and repaired by
+  nothing; a changed sensitive file outside the plan is confirmed at the failed commit question. `temper go
+  --taken-up` asks a run taken up again once. What a rule decided is in `.temper/rule-log.json` and the view's
+  `rule_log`. A run armed by 9.8.4 asks at every stage. `autonomy.policy` and the labels Stage by stage and
+  Autonomous Build are gone.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

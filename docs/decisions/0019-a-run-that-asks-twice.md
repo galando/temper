@@ -57,6 +57,36 @@ by none.
      `phases.design`. At the plan question `Run Design first` takes the place of `Teach Me` in a run with no Design,
      so every option stays within two dialogs.
 
+3. **The approval runs to the commit by default (WP11).**
+   - **What starts it.** Only the person's option at the approval: `approve-run` ("Approve and build", move `arm`) of
+     `plan.approve`, or of `design.pass` when the person asked for Design. Its first call, `temper state set run_mode
+     autonomous`, is refused unless the run is at Plan or Design with that check passed and not skipped, and under
+     `run.default: never-unattended`; it records `unattended_from`, which `state set` refuses. `run.default` is
+     `to-commit` (the default: `approve-run` first and recommended), `ask` (`ask-every-stage` first and recommended)
+     or `never-unattended` (`ask-every-stage` alone); `autonomy.enabled: false` with no `run.default`, and an unknown
+     value, read as `ask`. A saved autonomous run with no `unattended_from` (9.8.4, or the base) asks at every stage:
+     it was approved for Build alone. A run saved at Review by an older Temper runs Review once more: its completion
+     row names no file read. `state init` stamps `saved_by`; a state with none is taken up so, once. The key
+     `autonomy.policy` and `Run.policy` go.
+   - **What a rule may do.** Move on after a passed check (Design, Build, a group, Review, Check); take a task an
+     earlier task built as done; give a failed check one counted repair: one loop back to Build for a Review finding at
+     a level of `review.block-on` or a failed Check, or the recommended option of a failed group check when it has
+     calls, needs nothing typed, does not save the run, is no step back and the group declares no sensitive path.
+     Each is an entry of `.temper/rule-log.json`, with every stop and every answer.
+   - **What a rule may never do.** Plan again, change a gate's command, the intent or the approved files, skip a
+     check, accept a finding, answer a scope drift, write the config, push, open a pull request, make the final
+     commit, or repair anything in a plan that declares a sensitive path (`autonomy.park-on-touch`, risk H).
+   - **The stops.** Every other case is a stop: the park call, then the stage's own question. The rows of
+     `scripts/stops.json` are the list; 20 to 22 join here: a failed check in a plan with a sensitive path, a Check
+     whose only failed row is the mutation row (until WP19 makes the score information), and a run taken up again
+     (`temper go --taken-up`). A stop keeps the mode; its question says the run goes on by itself after the answer,
+     and each option ends the stop with `park --end --answer <id>`. Removing a stop needs a decision record.
+   - **What ends it.** A skip, an accepted finding, a step back to Intent, Plan or Design (each writes
+     `run_mode interactive` in the CLI) and "Ask me at every stage from here". A step back to Build keeps it.
+   - **The commit.** It always asks: commit, commit and open a pull request, or a loop back to Build. A failed commit
+     gate with a changed sensitive file outside the plan offers `confirm` (`temper override sensitive-path:<path>`).
+     Temper pushes only after the person chose a pull request option there.
+
 ## Consequences
 
 - Following the recommendation always ends: at the latest after six repeats, the run asks the person once.
@@ -66,3 +96,8 @@ by none.
 - A default run launches no Design agent at any tier or risk. A person who wants Design asks for it with one more
   dialog (More options) at the approval, or with the Design door.
 - A plan of risk H always costs a fresh review round, two reviewers by default, before the run may go on by itself.
+- A default run asks at the approval and at the commit; a failed check asks after its one repair. A person who wants
+  every gate's question picks Ask me at every stage, or sets `run.default: ask`.
+- The amended invariants: ADR-0011 (resolution 1: the unattended run is no longer Build alone), ADR-0012 (decision 4:
+  a stop keeps the mode), ADR-0013 (decision 1: the CLI's own `auto` action carries the run from the approval to the
+  commit).

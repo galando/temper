@@ -104,8 +104,10 @@ function engine(files: Record<string, string>) {
     // The plugin's CLI: `temper go` answers from the list, every other call passes.
     process: {
       spawn: ({ argv }: { argv: string[] }) => {
-        const out = argv.at(-1) === 'go' ? JSON.stringify(goes.shift() ?? { action: 'none', say: 'The run is done.' }) : ''
-        if (argv.at(-1) !== 'go') log.push(`ran ${argv.slice(1).join(' ')}`)
+        // `temper go`, and its first call of a drive with no request (WP11: --taken-up)
+        const isGo = argv.at(-1) === 'go' || (argv.at(-2) === 'go' && argv.at(-1) === '--taken-up')
+        const out = isGo ? JSON.stringify(goes.shift() ?? { action: 'none', say: 'The run is done.' }) : ''
+        if (!isGo) log.push(`ran ${argv.slice(1).join(' ')}`)
         return { async *[Symbol.asyncIterator]() { yield { text: out } }, result: Promise.resolve({ code: 0 }) }
       },
     },
@@ -216,7 +218,8 @@ function port(goes: GoOut[], o: { ran?: (call: string) => { code: number; out?: 
   const p: Port = {
     run: async call => {
       log.push(call)
-      if (call.endsWith(' go')) return { code: 0, out: JSON.stringify(goes.shift() ?? { action: 'none', say: 'done' }) }
+      // `temper go`, and its first call of a drive with no request (WP11: --taken-up)
+      if (call.endsWith(' go') || call.endsWith(' go --taken-up')) return { code: 0, out: JSON.stringify(goes.shift() ?? { action: 'none', say: 'done' }) }
       const r = o.ran?.(call) ?? { code: 0 }
       return { code: r.code, out: r.out ?? '' }
     },

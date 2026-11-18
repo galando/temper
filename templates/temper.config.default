@@ -124,22 +124,22 @@ phases:
 #     keep-days: 30                    # days an earlier attempt's work is kept in refs/temper/kept/ (0: always)
 
 # ============================================================
-# Autonomous Continuation: armed by a human at the PLAN GATE, never at
-# invocation. /temper always runs Intent and Plan first, each with its own
-# question. With this block absent or enabled: false, the plan gate offers only
-# the ordinary stage-by-stage continuation.
+# The run to the commit (ADR 0019 decision 3): the first option of the approval,
+# "Approve and build", lets the run go on by itself to the commit question. A
+# passed check moves on, a failed check gets one repair and then asks you, every
+# other case asks you. Only your answer at the approval starts it.
 #
-# Hardcoded, not configurable (safety invariants, not preferences): autonomy
-# NEVER pushes, merges to a remote, or makes the final feature commit (it always
-# parks); the only commits it allows are grouped Build's local task commits and
-# the local `temper integrate` merge, both made by the CLI; NEVER re-plans unattended.
+# Hardcoded, not configurable (safety invariants, not preferences): it NEVER
+# pushes, merges to a remote, or makes the final feature commit (the commit
+# question always asks); the only commits it allows are grouped Build's local task
+# commits and the local `temper integrate` merge, both made by the CLI; NEVER
+# re-plans by itself; nothing under park-on-touch is repaired by rule.
 # ============================================================
+# run:
+#   default: to-commit         # the approval's first option: to-commit, ask or never-unattended
 autonomy:
-  # enabled is no longer read (9.8.0): the unattended run is offered at the last question before Build in every run.
+  # enabled is no longer read (9.8.0); enabled: false with no run.default reads as run.default: ask.
   max-blast-radius: 15         # the plan gate splits a group that declares more files than this
-  # policy: decide             # when you arm a run, Review and Check decide by fixed rules too: a failed check loops back
-  #                            # within the budget, findings at high or above are repaired, nothing is overridden;
-  #                            # a step back to Plan, anything else and the commit ask you. Default: ask (they ask you).
   # Folder-name patterns over paths in your project only (any path before and after).
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
 

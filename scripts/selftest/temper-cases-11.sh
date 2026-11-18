@@ -331,7 +331,7 @@ assert_eq "F19: Accept runs task accept with the question's own reason, no secon
 assert_eq "F19: Accept it as done is the move covered, not a finding's accept (9.8.0)" "covered|redo" \
   "$(nx "o = d['ask']['options']; o[0]['move'] + '|' + o[1]['move']")"
 assert_exit "F19: task start holds a covered task back" 1 "$TEMPER" task start 1
-printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; _ran_unattended
 assert_eq "F19: an armed run takes the covered task as done, with a reason, and does not park" "auto|1|0" \
   "$(nx "d['action'] + '|' + str(sum(1 for c in d['calls'] if 'task accept 1 --reason' in c)) + '|' + str(sum(1 for c in d['calls'] if 'park' in c))")"
 printf 'stack: auto\n' > .claude/temper.config
@@ -348,7 +348,7 @@ paths = ['.claude/temper.config', '.claude/settings.json', '.temper/specs/x/inte
 print('|'.join('yes' if m.counts(p) else 'no' for p in paths))
 PYT
 )"
-setup; "$TEMPER" state set run_mode autonomous >/dev/null
+setup; _ran_unattended
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base >/dev/null 2>&1
 printf 'stack: auto\nautonomy:\n  enabled: true\n  max-blast-radius: 1\n' > .claude/temper.config
 mkdir -p htmlcov .pytest_cache; echo x > .coverage; echo x > htmlcov/index.html; echo x > .pytest_cache/f

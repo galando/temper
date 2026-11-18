@@ -128,7 +128,7 @@ assert_exit "bands: min-points 1 with a single point is graceful, not a crash" 0
 # reflects blast radius + upstream gates). Uses a segment name ('zauth') no other test
 # creates, and unique content, so the shared WORKDIR can't mask the diff.
 setup
-"$TEMPER" state set run_mode autonomous >/dev/null
+_ran_unattended   # WP11: the state a run the person started at the approval leaves
 cat > .claude/temper.config <<'EOF'
 stack: auto
 autonomy:
@@ -140,7 +140,7 @@ OUT=$("$TEMPER" gate commit 2>&1)
 assert_eq "park-on-touch: 'xzauthy' does NOT match the 'zauth' segment (no false park)" "yes" \
   "$(echo "$OUT" | grep -q 'no changed file matches a park-on-touch' && echo yes || echo no)"
 setup
-"$TEMPER" state set run_mode autonomous >/dev/null
+_ran_unattended   # WP11: the state a run the person started at the approval leaves
 cat > .claude/temper.config <<'EOF'
 stack: auto
 autonomy:
@@ -668,7 +668,7 @@ git config user.email "t@e.com"; git config user.name t
 git add -A >/dev/null 2>&1
 git commit --no-verify -q -m "suite baseline for base_sha" >/dev/null 2>&1 || true
 "$TEMPER" state init demo --command temper >/dev/null   # fresh state on the committed tree
-"$TEMPER" state set run_mode autonomous >/dev/null
+_ran_unattended   # WP11: the state a run the person started at the approval leaves
 "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null
 rm -f .temper/specs/demo/tasks.md   # the count rule is for a run without tasks.md (a /temper:fix run)
 mkdir -p src && echo a > src/a.js

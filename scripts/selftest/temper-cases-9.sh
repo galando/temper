@@ -593,10 +593,11 @@ MD
 gpass design
 assert_eq "design: the question names each open area of concern" "1|0" \
   "$(nx "int('with 1 open area(s) of concern: 1. 1. The cache can serve stale prices for a minute' in d['ask']['question']['question'])")|$(nx "int('Logs hold' in d['ask']['question']['question'])")"
-assert_eq "design: Continue leaves Design, then commits design.md (9.8.0: one temper call)" "state advance design_complete build|spec commit|2" \
-  "$(nx "c = d['ask']['options'][0]['calls']; c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1][:11] + '|' + str(len(c))")"
+assert_eq "design: Ask me at every stage leaves Design, then commits design.md (WP11: after its run_mode call)" \
+  "ask-every-stage|state set run_mode interactive|state advance design_complete build|spec commit|3" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls']; o['id'] + '|' + c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1] + '|' + c[2].split('temper ', 1)[1][:11] + '|' + str(len(c))")"
 python3 -c "p='.claude/temper.config'; s=open(p).read(); open(p, 'w').write(s.replace('autonomy:\n  enabled: false', 'autonomy:\n  enabled: true'))"
-python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='autonomous'; json.dump(d, open(p, 'w'))"
+python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='autonomous'; d['unattended_from']='plan'; json.dump(d, open(p, 'w'))"
 assert_eq "design: an armed run parks at a Design with open concerns, for the person" "auto|1" \
   "$(nx "d['action'] + '|' + str(int(any('park --verdict PARKED-NEEDS-DECISION' in c for c in d['calls'])))")"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='interactive'; json.dump(d, open(p, 'w'))"

@@ -69,14 +69,15 @@ assert_exit "state set next_stage forward: refused past a stage that has no pass
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '# Plan\n\n## Files to Modify\n| File | Change |\n|---|---|\n| `src/demo.sh` | the demo |\n| `README.md` | a line |\n' > .temper/specs/demo/plan.md
 gpass plan
-assert_eq "next: Plan PASS with no Design to follow offers stage by stage or unattended, then Fresh review first (9.8.0)" \
-  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
+assert_eq "next: Plan PASS with no Design to follow offers ask at every stage or the run to the commit, then Fresh review first (WP11)" \
+  "ask-every-stage,True|approve-run,False|fresh-review,False|more,False" \
+  "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
 assert_eq "next: More options holds the rest, as its own question, Run Design first in Teach Me's place (WP14)" "Open HTML review|Run Design first|Grill Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 cp .claude/temper.config .claude/temper.config.keep; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
 assert_eq "next: with plan.fresh-review off the Plan question has no Fresh review first" \
-  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Open HTML review|More options|Share HTML review|Run Design first|Grill Me|Save for later" \
-  "$(labels)|$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
+  "ask-every-stage|approve-run|html-review|more|share-review|run-design|grill-me|save" \
+  "$(nx "'|'.join(o['id'] for o in d['ask']['options'])")|$(nx "'|'.join(o['id'] for o in d['ask']['more']['options'])")"
 mv .claude/temper.config.keep .claude/temper.config
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -90,18 +91,19 @@ assert_eq "view: Build is held to the approved files, not to a plan.md edited si
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
-assert_eq "next: with autonomy on, the Plan question offers the arming choice" \
-  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
-assert_eq "next: Autonomous arms the run before it advances" "arm|state set run_mode autonomous" \
-  "$(nx "o = d['ask']['options'][1]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+assert_eq "next: with autonomy on, the Plan question offers the run to the commit first and recommended (WP11)" \
+  "approve-run,True|ask-every-stage,False|fresh-review,False|more,False" \
+  "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
+assert_eq "next: Approve and build starts the run to the commit before it advances" "arm|state set run_mode autonomous" \
+  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
 assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Run Design first|Grill Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH; fresh_reviewed
 assert_eq "next: a medium plan at risk H goes on to Build: Design runs only when asked (WP14)" \
-  "Stage by stage (Recommended)|state advance plan_complete build" \
-  "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
+  "ask-every-stage,True|state advance plan_complete build" \
+  "$(nx "o = d['ask']['options'][0]; '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + o['calls'][-1].split('temper ', 1)[1]")"
 "$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design (the option run-design)
 assert_eq "next: a plan whose person asked for Design goes on to Design" "Continue to Design (Recommended)|state advance plan_complete design" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
@@ -156,27 +158,24 @@ assert_eq "next: a failed commit gate asks to override the failed stages, with a
   "Override and commit|commitOverride|override review --reason '{reason}'|gate commit" \
   "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][-1].split('temper ', 1)[1]])")"
 
-# --- an armed run is Build alone (9.8.0, the person asked for it): it goes on by itself through Build, then Review,
-# Check and the commit ask the person as in every run ---
-fresh; printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
-gpass intent plan build; for s in intent_complete:plan plan_complete:build; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-assert_eq "next: an armed run's passed Build goes on to Review by itself and turns back to interactive" \
-  "auto|state advance build_complete review|state set run_mode interactive" \
-  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + d['calls'][1].split('temper ', 1)[1]")"
+# --- WP11: the run to the commit, started at the approval: a passed check moves on by itself and keeps the mode; a stop
+# keeps the mode too, and the person gets the gate question ---
+_unattended build; gpass build
+assert_eq "next: an unattended run's passed Build goes on to Review by itself and keeps its mode (WP11)" \
+  "auto|state advance build_complete review|1" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(len(d['calls']))")"
 "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 gpass review
 assert_eq "next: after the unattended Build, a passed Review asks the person" "ask|Continue to Check (Recommended)" \
   "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1   # a run armed before this change
-gpass review
-assert_eq "next: even armed, Review asks the person and goes on by nothing itself" "ask|Continue to Check (Recommended)" \
-  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
+_unattended review; gpass review
+assert_eq "next: an unattended run's passed Review goes on to Check by itself (WP11)" "auto|state advance review_complete check" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 gfail review "no blocking findings" "1 open finding"
-assert_eq "next: even armed, a failed Review asks the person, with no loop back by itself" "ask|Loop back to Build (Recommended)" \
-  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
+assert_eq "next: an unattended run's failed Review with no blocking finding on record stops: the park call first (WP11)" \
+  "auto|park --verdict PARKED-NEEDS-DECISION" "$(nx "d['action'] + '|' + ' '.join(d['calls'][0].split('temper ', 1)[1].split()[:3])")"
 "$TEMPER" park --verdict PARKED-NEEDS-DECISION --reason "a test" >/dev/null 2>&1
-assert_eq "park: the run is interactive again, marked parked, and the report says where it waits" "interactive|review|1" \
+assert_eq "park: the run keeps its mode, is marked parked, and the report says where it waits (WP11)" "autonomous|review|1" \
   "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the gate it parked at' .temper/autonomy-report.md)"
 assert_eq "next: after a park the person gets the gate question" "ask|Loop back to Build (Recommended)" \
   "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
@@ -267,7 +266,9 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "next: Design runs its brief" "temper:temper-design|gate design" "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
 gpass design
-assert_eq "next: Design PASS offers the unattended run too (9.8.0: the last question before Build)" "Continue to Build (Recommended)|Autonomous Build: run Build unattended|Walk through step by step|More options" "$(labels)"
+assert_eq "next: Design PASS is the approval when the person asked for Design: ask at every stage or the run to the commit (WP11)" \
+  "ask-every-stage,True|approve-run,False|walk-through,False|more,False" \
+  "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
 gfail design "areas of concern" "missing"
 assert_eq "next: Design FAIL" "Loop back to Plan|Override and continue|Save for later" "$(labels)"
 
@@ -286,9 +287,10 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "gate": {"verdict": "FAIL", "reason": "Validate failed"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a failed group gate asks to run its tasks again" "Run the group's tasks again (Recommended)|group reopen G1 --task 1|1" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1] + '|' + str(int('Validate failed' in d['ask']['question']['question']))")"
-printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-assert_eq "next: an armed run parks on a failed group gate, as on every stop (nobody is there to answer)" "auto|park --verdict PARKED-NEEDS-DECISION|1" \
-  "$(nx "d['action'] + '|' + ' '.join(d['calls'][0].split('temper ', 1)[1].split()[:3]) + '|' + str(int('Validate failed' in d['calls'][0]))")"
+_g8="$(cat .temper/groups.json)"; _unattended build; printf '%s\n' "$_g8" > .temper/groups.json
+assert_eq "next: an unattended run takes the recommended repair of a failed group gate by rule, once (WP11)" \
+  "auto|group reopen G1 --task 1|1" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(len(d['calls']))")"
 "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_reason": "Task 1 failed on haiku, haiku and sonnet"}}, "tasks": {"1": {"status": "failed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a group parked on failed attempts" "Run the task again (Recommended)|group reopen G1 --task 1" \
@@ -315,9 +317,7 @@ assert_exit "review 1: state advance started build is refused" 1 "$TEMPER" state
 assert_exit "review 1: state advance started nowhere is refused" 1 "$TEMPER" state advance started nowhere
 assert_eq "review 1: the run is still at Intent" "intent" "$("$TEMPER" state get next_stage)"
 # 2. Text from a failed row or a finding is never shell code in a call the orchestrator runs as printed.
-fresh; printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
-gpass intent plan; for s in intent_complete:plan plan_complete:build; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+_unattended build   # WP11: the run to the commit is started at the approval
 gfail build "tests pass" 'src/a.sh:4 runs $(touch PWNED1) and `touch PWNED2` on install'
 CALL="$(nx "d['calls'][0]")"; ( bash -c "$CALL" ) >/dev/null 2>&1
 assert_eq "review 2: an armed run's park runs no text of the failed row, and keeps it as written" "0|0|1" \
@@ -363,7 +363,7 @@ fresh; printf 'autonomy:\n  enabled: true\n  park-on-touch: ["**/auth/**"]\n' >>
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base --no-verify >/dev/null 2>&1
 "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
 mkdir -p src/auth; echo x > src/auth/login.ts; git add src/auth/login.ts; git -c user.email=t@t -c user.name=t commit -qm auth --no-verify >/dev/null 2>&1
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" gate commit >/dev/null 2>&1
+_ran_unattended; "$TEMPER" gate commit >/dev/null 2>&1
 assert_eq "round 2, 5: a committed change under a park-on-touch pattern fails the row" "False|1" \
   "$(python3 -c "import json; r=[x for x in json.load(open('.temper/gates.json'))['commit']['requirements'] if x['name']=='park-on-touch paths']; print(str(r[0]['pass']) + '|' + str(int('src/auth/login.ts' in r[0]['detail'])))")"
 git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
@@ -400,7 +400,7 @@ fresh; gpass intent plan build review check; _at commit; rm -f .temper/specs/dem
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base --no-verify >/dev/null 2>&1
 "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
 mkdir -p src/auth; echo x > src/auth/login.ts; git add src/auth/login.ts; git -c user.email=t@t -c user.name=t commit -qm auth --no-verify >/dev/null 2>&1
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" gate commit >/dev/null 2>&1
+_ran_unattended; "$TEMPER" gate commit >/dev/null 2>&1
 _park8="$(nx "' '.join(d.get('calls') or [])")"; [[ "$_park8" == *" park --verdict "* ]] && bash -c "$_park8" >/dev/null 2>&1
 assert_eq "round 2, 11b: only the commit gate's own row failed: Check again is first" "commit.fail|check-again|False|gate commit" \
   "$(nx "q = d.get('ask') or {}; o = (q.get('options') or [{}])[0]; '%s|%s|%s|%s' % (q.get('id'), o.get('id'), bool(o.get('recommended')), ((o.get('calls') or ['none'])[-1]).split('temper ', 1)[-1])")"

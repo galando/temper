@@ -564,7 +564,7 @@ cmd_model() {
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
 security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/ runs.jsonl asked.json \
-preflight.json setup-tried.json decisions.json budget.json"
+preflight.json setup-tried.json decisions.json budget.json rule-log.json"
 
 
 cmd_init() {
@@ -655,7 +655,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
     done
   fi
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json .temper/budget.json
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json .temper/budget.json .temper/rule-log.json
   rm -rf .temper/evidence
   _ensure_dirs
   # Re-scaffold the ledger files empty (same as `temper init`): a cleared run has
@@ -678,7 +678,10 @@ _state_migrate_legacy() { # idempotent; called before any state read/write and b
                            # stale on-disk value would block every future `git commit`.
   [[ -f "$STATE_FILE" ]] || return 0
   # fast path, no python3 spawn: nothing of eval left, and the run id of ADR 0012 is there
-  if ! grep -q '"eval' "$STATE_FILE" 2>/dev/null && grep -q '"run_id"' "$STATE_FILE" 2>/dev/null; then return 0; fi
+  # and no run armed by an earlier version (WP11: run_mode autonomous with no unattended_from asks at every stage)
+  if ! grep -q '"eval' "$STATE_FILE" 2>/dev/null && grep -q '"run_id"' "$STATE_FILE" 2>/dev/null \
+     && grep -q '"saved_by": "9.8.5"' "$STATE_FILE" 2>/dev/null \
+     && { grep -q '"unattended_from"' "$STATE_FILE" 2>/dev/null || ! grep -q '"autonomous"' "$STATE_FILE" 2>/dev/null; }; then return 0; fi
   python3 -I "$SCRIPTS_DIR/state_ops.py" migrate-legacy "$STATE_FILE"
 }
 
@@ -726,8 +729,8 @@ cmd_state_set() {
     echo "FAIL: $1 is kept by the CLI (a door's stage, what an earlier run built, the code as Review starts and the fresh review's marks are its records)" >&2
     return 1
   fi
-  if [[ "$1" == "end_report" || "$1" == "ran_unattended" ]]; then
-    echo "FAIL: $1 is kept by the CLI (temper report --end, then the person's answer; an armed run's record of its unattended Build)" >&2
+  if [[ "$1" == "end_report" || "$1" == "ran_unattended" || "$1" == "unattended_from" || "$1" == "saved_by" ]]; then
+    echo "FAIL: $1 is kept by the CLI (temper report --end, then the person's answer; the record of a run that went on by itself)" >&2
     return 1
   fi
   # The run's lifecycle records each have the one command that moves them; a dotted path below one of them is the
@@ -744,7 +747,12 @@ cmd_state_set() {
   esac
   case "$1" in
     run_mode)
-      [[ "$2" == "interactive" || "$2" == "autonomous" ]] || { echo "FAIL: run_mode is interactive or autonomous; got '$2'" >&2; return 1; } ;;
+      [[ "$2" == "interactive" || "$2" == "autonomous" ]] || { echo "FAIL: run_mode is interactive or autonomous; got '$2'" >&2; return 1; }
+      # WP11 (ADR 0019 decision 3): the run goes on by itself only from the approval the person answered
+      if [[ "$2" == "autonomous" ]]; then
+        local why; why="$(python3 -I "$SCRIPTS_DIR/state_ops.py" may-start "$STATE_FILE" "$GATES_FILE" "$OVERRIDES_FILE" "$(_cfg_get run.default "")" "$(_cfg_get autonomy.enabled "")")" \
+          || { echo "FAIL: $why" >&2; return 1; }
+      fi ;;
     pipeline_round)
       # 9.8.0, F26: a round is counted once, after its fix is pushed (the steps of the Pipeline question): one up at a time
       local pr; pr="$( [[ -f "$STATE_FILE" ]] && _json_get_path "$STATE_FILE" pipeline_round "" )"; [[ "$pr" =~ ^[0-9]+$ ]] || pr=1
@@ -774,10 +782,12 @@ cmd_state_set() {
     return 1
   fi
   [[ -f "$STATE_FILE" ]] || { echo '{}' > "$STATE_FILE"; }
-  # 9.8.0: an armed run is Build alone and turns interactive after it, so the CLI keeps that it ran unattended: the
-  # commit gate holds such a run to the plan's files and to park-on-touch, as it held a run still armed. Written once
-  # the state file is there, so a run_mode set before any run state still records it.
-  [[ "$1" == "run_mode" && "$2" == "autonomous" ]] && _json_set_path "$STATE_FILE" ran_unattended true '{}' >/dev/null
+  # The CLI keeps that the run went on by itself (the commit gate holds it to the plan's files and to park-on-touch after
+  # it ended) and the stage the person started it at (WP11: Run.armed reads it; state set refuses it).
+  if [[ "$1" == "run_mode" && "$2" == "autonomous" ]]; then
+    _json_set_path "$STATE_FILE" ran_unattended true '{}' >/dev/null
+    _json_set_path "$STATE_FILE" unattended_from "$(_json_get_path "$STATE_FILE" next_stage "")" '{}' >/dev/null
+  fi
   if [[ "$1" == "next_stage" ]]; then
     # The stage the run is already at changes nothing. A stage earlier in the run's sequence redoes the stages from it,
     # as a loop does.
@@ -952,11 +962,13 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
       fi
     fi
   fi
+  local held; held="$(_json_get_path "$STATE_FILE" parked "")"   # WP11: an answer to a stop is the person's, no rule's
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
   # A commit verdict written before the run reached Commit (the hook of a spec commit) is not the commit gate's: the
   # run enters Commit with no commit verdict and no commit skip, so the commit gate runs for it.
   [[ "$next" == "commit" ]] && _redo_from commit
   _state_next "$next" >/dev/null || return 1
+  [[ -z "$held" ]] && _rule_log advance "${stage%_complete}" "${stage%_complete} passed: on to $next"
   echo "OK: advanced to $stage (next: $next)"
 }
 
@@ -988,11 +1000,12 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="$2"; shift 2 ;; *) shift ;; esac; done
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
   # The dispatcher spent the step back's repeat before this ran (budget.py): a step back is never refused here.
-  local result
+  local result held; held="$(_json_get_path "$STATE_FILE" parked "")"
   result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
   local rc=$?
   echo "$result"
   [[ $rc -eq 0 ]] || return $rc
+  [[ -z "$held" ]] && _rule_log repair "$from" "back to $to: $reason"
   _go_back "$to"
 }
 
@@ -1015,6 +1028,7 @@ _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state 
   #   ran_unattended stays)
   if [[ -f "$STATE_FILE" && -n "$pre" ]]; then
     [[ -n "$(cmd_state_get built_before "")" ]] && _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
+    _unattended_end "a step back to $to" >/dev/null
     _json_set_path "$STATE_FILE" run_mode interactive '{}' >/dev/null
   fi
   [[ -f "$STATE_FILE" ]] || return 0
@@ -1132,7 +1146,7 @@ cmd_state_clear() {
   [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
   python3 -I "$SCRIPTS_DIR/run_summary.py" append "$TEMPER_DIR" "$(_now)" 2>/dev/null || true   # one line a run, in runs.jsonl
   # Each target is named, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,preflight,setup-tried,decisions,budget}.json
+  rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,preflight,setup-tried,decisions,budget,rule-log}.json
   rm -rf .temper/evidence
   # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
   _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
@@ -1158,7 +1172,9 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
   # and so is every stage after it (the door's entry moves to it).
   local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
   [[ -n "$enter" ]] && ! _stage_before "$stage" "$enter" && enter=""
+  local held; held="$(_json_get_path "$STATE_FILE" parked "")"
   python3 -I "$SCRIPTS_DIR/state_ops.py" state-redo "$STATE_FILE" "$stage" "$reason" "$(_now)" "$enter" || return 1
+  [[ -z "$held" ]] && _rule_log repair "$stage" "$stage runs again: $reason"
   echo "OK: $stage runs again${reason:+ ($reason)}"
 }
 
@@ -1308,6 +1324,7 @@ cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "
   python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-accept "$file" "$id" "$reason" "$by" "$(_now)"
   local rc=$?
   _lock_release
+  [[ $rc -eq 0 ]] && _unattended_end "the person accepted finding $id of $stage"   # WP11 (rule 3)
   return $rc
 }
 
@@ -2199,7 +2216,9 @@ cmd_group() {
     reopen) cmd_group_reopen "$@" ;;
     report) cmd_group_report "$@" ;;
     fix) _lock_acquire; TEMPER_PREFIX="$(_prefix)" python3 -E -s "$SCRIPTS_DIR/group_fix.py" "$GROUPS_FILE" "$(_now)" "$(_spec_slug "$(_spec_path "")")" "$@"
-         local rc=$?; _lock_release; return $rc ;;   # 9.8.4: one fix agent on a failed group's merged tree
+         local rc=$?; _lock_release
+         [[ $rc -eq 0 && -z "$(_json_get_path "$STATE_FILE" parked "")" && "$*" != *--commit* ]] && _rule_log "group fix" build "group ${1:-} fixed on its merged work"
+         return $rc ;;   # 9.8.4: one fix agent on a failed group's merged tree
     *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|fix> ..." >&2; return 1 ;;
   esac
 }
@@ -2736,7 +2755,9 @@ cmd_task() {
     test) cmd_task_test "$@" ;;
     gate) cmd_task_gate "$@" ;;
     confirm) cmd_task_confirm "$@" ;;
-    accept|retry) cmd_task_cover "$sub" "$@" ;;
+    accept|retry) cmd_task_cover "$sub" "$@" || return
+                  [[ "$sub" == accept && -z "$(_json_get_path "$STATE_FILE" parked "")" ]] && _rule_log covered build "task ${1:-} taken as done: an earlier task built it"
+                  return 0 ;;
     blocked) _lock_acquire; python3 -E -s "$SCRIPTS_DIR/task_blocked.py" "$GROUPS_FILE" "$(_grouped_parse "$(_spec_path "")/tasks.md")" "$(_now)" "$@"
              local rc=$?; _lock_release; return $rc ;;   # 9.8.4: its test needs a file outside the task: no retry
     *) echo "FAIL: usage: temper task <start|show|test|gate|confirm|accept|retry|blocked> ..." >&2; return 1 ;;
@@ -3154,15 +3175,6 @@ _changed_since_base() { # the commit gate's set: changed since base_sha, uncommi
   python3 -I "$SCRIPTS_DIR/findings.py" since-base "$(cmd_state_get base_sha "")"
 }
 
-_glob_touch_match() { # _glob_touch_match <file> <pattern>  (a project pattern from autonomy.park-on-touch)
-  # Proper pattern match, not a substring test: a pattern naming the auth folder at any
-  # depth matches the `auth` path SEGMENT, never `auth` inside `oauth` or
-  # `authenticator`; a star inside a segment (any .sql file in a migrations folder) is
-  # honored. file + pattern cross as argv, never source.
-  local file="$1" pattern="$2"
-  python3 -I "$SCRIPTS_DIR/commit_rows.py" glob-touch-match "$file" "$pattern"
-}
-
 gate_pipeline() { # gate_pipeline <spec_path>: the rows of the Pipeline gate (gate_rows.py)
   python3 -E -s "$SCRIPTS_DIR/gate_rows.py" pipeline-gate "$1"
 }
@@ -3299,19 +3311,13 @@ gate_commit() {
     fi
     # 9.8.0: a park-on-touch path parks an unattended run only when the change to it is not in the plan. Before 9.8.0 any
     # change to such a path parked, so a billing feature parked at once and the unattended option was of no use there.
+    # WP11: one matcher (scripts/sensitive.py) over the changed files; a file the person confirmed at the failed commit
+    # question (temper override sensitive-path:<path>) passes
     local patterns; patterns="$(_cfg_get autonomy.park-on-touch "")"
     local touched=""
     if [[ -n "$patterns" ]]; then
-      local pats=() declared_list
-      declared_list="$(python3 -I "$SCRIPTS_DIR/commit_rows.py" declared-list "$plan_json")"
-      IFS=$'\x1f' read -r -a pats <<< "$patterns"
-      while IFS= read -r f; do
-        [[ -z "$f" ]] && continue
-        grep -qxF -- "$f" <<<"$declared_list" && continue
-        for p in "${pats[@]}"; do
-          if _glob_touch_match "$f" "$p"; then touched="$f matches $p and is not in the plan"; fi
-        done
-      done < <(_changed_since_base)
+      touched="$(_changed_since_base | python3 -I "$SCRIPTS_DIR/sensitive.py" touched "$patterns" \
+        "$(python3 -I "$SCRIPTS_DIR/commit_rows.py" declared-list "$plan_json")" "$OVERRIDES_FILE")"
     fi
     if [[ -z "$touched" ]]; then
       reqs+=("$(_req "park-on-touch paths" 1 "no changed file matches a park-on-touch pattern")")
@@ -3478,7 +3484,13 @@ cmd_override() {
   [[ -f "$STATE_FILE" && "$(_json_get_path "$STATE_FILE" command temper)" == "fix" ]] && gates="build review check commit"
   for g in $gates; do [[ "$stage" == "$g" ]] && ok=1; done
   [[ "$stage" =~ ^foreign-commit:G[0-9]+:[0-9a-f]{4,40}$ ]] && ok=1
-  [[ $ok -eq 1 ]] || { echo "FAIL: override takes a gate of this run ($gates); got '$stage'" >&2; return 1; }
+  # WP11: the person confirms a changed file under a sensitive path at the failed commit question (a file the run changed)
+  if [[ "$stage" == sensitive-path:* ]]; then
+    grep -qxF -- "${stage#sensitive-path:}" <<<"$(_changed_since_base)" \
+      || { echo "FAIL: ${stage#sensitive-path:} is no file this run changed" >&2; return 1; }
+    ok=2
+  fi
+  [[ $ok -ge 1 ]] || { echo "FAIL: override takes a gate of this run ($gates); got '$stage'" >&2; return 1; }
   _ensure_dirs
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
   # An override is a human decision, made at the gate: record that, and why. Temper reads no
@@ -3489,6 +3501,21 @@ cmd_override() {
   entry=$(python3 -I "$SCRIPTS_DIR/state_ops.py" override-entry "$stage" "$reason" "$by" "$(_now)")
   _json_append "$OVERRIDES_FILE" "$entry"
   echo "OK: override recorded for '$stage' by $by: $reason"
+  # WP11 (rule 3): a skip of a check ends the run that goes on by itself
+  [[ $ok -eq 1 && "$stage" != foreign-commit:* ]] && _unattended_end "the person skipped the $stage check"
+  return 0
+}
+
+_rule_log() { # _rule_log <kind> <stage> <what>: one entry of .temper/rule-log.json (scripts/rule_log.py decides when a kind of a
+             # rule is written: while the run goes on by itself and no stop is open)
+  python3 -I "$SCRIPTS_DIR/rule_log.py" append "$1" "$2" "$3" >/dev/null 2>&1 || true
+}
+
+_unattended_end() { # _unattended_end <what>: the run asks at every stage from here (rule 3); recorded in the rule log
+  [[ -f "$STATE_FILE" && "$(_json_get_path "$STATE_FILE" run_mode "")" == "autonomous" ]] || return 0
+  _json_set_path "$STATE_FILE" run_mode interactive '{}' >/dev/null
+  python3 -I "$SCRIPTS_DIR/rule_log.py" append ended "$(_json_get_path "$STATE_FILE" next_stage "")" "$1" >/dev/null
+  echo "OK: the run asks you at every stage from here ($1)"
 }
 
 # ---
@@ -3517,21 +3544,34 @@ cmd_intent() {
   python3 -I "$SCRIPTS_DIR/spec_text.py" intent-status "$spec/intent.md" "$sub" "the person at the Intent gate" "$(date -u +%Y-%m-%d)"
 }
 
-# temper park --verdict SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION --reason "...": an armed run stops for the person
-# (reference/autonomy.md). It writes .temper/autonomy-report.md, turns the run back to interactive and marks it
-# parked, so `temper next` asks the gate it parked at.
+# temper park --verdict SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION --reason "...": a recorded stop of a run that goes on
+# by itself (reference/autonomy.md). It writes .temper/autonomy-report.md and marks the run parked, so `temper next` asks
+# the question of the stage it stopped at. WP11: the mode stays; the mark ends when the run changes stage, or by
+# `temper park --end [--answer ID]`, the last call of the person's answer (the mark at Commit stays until the commit).
 cmd_park() {
-  local verdict="" reason=""
+  local verdict="" reason="" end=0 answer=""
   while [[ $# -gt 0 ]]; do
-    case "$1" in --verdict) verdict="${2:-}"; shift 2 ;; --reason) reason="${2:-}"; shift 2 ;; *) shift ;; esac
+    case "$1" in
+      --verdict) verdict="${2:-}"; shift 2 ;; --reason) reason="${2:-}"; shift 2 ;;
+      --end) end=1; shift ;; --answer) answer="${2:-}"; shift 2 ;; *) shift ;;
+    esac
   done
-  case "$verdict" in SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION) ;; *) echo "FAIL: usage: temper park --verdict SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION --reason \"...\"" >&2; return 1 ;; esac
   [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state" >&2; return 1; }
   local stage branch
   stage="$(_json_get_path "$STATE_FILE" next_stage "")"
+  if [[ $end -eq 1 ]]; then
+    local held; held="$(_json_get_path "$STATE_FILE" parked "")"
+    [[ -n "$answer" ]] && python3 -I "$SCRIPTS_DIR/rule_log.py" append answer "$stage" "the person answered: $answer" >/dev/null
+    if [[ -z "$held" ]]; then echo "OK: nothing is parked (the run moved on)"; return 0; fi
+    if [[ "$stage" == "commit" ]]; then echo "OK: the stop at Commit stays until the commit"; return 0; fi
+    _lock_acquire; python3 -I "$SCRIPTS_DIR/state_ops.py" park-end "$STATE_FILE"; _lock_release
+    echo "OK: the stop at $stage ends; the run goes on by itself"
+    return 0
+  fi
+  case "$verdict" in SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION) ;; *) echo "FAIL: usage: temper park --verdict SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION --reason \"...\" | temper park --end [--answer ID]" >&2; return 1 ;; esac
   branch="$(_json_get_path "$STATE_FILE" branch "")"
-  _json_set_path "$STATE_FILE" run_mode interactive '{}' >/dev/null || return 1
   _json_set_path "$STATE_FILE" parked "$stage" '{}' >/dev/null || return 1
+  python3 -I "$SCRIPTS_DIR/rule_log.py" append stop "$stage" "${reason:-$verdict}" >/dev/null
   _ensure_dirs
   {
     echo "# Autonomy report"
@@ -3620,7 +3660,8 @@ cmd_risk() {
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
   local out rc=0
-  out="$(python3 -E -s "$SCRIPTS_DIR/risk.py" compute "$spec" "$TEMPER_DIR/security-map.json" "$@" --prior "$(_json_get_path "$STATE_FILE" risk_raise "")")" || rc=$?
+  out="$(python3 -E -s "$SCRIPTS_DIR/risk.py" compute "$spec" "$TEMPER_DIR/security-map.json" "$@" --prior "$(_json_get_path "$STATE_FILE" risk_raise "")" \
+    --sensitive "$(_cfg_get autonomy.park-on-touch "")")" || rc=$?
   [[ $rc -eq 0 ]] || return $rc
   head -1 <<<"$out"
   python3 -I -c "
@@ -3978,7 +4019,7 @@ main() {
     drift) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/drift.py" .temper/specs "$@") ;;
     check) cmd_check "$@" ;;
     acceptance) cmd_acceptance "$@" ;;
-    go) python3 -E -s "$SCRIPTS_DIR/go.py" "$PLUGIN_ROOT/scripts/temper" "$REPO_ROOT" ;;
+    go) python3 -E -s "$SCRIPTS_DIR/go.py" "$PLUGIN_ROOT/scripts/temper" "$REPO_ROOT" "$@" ;;
     spec) case "${1:-}" in   # 9.8.0: the git steps of leaving a stage (scripts/spec_ops.py)
             branch) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" branch "$(cmd_state_get branch)") ;;
             commit|deviations) local _sp; _sp="$(_spec_path "")"; [[ -n "$_sp" ]] || { echo "FAIL: no active run" >&2; return 1; }
