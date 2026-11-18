@@ -370,12 +370,16 @@ function* answer(cli: string, q: GoAsk, depth = 0): Steps<DriveEnd | null> {
 
 export function* driveSteps(cli: string, request: string | null, slug: string | null = null): Steps<DriveEnd> {
   let started = false
+  // WP11: a drive with no request takes the run up again: its first `temper go` passes --taken-up, so a run that goes on
+  // by itself records a stop and its stage asks the person once
+  let takenUp = request === null
   let waits = 0
   let lastAfter = ''
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     // The person interrupted: stop here, with no model turn they did not ask for. The CLI holds the run.
     if (yield* stopped()) return { kind: 'done', text: STOPPED }
-    const g = parseGo((yield* run(`${cli} go`)).out)
+    const g = parseGo((yield* run(takenUp ? `${cli} go --taken-up` : `${cli} go`)).out)
+    takenUp = false
     if (g === null) return handback('temper go gave no action')
     for (const c of g.setup ?? []) {
       const r = yield* run(c)

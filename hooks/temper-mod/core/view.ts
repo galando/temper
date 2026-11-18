@@ -302,6 +302,11 @@ export function stageToast(stage: Stage | null): string | null {
   return stage === 'commit' ? 'The run is done. Commit is next.' : `${stageLabel(stage)} is open.`
 }
 
+// WP11: the notice of a stop of a run that goes on by itself: `run.parked` of the view turned from null to a stage.
+export function stopToast(stage: string): string {
+  return `The run stopped at ${isStage(stage) ? stageLabel(stage) : stage}: its question asks you.`
+}
+
 // What Claude does next, for the system prompt: what `temper next --json` says, in one line.
 export function nextStep(v: View): string {
   if (v.stage === null) return ''

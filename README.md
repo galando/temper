@@ -27,7 +27,7 @@ Then run `/temper:temper "describe the feature"` in your project.
 
 ## How it works
 
-Intent, Plan, Build, Review, Check, then commit. You decide each gate by clicking an answer.
+Intent, Plan, Build, Review, Check, then commit. You approve the plan; the run goes on to the commit question by itself.
 
 - **Intent:** the rules your request left out (who, when, how much, exceptions) come back as questions with ready answers.
 - **Plan:** tasks a builder can follow without guessing; files outside the plan need your OK.

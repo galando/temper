@@ -104,6 +104,23 @@ class CommitPart:
             steps.append(self.c("state clear"))
         return steps
 
+    def commit_question(self):
+        """WP11: the commit question of a run that stopped at Commit (always, for a run that went on by itself): commit
+        (recommended), commit and open a pull request, or a loop back to Build; under More the stacked pull requests,
+        the small change (add_adhoc) and Save for later. Its text names the open findings by level."""
+        r = self.r
+        steps = self.report_steps()
+        first = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=steps, oid="commit")]
+        prs = self.pr_options([])   # a /temper:temper run only: one pull request, and stacked ones for two groups or more
+        for o in prs:
+            o["steps"] = steps
+        first += prs[:1] + [self.loop_opt("check", "fix" if r.command == "fix" else "build")]
+        rest = prs[1:]
+        opens = [f for f in r.findings() if f["state"] == "open"]
+        text = "Commit: every gate passed%s, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?" % (
+            self.finding_counts(opens))
+        return self.with_more(GATE_HEADER, text, "commit", first, rest + [self.save()], "Commit: more options.", qid="commit.confirm")
+
     def commit(self):
         r = self.r
         verdict = r.verdict("commit")
@@ -125,8 +142,7 @@ class CommitPart:
                 return {"action": "work", "stage": "commit", "calls": [self.c("report --html")], "agents": [],
                         "say": "The report page is written (report.html in the spec folder); then the commit."}
             if r.state.get("parked"):
-                return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed%s, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?" % self.open_listed(), stage="commit", qid="commit.confirm", options=[
-                    self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.report_steps(), oid="commit"), self.save()])}
+                return {"action": "ask", "stage": "commit", "ask": self.commit_question()}
             return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.report_steps(),
                     "say": "Every gate passed: the report first, then the commit."}
         failing = sorted({re.sub(r"\s+gate$", "", str(x.get("name", ""))) for x in r.failed_rows("commit") if str(x.get("name", "")).endswith(" gate")})
@@ -156,6 +172,16 @@ class CommitPart:
             # row names changes first)
             opts.append(self.opt("Check again", "Run the commit gate again, once you changed what the row names.", move="redo",
                                  calls=[self.c("gate commit")], oid="check-again"))
+        # WP11: a changed file under a sensitive path, outside the plan: the person confirms the change here, with a reason
+        touched = []
+        for x in r.failed_rows("commit"):
+            if x.get("name") in ("park-on-touch paths", "sensitive paths"):
+                touched += [m.group(1) for m in re.finditer(r"(?:^|; )(\S+) matches \S+ and is not in the plan", str(x.get("detail", "")))]
+        if touched:
+            opts.append(self.opt("Confirm the change to %s" % touched[0], "The change to %s is right: record your reason and check the commit "
+                                 "again." % touched[0], move="commitOverride", reason=["The change belongs to this feature"],
+                                 calls=[self.c("override %s --reason '{reason}'" % shlex.quote("sensitive-path:" + touched[0])), self.c("gate commit")],
+                                 oid="confirm"))
         if not own:
             opts.append(self.opt("Override and commit", "Skip the failed gates with your reason and commit.", move="commitOverride",
                                  calls=[self.c("override %s --reason '{reason}'" % s) for s in failing] + [self.c("gate commit")],
@@ -163,7 +189,7 @@ class CommitPart:
         opts.append(self.save())
         why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit")[:3])
         ask = ("Override and commit?" if not own else "Add the files to the plan?" if outside else
-               "An override does not clear this row: change what it names (the config's autonomy limits, or the change), then check again.")
+               "Confirm the change, or check again?" if touched else "Change what the row names, then check again?")
         return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: the commit gate failed (%s). %s" % (why, ask), stage="commit", options=opts,
                                                                        qid="commit.fail")}
 

@@ -70,7 +70,7 @@ for k in stage command parked adhoc adhoc_done redo stage.x adhoc.stage; do
 done
 assert_eq "A6: the refused writes changed nothing" "started|temper|-" "$(_st stage)|$(_st command)|$(_st adhoc)"
 assert_exit "A6: run_mode takes interactive or autonomous only" 1 "$TEMPER" state set run_mode fast
-assert_exit "A6: run_mode autonomous is taken" 0 "$TEMPER" state set run_mode autonomous
+assert_exit "A6: run_mode autonomous is refused away from the approval (WP11)" 1 "$TEMPER" state set run_mode autonomous
 assert_exit "A6: pipeline_round counts one up at a time: 3 after round 1 is refused" 1 "$TEMPER" state set pipeline_round 3
 assert_exit "A6: pipeline_round is a number" 1 "$TEMPER" state set pipeline_round two
 # WP10: each call above spent a CI fix round of the budget (a call refused for its own reason has spent its repeat)
@@ -88,8 +88,11 @@ assert_exit "A6: \"\" lifts it" 0 "$TEMPER" state set regression_test ""
 assert_exit "A6: once lifted, another file is taken" 0 "$TEMPER" state set regression_test reg/b_test.sh
 rm -rf reg
 rm -f .temper/build-state.json
+"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; _a7_none="$([[ -f .temper/build-state.json ]] && _st ran_unattended || echo -)"
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-assert_eq "A7: run_mode autonomous set with no run state yet still records ran_unattended" "True" "$(_st ran_unattended)"
+assert_eq "A7: run_mode autonomous is refused with no run state, and at the approval records ran_unattended and the stage (WP11)" \
+  "none=-|True|plan" "none=$_a7_none|$(_st ran_unattended)|$(_st unattended_from)"
 
 # --- A8. A group is passed exactly while its gate says PASS ---
 f9_tasks | m_setup

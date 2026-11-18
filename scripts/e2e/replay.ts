@@ -25,7 +25,6 @@ import type { Agent, Json } from './world'
 
 const SPEC = '.temper/specs/report'
 const label = process.argv[2] ?? 'run'
-const POLICY = process.env.REPLAY_POLICY === '1'   // this PR with autonomy.policy: decide, the run armed once
 const NEW = fs.existsSync(path.join(ROOT, 'scripts/runs.py'))   // 9.8.5 and later: runs count only when the CLI ran them
 
 // ---- the fake toolchain: scripts/e2e/faketools.ts (MVN, JAVA, PG, POM and the lines that install them) -----------
@@ -241,9 +240,6 @@ function main(): void {
   const cfg = path.join(w.dir, '.claude/temper.config')
   fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80',
     `  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'`))
-  // a second autonomy block merges into the template's (WP08, M8): its park-on-touch and max-blast-radius apply too, and
-  // the mock project touches none of those paths, so the numbers are those of the run with the first block dropped
-  if (POLICY) fs.appendFileSync(cfg, '\nautonomy:\n  policy: decide\n')
   w.sh('git add -A && git commit -qm config')
   w.sh(`${TEMPER} init`)
   w.sh(`${TEMPER} state init report --feature 'CI report'`)
@@ -286,9 +282,10 @@ function main(): void {
     if (/^Override/.test(String(rec.label))) m.overrides++
     if (/^Loop back/.test(String(rec.label))) m.loops.push(String(rec.label))
     if (rec.answer_question) return { label: rec.label, note: GOOD_VALIDATE }
-    // with the policy on, the person arms the run once at the last question before Build
-    const arm = opts.find(o => /^Autonomous Build/.test(String(o.label)))
-    if (POLICY && arm) return arm.label
+    // WP11: at the approval the person takes the run to the commit, by its id (a plugin folder with no ids, the base,
+    // has no such option: its recommended one is taken, as before)
+    const arm = opts.find(o => o.id === 'approve-run')
+    if (arm) return arm.label
     if (/Every gate passed. The report is above/.test(q)) return 'Not now'
     return rec.label
   }

@@ -82,6 +82,7 @@ commit gate (a change made at Build, or of docs only, runs only the stage's gate
 - **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
   in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
 - **`auto`**: the CLI's own move: an armed autonomous run, or a step with nothing to decide (9.8.0: the one group of a plan passing, a Build task an earlier task already built in an armed run). Run `calls`, then ask `next` again.
+  `run.armed` of `next` (WP11) says whether the run goes on by itself now.
 - **`broken`**: the run state does not fit its spec folder; ask the `restart` question.
 
 ### Questions
@@ -308,21 +309,37 @@ stage's question that spend nothing. An `auto` or `work` action that holds one p
 question. After a grant `next` asks the stage's own question again. `temper budget` prints the record. The record
 survives a step back; `state clear` and `state init` remove it. So following the recommendation always ends.
 
-### The run policy (9.8.5)
+### The run to the commit (9.8.5, WP11)
 
-`autonomy.policy: decide` in `.claude/temper.config` (only the person writes it) extends an armed run past Build. The
-person still arms the run at the last question before Build; the option's text then says the policy applies. After Build
-passes, the run stays armed, and at Review and Check `temper next` gives an `auto` action in place of the question: an
-open finding at high or above loops back to Build with the findings as the reason (a Medium one goes on); a clean Review
-goes on to Check; a failed Check loops back to Build; a passed Check goes on to the commit. A loop back happens only
-while the budget lasts. Nothing is overridden or accepted. A failed group check during
-Build takes the group question's recommended option by itself (a fix agent, a longer limit, the tasks again) when no
-person is needed for it; a typed command, Save for later or a spent budget park the run. A recommended step back to Plan
-parks it too: an unattended run never plans again, and the park reason says that the step back is the person's to
-decide. A step back to Intent, Plan or Design, by any call, turns the run back to asking at every stage. An environment
-fault (SETUP), a missing measurement, a failed acceptance test, a criterion only the person can confirm (the next
-question is the confirmation), a spent budget and the commit park the run for the person, as an armed Build does. With
-the key absent or `ask`, every gate after Build asks, as before.
+The approval's first option, `approve-run` ("Approve and build", move `arm`), runs `temper state set run_mode
+autonomous` and then the stage's calls; `ask-every-stage` ("Ask me at every stage") runs `state set run_mode
+interactive` first. `run.default` orders them: `to-commit` (the default) puts `approve-run` first and recommended, `ask`
+the other way round, `never-unattended` offers `ask-every-stage` alone. With the key absent, `autonomy.enabled: false`
+reads as `ask`; an unknown value is `ask`. `approve-run` is left out for a skipped check, when Design follows the plan
+question (the Design question is then the approval), and when `may_run_alone()` says no. The CLI refuses the call
+unless the run is at Plan or Design with that check passed and not skipped, and under `never-unattended`; it records
+the stage in `unattended_from`, which `state set` refuses. A state with `run_mode: autonomous` and no `unattended_from`
+(a run of 9.8.4 or of the base, approved for Build alone) reads as `interactive`. `state init` stamps `saved_by`; a
+state with none, saved at Review, loses its Review verdict once, so Review runs once more.
+
+`Run.armed` is `run_mode: autonomous`, an `unattended_from` other than the stage the run is at, and no `parked`. Then a
+passed Design, Build, group, Review or Check is an `auto` advance. Review: an open finding at a level of
+`review.block-on` takes the repair; one below goes on and is named at the commit question. Check: a setup fault, a
+missing measurement, the acceptance rows, a criterion only the person can confirm and a failed mutation row alone stop;
+anything else takes the repair. The repair is one counted `state loop <stage> build --reason 'rule: ...'`; a second one,
+a plan that declares a file under `autonomy.park-on-touch`, or a key with no room stops. A failed group check takes its
+recommended option when it has calls, needs nothing typed, does not save the run, is no step back and the group declares
+no sensitive file. Every other case is a stop (`scripts/stops.json`).
+
+A stop is the park call, then the stage's own question. `temper park` keeps `run_mode`; `parked` makes `Run.armed`
+false and ends when the run changes stage or by `temper park --end [--answer ID]` (not at Commit). The question asked
+while `parked` is set says `After your answer the run goes on by itself.`, every option with calls and no `stop` ends
+with `park --end --answer <its id>`, and `ask-every-stage` ("Ask me at every stage from here") is added. A skip, an
+accepted finding and a step back to Intent, Plan or Design end the run to the commit. The commit question always
+asks: `commit`, `commit-pr`, `back` (`state loop check build`), and under More the stacked pull requests, the small
+change and `save`. A failed commit gate with a changed sensitive file outside the plan offers `confirm`
+(`temper override sensitive-path:<path>`). `temper go --taken-up` records a stop of such a run first, so its stage asks
+once. What a rule decided, each stop and each answer are entries of `.temper/rule-log.json` (`scripts/rule_log.py`).
 
 ### Evidence, the lock and a note (9.8.5)
 
@@ -375,6 +392,7 @@ the key absent or `ask`, every gate after Build asks, as before.
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |
 | `usage` | `{ms, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{ms, runs}`, and a stage also to `models` (the models its launches asked for). The time is the total Claude Code gives for each agent; since 9.7.4 no token count is recorded |
+| `rule_log` | 9.8.5 (WP11): `[{kind, stage, what, ts}]` of `.temper/rule-log.json`; `kind` is `advance`, `repair`, `group fix`, `covered`, `stop`, `answer` or `ended` |
 | `time` | `{started, updated}` |
 
 The file is replaced whole each time (written beside it, then moved), so a reader never sees half of

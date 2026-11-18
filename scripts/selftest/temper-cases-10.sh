@@ -85,7 +85,7 @@ assert_eq "F3: the status the mod shows is that sentence" "Build: Task 1 runs on
 _all_says=""
 fresh; _all_says+="$(vw "d['status']")"$'\n'
 gpass intent; _all_says+="$(vw "d['status']")"$'\n'
-printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1; _all_says+="$(vw "d['status']")"$'\n'
+printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; _ran_unattended; _all_says+="$(vw "d['status']")"$'\n'
 _all_says+="$(nx "d.get('say', '')")"$'\n'
 printf 'stack: auto\n' > .claude/temper.config
 assert_eq "F3: the status of a work, wait, ask and auto run holds no instruction for Claude" "" "$(_banned_say "$_all_says")"

@@ -1,6 +1,6 @@
 """risk.py: the rating of a plan, computed from its blast radius (F11). One call, the same answer for the same input.
 
-  python3 risk.py compute SPEC_DIR SECURITY_MAP.json [--raise L|M|H --reason TEXT] [--prior L|M|H]
+  python3 risk.py compute SPEC_DIR SECURITY_MAP.json [--raise L|M|H --reason TEXT] [--prior L|M|H] [--sensitive PATTERNS]
 
 Prints `RISK: M (5 production files; HIGH file src/x.py)` and, on a second line, a JSON object with the fields the CLI
 keeps in the run state (risk, risk_reasons, risk_raise, risk_raise_reason). Exit 1 with a message for a raise with no
@@ -8,13 +8,15 @@ reason, or one that would lower the rating. Standard library only.
 
 The rule: production files are the files the tasks declare that are neither tests nor docs. Up to 3 is L, up to 10 is M,
 more is H. A CRITICAL entry in the security map makes it H. A HIGH entry, or a [CROSS-REPO] row in plan.md's Blast Radius
-section, moves it up one tier (at most H), once.
+section, moves it up one tier (at most H), once. A declared file under a sensitive path (the patterns of
+autonomy.park-on-touch, scripts/sensitive.py) makes it H (WP11): nothing there is repaired by rule.
 """
 import json
 import os
 import re
 import sys
 
+import sensitive
 import tasks_md
 
 TIERS = ["L", "M", "H"]
@@ -69,7 +71,7 @@ def tier_up(level):
     return TIERS[min(TIERS.index(level) + 1, 2)]
 
 
-def compute(spec, security_map, raise_to="", reason="", prior=""):
+def compute(spec, security_map, raise_to="", reason="", prior="", patterns=""):
     prod = [f for f in declared_files(spec) if is_production(f)]
     n = len(prod)
     level = "L" if n <= 3 else ("M" if n <= 10 else "H")
@@ -87,6 +89,10 @@ def compute(spec, security_map, raise_to="", reason="", prior=""):
             why.append("HIGH file %s" % (high[0] or "in the security map"))
         if cross:
             why.append("CROSS-REPO row in the Blast Radius")
+    touched = sensitive.declared(declared_files(spec), patterns)
+    if touched:
+        level = "H"
+        why.append("sensitive path %s" % ", ".join(f for f, _ in touched[:3]))
     held = prior if prior in TIERS else ""
     if raise_to:
         if raise_to not in TIERS:
@@ -114,7 +120,7 @@ def main(argv):
         return 2
     opt = lambda name: argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else ""
     try:
-        state = compute(argv[2], argv[3], opt("--raise"), opt("--reason"), opt("--prior"))
+        state = compute(argv[2], argv[3], opt("--raise"), opt("--reason"), opt("--prior"), opt("--sensitive"))
     except ValueError as e:
         print("FAIL: %s" % e, file=sys.stderr)
         return 1

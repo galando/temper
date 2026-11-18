@@ -169,7 +169,7 @@ p = '.temper/specs/demo/tasks.md'; s = open(p).read()
 s = s.replace('**File:** `src/a.sh`, `unit/a_test.sh`', '**File:** `src/a.sh`, `unit/a_test.sh`, `src/billing/rates.sh`', 1)
 open(p, 'w').write(s)
 PYEOF
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+_ran_unattended   # WP11: a run the person started at the approval, now at the commit gate
 mkdir -p src/billing; echo r > src/billing/rates.sh
 printf 'autonomy:\n  enabled: true\n  park-on-touch: ["**/billing/**"]\n' > .claude/temper.config
 assert_eq "9.8.0: an unattended run's planned change to a park-on-touch path does not park" "yes" \
@@ -177,8 +177,8 @@ assert_eq "9.8.0: an unattended run's planned change to a park-on-touch path doe
 echo x > src/billing/other.sh
 assert_eq "9.8.0: a change to a park-on-touch path outside the plan still parks" "yes" \
   "$(_gcm | grep -q '\[x\] park-on-touch paths — src/billing/other.sh matches \*\*/billing/\*\* and is not in the plan' && echo yes || echo no)"
-"$TEMPER" state set run_mode interactive >/dev/null 2>&1   # the armed Build is over: the run asks the person again
-assert_eq "9.8.0: arming records that Build ran unattended, and the commit gate still holds the run to park-on-touch after it" "true|yes" \
+"$TEMPER" state set run_mode interactive >/dev/null 2>&1   # a skip or a step back ended it: the run asks the person again
+assert_eq "WP11: a run that went on by itself keeps that record, and the commit gate still holds it to park-on-touch after it ended" "true|yes" \
   "$("$TEMPER" state get ran_unattended)|$(_gcm | grep -q '\[x\] park-on-touch paths — src/billing/other.sh' && echo yes || echo no)"
 assert_exit "9.8.0: the record is the CLI's: state set ran_unattended is refused" 1 "$TEMPER" state set ran_unattended false
 
@@ -212,20 +212,20 @@ fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&
 assert_exit "9.8.0: risk is kept by the CLI (state set risk is refused)" 1 "$TEMPER" state set risk L
 gpass plan
 assert_eq "9.8.0: a medium plan at risk below H skips Design; the plan question offers the unattended run" \
-  "Plan: the check passed. Approve the plan and continue to Build?|Stage by stage (Recommended)|Autonomous Build: run Build unattended" \
-  "$(nx "q = d['ask']; '|'.join([q['question']['question']] + [o['label'] for o in q['options'][:2]])")"
+  "Plan: the check passed. Approve the plan and continue to Build?|ask-every-stage,True|approve-run,False" \
+  "$(nx "q = d['ask']; '|'.join([q['question']['question']] + ['%s,%s' % (o['id'], bool(o.get('recommended'))) for o in q['options'][:2]])")"
 "$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1; fresh_reviewed   # reviewer A only: the round is not complete
 assert_eq "WP14: at risk H a medium plan runs no Design, and before a complete fresh round the plan question does not offer the unattended run" \
-  "Stage by stage (Recommended)|state advance plan_complete build|no" \
-  "$(nx "q = d['ask']; o = [x['label'] for x in q['options']] + [x['label'] for x in (q.get('more') or {}).get('options', [])]; q['options'][0]['label'] + '|' + q['options'][0]['calls'][-1].split('temper ', 1)[1] + '|' + ('yes' if any('Autonomous' in x for x in o) else 'no')")"
+  "ask-every-stage,True|state advance plan_complete build|no" \
+  "$(nx "q = d['ask']; o = [x['id'] for x in q['options']] + [x['id'] for x in (q.get('more') or {}).get('options', [])]; '%s,%s' % (q['options'][0]['id'], bool(q['options'][0].get('recommended'))) + '|' + q['options'][0]['calls'][-1].split('temper ', 1)[1] + '|' + ('yes' if 'approve-run' in o else 'no')")"
 for _l15 in readiness zoom-out comprehension tests; do   # reviewer B completes the round of risk H
   "$TEMPER" evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim "fresh review completed: $_l15 B" \
     $([[ $_l15 == readiness ]] && echo "--value $(grep -c '^### Task' .temper/specs/demo/tasks.md)") >/dev/null 2>&1
 done
 "$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design (the option run-design)
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1; gpass design
-assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design" "Autonomous Build: run Build unattended|arm|state set run_mode autonomous" \
-  "$(nx "o = d['ask']['options'][1]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1]])")"
+assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design" "approve-run|arm|state set run_mode autonomous|state advance design_complete build" \
+  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; '|'.join([o['id'], o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][1].split('temper ', 1)[1]])")"
 
 # --- 8. A criterion validated by hand is confirmed by the person at Check; a deferred optional one needs no evidence ---
 _at_check
@@ -476,8 +476,8 @@ assert_eq "WP14: complex and the person asked for Design: Design runs" "Continue
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set complexity complex >/dev/null 2>&1; gpass plan; "$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1
 fresh_reviewed
-assert_eq "WP14: complex at risk H runs no Design when nothing was asked" "Stage by stage (Recommended)|state advance plan_complete build" \
-  "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
+assert_eq "WP14: complex at risk H runs no Design when nothing was asked" "ask-every-stage,True|state advance plan_complete build" \
+  "$(nx "o = d['ask']['options'][0]; '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + o['calls'][-1].split('temper ', 1)[1]")"
 fresh
 cat > .temper/specs/demo/intent.md <<'INT'
 **Status:** draft

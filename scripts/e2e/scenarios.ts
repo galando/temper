@@ -5,6 +5,7 @@ import path from 'node:path'
 import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
 import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, CONTEXT_CHECK_LINE, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
+import { stagePerson } from './persons'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
@@ -123,6 +124,12 @@ export const recommended: Person = ask => {
   return o.label
 }
 
+// WP11: the person who approves with Ask me at every stage (stagePerson of scripts/e2e/persons.ts, by the option's id)
+// and takes the recommended option of every other question as `recommended` does. A scenario that tests the question of
+// a later gate takes this person: with the default approval the run goes on by itself and asks none of them.
+export const asksEveryStage: Person = (ask, wd) =>
+  String(ask.id ?? '') === 'plan.approve' ? stagePerson(ask, wd) : recommended(ask, wd)
+
 export const script = (extra: Partial<Script> = {}): Script => ({
   agents: AGENTS,
   person: recommended,
@@ -148,6 +155,7 @@ export const defaultRun = (w: World): void => {
 // 9.8.5 (WP18): the scripted reviewer of full-run names the files `temper review files` prints. Its first Review names
 // one file fewer: the Review gate fails on the row `review completed`, the question recommends Run Review again, and
 // the second launch names the file not read. The second Review names every file, and the run goes on to its end.
+// WP11: the person approves with Ask me at every stage (asksEveryStage), so every later gate asks its own question.
 export const fullRun = (w: World): void => {
   startProject(w)
   const reviews: Array<{ files: string[]; prompt: string }> = []
@@ -171,7 +179,7 @@ export const fullRun = (w: World): void => {
     person: (ask, wd) => {
       if (seen.short === undefined && String(ask.id ?? '') === 'review.fail') seen.short = look(ask, wd)
       if (seen.whole === undefined && reviews.length === 2) seen.whole = look(ask, wd)
-      return recommended(ask, wd)
+      return asksEveryStage(ask, wd)
     },
   }))
   const first = reviews[0]?.files ?? []
@@ -206,8 +214,11 @@ export const modGuards = (w: World): void => {
   if (w.mode !== 'plain') {
     expect(write?.includes('The run ci (Plan stage) owns this folder.') && write.includes('claude --worktree'), `the write refusal names the run and the worktree (${write})`)
     expect(advance !== null, 'leaving Plan is refused without the answer')
-    const option = w.answer(n.ask as Json, 'Stage by stage (Recommended)')
-    expect(option.label === 'Stage by stage (Recommended)', 'the option exists')
+    // WP11: the option is selected by its id, never by its label
+    const stage = ((n.ask as Json).options as Json[]).find(o => o.id === 'ask-every-stage')
+    expect(stage !== undefined, 'the approval offers ask-every-stage')
+    const option = w.answer(n.ask as Json, String(stage!.label))
+    expect(option.id === 'ask-every-stage', 'the option exists')
     expect(w.denies({ tool: 'Bash', input: { command: `${TEMPER} state advance plan_complete build` } }) === null, 'leaving Plan passes as the call the answer maps to')
   } else {
     expect(write === null && advance === null, 'with no mod nothing is refused')
@@ -216,9 +227,10 @@ export const modGuards = (w: World): void => {
 
 // A small change at Check: the window opens (the person's answer), a code write passes inside it, and the closed change runs
 // Review of the changed files, then Check, then the commit gate.
+// WP11: the person approves with Ask me at every stage (asksEveryStage), so Check asks its own question.
 export const smallChange = (w: World): void => {
   startProject(w)
-  orchestrate(w, script(stopAtAsk('Check: the check passed')))
+  orchestrate(w, script({ person: asksEveryStage, ...stopAtAsk('Check: the check passed') }))
   const outside = w.denies({ tool: 'Write', input: { file_path: `${w.dir}/src/ci_shape.py` } })
   expect(w.mode === 'plain' || outside !== null, 'a code write at Check is refused before the window')
   let seen = ''
@@ -227,7 +239,7 @@ export const smallChange = (w: World): void => {
       const q = String(ask.question.question)
       if (q.startsWith('Check: the check passed') && !seen) return 'More options'
       if (q.includes('more options') && !seen) return 'Make a small change'
-      return recommended(ask, wd)
+      return asksEveryStage(ask, wd)
     },
     instruction: (wd, text) => {
       if (text.startsWith('Make the small change')) {
@@ -301,7 +313,7 @@ export const coveredAndManual = (w: World): void => {
         expect(rows.includes('Task 3 confirmed by Dana Cohen'), 'the confirmation carries the name the person gave')
         expect(rows.includes('Task 2 accepted as done') && rows.includes('an earlier change built it'), 'the acceptance carries the reason the person gave')
       }
-      return recommended(ask, wd)
+      return asksEveryStage(ask, wd)
     },
   }))
   expect(asked.some(q => q.includes('Task 2') && q.includes('its tests already pass before any change')), 'the covered question was asked for Task 2')
@@ -344,7 +356,7 @@ export const prAndPipeline = (w: World): void => {
     person: (ask, wd) => {
       const q = String(ask.question.question)
       if (q.startsWith('Check: the check passed')) return { label: 'Commit and open PR', note: '' }
-      return recommended(ask, wd)
+      return asksEveryStage(ask, wd)
     },
     instruction: (wd, text) => {
       if (text.startsWith('Pull request: follow')) return true
@@ -487,7 +499,7 @@ export const failingScenario = (w: World): void => {
         seen = q
         return { label: 'Override and continue', note: 'I accept the risk' }
       }
-      return recommended(ask, wd)
+      return asksEveryStage(ask, wd)
     },
     // the person overrode the failed scenario; Check then fails on it for the same reason, which is the end of this scenario
     stopAt: (_wd, n) => n.action === 'ask' && String(n.ask.question.question).startsWith('Check: the check failed'),
@@ -495,26 +507,51 @@ export const failingScenario = (w: World): void => {
   expect(seen.includes("scenario 'An untraced behavior holds'") && seen.includes('exit 3') && seen.includes('python3 -c'), `the Build question names the scenario, its command and the exit (${seen.slice(0, 200)})`)
 }
 
-// An armed run: the plan answer arms it, the stages go on by themselves, and it parks before the commit; nothing is pushed.
-// 9.8.0: an armed run is Build alone. Build goes on by itself; Review, Check and the commit ask the person as usual.
+// WP11: the default run with one failed group (the scenario armed-run). The person takes the recommended option of every
+// question, approve-run at the approval. Group G1's check fails once (its Validate also wants a line no task writes, which
+// the group fix agent adds): the CLI takes the group fix by rule, and the run goes on by itself to the commit question,
+// the only question after the approval. It plans once, never steps back to Plan, and pushes nothing.
 export const armedRun = (w: World): void => {
-  startProject(w, 'autonomy:\n  enabled: true')
-  const asked: string[] = []
+  startProject(w)
+  const g1 = 'python3 -m unittest unit.test_ci_shape'
+  let groupFixes = 0
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/tasks.md`, wd.read(`${SPEC}/tasks.md`).replace(`**Validate:** \`${g1}\``, `**Validate:** \`${g1} && grep -q VERSION src/ci_shape.py\``))
+    },
+    // agents/build.md: a group fix works in the merged worktree its prompt names
+    'temper:temper-build': (wd, a) => {
+      const m = /worktree (\S+) \(the merged/.exec(String(a.prompt ?? ''))
+      expect(m !== null, `the one Build agent of this run is the group fix (${String(a.prompt ?? '').slice(0, 160)})`)
+      groupFixes++
+      const wt = path.isAbsolute(m![1]!) ? path.relative(wd.dir, m![1]!) : m![1]!
+      const file = path.join(wt, 'src/ci_shape.py')
+      wd.write(file, `${(wd.exists(file) ? wd.read(file) : SHAPE_CODE).replace(/\n*$/, '\n')}VERSION = 1\n`)
+    },
+  }
+  const picks: Array<{ question: string; option: string }> = []
   orchestrate(w, script({
+    agents,
     person: (ask, wd) => {
-      const q = String(ask.question.question)
-      asked.push(q)
-      if (q.startsWith('Plan: the check passed')) return 'Autonomous Build: run Build unattended'
+      const o = (ask.options as Json[]).find(x => x.recommended === true) ?? (ask.options as Json[])[0]
+      picks.push({ question: String(ask.id ?? ''), option: String(o?.id ?? '') })
       return recommended(ask, wd)
     },
   }))
   const flow = w.trace.join('\n')
-  expect(!asked.some(q => q.startsWith('Build:')), 'Build asked the person nothing: it ran unattended')
-  expect(/state set run_mode interactive/.test(flow), 'after Build the run turned back to interactive')
-  expect(asked.some(q => q.startsWith('Review: the check passed')), 'Review asked the person')
-  expect(asked.some(q => q.startsWith('Check: the check passed')), 'Check asked the person')
-  expect(!asked.some(q => q.includes('the armed run parked here for you')), 'the run did not park before the commit: the person was asked')
-  expect(!/git push|gh pr/.test(flow), 'an armed run never pushes')
+  const approval = picks.findIndex(p => p.question === 'plan.approve')
+  expect(approval >= 0 && picks[approval]!.option === 'approve-run',
+    `the recommended option of the approval is approve-run (${picks.map(p => `${p.question}:${p.option}`).join(', ')})`)
+  expect((w.counts.launches['temper:temper-plan'] ?? 0) === 1, `temper:temper-plan is launched once (${w.counts.launches['temper:temper-plan'] ?? 0})`)
+  expect(groupFixes === 1, `the group fix agent is launched once for the failed group check (${groupFixes})`)
+  expect(!/state loop \S+ plan/.test(flow), 'no step back to Plan: an unattended run never plans again')
+  expect(picks.slice(approval + 1).map(p => p.question).join(',') === 'commit.confirm',
+    `no question between the approval and the commit question (${picks.slice(approval + 1).map(p => p.question).join(', ')})`)
+  expect(!/git push|gh pr/.test(flow), 'an unattended run never pushes')
+  expect(!w.exists('.temper/build-state.json') && /VERSION = 1/.test(w.sh('git show HEAD:src/ci_shape.py')),
+    'the run ended and the change is committed, the group fix with it')
 }
 
 // Save for later stops the run; /temper:temper takes it up again at the same question.
@@ -917,7 +954,7 @@ export const fixBreaksSuite = (w: World): void => {
     agents,
     person: (ask, wd) => {
       asked.push(String(ask.id ?? ''))
-      return recommended(ask, wd)
+      return asksEveryStage(ask, wd)
     },
     afterFailStops: true,
     stopAt: (_wd, n) => n.stage === 'commit',
@@ -931,15 +968,15 @@ export const fixBreaksSuite = (w: World): void => {
   expect(String(w.json('.temper/groups.json').integration?.verdict ?? '') === 'PASS', 'integrate passed again on the repaired tree')
 }
 
-// 9.8.5 (WP08, U21): the policy path end to end, plain and mod mode (driver mode is WP09's: `temper go` reports a failed
-// group gate as an error and the driver hands the run back). `autonomy.policy: decide` comes in a second `autonomy:`
-// block, so after the merge of a repeated key (M8) the template's park-on-touch and max-blast-radius apply too. The
-// person arms the run at the plan question; group G1's check fails once (its Validate also wants a line no task writes,
-// which the group fix agent adds); the first Review leaves one High finding, which fails Review (block-on critical,
-// high) and is repaired by the one loop back to Build the policy takes. The run plans once, launches the group fix once,
-// never steps back to Plan, asks nothing between the approval and the commit question, and commits the change.
+// 9.8.5 (WP08, U21): the run to the commit end to end, plain and mod mode (driver mode is WP09's: `temper go` reports a
+// failed group gate as an error and the driver hands the run back). WP11: the key autonomy.policy is gone; this is a
+// default run, the template's park-on-touch and max-blast-radius apply. The person takes the recommended option of the
+// approval, approve-run; group G1's check fails once (its Validate also wants a line no task writes, which the group fix
+// agent adds); the first Review leaves one High finding, which fails Review (block-on critical, high) and is repaired by
+// the one loop back to Build the rule takes. The run plans once, launches the group fix once, never steps back to Plan,
+// asks nothing between the approval and the commit question, and commits the change.
 export const policyRun = (w: World): void => {
-  startProject(w, 'autonomy:\n  policy: decide')
+  startProject(w)
   const g1 = 'python3 -m unittest unit.test_ci_shape'
   const REPAIRED = 'the caller list is copied'
   let reviews = 0
@@ -976,20 +1013,21 @@ export const policyRun = (w: World): void => {
     },
   }
   const ids: string[] = []
+  const picked: string[] = []
   orchestrate(w, script({
     agents,
     person: (ask, wd) => {
       ids.push(String(ask.id ?? ''))
-      const arm = ask.id === 'plan.approve' ? (ask.options as Json[]).find(o => o.id === 'approve-run') : undefined
-      return arm ? String(arm.label) : recommended(ask, wd)
+      if (ask.id === 'plan.approve') picked.push(String((ask.options as Json[]).find(o => o.recommended === true)?.id ?? ''))
+      return recommended(ask, wd)
     },
   }))
   const flow = w.trace.join('\n')
   const approval = ids.indexOf('plan.approve')
-  expect(approval >= 0, `the person armed the run at the plan question (${ids.join(', ')})`)
+  expect(approval >= 0 && picked[0] === 'approve-run', `the person took approve-run, the recommended option of the approval (${ids.join(', ')}; ${picked.join(', ')})`)
   expect((w.counts.launches['temper:temper-plan'] ?? 0) === 1, `temper:temper-plan is launched once (${w.counts.launches['temper:temper-plan'] ?? 0})`)
   expect(groupFixes === 1, `the group fix agent is launched once for the failed group check (${groupFixes})`)
-  expect(!/state loop build plan/.test(flow), 'no call state loop build plan: the policy never steps back to Plan')
+  expect(!/state loop build plan/.test(flow), 'no call state loop build plan: the run never steps back to Plan by rule')
   expect(reviews === 2 && (flow.match(/state loop review build/g) ?? []).length === 1,
     `the High finding loops back to Build once and Review runs again (${reviews} reviews)`)
   expect(ids.slice(approval + 1).join(',') === 'commit.confirm', `no question between the approval and the commit question (${ids.slice(approval + 1).join(', ')})`)

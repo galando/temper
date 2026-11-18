@@ -266,7 +266,7 @@ assert_exit "fix commit gate PASSes without a plan gate" 0 "$TEMPER" gate commit
 
 # --- autonomy: park-on-touch blocks commit in autonomous mode only ---
 setup
-"$TEMPER" state set run_mode autonomous >/dev/null
+_ran_unattended   # WP11: the state a run the person started at the approval leaves
 mkdir -p src/auth && echo x > src/auth/login.js
 git add -A >/dev/null 2>&1 || true
 assert_exit "autonomous commit gate parks on a park-on-touch path" 1 "$TEMPER" gate commit

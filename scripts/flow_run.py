@@ -16,6 +16,7 @@ import plan_ops
 import tasks_md
 from findings import finding_state  # the one state of a finding row, the CLI's own reading (A20)
 import budget
+import sensitive
 
 from flow_base import GATE_OF, SEQ, TEMPER, git, loop_at, open_concerns, read_json, read_text
 
@@ -203,14 +204,28 @@ class Run:
                 and (not vts or not o.get("ts") or str(o.get("ts")) >= vts)]
         return hits[-1] if hits else None
 
-    def policy(self):
-        """9.8.5 (U1): autonomy.policy: decide, in the person's config: an armed run decides Review and Check by fixed rules."""
-        return str(self.cfg("autonomy.policy", "ask")).strip().lower() == "decide"
+    def run_default(self):
+        """WP11 (ADR 0019 decision 3): run.default, the first option of the approval: to-commit (the default), ask or
+        never-unattended. With the key absent and autonomy.enabled false (the shipped config before 9.8.0) it is ask, and
+        an unknown value is ask."""
+        v = str(config_yaml.get(self.config, "run.default", "") or "").strip().lower()
+        if not v:
+            return "ask" if self.cfg("autonomy.enabled", "").strip().lower() == "false" else "to-commit"
+        return v if v in ("to-commit", "ask", "never-unattended") else "ask"
 
     def armed(self):
-        # 9.8.0: no setting turns the unattended run on or off; the person arms it at the last question before Build.
-        # autonomy.enabled is no longer read (it was false in the shipped config, so most runs never saw the option).
-        return self.state.get("run_mode") == "autonomous"
+        """WP11: the run goes on by itself here: the person started it at the approval (unattended_from, an earlier stage
+        than this one), and no stop is open (`parked`, which a stop sets and the next stage change or the answer ends). A
+        run whose approving calls stopped half way is still at its approval, so the question is asked again."""
+        start = self.state.get("unattended_from")
+        return (self.state.get("run_mode") == "autonomous" and bool(start) and start != self.stage
+                and not self.state.get("parked"))
+
+    def sensitive(self):
+        """The files the plan declares under a sensitive path (autonomy.park-on-touch, scripts/sensitive.py): nothing there
+        is repaired by rule."""
+        files = [f for t in (self.plan or {}).get("tasks", []) for f in t.get("files", [])]
+        return [f for f, _ in sensitive.declared(files, self.cfg("autonomy.park-on-touch", ""))]
 
     def active_loops(self):
         return [l for l in (self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []) if isinstance(l, dict)]

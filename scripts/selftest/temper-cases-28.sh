@@ -1,15 +1,8 @@
 # Release 9.8.5 case file 28: sourced by test-temper.sh after temper-cases-27.sh; its helpers (nx, vw, fresh, gpass, gfail, labels, m_setup) are used here.
 
-# --- 9.8.5 (U1): autonomy.policy: decide, approved once by arming the run, decides Review and Check by fixed rules ---
-_polcfg() { # the policy key inside the config's one autonomy block, so its park-on-touch and max-blast-radius apply too
-  sed -i 's/^autonomy:$/autonomy:\n  policy: decide/' .claude/temper.config
-}
-_pol() { # _pol <stage>: an armed run under the policy, at <stage> with the stages before it passed
-  fresh; _polcfg
-  gpass intent plan build
-  for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
-  [[ "$1" == check ]] && { gpass review; "$TEMPER" state advance review_complete check >/dev/null 2>&1; }
-  "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+# --- 9.8.5 (U1), WP11: the run to the commit, started at the approval, decides Review and Check by the closed list ---
+_pol() { # _pol <stage>: a run the person started at the approval (approve-run), at <stage> with the stages before it passed
+  _unattended "$1"
 }
 _pol review
 "$TEMPER" evidence add --stage review --claim 'src/a.ts:3 a missing null check' --severity medium --label HEURISTIC >/dev/null 2>&1
@@ -21,7 +14,13 @@ _pol review
 "$TEMPER" evidence add --stage review --claim 'src/a.ts:3 a token leaks into the log' --severity high --label HEURISTIC >/dev/null 2>&1
 "$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1
 gpass review
-assert_eq "9.8.5 policy: an open High finding under block-on critical loops back once, with the finding as the reason" "auto|1|True" \
+assert_eq "WP11 rule: an open High finding under block-on critical goes on to Check by itself (the rule reads review.block-on)" "auto|True" \
+  "$(nx "d['action'] + '|' + str(d['calls'][0].endswith('state advance review_complete check'))")"
+_pol review
+"$TEMPER" evidence add --stage review --claim 'src/a.ts:3 a token leaks into the log' --severity critical --label HEURISTIC >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1
+gfail review "no blocking findings" "1 open critical finding"
+assert_eq "WP11 rule: an open finding at a level of review.block-on loops back once, with the finding as the reason" "auto|1|True" \
   "$(nx "c = d['calls']; d['action'] + '|' + str(sum(' state loop review build --reason ' in x for x in c)) + '|' + str('a token leaks into the log' in c[0])")"
 _pol review; "$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1; gpass review
 assert_eq "9.8.5 policy: a clean Review goes on to Check by itself" "auto|True" "$(nx "d['action'] + '|' + str(d['calls'][0].endswith('state advance review_complete check'))")"
@@ -32,17 +31,17 @@ assert_eq "9.8.5 policy: a missing measurement parks for the person" "auto|True"
 _pol check; gpass check
 assert_eq "9.8.5 policy: a passed Check goes on to the commit, which still parks for the person" "True" \
   "$(nx "d['calls'][0].endswith('state advance check_complete commit')")"
-assert_eq "9.8.5 policy: no policy move ever overrides or accepts" "0" "$(grep -cE "c\(\"(override|evidence accept)" <(sed -n '/def policy_move/,/def setup_offer/p' "$REPO_ROOT/scripts/flow_work.py"))"
-fresh; gpass intent plan build
-for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1; gpass review
-assert_eq "9.8.5 policy: without autonomy.policy, an armed run still asks at Review, as before" "ask" "$(nx "d['action']")"
+assert_eq "WP11 rule: no move of the rule ever overrides or accepts" "0|yes" \
+  "$(grep -cE "c\(\"(override|evidence accept)" <(sed -n '/def stop(self/,/def setup_offer/p' "$REPO_ROOT/scripts/flow_work.py"))|$(grep -q 'def rule_move' "$REPO_ROOT/scripts/flow_work.py" && echo yes || echo no)"
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state set run_mode interactive >/dev/null 2>&1   # the first call of ask-every-stage, the person's other option
+gpass build; for s in plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+"$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1; gpass review
+assert_eq "WP11: a run approved with Ask me at every stage asks at Review" "ask|review.pass" "$(nx "d['action'] + '|' + d['ask']['id']")"
 
 # --- 9.8.5 (U1): under the policy a failed group check takes the recommended option, unless a person is needed ---
-_polg() { # _polg <group G1 fields>: an armed run under the policy at Build, group G1's check failed
-  fresh; _polcfg
-  gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
-  "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+_polg() { # _polg <group G1 fields>: a run the person started at the approval, at Build, group G1's check failed
+  _unattended build
   printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", %s}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' "$1" > .temper/groups.json
 }
 _polg '"fails": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}'

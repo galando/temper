@@ -72,7 +72,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('an answer in a question with another header decides nothing', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Ask me at every stage'])
     await api.session.start(START)
     const q = questionOf(viewText(w) ?? '')
     await askRaw(api, 'Something else', q.question, q.options.map(o => o.label))
@@ -81,7 +81,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('a question Claude reworded decides nothing, and the call stays refused', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Ask me at every stage'])
     await api.session.start(START)
     await askRaw(api, 'Temper gate', 'The plan looks good. Shall I go on to Build?', ['Continue to Build (Recommended)', 'Save for later'])
     expect(decisions(w)).toEqual([])
@@ -117,7 +117,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('a new run on the same spec folder starts with no decision', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Ask me at every stage'])
     await api.session.start(START)
     await ask(api, w)
     // Start over: the person's answer, then the new run.
@@ -183,10 +183,10 @@ describe('every wait point of the flow audit', () => {
     expect(await sh(api, `${CLI} state advance plan_complete design`)).toBe(ONLY_USER)
   })
 
-  test('arming autonomy: Autonomous arms the run and approves the plan; Stage by stage only approves', async ($, on) => {
+  test('arming autonomy: Approve and build arms the run and approves the plan; Ask me at every stage only approves', async ($, on) => {
     const api = $ as unknown as Api
     const cfg = { '.claude/temper.config': 'autonomy:\n  enabled: true\n' }
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Autonomous Build: run Build unattended'], cfg)
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Approve and build (Recommended)'], cfg)
     await api.session.start(START)
     expect(await sh(api, `${CLI} state set run_mode autonomous`)).toContain('only the user can turn on autonomous mode')
     await ask(api, w)
@@ -195,13 +195,15 @@ describe('every wait point of the flow audit', () => {
     expect(state(w).run_mode).toBe('autonomous')
   })
 
-  test('an armed run is Build alone (9.8.0): a failed Check asks the person, and no loop back goes by itself', async ($, on) => {
+  test('the run to the commit (WP11): a failed Check loops back once by rule as the CLI\'s own action, and no other loop back goes', async ($, on) => {
     const api = $ as unknown as Api
-    const cfg = { '.claude/temper.config': 'autonomy:\n  enabled: true\n', '.temper/build-state.json': JSON.stringify({ run_mode: 'autonomous' }) }
-    const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, [], cfg)
+    const state = { run_mode: 'autonomous', unattended_from: 'plan' }   // started at the approval (approve-run)
+    const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, [], { '.temper/build-state.json': JSON.stringify(state) })
     await api.session.start(START)
-    const next = (JSON.parse(viewText(w) ?? '{}') as { next: { action: string } }).next
-    expect(next.action).toBe('ask')
+    const next = (JSON.parse(viewText(w) ?? '{}') as { next: { action: string; calls: string[] } }).next
+    expect(next.action).toBe('auto')
+    expect(next.calls.length).toBe(1)
+    expect(next.calls[0]).toContain("state loop check build --reason 'rule: ")
     expect(await sh(api, `${CLI} state loop check build --reason 'my own words'`)).toBeDefined()
     expect(await write(api, 'src/app.ts')).toContain('Check only runs checks')
   })
@@ -259,7 +261,7 @@ describe('every wait point of the flow audit', () => {
 
   test('with enforcement off nothing is refused, and an answer is still kept for the report', { options: { enforcement: 'off' } }, async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { plan: 'PASS' }, ['Stage by stage (Recommended)'])
+    const w = begin(on, 'plan', { plan: 'PASS' }, ['Ask me at every stage'])
     await api.session.start(START)
     expect(await write(api, 'src/app.ts')).toBeUndefined()
     await ask(api, w)
@@ -290,7 +292,7 @@ describe('a stage command is a door into /temper', () => {
 
   test('a door walks the earlier gates by the same answers: Intent, then Plan, then the stage', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)', 'Stage by stage (Recommended)'])
+    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)', 'Ask me at every stage'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()
@@ -338,7 +340,7 @@ describe('the system prompt: one flow in every mode', () => {
 describe('Build is judged against the plan the person approved', () => {
   test('a plan.md widened at Build does not let a file outside the approved plan through', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Stage by stage (Recommended)'])
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Ask me at every stage'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
@@ -352,7 +354,7 @@ describe('Build is judged against the plan the person approved', () => {
 
   test('a plan approved again after a loop back to Plan counts with its new files', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Stage by stage (Recommended)', why('Loop back to Plan', 'the plan misses billing'), 'Stage by stage (Recommended)'])
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Ask me at every stage', why('Loop back to Plan', 'the plan misses billing'), 'Ask me at every stage'])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()

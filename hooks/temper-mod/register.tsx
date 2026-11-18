@@ -17,7 +17,7 @@ import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/drive
 import type { RuleContext } from './core/rules'
 import type { Stage } from './core/stages'
 import { SECTION_ID } from './core/section'
-import { isTemperAgent, stageToast, turnLine } from './core/view'
+import { isTemperAgent, stageToast, stopToast, turnLine } from './core/view'
 import type { View } from './core/view'
 import { hintProps } from './ui/hint'
 import { renderBand } from './ui/band'
@@ -42,6 +42,8 @@ const agentEnds = new Map<string, AgentEnd>()
 // load of the session, null for none. A cache of `$.state` `seen`, read at the first load of this module (see seenStage).
 let lastStage: string | null | undefined
 let stageRead = false
+// WP11: the stop last seen (`run.parked` of the view), so its toast goes out once: undefined before the first load.
+let lastParked: string | null | undefined
 
 // One toast. Every toast of the mod goes through here.
 function showToast($: Api, text: string): void {
@@ -234,6 +236,10 @@ function announce($: Api, snap: Snapshot): void {
   }
   if (lastStage === undefined) lastStage = null
   noteStage($, stage)
+  // WP11: one toast when the run stops (run.parked turns from null to a stage), through the one toast call
+  const parked = snap.inert ? null : (snap.view?.run?.parked ?? null)
+  if (lastParked === null && parked !== null && snap.mode !== 'off') showToast($, stopToast(parked))
+  lastParked = parked
 }
 
 // The run reached Done since the stage last announced: its report is kept, so /temper:temper report shows it after the

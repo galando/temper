@@ -3,6 +3,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, recordedVerdict, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoAgent, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
+import { deriveView, runFiles } from './run-files'
+import { world } from './world'
 
 // WP09: recordedVerdict(call, out) is the rule of `recorded` in scripts/go.py: the verdict when the call is one of
 // `gate <stage>`, `task gate <N>`, `group gate <G>` or `integrate` and the last line of its output that is a marker
@@ -25,7 +27,8 @@ function port(s: Script & { stop?: number }) {
   const p: Port = {
     run: async call => {
       log.ran.push(call)
-      if (call === `${CLI} go`) {
+      // `temper go` with its flags too (WP11: --taken-up on the first go of a drive with no request)
+      if (call === `${CLI} go` || call.startsWith(`${CLI} go `)) {
         const g = s.goes.shift() ?? { action: 'none', say: 'No run is active.' }
         return { code: 0, out: JSON.stringify(g) }
       }
@@ -271,7 +274,7 @@ describe('the driver carries a run from the request to the end', () => {
     const { p, log } = port({ goes: [{ action: 'work', steps: [`${CLI} state archive`, 'Follow /p/reference/pr.md, section One PR.', `${CLI} state clear`] }] })
     const end = await drive(p, CLI, null)
     expect(end.kind === 'handback' && end.args).toBe('next')
-    expect(log.ran).toEqual([`${CLI} go`])
+    expect(log.ran).toEqual([`${CLI} go --taken-up`])
   })
 
   test('an option the conversation carries out (a skill): recorded, nothing of it run, handed on as chose <label>', async () => {
@@ -280,7 +283,7 @@ describe('the driver carries a run from the request to the end', () => {
       { label: 'Grill Me', calls: [`${CLI} usage note grill`], do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' }] } }], answers: ['Grill Me'] })
     expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'chose Grill Me', why: 'Use the grill-me skill on this stage\'s work, then ask this question again.' })
     expect(log.recorded).toEqual(['Approve? -> Grill Me'])
-    expect(log.ran).toEqual([`${CLI} go`])
+    expect(log.ran).toEqual([`${CLI} go --taken-up`])
   })
 
   test('a failed call, an error action and a gate that records FAIL', async () => {
@@ -325,7 +328,7 @@ describe('a call that printed its own marker recorded a verdict, whatever its ex
     const { p, log } = port({ goes: [groupFailed(), { action: 'none', say: 'end' }], answers: [twice],
       fail: c => c === again, out: c => (c === again ? out : '') })
     expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
-    expect(log.ran).toEqual([`${CLI} go`, again, `${CLI} go`])
+    expect(log.ran).toEqual([`${CLI} go --taken-up`, again, `${CLI} go`])
     expect(recordedVerdict(again, out) == null).toBe(false)
   })
 
@@ -400,7 +403,7 @@ describe('the person interrupts', () => {
   test('the drive stops where it is, says how to take the run up again, and starts no model turn', async () => {
     const { p, log } = port({ goes: [{ action: 'work', steps: [`${CLI} report --end`] }, { action: 'none' }], stop: 1 })
     expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: STOPPED })
-    expect(log.ran).toEqual([`${CLI} go`])
+    expect(log.ran).toEqual([`${CLI} go --taken-up`])
   })
 })
 
@@ -505,5 +508,46 @@ describe('the driver\'s small parts', () => {
     expect(stepPlan('git push', CLI).kind).toBe('handback')
     expect(hasDrift('| DRIFT: src/a.py |')).toBe(true)
     expect(hasDrift('no drift here, all in scope')).toBe(false)
+  })
+})
+
+// WP11: a run taken up again. A drive with no request (/temper:temper typed with no words) passes --taken-up on its first
+// `temper go`, so the CLI records the stop of an unattended run and its stage asks its question once; never again in
+// that drive, and never in a drive that starts a run from a request.
+const goes = (ran: string[]): string[] => ran.filter(c => c === `${CLI} go` || c.startsWith(`${CLI} go `))
+describe('a run taken up again (WP11)', () => {
+  test('a drive with no request passes --taken-up on its first go and never again', async () => {
+    const ask = { question: q('Build: the check passed. Continue to Review?', ['Continue to Review (Recommended)', 'Save for later']),
+      options: [{ label: 'Continue to Review (Recommended)', calls: [`${CLI} state advance build_complete review`] }, { label: 'Save for later', stop: true }] }
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'build', ask }, { action: 'none', say: 'end' }], answers: ['Continue to Review (Recommended)'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(goes(log.ran)).toEqual([`${CLI} go --taken-up`, `${CLI} go`])
+  })
+
+  test('a drive that starts a run from a request never passes --taken-up', async () => {
+    const { p, log } = port({ goes: [{ action: 'none' }, { action: 'none', say: 'end' }] })
+    expect(await drive(p, CLI, 'Refund an invoice', 'refunds')).toEqual({ kind: 'done', text: 'end' })
+    expect(goes(log.ran)).toEqual([`${CLI} go`, `${CLI} go`])
+  })
+})
+
+// WP11: the notice of a stop. The mod toasts once when run.parked of the view turns from null to a stage (the stage
+// itself does not change, so no stage toast is due), through the one toast call of the mod.
+describe('a stop of an unattended run is toasted once (WP11)', () => {
+  type Api = { session: { start: (a: unknown) => Promise<unknown> }; tool: { call: (a: unknown) => Promise<unknown> } }
+  const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
+  test('a view whose run.parked turns from null to a stage gives one toast', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = world(on, runFiles({ nextStage: 'build', gates: { intent: 'PASS', plan: 'PASS' } }), { fakeCli: true, projectRoot: '/repo' })
+    await api.session.start(START)
+    await api.tool.call({ tool: 'Bash', command: 'ls' })
+    const before = w.toasts.length
+    const v = JSON.parse(deriveView(path => w.files.get(path)) ?? '{}') as { run: Record<string, unknown> }
+    expect(v.run.parked ?? null).toBe(null)
+    w.files.set('.temper/view.json', JSON.stringify({ ...v, run: { ...v.run, parked: 'build' } }))
+    await api.tool.call({ tool: 'Bash', command: 'ls' })
+    expect(w.toasts.length).toBe(before + 1)
+    await api.tool.call({ tool: 'Bash', command: 'ls' })
+    expect(w.toasts.length).toBe(before + 1)
   })
 })

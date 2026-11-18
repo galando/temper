@@ -11,7 +11,6 @@ selftest:D37b                  WP24           D37
 selftest:D37c                  WP24           D37
 selftest:D37f                  WP24           D37
 selftest:D39c                  WP25           D39
-selftest:D39d                  WP11           D39
 selftest:D99a                  WP21           D99
 selftest:D99b                  WP21           D99
 # case file 46: migration, the front, the surface, and the README (WP07)
@@ -28,8 +27,6 @@ selftest:D29a                  WP28           D29
 selftest:D29b                  WP28           D29
 selftest:D29c                  WP31           D29
 selftest:D29d                  WP31           D29
-selftest:D60c                  WP11           D60
-selftest:D60d                  WP11           D60
 selftest:D61a                  WP29           D61
 selftest:D61b                  WP29           D61
 selftest:D62a                  WP29           D62
@@ -49,20 +46,15 @@ e2e:fix-two                    WP17           D03
 e2e:vague-run                  WP13           D04
 e2e:repair-finding             WP24           D05
 e2e:repair-worse               WP24           D37e
-e2e:group-fail                 WP16           D06
-e2e:group-fail-twice           WP16           D06
+e2e:group-fail:plain           WP16           D06
+e2e:group-fail:mod             WP16           D06
+e2e:group-fail-twice:driver    WP16           D06
 e2e:criteria-by-cli            WP27           D10
 e2e:acceptance-wrong-test      WP23           D21
-e2e:stop-keeps-mode            WP11           D32c
 e2e:revise-narrow              WP27           D24
 selftest:D02b                  WP15           D02
-selftest:D05b                  WP24           D05
 selftest:D15                   WP22           D15
 selftest:D15b                  WP22           D15
-selftest:D16                   WP11           D16
-selftest:D18a                  WP11           D18
-selftest:D18c                  WP11           D18
-selftest:D19                   WP11           D19
 selftest:D22a                  WP15           D22
 selftest:D22b                  WP15           D22
 selftest:D30b                  WP12           D30
@@ -73,9 +65,6 @@ selftest:D31c                  WP12           D31
 selftest:D31d                  WP25           D31
 selftest:D31e                  WP15           D31
 selftest:D31f                  WP13           D31
-selftest:D32d                  WP11           D32
-selftest:D32e                  WP11           D32
-selftest:D33a                  WP11           D33
 selftest:D33f                  WP21           D33
 selftest:D34a                  WP30           D34
 selftest:D34b                  WP22           D34

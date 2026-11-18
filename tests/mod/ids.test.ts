@@ -40,7 +40,8 @@ function port(goes: GoOut[], answers: Array<string | null>) {
   const p: Port = {
     run: async call => {
       log.ran.push(call)
-      if (call === `${CLI} go`) return { code: 0, out: JSON.stringify(goes.shift() ?? { action: 'none', say: 'end' }) }
+      // `temper go`, and its first call of a drive with no request (WP11: --taken-up)
+      if (call === `${CLI} go` || call === `${CLI} go --taken-up`) return { code: 0, out: JSON.stringify(goes.shift() ?? { action: 'none', say: 'end' }) }
       return { code: 0, out: '' }
     },
     spawn: async () => 'ag1',
@@ -68,7 +69,7 @@ describe('the view carries ids, and the mod reads them', () => {
     const rv = parseRunView(JSON.stringify(view('plan-pass')))
     expect(rv?.ask?.id).toBe('plan.approve')
     expect(rv?.ask?.kind).toBe('gate')
-    expect(rv?.ask?.options.map(o => o.id)).toEqual(['ask-every-stage', 'approve-run', 'fresh-review', 'more'])
+    expect(rv?.ask?.options.map(o => o.id)).toEqual(['approve-run', 'ask-every-stage', 'fresh-review', 'more'])
     expect(rv?.ask?.options.map(o => o.recommended)).toEqual([true, false, false, false])
     expect(rv?.ask?.options.map(o => o.kind)).toEqual([null, null, null, 'more'])
     expect(rv?.ask?.more?.id).toBe('plan.approve.more')
@@ -80,7 +81,7 @@ describe('the view carries ids, and the mod reads them', () => {
     expect(rv).not.toBeNull()
     expect(rv?.ask?.id).toBeNull()
     expect(rv?.ask?.kind).toBeNull()
-    expect(rv?.ask?.options.map(o => o.label)).toEqual(['Stage by stage (Recommended)', 'Autonomous Build: run Build unattended', 'Fresh review first', 'More options'])
+    expect(rv?.ask?.options.map(o => o.label)).toEqual(['Approve and build (Recommended)', 'Ask me at every stage', 'Fresh review first', 'More options'])
     expect(rv?.ask?.options.every(o => o.id === null && o.kind === null && o.recommended === false)).toBe(true)
     expect(rv?.restart?.options.every(o => o.id === null)).toBe(true)
   })
@@ -129,8 +130,8 @@ describe('an id is a lookup, never what makes an answer count', () => {
     const v = view('plan-pass')
     const rv = parseRunView(JSON.stringify(v))!
     const q = rv.ask!.question
-    expect(answersIn(result({ header: q.header, question: `${q.question} Really?` }, 'Stage by stage (Recommended)'), rv)).toEqual([])
-    const exact = answersIn(result(q, 'Stage by stage (Recommended)'), rv)
-    expect(exact.map(a => (a.kind === 'gate' ? [a.questionId, a.option.id] : []))).toEqual([['plan.approve', 'ask-every-stage']])
+    expect(answersIn(result({ header: q.header, question: `${q.question} Really?` }, 'Approve and build (Recommended)'), rv)).toEqual([])
+    const exact = answersIn(result(q, 'Approve and build (Recommended)'), rv)
+    expect(exact.map(a => (a.kind === 'gate' ? [a.questionId, a.option.id] : []))).toEqual([['plan.approve', 'approve-run']])
   })
 })

@@ -995,7 +995,7 @@ assert_exit "integrate: a branch that is not the run's feature branch exits 1" 1
 gi_all; printf '{"intent":{"verdict":"PASS"}}\n' > .temper/gates.json; HEAD0="$(git rev-parse HEAD)"
 assert_exit "integrate: the CLI merge checks the upstream gates first (ADR 0009, exit 3)" 3 "$TEMPER" integrate
 assert_eq "integrate: the refused run merged nothing" "$HEAD0" "$(git rev-parse HEAD)"
-gi_all; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+gi_all; _ran_unattended
 assert_exit "integrate: autonomy lets the local integration merge run (design resolution 1a)" 0 "$TEMPER" integrate
 setup; rm -f .temper/specs/demo/tasks.md .temper/groups.json
 assert_exit "integrate: a run without tasks.md exits 1" 1 "$TEMPER" integrate
@@ -1007,7 +1007,7 @@ gc_setup() { # gc_setup <grouped|fix>: autonomous run, max-blast-radius 3, four 
   gp_setup
   [[ "$1" != "fix" ]] || rm -f .temper/specs/demo/tasks.md   # a /temper:fix run has no tasks.md
   sed 's/max-blast-radius: 15/max-blast-radius: 3/' .claude/temper.config > .claude/temper.config.new && mv .claude/temper.config.new .claude/temper.config
-  "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+  _ran_unattended   # WP11: the state a run the person started at the approval leaves
   # setup keeps the work tree, so the four files an earlier gc_setup left would be committed into this
   # base with the same content and stop counting as changes. Clear them first so every call starts from
   # the same tree.

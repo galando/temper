@@ -26,6 +26,6 @@ export const HELP = [
   '  report               show the run report (with no run active, the last one kept)',
   '  pane                 open or close the Temper pane (full mode)',
   '  mode, enforcement    show what Temper shows and enforces (change both in /config)',
-  'You decide at every gate in the Temper gate question: Continue, Loop back, Override and continue, Save for later.',
+  'You decide in the Temper gate question: approve the plan and the run goes on to the commit, or ask at every stage.',
   'Any other text after /temper:temper is a feature description. It starts or resumes a run. With no text it takes the run up again.',
 ].join('\n')

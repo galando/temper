@@ -18,11 +18,11 @@ assert_eq "9.8.5 decisions: the answer is kept with the hash tasks.md has now" "
   "$(python3 -c "import json; print(len(json.load(open('.temper/decisions.json'))))")"
 "$TEMPER" gate plan >/dev/null 2>&1
 assert_eq "9.8.5 decisions: an answer newer than the tasks that is the first choice passes the plan gate row with a note" \
-  "row=True|names the answer|Stage by stage (Recommended)" \
+  "row=True|names the answer|ask-every-stage" \
   "row=$(python3 -c "
 import json
 r = [x for x in (json.load(open('.temper/gates.json')).get('plan') or {}).get('requirements') or [] if x.get('name') == 'tasks agree with decisions']
-print('%s|%s' % (bool(r) and all(x.get('pass') is True for x in r), 'names the answer' if any('Which schedule does a job use?' in str(x.get('detail')) for x in r) else 'no note'))")|$(nx "(d.get('ask') or {}).get('question', {}).get('options', [{}])[0].get('label', 'none')")"
+print('%s|%s' % (bool(r) and all(x.get('pass') is True for x in r), 'names the answer' if any('Which schedule does a job use?' in str(x.get('detail')) for x in r) else 'no note'))")|$(nx "((d.get('ask') or {}).get('options') or [{}])[0].get('id', 'none')")"
 assert_eq "9.8.5 decisions: a build task prompt carries the Design decisions" "True" \
   "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import decisions; print('Design: Which schedule does a job use? -> its own' in decisions.prompt('.temper/specs/demo'))" "$REPO_ROOT/scripts")"
 _dq; "$TEMPER" intent answer 'Design: Which schedule does a job use?' '24 hours' >/dev/null 2>&1

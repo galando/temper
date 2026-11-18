@@ -44,7 +44,8 @@ PY
 # --- 1. ask (the default): the plan question offers it; it applies only once the person asks ---
 _fr_plan
 assert_exit "ask: a medium plan passes the plan gate when nobody asked for a fresh review" 0 "$TEMPER" gate plan
-assert_eq "ask: the plan question offers Fresh review first after the two ways on (9.8.0: no Design below risk H)" "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
+assert_eq "ask: the plan question offers Fresh review first after the two ways on (9.8.0: no Design below risk H)" \
+  "ask-every-stage,True|approve-run,False|fresh-review,False|more,False" "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
 assert_eq "ask: the option asks for it; next then launches the reviewer, whose gate call follows it" "plan fresh request" \
   "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][2]['calls'])")"
 "$TEMPER" plan fresh request >/dev/null 2>&1
@@ -97,13 +98,13 @@ assert_eq "a launched review that did not finish is asked about, never launched 
 _fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all
 _fr_find medium "[comprehension] a joke with a newline breaks one joke per line"; _fr_find low "[readiness] Task 1: wording only"
 assert_exit "a medium and a low finding pass the plan gate" 0 "$TEMPER" gate plan
-assert_eq "the plan question names the open findings; 9.8.4: they go to the builder as notes, and Revise the plan is offered, not recommended" "1|Stage by stage (Recommended)|Autonomous Build: run Build unattended|Revise the plan" \
-  "$(nx "q = d['ask']; str(int('The fresh review left 2 finding(s) open: #' in q['question']['question'] and '[medium] [comprehension] a joke with a newline' in q['question']['question'] and 'They go to the builder as notes' in q['question']['question'])) + '|' + '|'.join(o['label'] for o in q['options'][:3])")"
+assert_eq "the plan question names the open findings; 9.8.4: they go to the builder as notes, and Revise the plan is offered, not recommended" "1|ask-every-stage,True|approve-run,False|revise-plan,False" \
+  "$(nx "q = d['ask']; str(int('The fresh review left 2 finding(s) open: #' in q['question']['question'] and '[medium] [comprehension] a joke with a newline' in q['question']['question'] and 'They go to the builder as notes' in q['question']['question'])) + '|' + '|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in q['options'][:3])")"
 assert_eq "Revise the plan sends Plan back with the findings to answer" "state redo plan --reason|1" \
   "$(nx "c = d['ask']['options'][2]['calls'][0].split('temper ', 1)[1]; ' '.join(c.split()[:4]) + '|' + str(int('a joke with a newline' in c))")"
 _fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all; _fr_find low "[readiness] Task 1: wording only"; "$TEMPER" gate plan >/dev/null 2>&1
-assert_eq "a low finding alone: Stage by stage stays recommended, and Revise the plan is offered after the ways on" "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Revise the plan" \
-  "$(nx "'|'.join(o['label'] for o in d['ask']['options'][:3])")"
+assert_eq "a low finding alone: Ask me at every stage stays recommended, and Revise the plan is offered after the ways on" \
+  "ask-every-stage,True|approve-run,False|revise-plan,False" "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'][:3])")"
 
 # --- 4. A blocker; Revise the plan; any of the three files edited makes the review stale ---
 _fr_plan auto; "$TEMPER" plan fresh start >/dev/null 2>&1; _fr_all

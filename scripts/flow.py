@@ -57,8 +57,53 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                     rows = r.failed_rows("plan")
                     if out.get("action") == "ask" and len(rows) == 1 and rows[0].get("name") == "context map reviewed":
                         out["ask"] = q    # the only failed row is the pending check: ask the check itself, so a refused call can be answered again
+        self.stop_answer(out)
         self.add_note(out)
         return out
+
+    def stop_answer(self, out):
+        """WP11 (ADR 0019 decision 3): a question asked at a stop of a run that goes on by itself (the mark `parked`, at
+        a stage other than Commit). Its text says the run goes on by itself after the answer; every option with calls and
+        no stop ends the stop with `park --end --answer <its id>` as its last call; and Ask me at every stage from here
+        turns the run back to one that asks."""
+        r = self.r
+        q = out.get("ask") if out.get("action") == "ask" else None
+        if (not isinstance(q, dict) or not r.state.get("parked") or r.stage == "commit"
+                or r.state.get("run_mode") != "autonomous" or not r.state.get("unattended_from")):
+            return
+
+        def walk(x):
+            for o in x.get("options") or []:
+                if o.get("calls") and not o.get("stop") and o.get("kind") != "more":
+                    o["calls"] = list(o["calls"]) + [self.c("park --end --answer %s" % o["id"])]
+            for k in ("more", "accept", "change"):
+                if isinstance(x.get(k), dict):
+                    walk(x[k])
+        walk(q)
+        q["question"]["question"] = "%s After your answer the run goes on by itself." % q["question"]["question"].rstrip()
+        shown = list(q.get("options") or []) + list((q.get("more") or {}).get("options") or [])
+        if not any(o.get("id") == "ask-every-stage" for o in shown):
+            self.add_option(q, self.opt("Ask me at every stage from here", "Answer this question yourself, and every later stage asks you.",
+                                        move="approve", calls=[self.c("state set run_mode interactive"),
+                                                               self.c("park --end --answer ask-every-stage")], oid="ask-every-stage"))
+
+    def add_option(self, q, o):
+        """Add an option to a question as far down its More list as there is room, before Save for later; a full one
+        gets a More question of its own."""
+        m = q
+        while len(m["options"]) >= 4 and isinstance(m.get("more"), dict):
+            m = m["more"]
+        if len(m["options"]) < 4:
+            at = next((i for i, x in enumerate(m["options"]) if x.get("id") == "save"), len(m["options"]))
+            m["options"].insert(at, o)
+        else:
+            last = m["options"][3]
+            rest = [o, last] if last.get("id") == "save" else [last, o]
+            m["more"] = self.question(m["question"]["header"], m["question"]["question"].split("?")[0] + "? More options.", rest,
+                                      m["stage"], qid=m["id"] + ".more")
+            m["options"] = m["options"][:3] + [self.more_opt(rest)]
+        self.follow_ups(o, m["id"])
+        m["question"]["options"] = [{"label": x["label"], "description": x["description"]} for x in m["options"]]
 
     def may_run_alone(self):
         """WP14 (ADR 0019 decision 2): whether the approval may offer the run that goes on by itself. At risk H only when
@@ -254,40 +299,28 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             else:
                 out.update(self.stage_work(stage))
             return out
-        # 9.8.0: the unattended run is Build alone (the person asked for it): Review, Check and the commit keep their
-        # questions. When Build's gate passes, the run goes on to Review and turns back to interactive.
-        if r.armed() and stage not in ("intent", "plan", "rca", "review", "check"):
+        # WP11 (ADR 0019 decision 3): a run that goes on by itself, at a stage with a verdict. The Design stops stay; a
+        # passed check moves on as the CLI's own action; a failed Build, Design or Fix stops; Review and Check go by the
+        # closed list of rule_move. A stop is the park call: the stage then asks its own question (`parked` ends armed).
+        if r.armed() and stage in ("design", "build", "fix", "review", "check"):
             nxt = r.next_of(stage)
             if stage == "design" and r.tasks_changed():
-                out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote(
-                    "Design changed the plan's tasks; the person approves them"))],
-                            "say": "Design changed the plan's tasks; the armed run parks for you."})
+                out.update(self.stop(stage, "Design changed the plan's tasks; the person approves them"))
                 return out
             if stage == "design" and r.open_concerns():
-                # a person resolves each area of concern at the Design question, before Build: an armed run parks for them
-                out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote(
-                    "Design has %d open area(s) of concern" % len(r.open_concerns())))],
-                            "say": "Design has open areas of concern; the armed run parks for you."})
+                # a person resolves each area of concern at the Design question, before Build
+                out.update(self.stop(stage, "Design has %d open area(s) of concern" % len(r.open_concerns())))
+                return out
+            if stage in ("review", "check"):
+                out.update(self.rule_move(stage, verdict))
                 return out
             if verdict == "PASS" or skipped:
-                calls = [self.c("state advance %s_complete %s" % (stage, nxt))]
-                say = "%s passed; the armed run goes on." % LABEL[stage]
-                if stage == "build" and not r.policy():
-                    calls.append(self.c("state set run_mode interactive"))
-                    say = "Build passed; the unattended part ends here, and %s asks you as usual." % LABEL.get(nxt, nxt)
-                elif stage == "build":
-                    say = "Build passed; the policy run goes on to %s." % LABEL.get(nxt, nxt)
-                out.update({"action": "auto", "stage": stage, "calls": calls, "say": say})
+                out.update({"action": "auto", "stage": stage, "calls": [self.c("state advance %s_complete %s" % (stage, nxt))],
+                            "say": "%s passed; the run goes on to %s." % (LABEL[stage], LABEL.get(nxt, nxt))})
                 return out
             why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows(stage))[:200]
-            out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("%s failed: %s" % (LABEL[stage], why)))],
-                        "say": "%s failed; the armed run parks for you." % LABEL[stage]})
+            out.update(self.stop(stage, "the check failed: %s" % why))
             return out
-        if r.armed() and r.policy() and stage in ("review", "check") and verdict is not None and not skipped:
-            mv = self.policy_move(stage, verdict)
-            if mv:
-                out.update(mv)
-                return out
         q = self.ask(stage)
         out.update({"action": "ask", "stage": stage, "ask": q})
         self.add_adhoc(out, stage)

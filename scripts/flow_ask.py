@@ -27,7 +27,7 @@ class AskPart:
     def run_info(self):
         r = self.r
         return {"id": r.state.get("run_id"), "step": r.state.get("step"), "slug": r.slug, "stage": r.stage,
-                "command": r.command, "mode": r.state.get("run_mode") or "interactive"}
+                "command": r.command, "mode": r.state.get("run_mode") or "interactive", "armed": r.armed()}
 
     def plugin_line(self):
         line = ("Plugin folder: %s; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT "
@@ -229,6 +229,32 @@ class AskPart:
         return self.to_branch() + self.spec_commit("docs(plan): approve the plan of %s" % r.slug) + \
             [self.c("state advance plan_complete %s" % nxt)]
 
+    def approval(self, go, stage, lead=""):
+        """WP11 (ADR 0019 decision 3): the first options of the approval (the plan question, or the Design question when
+        the person asked for Design): approve-run lets the run go on to the commit, ask-every-stage keeps every gate's
+        question. run.default orders them; approve-run is left out under never-unattended, for a skipped check, and when
+        may_run_alone() says no (WP14)."""
+        r = self.r
+        ask = self.opt("Ask me at every stage", lead + "Approve the plan; every later stage asks you.", move="approve",
+                       calls=[self.c("state set run_mode interactive")] + go, oid="ask-every-stage")
+        if r.run_default() == "never-unattended" or r.skip(stage) is not None or not self.may_run_alone():
+            return [self.set_rec(ask, True)]
+        run = self.opt("Approve and build", lead + self.armed_text(), move="arm",
+                       calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run")
+        return [self.set_rec(ask, True), run] if r.run_default() == "ask" else [self.set_rec(run, True), ask]
+
+    def sensitive_line(self):
+        """The approval names the plan's files under a sensitive path (WP15 moves it to the card)."""
+        hits = self.r.sensitive()
+        return " The plan touches a sensitive path: %s. Nothing there is repaired by rule." % ", ".join(hits[:3]) if hits else ""
+
+    def loop_opt(self, stage, back, rec=False):
+        """Loop back from the stage to an earlier one, with the person's reason."""
+        return self.opt("Loop back to %s%s" % (LABEL[back], " (Recommended)" if rec else ""),
+                        "Do %s again; the stages after it are redone too." % LABEL[back], move="back",
+                        calls=[self.c("state loop %s %s --reason '{reason}'" % (stage, back))],
+                        reason=["The check found a real problem"], oid="back")
+
     # -- gate questions ----------------------------------------------------------------------
     def ask(self, stage):
         r = self.r
@@ -242,14 +268,10 @@ class AskPart:
         why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in rows[:3])
         state_of = "the check passed" if verdict == "PASS" else ("skipped by you" if skipped else "the check failed")
         override_reasons = ["I accept the risk", "It is not a real issue"]
-        back_reasons = ["The check found a real problem"]
 
         def back_opt(rec=False):
-            if not back:   # a step back the budget refuses is dropped after (budget_guard), so the question says so
-                return []
-            return [self.opt("Loop back to %s%s" % (LABEL[back], " (Recommended)" if rec else ""),
-                             "Do %s again; the stages after it are redone too." % LABEL[back], move="back",
-                             calls=[self.c("state loop %s %s --reason '{reason}'" % (stage, back))], reason=back_reasons, oid="back")]
+            # a step back the budget refuses is dropped after (budget_guard), so the question says so
+            return [self.loop_opt(stage, back, rec)] if back else []
 
         def override_opt(then):
             return self.opt("Override and continue", "Skip this check with your reason; the report shows it.", move="override",
@@ -312,7 +334,7 @@ class AskPart:
             if passed:
                 go = self.leave_plan()
                 nl = LABEL.get(r.next_of("plan") or "build")
-                text = "Plan: %s.%s Approve the plan and continue to %s?" % (state_of, said, nl)
+                text = "Plan: %s.%s%s Approve the plan and continue to %s?" % (state_of, said, self.sensitive_line(), nl)
                 # 9.8.0: the fresh review's open findings below high pass the gate, and are the person's call: the question
                 # names them and offers Revise the plan (9.8.4: never recommended; they go to the builder as notes).
                 lesser = [f for f in fr["findings"] if f["state"] not in ("resolved", "accepted")] if not skipped else []
@@ -321,23 +343,18 @@ class AskPart:
                     shown = "; ".join("#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:120]) for f in lesser[:3])
                     # 9.8.4: only a high finding blocks; a medium or low one goes to the builder as a note (in the task's
                     # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
-                    text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. Approve the plan and continue to %s?" % (
-                        state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", nl)
+                    text = "Plan: %s.%s%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. Approve the plan and continue to %s?" % (
+                        state_of, said, self.sensitive_line(), len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", nl)
                     revise = self.revise_opt("The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                              "fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))
-                # 9.8.0: the unattended run is offered at the last question before Build: here when no Design follows,
-                # at the Design question when it does (so every decision is made before the run goes on by itself).
+                # The approval (WP11): here when no Design follows, at the Design question when it does.
                 if not r.has_design():
                     # WP14: Design runs only when the person asks for it here. The option takes Teach Me's place in the More
                     # list, so every option stays within two dialogs (a More list of five made a third level, M2 of PR 115).
                     design = self.opt("Run Design first", "Approve the plan; Design runs next, and its question is the last "
                                       "one before Build.", move="approve", oid="run-design",
                                       calls=[self.c("state set want_design true")] + self.leave_plan("design"))
-                    first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go,
-                                      oid="ask-every-stage")]
-                    if self.may_run_alone():   # WP14: at risk H only after a fresh round on the plan as it is
-                        first.append(self.opt("Autonomous Build: run Build unattended", "Approve the plan; " + self.armed_text(),
-                                              move="arm", calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run"))
+                    first = self.approval(go, "plan")
                     if revise is not None:   # findings below high: revising is offered, after the ways on
                         return self.with_more(GATE_HEADER, text, stage, first + [revise], [html, design, grill, self.save()], "Plan: more options.", qid="plan.approve")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
@@ -388,24 +405,20 @@ class AskPart:
                 # here on, so the way to change it is a step back to Plan. The open ones are named, since the person is
                 # here for them; another call than accepting one as written is typed, and written into design.md.
                 text = "Design: %s. Continue to Build?" % state_of
-                cont = "Start Build."
                 if opens:
                     text = "Design: %s, with %d open area(s) of concern: %s%s. Continue to Build?" % (
                         state_of, len(opens), "; ".join("%d. %s" % (i + 1, t) for i, t in enumerate(opens[:3])),
                         "; and %d more" % (len(opens) - 3) if len(opens) > 3 else "")
-                    cont = "Accept the open concerns as written (design.md records it) and start Build."
                 if r.tasks_changed():
-                    # 9.8.0: Design changed the approved tasks; Continue approves them with the design (the CLI records it),
-                    # so Build does not refuse to start on a plan that changed after the plan gate.
+                    # 9.8.0: Design changed the approved tasks; the approval approves them with the design (the CLI records
+                    # it), so Build does not refuse to start on a plan that changed after the plan gate.
                     what = r.tasks_change_summary()
                     text = text[:-len(" Continue to Build?")].rstrip(".") + ". Design changed the plan's tasks (tasks.md%s); Continue approves them with the design. Continue to Build?" % (
                         ": " + "; ".join(what[:4]) + ("; and %d more" % (len(what) - 4) if len(what) > 4 else "") if what else "")
-                    cont = cont[:-1] + "; the changed tasks are approved with the design."
-                arm = [self.opt("Autonomous Build: run Build unattended", ("Accept the open concerns as written; " if opens else "") +
-                                self.armed_text(),
-                                move="arm", calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run")] if self.may_run_alone() else []
-                return self.with_more(GATE_HEADER, text, stage,
-                                      [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go, oid="continue")] + arm + [walk],
+                # WP11: the Design question is the approval when the person asked for Design
+                text = text[:-len(" Continue to Build?")] + self.sensitive_line() + " Continue to Build?"
+                first = self.approval(go, "design", "Accept the open concerns as written; " if opens else "")
+                return self.with_more(GATE_HEADER, text, stage, first + [walk],
                                       [self.skill("grill-me", "Grill Me", "Stress test the design.")] + back_opt() +
                                       [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.", qid="design.pass")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
@@ -428,12 +441,11 @@ class AskPart:
             same = redo.get("stage") == stage and same_failure(str(redo.get("reason") or ""), why[:300])
             again = self.opt("Run %s again" % label + ("" if same else " (Recommended)"), "Mend what the failed rows name, then check %s again." % label,
                              move="redo", calls=[self.c('state redo %s --reason %s' % (stage, shlex.quote(why[:300])))], oid="redo")
-            if same:
-                save = self.set_rec(self.save(), True)
-                return self.question(GATE_HEADER, "%s: the check failed (%s). It failed the same way after it ran again. Save the run for later?" % (label, why), stage=stage,
-                                     options=[save, again] + back_opt() + [override_opt(go)], qid="%s.fail" % stage)
-            return self.question(GATE_HEADER, "%s: the check failed (%s). Run %s again?" % (label, why, label), stage=stage,
-                                 options=[again] + back_opt() + [override_opt(go), self.save()], qid="%s.fail" % stage)
+            text = "%s: the check failed (%s). %s" % (label, why, "It failed the same way after it ran again. Save the run for later?"
+                                                       if same else "Run %s again?" % label)
+            opts = ([self.set_rec(self.save(), True), again] + back_opt() + [override_opt(go)] if same else
+                    [again] + back_opt() + [override_opt(go), self.save()])
+            return self.question(GATE_HEADER, text, stage=stage, options=opts, qid="%s.fail" % stage)
 
         if stage == "review":
             go = [self.c("state advance review_complete check")]

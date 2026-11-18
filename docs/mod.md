@@ -10,6 +10,8 @@ The mod does four things:
   such as a merge, is a known limit ([what the guard does not see](#what-the-guard-checks-and-what-it-does-not)).
 - It refuses a step only you may take (leaving Intent or Plan, a skip, a step back, accepting a
   finding, arming autonomy) unless you chose it in the gate question.
+- A run goes on by itself only from the option you pick at the approval (Approve and build); the
+  CLI's own moves after it are the calls of its action, and a toast says when such a run stops.
 - It draws the run: the stage bar above the prompt and the pane, and keeps a report of the run
   (`/temper:temper report`).
 
