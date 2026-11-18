@@ -227,6 +227,11 @@ _nogit52; _unattended review; _auth52; _finding52 critical 'src/auth/login.sh:4 
 gfail review "no blocking findings" "1 open critical finding"
 _sp52+="|finding=$(_stop52)"
 assert_eq "run: no repair by rule when the plan declares a sensitive path" "group=stop|finding=stop" "$_sp52"
+_nogit52; _unattended build; second_group   # the sensitive path is in G2's task; G1 fails a check the rule could fix
+sed -i 's|^\*\*File:\*\* `src/z9.sh`$|**File:** `src/auth/z9.sh`|' .temper/specs/demo/tasks.md
+_g52 "$(printf "$_GROUPS52" running "$_G1FAIL52")"
+assert_eq "run: no repair by rule of a failed group when another group of the plan declares the sensitive path" \
+  "stop" "$(_stop52)"
 
 fresh; _auth52; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 _rk52_out="$("$TEMPER" risk 2>&1)"

@@ -431,12 +431,12 @@ class BuildPart:
         fl = self.fail_text(ginfo)
         if self.r.armed() and not decide:
             # WP11: a run that goes on by itself takes the recommended option itself (chosen by field, never by label) when it
-            # has calls, needs nothing typed, does not save the run and is no step back (WP08), and the group declares no
-            # file under a sensitive path. Anything else is a recorded stop.
+            # has calls, needs nothing typed, does not save the run and is no step back (WP08), and the plan declares no
+            # file under a sensitive path (row D33: in such a plan nothing is repaired by rule, whatever group holds
+            # the file). Anything else is a recorded stop.
             q = self.group_failed(g, ginfo, decide=True)["ask"]
             rec = next((o for o in q["options"] + ((q.get("more") or {}).get("options") or []) if o.get("recommended")), None)
-            files = [f for t in (self.r.plan or {}).get("tasks", []) if t.get("n") in g.get("tasks", []) for f in t.get("files", [])]
-            touched = [f for f in self.r.sensitive() if f in files]
+            touched = self.r.sensitive()
             if rec and rec.get("calls") and not rec.get("answer_question") and not rec.get("stop") and rec.get("move") != "back" and not touched:
                 why = "rule: group %s failed its check (%s)" % (gid, reason[:200])
                 calls = [c.replace("'{reason}'", "'%s'" % why.replace("'", "")) for c in rec["calls"]]
@@ -446,7 +446,7 @@ class BuildPart:
             if rec and rec.get("move") == "back":
                 why = "a step back to Plan is yours to decide: " + why
             elif touched:
-                why = "the group declares a sensitive path (%s), so nothing is repaired by rule: %s" % (", ".join(touched[:3]), why)
+                why = "the plan declares a sensitive path (%s), so nothing is repaired by rule: %s" % (", ".join(touched[:3]), why)
             return self.stop("build", "group %s failed its check: %s" % (gid, why))
         plan = self.r.plan or {"tasks": []}
         # 9.8.4: how many times the group's check failed, and whether the whole failed while every part passed. A blind
