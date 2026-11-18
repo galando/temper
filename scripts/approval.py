@@ -29,8 +29,26 @@ import tasks_md  # noqa: E402
 ROW = "intent unchanged since the approval"
 # What the approval records for a run with no intent.md (the trivial path): the row then holds intent.md absent
 ABSENT = "absent"
-# The lines of intent.md the CLI writes itself (`temper intent accept`, `temper intent complete`): no digest holds them.
-OWN = re.compile(r"^\*\*(?:Status|Accepted-by|Completed):\*\*")
+# The lines of intent.md the CLI writes itself (`temper intent accept`, `temper intent complete`, through
+# scripts/spec_text.py intent-status with the values cmd_intent of scripts/temper passes), in the forms it writes them:
+# no digest holds them. Only the first line of each form is the CLI's; other text on such a line, or a second line of a
+# form, is the person's and is bound. The Status line is also the line the CLI rewrites, so it takes the forms the
+# Intent gate reads as a status header (the word in any case, spaces around it), never any other text.
+OWN = (re.compile(r"^\*\*Status:\*\*\s*(?:draft|accepted|completed)\s*$", re.I),
+       re.compile(r"^\*\*Accepted-by:\*\* the person(?:, at the plan approval| at the Intent gate)$"),
+       re.compile(r"^\*\*Completed:\*\* \d{4}-\d{2}-\d{2}$"))
+
+
+def without_own(lines):
+    """The lines of intent.md without the CLI's own: the first line that matches each form of OWN is left out."""
+    left, kept = list(OWN), []
+    for l in lines:
+        hit = next((rx for rx in left if rx.match(l)), None)
+        if hit is None:
+            kept.append(l)
+        else:
+            left.remove(hit)
+    return kept
 
 
 def intent_digest(path):
@@ -40,7 +58,7 @@ def intent_digest(path):
             lines = f.read().split("\n")
     except OSError:
         return None
-    kept = "\n".join(l for l in lines if not OWN.match(l))
+    kept = "\n".join(without_own(lines))
     return hashlib.sha256(kept.encode("utf-8", "surrogateescape")).hexdigest()
 
 

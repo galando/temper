@@ -171,6 +171,37 @@ assert_eq "bound: the CLI's own lines are exempt: intent accept and intent compl
   "accepted-by=1|completed=1|build=True|check=True|commit=True" \
   "accepted-by=$_o53_acc|completed=$_o53_cmp|build=$(_gate53 build)|check=$(_gate53 check)|commit=$(_gate53 commit)"
 
+# --- only the forms the CLI writes are exempt: text added on such a line, or a second such line, is bound ---
+_own53() { # _own53 <sed script>: "bound" when the edit of intent.md changes the approval digest and the fresh review's
+           # digest of intent.md (scripts/fresh_review.py), "exempt" when it changes neither, else what it changed;
+           # the file is restored after
+  local f=.temper/specs/demo/intent.md a0 a1 r0 r1
+  _fr53() { python3 -B -c 'import hashlib, sys
+sys.path.insert(0, sys.argv[1])
+import fresh_review
+print(hashlib.sha256(fresh_review.without_own_lines(open(sys.argv[2], "rb").read())).hexdigest())' \
+    "$REPO_ROOT/scripts" "$f" 2>/dev/null; }
+  cp "$f" "$f.keep53"; a0="$(_dg53 "$f")"; r0="$(_fr53)"
+  sed -i "$1" "$f"; a1="$(_dg53 "$f")"; r1="$(_fr53)"
+  mv "$f.keep53" "$f"
+  if [[ -z "$a0" || -z "$r0" ]]; then echo "no digest"
+  elif [[ "$a0" != "$a1" && "$r0" != "$r1" ]]; then echo bound
+  elif [[ "$a0" == "$a1" && "$r0" == "$r1" ]]; then echo exempt
+  else echo "approval=$([[ "$a0" == "$a1" ]] && echo same || echo changed),review=$(
+    [[ "$r0" == "$r1" ]] && echo same || echo changed)"; fi
+}
+_approved53; "$TEMPER" intent complete >/dev/null 2>&1
+_w53="status=$(_own53 's/^\(\*\*Status:\*\* [a-z]*\)$/\1. Also: the tool deletes every file under data\//')"
+_w53+="|completed=$(_own53 '$a **Completed:** - [ ] the build also drops the users table')"
+_w53+="|own accepted-by=$(_own53 '$a **Accepted-by:** the person, at the plan approval')"
+_w53+="|accepted-by=$(_own53 '$a **Accepted-by:** the person, at the plan approval, and the build may drop a table')"
+_w53+="|second status=$(_own53 '$a **Status:** accepted')"
+sed -i 's/^\(\*\*Status:\*\* [a-z]*\)$/\1. Also: the tool deletes every file under data\//' .temper/specs/demo/intent.md
+_w53+="|build=$(_gate53 build)"
+assert_eq "bound: only the forms the CLI writes are exempt: text added on such a line or a second such line is bound" \
+  "status=bound|completed=bound|own accepted-by=exempt|accepted-by=bound|second status=bound|build=False,intent.md" \
+  "$_w53"
+
 # --- a changed Test line of tasks.md fails the three gates too, and the detail names tasks.md ---
 _approved53; sed -i 's|^\*\*Test:\*\* `true`|**Test:** `true; true`|' .temper/specs/demo/tasks.md
 assert_eq "bound: a changed Test line of tasks.md fails the three gates too, and the detail names tasks.md" \
