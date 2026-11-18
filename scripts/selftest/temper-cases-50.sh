@@ -71,6 +71,14 @@ _v50out="$("$TEMPER" gate intent 2>/dev/null)"
 assert_eq "verdict: a gate that records nothing prints no marker" "1|1|0|1" \
   "$(_v50n "$_v50other" 'temper gate intent -> PASS')|$(grep -c '(not recorded: ' <<<"$_v50other")|$(
     grep -c '^VERDICT:' <<<"$_v50other")|$(_v50n "$_v50out" 'VERDICT: gate:intent PASS')"
+# a gate whose write of the verdict failed (gates.json cannot be read) recorded nothing: no marker, and an exit that is
+# no PASS, so temper go hands the broken call back
+fresh; printf '{bad' > .temper/gates.json
+_v50out="$("$TEMPER" gate intent 2>/dev/null)"; _v50rc=$?
+_v50x="$(grep -c '^VERDICT:' <<<"$_v50out")|$([[ $_v50rc -ne 0 ]] && echo 'not 0' || echo 0)|$(cat .temper/gates.json)"
+rm -f .temper/gates.json
+assert_eq "verdict: a gate whose verdict was not written prints no marker" "0|not 0|{bad|1" \
+  "$_v50x|$(_v50n "$("$TEMPER" gate intent 2>/dev/null)" 'VERDICT: gate:intent PASS')"
 
 # --- the marker of `group gate` ---
 _v50run true true; _v50g '"status": "running"' running
