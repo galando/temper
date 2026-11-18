@@ -111,6 +111,40 @@ describe('the view of the run', () => {
   })
 })
 
+// WP15: the card of the question that decides (the approval, the commit, a stop) is a field of the view, parsed with
+// the view: a card of a kind outside the closed list reads as null, and a view with no card still parses.
+type CardRows = Array<{ id?: unknown; rows?: Array<{ text?: unknown }> }>
+type CardLike = { kind?: unknown; title?: unknown; sections?: CardRows }
+const cardOf = (v: unknown): CardLike | null | undefined => (v as { card?: CardLike | null }).card
+const shape = (c: CardLike | null | undefined) => ({
+  kind: c?.kind,
+  title: c?.title,
+  sections: (c?.sections ?? []).map(s => [s.id, (s.rows ?? []).map(x => x.text)]),
+})
+
+describe('the card of the question', () => {
+  test('parseRunView reads the card of the fixture plan-pass', () => {
+    const doc = view('plan-pass')
+    const want = doc.card as CardLike | undefined
+    expect(want?.kind, 'the fixture plan-pass holds an approval card').toBe('approval')
+    expect(shape(cardOf(rv(doc)))).toEqual(shape(want))
+  })
+
+  test('a card of a kind outside the closed list reads as null', () => {
+    const card = { kind: 'surprise', run_id: 'run-pw', step: 3, title: 'A CARD', tag: 'pw', sections: [], foot: [] }
+    expect(cardOf(rv({ ...view('plan-pass'), card }))).toBeNull()
+    expect(cardOf(rv({ ...view('plan-pass'), card: { ...card, kind: 'stop' } }))?.kind).toBe('stop')
+  })
+
+  test('a view with no card field still parses, with no card', () => {
+    const doc = view('build-work')
+    delete doc.card
+    const v = parseRunView(JSON.stringify(doc))
+    expect(v).not.toBeNull()
+    expect(cardOf(v)).toBeNull()
+  })
+})
+
 const BAND = (isWorking: boolean, bodyColumns = 120) => ({ hasSurvey: false, isWorking, maxRows: 12, bodyColumns, scroll: { offset: 0, bodyRows: 12 }, view: {} }) as const
 const PANE = { title: 'Temper', isFocused: false, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} } as const
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const

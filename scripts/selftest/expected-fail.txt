@@ -39,7 +39,6 @@ selftest:D102                  WP31           D102
 selftest:D103                  WP31           D103
 selftest:D104                  WP30           D104
 selftest:D108                  WP31           D108
-e2e:flagged-map                WP15           D02
 e2e:fix-two                    WP17           D03
 e2e:repair-finding             WP24           D05
 e2e:repair-worse               WP24           D37e
@@ -49,12 +48,8 @@ e2e:group-fail-twice:driver    WP16           D06
 e2e:criteria-by-cli            WP27           D10
 e2e:acceptance-wrong-test      WP23           D21
 e2e:revise-narrow              WP27           D24
-selftest:D02b                  WP15           D02
 selftest:D15                   WP22           D15
 selftest:D15b                  WP22           D15
-selftest:D22a                  WP15           D22
-selftest:D22b                  WP15           D22
-selftest:D31e                  WP15           D31
 selftest:D33f                  WP21           D33
 selftest:D34a                  WP30           D34
 selftest:D34b                  WP22           D34

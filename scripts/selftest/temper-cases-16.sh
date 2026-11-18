@@ -183,16 +183,14 @@ MD
   "$TEMPER" state set complexity medium >/dev/null 2>&1
 }
 _p16
-PANEL="$("$TEMPER" panel plan 2>&1)"
-assert_eq "9.8.0: the Plan panel counts the criteria, the scenarios and the files from the spec files" "1|1|1|1|1" \
-  "$(tr -s ' |\n' ' ' <<<"$PANEL" | grep -c 'INTENT: The demo prints nothing yet. -> 2 criteria (2 scenarios cover them)')|$(grep -c '^| ARCHITECTURE: create 1 files, modify 1 files' <<<"$PANEL")|$(grep -c '^| COMPLEXITY: medium   SEARCH: local' <<<"$PANEL")|$(grep -c '^| \[Error Paths\] a bad flag exits 2, Covers: AC-02' <<<"$PANEL")|$(grep -c '^| print from main, not from a hook' <<<"$PANEL")"
-assert_eq "9.8.0: the Plan panel is one closed box of 76 columns, then the text diagram and never the mermaid" "1|1|0" \
-  "$(awk '/^\+-+\+$/ && length($0) == 76 { last = NR } { a[NR] = $0 } END { for (i = 1; i <= last; i++) if (length(a[i]) != 76) bad = 1; print (last && !bad) ? 1 : 0 }' <<<"$PANEL")|$(grep -c '^| main | --> | out  |$' <<<"$PANEL")|$(grep -c 'flowchart' <<<"$PANEL")"
+# WP15: the Plan panel is gone. The approval card shows what it showed (case file 56), and Design keeps its panel.
+assert_exit "9.8.5: temper panel plan is no word any more: the approval card shows the plan" 1 "$TEMPER" panel plan
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1 || python3 - <<'PY'
 import json; p='.temper/build-state.json'; d=json.load(open(p)); d['next_stage']='plan'; json.dump(d, open(p,'w'))
 PY
-assert_eq "9.8.0: the Plan agent's after calls draw its panel, before the gate call (the gate stays last)" "panel plan|gate plan" \
-  "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['agents'][0]['after'][-2:])")"
+assert_eq "9.8.5: the Plan agent's after calls draw no panel, and the gate call stays last" "no panel|gate plan" \
+  "$(nx "a = d['agents'][0]['after']; ('panel' if any(' panel ' in c + ' ' for c in a) else 'no panel') + '|' \
+    + a[-1].split('temper ', 1)[1]")"
 printf '# Design: Demo\n\n## Areas of Concern\n\n### Two writes, no transaction\n\nresolved: accepted as written\n\n### Logs hold names\n\nMask them.\n\n## Decision Log\n\n| Decision | Options Considered | Chosen | Rationale |\n|---|---|---|---|\n| Store | table / file | table | queries |\n' > .temper/specs/demo/design.md
 PANEL="$("$TEMPER" panel design 2>&1)"
 assert_eq "9.8.0: the Design panel lists each concern with its state, and the Decision Log rows" "1|1|1|1" \

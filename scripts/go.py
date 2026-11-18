@@ -11,7 +11,8 @@ of 88 tool calls were such mechanical steps. `temper go` runs them inside the CL
 It stops, printing one compact JSON object, at the first point that needs the session:
 
   {"action": "work", "stage", "say", "ran": [...], "agents": [{type, model, prompt, before, after, ...}], "steps": [...]}
-  {"action": "ask", "stage", "say", "ran": [...], "ask": {the CLI's question, as `next` gives it}, "blocking", "gate"}
+  {"action": "ask", "stage", "say", "ran": [...], "ask": {the CLI's question, as `next` gives it}, "blocking", "gate",
+   "card": [the rows of the question's card, as `temper card` prints them (WP15), when it has one]}
   {"action": "wait" | "none" | "broken" | "error", "stage", "say", "ran": [...], ...}
 
 `temper go --taken-up` (WP11), the first call after /temper:temper was typed with no words, first records a stop of a run
@@ -27,9 +28,13 @@ about. `verdicts` lists the markers read, in order. The full view still goes to 
 Standard library only.
 """
 import json
+import os
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import card  # noqa: E402
 
 MAX_STEPS = 60
 MARKER = re.compile(r"^VERDICT: (\S+) (PASS|FAIL|PARKED)$")
@@ -104,6 +109,8 @@ def compact(n, ran, cli, verdicts=()):
     elif act == "ask":
         if n.get("ask"):
             out["ask"] = slim(n["ask"])
+        if n.get("card"):   # WP15: the card of the question as the rows `temper card` prints (scripts/card.py)
+            out["card"] = card.render(n["card"], card.WIDTH)
         if n.get("gate"):
             out["gate"] = n["gate"]
         if n.get("blocking_asks"):   # 9.8.0: each Blocking question ready to ask, with the call that records its answer

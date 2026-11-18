@@ -51,6 +51,16 @@ def strip_checkbox(line):
     return t.strip()
 
 
+def out_of_scope(lines):
+    """The text of the intent's `- Out of scope:` bullet under Scope and Non-goals (or Scope), or None: the one reading
+    of the Intent gate's row "out of scope stated" and of the approval card (9.8.5, WP15)."""
+    for l in section_lines(lines, "Scope and Non-goals") or section_lines(lines, "Scope"):
+        om = re.match(r"^\s*-\s*Out of scope:\s*(.*?)\s*$", l, re.I)
+        if om and re.search(r"[A-Za-z0-9]", blank_placeholders(om.group(1))):
+            return om.group(1)
+    return None
+
+
 def heading_level(line):
     m = re.match(r"^(#{1,6})\s", line)
     return len(m.group(1)) if m else 0

@@ -42,6 +42,7 @@ What users have is 9.8.4 (`7c7a1c1`).
 | `scripts/approval.py` | `intent_digest`, `plan_digest`, the row of the binding | WP12 | WP13, WP17, WP25 |
 | `scripts/guards/hold_before_approval.py` | the write rule before the approval with the mod off: only the stages Intent, Plan and Design of a feature run, only the tools that write a file | WP12, only if the directory accepts it | none |
 | `scripts/card.py`, `scripts/selftest/cards/` | the cards as data and as text; three golden texts | WP15 | WP17, WP19, WP20, WP22, WP24, WP25 and WP27 add rows here and nowhere else |
+| `run_summary.median_minutes`, `output_ops.last_run` and `last_failed`, `acceptance.out_of_scope`, `plan_ops.CARD_ROWS`; the flow's `record_parts`, `commit_message` and `commit_calls` | the readers the cards use (the estimate, the kept output lines, the out of scope bullet both the Intent gate and the card read, the rows of the `context` section; the message and the files of the commit) | WP15 | WP17, WP24, WP25 |
 | `scripts/trivial.py` | the trivial verdict and its bound | WP17 | none |
 | `scripts/baseline.py` | the environment check, the baseline, the limits | WP20 | WP21 (plan commands), WP22, WP23 |
 | `scripts/failure.py` | the one typed failure record | WP23 | WP24, WP25 |
@@ -71,6 +72,7 @@ Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command f
 | `temper state set want_design true` | WP14 | WP15 |
 | `python3 scripts/approval.py plan-digest <parsed tasks.md>` (the one plan digest the CLI's `_plan_digest` calls) | WP12 | WP25 |
 | `temper card` | WP15 | WP17 |
+| `temper spec commit '<message>' -- <the uncommitted code>`, the first call of the option `commit` of `commit.confirm` when code is uncommitted (the message the commit card shows); `python3 scripts/card.py text VIEW_JSON` | WP15 | WP17, WP24 |
 | `temper spec branch --carry NAME`, `--if-protected`; `temper group take-out G SHA...`; `temper group feedback G --text T`; `temper drift ask --path P --why W --change C` | WP16 | WP17 (`--if-protected`) |
 | `temper intent trivial --why TEXT` and `--close` | WP17 | none |
 | `temper review files`; `temper evidence add --read FILE`; `temper evidence resolve --fixed-by <commit>`, a commit and never a note | WP18 | WP24 |
@@ -267,6 +269,7 @@ and the `autonomy.budget` block (WP10); `phases.design` (WP14); `autonomy.policy
 Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT_S` (WP01), `TEMPER_CAPTURE_DIR`
 (WP02), `TEMPER_E2E_COUNT` (WP05), `MOCK_SLOW_S`, `MOCK_RED`, `MOCK_FLAKY_BASE` and `MOCK_FLAKY_LATER` (WP06),
 `TEMPER_BASELINE_FOREGROUND` (WP20: the baseline and the plan commands run in the foreground).
+`TEMPER_WRITE_CARDS` (WP15: set to 1, case file 56 writes the three golden texts of `scripts/selftest/cards/`).
 
 ## 8. Marker lines and closed lists
 
@@ -282,6 +285,8 @@ Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT
 | rule log kinds | `advance`, `repair`, `group fix`, `covered`, `stop`, `answer`, `ended` (WP11); `amend` (WP25) | WP11 | the card section `rule_log` |
 | failure classes | `environment`, `command`, `plan`, `code`, `not measured`; the kinds are a closed list in `scripts/failure.py` | WP23 | WP24 (`code`), WP25 (`blocked-task`, `no-validate`) |
 | card kinds and marks | `approval`, `commit`, `stop`; the marks of WP15 step 1 | WP15 | the mod's drawing |
+| the card entry of an end to end trace | one line `card <kind>` (indent allowed) in the step of the question that carries the card, before the calls of its answer, in plain, mod and driver mode; in driver mode a question `temper go` reached by its own steps gets its own line (`ask:<stage>:<id>:<option ids>`) before it | WP15 | `scripts/e2e/loop.ts`, the scenario `full-run`; WP17 |
+| the driver's effect `card` and the port's `card(rows)` | the card's rows, given once before the question is asked; the engine's port logs them outside full mode | WP15 | the mod; `scripts/e2e/loop.ts` |
 | prompt lines the CLI writes | `Drift decision:` (WP16), `Repair in place:` and the brief section `Re-check:` (WP24), `Affected tasks:` (WP27), `Packs:` (WP29) | as named | the briefs |
 | the driver's hand back | the end of the run driver (`DriveEnd`, `hooks/temper-mod/core/driver.ts`): `{kind: 'done', text}`, or `{kind: 'handback', needs, option}` with `needs` one of the seven hand back kinds and `option` the id of the option picked; the note after the command's text ends `step <kind> <option id>`; the trace line of the e2e driver is `driver handback: step <kind> <option id>` | WP16 | `hooks/temper-mod/register.tsx`, `commands/temper.md`, `commands/fix.md`, `scripts/e2e/loop.ts`, `scripts/e2e/scenarios.ts`, `tests/mod/driver.test.ts`, `tests/mod/driver-wiring.test.ts`; WP17 |
 | selftest helpers | `_unattended <stage>` (WP07; WP11 changes its body), `_base_known` (WP20: the baseline is on record as not run, so no case of the base meets the new first step), `ev_red` and `ev_green` (WP30) | as named | the case files |

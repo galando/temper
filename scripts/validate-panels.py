@@ -3,7 +3,8 @@
 
 Every stage brief (each agents entry in .claude-plugin/plugin.json) must:
   1. state the panel rule itself (the brief is all a clean-context stage reads), or say that the CLI draws its
-     panel (`temper panel plan|design|rca|task`, 9.8.0), and then show none;
+     panel (`temper panel design|rca|task`, 9.8.0) or that the CLI draws the card (`temper card`, 9.8.5), and then
+     show none;
   2. show at most ONE panel (a fenced code block containing box borders), and that
      panel must be a single closed box: every line the same width, `+` corners,
      `|` content rows, at least one titled `+--- NAME (N) ---+` section.
@@ -28,7 +29,9 @@ from pathlib import Path
 
 RULE_PHRASE = re.compile(r"exactly (ONE|one) closed panel", re.I)
 # 9.8.0 (round 5): a brief whose panel the CLI draws from the files it wrote says so, and shows no panel of its own.
-CLI_PANEL = re.compile(r"\*\*(Your panel is drawn by the CLI|Write your findings to the RCA file)\*\*.*?`temper panel (plan|design|rca|task)", re.S)
+# 9.8.5 (WP15): or that the CLI draws the card of its question (`temper card`), as the Plan brief does.
+CLI_PANEL = re.compile(r"\*\*(Your panel is drawn by the CLI|Write your findings to the RCA file)\*\*.*?"
+                       r"(`temper panel (design|rca|task)|the CLI draws the card \(`temper card`\))", re.S)
 # These briefs run or wait for tests: each must say to wait for a test run in the foreground (F20).
 FOREGROUND_BRIEFS = ("build.md", "build-task.md", "check.md", "review.md")
 FOREGROUND_RULE = re.compile(r"foreground.*background|background.*foreground", re.I | re.S)

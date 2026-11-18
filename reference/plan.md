@@ -305,9 +305,8 @@ Generate a mermaid diagram in `plan.md`'s `## Diagram` section (flowchart for co
 data flow, `stateDiagram-v2` for lifecycles, `sequenceDiagram` for cross-boundary calls,
 `classDiagram` for type hierarchies) — under 30 nodes, `classDef` color-coding new vs.
 existing vs. modified when it helps. Right after the mermaid block, write the same diagram as
-ASCII box-drawing art in a fenced `text` block (under 80 columns): the terminal cannot render
-mermaid, and `temper panel plan` prints that block after the Plan panel. Keep the mermaid block
-for GitHub and tool rendering.
+ASCII box-drawing art in a fenced `text` block (under 80 columns): a terminal cannot render
+mermaid. Keep the mermaid block for GitHub and tool rendering.
 
 ## Grouped tasks
 
@@ -403,8 +402,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan
 `temper risk` computes the rating from the blast radius, so the same blast radius always gives the same rating:
 production files (declared files that are not tests or docs) up to 3 is L, up to 10 is M, more is H; a CRITICAL entry
 in `.temper/security-map.json` is H; a HIGH entry, or a `[CROSS-REPO]` row in the Blast Radius section, moves it up one
-tier. The panel's RISK field is the letter it printed (the CLI reads it from the run state). To raise it, `temper risk --raise L|M|H --reason '<why>'`: a
-raise needs a reason and never lowers the rating.
+tier. The approval card's risk is the letter it printed (the CLI reads it from the run state). To raise it,
+`temper risk --raise L|M|H --reason '<why>'`: a raise needs a reason and never lowers the rating.
 
 If a security-hot-path scan ran, also persist `.temper/security-map.json` (one entry per
 CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `route`,
@@ -412,10 +411,8 @@ CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `ro
 
 ## Summary Panel
 
-The CLI draws the Plan panel (`temper panel plan`, 9.8.0) from intent.md, plan.md, tasks.md, the run state and
-`.temper/security-map.json` (a `SECURITY: {N} CRITICAL, {N} HIGH hot paths` row when the scan found any), and prints
-the `text` block of plan.md's Diagram section after it. This stage draws no box: it returns `PLAN DONE {spec path}`,
-and after a fresh review one line per finding it answered.
+The CLI draws the approval card (`temper card`, 9.8.5) from intent.md, plan.md, tasks.md and the run state. This
+stage draws no box: it returns `PLAN DONE {spec path}`, and after a fresh review one line per finding it answered.
 
 ## Approval
 

@@ -126,9 +126,11 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
   let note = ''
   const port: SyncPort = {
     run: call => {
+      let before = ''
       if (call === `${TEMPER} go`) {
         const n = w.next()
-        w.trace.push(traceLine(n))
+        before = traceLine(n)
+        w.trace.push(before)
         if (script.stopAt?.(w, n)) throw new Stopped(n)
         if (n.action === 'broken') throw new Error(`broken run: ${n.say}`)
       }
@@ -144,6 +146,8 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
           out = null
         }
         for (const c of (out?.ran ?? []) as string[]) w.trace.push(`  call ${c.slice(0, 80)} -> 0`)
+        // WP15: the question `temper go` stopped at, when its own steps led there: its line, as the loop writes it
+        if (out?.action === 'ask' && out.ask && traceLine(out) !== before) w.trace.push(traceLine(out))
         // the floor's `auto`: in driver mode, each call `temper go` ran by itself
         w.counts.auto += ((out?.ran ?? []) as string[]).length
         if (out !== null && script.stopAt?.(w, out)) throw new Stopped(w.next())
@@ -194,6 +198,10 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
     show: text => {
       w.trace.push(`  show ${text.split('\n')[0]!.slice(0, 60)}`)
     },
+    // WP15: the card the driver gives before it asks; the trace names its kind, as the loop does
+    card: () => {
+      w.trace.push(`  card ${(w.next().card as Json | null)?.kind ?? 'none'}`)
+    },
   }
   let end
   try {
@@ -223,6 +231,8 @@ function loop(w: World, script: Script, limit = 400): Json {
     last = n
     const ask = n.action === 'ask' ? (n.ask as Json) : null
     w.trace.push(traceLine(n))
+    // WP15: the card of the question (the approval, the commit, a stop), shown before the person answers
+    if (ask !== null && n.card) w.trace.push(`  card ${(n.card as Json).kind}`)
     if (script.stopAt?.(w, n)) return n
     if (n.action === 'none') return n
     if (n.action === 'broken') throw new Error(`broken run: ${n.say}`)

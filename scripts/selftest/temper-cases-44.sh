@@ -265,6 +265,9 @@ PY
 }
 fresh
 sed -i 's|`src/demo.sh`|`src/demo.sh`, `src/auth/login.sh`|; s|^\*\*Validate:\*\* `true`|**Validate:** `sh -c "true \| cat"`|' .temper/specs/demo/tasks.md
+# WP15: the fresh review of the plan is off, so the approval of the risk H plan is asked at once (at risk H the fresh
+# review runs first, and the approval follows it)
+printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
 gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" risk >/dev/null 2>&1
 _d22a_text="$("$TEMPER" card 2>/dev/null)"
 assert_eq "D22a the approval card is one object in next and the view, and its text holds the request, criteria, files, the sensitive path, risk H, commands and foot" \
@@ -283,7 +286,10 @@ out = ["request" if "the demo thing" in t else "no request",
 print("|".join(out))
 PY
 )"
-fresh; gpass intent plan build review check; _at commit
+# WP15: the commit question of a run the person started at the approval, parked before the commit with one change
+# uncommitted (a run that asks at every stage commits at its Check question, and at Commit the gate runs first)
+_unattended commit; _ran_unattended; mkdir -p src; echo 'echo demo' > src/demo.sh; gpass commit
+"$TEMPER" park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed' >/dev/null 2>&1
 _d22b_text="$("$TEMPER" card 2>/dev/null)"
 _d22b_msg="$(_x44 "o = opt(d, 'commit') or {}; m = [re.search(r\"spec commit '([^']+)'\", c) for c in o.get('calls') or []]; r = next((x.group(1) for x in m if x), '')")"
 assert_eq "D22b the commit card is one object in next and the view, and its text holds the criteria, the message the click uses and not pushed" \
