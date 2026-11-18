@@ -126,9 +126,14 @@ export function deriveView(get: (path: string) => string | undefined): string | 
   // WP14: Design runs only when the person asked for it (want_design), or when design.md exists or the run is at Design or
   // has its verdict (scripts/flow_run.py has_design); no tier and no risk adds it
   const design = stage === 'design' || verdict('design') !== undefined || bs.want_design === true || get(`${spec}/design.md`) !== undefined
+  // WP13 (scripts/flow_ask.py intent_by_rule): a passed Intent leaves by rule, as the CLI's own work; a note the person
+  // typed at Intent keeps its question (the view intent-ask)
+  const notes = json(get('.temper/evidence/intent.json'))
+  const noted = Array.isArray(notes) && notes.some(n => typeof n === 'object' && n !== null && (n as J).phase === 'note')
   let name: string
   if (command === 'fix') name = 'fix-rca'
   else if (armed && `armed-${stage}-${result}` in VIEWS) name = `armed-${stage}-${result}`
+  else if (stage === 'intent' && result === 'pass' && noted) name = 'intent-ask'
   else if (stage === 'plan' && result === 'pass' && autonomy) name = 'plan-pass-autonomy'
   else if (stage === 'plan' && result === 'pass' && design) name = 'design-plan-pass'
   else name = `${stage}-${result}`

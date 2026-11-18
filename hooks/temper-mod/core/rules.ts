@@ -268,9 +268,10 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
       if (specFile('intent.md') || specFile('intent-context.json')) return ALLOW
       return {
         deny:
-          `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the intent. ` +
+          `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the intent with the plan. ` +
           'Do not look for another way. Do not offer to turn Temper off. ' +
-          `Next: finish intent.md. Then ${ASK} (Continue to Plan).`,
+          `Next: finish intent.md. The run then goes on to Plan, where you ${ASK} (the approval): that one ` +
+          'question accepts the intent and the plan.',
       }
     case 'plan':
     case 'design': {

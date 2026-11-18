@@ -393,11 +393,13 @@ describe('finding 6: an advance does not move the run backwards, and does not sw
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
   })
 
-  test('legit: a skip of Plan, then the advance out of Plan, at Plan', async ($, on) => {
+  // WP13 (red-safety B1): with the intent still a draft the skip is the override alone; the advance waits for the
+  // intent's own question and the plan question after it
+  test('legit: a skip of Plan at Plan; with a draft intent the advance out of Plan is not part of it', async ($, on) => {
     const { w, api } = await begin($, on, { next: 'plan', gates: ['intent'], fail: ['plan'], answers: [why('Override and continue', 'skip plan')] })
     await ask(api, w)
     expect(await sh(api, "scripts/temper override plan --reason 'skip plan'")).toBeUndefined()
-    expect(await sh(api, 'scripts/temper state advance plan_complete build' + shownOf('plan-fail', 'Override and continue'))).toBeUndefined()
+    expect(await sh(api, 'scripts/temper state advance plan_complete build' + shownOf('plan-pass', 'Ask me at every stage'))).toMatch(T)
   })
 })
 

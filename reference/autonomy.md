@@ -8,10 +8,11 @@ The CLI computes every move (`temper next --json`, ADR 0013; decision 3 of ADR 0
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper`.
 
 **The start.** Only the person starts it, at the approval: the Plan question, or the Design question when the person
-asked for Design, after its check passed. "Approve and build" runs `temper state set run_mode autonomous`, then the
-stage's own steps; "Ask me at every stage" runs `temper state set run_mode interactive`. `run.default` orders the
-two (`to-commit`, `ask`, `never-unattended`); `autonomy.enabled: false` with no `run.default` reads as `ask`. The CLI
-refuses the call anywhere else, and records the stage it was made at (`unattended_from`).
+asked for Design, after its check passed; it also accepts the intent. "Approve and build" runs
+`temper state set run_mode autonomous`, then the stage's own steps; "Ask me at every stage" runs
+`temper state set run_mode interactive`. `run.default` orders the two (`to-commit`, `ask`, `never-unattended`);
+`autonomy.enabled: false` with no `run.default` reads as `ask`. The CLI refuses the call anywhere else, and records
+the stage it was made at (`unattended_from`).
 
 **What a rule does** (each an `auto` action, recorded in `.temper/rule-log.json`):
 

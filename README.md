@@ -27,7 +27,7 @@ Then run `/temper:temper "describe the feature"` in your project.
 
 ## How it works
 
-Intent, Plan, Build, Review, Check, then commit. You approve the plan; the run goes on to the commit question by itself.
+You approve the intent and the plan in one question before any code is written, and you approve the commit.
 
 - **Intent:** the rules your request left out (who, when, how much, exceptions) come back as questions with ready answers.
 - **Plan:** tasks a builder can follow without guessing; files outside the plan need your OK.

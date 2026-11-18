@@ -53,7 +53,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); 9.8.5: `question` goes to the dialog as it is, so its ids sit beside it in `question_ids`: `{id, kind, options}`, with id `intent.blocking`, kind `blocking`, and each option's `id` in the same order (`choice-1` to `choice-3`, `type`, `carry`), Carry forward with the kind `carry`; `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
 | `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
 | `context_map` | at Plan, when `plan.md` has a Context Map: `{intro, file, rows, answer, table}`, the table as plain text |
-| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; 9.8.5: id `plan.context`, kind `context`, options `as-planned`, `include-left-out`, `type` and `carry`; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
+| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto` and the person is asked about it (9.8.5, WP13: a flagged map under `auto`, every map under `always`, none under `off`, and not a map folded into the approval; else `null`): the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; 9.8.5: id `plan.context`, kind `context`, options `as-planned`, `include-left-out`, `type` and `carry`; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
 | `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
 
@@ -358,12 +358,39 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   after the stage rows, so a spec only commit and a Build checkpoint commit do not compute it). It passes with no
   `intent_hash` recorded or with both digests as recorded, and fails naming `intent.md` or `tasks.md`. In a run that
   goes on by itself it is a stop (`approval.changed` of `scripts/stops.json`).
-- **No branch and no commit before the approval.** Leaving Intent is `intent accept` and the advance. The approval is
-  `spec branch`, one `spec commit` (`docs(plan): approve the intent and the plan of <slug>`) and the advance. When the
+- **No branch and no commit before the approval.** Leaving Intent is `intent accept` and the advance (WP13: or the
+  advance alone, by rule). The approval is `spec branch`, `intent accept --digest <H1>` for a draft, one `spec commit`
+  (`docs(plan): accept the intent and approve the plan of <slug>`, or `approve the intent and the plan` for an intent
+  already accepted) and the advance. When the
   run's branch exists from an earlier run with commits the project lacks, the approval's text says `The branch <name>
   exists from an earlier run; its last commit is <subject>.` and `The approval continues on it.`; its switch is the
   carried one (the spec files go across through a temp folder), and its More list holds `Build on a new branch <new>`
   (`new-branch`, the one call `state set branch <new>`), after which the approval is asked again with no clash.
+
+### The run leaves Intent by rule; the approval accepts the intent (9.8.5, WP13, ADR 0019 decision 5)
+
+- **The rule.** At Intent `next` gives `work` (never `auto`) for the stage `intent`, no agents and the one call `state
+  advance intent_complete plan`, when all of these hold (`Builder.intent_by_rule`): a `/temper:temper` run; the Intent
+  check passed and was not skipped; `intent.md` exists (the TRIVIAL path has none); no Blocking question is open (an
+  answer is no note: once the gate passes again the rule moves on); the run did not come back to Intent; the person
+  typed no note at Intent; no door walked Intent. Otherwise `intent.accept` (or `intent.fail`, or `run.walked`) is
+  asked as before. `temper go` runs that work by itself. The intent stays a draft.
+- **The approval accepts it.** Its first options run, in order: `state set run_mode autonomous` (or `interactive`),
+  the folded Context check's `plan review` call, `spec branch` when the project is on another branch, `intent accept
+  --digest <H1>` while the intent is a draft (`Accepted-by: the person, at the plan approval`), one `spec commit` and
+  the advance with its `--shown` digests. The text says `Accept the intent, approve the plan and continue to <next>?`
+  and both descriptions start `Accept the intent.` The More list holds `back` (`Loop back to Intent`).
+- **A skip never accepts it.** With a draft intent the skip of a failed plan gate is `override plan` alone. `next` then
+  asks `intent.accept` at Plan (`Accept the intent (Recommended)`, the one call `intent accept --digest <H1>`), and the
+  plan question follows with `ask-every-stage` and no `approve-run`.
+- **The Context check.** Under `auto` only a map with an `ignore` or a `gap` line is asked about; a clean pending map
+  passes its row (`not asked: no flagged line`) and keeps `reviewed: pending`. A flagged map is folded into the
+  approval when it holds at most three `ignore` and two `gap` lines of at most 90 characters each: the row passes
+  (`N flagged line(s), answered at the approval`), the approval's text names the lines whole, the approving options
+  run `plan review --answer 'As planned (at the approval, N flagged lines shown)'`, and `Include what is left out`
+  joins the More list. Any other flagged map keeps its own question; `always` asks every map, `off` none.
+- **The draft beside its plan.** The Intent row `no scenarios in draft` passes once `tasks.md` is beside the intent:
+  Plan wrote those scenarios.
 
 ### Evidence, the lock and a note (9.8.5)
 

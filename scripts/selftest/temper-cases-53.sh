@@ -80,8 +80,15 @@ _gate53() { # _gate53 <stage>: the run moved to the stage, its gate run, then th
   local row; _at "$1"; "$TEMPER" gate "$1" >/dev/null 2>&1; row="$(_row53 "$1")"
   echo "${row%%:*}$([[ "$row" == *intent.md* ]] && echo ",intent.md")$([[ "$row" == *tasks.md* ]] && echo ",tasks.md")"
 }
-_intent53() { # a fresh run in a repository at Plan, left Intent through the first option of the Intent question
-  fresh; _repo53; gpass intent; _run53 continue; gpass plan
+_work53() { # WP13: runs the calls of the action next gives when it is a work with no agents (the run leaves Intent by rule)
+  local c
+  while IFS= read -r c; do
+    [[ -n "$c" ]] || continue
+    bash -c "$c" >/dev/null 2>&1 || break
+  done < <(_x53 "r = '\n'.join(d.get('calls') or []) if d.get('action') == 'work' and not d.get('agents') else ''")
+}
+_intent53() { # a fresh run in a repository at Plan, left Intent by rule (WP13: the CLI's own work, its one advance)
+  fresh; _repo53; gpass intent; _work53; gpass plan
 }
 _approved53() { # _approved53 [option id]: an approved run at Build, from the approval's own calls (ask-every-stage)
   _intent53; _run53 "${1:-ask-every-stage}"
@@ -217,10 +224,10 @@ r = '|'.join([str(d.get('action')), 'park' if park else 'calls: ' + '; '.join(c)
 # --- leaving Intent makes no branch and no commit ---
 fresh; _repo53; gpass intent
 _i53_head="$(git rev-parse HEAD)"
-_i53_calls="$(_x53 "cs = ' '.join((opt(d, 'continue') or {}).get('calls') or [])
+_i53_calls="$(_x53 "cs = ' '.join(d.get('calls') or [])   # WP13: the rule's own work
 r = 'branch=%s|commit=%s' % ('yes' if 'spec branch' in cs else 'no',
     'yes' if 'spec commit' in cs or 'git commit' in cs else 'no')")"
-_run53 continue
+_work53
 assert_eq "bound: leaving Intent makes no branch and no commit" "branch=no|commit=no|head=same|on=master|at=plan" \
   "$_i53_calls|head=$([[ "$(git rev-parse HEAD)" == "$_i53_head" ]] && echo same || echo moved)|on=$(
     git rev-parse --abbrev-ref HEAD)|at=$("$TEMPER" state get next_stage 2>/dev/null)"
@@ -242,7 +249,7 @@ assert_eq "bound: the approval makes the branch and one commit, on the run's bra
 
 # --- with the mod off a project file cannot be committed before the approval: the commit hook refuses it ---
 fresh; _repo53; bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
-gpass intent; _run53 continue
+gpass intent; _work53
 echo 'echo early' > src/early.sh; git add src/early.sh >/dev/null 2>&1
 assert_eq "bound: with the mod off a project file cannot be committed before the approval" \
   "at=plan|on=master|refused|1" \

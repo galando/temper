@@ -19,7 +19,6 @@ import path from 'node:path'
 import { POM, installTools } from './faketools'
 import { orchestrate } from './loop'
 import type { Script } from './loop'
-import { CONTEXT_CHECK_LINE } from './project'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json } from './world'
 
@@ -170,9 +169,6 @@ const AGENTS: Record<string, Agent> = {
   'temper:temper-plan': (w, a) => {
     if (!w.read(`${SPEC}/intent.md`).includes('Test: bash unit/shape_test.sh'))
       w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('## Scenarios (BDD)\n', scenarios))
-    // the Open Question agents/plan.md tells a planner to add with its Context Map
-    if (!w.read(`${SPEC}/intent.md`).includes(CONTEXT_CHECK_LINE))
-      w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('### Open Questions\n', `### Open Questions\n\n${CONTEXT_CHECK_LINE}\n`))
     const looped = /Rule violated|Coverage checks|coverage|filtered verify|jacoco/i.test(String(a.prompt))
     w.write(`${SPEC}/plan.md`, planMd)
     w.write(`${SPEC}/tasks.md`, tasksMd(looped ? GOOD_VALIDATE : BAD_VALIDATE))

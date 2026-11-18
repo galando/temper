@@ -26,7 +26,8 @@ class WorkPart:
         if stage in ("plan", "design"):
             # 9.8.0 (round 5): the CLI's map of the code the request reaches, made by the action's own call (temper brief).
             lines.append("Project brief: .temper/brief.md (the CLI's map of the code the request reaches; read it first).")
-        if stage == "intent" and r.state.get("feature"):
+        # WP13: the planner gets the request too (the run may leave Intent by rule, and nobody restated it)
+        if stage in ("intent", "plan") and r.state.get("feature"):
             # The request as typed, with one period after it unless it already ends a sentence (round 5: a request that
             # ended with a period got two, a session tidied them to one, and its launch was refused as another prompt).
             feature = r.state.get("feature").rstrip()

@@ -46,7 +46,7 @@ folder.
    stage sent the run back here for that reason (and, on a `What ... left open` line, its open findings). Revise
    the accepted intent for exactly that: change the criteria, constraints or scope the reason names, record the
    change under Decisions, and keep everything else. Set `**Status:** draft` and remove the `**Accepted-by:**`
-   line: the person accepted other wording, and accepts this revision at the Intent question. A draft holds no
+   line: the person accepted other wording, and accepts this revision (a run that came back asks it). A draft holds no
    scenarios, so remove the `Scenario:` blocks; Plan writes them again for the revised criteria. List each change
    in your panel. Changing nothing on a loop back sends the run round again.
 
@@ -56,7 +56,7 @@ folder.
    - Header: `**Author:**` (a name the person typed, else
      `the person`; never ask git or the system for a name or email), `**Status:** draft`,
      `**Created:**`, `**Ticket:**` if one was given, `**Reviewer:**` only when the request
-     names one (it is optional: the person who accepts the intent at the gate is its approver,
+     names one (it is optional: the person who accepts the intent with the plan is its approver,
      so never ask for a reviewer), `**Complexity:**` (a first guess; Plan records the
      authoritative one).
    - **Problem** (who is affected, current → desired with one concrete example, why

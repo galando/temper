@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
-import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, CONTEXT_CHECK_LINE, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
+import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
 import { stagePerson } from './persons'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
@@ -96,8 +96,6 @@ export const AGENTS: Record<string, Agent> = {
   'temper:temper-plan': w => {
     if (!w.read(`${SPEC}/intent.md`).includes(INTENT_SCENARIOS)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('## Scenarios (BDD)\n', INTENT_SCENARIOS))
     w.write(`${SPEC}/plan.md`, PLAN_MD)
-    // the Open Question agents/plan.md tells a planner to add with its Context Map
-    if (!w.read(`${SPEC}/intent.md`).includes(CONTEXT_CHECK_LINE)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('### Open Questions\n', `### Open Questions\n\n${CONTEXT_CHECK_LINE}\n`))
     w.write(`${SPEC}/tasks.md`, TASKS_MD)
     t(w, 'state set complexity simple')
     t(w, 'risk')
@@ -405,20 +403,24 @@ export const prAndPipeline = (w: World): void => {
 }
 
 // The Context check of Plan: the map has a gap, so the CLI asks the person (not Plan); the answer runs plan review through the mod.
+// WP13: a flagged line that fits the approval is folded into it (the scenario context-fold), so the gap here is the
+// longest a map line allows (93 characters), which the question cuts at 90: the Context check stays its own question.
+// Until WP15, which gives this scenario the config line plan.context-check: always to keep it.
+const LONG_GAP = 'no rate limit policy was found in the code, the docs, the ticket or the notes of the releases'
 export const contextCheck = (w: World): void => {
   startProject(w)
   const agents: Record<string, Agent> = {
     ...AGENTS,
     'temper:temper-plan': (wd, a) => {
       AGENTS['temper:temper-plan']!(wd, a)
-      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('- reviewed: pending', '- gap: no rate limit policy was found in code, docs or the ticket\n- reviewed: pending'))
+      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('- reviewed: pending', `- gap: ${LONG_GAP}\n- reviewed: pending`))
     },
   }
   let asked = 0
   orchestrate(w, script({
     agents,
     person: (ask, wd) => {
-      if (String(ask.question.question) === 'It could not find: no rate limit policy was found in code, docs or the ticket. Is that right?') {
+      if (String(ask.question.question) === `It could not find: ${LONG_GAP.slice(0, 87)}.... Is that right?`) {
         asked += 1
         const direct = wd.denies({ tool: 'Bash', input: { command: `${TEMPER} plan review --answer 'As planned'` } })
         expect(wd.mode === 'plain' || direct !== null, 'plan review is refused with no answer')
@@ -430,6 +432,41 @@ export const contextCheck = (w: World): void => {
     },
   }))
   expect(asked === 1, `the Context check was asked once (${asked})`)
+}
+
+// WP13: a flagged Context Map whose lines fit the approval is folded into it. The Context check is not asked on its
+// own; the approval's text holds the flagged line whole; the option the person picks answers it with plan review, so
+// plan.md records that the answer was given at the approval and how many lines were shown.
+const SHORT_GAP = 'no rate limit policy was found in code, docs or the ticket'
+export const contextFold = (w: World): void => {
+  startProject(w)
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('- reviewed: pending', `- gap: ${SHORT_GAP}\n- reviewed: pending`))
+    },
+  }
+  const ids: string[] = []
+  let whole = false
+  let planAtCommit = ''
+  orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      const id = String(ask.id ?? '')
+      ids.push(id)
+      if (id === 'plan.approve') whole = String(ask.question.question).includes(SHORT_GAP)
+      if (id === 'commit.confirm') planAtCommit = wd.exists(`${SPEC}/plan.md`) ? wd.read(`${SPEC}/plan.md`) : ''
+      return recommended(ask, wd)
+    },
+  }))
+  expect(!ids.includes('plan.context'),
+    `the Context check is folded into the approval, not asked on its own (${ids.join(', ')})`)
+  expect(whole, 'the approval holds the flagged line whole')
+  const review = (/^- (reviewed|answer):.*$/m.exec(planAtCommit) ?? [''])[0]
+  const answered = /^- answer: .*at the approval, 1 flagged lines? shown/m.test(planAtCommit)
+  expect(/^- reviewed: human/m.test(planAtCommit) && answered,
+    `plan.md records the answer given at the approval and the 1 line shown (${review})`)
 }
 
 // The run's branch exists from an earlier run with commits this checkout lacks. WP12: no branch is made before the approval,
@@ -775,7 +812,7 @@ export const branchClashCarry = (w: World): void => {
   })
   orchestrate(w, script({ person: recommended }))
   expect(w.sh('git branch --show-current').trim() === 'feature/ci', 'the run went on the earlier branch')
-  expect(w.sh('git log --format=%s feature/ci').includes('docs(plan): approve the intent and the plan of ci'), 'the intent and the plan were approved and committed there, with the new spec files carried across')
+  expect(w.sh('git log --format=%s feature/ci').includes('docs(plan): accept the intent and approve the plan of ci'), 'the intent and the plan were approved and committed there, with the new spec files carried across')
   expect(w.exists('old.txt') || !w.exists('.temper/build-state.json'), 'the earlier work is on the branch')
 }
 

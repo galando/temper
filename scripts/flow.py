@@ -50,7 +50,9 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             cm = r.context()
             if cm:
                 out["context_map"] = {k: cm[k] for k in ("intro", "file", "rows", "answer", "table")}
-                if cm["reviewed"] not in ("human", "auto") and r.cfg("plan.context-check", "auto").lower() != "off":
+                # WP13: asked only about a flagged map (auto), every map (always), never (off); a flagged map that the
+                # approval shows whole is answered there (r.context_folded()), and context_check stays null
+                if r.context_asked(cm):
                     q = self.context_question(cm)
                     out["context_check"] = {k: q[k] for k in ("id", "kind", "question", "options", "answer", "gate")}
                     out["context_check"]["header"] = GATE_HEADER
@@ -320,6 +322,13 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                 return out
             why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows(stage))[:200]
             out.update(self.stop(stage, "the check failed: %s" % why))
+            return out
+        if stage == "intent" and self.intent_by_rule():
+            # WP13: the run leaves Intent as the CLI's own action; the person accepts the intent with the plan, at the
+            # approval. A `work` with calls and no agents, never an `auto` (the mod draws an auto as an armed run).
+            out.update({"action": "work", "stage": stage, "calls": [self.c("state advance intent_complete plan")], "agents": [],
+                        "say": "Intent: the check passed and nothing is open. The run goes on to Plan; you accept the intent "
+                               "with the plan, in one question."})
             return out
         q = self.ask(stage)
         out.update({"action": "ask", "stage": stage, "ask": q})

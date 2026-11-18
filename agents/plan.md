@@ -18,7 +18,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    ranks.
 2. Produce the artifacts it describes under `.temper/specs/{feature-slug}/`: `intent.md`
    (Success Criteria + Gherkin Scenarios), `tasks.md`, `plan.md`. In the orchestrated
-   flow the Intent stage already wrote `intent.md` and a human accepted it — it is your
+   flow the Intent stage already wrote `intent.md`; the person accepts it with your plan. It is your
    INPUT: derive scenarios and architecture from it, refine only with a stated reason,
    never re-derive the Problem.
 3. **Re-read the intent's context sources.** Under `## Source Traceability` →
@@ -88,10 +88,10 @@ orchestrator's conversation carries over except the prompt you were launched wit
   those three.
 - Write `## Context Map` at the top of `plan.md`, after exploring and before any scenario: one line per source of context,
   never per code file (an area is one line: `src/auth/ (12 files)`), as `- use:`, `- ignore:` or `- gap:` entries, at most 12 of
-  them and each at most 100 characters, then `- reviewed: pending`. Add this Open Question to `intent.md`:
-  `- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.`
-  Ask nobody yourself, and never write `reviewed: human` or edit that line afterwards: the CLI writes it from the person's answer
-  (`temper plan review --answer`), and `plan.context-check` in the config decides whether the person is asked.
+  them and each at most 100 characters, then `- reviewed: pending`. Ask nobody yourself, and never write
+  `reviewed: human` or edit that line afterwards: the CLI writes it from the person's answer (`temper plan review
+  --answer`), and `plan.context-check` decides whether the person is asked (a map with no `ignore` or `gap` line is
+  not asked about).
 - A Maven group (a `pom.xml` in it) validates with `mvn verify` run once with JaCoCo on, never a bare test goal; a task's test
   command names its test classes (a `-Dtest=` list, with or without `#method`), and Build runs only those, offline, on `mvnd` when
   it is on PATH, and needs a new surefire report for each class. `temper gate plan` names a Maven group that breaks this, also
@@ -116,7 +116,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
   tool is connected, say so there.
 - Scenario count must be at least the criterion count, and every `Covers:` id must
   name a real `AC-NN`.
-- The accepted intent is your input. Refine it only with a stated reason, and never
+- The intent is your input. Refine it only with a stated reason, and never
   re-derive its Problem.
 
 **Your panel is drawn by the CLI** (9.8.0, round 5): `temper panel plan` draws the Plan panel from intent.md, plan.md

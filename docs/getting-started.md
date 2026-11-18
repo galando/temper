@@ -71,11 +71,11 @@ In Claude Code, in your project:
 /temper:temper "add user authentication"
 ```
 
-Temper runs intent → plan → build → review → check with stage gates. The first gate is
-the cheapest and highest-leverage: you approve the Problem and success criteria before
-any exploration or architecture spends tokens — correcting the intent there costs
-words; correcting it after planning costs the plan. At each gate Claude asks one question in
-Claude Code's own dialog, with the options the CLI gives for that gate. After the plan:
+Temper runs intent → plan → build → review → check with stage gates. You approve the intent and the plan in one
+question before any code is written, and you approve the commit. The Intent stage asks you only what your request
+left open (who, when, how much, exceptions); with nothing open the run goes on to Plan by itself, and the approval
+shows the intent's criteria beside the plan, so a correction still costs words, not code. At each question Claude asks
+in Claude Code's own dialog, with the options the CLI gives. After the plan:
 
 ```text
 Temper gate
@@ -110,8 +110,8 @@ the session is busy while an agent runs.
 ### Option B: Start at a stage
 
 Each stage command is a door into the same run: it starts `/temper:temper` at that stage, or takes up
-the run that is active, and you decide every gate in the same question. `/temper:plan` starts at the
-Intent gate, because the plan is derived from the intent you approve. A later stage command
+the run that is active, and you decide every gate in the same question. `/temper:plan` starts at
+Intent, because the plan is derived from the intent you approve with it. A later stage command
 (`/temper:build`, `/temper:review`, `/temper:check`) needs a planned feature: it checks and asks each
 earlier gate in turn, then runs its stage. A new run holds no evidence of an earlier session, so an earlier
 stage whose check needs it (Review at the Check door) fails there: you choose **Run** it (it and every stage

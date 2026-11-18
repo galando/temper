@@ -174,6 +174,7 @@ assert_eq "summary: state clear appends one line to .temper/runs.jsonl and the l
 # `next` twice at the same question: asked once
 setup
 _at intent
+"$TEMPER" evidence add --stage intent --phase note --claim 'keep the demo to one screen' >/dev/null 2>&1   # WP13: a note at Intent keeps its question
 gpass intent
 "$TEMPER" next --json >/dev/null; "$TEMPER" next --json >/dev/null
 _c41_q="$(nx "d['ask']['id']")"

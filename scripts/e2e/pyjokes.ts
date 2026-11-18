@@ -15,7 +15,6 @@ import path from 'node:path'
 import { orchestrate, orchestrateFix } from './loop'
 import type { Script } from './loop'
 import { asksEveryStage, chained, expect, recommended, t, worktreeOf } from './scenarios'
-import { CONTEXT_CHECK_LINE } from './project'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Json } from './world'
 
@@ -236,8 +235,6 @@ const planner = (seen: Seen, tasks: (pass: number) => string, after: (w: World) 
     seen.note('plan-prompt', a.prompt)
     const intent = w.read(`${SPEC}/intent.md`)
     if (!intent.includes('Scenario: an unknown category raises')) w.write(`${SPEC}/intent.md`, intent.replace('## Scenarios (BDD)\n\n', SCENARIOS))
-    // the Open Question agents/plan.md tells a planner to add with its Context Map
-    if (!w.read(`${SPEC}/intent.md`).includes(CONTEXT_CHECK_LINE)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('### Open Questions\n', `### Open Questions\n\n${CONTEXT_CHECK_LINE}\n`))
     w.write(`${SPEC}/plan.md`, PLAN)
     w.write(`${SPEC}/tasks.md`, tasks(passes))
     after(w)

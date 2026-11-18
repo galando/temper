@@ -168,8 +168,12 @@ add('header fields', not missing_h,
 
 # --- no scenarios in draft -------------------------------------------------
 scen = A.scenario_lines(lines)
-add('no scenarios in draft', not scen,
+# 9.8.5 (WP13): a draft beside tasks.md holds the scenarios Plan wrote (the run left Intent by rule, and the person
+# accepts the intent with the plan): the gate computed again, by a door or a step back, passes them.
+planned = os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(sys.argv[2])), 'tasks.md'))
+add('no scenarios in draft', not scen or planned,
     'no Scenario: lines — Plan writes the scenarios' if not scen
+    else 'Scenario: lines written by Plan (tasks.md is beside the intent)' if planned
     else 'Scenario: line(s) at ' + ' | '.join(str(n) for _, n in scen))
 
 # --- no soft words ---------------------------------------------------------

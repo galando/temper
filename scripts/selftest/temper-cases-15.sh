@@ -183,8 +183,10 @@ assert_eq "WP11: a run that went on by itself keeps that record, and the commit 
 assert_exit "9.8.0: the record is the CLI's: state set ran_unattended is refused" 1 "$TEMPER" state set ran_unattended false
 
 # --- 6. The Context check names what the plan leaves out; an answer other than "As planned" sends Plan back with it ---
-_fr_plan_ctx() { # a plan at Plan whose Context Map has an ignore and a gap and is not reviewed yet
+_fr_plan_ctx() { # a plan at Plan whose Context Map has an ignore and a gap and is not reviewed yet; WP13: under auto
+                 # lines that short are folded into the approval (temper-cases-54.sh), so always keeps the check here
   fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+  printf 'plan:\n  context-check: always\n' >> .claude/temper.config
   "$TEMPER" state set complexity simple >/dev/null 2>&1
   cat > .temper/specs/demo/plan.md <<'PEOF'
 ## Context Map

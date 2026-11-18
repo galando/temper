@@ -7,8 +7,6 @@ export const TASKS_MD = "# Tasks: CI report\n\n**Integration:** `bash suite.sh`\
 // `suite_runs`), then runs the tests. The config's test and coverage commands and the Integration line of tasks.md name it.
 export const SUITE = 'bash suite.sh'
 export const SUITE_SH = '[ -n "${TEMPER_E2E_COUNT:-}" ] && echo suite >> "$TEMPER_E2E_COUNT"\nexec python3 -m unittest discover -s unit -t .\n'
-// The Open Question a Plan agent adds to intent.md with its Context Map (agents/plan.md).
-export const CONTEXT_CHECK_LINE = '- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.'
 export const BASE_FILES: Record<string, string> = {
   'README.md': '# scratch\n',
   'suite.sh': SUITE_SH,
