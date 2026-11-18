@@ -40,8 +40,8 @@ as what was asked and what was built.
 **Capture as intent.md.** The playbook wants anyone — not just engineers — able to
 turn an idea into a committed, reviewable proto-spec, and the intent to be the
 artifact the whole loop starts from. **[NEW]** Intent is now `/temper`'s own first
-*gated stage*: a cheap pass states the Problem, success criteria, and constraints —
-no exploration, no architecture — and what the request left open is asked **before the
+*gated stage*: a cheap pass states the Problem, success criteria, and constraints,
+with no exploration and no architecture. What the request left open is asked **before the
 expensive stages spend anything**; the human accepts the intent with the plan, in one
 question. The reasoning is the playbook's own: every downstream artifact is derived
 from the intent, so an intent correction at this gate costs words, and the same
