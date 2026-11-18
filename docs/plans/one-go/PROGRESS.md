@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-18 07:07 UTC
+- Watch: one check is scheduled; the next is due 2026-11-18 11:16 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -55,7 +55,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP14 | done | `11f874b` | 2026-11-17 | Design runs only on the person's ask (option `run-design`); its concerns are Blocking questions of the plan, held by the plan gate; at risk H the fresh review runs by rule and `approve-run` needs a clean round; design-on-ask and D18d off the list, which holds 82 (65 selftest, 17 scenarios) |
 | WP11 | done | `37aae8d` | 2026-11-18 | the approval runs to the commit by default (`run.default`); a passed check moves on, Review and Check by the closed rule list, a stop keeps the mode and `park --end` ends it; the commit question offers the pull request; `sensitive.py` and `rule_log.py`; stops 20 to 22; twelve checks off the list, which holds 71 (54 selftest, 17 scenarios) |
 | WP12 | done | `90d25cc` | 2026-11-18 | the approving calls carry `--shown` digests of intent.md and tasks.md (`approval.py`) and a stale one is refused; the row `intent unchanged since the approval` fails the Build, Check and commit gates; leaving Intent makes no branch and no commit, the approval makes the branch and one commit; the classic hook `hold_before_approval.py`; the D105 world check is armed; seven checks off the list, which holds 64 (48 selftest, 16 scenarios) |
-| WP13 | doing | | | |
+| WP13 | done | `cbb89de` | 2026-11-18 | the run leaves Intent by rule (six conditions; a `work` action with the one advance), the approval accepts a draft intent (`intent accept --digest`) in the one spec commit, a skip never accepts, `back` joins the plan More list; the Context check folds into the approval when it fits; three checks off the list, which holds 61 (47 selftest, 14 scenarios) |
 | WP15 | todo | | | |
 | WP16 | todo | | | |
 | WP17 | todo | | | |
@@ -168,6 +168,10 @@ None.
 - 2026-11-18 WP12: a draft intent at Plan (runs saved by 9.8.4 and by the base) made D60a loop under the new refusal of `plan_complete`; the approving options put `intent accept --digest <H1>` first when the intent is a draft. The `intent.branch` question is gone; a branch clash is named at the approval, whose More list gains `new-branch`. D31d passed and left the list.
 - 2026-11-18 WP12: the builder read the D105 assert for a run with two approvals: rule 1 at the first approval (the second finds the branch the first made), and the planner clause of rule 4 counted only launches after the last approval. My decision: the second part excused a planner the run launched by itself between two approvals, so I narrowed it in `4707da7`: a launch between two approvals is excused only when the person picked a step back (move `back`) between them. A synthetic record proves it still reports the launch without one; budget-stop, group-fail-twice and repair-worse pass.
 - 2026-11-18 WP12: caps after the package: gate_rows 56 (final 55; the spec adds the row), option_labels 74 (final 71), question_ids 35 (its final), question_sites 52 and option_sites 88 (under their finals), cli_bytes 220,326. No final moved. Floor: approval-first new (3 dialogs); branch-clash 4 to 6 dialogs (More, the new branch, the approval again).
+- 2026-11-18 WP12 merged: all eight e2e groups passed with `--floor` on the merged branch (group 7 compares no run); CI green on `d02d654`.
+- 2026-11-18 WP13: the fresh review digest now leaves out the lines of intent.md the CLI writes itself (`approval.OWN`), since the accept at the approval comes after the review read the file; without it pyjokes-full lost its note to the builder. The drop order of the four option limit now takes Grill Me (or Share HTML review) out of the plan More list when `back` joins it.
+- 2026-11-18 WP13: `flow_ask.py` passed case 32's 64 KiB limit, so `accept_draft`, `leave_plan`, `skip_then` and the new methods sit in `flow_commit.py`. A new view fixture `intent-ask` (a note at Intent) keeps the Intent question under test for the mod.
+- 2026-11-18 WP13: caps: prompt_bytes 307,656 and cli_bytes 220,587, both under their finals; no other cap moved. Floor: two-dialogs 2, vague-run 4, context-fold 2 new; default-run 4 to 2 (its final); most scenarios 2 fewer dialogs; replay questions 5 to 3 (its final). No final moved.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
