@@ -163,6 +163,25 @@ done
 assert_eq "bound: a stale approval is refused before any run_mode, branch or commit is written, for each option" \
   "$_f53_want" "$_f53"
 
+# --- a refused approval leaves the run asking at every stage (rules 3 and 4): approve-run stopped half way (its first
+# call alone), then a criterion changed, then the person picked Run Design first of the question as it was shown ---
+_intent53
+_r53_arm="$(_calls53 approve-run | head -n 1)"; _r53_calls="$(_calls53 run-design)"
+bash -c "$_r53_arm" >/dev/null 2>&1
+_r53="half way=$("$TEMPER" state get run_mode interactive 2>/dev/null)"
+_criterion53 "changed after the question was built"
+_r53_rc=0
+while IFS= read -r _c; do
+  [[ -n "$_c" ]] || continue
+  bash -c "$_c" >/dev/null 2>&1 || { _r53_rc=1; break; }
+done <<<"$_r53_calls"
+_r53+="|refused=$_r53_rc|mode=$("$TEMPER" state get run_mode interactive 2>/dev/null)"
+_r53+="|at=$("$TEMPER" state get next_stage 2>/dev/null)|armed=$(_x53 "r = (d.get('run') or {}).get('armed')")"
+_r53+="|ended=$(python3 -B -c "import json
+print(sum(1 for e in json.load(open('.temper/rule-log.json')) if e.get('kind') == 'ended'))" 2>/dev/null || echo 0)"
+assert_eq "bound: a refused approval leaves the run asking at every stage, and the rule log says the unattended run ended" \
+  "half way=autonomous|refused=1|mode=interactive|at=plan|armed=False|ended=1" "$_r53"
+
 # --- the advance records intent_hash beside plan_hash, with the approving calls and with a bare advance ---
 _approved53; _h53_shown="$(_hashes53)"
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1

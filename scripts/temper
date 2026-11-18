@@ -3544,8 +3544,10 @@ _rule_log() { # _rule_log <kind> <stage> <what>: one entry of .temper/rule-log.j
 }
 
 _approval_bound() { # _approval_bound NAME=DIGEST...: refuses an approval whose files changed since its question showed
-                    # them (WP12, scripts/approval.py)
-  python3 -I "$SCRIPTS_DIR/approval.py" check "$STATE_FILE" "$(_spec_path "")" "$@"
+                    # them (WP12, scripts/approval.py); a refused approval leaves the run asking at every stage (rule 3)
+  python3 -I "$SCRIPTS_DIR/approval.py" check "$STATE_FILE" "$(_spec_path "")" "$@" && return 0
+  _unattended_end "the approval was refused" >/dev/null
+  return 1
 }
 
 _unattended_end() { # _unattended_end <what>: the run asks at every stage from here (rule 3); recorded in the rule log
