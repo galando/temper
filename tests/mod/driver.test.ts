@@ -407,6 +407,59 @@ describe('the person interrupts', () => {
   })
 })
 
+// WP15: a question that decides carries a card: `temper go` gives its rows (`card`), and the driver gives them to the
+// port once, before it asks; the engine's port draws them (full mode) or logs them (any other mode). A question with no
+// card gives none. The port's `card` is set beside the scripted port, so the test holds the port as WP15 extends it.
+describe('the card of a question, before the dialog', () => {
+  type CardPort = Port & { card?: (rows: string[]) => Promise<void> }
+  const CARD = ['APPROVE BEFORE ANY CODE IS WRITTEN                      refunds · risk M',
+    'WHAT WILL BE TRUE (2 criteria)', ' AC-01 a refund is recorded', 'Nothing is pushed.']
+  const approve = (card?: string[]): GoOut => ({
+    action: 'ask', stage: 'plan', ...(card ? { card } : {}),
+    ask: {
+      question: q('Plan: the check passed. Approve the plan?', ['Approve (Recommended)', 'More options']),
+      options: [{ label: 'Approve (Recommended)', calls: [`${CLI} state advance plan_complete build`] },
+        { label: 'More options', kind: 'more' }],
+      more: { question: q('Plan: more options.', ['Save for later']),
+        options: [{ label: 'Save for later', stop: true }] },
+    },
+  }) as GoOut
+  const watch = (s: Script) => {
+    const { p, log } = port(s)
+    const events: string[] = []
+    const cards: string[][] = []
+    const cp = p as CardPort
+    const ask = p.ask
+    cp.ask = async x => {
+      events.push(`ask ${x.question}`)
+      return ask(x)
+    }
+    cp.card = async rows => {
+      events.push('card')
+      cards.push(rows)
+    }
+    return { cp, log, events, cards }
+  }
+
+  test('before it asks, the driver gives the card rows to the port once, also when the person goes on to More options',
+    async () => {
+    const goes = [approve(CARD), { action: 'none', say: 'done' }]
+    const { cp, events, cards } = watch({ goes, answers: ['More options', 'Save for later'] })
+    await drive(cp, CLI, null)
+    expect(cards).toEqual([CARD])
+    expect(events).toEqual(['card', 'ask Plan: the check passed. Approve the plan?', 'ask Plan: more options.'])
+  })
+
+  test('a question with no card gives the port no card', async () => {
+    const goes = [approve(), { action: 'none', say: 'done' }]
+    const { cp, log, events, cards } = watch({ goes, answers: ['Approve (Recommended)'] })
+    await drive(cp, CLI, null)
+    expect(cards).toEqual([])
+    expect(events).toEqual(['ask Plan: the check passed. Approve the plan?'])
+    expect(log.ran).toContain(`${CLI} state advance plan_complete build`)
+  })
+})
+
 describe('a throw out of the driver', () => {
   test('at the interrupt it is the stop, with no hand back; otherwise the conversation takes the run up', () => {
     expect(driverThrew(new Error('$.process.spawn(bash) aborted'), true)).toEqual({ kind: 'done', text: STOPPED })
@@ -415,7 +468,8 @@ describe('a throw out of the driver', () => {
 })
 
 describe('what the driver shows, as the rows the terminal draws', () => {
-  test('a CLI panel is a few rows: the title, a row a fact, a row a section, and where the diagram is', () => {
+  test('a CLI panel is a few rows: the title, a row a fact, a row a section; the lines outside the boxes give way',
+    () => {
     const W = 76
     const rule = '+' + '-'.repeat(W - 2) + '+'
     const row = (t: string) => '| ' + t.padEnd(W - 4) + ' |'
@@ -429,7 +483,6 @@ describe('what the driver shows, as the rows the terminal draws', () => {
       'ARCHITECTURE: create 1 files · RISK: L',
       'SCENARIOS (2): [Happy Path] N jokes, Covers: AC-01 · [Edge Cases] more than there are, Covers: AC-02',
       'DECISIONS (1): argparse type= function',
-      "The plan's diagram is in plan.md, under Diagram.",
     ])
   })
 

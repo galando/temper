@@ -268,6 +268,7 @@ and the `autonomy.budget` block (WP10); `phases.design` (WP14); `autonomy.policy
 Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT_S` (WP01), `TEMPER_CAPTURE_DIR`
 (WP02), `TEMPER_E2E_COUNT` (WP05), `MOCK_SLOW_S`, `MOCK_RED`, `MOCK_FLAKY_BASE` and `MOCK_FLAKY_LATER` (WP06),
 `TEMPER_BASELINE_FOREGROUND` (WP20: the baseline and the plan commands run in the foreground).
+`TEMPER_WRITE_CARDS` (WP15: set to 1, case file 56 writes the three golden texts of `scripts/selftest/cards/`).
 
 ## 8. Marker lines and closed lists
 
@@ -283,6 +284,7 @@ Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT
 | rule log kinds | `advance`, `repair`, `group fix`, `covered`, `stop`, `answer`, `ended` (WP11); `amend` (WP25) | WP11 | the card section `rule_log` |
 | failure classes | `environment`, `command`, `plan`, `code`, `not measured`; the kinds are a closed list in `scripts/failure.py` | WP23 | WP24 (`code`), WP25 (`blocked-task`, `no-validate`) |
 | card kinds and marks | `approval`, `commit`, `stop`; the marks of WP15 step 1 | WP15 | the mod's drawing |
+| the card entry of an end to end trace | one line `card <kind>` (indent allowed) in the step of the question that carries the card, before the calls of its answer, in plain, mod and driver mode | WP15 | `scripts/e2e/loop.ts`, the scenario `full-run`; WP17 |
 | prompt lines the CLI writes | `Drift decision:` (WP16), `Repair in place:` and the brief section `Re-check:` (WP24), `Affected tasks:` (WP27), `Packs:` (WP29) | as named | the briefs |
 | selftest helpers | `_unattended <stage>` (WP07; WP11 changes its body), `_base_known` (WP20: the baseline is on record as not run, so no case of the base meets the new first step), `ev_red` and `ev_green` (WP30) | as named | the case files |
 | the one CHANGELOG entry | the heading `## v9.8.5: a run that asks twice`, in the place of the heading of the base at `CHANGELOG.md:6`; no other heading starts with `## v9.8.5`, and no package adds a version heading | WP01 | every package writes its lines under it, above the text of the base; WP31 gives the entry its final parts and folds in what stays of pull request #115 (`pr-115-fixes.md` section 4); WP32 adds the measured lines (`D86`) |
