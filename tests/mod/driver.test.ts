@@ -365,27 +365,35 @@ describe('a call that printed its own marker recorded a verdict, whatever its ex
 })
 
 describe('the driver carries a /temper:fix run', () => {
-  test('setup, the root cause agent with fix.md\'s prompt, the panel from rca.md, the run\'s state, the branch, then the loop', async () => {
+  // WP17: the run starts with the bug as typed (the card's request), draws no RCA panel (the card shows the fields),
+  // and runs no shell line: the branch is made by the approval's own call, spec branch --if-protected
+  test('fixSteps runs no shell line and passes --feature: setup, the root cause agent, the run\'s state, then the loop', async () => {
+    const approve = [`${CLI} state set run_mode autonomous`, `${CLI} spec branch --if-protected`, `${CLI} state advance rca_complete fix`]
     const { p, log } = port({
       goes: [
         { action: 'none', setup: [`bash /p/scripts/guards/install.sh`] },
-        { action: 'ask', stage: 'rca', ask: { question: q('RCA: the root cause is in .temper/specs/totals/rca.md. Proceed to Fix?', ['Proceed to Fix (Recommended)', 'Save for later']),
-          options: [{ label: 'Proceed to Fix (Recommended)', calls: [`${CLI} state advance rca_complete fix`] }, { label: 'Save for later', stop: true }] } },
+        { action: 'ask', stage: 'rca', ask: { question: q('RCA: the root cause and the proposed fix are on the card. Approve the fix?', ['Approve and fix (Recommended)', 'Save for later']),
+          options: [{ label: 'Approve and fix (Recommended)', calls: approve }, { label: 'Save for later', stop: true }] } },
         { action: 'none', say: 'The fix is committed.' },
       ],
-      answers: ['Proceed to Fix (Recommended)'],
-      out: call => (call.endsWith('model rca') ? 'claude-opus-5-5\n' : call.includes('panel rca') ? '| RCA: totals |' : ''),
+      answers: ['Approve and fix (Recommended)'],
+      out: call => (call.endsWith('model rca') ? 'claude-opus-5-5\n' : ''),
     })
     const end = await driveFix(p, CLI, 'Totals drop a cent', 'totals')
     expect(end).toEqual({ kind: 'done', text: 'The fix is committed.' })
     expect(log.spawned.map(a => [a.type, a.model, a.prompt])).toEqual([['temper:temper-rca', 'claude-opus-5-5', rcaPrompt('/p', 'Totals drop a cent', 'totals')]])
     const at = (c: string) => log.ran.indexOf(c)
     expect(at(`bash /p/scripts/guards/install.sh`) < at(`${CLI} model rca`)).toBe(true)
-    expect(at(`${CLI} panel rca .temper/specs/totals/rca.md`) < at(`${CLI} state init totals --command fix`)).toBe(true)
+    const init = log.ran.filter(c => c.startsWith(`${CLI} state init totals `))
+    expect(init.length, `the state init calls: ${init.join(' | ')}`).toBe(1)
+    expect(init[0]).toContain('--command fix')
+    expect(init[0]).toContain("--feature 'Totals drop a cent'")
     expect(log.ran).toContain(`${CLI} usage add --stage rca --model claude-opus-5-5 --ms 1234`)
-    expect(log.ran.some(c => c.includes("git checkout -q -b 'fix/totals'"))).toBe(true)
-    expect(log.shown).toContain('| RCA: totals |')
-    expect(log.ran).toContain(`${CLI} state advance rca_complete fix`)
+    // no shell line: every call but the CLI's own setup call is a call of the CLI
+    const foreign = log.ran.filter(c => c !== `bash /p/scripts/guards/install.sh` && !c.startsWith(`${CLI} `))
+    expect(foreign, `calls that are not the CLI's: ${foreign.join(' | ')}`).toEqual([])
+    expect(log.ran.some(c => c.includes('panel rca'))).toBe(false)
+    for (const c of approve) expect(log.ran).toContain(c)
   })
   test('a run already active: the fix command takes it, as before', async () => {
     const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [] } }] })
