@@ -66,6 +66,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                         out["ask"] = q
         self.stop_answer(out)
         self.add_note(out)
+        self.add_typed(out)
         if out.get("action") == "ask":
             # WP15: the card of a question that decides (the approval, the commit, a stop), built in the same call
             # as the question and its digests; null for any other question. Never part of the question text.
@@ -97,6 +98,26 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             self.add_option(q, self.opt("Ask me at every stage from here", "Answer this question yourself, and every later stage asks you.",
                                         move="approve", calls=[self.c("state set run_mode interactive"),
                                                                self.c("park --end --answer ask-every-stage")], oid="ask-every-stage"))
+
+    def add_typed(self, out):
+        """WP16: a gate question carries `typed`, the calls a typed answer runs with the text in place of {text} (a
+        typed text is a change request by rule): the note for the next agent and, at Intent, Plan, Design, Build and
+        Fix while the budget has room, the stage run again with it (`again` false: its agent runs). Elsewhere, and at
+        the budget's limit, the note only, and the same question is asked again (`again` true)."""
+        q = out.get("ask") if out.get("action") == "ask" else None
+        if not isinstance(q, dict) or q.get("kind") != "gate":
+            return
+        r = self.r
+        stage = q.get("stage") or r.stage
+        calls = [self.c("evidence add --stage %s --phase note --kind input --claim '{text}'" % stage)]
+        redo = self.c("state redo %s --reason '{text}'" % stage)
+        if stage in ("intent", "plan", "design", "build", "fix") and stage == r.stage and str(q.get("id") or "").split(".")[0] == stage \
+                and budget.refused([redo], self.cli, budget.Facts(r)) is None:
+            calls.append(redo)
+        x = q
+        while isinstance(x, dict):
+            x["typed"] = {"calls": calls, "again": len(calls) == 1}
+            x = x.get("more")
 
     def add_option(self, q, o):
         """Add an option to a question as far down its More list as there is room, before Save for later; a full one
@@ -252,6 +273,10 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             out.update(self.commit())
             if out.get("action") == "ask":
                 self.add_adhoc(out, "commit")
+            return out
+        drift = self.drift_next(stage) if stage in ("build", "fix") else None
+        if drift is not None:
+            out.update(drift)
             return out
         if stage == "build" and r.command == "temper":
             fb = self.foreign_branch()

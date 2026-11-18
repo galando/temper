@@ -101,7 +101,6 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper mode` | Say how much Temper draws, and that you change it in `/config` (Temper UI mode) |
 | `/temper:temper enforcement` | Say whether denials are on, and that you change it in `/config` (Temper enforcement) |
 | `/temper:temper pane` | Open or close the pane (in full mode it also opens by itself when a run starts; see [the mod](mod.md)) |
-| `/temper:temper discuss <text>` | Send a message about the step you are at. It changes no stage. |
 | `/temper:temper help` | List these |
 
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.

@@ -42,9 +42,6 @@ selftest:D108                  WP31           D108
 e2e:fix-two                    WP17           D03
 e2e:repair-finding             WP24           D05
 e2e:repair-worse               WP24           D37e
-e2e:group-fail:plain           WP16           D06
-e2e:group-fail:mod             WP16           D06
-e2e:group-fail-twice:driver    WP16           D06
 e2e:criteria-by-cli            WP27           D10
 e2e:acceptance-wrong-test      WP23           D21
 e2e:revise-narrow              WP27           D24

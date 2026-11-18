@@ -309,10 +309,10 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
       return {
         deny:
           `Temper: scope drift. ${path} is not in the plan, so the user decides first: add to plan, revert, or allow once. ` +
-          'Do not write it another way. Next: in the Build stage, stop this task and list the file in the DRIFT section of your ' +
-          'panel, with why it is needed and what you would change. In the main conversation, ask with AskUserQuestion: ' +
-          `header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", then a "Why:" line and a ` +
-          '"Change:" line, and the options Add to plan, Revert, Allow once.',
+          `Do not write it another way. Next: stop this task, record the file with ${ctx.cli ?? CLI} drift ask --path ${path} ` +
+          "--why '<why it is needed>' --change '<what you would change>' (WP16: in place of a DRIFT section of your panel), and " +
+          `return. The CLI asks the user: header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", ` +
+          'then a "Why:" line and a "Change:" line, and the options Add to plan, Revert, Allow once.',
         drift: path,
       }
     }

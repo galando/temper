@@ -7,13 +7,45 @@ import os
 import re
 import shlex
 
+import cli_words
 import fresh_review
 import tasks_md
 
-from flow_base import GATE_HEADER, GROUP_HEADER, choice_id, git, goes_on, on_model, scoped_notes, short_model
+from flow_base import (DRIFT_HEADER, DRIFT_IDS, DRIFT_OPTIONS, DRIFT_PREFIX, GATE_HEADER, GROUP_HEADER, TEMPER, choice_id, git,
+                       goes_on, on_model, read_json, scoped_notes, short_model)
+
+
+DRIFT_WORDS = {"Add to plan": "add", "Revert": "revert", "Allow once": "allow-once"}
+DRIFT_WHAT = {"Add to plan": "The file belongs to this feature: it is recorded as planned.",
+              "Revert": "The agent undoes its change to the file and works within the plan.",
+              "Allow once": "This change to the file is let through once, with the agent's reason."}
 
 
 class BuildPart:
+    def drift_next(self, stage):
+        """WP16: Scope drift is the CLI's question. A file a Build or Fix agent asked about (`temper drift ask`) and
+        the person has not answered gives scope.drift, before the gate question and before any launch, in an
+        unattended run too (a drift is never answered for the person). With every one answered, the stage's agent
+        runs again with one `Drift decision:` line a file; its before call marks them given. None when there is
+        nothing to ask or give."""
+        r = self.r
+        asks = r.drifts()
+        a = next((x for x in asks if not x["choice"]), None)
+        if a is not None:
+            opts = [self.opt(label, DRIFT_WHAT[label], move="drift", oid=ids["id"], calls=[self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote(
+                "drift %s: %s: %s" % (a["path"], label, a["why"])))]) for label, ids in zip(DRIFT_OPTIONS, DRIFT_IDS)]
+            text = "%s %s\nWhy: %s\nChange: %s" % (DRIFT_PREFIX, a["path"], a["why"], a["change"])
+            return {"action": "ask", "stage": stage, "ask": self.question(DRIFT_HEADER, text, opts, stage, qid="scope.drift")}
+        given = [x for x in asks if not x["delivered"]]
+        if not given:
+            return None
+        ag = self.agent(stage, ["Drift decision: %s: %s" % (x["path"], DRIFT_WORDS[x["choice"]]) for x in given])
+        ag["before"] = [self.c("evidence add --stage build --phase drift --claim 'drift decided'")]
+        ag["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
+        ag["gate"] = ag["after"][-1]
+        return {"action": "work", "stage": stage, "calls": [], "agents": [ag],
+                "say": "%s: the agent goes on with your Scope drift answers%s. %s" % ("Fix" if stage == "fix" else "Build", on_model([ag]), goes_on(False))}
+
     @staticmethod
     def chain_of(plan, rt, first, ready):
         """The tasks one agent builds in order, starting at a ready task: each next task of the same group that waits only
@@ -277,7 +309,7 @@ class BuildPart:
         out = []
         if tip and set(tip) == set(shas):
             out.append(self.opt("Take the commits out (Recommended)", "Remove them from the group's branch, newest first; the groups are merged again.", move="redo",
-                                calls=["git -C %s rebase --autostash --onto %s~1 %s" % (shlex.quote(wt), x[:7], x[:7]) for x in shas] + again, oid="take-out"))
+                                calls=[self.c("group take-out %s %s" % (gid, " ".join(x[:7] for x in shas)))] + again, oid="take-out"))
         out += [self.opt("Keep the commits", "Keep them knowingly, with your reason (recorded like a skip).", move="keep",
                          calls=[self.c("group reopen %s --accept-foreign %s --reason '{reason}'" % (gid, csv))] + again,
                          reason=["The commits are right", "I accept the risk"], oid="keep-commits"),
@@ -393,29 +425,50 @@ class BuildPart:
                     grew = True
         return sorted(taken)
 
-    def group_question(self, g):
+    def feedback_open(self, gid):
+        """WP16: the number of the change the person typed at the group question (`temper group feedback`, a
+        `feedback #K: Group G:` row of the Build ledger) that no reopen took and no pass answered yet; else None."""
+        rows = [x for x in read_json(os.path.join(TEMPER, "evidence", "build.json"), []) if isinstance(x, dict)]
+        taken = {str(x.get("feedback")) for t in (self.r.groups.get("tasks") or {}).values() if isinstance(t, dict)
+                 for x in t.get("reopened") or [] if isinstance(x, dict)}
+        taken |= {m.group(1) for x in rows if x.get("phase") == "feedback-resolved" for m in [re.search(r"feedback #(\d+)", str(x.get("claim") or ""))] if m}
+        for x in reversed(rows):
+            m = re.match(r"feedback #(\d+): Group %s: " % re.escape(gid), str(x.get("claim") or "")) if x.get("phase") == "feedback" else None
+            if m and m.group(1) not in taken:
+                return int(m.group(1))
+        return None
+
+    def change_question(self, g, k):
+        """Which task changes? (group.change): one option a task, which reopens it and the tasks that must reopen
+        with it, with the number K of the person's feedback row."""
         gid = g["id"]
         opts = []
-        for k, t in enumerate(g.get("tasks", [])):
-            n = t if isinstance(t, int) else t
+        for i, n in enumerate(g.get("tasks", [])):
             taken = self.reopen_set(g, n)
             others = [m for m in taken if m != n]
             names = ["Task %d" % m for m in taken]
             label = "Task %d" % n + (" (with %s)" % ", ".join("Task %d" % m for m in others) if others else "")
             what = names[0] if len(names) == 1 else "%s and %s" % (", ".join(names[:-1]), names[-1])
             opts.append(self.opt(label, "Re-runs %s; the other tasks of %s keep their work." % (what, gid), move="redo",
-                                 calls=[self.c("group reopen %s %s --feedback {K}" % (gid, " ".join("--task %d" % m for m in taken)))],
-                                 oid=choice_id(k, len(g.get("tasks", [])))))
-        which = self.with_more(GROUP_HEADER, "Which task changes?", "build", opts[:3] if len(opts) > 4 else opts,
-                               opts[3:] if len(opts) > 4 else [], "Which task changes? More tasks.", qid="group.change")
-        q = self.question(GROUP_HEADER, "Group %s (%s) passed its check. Continue?" % (gid, g.get("title", "")), stage="build", qid="group.pass", options=[
+                                 calls=[self.c("group reopen %s %s --feedback %d" % (gid, " ".join("--task %d" % m for m in taken), k))],
+                                 oid=choice_id(i, len(g.get("tasks", [])))))
+        return self.with_more(GROUP_HEADER, "Which task changes?", "build", opts[:3] if len(opts) > 4 else opts,
+                              opts[3:] if len(opts) > 4 else [], "Which task changes? More tasks.", qid="group.change")
+
+    def group_question(self, g):
+        """The question of a passed group: Continue, Change (WP16: the person types the change, which `group
+        feedback` records; Which task changes? follows with its number, and is `change` here too) or Stop."""
+        gid = g["id"]
+        k = self.feedback_open(gid)
+        if k is not None:
+            return self.change_question(g, k)
+        which = self.change_question(g, cli_words.next_feedback(read_json(os.path.join(TEMPER, "evidence", "build.json"), [])))
+        return self.question(GROUP_HEADER, "Group %s (%s) passed its check. Continue?" % (gid, g.get("title", "")), stage="build", qid="group.pass", options=[
             self.opt("Continue (Recommended)", "Go on to the next group, or to the merge.", move="advance", calls=[self.c("group continue %s" % gid)], oid="continue"),
-            self.opt("Change", "Give feedback; only the tasks it concerns run again.",
-                     do="Record each item the person typed with %s, then ask the change question (Which task changes?) in this action's `change`; its option runs the reopen call."
-                        % self.c("evidence add --stage build --phase feedback --claim 'feedback #{K}: {text}'"), oid="change"),
+            self.opt("Change", "Give feedback; only the tasks it concerns run again.", move="redo", calls=[self.c("group feedback %s --text '{answer}'" % gid)],
+                     answer=(GROUP_HEADER, "Group %s: what should change? Type it below; a note for one task begins with Task N:." % gid), oid="change"),
             self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True, oid="save")],
             extra={"change": which})
-        return q
 
     @staticmethod
     def fail_text(ginfo, n=3):
@@ -553,8 +606,8 @@ class BuildPart:
                 wt = (r.groups.get("tasks", {}).get(str(n)) or {}).get("worktree") or wt
             wt = wt or g.get("worktree", "")
             fp = git("-C", wt, "rev-list", "--first-parent", "HEAD").split() if wt else []
-            lines = ["git -C %s rebase --autostash --onto %s~1 %s" % (wt, s[:7], s[:7]) for s in foreign if not fp or s in fp] or \
-                    ["git -C %s rebase --autostash --onto %s~1 %s" % (wt, s[:7], s[:7]) for s in foreign]
+            # WP16: the CLI takes them out (scripts/cli_words.py), only when they are the newest of the branch
+            lines = [self.c("group take-out %s %s" % (gid, " ".join(s[:7] for s in ([x for x in foreign if not fp or x in fp] or foreign))))]
             csv = ",".join(s[:7] for s in foreign)
             opts = [self.opt("Take the commits out and run the task again (Recommended)", "Remove the agent's commits, newest first; the task runs again.",
                              move="redo", calls=lines + [self.c("group reopen %s %s" % (gid, targs))], oid="take-out"),

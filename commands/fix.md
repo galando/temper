@@ -37,9 +37,10 @@ first, each once, as the Start section of `${CLAUDE_PLUGIN_ROOT}/commands/temper
 install the native commit hook, without which nothing gates the fix's commit.
 
 With no arguments and a fix run active (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state get command`
-prints `fix`), skip to step 2. With the mod loaded, the mod carries a fix itself (the run driver, `docs/mod.md`) and
-hands it here with `next`, `discuss <the person's words>` or `chose <label>` for what needs you: with a fix run active,
-skip to step 2 and do as the Arguments of `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` say for that word. A `/temper` run that is active is not this command's: say so in one
+prints `fix`), skip to step 2. With the mod loaded, the mod carries a fix itself (the run driver, `docs/mod.md`), and
+`/temper:fix` with no words takes an active fix run up there; it hands one step here as `step <kind> <option id>`: do
+that one step as the Arguments of `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` say, then end the turn with the line
+`Type /temper:fix to go on.` A `/temper` run that is active is not this command's: say so in one
 line and ask its `restart` question from `temper next --json`.
 
 Pick the bug's slug first (letters, digits, `.`, `_` or `-`; a ticket key keeps its case, as in
@@ -64,8 +65,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage rca --model {model} --ms 
 
 `{ms}` is filled as `/temper:temper`'s agent bullet says.
 
-When the git pack is on and `git branch --show-current` prints main or master, run
-`git checkout -b fix/{bug-slug}`.
+When the git pack is on, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper spec branch --if-protected` (from main, master or
+the default branch it switches to the run's branch; on any other branch it records that branch as the run's).
 
 ## 2. The loop
 

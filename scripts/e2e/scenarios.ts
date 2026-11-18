@@ -419,6 +419,14 @@ export const prAndPipeline = (w: World): void => {
   expect(w.sh('git log --format=%s -n 3').includes('fix(ci): apply the Pipeline fix (CI fix round 1)'), 'the fix was committed with the agreed message')
   expect(w.sh(`git --git-dir=${origin} log --format=%s -n 1 feature/ci`).includes('fix(ci)'), 'the fix was pushed to origin')
   void refused
+  // WP16: with the mod's driver a run leaves it only for a step of the closed list: here the pull request after the
+  // commit and the Pipeline fix, each once, as the trace's hand back lines (`driver handback: step <kind> <option id>`)
+  if (w.mode === 'driver') {
+    const kinds = w.trace.filter(l => l.startsWith('  driver handback'))
+      .map(l => /^ {2}driver handback: step (\S+) \S+/.exec(l)?.[1] ?? `(${l.trim().slice(0, 60)})`)
+    expect(kinds.join(',') === 'pull-request,pipeline-fix',
+      `in driver mode the run hands back exactly the kinds pull-request and pipeline-fix (${kinds.join(', ') || 'none'})`)
+  }
 }
 
 // The Context check of Plan: the map has a gap, so the CLI asks the person (not Plan); the answer runs plan review through the mod.
@@ -768,6 +776,80 @@ case "$*" in *verify*) exit 0 ;; esac
   const calls = fs.readFileSync(log, 'utf8')
   expect(/-o /.test(calls) && /-Dtest=ShapeTest/.test(calls) && /-Dtest=BytesTest/.test(calls), `Maven ran offline with only the declared classes (${calls.slice(0, 300)})`)
   expect(/verify -Pjacoco/.test(calls) || /-Pjacoco/.test(calls), 'the group verified with JaCoCo')
+}
+
+// WP16: one group check fails once, then `integrate` fails once, in a default run (the person approves with the
+// recommended option and takes it at every question). Each failure is a verdict the CLI asks or repairs next: in driver
+// mode the trace holds no hand back and ends `driver done`; in plain and mod mode the same questions are asked (the
+// question ids of each mode, compared with every mode run before it in this process).
+const G1_CHECK = 'python3 -m unittest unit.test_ci_shape'
+const FAILED_CHECKS_ASKED = new Map<string, string>()
+export const failedChecks = (w: World): void => {
+  startProject(w)
+  // every verdict a call recorded: the markers of the calls the world ran, and those `temper go` read
+  const verdicts: string[] = []
+  const run = w.run.bind(w)
+  w.run = (command: string, cwd?: string) => {
+    const r = run(command, cwd)
+    for (const m of r.out.matchAll(/^VERDICT: (\S+) (PASS|FAIL|PARKED)$/gm)) verdicts.push(`${m[1]} ${m[2]}`)
+    if (command === `${TEMPER} go` || command.startsWith(`${TEMPER} go `)) {
+      try {
+        const out = JSON.parse(r.out.trim().split('\n').pop() ?? '') as Json
+        for (const v of (out.verdicts ?? []) as Json[]) verdicts.push(`${v.scope} ${v.verdict}`)
+      } catch {
+        // no JSON line: temper go printed an error, which the driver reports
+      }
+    }
+    return r
+  }
+  const fixes = { group: 0, integrate: 0 }
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    // the plan: G1's check also wants a line no task writes, and so does the Integration command
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/tasks.md`, wd.read(`${SPEC}/tasks.md`)
+        .replace(`**Validate:** \`${G1_CHECK}\``, `**Validate:** \`${G1_CHECK} && grep -q VERSION src/ci_shape.py\``)
+        .replace(`**Integration:** \`${SUITE}\``, `**Integration:** \`${SUITE} && grep -q VERSION src/ci_bytes.py\``))
+    },
+    // the one fix agent: on the group's merged work it adds the line G1's check wants; after the failed integrate it
+    // adds the line the Integration command wants
+    'temper:temper-build': (wd, a) => {
+      const m = /worktree (\S+) \(the merged/.exec(String(a.prompt ?? ''))
+      if (m !== null) {
+        const wt = path.isAbsolute(m[1]!) ? path.relative(wd.dir, m[1]!) : m[1]!
+        const file = path.join(wt, 'src/ci_shape.py')
+        wd.write(file, `${(wd.exists(file) ? wd.read(file) : SHAPE_CODE).replace(/\n*$/, '\n')}VERSION = 1\n`)
+        fixes.group++
+      } else {
+        wd.write('src/ci_bytes.py', `${wd.read('src/ci_bytes.py').replace(/\n*$/, '\n')}VERSION = 1\n`)
+        fixes.integrate++
+      }
+    },
+  }
+  const asked: string[] = []
+  const end = orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      asked.push(String(ask.id ?? ''))
+      return recommended(ask, wd)
+    },
+  }))
+  const count = (v: string): number => verdicts.filter(x => x === v).length
+  expect(count('group:G1 FAIL') === 1 && count('integrate FAIL') === 1,
+    `the group check of G1 failed once and integrate failed once (${verdicts.join(', ')})`)
+  expect(fixes.group >= 1 && fixes.integrate >= 1, `each failure got its repair (group ${fixes.group}, integrate ${fixes.integrate})`)
+  expect(w.counts.handbacks === 0, `a failed group check and a failed integrate hand nothing back (${w.counts.handbacks} hand backs)`)
+  expect(end.action === 'none', `the run goes on to its end (last action ${end.action})`)
+  if (w.mode === 'driver') {
+    const ends = w.trace.filter(l => l.startsWith('  driver '))
+    expect(!ends.some(l => l.startsWith('  driver handback')), `the driver hands nothing back (${ends.join('; ')})`)
+    expect((ends.at(-1) ?? '').startsWith('  driver done'), `the trace ends driver done (${ends.at(-1) ?? 'no driver end'})`)
+  }
+  const ids = asked.join(',')
+  for (const [mode, other] of FAILED_CHECKS_ASKED)
+    expect(other === ids, `the same questions are asked in ${w.mode} mode as in ${mode} mode (${ids}; ${other})`)
+  FAILED_CHECKS_ASKED.set(w.mode, ids)
 }
 
 // A /temper:fix run: RCA, Fix (a regression test first), Review, Check and the commit; the mod stands aside for it.

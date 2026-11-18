@@ -25,8 +25,8 @@ the tables (`SEQ`, `MOVES`) and the readers, `flow_run.py` the class `Run`, `flo
   marker decides only that a carrier goes on: what comes next is always `temper next`, which reads the record.
   9.8.0, to shrink what every later turn reads again: an agent's gate call is `temper gate <stage> --brief`
   (its failed rows only; the question after it names them); `ask` keeps `question` as it is and, per option,
-  only what the answer runs (`label`, `calls`, `steps`, `do`, `stop`, `reason`, `reason_question`,
-  `answer_question`); `blocking` is the list of `{question, answer, carry}` below.
+  only what the answer runs (`label`, `calls`, `steps`, `do`, `needs`, `stop`, `reason`, `reason_question`,
+  `answer_question`), and the question's `typed` (WP16); `blocking` is the list of `{question, answer, carry}` below.
 - `.temper/view.json` is written by the CLI after every command that may change the run, and by
   `temper next`. The mod reads this file and nothing else of the CLI's, to draw the run and to check
   the person's answers.
@@ -106,7 +106,8 @@ means:
 | `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept` (a review finding), `covered` (a Build task an earlier task already built), `keep`, `commitOverride`, `redo`, `pause`, `restart`, `grant` (more repeats, at `run.budget`), or `null` for an option that decides nothing |
 | `calls` | the CLI calls this answer makes, in order; `{reason}` is the person's reason. Every `{...}` text stands inside single quotes: put the text there with each `'` written as `'\''`, so a backquote or a `$` in it stays text |
 | `steps` | for Commit at a parked run: the commit steps |
-| `do` | for an option that decides nothing: what to do, then ask the question again |
+| `do` | for an option that decides nothing: what to do, then ask the question again (words for a person or a model; the mod's run driver never reads it) |
+| `needs` | WP16, on every option with a `do` and on More options, Accept a finding and Cancel: one kind of the closed list `NEEDS` (`scripts/flow_base.py`). `more`, `accept` and `cancel` are navigation the run driver does itself; the other seven are the hand back kinds, each one step the conversation does for the person: `talk`, `html-review`, `depth-review`, `config-suggestions`, `small-change`, `pull-request`, `pipeline-fix`. `opt()` refuses any other kind, and a `do` with none. A `work` action whose steps are the pull request's carries `needs: pull-request` and `option`, the id of the option the person chose them by |
 | `skill` | 9.8.0, with `do`: the skill the option carries out (`grill-me`, `teach-me`); the mod lets its own questions through while it runs |
 | `stop` | the run stops here (Save for later) |
 | `reason`, `reason_question`, `reason_ids` | the move needs the person's reason: their note on the option, or their answer to `reason_question` (any answer but Cancel, typed text included). 9.8.5: `reason_question` goes to the dialog as it is, so its ids sit beside it in `reason_ids`: `{id, kind, options}`, with the id of its question and `.reason`, the kind `reason`, and in the order of its options each ready reason's id `choice-N` and Cancel's id `cancel` with the kind `cancel` |
@@ -114,6 +115,30 @@ means:
 
 `more` is the second question of "More options"; `accept` is the question of "Accept a finding". Both
 have the same shape. A question holds four options at most.
+
+WP16: a question of kind `gate` (and its More question) carries `typed`, `{calls, again}`: the calls a typed answer
+runs, in order, with the person's text in place of `{text}`. The first is the note for the next agent (`temper evidence
+add --stage S --phase note --kind input --claim '{text}'`); at Intent, Plan, Design, Build and Fix, on the stage's own
+question and while the budget has room, the second is `temper state redo S --reason '{text}'` and `again` is false (the
+stage's agent runs again with the note). Elsewhere, and at the budget's limit, the note is the only call and `again` is
+true: the same question is asked again after it.
+
+Scope drift (WP16) is the CLI's question. A Build or Fix agent that needs a file outside the plan records it with
+`temper drift ask --path P --why W --change C` (a `drift` row of the Build ledger; a path of the plan is refused) and
+returns. Before the gate question and before any launch, `next` asks `scope.drift` (header `Scope drift`, first line
+`Outside the plan: P`, then `Why:` and `Change:` lines) with `Add to plan`, `Revert` and `Allow once`, each with move
+`drift` and the call that records the answer (`drift P: <label>: W`, phase `feedback`), in an unattended run too. With
+every one answered, the stage's agent runs again with one `Drift decision: P: add|revert|allow-once` line a file; its
+`before` call marks them given.
+
+The CLI words that take the place of calls that were no CLI calls (WP16): `temper spec branch --carry NAME` (the switch
+to the branch an earlier run left, carrying the spec files through a temp folder; a refused switch puts them back,
+fails, and names the folder), `temper spec branch --if-protected` (a fix run: from main, master or the default branch,
+the switch to the run's branch; on any other branch, that branch becomes the run's), `temper group take-out G SHA...`
+(commits the CLI did not make, taken out only when they are recorded as such and are the newest of the branch) and
+`temper group feedback G --text T` (Change at a passed group: the next `feedback #K` row, and `group.change` follows
+with K in its calls). No call of the flow is a foreign program, and no option call holds a placeholder outside a
+typed question.
 
 The person decides only by choosing an option. The mod counts an answer only when its header, its
 question and its label match exactly what `next` gave for the run and step it is at, so a reworded

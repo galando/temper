@@ -649,9 +649,9 @@
    },
    "driver": {
     "now": {
-     "dialogs": 11,
+     "dialogs": 9,
      "by_stage": {
-      "build": 8,
+      "build": 6,
       "check": 1,
       "plan": 1,
       "review": 1
@@ -659,7 +659,7 @@
      "by_kind": {
       "gate": 6,
       "group": 2,
-      "name": 3
+      "name": 1
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -669,9 +669,9 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 5,
+     "auto": 12,
      "back": 0,
-     "handbacks": 1,
+     "handbacks": 0,
      "suite_runs": 3
     }
    }
@@ -893,6 +893,86 @@
      "back": 0,
      "handbacks": 0,
      "suite_runs": 3
+    }
+   }
+  },
+  "failed-checks": {
+   "plain": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "build": 1,
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 2,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 8,
+     "auto": 8,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 6
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "build": 1,
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 2,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 8,
+     "auto": 8,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 6
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "build": 1,
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 2,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 8,
+     "auto": 21,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 6
     }
    }
   },
@@ -1617,6 +1697,56 @@
    }
   },
   "group-fail": {
+   "plain": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 7,
+     "auto": 7,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 4
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 7,
+     "auto": 7,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 4
+    }
+   },
    "driver": {
     "now": {
      "dialogs": 2,
@@ -1689,6 +1819,31 @@
      },
      "launch_total": 5,
      "auto": 2,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 1
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "build": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 1,
+      "group": 1
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1
+     },
+     "launch_total": 5,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 1
@@ -2048,7 +2203,7 @@
      "launch_total": 8,
      "auto": 12,
      "back": 0,
-     "handbacks": 1,
+     "handbacks": 2,
      "suite_runs": 3
     }
    }
@@ -2494,7 +2649,7 @@
       "temper:temper-review": 2
      },
      "launch_total": 7,
-     "auto": 10,
+     "auto": 15,
      "back": 0,
      "handbacks": 1,
      "suite_runs": 4

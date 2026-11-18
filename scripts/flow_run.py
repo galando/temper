@@ -93,6 +93,22 @@ class Run:
         return [x for x in rows if isinstance(x, dict) and x.get("phase") == "note" and x.get("claim")
                 and (kind is None or (x.get("kind") or "input") == kind)]
 
+    def drifts(self):
+        """WP16: the Scope drift asks of the Build ledger (`temper drift ask`), oldest first, each {path, why,
+        change, choice, delivered}: choice the label of the person's answer (a later `drift <path>: <label>` row) or
+        ''; delivered true once a `drift decided` row follows that answer (the agent was launched with its line)."""
+        rows = [x for x in read_json(os.path.join(TEMPER, "evidence", "build.json"), []) if isinstance(x, dict)]
+        out = []
+        for i, x in enumerate(rows):
+            m = re.match(r"drift ask (\S+)\nWhy: (.*)\nChange: (.*)$", str(x.get("claim") or "")) if x.get("phase") == "drift" else None
+            if not m:
+                continue
+            j, choice = next(((i + 1 + k, a.group(1)) for k, y in enumerate(rows[i + 1:]) for a in [re.match(
+                r"drift %s: (Add to plan|Revert|Allow once)\b" % re.escape(m.group(1)), str(y.get("claim") or ""))] if a), (None, ""))
+            done = j is not None and any(y.get("phase") == "drift" and y.get("claim") == "drift decided" for y in rows[j + 1:])
+            out.append({"path": m.group(1), "why": m.group(2), "change": m.group(3), "choice": choice, "delivered": done})
+        return out
+
     def stale_notes(self, stage, kind):
         """The notes of the stage newer than its recorded verdict; none when the stage has no verdict time."""
         g = self.gates.get(self.gate_of(stage) or "")

@@ -38,6 +38,11 @@ BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "revi
 # the mod lets an option's CLI calls through only on that answer. opt() refuses any other, so this list is the checked one.
 MOVES = {"advance", "approve", "arm", "override", "back", "redo", "accept", "covered", "keep", "commitOverride", "restart",
          "confirm", "drift", "answer", "pause", "adhoc", "grant"}
+# WP16: the closed list of what an option or a step needs beyond its calls (its `needs`). Three are navigation the run
+# driver does itself (more, accept, cancel); the other seven are the hand back kinds, each one step the conversation
+# does for the person, then it stops. opt() refuses any other, and a `do` text with no needs.
+NEEDS = {"more", "accept", "cancel", "talk", "html-review", "depth-review", "config-suggestions", "small-change", "pull-request",
+         "pipeline-fix"}
 
 # 9.8.5 (WP04): the ids of the protocol. Every question of `next`, `go` and view.json has an `id` of QUESTIONS and its
 # `kind`; every option an `id` of OPTION_IDS, a `kind` when a reader acts on it, and `recommended: true` when it is the
