@@ -190,6 +190,20 @@ _criterion53 "changed in a run saved before WP12"
 assert_eq "bound: a run with no recorded digest passes the row" "build=True|check=True" \
   "build=$(_gate53 build)|check=$(_gate53 check)"
 
+# --- a run with no intent.md (the trivial path) is bound too: the approval records that intent.md was absent ---
+_trivial53() { # an approved run at Build with no intent.md, from a bare advance
+  fresh; _repo53; rm -f .temper/specs/demo/intent.md; gpass intent
+  "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
+  "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+}
+_trivial53; _t53="before=$(_gate53 build)"
+sed -i 's|^\*\*Test:\*\* `true`|**Test:** `true; true`|' .temper/specs/demo/tasks.md
+_t53+="|build=$(_gate53 build)|check=$(_gate53 check)|commit=$(_gate53 commit)"
+_trivial53; printf '# Intent\n\n**Status:** draft\n\nAn intent written after the approval.\n' > .temper/specs/demo/intent.md
+_t53+="|written later=$(_gate53 build)"
+assert_eq "bound: a run with no intent.md is bound too: a changed tasks.md or an intent.md written later fails the row" \
+  "before=True|build=False,tasks.md|check=False,tasks.md|commit=False,tasks.md|written later=False,intent.md" "$_t53"
+
 # --- a step back to Plan and a new approval record the new digests ---
 _approved53; _criterion53 "changed after the approval"
 _b53_before="$(_gate53 build)"
