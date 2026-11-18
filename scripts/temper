@@ -666,6 +666,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   [[ -n "$branch" ]] || branch="feature/$slug"
   [[ "$command" == "fix" ]] && [[ "$branch" == "feature/$slug" ]] && branch="fix/$slug"
   python3 -I "$SCRIPTS_DIR/state_ops.py" state-init "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
+  _from_branch
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
   echo "Note: the run $slug owns this folder; separate work goes in a worktree (claude --worktree <name>), which gives it its own run."
 }
@@ -711,8 +712,8 @@ cmd_state_set() {
   fi
   # ADR 0013: the files the person approved, and the digest of the tasks they approved, are recorded when the run
   # leaves Plan, and Build is held to them.
-  if [[ "$1" == "approved_files" || "$1" == "plan_hash" ]]; then
-    echo "FAIL: $1 is kept by the CLI (state advance plan_complete records the plan's files and its digest as the person approved them)" >&2
+  if [[ "$1" == "approved_files" || "$1" == "plan_hash" || "$1" == "intent_hash" || "$1" == "from_branch" ]]; then
+    echo "FAIL: $1 is kept by the CLI (state advance plan_complete records what the person approved)" >&2
     return 1
   fi
   if [[ "$1" == "archived" ]]; then
@@ -895,11 +896,18 @@ _door_base() { # _door_base <slug>: where the work of a run that entered at Revi
   return 0
 }
 
+_from_branch() { # WP12: the branch the run stands on before its approval, which the commit hook gates (cmd_gate)
+  local b; b="$(git branch --show-current 2>/dev/null)"
+  [[ -z "$b" ]] || _json_set_path "$STATE_FILE" from_branch "$b" '{}' >/dev/null
+}
+
 cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   _state_migrate_legacy
   [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state — run 'temper state init' first" >&2; return 1; }
   [[ $# -ge 2 ]] || { echo "FAIL: usage: temper state advance <stage_complete> <next_stage>" >&2; return 1; }
-  local stage="$1" next="$2"
+  local stage="$1" next="$2" shown=(); shift 2
+  # WP12: --shown NAME=DIGEST, the digests of the files as the question showed them (scripts/approval.py)
+  while [[ $# -gt 0 ]]; do [[ "$1" == --shown && $# -ge 2 ]] && { shown+=("$2"); shift; }; shift; done
   # state.stage is bookkeeping for resume, not a `temper gate` name — each command has
   # its own sequence (see reference/orchestrator-patterns.md "Build State Schema"), so
   # validate against the sequence for the command this run actually belongs to, not a
@@ -919,6 +927,8 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   # ADR 0013: the run leaves the stage it is at, to its next stage, once the check passed or the person skipped it
   local why; why="$(python3 "$SCRIPTS_DIR/flow.py" advance-ok "$stage" "$next")" || {
     echo "FAIL: $why" >&2; return 1; }
+  [[ ${#shown[@]} -eq 0 ]] \
+    || python3 -I "$SCRIPTS_DIR/approval.py" check "$STATE_FILE" "$(_spec_path "")" "${shown[@]}" || return 1
   if [[ "$stage" == "plan_complete" ]]; then
     # The commit the diff is read against, the files the person approved and the digest of the tasks they approved:
     # Build is held to these, so a plan.md or tasks.md edited after the plan gate does not change what Build runs
@@ -929,7 +939,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     # The approved tasks as parsed, so a later question can name what changed (the Design question, 9.8.0)
     [[ -n "$digest" ]] && mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$spec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
     _lock_acquire
-    python3 -I "$SCRIPTS_DIR/state_ops.py" approve-plan "$STATE_FILE" "$files" "$digest"
+    python3 -I "$SCRIPTS_DIR/state_ops.py" approve-plan "$STATE_FILE" "$files" "$digest" "$(_intent_digest "$spec")"
     _lock_release
     if [[ -z "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
       local head; head="$(git rev-parse HEAD 2>/dev/null || true)"
@@ -950,6 +960,9 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     # the person's Continue approves the changed tasks with the design: Build is held to them from here on. Before, Build
     # refused to start ("the approved plan changed") and the run had no way on but a step back to Plan.
     local dspec; dspec="$(_spec_path "")"
+    # WP12: the answer at the Design question approves what Design changed in intent.md too
+    [[ -n "$(_json_get_path "$STATE_FILE" intent_hash "")" ]] \
+      && _json_set_path "$STATE_FILE" intent_hash "$(_intent_digest "$dspec")" '{}' >/dev/null
     if [[ -n "$dspec" && -f "$dspec/tasks.md" && -n "$(_json_get_path "$STATE_FILE" plan_hash "")" ]]; then
       local ddigest; ddigest="$(_plan_digest "$(_grouped_parse "$dspec/tasks.md")" 2>/dev/null)"
       if [[ -n "$ddigest" && "$ddigest" != "$(_json_get_path "$STATE_FILE" plan_hash "")" ]]; then
@@ -962,6 +975,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
       fi
     fi
   fi
+  [[ "$stage" == intent_complete ]] && _from_branch
   local held; held="$(_json_get_path "$STATE_FILE" parked "")"   # WP11: an answer to a stop is the person's, no rule's
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
   # A commit verdict written before the run reached Commit (the hook of a spec commit) is not the commit gate's: the
@@ -1678,8 +1692,9 @@ _grouped_parse() { # _grouped_parse <tasks.md>
 # H3: the approved grouped plan, as a digest. Task blocks (File, Depends, Test), group Validate/Interfaces/Context
 # and Integration count; titles, prose and checkbox ticks do not, so the CLI's own tick is no change.
 _plan_digest() { # _plan_digest <parsed-plan-json>
-  python3 -I "$SCRIPTS_DIR/spec_text.py" plan-digest "$1"
+  python3 -I "$SCRIPTS_DIR/approval.py" plan-digest "$1"
 }
+_intent_digest() { python3 -I "$SCRIPTS_DIR/approval.py" digest "$1/intent.md" 2>/dev/null; }   # _intent_digest <spec>
 
 # Refuses (returns 1) when the plan changed since the person approved it: the digest `state advance plan_complete`
 # recorded, else the one the first group start recorded (a run that left Plan before the plan gate recorded one). No
@@ -2959,6 +2974,7 @@ gate_build() {
       all_pass=0
     fi
   fi
+  _approval_row "$spec_path" || all_pass=0   # WP12 (ADR 0019 decision 4)
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
 }
@@ -3151,8 +3167,14 @@ gate_check() {
       all_pass=0
     fi
   fi
+  _approval_row "$spec_path" || all_pass=0   # WP12 (ADR 0019 decision 4)
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
+}
+
+_approval_row() { # _approval_row <spec>: the row `intent unchanged since the approval` (scripts/approval.py); 1: failed
+  local r; r="$(python3 -I "$SCRIPTS_DIR/approval.py" row "$STATE_FILE" "$1" 2>/dev/null)" || return 0
+  [[ -n "$r" ]] && reqs+=("$r"); ! grep -q '"pass": false' <<<"$r"
 }
 
 _stage_satisfied() { # _stage_satisfied <stage> -> 0 when gates.json says PASS or a human
@@ -3326,6 +3348,7 @@ gate_commit() {
       all_pass=0
     fi
   fi
+  _approval_row "$(_spec_path "")" || all_pass=0   # WP12 (ADR 0019 decision 4)
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
 }
@@ -3371,7 +3394,10 @@ cmd_gate() {
   # nothing; a detached HEAD, and a run with no branch, keep the gate. The orchestrator's own gate call is unchanged.
   if [[ "$from_hook" == "1" && "$stage" == "commit" && -f "$STATE_FILE" ]]; then
     local rb cb; rb="$(cmd_state_get branch "")"; cb="$(git branch --show-current 2>/dev/null)"
-    if [[ -n "$rb" && -n "$cb" && "$cb" != "$rb" ]]; then
+    # WP12 (rule 1): before the approval a feature run stands on the branch it started from; the gate holds there too
+    if [[ -n "$rb" && -n "$cb" && "$cb" != "$rb" ]] && ! { [[ "$cb" == "$(cmd_state_get from_branch "")" ]] \
+        && [[ "$(cmd_state_get command temper)" == temper ]] \
+        && [[ " intent plan design " == *" $(cmd_state_get next_stage "") "* ]]; }; then
       echo "Temper: the run $(cmd_state_get spec "") is on $rb; this commit is on $cb, so the commit gate does not apply."
       return 0
     fi
@@ -3541,6 +3567,9 @@ cmd_intent() {
     python3 -I "$SCRIPTS_DIR/spec_text.py" intent-carry "$spec/intent.md" "$2"
     return
   fi
+  # WP12: --digest, intent.md as the question showed it; a changed file is refused before anything is written
+  [[ "$sub" == accept && "${2:-}" == --digest ]] \
+    && { python3 -I "$SCRIPTS_DIR/approval.py" check "$STATE_FILE" "$spec" "intent.md=${3:-}" || return 1; }
   python3 -I "$SCRIPTS_DIR/spec_text.py" intent-status "$spec/intent.md" "$sub" "the person at the Intent gate" "$(date -u +%Y-%m-%d)"
 }
 

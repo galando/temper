@@ -83,9 +83,9 @@ so it goes with the change.
 | Intent | `intent.md` only |
 | Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records |
 | Design | The same, but `tasks.md`: you approved it at the plan gate |
-| Build | The plan's files, test files and the spec folder, but `tasks.md`. Another file waits for your answer to the Scope drift question. |
-| Review | The spec folder only, but `tasks.md` |
-| Check | The spec folder only, but `tasks.md`; and `CLAUDE.md` or `AGENTS.md` for a config suggestion you accept |
+| Build | The plan's files, test files and the spec folder, but `tasks.md` and `intent.md`. Another file waits for your answer to the Scope drift question. |
+| Review | The spec folder only, but `tasks.md` and `intent.md` |
+| Check | The spec folder only, but `tasks.md` and `intent.md`; and `CLAUDE.md` or `AGENTS.md` for a config suggestion you accept |
 | Commit | The same as Check: the code is what Review and Check passed |
 
 A step back is a loop: you choose "Loop back to {stage}" with a reason, and the run does that stage

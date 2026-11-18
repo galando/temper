@@ -53,6 +53,18 @@ All notable changes to Temper are documented here. The plugin version lives in
   --taken-up` asks a run taken up again once. What a rule decided is in `.temper/rule-log.json` and the view's
   `rule_log`. A run armed by 9.8.4 asks at every stage. `autonomy.policy` and the labels Stage by stage and
   Autonomous Build are gone.
+- WP12: the approval is bound to what was shown (ADR 0019 decision 4). The approving options carry the digests of
+  `intent.md` and `tasks.md` as the question showed them (`--shown intent.md=<H1> --shown tasks.md=<H2>`, made by the
+  new `scripts/approval.py`), and the CLI refuses the advance when a file changed since; `plan_complete` is refused
+  while the intent is a draft, and `intent accept --digest` refuses the same way. The advance records `intent_hash`
+  beside `plan_hash`; a later change to either file fails the new row `intent unchanged since the approval` of the
+  Build, Check and commit gates until you approve again, and stops a run that goes on by itself. Before the approval a
+  run makes no branch and no commit: leaving Intent accepts the intent and moves on, and the approval makes the branch
+  and one commit of the spec folder. A branch an earlier run left is named by the approval, which continues on it, and
+  its More list offers a new branch; the Intent branch question is gone. With the mod a write of `intent.md` is refused
+  from Build on. With the mod off the commit hook gates the branch the run stands on before the approval, and a new
+  classic hook, `scripts/guards/hold_before_approval.py`, refuses a project file write by the tools that write a file
+  at Intent, Plan and Design of a feature run. The plan digest has one home, `scripts/approval.py`.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

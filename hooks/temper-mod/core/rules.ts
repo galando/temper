@@ -252,6 +252,11 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
   if (stageIndex(r.stage) >= stageIndex('design') && path === `${spec}/tasks.md`) {
     return { deny: `Temper: the plan is approved. Writing ${rawPath} is not allowed: the run's tasks.md is the plan the user approved, and the temper CLI ticks it. ${TASKS_OWNED}` }
   }
+  // WP12: the approval is bound to the intent as shown; from Build on a change to it is a step back to Plan and a new
+  // approval, so no agent writes it (the CLI's own Status and Completed lines are not tool writes).
+  if (stageIndex(r.stage) >= stageIndex('build') && path === `${spec}/intent.md`) {
+    return { deny: `Temper: the intent is approved. Writing ${rawPath} is not allowed: the run's intent.md is the intent the user approved with the plan. Next: to change it, ask the user whether to loop back to Plan, where the intent and the plan are approved again.` }
+  }
   const inSpec = inDir(path, spec)
   const specFile = (name: string) => path === `${spec}/${name}`
   const label = stageLabel(r.stage)
@@ -339,7 +344,7 @@ const AUTONOMY_DENY =
   `Next: ${ASK} at the plan gate (or the Design gate, when Design runs), exactly as \`temper next --json\` gives it.`
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason'])
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'intent_hash', 'from_branch', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +

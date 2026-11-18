@@ -173,18 +173,6 @@ def uncovered_scenarios(argv):
     print('\x1f'.join(missing))
 
 
-def plan_digest(argv):
-    import hashlib, json, sys
-    m = json.loads(argv[1])
-    def n(p):
-        p = p.strip()
-        return p[2:] if p.startswith('./') else p
-    core = {'tasks': [{'n': t['n'], 'group': t['group'], 'files': [n(f) for f in t['files']], 'depends': t['depends'], 'test': t['test']} for t in m['tasks']],
-            'groups': [{'id': g['id'], 'depends': g['depends'], 'validate': g['validate'], 'interfaces': g['interfaces'], 'context': g['context'], 'tasks': g['tasks']} for g in m['groups']],
-            'integration': m['integration']}
-    print(hashlib.sha256(json.dumps(core, sort_keys=True).encode('utf-8')).hexdigest())
-
-
 def plan_hash_recorded(argv):
     import json, sys
     for p in argv[1:]:
@@ -205,7 +193,6 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('intent_status', intent_status),
     ('tier_lines', tier_lines),
     ('uncovered_scenarios', uncovered_scenarios),
-    ('plan_digest', plan_digest),
     ('plan_hash_recorded', plan_hash_recorded),
 )}
 

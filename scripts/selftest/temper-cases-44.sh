@@ -519,6 +519,9 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
       _stop44 "$_FORBID44|group (fix|reopen)" ;;
     check.mutation-only) _unattended check   # WP11 stop 21: only the mutation row failed
       gfail check "mutation score >= threshold" "40% of planted bugs caught < 60%"; _stop44 "$_FORBID44|state loop" ;;
+    approval.changed) _approved44; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1; _at check   # WP12: the row failed
+      sed -i 's/demo criterion one/demo criterion one, changed after the approval/' .temper/specs/demo/intent.md
+      gfail check "intent unchanged since the approval" "intent.md changed since the approval"; _stop44 "$_FORBID44|state loop" ;;
     run.taken-up) _unattended build; gpass build   # WP11 stop 22: the run taken up again asks its stage once
       "$TEMPER" go --taken-up >/dev/null 2>&1; _stop44 "$_FORBID44|state advance" ;;
     *) echo "no state is built for this stop" ;;

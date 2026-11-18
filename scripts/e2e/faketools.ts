@@ -186,6 +186,7 @@ export type WorldRecord = {
   ghLog: string
   start: Picture | null
   approval: Picture | null
+  first: Picture | null                     // WP12: the picture at the first approval, for rule 1
   last: Picture | null
   lastAsk: Record<string, any> | null
   approvals: number
@@ -210,7 +211,7 @@ export function withRemote(w: World): WorldRecord {
   const origin = path.join(bin, 'origin.git')
   w.sh(`git init -q --bare ${origin}`)
   w.sh(`git remote add origin ${origin}`)
-  const rec: WorldRecord = { origin, ghLog, start: null, approval: null, last: null, lastAsk: null, approvals: 0, picks: [], agents: [] }
+  const rec: WorldRecord = { origin, ghLog, start: null, approval: null, first: null, last: null, lastAsk: null, approvals: 0, picks: [], agents: [] }
   RECORDS.set(w, rec)
   const next = w.next.bind(w)
   w.next = (extra = '') => {

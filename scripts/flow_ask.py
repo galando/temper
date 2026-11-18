@@ -9,6 +9,7 @@ import shlex
 import subprocess
 
 import adhoc_ops
+import approval
 import decisions
 import fresh_review
 import intent_parse
@@ -185,11 +186,25 @@ class AskPart:
 
     def to_branch(self):
         """The switch to the run's branch (`feature/{slug}`) when the project is on another one: the first commit of the
-        run, the accepted intent, goes there, never onto main."""
+        run, the approved intent and plan, goes there, never onto main. WP12: a branch an earlier run left is the carried
+        switch, so the new spec files go across."""
         branch = self.r.state.get("branch") or ""
         if not branch or (self.r.ctx.get("branch") or "") == branch:
             return []
+        clash = self.branch_clash()
+        if clash:
+            return [self.carry_switch(clash["branch"])]
         return [self.c("spec branch")]   # 9.8.0: git checkout (-b) of the run's branch, by the CLI
+
+    def shown(self):
+        """WP12 (ADR 0019 decision 4): the digests of intent.md and tasks.md as the question shows them, as the arguments
+        of the approving advance; the CLI refuses the advance when a file changed since (scripts/approval.py)."""
+        out = ""
+        for name in ("intent.md", "tasks.md"):
+            d = approval.digest(os.path.join(self.r.spec, name)) if self.r.spec else None
+            if d:
+                out += " --shown %s=%s" % (name, d)
+        return out
 
     def branch_clash(self):
         """The run's branch (`feature/{slug}`) exists from an earlier run, the project is on another branch, and that branch holds
@@ -213,21 +228,26 @@ class AskPart:
                 'else mkdir -p %s && cp -R "$t"/. %s/; echo "FAIL: could not switch to %s; your spec files are in $t" >&2; exit 1; fi'
                 % (spec, spec, spec, shlex.quote(branch), spec, spec, spec, spec, branch.replace('"', '')))
 
-    def leave_intent(self, switch=True):
-        """Switch to the run's branch, accept the intent (when there is one, and it is not accepted yet the accept changes
-        it), commit, advance."""
+    def leave_intent(self):
+        """Accept the intent (when there is one), advance. WP12 (rule 1): no branch and no commit before the approval."""
+        return ([self.c("intent accept")] if self.r.intent else []) + [self.c("state advance intent_complete plan")]
+
+    def accept_draft(self):
+        """WP12: `plan_complete` is refused while intent.md is a draft. A run saved at Plan by 9.8.4 or by the base can
+        hold one (the saved states of its fixtures left Intent with no accept), so the approving options accept it
+        first, bound to the intent the question shows; a skip of the plan gate never does."""
         r = self.r
-        has = bool(r.intent)
-        # The first Status line's value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
-        accepts = has and intent_parse.status(r.intent) not in ("accepted", "completed")
-        return (self.to_branch() if switch else []) + ([self.c("intent accept")] if has else []) + \
-            self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + [self.c("state advance intent_complete plan")]
+        if not r.spec or intent_parse.status(r.intent) != "draft":
+            return []
+        d = approval.digest(os.path.join(r.spec, "intent.md"))
+        return [self.c("intent accept" + (" --digest %s" % d if d else ""))]
 
     def leave_plan(self, nxt=None):
+        """The approval: switch to the run's branch, commit the spec folder there (the intent and the plan), advance with
+        the digests of what the question showed."""
         r, nxt = self.r, nxt or self.r.next_of("plan") or "build"
-        # Still on another branch (a run whose Intent was left before this step existed, or a switch since): switch now.
-        return self.to_branch() + self.spec_commit("docs(plan): approve the plan of %s" % r.slug) + \
-            [self.c("state advance plan_complete %s" % nxt)]
+        return self.to_branch() + self.spec_commit("docs(plan): approve the intent and the plan of %s" % r.slug) + \
+            [self.c("state advance plan_complete %s%s" % (nxt, self.shown()))]
 
     def approval(self, go, stage, lead=""):
         """WP11 (ADR 0019 decision 3): the first options of the approval (the plan question, or the Design question when
@@ -300,20 +320,9 @@ class AskPart:
                          calls=[self.c("state advance rca_complete fix")], oid="continue"), self.save()])
 
         if stage == "intent":
-            clash = self.branch_clash() if passed else None
-            if clash:
-                text = ("Intent: %s. The branch %s already exists from an earlier run; its last commit is %s. Accept the intent and continue to Plan?"
-                        % (state_of, clash["branch"], clash["last"]))
-                tail = self.leave_intent(switch=False)
-                return self.question(GATE_HEADER, text, stage=stage, qid="intent.branch", options=[
-                    self.opt("Continue on %s" % clash["branch"], "Switch to it (the new spec files go across), accept intent.md, commit it there, and start Plan.", move="approve",
-                             calls=[self.carry_switch(clash["branch"])] + tail, oid="continue-on-branch"),
-                    self.opt("Continue on a new branch %s" % clash["new"], "Start a new branch from here, accept intent.md, commit it there, and start Plan.", move="approve",
-                             calls=["git checkout -b %s" % shlex.quote(clash["new"]), self.c("state set branch %s" % shlex.quote(clash["new"]))] + tail, oid="new-branch"),
-                    self.skill("grill-me", "Grill Me", "Stress test the intent first."), self.save()])
             if passed:
                 return self.question(GATE_HEADER, "Intent: %s. Accept the intent and continue to Plan?" % state_of, stage=stage, qid="intent.accept", options=[
-                    self.opt("Continue to Plan (Recommended)", "Accept intent.md, commit it on the run's branch, and start Plan.", move="approve", calls=self.leave_intent(),
+                    self.opt("Continue to Plan (Recommended)", "Accept intent.md and start Plan.", move="approve", calls=self.leave_intent(),
                              oid="continue"),
                     self.skill("grill-me", "Grill Me", "Stress test the intent first."),
                     self.skill("teach-me", "Teach Me", "Walk through the intent."), self.save()])
@@ -332,8 +341,22 @@ class AskPart:
             # The fresh reader's paraphrase goes in the question: the person compares it with the intent (a wrong one is a finding).
             said = " A reader with no context took it as: %s." % fr["paraphrase"][:300].rstrip(".") if fr["paraphrase"] and not skipped else ""
             if passed:
-                go = self.leave_plan()
+                go = self.accept_draft() + self.leave_plan()
                 nl = LABEL.get(r.next_of("plan") or "build")
+                # WP12: the run's branch exists from an earlier run: the approval continues on it, or the run takes a new one
+                clash = self.branch_clash()
+                said += (" The branch %s exists from an earlier run; its last commit is %s. The approval continues on it." % (
+                    clash["branch"], clash["last"])) if clash else ""
+                newb = [self.opt("Build on a new branch %s" % clash["new"], "Leave %s as it is; the run takes the new branch, and "
+                                 "this question is asked again." % clash["branch"], move="redo", oid="new-branch",
+                                 calls=[self.c("state set branch %s" % shlex.quote(clash["new"]))])] if clash else []
+
+                def more(rest):
+                    # four options a question: the new branch takes the place of a review or skill option
+                    out = newb + rest
+                    for drop in ("share-review", "teach-me", "grill-me", "html-review"):
+                        out = out if len(out) <= 4 else [o for o in out if o.get("id") != drop]
+                    return out
                 text = "Plan: %s.%s%s Approve the plan and continue to %s?" % (state_of, said, self.sensitive_line(), nl)
                 # 9.8.0: the fresh review's open findings below high pass the gate, and are the person's call: the question
                 # names them and offers Revise the plan (9.8.4: never recommended; they go to the builder as notes).
@@ -353,19 +376,19 @@ class AskPart:
                     # list, so every option stays within two dialogs (a More list of five made a third level, M2 of PR 115).
                     design = self.opt("Run Design first", "Approve the plan; Design runs next, and its question is the last "
                                       "one before Build.", move="approve", oid="run-design",
-                                      calls=[self.c("state set want_design true")] + self.leave_plan("design"))
+                                      calls=[self.c("state set want_design true")] + self.accept_draft() + self.leave_plan("design"))
                     first = self.approval(go, "plan")
                     if revise is not None:   # findings below high: revising is offered, after the ways on
-                        return self.with_more(GATE_HEADER, text, stage, first + [revise], [html, design, grill, self.save()], "Plan: more options.", qid="plan.approve")
+                        return self.with_more(GATE_HEADER, text, stage, first + [revise], more([html, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
-                        return self.with_more(GATE_HEADER, text, stage, first + [self.fresh_offer()], [html, design, grill, self.save()], "Plan: more options.", qid="plan.approve")
-                    return self.with_more(GATE_HEADER, text, stage, first + [html], [share, design, grill, self.save()], "Plan: more options.", qid="plan.approve")
+                        return self.with_more(GATE_HEADER, text, stage, first + [self.fresh_offer()], more([html, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
+                    return self.with_more(GATE_HEADER, text, stage, first + [html], more([share, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
                 cont = self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage")
                 if revise is not None:
-                    return self.with_more(GATE_HEADER, text, stage, [cont, revise, html], [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                    return self.with_more(GATE_HEADER, text, stage, [cont, revise, html], more([share, grill, teach, self.save()]), "Plan: more options.", qid="plan.approve")
                 if fr["offer"]:
-                    return self.with_more(GATE_HEADER, text, stage, [cont, self.fresh_offer(), html], [share, grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
-                return self.with_more(GATE_HEADER, text, stage, [cont, html, share], [grill, teach, self.save()], "Plan: more options.", qid="plan.approve")
+                    return self.with_more(GATE_HEADER, text, stage, [cont, self.fresh_offer(), html], more([share, grill, teach, self.save()]), "Plan: more options.", qid="plan.approve")
+                return self.with_more(GATE_HEADER, text, stage, [cont, html, share], more([grill, teach, self.save()]), "Plan: more options.", qid="plan.approve")
             fresh_failed = [x for x in rows if x.get("name") in FRESH_ROWS]
             if fr["applies"] and fresh_failed:
                 return self.fresh_question(fr, why, said, back_opt, override_opt, grill)
@@ -805,7 +828,7 @@ class AskPart:
         """Leave Design: the CLI records the open concerns as accepted, then design.md is committed (it was left for the
         last commit before)."""
         r = self.r
-        return [self.c("state advance design_complete %s" % (r.next_of("design") or "build"))] + \
+        return [self.c("state advance design_complete %s%s" % (r.next_of("design") or "build", self.shown()))] + \
             self.spec_commit("docs(design): the design of %s" % r.slug, changes=bool(r.open_concerns()))
 
     def leave(self, stage):

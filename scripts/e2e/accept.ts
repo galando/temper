@@ -33,7 +33,7 @@ import path from 'node:path'
 
 import { recordOf, withRemote } from './faketools'
 import { orchestrate, orchestrateFix } from './loop'
-import { APPROVALS, defaultPerson, idOf, stagePerson, worldCheck, worldFindings } from './persons'
+import { APPROVALS, defaultPerson, idOf, pickId, stagePerson, worldCheck, worldFindings } from './persons'
 import { BYTES_STUB, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE } from './project'
 import { AGENTS, SPEC, buildOne, chained, freshReviewer, launchByHand, script, startProject, t, worktreeOf } from './scenarios'
 import type { FreshFinding } from './scenarios'
@@ -819,7 +819,7 @@ export const stopKeepsMode = (w: World): void => {
     if (idOf(ask) === 'plan.approve' && seen.approvalAt < 0) {
       const run = ((ask.options ?? []) as Json[]).find(o => o.id === 'approve-run')
       expect(run !== undefined, 'D32c the approval offers approve-run')
-      return String(run!.label)
+      return pickId(wd, ask, 'approve-run')   // WP12: picked as a person picks, so the world check sees the approval
     }
     if (seen.approvalAt >= 0) {
       modes.push(`${idOf(ask)}=${runMode(wd)}`)

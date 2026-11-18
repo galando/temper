@@ -215,17 +215,18 @@ assert_eq "9.8.0: a medium plan at risk below H skips Design; the plan question 
   "Plan: the check passed. Approve the plan and continue to Build?|ask-every-stage,True|approve-run,False" \
   "$(nx "q = d['ask']; '|'.join([q['question']['question']] + ['%s,%s' % (o['id'], bool(o.get('recommended'))) for o in q['options'][:2]])")"
 "$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1; fresh_reviewed   # reviewer A only: the round is not complete
-assert_eq "WP14: at risk H a medium plan runs no Design, and before a complete fresh round the plan question does not offer the unattended run" \
-  "ask-every-stage,True|state advance plan_complete build|no" \
-  "$(nx "q = d['ask']; o = [x['id'] for x in q['options']] + [x['id'] for x in (q.get('more') or {}).get('options', [])]; '%s,%s' % (q['options'][0]['id'], bool(q['options'][0].get('recommended'))) + '|' + q['options'][0]['calls'][-1].split('temper ', 1)[1] + '|' + ('yes' if 'approve-run' in o else 'no')")"
+assert_eq "WP14: at risk H a medium plan runs no Design, and before a complete fresh round the plan question does not offer the unattended run (WP12: the digests shown)" \
+  "ask-every-stage,True|state advance plan_complete build|shown|no" \
+  "$(nx "q = d['ask']; o = [x['id'] for x in q['options']] + [x['id'] for x in (q.get('more') or {}).get('options', [])]; c = q['options'][0]['calls'][-1]; '%s,%s' % (q['options'][0]['id'], bool(q['options'][0].get('recommended'))) + '|' + c.split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else '|no digests') + '|' + ('yes' if 'approve-run' in o else 'no')")"
 for _l15 in readiness zoom-out comprehension tests; do   # reviewer B completes the round of risk H
   "$TEMPER" evidence add --stage plan --phase fresh --exit 0 --label PROVEN --claim "fresh review completed: $_l15 B" \
     $([[ $_l15 == readiness ]] && echo "--value $(grep -c '^### Task' .temper/specs/demo/tasks.md)") >/dev/null 2>&1
 done
 "$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design (the option run-design)
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1; gpass design
-assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design" "approve-run|arm|state set run_mode autonomous|state advance design_complete build" \
-  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; '|'.join([o['id'], o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][1].split('temper ', 1)[1]])")"
+assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design with the digests shown (WP12)" \
+  "approve-run|arm|state set run_mode autonomous|state advance design_complete build|shown" \
+  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; c = o['calls'][1]; '|'.join([o['id'], o['move'], o['calls'][0].split('temper ', 1)[1], c.split('temper ', 1)[1].split(' --shown ')[0], 'shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else 'no digests'])")"
 
 # --- 8. A criterion validated by hand is confirmed by the person at Check; a deferred optional one needs no evidence ---
 _at_check
@@ -476,8 +477,8 @@ assert_eq "WP14: complex and the person asked for Design: Design runs" "Continue
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set complexity complex >/dev/null 2>&1; gpass plan; "$TEMPER" risk --raise H --reason "it moves money" >/dev/null 2>&1
 fresh_reviewed
-assert_eq "WP14: complex at risk H runs no Design when nothing was asked" "ask-every-stage,True|state advance plan_complete build" \
-  "$(nx "o = d['ask']['options'][0]; '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + o['calls'][-1].split('temper ', 1)[1]")"
+assert_eq "WP14: complex at risk H runs no Design when nothing was asked (WP12: the digests shown)" "ask-every-stage,True|state advance plan_complete build|shown" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls'][-1]; '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + c.split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else '|no digests')")"
 fresh
 cat > .temper/specs/demo/intent.md <<'INT'
 **Status:** draft

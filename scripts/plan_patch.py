@@ -10,29 +10,21 @@ line of tasks.md and nothing else, keeps every passed task, and spends no loop. 
 the answer to the CLI's question run it). The approved plan's hash moves with it, so Build does not refuse the plan;
 the plan ledger records the old and the new line; a patched group's check runs again. Standard library only.
 """
-import hashlib
 import json
 import os
 import re
 import sys
 import time
 
+import approval
 import tasks_md
 
 MAX_CMD = 400
 
 
 def digest(m):
-    """The approved plan's digest, as scripts/temper's _plan_digest computes it (a selftest case keeps the two equal)."""
-    def n(p):
-        p = p.strip()
-        return p[2:] if p.startswith("./") else p
-    core = {"tasks": [{"n": t["n"], "group": t["group"], "files": [n(f) for f in t["files"]], "depends": t["depends"], "test": t["test"]}
-                      for t in m["tasks"]],
-            "groups": [{"id": g["id"], "depends": g["depends"], "validate": g["validate"], "interfaces": g["interfaces"],
-                        "context": g["context"], "tasks": g["tasks"]} for g in m["groups"]],
-            "integration": m["integration"]}
-    return hashlib.sha256(json.dumps(core, sort_keys=True).encode("utf-8")).hexdigest()
+    """The approved plan's digest: the one rule of scripts/approval.py, which the CLI's _plan_digest calls too."""
+    return approval.plan_digest(m)
 
 
 def load(path):

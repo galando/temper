@@ -127,9 +127,9 @@ _rd55="$(_x55 "o = opt(d, 'run-design')
 c = (o or {}).get('calls') or []
 r = 'none' if o is None else '%s|%s|first=%s|last=%s' % (o.get('label'), o.get('move'),
     'want_design' if c and c[0].endswith('state set want_design true') else c[:1],
-    'design' if c and c[-1].endswith('state advance plan_complete design') else c[-1:])")"
+    'design' if c and c[-1].split(' --shown ')[0].endswith('state advance plan_complete design') and ' --shown tasks.md=' in c[-1] else c[-1:])")"
 _rd55+="|$(_calls55 "(opt(d, 'run-design') or {}).get('calls') or []")"
-assert_eq "design: the approval offers run-design, and its calls end in state advance plan_complete design" \
+assert_eq "design: the approval offers run-design, and its calls end in state advance plan_complete design with the digests shown (WP12)" \
   "Run Design first|approve|first=want_design|last=design|ran|stage=design|want_design=true" \
   "$_rd55|stage=$(_stage55)|want_design=$("$TEMPER" state get want_design 2>/dev/null)"
 

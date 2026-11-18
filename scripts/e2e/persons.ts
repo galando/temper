@@ -34,6 +34,7 @@ function meet(w: World, ask: Json, option: Json): void {
   const id = idOf(ask)
   const shot = picture(w, id)
   if (APPROVALS.includes(id) && APPROVING_MOVES.includes(String(option.move ?? ''))) {
+    rec.first ??= shot
     rec.approval = shot
     rec.approvals++
   }
@@ -48,6 +49,11 @@ function pick(w: World, ask: Json, option: Json | undefined): string {
   return String(option.label)
 }
 const recommendedOf = (ask: Json): Json | undefined => options(ask).find(o => o.recommended === true)
+
+// The option with that id, picked as a person picks: the world's pictures are taken, as for the recommended option.
+export function pickId(w: World, ask: Json, id: string): string {
+  return pick(w, ask, options(ask).find(o => o.id === id))
+}
 
 export function defaultPerson(allowed?: string[]): Person {
   return (ask, w) => {
@@ -108,8 +114,10 @@ export function worldFindings(rec: WorldRecord): string[] {
   const start = rec.start
   if (start === null) return ['D105 no picture at the start: the run never asked `next` after withRemote(w)']
   // Rule 1: at the approval (with no approval, at the last question) the project is as at the start, but for the spec
-  // folder, .temper/, the baseline worktree and a setup block an answer added.
-  const at: Picture | null = rec.approval ?? rec.last
+  // folder, .temper/, the baseline worktree and a setup block an answer added. WP12: rule 1 is of the run before it was
+  // approved, so it is read at the first approval; a step back to Plan the person chose, and the approval asked again,
+  // keep the branch the first approval made.
+  const at: Picture | null = rec.first ?? rec.approval ?? rec.last
   if (at !== null) {
     const where = rec.approval !== null ? 'at the approval' : `at the last question (${at.at}), with no approval`
     if (at.branch !== start.branch) found.push(`D105 ${where} the branch is ${at.branch}, at the start ${start.branch}`)
@@ -117,7 +125,7 @@ export function worldFindings(rec: WorldRecord): string[] {
     const newBranches = at.branches.filter(b => !start.branches.includes(b))
     if (newBranches.length > 0) found.push(`D105 ${where} the run made the branch ${newBranches.join(', ')}`)
     const approving = rec.picks.map((p, i) => (APPROVALS.includes(p.question) && APPROVING_MOVES.includes(p.move) ? i : -1)).filter(i => i >= 0)
-    const before = rec.approval !== null ? rec.picks.slice(0, approving[approving.length - 1]! + 1) : rec.picks
+    const before = rec.approval !== null ? rec.picks.slice(0, approving[0]! + 1) : rec.picks
     const setupAnswer = before.some(p => CHANGES.config!.includes(p.option))
     const changed = [...new Set([...Object.keys(start.files), ...Object.keys(at.files)])].filter(f => start.files[f] !== at.files[f]).sort()
     const files = changed.filter(f => !(f === '.claude/temper.config' && setupAnswer && withoutSetup(at.config) === withoutSetup(start.config)))
@@ -140,7 +148,9 @@ export function worldFindings(rec: WorldRecord): string[] {
     if (JSON.stringify(last.accepted) !== JSON.stringify(ap.accepted) && !answered('accepted'))
       found.push('D105 the accepted findings changed after the approval, and no answer of the person accepted one')
     if (last.intent !== ap.intent) found.push('D105 intent.md does not have the digest recorded at the approval')
-    const planners = rec.agents.filter(a => a.approvals > 0 && a.type === PLANNER).length
+    // after the approval the run is bound to: a planner the person's step back to Plan launched before the approval was
+    // asked again is approved by it (WP12)
+    const planners = rec.agents.filter(a => a.approvals > 0 && a.approvals === rec.approvals && a.type === PLANNER).length
     if (planners > 0) found.push(`D105 the agent log holds ${planners} planner launch(es) after the approval`)
     const message = finalMessage(rec.lastAsk)
     if (message !== '' && last.subjects.includes(message)) found.push(`D105 a commit carries the final commit message before the commit question: ${message}`)

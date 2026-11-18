@@ -93,25 +93,35 @@ fresh; gpass intent plan build review check; "$TEMPER" state set pr one >/dev/nu
 assert_eq "F26: with a pull request opened the sequence ends with Pipeline" "1" "$(vw "str(sum(1 for s in d['stages'] if s.get('id') == 'pipeline'))")"
 assert_eq "F26: gate pipeline is a gate stage of the CLI" "1" "$("$TEMPER" gate pipeline 2>&1 | grep -c 'temper gate pipeline ->')"
 
-# --- F28. Leaving Intent when the run's branch exists from an earlier run with commits this checkout lacks ---
+# --- F28. The approval when the run's branch exists from an earlier run with commits this checkout lacks (WP12: no
+# branch is made before the approval, so the clash is the approval's, not a question of its own) ---
+_q12() { # _q12 <python over q, the question of next, and o(id), its option or More option of that id>: prints r
+  nx "q = d['ask']; o = lambda i: next((x for x in q['options'] + (q.get('more') or {}).get('options', []) if x['id'] == i), {}); $1"
+}
 fresh; rm -rf .git; git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git checkout -q -B main 2>/dev/null
 echo base > README; git add README; git commit -qm base; gpass intent
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 git checkout -q -b feature/demo; echo old > old.txt; git add old.txt; git commit -qm "an earlier run's work"; git checkout -q main
-assert_eq "F28: the question names the branch and its last commit, and offers both ways on" "1|Continue on feature/demo|Continue on a new branch feature/demo-2" \
-  "$(nx "str(d['ask']['question']['question'].count('The branch feature/demo already exists from an earlier run')) + '|' + d['ask']['options'][0]['label'] + '|' + d['ask']['options'][1]['label']")"
-assert_eq "F28: the first one carries the spec across with a temp folder, never git stash" "1|0" \
-  "$(nx "c = d['ask']['options'][0]['calls'][0]; str(int('mktemp -d' in c and 'git checkout feature/demo' in c)) + '|' + str(c.count('git stash'))")"
-assert_eq "F28: the new branch option checks it out and sets the state branch" "git checkout -b feature/demo-2|state set branch feature/demo-2" \
-  "$(nx "o = d['ask']['options'][1]['calls']; o[0] + '|' + o[1].split('temper ', 1)[1]")"
+assert_eq "F28: the approval names the branch and its last commit, and continues on it" "1|1|Build on a new branch feature/demo-2" \
+  "$(_q12 "str(int('The branch feature/demo exists from an earlier run' in q['question']['question'] and 'its last commit is ' in q['question']['question'])) + '|' + str(q['question']['question'].count('The approval continues on it.')) + '|' + o('new-branch').get('label', 'none')")"
+assert_eq "F28: the approval carries the spec across with a temp folder, never git stash" "1|0|0" \
+  "$(_q12 "c = o('ask-every-stage')['calls']; str(sum(1 for x in c if 'mktemp -d' in x and 'git checkout feature/demo' in x)) + '|' + str(sum(x.count('git stash') for x in c)) + '|' + str(sum(1 for x in c if ' spec branch' in x))")"
+assert_eq "F28: the new branch option only sets the state branch, and is no approval" "state set branch feature/demo-2|redo" \
+  "$(_q12 "x = o('new-branch'); '|'.join(c.split('temper ', 1)[1] for c in x['calls']) + '|' + str(x['move'])")"
 git branch -q feature/demo-2 main 2>/dev/null
-assert_eq "F28: the new number is the next free one" "Continue on a new branch feature/demo-3" "$(nx "d['ask']['options'][1]['label']")"
+assert_eq "F28: the new number is the next free one" "Build on a new branch feature/demo-3" "$(_q12 "o('new-branch').get('label', 'none')")"
 git branch -D feature/demo-2 >/dev/null 2>&1
+"$TEMPER" state set branch feature/demo-2 >/dev/null 2>&1
+assert_eq "F28: after the new branch the approval is asked again with no clash, and switches plainly" "0|1|none" \
+  "$(_q12 "c = o('ask-every-stage')['calls']; str(q['question']['question'].count('exists from an earlier run')) + '|' + str(sum(1 for x in c if ' spec branch' in x)) + '|' + o('new-branch').get('label', 'none')")"
+"$TEMPER" state set branch feature/demo >/dev/null 2>&1
 git checkout -q feature/demo; git checkout -q -B plain main; git branch -f feature/demo main
-assert_eq "F28: a branch with no extra commits keeps the plain switch" "Continue to Plan (Recommended)" "$(labels | cut -d'|' -f1)"
+assert_eq "F28: a branch with no extra commits keeps the plain switch" "1|0" \
+  "$(_q12 "c = o('ask-every-stage')['calls']; str(sum(1 for x in c if ' spec branch' in x)) + '|' + str(sum(1 for x in c if 'mktemp -d' in x))")"
 # the carry-across call really moves the new spec files across the switch
 git branch -f feature/demo main; git checkout -q feature/demo; echo old > old.txt; git add old.txt; git commit -qm "earlier"; git checkout -q plain
 mkdir -p .temper/specs/demo; echo "# new intent" > .temper/specs/demo/intent.md
-CALL="$(nx "d['ask']['options'][0]['calls'][0]")"
+CALL="$(_q12 "next(x for x in o('ask-every-stage')['calls'] if 'mktemp -d' in x)")"
 bash -c "$CALL" >/dev/null 2>&1
 assert_eq "F28: the carry call lands on the branch with the new spec file in place, and no temp folder is left" "feature/demo|# new intent|yes" \
   "$(git branch --show-current)|$(cat .temper/specs/demo/intent.md)|$([[ -f old.txt ]] && echo yes || echo no)"

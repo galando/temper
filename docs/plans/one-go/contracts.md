@@ -69,6 +69,7 @@ Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command f
 | `temper state set run_mode autonomous` (the call that starts the unattended run); `temper park --end [--answer ID]`; `temper go --taken-up`; `temper override sensitive-path:<path>` | WP11 | WP13, WP15, WP16, WP17 |
 | `temper state advance plan_complete <next> --shown intent.md=<digest> --shown tasks.md=<digest>`; `temper intent accept --digest <digest>`; `python3 scripts/approval.py digest`, `row`, `check` | WP12 | WP13, WP17 (`rca.md` in the place of `intent.md`), WP25 |
 | `temper state set want_design true` | WP14 | WP15 |
+| `python3 scripts/approval.py plan-digest <parsed tasks.md>` (the one plan digest the CLI's `_plan_digest` calls) | WP12 | WP25 |
 | `temper card` | WP15 | WP17 |
 | `temper spec branch --carry NAME`, `--if-protected`; `temper group take-out G SHA...`; `temper group feedback G --text T`; `temper drift ask --path P --why W --change C` | WP16 | WP17 (`--if-protected`) |
 | `temper intent trivial --why TEXT` and `--close` | WP17 | none |
@@ -98,6 +99,7 @@ Keys of `.temper/build-state.json`:
 | `parked` | a recorded stop; from WP11 it no longer ends the mode | the head | WP11, WP15, WP16 |
 | `want_design` | the person asked for Design | WP14 | WP15 |
 | `intent_hash` | the digest of the intent as approved, beside `plan_hash` and `approved_files` | WP12 | WP13, WP17, WP24, WP25 |
+| `from_branch` | the branch the run stands on before its approval, which the commit hook gates too; `state set` refuses it | WP12 | none |
 | `repair`, `repairs` | the open repair window; the closed repairs | WP24 | WP25 |
 | `trivial` | the trivial verdict, until the flow closes the run | WP17 | none |
 

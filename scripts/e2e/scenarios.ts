@@ -219,7 +219,10 @@ export const modGuards = (w: World): void => {
     expect(stage !== undefined, 'the approval offers ask-every-stage')
     const option = w.answer(n.ask as Json, String(stage!.label))
     expect(option.id === 'ask-every-stage', 'the option exists')
-    expect(w.denies({ tool: 'Bash', input: { command: `${TEMPER} state advance plan_complete build` } }) === null, 'leaving Plan passes as the call the answer maps to')
+    // WP12: the answer's advance carries the digests the question showed; that call passes, word for word
+    const leave = ((option.calls ?? []) as string[]).find(c => c.includes('state advance plan_complete build --shown ')) ?? ''
+    expect(leave !== '' && w.denies({ tool: 'Bash', input: { command: leave } }) === null, 'leaving Plan passes as the call the answer maps to')
+    expect(w.denies({ tool: 'Bash', input: { command: `${TEMPER} state advance plan_complete build` } }) !== null, 'the advance without the digests the question showed is no call of the answer')
   } else {
     expect(write === null && advance === null, 'with no mod nothing is refused')
   }
@@ -429,23 +432,31 @@ export const contextCheck = (w: World): void => {
   expect(asked === 1, `the Context check was asked once (${asked})`)
 }
 
-// The run's branch exists from an earlier run with commits this checkout lacks: the Intent question offers both ways on.
+// The run's branch exists from an earlier run with commits this checkout lacks. WP12: no branch is made before the approval,
+// so the approval names the clash and continues on that branch; its More list offers a new branch, after which the
+// approval is asked again with no clash.
 export const branchClash = (w: World): void => {
   startProject(w, '', wd => {
     wd.sh('git checkout -q -b feature/ci && echo old > old.txt && git add old.txt && git commit -qm "an earlier run" && git checkout -q main')
   })
   const labels: string[] = []
+  let named = false
   orchestrate(w, script({
     person: (ask, wd) => {
       const q = String(ask.question.question)
-      if (q.includes('already exists from an earlier run')) {
+      if (String(ask.id ?? '') === 'plan.approve' && q.includes('exists from an earlier run')) {
+        named = q.includes('The approval continues on it.')
         labels.push(...(ask.options as Json[]).map(o => String(o.label)))
-        return 'Continue on a new branch feature/ci-2'
+        return String((ask.options as Json[]).find(o => o.kind === 'more')?.label ?? recommended(ask, wd))
+      }
+      if (String(ask.id ?? '') === 'plan.approve.more' && (ask.options as Json[]).some(o => o.id === 'new-branch')) {
+        labels.push(...(ask.options as Json[]).map(o => String(o.label)))
+        return 'Build on a new branch feature/ci-2'
       }
       return recommended(ask, wd)
     },
   }))
-  expect(labels.includes('Continue on feature/ci') && labels.includes('Continue on a new branch feature/ci-2'), 'both ways on were offered')
+  expect(named && labels.includes('Build on a new branch feature/ci-2'), 'the approval named the clash and offered the new branch')
   expect(w.sh('git branch --show-current').trim() === 'feature/ci-2', 'the run went on the new branch')
 }
 
@@ -755,17 +766,16 @@ export const fixRun = (w: World): void => {
   expect(w.sh('git log --format=%s -n 1').length > 0 && !w.exists('.temper/build-state.json'), 'the fix run ended with its commit')
 }
 
-// The run's branch exists from an earlier run: Continue on it carries the new spec files across the switch through a temp folder.
-// The mod lets the call through whole, as the CLI wrote it (the only Temper path it writes is the spec folder).
+// The run's branch exists from an earlier run: the approval continues on it, and its switch carries the new spec files
+// across through a temp folder (WP12). The mod lets the call through whole, as the CLI wrote it (the only Temper path it
+// writes is the spec folder).
 export const branchClashCarry = (w: World): void => {
   startProject(w, '', wd => {
     wd.sh('git checkout -q -b feature/ci && echo old > old.txt && git add old.txt && git commit -qm "an earlier run" && git checkout -q main')
   })
-  orchestrate(w, script({
-    person: (ask, wd) => (String(ask.question.question).includes('already exists from an earlier run') ? 'Continue on feature/ci' : recommended(ask, wd)),
-  }))
+  orchestrate(w, script({ person: recommended }))
   expect(w.sh('git branch --show-current').trim() === 'feature/ci', 'the run went on the earlier branch')
-  expect(w.sh('git log --format=%s feature/ci').includes('docs(intent): accept ci') || w.sh('git log --all --format=%s').includes('docs(intent): accept ci'), 'the intent was accepted and committed there, with the new spec files carried across')
+  expect(w.sh('git log --format=%s feature/ci').includes('docs(plan): approve the intent and the plan of ci'), 'the intent and the plan were approved and committed there, with the new spec files carried across')
   expect(w.exists('old.txt') || !w.exists('.temper/build-state.json'), 'the earlier work is on the branch')
 }
 

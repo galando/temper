@@ -86,6 +86,33 @@ by none.
    - **The commit.** It always asks: commit, commit and open a pull request, or a loop back to Build. A failed commit
      gate with a changed sensitive file outside the plan offers `confirm` (`temper override sensitive-path:<path>`).
      Temper pushes only after the person chose a pull request option there.
+4. **The approval is bound to what was shown (WP12).**
+   - **What it binds.** The intent and the plan as the approval showed them. `temper next` takes the digests of
+     `intent.md` and `tasks.md` in the call that builds the question (`scripts/approval.py`): of `intent.md` without
+     the lines the CLI writes itself (`Status`, `Accepted-by`, `Completed`), of `tasks.md` the plan digest (each task's
+     files, Depends and Test, each group's Depends, Validate, Interfaces and Context, the Integration line). The
+     approving advance carries them, `state advance plan_complete <next> --shown intent.md=<H1> --shown tasks.md=<H2>`,
+     and so does `state advance design_complete` when the person asked for Design. Before it writes anything the CLI
+     hashes each named file again and refuses the call when one changed: the person is asked again. `plan_complete` is
+     refused too while `intent.md` is a draft. `intent accept --digest <H1>` refuses in the same way.
+   - **What it records.** `state advance plan_complete` records `intent_hash` beside `plan_hash` and `approved_files`,
+     from the files as they are at that call, whoever calls; `design_complete` records both again, since the answer at
+     the Design question approves what Design changed. `state set` refuses the three keys.
+   - **What holds it later.** The row `intent unchanged since the approval` of the Build, Check and commit gates fails
+     when either file changed since (one row names both files; a run with no `intent_hash`, saved before 9.8.5, passes
+     it). The way on is the stage's failed question: a step back to Plan and a new approval, restoring the file, or the
+     person's skip. In a run that goes on by itself the failed row is a stop: a rule never changes the intent or the
+     approved plan. With the mod a tool write of the run's `intent.md` is refused from Build on.
+   - **What nothing checks.** The arguments are optional, so a call typed without them approves whatever the two files
+     hold then, and the gates bind that. With the mod the option's calls are matched word for word, so the click is
+     bound to the digests the question carried; with the mod off nothing checks the click. `plan.md` (the Context Map,
+     the approach) is in no digest.
+   - **Before the approval.** A run makes no branch and no commit before the approval: leaving Intent is `intent
+     accept` and the advance; the approval switches to the run's branch, makes one commit of the spec folder there and
+     advances. A branch an earlier run left is no question of its own: the approval names it and continues on it, and
+     its More list offers a new branch. With the mod off the commit hook gates the branch the run stands on before the
+     approval too (`from_branch`), and the classic hook `scripts/guards/hold_before_approval.py` refuses a project file
+     write by the tools that write a file at Intent, Plan and Design of a feature run.
 
 ## Consequences
 
