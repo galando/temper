@@ -69,6 +69,22 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
     expect(isDeny(write(ctx('build'), `${SPEC}/tasks.md`, 'Edit'))).toBe(true)
   })
 
+  // WP12: the approval is bound to the intent as shown; from Build on a change to it needs a step back to Plan and a
+  // new approval, so no tool writes the run's intent.md. Before the approval the agents of Intent and Plan write it.
+  test('a write to the run\'s intent.md is refused at Build, Review, Check and Commit and allowed at Intent, Plan and Design', () => {
+    for (const tool of ['Write', 'Edit']) {
+      for (const stage of ['intent', 'plan', 'design'] as const) expect('allow' in write(ctx(stage), `${SPEC}/intent.md`, tool)).toBe(true)
+      for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+        const r = write(ctx(stage), `${SPEC}/intent.md`, tool)
+        expect(isDeny(r)).toBe(true)
+        if (isDeny(r)) {
+          expect(r.deny.startsWith('Temper: ')).toBe(true)
+          expect(r.deny).toContain('Plan')
+        }
+      }
+    }
+  })
+
   test('absolute paths inside the root and traversal are normalised', () => {
     const c = { ...ctx('plan'), root: '/repo' }
     expect('allow' in write(c, `/repo/${SPEC}/plan.md`)).toBe(true)
