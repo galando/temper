@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-18 11:16 UTC
+- Watch: one check is scheduled; the next is due 2026-11-18 16:28 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -56,7 +56,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP11 | done | `37aae8d` | 2026-11-18 | the approval runs to the commit by default (`run.default`); a passed check moves on, Review and Check by the closed rule list, a stop keeps the mode and `park --end` ends it; the commit question offers the pull request; `sensitive.py` and `rule_log.py`; stops 20 to 22; twelve checks off the list, which holds 71 (54 selftest, 17 scenarios) |
 | WP12 | done | `90d25cc` | 2026-11-18 | the approving calls carry `--shown` digests of intent.md and tasks.md (`approval.py`) and a stale one is refused; the row `intent unchanged since the approval` fails the Build, Check and commit gates; leaving Intent makes no branch and no commit, the approval makes the branch and one commit; the classic hook `hold_before_approval.py`; the D105 world check is armed; seven checks off the list, which holds 64 (48 selftest, 16 scenarios) |
 | WP13 | done | `cbb89de` | 2026-11-18 | the run leaves Intent by rule (six conditions; a `work` action with the one advance), the approval accepts a draft intent (`intent accept --digest`) in the one spec commit, a skip never accepts, `back` joins the plan More list; the Context check folds into the approval when it fits; three checks off the list, which holds 61 (47 selftest, 14 scenarios) |
-| WP15 | todo | | | |
+| WP15 | doing | | | |
 | WP16 | todo | | | |
 | WP17 | todo | | | |
 | WP19 | todo | | | |
@@ -81,6 +81,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | 1 | `2c48db1` | 2026-11-16 | PASS (selftest 737 s, end to end shards 660, 728, 806 and 522 s, traces kept) | 1625 | no list yet |
 | 2 | `7f2dade` | 2026-11-17 | PASS (selftest 835 s, end to end shards 1376, 1258, 1405 and 1628 s, while the WP08 lanes ran beside it); review: 21 plus 3 findings fixed | 2655 | 113 (93 selftest, 20 e2e) |
 | 3 | `8afc67a` | 2026-11-17 | PASS (selftest 2822 pass, XFAIL 72); review: 8 findings fixed in the merge `0f83802` | 2449 | 92 (72 selftest, 20 e2e) |
+| 4a | `ac746e0` | 2026-11-18 | PASS (selftest 1269 s, end to end shards 1718, 1753, 1436 and 1772 s); review: 17 findings confirmed and 3 refuted, all fixed in the merges of `p4fixa` to `p4fixd` and in `ffd3e2b`; after the fixes quick, the whole selftest (3020 pass) and the e2e list in eight groups with the floor pass on `ffd3e2b`, CI green | 3258 | 61 (47 selftest, 14 e2e) |
 
 ## Blockers
 
@@ -172,6 +173,9 @@ None.
 - 2026-11-18 WP13: the fresh review digest now leaves out the lines of intent.md the CLI writes itself (`approval.OWN`), since the accept at the approval comes after the review read the file; without it pyjokes-full lost its note to the builder. The drop order of the four option limit now takes Grill Me (or Share HTML review) out of the plan More list when `back` joins it.
 - 2026-11-18 WP13: `flow_ask.py` passed case 32's 64 KiB limit, so `accept_draft`, `leave_plan`, `skip_then` and the new methods sit in `flow_commit.py`. A new view fixture `intent-ask` (a note at Intent) keeps the Intent question under test for the mod.
 - 2026-11-18 WP13: caps: prompt_bytes 307,656 and cli_bytes 220,587, both under their finals; no other cap moved. Floor: two-dialogs 2, vague-run 4, context-fold 2 new; default-run 4 to 2 (its final); most scenarios 2 fewer dialogs; replay questions 5 to 3 (its final). No final moved.
+- 2026-11-18 phase 4a review: 17 findings confirmed, 3 refuted, fixed in four lanes, each checked by a fresh agent: an option's calls are checked together against the budget and one CI fix round is one entry (WP10-1, WP10-3); a step back by `state set next_stage` spends as `state loop` does (WP10-2); `temper gate` prints its marker only after the verdict is written (WP09-1); the first call of every approving option is the bound run mode, so a stale approval writes no mode, branch or commit and ends an unattended run (WP12-1, WP12-2, WP11-1); the unattended run ends at the commit (WP11-2); no fold of the Context check where it would need a third dialog (WP14-1); a run with no intent.md records it absent and stays bound (WP12-3); only the exact forms the CLI writes are its own lines (WP12-4); a sensitive path anywhere in the plan stops repair by rule (WP11-4, row D33); the D33a and D33f legs of case 44 build a real unattended run (WP11-5, F1); the D105 planner clause needs the step back before the launch (F2); the split `saved_by` row of contracts.md is joined, and validate-docs.sh now finds a split table row (F3); a dash in docs/ai-native-sdlc.md (WP13-2).
+- 2026-11-18 phase 4a fixes, my own two after the fix checks: a stale Run Design first wrote `want_design` before its bound call refused it, so the bound call now comes first; an intent.md that is a directory or a dangling link took the trivial path and dropped the binding, so the approval reads it as absent (`ffd3e2b`). The merge of `p4fixb` committed `caps.json` with its conflict markers; repaired in the next commit, before any check ran on it.
+- 2026-11-18 phase 4a, left as the spec says: a Pipeline result that is not final, read again with Run Pipeline again, spends gate:pipeline, so waiting on CI that never finishes asks run.budget after two reads (the spec's table). One step back still excuses every planner launch up to the next approval in the D105 check (as the reviewer suggested).
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
