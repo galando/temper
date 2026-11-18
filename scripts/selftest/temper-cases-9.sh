@@ -271,8 +271,9 @@ git config user.email t@t; git config user.name t   # the calls run git commit a
 sed -i 's/^\*\*Status:\*\* accepted$/**Status:** draft/' .temper/specs/demo/intent.md   # a new intent: the accept changes it
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
 rm -f .temper/build-state.json; "$TEMPER" state init demo >/dev/null 2>&1; gpass intent
-CALLS="$(nx "'\n'.join(d['ask']['options'][0]['calls'])")"
-assert_eq "live run: Continue to Plan on main makes no branch and no commit: it accepts the intent and advances (WP12)" "intent accept|0|0" \
+CALLS="$(nx "'\n'.join(d['calls'])")"
+assert_eq "live run: on main the run leaves Intent by rule: the one advance, no branch and no commit (WP12, WP13)" \
+  "state advance intent_complete plan|0|0" \
   "$(head -1 <<<"$CALLS" | sed 's|.*/scripts/temper ||')|$(grep -c ' spec branch' <<<"$CALLS")|$(grep -c ' spec commit ' <<<"$CALLS")"
 while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
 gpass plan
@@ -280,8 +281,8 @@ CALLS="$(nx "'\n'.join(d['ask']['options'][0]['calls'])")"
 assert_eq "live run: the approval switches to the run's branch before its commit" "spec branch|spec commit" \
   "$(grep -o ' spec branch\| spec commit' <<<"$CALLS" | sed 's/^ //' | paste -sd'|')"
 while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
-assert_eq "live run: the approval's commit is on feature/demo, and main has none (WP12)" \
-  "feature/demo|docs(plan): approve the intent and the plan of demo|base|accepted" \
+assert_eq "live run: the approval's commit is on feature/demo, and main has none; it accepts the intent (WP12, WP13)" \
+  "feature/demo|docs(plan): accept the intent and approve the plan of demo|base|accepted" \
   "$(git branch --show-current)|$(git log -1 --format=%s feature/demo)|$(git log -1 --format=%s main)|$(
     git show feature/demo:.temper/specs/demo/intent.md 2>/dev/null | sed -n 's/^\*\*Status:\*\* //p')"
 _at plan; gpass plan

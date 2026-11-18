@@ -14,6 +14,11 @@ Modes (python3 plan_ops.py <mode> ...):
   review SPEC_DIR --answer TEXT [--focus AREA]...   write the person's answer into the map and set `- reviewed: human`
   map SPEC_DIR                 the map as JSON for `temper next` and the view
 
+9.8.5 (WP13): the person is asked only about a map with an `ignore` or a `gap` line (auto), every map (always) or none
+(off). A clean pending map passes its row unasked; a flagged one under auto whose lines fit the approval is folded into
+it, and the approving option records the answer (`plan review --answer 'As planned (at the approval, N flagged lines
+shown)'`).
+
 The CLI writes the `reviewed:` line, never Plan and never a model by hand: auto mode may refuse an edit of it
 (docs/auto-mode.md). Text is data: one line, at most 100 characters (an answer: 2000, shown cut to the line). Standard library only.
 """
@@ -78,8 +83,41 @@ def row(ok, detail):
     return {"name": "context map reviewed", "pass": ok, "detail": detail}
 
 
+SHOWN = 90         # 9.8.5 (WP13): the longest flagged line a question shows whole (the cut of the Context check's text)
+SHOWN_IGNORE, SHOWN_GAP = 3, 2   # the ignore and gap lines a question shows
+
+
+def flagged(entries):
+    """The map's ignore and gap lines: what the person is asked about."""
+    return [e for e in entries or [] if e.get("kind") in ("ignore", "gap")]
+
+
+def asks(entries, mode):
+    """9.8.5 (WP13): whether the person is asked about this map: always under always, never under off, and under auto
+    only when it holds an ignore or a gap line (the config's own words for auto). A clean map is Plan's own claim."""
+    return mode == "always" or (mode != "off" and bool(flagged(entries)))
+
+
+def fits(entries):
+    """Every flagged line can be shown whole in the approval's text: at most three ignore and two gap lines, each of at
+    most SHOWN characters (the cuts of the Context check's text). WP15 widens this to the approval card."""
+    ign = [e for e in entries or [] if e.get("kind") == "ignore"]
+    gap = [e for e in entries or [] if e.get("kind") == "gap"]
+    return len(ign) <= SHOWN_IGNORE and len(gap) <= SHOWN_GAP and all(len(e.get("text") or "") <= SHOWN for e in ign + gap)
+
+
+def folds(entries, reviewed, mode):
+    """9.8.5 (WP13): a pending map under auto whose flagged lines fit the approval is answered there, not on its own."""
+    return mode == "auto" and reviewed == "pending" and bool(flagged(entries)) and fits(entries)
+
+
+def norm_mode(mode):
+    mode = str(mode or "").strip().lower()
+    return mode if mode in ("auto", "always", "off") else "auto"
+
+
 def gate_row(spec, mode):
-    mode = mode if mode in ("auto", "always", "off") else "auto"
+    mode = norm_mode(mode)
     m = parse(spec)
     if m is None:
         return row(False, "plan.md has no ## Context Map at the top: list the sources of context (use, ignore, gap), then the reviewed line")
@@ -89,15 +127,19 @@ def gate_row(spec, mode):
         return row(False, "the Context Map has %d entries; keep it to %d, one line per source (group an area: src/auth/ (12 files))" % (len(m["entries"]), MAX_ENTRIES))
     if m["long"]:
         return row(False, "a Context Map line is over %d characters; shorten: %s" % (MAX_LINE, m["long"][0][:60]))
-    if m["reviewed"] not in ("human", "auto") and not (mode == "off" and m["reviewed"] == "pending"):
+    if m["reviewed"] == "pending" and not asks(m["entries"], mode):
+        return row(True, "not asked: no flagged line" if mode == "auto" else "not asked: plan.context-check is off")
+    if folds(m["entries"], m["reviewed"], mode):
+        return row(True, "%d flagged line(s), answered at the approval" % len(flagged(m["entries"])))
+    if m["reviewed"] not in ("human", "auto"):
         return row(False, "the Context check is pending: the person's answer is not recorded yet (it is asked as the Is this the right context for the plan? question)"
                    if m["reviewed"] == "pending" else "the Context Map has no `- reviewed: human|auto` line")
     if m["reviewed"] == "auto" and mode != "off":
-        flagged = [e["kind"] for e in m["entries"] if e["kind"] in ("ignore", "gap")]
+        kinds = [e["kind"] for e in flagged(m["entries"])]
         if mode == "always":
             return row(False, "plan.context-check is always: the person reviews the map every run (reviewed: auto is not accepted)")
-        if flagged:
-            return row(False, "the map has an %s entry, so the person reviews it (reviewed: auto is not accepted)" % flagged[0])
+        if kinds:
+            return row(False, "the map has an %s entry, so the person reviews it (reviewed: auto is not accepted)" % kinds[0])
     return row(True, "%d source(s) listed, reviewed: %s" % (len(m["entries"]), m["reviewed"]))
 
 
@@ -117,7 +159,7 @@ def map_json(spec):
     if m is None:
         return None
     return {"intro": m["intro"] or "The sources Plan used, one line each.", "file": os.path.join(spec, "plan.md"), "rows": m["entries"],
-            "answer": m["answer"], "reviewed": m["reviewed"], "table": table(m)}
+            "answer": m["answer"], "reviewed": m["reviewed"], "table": table(m), "flagged": len(flagged(m["entries"]))}
 
 
 def review(spec, answer, focus):

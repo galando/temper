@@ -23,9 +23,10 @@ const gate = (a: Answer[]) => a.filter((x): x is Extract<Answer, { kind: 'gate' 
 const asked = (name: string, which: Parameters<typeof questionOf>[1] = {}) => questionOf(JSON.stringify(view(name)), which)
 
 describe('a gate question answered exactly', () => {
+  // WP13: a clean pass leaves Intent by rule; the question stays where the person typed a note there (intent-ask)
   test('Continue to Plan: the move and the exact calls the CLI wrote for it', () => {
-    const q = asked('intent-pass')
-    const a = gate(answersIn(result(q, 'Continue to Plan (Recommended)'), rv('intent-pass')))
+    const q = asked('intent-ask')
+    const a = gate(answersIn(result(q, 'Continue to Plan (Recommended)'), rv('intent-ask')))
     expect(a).toHaveLength(1)
     expect(a[0]?.option.move).toBe('approve')
     expect(a[0]?.option.calls.some(c => c.endsWith('temper state advance intent_complete plan'))).toBe(true)
@@ -46,8 +47,8 @@ describe('a gate question answered exactly', () => {
 })
 
 describe('what is no answer', () => {
-  const q = asked('intent-pass')
-  const v = rv('intent-pass')
+  const q = asked('intent-ask')
+  const v = rv('intent-ask')
   const none: Record<string, unknown> = {
     'a reworded question': result({ ...q, question: 'Intent passed. Go on to Plan?' }, 'Continue to Plan (Recommended)'),
     'another header': result({ ...q, header: 'Temper' }, 'Continue to Plan (Recommended)'),

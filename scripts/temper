@@ -3549,8 +3549,8 @@ _unattended_end() { # _unattended_end <what>: the run asks at every stage from h
 # carry '<question>': the person's Carry forward on a Blocking question (9.8.0): its label turns to
 # `Deferred: (carried forward at the Intent gate)`, so the question stays on record, later gates name it, and it no
 # longer fails the Intent gate (before 9.8.0 Carry forward recorded nothing and the gate stayed red: a dead end).
-# accept: **Status:** accepted plus **Accepted-by:** the person (their Continue at the Intent gate
-# is the acceptance; Temper reads no name or email from git). complete: **Status:** completed plus
+# accept: **Status:** accepted plus **Accepted-by:** the person (their approval of the plan, with --digest, or
+# their Continue at the Intent question is the acceptance; Temper reads no name or email from git). complete: **Status:** completed plus
 # **Completed:** today.
 # Idempotent: an accepted intent stays as it is.
 # ---
@@ -3570,7 +3570,9 @@ cmd_intent() {
   # WP12: --digest, intent.md as the question showed it; a changed file is refused before anything is written
   [[ "$sub" == accept && "${2:-}" == --digest ]] \
     && { python3 -I "$SCRIPTS_DIR/approval.py" check "$STATE_FILE" "$spec" "intent.md=${3:-}" || return 1; }
-  python3 -I "$SCRIPTS_DIR/spec_text.py" intent-status "$spec/intent.md" "$sub" "the person at the Intent gate" "$(date -u +%Y-%m-%d)"
+  # WP13: with --digest the person accepted the intent with the plan, at the approval; without it, at the Intent question
+  python3 -I "$SCRIPTS_DIR/spec_text.py" intent-status "$spec/intent.md" "$sub" "$([[ "${2:-}" == --digest ]] \
+    && echo "the person, at the plan approval" || echo "the person at the Intent gate")" "$(date -u +%Y-%m-%d)"
 }
 
 # temper park --verdict SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION --reason "...": a recorded stop of a run that goes on

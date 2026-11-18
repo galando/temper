@@ -55,7 +55,8 @@ assert_eq "9.8.5 Q4: a retried attempt that writes the code before its RED is re
   "$(G="$("$TEMPER" task gate 1 --model haiku 2>&1)"; grep -q 'the RED run was made on the final code' <<<"$G" && echo True || echo False)"
 
 # --- 9.8.5 (U2): the orchestrator's note for this step's question, marked as Claude's, in the CLI's own question ---
-fresh; gpass intent
+fresh; "$TEMPER" evidence add --stage intent --phase note --claim 'keep the demo to one screen' >/dev/null 2>&1   # WP13: a note at Intent keeps its question
+gpass intent
 STEP="$(python3 -c "import json; print(json.load(open('.temper/build-state.json')).get('step'))")"
 "$TEMPER" state set ask_note "$STEP: the database was down during the last check" >/dev/null 2>&1
 assert_eq "9.8.5 U2: the question of this step ends with the marked note, and its options are unchanged" "True|True" \

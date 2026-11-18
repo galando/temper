@@ -125,7 +125,7 @@ r = '%s|%s|rest=%s|more=%s' % (a.get('id'), '|'.join(two), ','.join(str(o.get('i
 _plan52
 _ap52_want="plan.approve|approve-run,True,arm,state set run_mode autonomous"
 _ap52_want+="|ask-every-stage,False,approve,state set run_mode interactive"
-_ap52_want+="|rest=fresh-review,more|more=html-review,run-design,grill-me,save"
+_ap52_want+="|rest=fresh-review,more|more=html-review,run-design,back,save"   # WP13: the step back to Intent
 assert_eq "run: the default approval" "$_ap52_want" "$(_first52)"
 
 _ask52() { # the first two options of the approval: id, label and first call

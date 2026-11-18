@@ -421,7 +421,9 @@ assert_eq "F6: auto mode refuses reviewed: auto when the map has a gap" "False" 
 _cmap auto '- use: intent.md - scope'
 assert_eq "F6: always refuses every reviewed: auto, and off accepts a gap" "False|True" "$(_crow always | cut -d'|' -f1)|$(_cmap auto '- gap: x'; _crow off | cut -d'|' -f1)"
 _cmap pending '- use: intent.md - scope'
-assert_eq "F6: pending fails and says the answer is not recorded yet" "False|1" "$(_crow auto | cut -d'|' -f1)|$(_crow auto | grep -c 'answer is not recorded yet')"
+assert_eq "F6: pending fails where the person is asked and says the answer is not recorded yet (WP13: a clean map is not asked under auto)" \
+  "False|1|True|1" "$(_crow always | cut -d'|' -f1)|$(_crow always | grep -c 'answer is not recorded yet')|$(_crow auto | cut -d'|' -f1)|$(
+    _crow auto | grep -c 'not asked: no flagged line')"
 assert_eq "F6: off mode passes pending — nobody is asked" "True" "$(_crow off | cut -d'|' -f1)"
 _cmap human
 assert_eq "F6: a map with no use, ignore or gap entry fails" "False" "$(_crow auto | cut -d'|' -f1)"
@@ -440,6 +442,8 @@ assert_exit "F6: an answer over 2000 characters is refused (9.8.5: 100 refused t
 # the question in next and the view
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '\n### Open Questions\n\n- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.\n' >> .temper/specs/demo/intent.md
+# WP13: under auto a gap line the approval can show whole is folded into it (temper-cases-54.sh); always keeps the question
+printf 'plan:\n  context-check: always\n' >> .claude/temper.config
 _cmap pending '- use: intent.md - scope' '- gap: no rate limit policy'
 gfail plan "context map reviewed" "the Context check is pending: the person's answer is not recorded yet"
 assert_eq "F6: the pending check is the plan gate's only failed row: ask is the Context check, not the failed gate question" \

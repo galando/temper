@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
-import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, CONTEXT_CHECK_LINE, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
+import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
 import { stagePerson } from './persons'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
@@ -96,8 +96,6 @@ export const AGENTS: Record<string, Agent> = {
   'temper:temper-plan': w => {
     if (!w.read(`${SPEC}/intent.md`).includes(INTENT_SCENARIOS)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('## Scenarios (BDD)\n', INTENT_SCENARIOS))
     w.write(`${SPEC}/plan.md`, PLAN_MD)
-    // the Open Question agents/plan.md tells a planner to add with its Context Map
-    if (!w.read(`${SPEC}/intent.md`).includes(CONTEXT_CHECK_LINE)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('### Open Questions\n', `### Open Questions\n\n${CONTEXT_CHECK_LINE}\n`))
     w.write(`${SPEC}/tasks.md`, TASKS_MD)
     t(w, 'state set complexity simple')
     t(w, 'risk')
@@ -814,7 +812,7 @@ export const branchClashCarry = (w: World): void => {
   })
   orchestrate(w, script({ person: recommended }))
   expect(w.sh('git branch --show-current').trim() === 'feature/ci', 'the run went on the earlier branch')
-  expect(w.sh('git log --format=%s feature/ci').includes('docs(plan): approve the intent and the plan of ci'), 'the intent and the plan were approved and committed there, with the new spec files carried across')
+  expect(w.sh('git log --format=%s feature/ci').includes('docs(plan): accept the intent and approve the plan of ci'), 'the intent and the plan were approved and committed there, with the new spec files carried across')
   expect(w.exists('old.txt') || !w.exists('.temper/build-state.json'), 'the earlier work is on the branch')
 }
 

@@ -1,4 +1,5 @@
-"""flow_commit.py: CommitPart of Builder: the end of the run (report, record, commit) and the context question.
+"""flow_commit.py: CommitPart of Builder: the end of the run (report, record, commit), the context question, and (WP13)
+the steps that leave Intent by rule and leave Plan at the approval.
 
 A module of the flow; scripts/flow.py is its facade. Standard library only.
 """
@@ -7,6 +8,7 @@ import os
 import re
 import shlex
 
+import approval
 import intent_parse
 
 from flow_base import GATE_HEADER, LABEL, RESUME_HEADER, git
@@ -219,6 +221,75 @@ class CommitPart:
             return "Is this the right context for the plan?", []
         return " ".join(parts) + " Is that right?", left
 
+    # -- WP13: the run leaves Intent by rule; the approval accepts the intent and answers a folded map --
+    def intent_by_rule(self):
+        """WP13 (ADR 0019 decision 5): the run leaves Intent with no question, as the CLI's own action, only when a
+        /temper:temper run's Intent check passed (not skipped), intent.md exists, no Blocking question is open, the run did
+        not come back to Intent, the person typed no note there, and no door walked it. The intent stays a draft; the
+        person accepts it with the plan, at the approval (accept_draft). Else the Intent question is asked as before."""
+        r = self.r
+        return (r.command == "temper" and r.verdict("intent") == "PASS" and r.skip("intent") is None and bool(r.intent)
+                and not r.blocking() and not r.loop_into("intent") and not r.loop_through("intent")
+                and not r.notes("intent", "input") and not self.walked("intent"))
+
+    def fold_calls(self, cm):
+        """WP13: the folded Context check is answered by the approving option the person picks: plan.md records that the
+        answer was given at the approval and how many flagged lines it showed. Never an auto or work action's call."""
+        if not cm or not self.r.context_folded(cm):
+            return []
+        n = cm["flagged"]
+        return [self.c("plan review --answer %s" % shlex.quote("As planned (at the approval, %d flagged line%s shown)" % (n, "" if n == 1 else "s")))]
+
+    def intent_question(self, text, stage):
+        """intent.accept: at Intent, Continue to Plan accepts intent.md and advances; at Plan (WP13: after a skip of the
+        plan check, the intent still a draft) it accepts the intent as shown, and the plan question follows."""
+        at = stage == "plan"
+        return self.question(GATE_HEADER, text, stage=stage, qid="intent.accept", options=[
+            self.opt("Accept the intent (Recommended)" if at else "Continue to Plan (Recommended)",
+                     "Accept intent.md as shown; the plan question follows." if at else "Accept intent.md and start Plan.",
+                     move="approve", calls=self.accept_draft() if at else self.leave_intent(), oid="continue"),
+            self.skill("grill-me", "Grill Me", "Stress test the intent first."),
+            self.skill("teach-me", "Teach Me", "Walk through the intent."), self.save()])
+
+    def accept_draft(self):
+        """WP12: `plan_complete` is refused while intent.md is a draft. A run saved at Plan by 9.8.4 or by the base can
+        hold one (the saved states of its fixtures left Intent with no accept), so the approving options accept it
+        first, bound to the intent the question shows; a skip of the plan gate never does."""
+        r = self.r
+        if not r.spec or intent_parse.status(r.intent) != "draft":
+            return []
+        d = approval.digest(os.path.join(r.spec, "intent.md"))
+        return [self.c("intent accept" + (" --digest %s" % d if d else ""))]
+
+    def leave_plan(self, nxt=None, fold=()):
+        """The approval: the folded Context check's answer (WP13), switch to the run's branch, accept a draft intent bound
+        to the text shown (WP13: the approval accepts it), commit the spec folder there (the intent and the plan) once,
+        advance with the digests of what the question showed. A skip of the plan gate never takes it for a draft
+        (skip_then)."""
+        r, nxt = self.r, nxt or self.r.next_of("plan") or "build"
+        acc = self.accept_draft()
+        what = "accept the intent and approve the plan" if acc else "approve the intent and the plan"
+        return list(fold) + self.to_branch() + acc + self.spec_commit("docs(plan): %s of %s" % (what, r.slug), changes=bool(acc or fold)) + \
+            [self.c("state advance plan_complete %s%s" % (nxt, self.shown()))]
+
+    def skip_then(self):
+        """WP13 (red-safety B1): what a skip of the plan gate runs after its override: the way on, or nothing while the
+        intent is a draft. Then `next` asks intent.accept at Plan, and the plan question follows."""
+        return [] if self.accept_draft() else self.leave_plan()
+
+    def include_opt(self, cm):
+        """Include what is left out: Plan revises the plan to cover the map's ignore lines (None when it has none). An
+        option of the Context check, and of the approval's More list when the check is folded into it (WP13)."""
+        left = self.context_text(cm)[1]
+        if not left:
+            return None
+        # 9.8.4: Plan gets the whole text of what is left out (the question shows each cut to fit); a cut at 100
+        # characters told the Plan agent "already co".
+        full = [x["text"] for x in (cm.get("rows") or []) if x.get("kind") == "ignore"][:3]
+        what = "Include what is left out: %s" % "; ".join(full)
+        return self.opt("Include what is left out", "Plan revises the plan to cover: %s." % "; ".join(left), move="answer",
+                        calls=[self.c("plan review --answer %s --redo" % shlex.quote(what))], oid="include-left-out")
+
     def context_question(self, cm):
         """The Context check as the CLI's own question. "As planned" records the answer and checks the plan again; any other
         answer (including what was left out, a source the person names) also sends Plan back to revise with it (`--redo`),
@@ -226,13 +297,7 @@ class CommitPart:
         text, left = self.context_text(cm)
         opts = [self.opt("As planned (Recommended)", "The plan's context is right; check the plan again.", move="answer",
                          calls=[self.c("plan review --answer 'As planned'"), self.c("gate plan")], oid="as-planned")]
-        if left:
-            # 9.8.4: Plan gets the whole text of what is left out (the question shows each cut to fit); a cut at 100
-            # characters told the Plan agent "already co".
-            full = [x["text"] for x in (cm.get("rows") or []) if x.get("kind") == "ignore"][:3]
-            what = "Include what is left out: %s" % "; ".join(full)
-            opts.append(self.opt("Include what is left out", "Plan revises the plan to cover: %s." % "; ".join(left), move="answer",
-                                 calls=[self.c("plan review --answer %s --redo" % shlex.quote(what))], oid="include-left-out"))
+        opts += [o for o in [self.include_opt(cm)] if o]
         opts.append(self.opt("Something else", "Type what Plan should change or read (Other); Plan revises the plan with it.",
                              do="Ask the person to type it in Other, then run the question's `answer` call with their text.", oid="type", kind="type"))
         carry = self.opt("Carry forward", "Decide later; the plan gate keeps naming this question.", move=None, calls=[], oid="carry", kind="carry")

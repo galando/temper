@@ -65,6 +65,17 @@ All notable changes to Temper are documented here. The plugin version lives in
   from Build on. With the mod off the commit hook gates the branch the run stands on before the approval, and a new
   classic hook, `scripts/guards/hold_before_approval.py`, refuses a project file write by the tools that write a file
   at Intent, Plan and Design of a feature run. The plan digest has one home, `scripts/approval.py`.
+- WP13: the run leaves Intent by rule; the approval accepts the intent (ADR 0019 decision 5). You approve the intent
+  and the plan in one question before any code is written, and you approve the commit. A passed Intent check with an
+  `intent.md` and nothing open (no Blocking question, no step back into Intent, no note of yours, no door) moves on to
+  Plan as the CLI's own action; the approval's first options run `intent accept --digest` before their one commit
+  (`docs(plan): accept the intent and approve the plan of <slug>`), and `Accepted-by` reads `the person, at the plan
+  approval`. A skip of a failed plan gate never accepts a draft intent: its own question at Plan does. The approval's
+  More list offers `Loop back to Intent`, and the Plan agent gets the request. The Context check asks nothing for a map
+  with no `ignore` or `gap` line, and a flagged map whose lines the approval shows whole is answered there; the Plan
+  brief no longer adds the `Blocking: Context check` line. A draft beside `tasks.md` passes `no scenarios in draft`.
+  The fresh review's digest leaves out the CLI's own lines of `intent.md`, so the accept at the approval keeps a
+  review current. A clean scripted run asks two dialogs; the new scenario `context-fold` shows the fold.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

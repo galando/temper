@@ -113,6 +113,19 @@ by none.
      its More list offers a new branch. With the mod off the commit hook gates the branch the run stands on before the
      approval too (`from_branch`), and the classic hook `scripts/guards/hold_before_approval.py` refuses a project file
      write by the tools that write a file at Intent, Plan and Design of a feature run.
+5. **The run leaves Intent by rule; the approval accepts the intent (WP13).**
+   - **The rule.** A passed Intent check with an `intent.md` and nothing open is the CLI's own `work` action, the one
+     call `state advance intent_complete plan`; the intent stays a draft. Nothing open means: a `/temper:temper` run,
+     a check that passed and was not skipped, no Blocking question open, no step back into Intent, no note the person
+     typed at Intent, and no door that walked it. Otherwise the Intent question is asked as before.
+   - **One click.** The approval's first options accept a draft intent (`intent accept --digest <H1>`, recorded as
+     `Accepted-by: the person, at the plan approval`) before the one commit and the advance; their text says so. The
+     More list offers the step back to Intent. A skip of a failed plan gate never accepts the intent: with a draft it
+     is the override alone, then the intent is accepted by its own question at Plan, and the plan question follows.
+   - **The Context check.** Under `auto` the person is asked only about a map with an `ignore` or a `gap` line; a clean
+     map stays `reviewed: pending`, Plan's own claim. A flagged map whose lines the approval shows whole is answered
+     there: the approving option records `As planned (at the approval, N flagged lines shown)`. Any other flagged map
+     keeps its own question, and `always` asks every map.
 
 ## Consequences
 
@@ -123,6 +136,8 @@ by none.
 - A default run launches no Design agent at any tier or risk. A person who wants Design asks for it with one more
   dialog (More options) at the approval, or with the Design door.
 - A plan of risk H always costs a fresh review round, two reviewers by default, before the run may go on by itself.
+- A clean default run asks two dialogs, the approval (which accepts the intent) and the commit. A request that left
+  rules open costs one more dialog for every four of them.
 - A default run asks at the approval and at the commit; a failed check asks after its one repair. A person who wants
   every gate's question picks Ask me at every stage, or sets `run.default: ask`.
 - The amended invariants: ADR-0011 (resolution 1: the unattended run is no longer Build alone), ADR-0012 (decision 4:

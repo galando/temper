@@ -39,6 +39,8 @@ const gates = (w: World, g: Record<string, 'PASS' | 'FAIL'>) => {
   w.files.set('.temper/gates.json', JSON.stringify(Object.fromEntries(Object.entries(g).map(([k, v]) => [k, { verdict: v }]))))
   w.files.delete('.temper/view.json')
 }
+// WP13: a passed Intent leaves by rule (the CLI's own work); a note the person typed at Intent keeps its question
+const NOTED = { '.temper/evidence/intent.json': JSON.stringify([{ phase: 'note', kind: 'input', claim: 'keep the reset link to one hour' }]) }
 const FINDINGS = JSON.stringify([{ claim: 'src/app.ts:12 the token never expires', severity: 'critical' }, { claim: 'src/mail.ts:4 the subject', severity: 'critical' }])
 
 function begin(on: Parameters<typeof world>[0], next: string, g: Record<string, 'PASS' | 'FAIL'> = {}, answers: Answer[] = [], extra: Record<string, string> = {}): World {
@@ -49,9 +51,19 @@ function begin(on: Parameters<typeof world>[0], next: string, g: Record<string, 
 }
 
 describe('a gate is decided in the Temper gate question, and only there', () => {
-  test('Intent: the advance is refused until the person answers Continue; then it goes through once', async ($, on) => {
+  test('Intent by rule (WP13): a clean pass is the CLI\'s own work, so its advance goes through with no answer', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)'])
+    const w = begin(on, 'intent', { intent: 'PASS' })
+    await api.session.start(START)
+    expect(decisions(w)).toEqual([])
+    expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()
+    expect(state(w).next_stage).toBe('plan')
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBe(ONLY_USER)
+  })
+
+  test('Intent: with a note there the advance is refused until the person answers Continue; then it goes through once', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)'], NOTED)
     await api.session.start(START)
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBe(ONLY_USER)
     await ask(api, w)
@@ -273,7 +285,7 @@ describe('every wait point of the flow audit', () => {
 
   test('headless (nobody answers): the run stops at the first gate', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'intent', { intent: 'PASS' })
+    const w = begin(on, 'intent', { intent: 'PASS' }, [], NOTED)
     await api.session.start({ ...START, isInteractive: false })
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBe(ONLY_USER)
@@ -294,7 +306,7 @@ describe('a stage command is a door into /temper', () => {
 
   test('a door walks the earlier gates by the same answers: Intent, then Plan, then the stage', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)', 'Ask me at every stage'])
+    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan (Recommended)', 'Ask me at every stage'], NOTED)
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()

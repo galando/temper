@@ -17,7 +17,8 @@ lenses, and records what it finds in the plan ledger (`temper evidence add --sta
 The CLI marks each launch (`temper plan fresh start`, run by the orchestrator just before it launches the reviewer, so after the
 Plan agent returned): the digest of intent.md, plan.md and tasks.md, the time, and how many rows the plan ledger held. Only rows
 appended after that count, so a row the Plan agent wrote itself never does (a ledger shorter than the mark was cleared: the
-review has not run on it). An edit of any of the three files after the launch makes the review stale (in plan.md, outside its Context Map).
+review has not run on it). An edit of any of the three files after the launch makes the review stale (in plan.md,
+outside its Context Map; in intent.md, outside the lines the CLI writes itself).
 A lens with no completion row did not review: it is `not run`, never a lens with no findings.
 
 MODE is plan.fresh-review: ask (the default: the plan question offers it, at every tier, and it applies once the person asks
@@ -30,6 +31,8 @@ import json
 import os
 import re
 import sys
+
+import approval
 
 # 9.8.4: the first round runs four lenses, `tests` among them (which existing tests the change breaks, and which task updates
 # them); every later round on the same review is a `recheck`: it checks only whether each earlier finding is fixed and reads
@@ -59,8 +62,15 @@ def without_context_map(data):
     return b"\n".join(out)
 
 
+def without_own_lines(data):
+    """intent.md without the lines the CLI writes itself (Status, Accepted-by, Completed, scripts/approval.py OWN): 9.8.5
+    (WP13) the approval accepts the intent after the review read it, and the accept changes no word the reviewer read."""
+    return b"\n".join(l for l in data.split(b"\n") if not approval.OWN.match(l.decode("utf-8", "surrogateescape")))
+
+
 def digest(spec):
-    """One digest over the three files a reviewer reads (plan.md without its Context Map); '' when tasks.md is missing."""
+    """One digest over the three files a reviewer reads (plan.md without its Context Map, intent.md without the CLI's own
+    lines); '' when tasks.md is missing."""
     if not os.path.isfile(os.path.join(spec, "tasks.md")):
         return ""
     h = hashlib.sha256()
@@ -69,7 +79,7 @@ def digest(spec):
         try:
             with open(os.path.join(spec, name), "rb") as fh:
                 data = fh.read()
-            h.update(without_context_map(data) if name == "plan.md" else data)
+            h.update(without_context_map(data) if name == "plan.md" else without_own_lines(data) if name == "intent.md" else data)
         except OSError:
             h.update(b"(absent)")
         h.update(b"\0")

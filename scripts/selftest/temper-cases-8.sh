@@ -15,6 +15,7 @@ assert_eq "next: a new run launches the Intent brief, with the feature, then rec
   "work|temper:temper-intent|1|1|usage add --stage intent|gate intent" \
   "$(nx "'|'.join([d['action'], d['agents'][0]['type'], str(int('Feature: the demo thing.' in d['agents'][0]['prompt'])), str(int('/agents/intent.md exactly' in d['agents'][0]['prompt'])), ' '.join(d['agents'][0]['after'][0].split('temper ', 1)[1].split()[:4]), d['agents'][0]['after'][1].split('temper ', 1)[1]])")"
 assert_eq "next: the run's identity is in every action" "demo|intent|0" "$(nx "d['run']['slug'] + '|' + d['run']['stage'] + '|' + str(d['run']['step'])")"
+"$TEMPER" evidence add --stage intent --phase note --claim 'keep the demo to one screen' >/dev/null 2>&1   # WP13: a note at Intent keeps its question
 gpass intent
 assert_eq "next: Intent PASS asks the Temper gate question with its four options, exactly" \
   "ask|Temper gate|Intent: the check passed. Accept the intent and continue to Plan?" \
@@ -72,11 +73,11 @@ gpass plan
 assert_eq "next: Plan PASS with no Design to follow offers ask at every stage or the run to the commit, then Fresh review first (WP11)" \
   "ask-every-stage,True|approve-run,False|fresh-review,False|more,False" \
   "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
-assert_eq "next: More options holds the rest, as its own question, Run Design first in Teach Me's place (WP14)" "Open HTML review|Run Design first|Grill Me|Save for later" \
+assert_eq "next: More options holds the rest, as its own question, Run Design first in Teach Me's place (WP14)" "Open HTML review|Run Design first|Loop back to Intent|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 cp .claude/temper.config .claude/temper.config.keep; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
 assert_eq "next: with plan.fresh-review off the Plan question has no Fresh review first" \
-  "ask-every-stage|approve-run|html-review|more|share-review|run-design|grill-me|save" \
+  "ask-every-stage|approve-run|html-review|more|run-design|grill-me|back|save" \
   "$(nx "'|'.join(o['id'] for o in d['ask']['options'])")|$(nx "'|'.join(o['id'] for o in d['ask']['more']['options'])")"
 mv .claude/temper.config.keep .claude/temper.config
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
@@ -96,7 +97,7 @@ assert_eq "next: with autonomy on, the Plan question offers the run to the commi
   "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
 assert_eq "next: Approve and build starts the run to the commit before it advances" "arm|state set run_mode autonomous" \
   "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
-assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Run Design first|Grill Me|Save for later" \
+assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Run Design first|Loop back to Intent|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
@@ -240,6 +241,7 @@ fresh
 assert_eq "view: state init writes the view of the new run" "1|demo|intent|here" \
   "$(vw "str(d['version']) + '|' + d['run']['slug'] + '|' + d['run']['stage'] + '|' + d['stages'][0]['mark']")"
 gpass intent; "$TEMPER" evidence add --stage intent --claim "c" >/dev/null 2>&1
+"$TEMPER" evidence add --stage intent --phase note --claim 'keep the demo to one screen' >/dev/null 2>&1   # WP13: a note at Intent keeps its question
 assert_eq "view: the current question is the one temper next gives" "yes" \
   "$(python3 -c "import json, subprocess, sys; v = json.load(open('.temper/view.json'))['ask']; n = json.loads(subprocess.run([sys.argv[1], 'next', '--json'], capture_output=True, text=True).stdout)['ask']; print('yes' if v == n else 'no')" "$TEMPER")"
 before="$(stat -c %Y .temper/view.json 2>/dev/null || stat -f %m .temper/view.json)"; touch -d '2001-01-01' .temper/view.json 2>/dev/null || touch -t 200101010000 .temper/view.json
@@ -522,6 +524,7 @@ setup
 # --- 9.8.4 7a: "Include what is left out" passes the whole list to Plan, never the first 100 characters ---
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set complexity simple >/dev/null 2>&1
+printf 'plan:\n  context-check: always\n' >> .claude/temper.config   # WP13: a map that fits is folded into the approval
 cat > .temper/specs/demo/plan.md <<'PEOF'
 ## Context Map
 - use: src/ (3 files)

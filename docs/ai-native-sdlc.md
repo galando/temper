@@ -26,7 +26,7 @@ as what was asked and what was built.
 
 | Playbook stage | Playbook artifact | Temper |
 |---|---|---|
-| Plan | `intent.md` | Intent stage + gate **[NEW]** → `.temper/specs/{slug}/intent.md`, accepted by a human before anything else runs (`/temper:intent` for capture-only) |
+| Plan | `intent.md` | Intent stage + gate **[NEW]** → `.temper/specs/{slug}/intent.md`, accepted by a human with the plan, before any code runs (`/temper:intent` for capture-only) |
 | Design | `spec.md` | `intent.md` (criteria + scenarios) + `plan.md` + `design.md` — see [Deliberate divergences](#deliberate-divergences) |
 | Build | `plan.md`, the diff | plan gate → `plan.md`/`tasks.md`; Build's RED→GREEN evidence |
 | Test | tests + eval results | check gate: scenario-traced tests, coverage, live verification |
@@ -41,17 +41,18 @@ as what was asked and what was built.
 turn an idea into a committed, reviewable proto-spec, and the intent to be the
 artifact the whole loop starts from. **[NEW]** Intent is now `/temper`'s own first
 *gated stage*: a cheap pass states the Problem, success criteria, and constraints —
-no exploration, no architecture — and a human accepts or corrects it at the intent
-gate **before the expensive stages spend anything**. The reasoning is the playbook's
-own: every downstream artifact is derived from the intent, so an intent correction at
-this gate costs words, and the same correction after Plan costs the plan.
+no exploration, no architecture — and what the request left open is asked **before the
+expensive stages spend anything**; the human accepts the intent with the plan, in one
+question. The reasoning is the playbook's own: every downstream artifact is derived
+from the intent, so an intent correction at this gate costs words, and the same
+correction after Plan costs the plan.
 `temper gate intent` is the deterministic floor (Problem stated, ≥1 criterion, Status
 header), and the commit gate requires an intent verdict whenever the artifact exists.
 `/temper:intent` remains the capture-only entry (an idea, a ticket, a bands breach —
 possibly from someone who will never run the build); its draft is exactly what the
 pipeline's intent gate later presents. The lifecycle has named owners: `draft`
-(capture or the Intent stage) → `accepted` (the human's Continue at the intent gate,
-recorded as `Accepted-by:` and committed) → `completed` (the commit step).
+(capture or the Intent stage) → `accepted` (the human's approval of the plan, which accepts the
+intent, recorded as `Accepted-by:` and committed) → `completed` (the commit step).
 
 ### Stage 2 — Design
 
@@ -75,8 +76,8 @@ beyond the playbook: the plan isn't just reviewed before code, `temper gate plan
 computes whether its artifacts exist, every criterion has a scenario, and
 medium/complex changes documented a blast radius. Grill Me / walkthrough / HTML
 review are the playbook's "interrogate the plan" made concrete. **[NEW]** Each
-acceptance is a recorded, committed event: intent acceptance at the intent gate
-(`Accepted-by:`), then the intent and the plan approved together at the plan gate (one
+acceptance is a recorded, committed event: the intent and the plan approved together in one
+question at the plan gate (`Accepted-by:` on the intent, one
 committed `docs(plan)` commit on the run's branch, which the approval makes; before it a
 run makes no branch and no commit, and the approving call carries the digests of the
 intent and the plan as shown), so the diff has a committed baseline from the moment

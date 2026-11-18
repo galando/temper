@@ -47,7 +47,7 @@ Short description (one sentence):
 
 Long description:
 
-> Temper adds an approval gate to AI coding. You approve the intent, then the plan. Build starts
+> Temper adds an approval gate to AI coding. You approve the intent and the plan in one question. Build starts
 > with a failing test. Review and Check follow. A small CLI computes every gate verdict from an
 > evidence ledger, and a red gate blocks git commit. On Claude Code 2.1.287 or later a mod refuses
 > writes that do not belong to the current stage, draws a stage bar, and keeps a report of the run.

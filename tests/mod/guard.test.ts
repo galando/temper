@@ -133,7 +133,7 @@ describe('what only the person may cause, at the step the run is at', () => {
   test('leaving Intent and Plan needs the person, even after a passed check: the calls of the answer, word for word', () => {
     expect(bash(ctx('intent'), adv('intent', 'plan'))).toEqual({ deny: ONLY_USER })
     expect(bash(ctx('plan'), adv('plan', 'build'))).toEqual({ deny: ONLY_USER })
-    expect('allow' in bash(ctx('intent', { allowed: optionCalls('intent-pass', 'Continue to Plan (Recommended)') }), adv('intent', 'plan'))).toBe(true)
+    expect('allow' in bash(ctx('intent', { allowed: optionCalls('intent-ask', 'Continue to Plan (Recommended)') }), adv('intent', 'plan'))).toBe(true)
     // WP12: the approving advance carries the digests the question showed; the click lets that call through, word for word
     const shown = shownOf('plan-pass', 'Ask me at every stage')
     expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'build') + shown)).toBe(true)

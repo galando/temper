@@ -12,7 +12,6 @@ import adhoc_ops
 import approval
 import decisions
 import fresh_review
-import intent_parse
 import run_env
 
 from flow_base import (BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, OPTION_IDS, OPTION_KINDS, choice_id, goes_on, on_model,
@@ -232,23 +231,6 @@ class AskPart:
         """Accept the intent (when there is one), advance. WP12 (rule 1): no branch and no commit before the approval."""
         return ([self.c("intent accept")] if self.r.intent else []) + [self.c("state advance intent_complete plan")]
 
-    def accept_draft(self):
-        """WP12: `plan_complete` is refused while intent.md is a draft. A run saved at Plan by 9.8.4 or by the base can
-        hold one (the saved states of its fixtures left Intent with no accept), so the approving options accept it
-        first, bound to the intent the question shows; a skip of the plan gate never does."""
-        r = self.r
-        if not r.spec or intent_parse.status(r.intent) != "draft":
-            return []
-        d = approval.digest(os.path.join(r.spec, "intent.md"))
-        return [self.c("intent accept" + (" --digest %s" % d if d else ""))]
-
-    def leave_plan(self, nxt=None):
-        """The approval: switch to the run's branch, commit the spec folder there (the intent and the plan), advance with
-        the digests of what the question showed."""
-        r, nxt = self.r, nxt or self.r.next_of("plan") or "build"
-        return self.to_branch() + self.spec_commit("docs(plan): approve the intent and the plan of %s" % r.slug) + \
-            [self.c("state advance plan_complete %s%s" % (nxt, self.shown()))]
-
     def approval(self, go, stage, lead=""):
         """WP11 (ADR 0019 decision 3): the first options of the approval (the plan question, or the Design question when
         the person asked for Design): approve-run lets the run go on to the commit, ask-every-stage keeps every gate's
@@ -321,14 +303,16 @@ class AskPart:
 
         if stage == "intent":
             if passed:
-                return self.question(GATE_HEADER, "Intent: %s. Accept the intent and continue to Plan?" % state_of, stage=stage, qid="intent.accept", options=[
-                    self.opt("Continue to Plan (Recommended)", "Accept intent.md and start Plan.", move="approve", calls=self.leave_intent(),
-                             oid="continue"),
-                    self.skill("grill-me", "Grill Me", "Stress test the intent first."),
-                    self.skill("teach-me", "Teach Me", "Walk through the intent."), self.save()])
+                return self.intent_question("Intent: %s. Accept the intent and continue to Plan?" % state_of, stage)
             return self.question(GATE_HEADER, "Intent: the check failed (%s). Correct intent.md, or skip the check?" % why, stage=stage, qid="intent.fail", options=[
                 override_opt(self.leave_intent()[0:1] + self.leave_intent()[1:]),
                 self.skill("grill-me", "Grill Me", "Stress test the intent first."), self.save()])
+
+        if stage == "plan" and skipped and self.accept_draft():
+            # WP13 (red-safety B1): a skip of the plan check never accepts a draft intent: it is accepted here, by its own
+            # question, bound to the text shown; then the plan question follows (with no run that goes on by itself)
+            return self.intent_question("Plan: skipped by you. The intent is still a draft, and the skip does not accept it. "
+                                        "Accept the intent as it stands?", stage)
 
         if stage == "plan":
             html = self.opt("Open HTML review", "Open the plan as a page to comment on.",
@@ -341,8 +325,16 @@ class AskPart:
             # The fresh reader's paraphrase goes in the question: the person compares it with the intent (a wrong one is a finding).
             said = " A reader with no context took it as: %s." % fr["paraphrase"][:300].rstrip(".") if fr["paraphrase"] and not skipped else ""
             if passed:
-                go = self.accept_draft() + self.leave_plan()
+                # WP13: the approval accepts a draft intent (leave_plan), and answers a folded Context check
+                cm = r.context()
+                fold = self.fold_calls(cm)
+                go = self.leave_plan(fold=fold)
                 nl = LABEL.get(r.next_of("plan") or "build")
+                accepts = bool(self.accept_draft())
+                lead = "Accept the intent. " if accepts else ""
+                if fold:
+                    said += " %s Your approval says that is right." % self.context_text(cm)[0].rsplit(" Is that right?", 1)[0]
+                include = [o for o in [self.include_opt(cm) if fold else None] if o]
                 # WP12: the run's branch exists from an earlier run: the approval continues on it, or the run takes a new one
                 clash = self.branch_clash()
                 said += (" The branch %s exists from an earlier run; its last commit is %s. The approval continues on it." % (
@@ -352,12 +344,14 @@ class AskPart:
                                  calls=[self.c("state set branch %s" % shlex.quote(clash["new"]))])] if clash else []
 
                 def more(rest):
-                    # four options a question: the new branch takes the place of a review or skill option
-                    out = newb + rest
+                    # four options a question: the new branch takes the place of a review or skill option. WP13: the step
+                    # back to Intent, and with a folded Context check what it leaves out, go before Save for later
+                    out = newb + rest[:-1] + back_opt() + include + rest[-1:]
                     for drop in ("share-review", "teach-me", "grill-me", "html-review"):
                         out = out if len(out) <= 4 else [o for o in out if o.get("id") != drop]
                     return out
-                text = "Plan: %s.%s%s Approve the plan and continue to %s?" % (state_of, said, self.sensitive_line(), nl)
+                ask_text = "Accept the intent, approve the plan and continue to %s?" if accepts else "Approve the plan and continue to %s?"
+                text = "Plan: %s.%s%s %s" % (state_of, said, self.sensitive_line(), ask_text % nl)
                 # 9.8.0: the fresh review's open findings below high pass the gate, and are the person's call: the question
                 # names them and offers Revise the plan (9.8.4: never recommended; they go to the builder as notes).
                 lesser = [f for f in fr["findings"] if f["state"] not in ("resolved", "accepted")] if not skipped else []
@@ -366,8 +360,8 @@ class AskPart:
                     shown = "; ".join("#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:120]) for f in lesser[:3])
                     # 9.8.4: only a high finding blocks; a medium or low one goes to the builder as a note (in the task's
                     # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
-                    text = "Plan: %s.%s%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. Approve the plan and continue to %s?" % (
-                        state_of, said, self.sensitive_line(), len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", nl)
+                    text = "Plan: %s.%s%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. %s" % (
+                        state_of, said, self.sensitive_line(), len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", ask_text % nl)
                     revise = self.revise_opt("The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                              "fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))
                 # The approval (WP11): here when no Design follows, at the Design question when it does.
@@ -376,14 +370,14 @@ class AskPart:
                     # list, so every option stays within two dialogs (a More list of five made a third level, M2 of PR 115).
                     design = self.opt("Run Design first", "Approve the plan; Design runs next, and its question is the last "
                                       "one before Build.", move="approve", oid="run-design",
-                                      calls=[self.c("state set want_design true")] + self.accept_draft() + self.leave_plan("design"))
-                    first = self.approval(go, "plan")
+                                      calls=[self.c("state set want_design true")] + self.leave_plan("design", fold=fold))
+                    first = self.approval(go, "plan", lead)
                     if revise is not None:   # findings below high: revising is offered, after the ways on
                         return self.with_more(GATE_HEADER, text, stage, first + [revise], more([html, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
                         return self.with_more(GATE_HEADER, text, stage, first + [self.fresh_offer()], more([html, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
                     return self.with_more(GATE_HEADER, text, stage, first + [html], more([share, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
-                cont = self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go, oid="ask-every-stage")
+                cont = self.opt("Continue to %s (Recommended)" % nl, "%sApprove the plan, commit it, and start %s." % (lead, nl), move="approve", calls=go, oid="ask-every-stage")
                 if revise is not None:
                     return self.with_more(GATE_HEADER, text, stage, [cont, revise, html], more([share, grill, teach, self.save()]), "Plan: more options.", qid="plan.approve")
                 if fr["offer"]:
@@ -395,7 +389,7 @@ class AskPart:
             if any(x.get("name") == "tasks agree with decisions" for x in rows):
                 # WP14 (ADR 0019 decision 2): an answer is not the choice the plan assumed, and the tasks have not changed
                 # since. Plan writes them under it; or the person says no task names the old rule (a skip with that reason).
-                ov = self.set_reasons(override_opt(self.leave_plan()), ["The tasks already agree"] + override_reasons)
+                ov = self.set_reasons(override_opt(self.skip_then()), ["The tasks already agree"] + override_reasons)
                 return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Revise the plan so the tasks follow your answers?" % (
                     why, said), stage=stage, qid="plan.fail", options=[self.set_rec(self.revise_opt(
                         "The Plan agent writes the tasks under your answers; then the plan is checked again.", self.answers_reason() or why), True),
@@ -411,10 +405,10 @@ class AskPart:
                 # temper doctor --propose made from the project's own facts, runs the preflight again and checks the plan
                 text = ("Plan: the check failed (%s).%s The project's own files say what it needs: add the proposed "
                         "setup block (%s) and check again?" % (why, said, self.shown_block))
-                opts = again + [env_opt] + back_opt() + [override_opt(self.leave_plan()), self.save()]
+                opts = again + [env_opt] + back_opt() + [override_opt(self.skip_then()), self.save()]
             else:
                 text = "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said)
-                opts = again + back_opt() + [override_opt(self.leave_plan()), grill, self.save()]
+                opts = again + back_opt() + [override_opt(self.skip_then()), grill, self.save()]
             return self.with_more(GATE_HEADER, text, stage, opts[:3], opts[3:], "Plan: more options.", qid="plan.fail")
 
         if stage == "design":
@@ -795,7 +789,7 @@ class AskPart:
         limit = " The fresh review ran %d of %d rounds (plan.fresh-review-rounds): accept, skip or step back." % (fr["rounds"], fr["cap"]) if fr["capped"] else ""
         text = "Plan: the check failed (%s).%s%s %s?" % (why, said, limit, "Revise the plan" if opens and not fr["capped"] else
                                                        "Run the fresh review again" if first and not opens else "Accept a finding, or skip the check" if opens else "Fix the plan, or skip the check")
-        q = self.with_more(GATE_HEADER, text, "plan", first[:3], first[3:] + back_opt() + [override_opt(self.leave_plan()), grill, self.save()],
+        q = self.with_more(GATE_HEADER, text, "plan", first[:3], first[3:] + back_opt() + [override_opt(self.skip_then()), grill, self.save()],
                            "Plan: more options.", qid="plan.fail")
         if opens:
             q["accept"] = self.accept_question(opens, stage="plan", qid="plan.fail.accept")

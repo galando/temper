@@ -305,11 +305,21 @@ class Run:
         """The Context Map of plan.md as `temper next` and the view carry it, or None."""
         return plan_ops.map_json(self.spec) if self.spec and os.path.isfile(os.path.join(self.spec, "plan.md")) else None
 
-    def context_choices(self):
-        """The choices of the Context check, from the Blocking line Plan wrote into intent.md (three at most)."""
-        m = re.search(r"^\s*[-*]\s+Blocking:\s*Context check:.*?choices:\s*(.+?)\.?\s*$", self.intent, re.M | re.I)
-        got = [c.strip().rstrip(".") for c in m.group(1).split("|")] if m else []
-        return [c for c in got if c][:3] or ["Right direction", "Narrow the focus", "Fix the sources"]
+    def context_mode(self):
+        """plan.context-check as the plan gate reads it: auto, always or off (an unknown value is auto)."""
+        return plan_ops.norm_mode(self.cfg("plan.context-check", "auto"))
+
+    def context_folded(self, cm=None):
+        """9.8.5 (WP13): the map is answered at the approval, not by a question of its own (scripts/plan_ops.py folds)."""
+        cm = cm if cm is not None else self.context()
+        return bool(cm) and plan_ops.folds(cm["rows"], cm["reviewed"], self.context_mode())
+
+    def context_asked(self, cm=None):
+        """9.8.5 (WP13): the Context check is its own question: the map is not reviewed, the mode asks about it, and it is
+        not folded into the approval."""
+        cm = cm if cm is not None else self.context()
+        return (bool(cm) and cm["reviewed"] not in ("human", "auto") and plan_ops.asks(cm["rows"], self.context_mode())
+                and not self.context_folded(cm))
 
     def findings(self):
         rows = read_json(os.path.join(TEMPER, "evidence", "review.json"), [])

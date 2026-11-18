@@ -372,6 +372,7 @@ assert_eq "the question is now Deferred, carried forward, its text kept" "yes" \
 
 setup; good_draft
 printf '## Scenarios (BDD)\nScenario: premature\n' >> .temper/specs/demo/intent.md
+rm -f .temper/specs/demo/tasks.md   # WP13: before Plan wrote tasks.md a Scenario: line is the draft's own
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "a Scenario: line in a draft FAILs no scenarios in draft, naming the line" "yes" \
   "$(echo "$OUT" | grep -q 'no scenarios in draft' && echo "$OUT" | grep -qE 'Scenario: line\(s\) at [0-9]+' && echo yes || echo no)"

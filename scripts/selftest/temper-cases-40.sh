@@ -203,7 +203,8 @@ print("|".join(out))
 PY
 )"
 
-fresh; gpass intent
+fresh; "$TEMPER" evidence add --stage intent --phase note --claim 'keep the demo to one screen' >/dev/null 2>&1   # WP13: a note at Intent keeps its question
+gpass intent
 assert_eq "ids: temper go passes id, kind, move and recommended" "intent.accept|gate|continue|approve|True|save|False" \
   "$(_ev "a = d['ask']; o = a['options']; s = [x for x in o if x['id'] == 'save'][0]; '|'.join(str(x) for x in (a['id'], a['kind'], o[0]['id'], o[0]['move'], o[0]['recommended'], s['id'], 'recommended' in s))" \
     "$("$TEMPER" go 2>/dev/null)")"
