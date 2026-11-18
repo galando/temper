@@ -15,7 +15,7 @@
 // found as `XFAIL world <scenario> [<mode>]: <line>` and returns; once WP12 has taken that line off, a finding fails the
 // scenario.
 import { picture, recordOf } from './faketools'
-import type { Picture, WorldRecord } from './faketools'
+import type { AgentLaunch, Picture, Pick, WorldRecord } from './faketools'
 import { listed, loadList } from './xfail'
 import type { Entry } from './xfail'
 import type { Json, Person, World } from './world'
@@ -149,10 +149,12 @@ export function worldFindings(rec: WorldRecord): string[] {
       found.push('D105 the accepted findings changed after the approval, and no answer of the person accepted one')
     if (last.intent !== ap.intent) found.push('D105 intent.md does not have the digest recorded at the approval')
     // a planner launched between two approvals is approved by the second only when the person picked a step back (move
-    // `back`) between them; any other planner launch after an approval is a finding (WP12)
+    // `back`) after the first approval and before the launch; any other planner launch after an approval is a finding
+    // (WP12; a step back that comes after the launch did not launch it)
     const marks = rec.picks.map((p, i) => (APPROVALS.includes(p.question) && APPROVING_MOVES.includes(p.move) ? i : -1)).filter(i => i >= 0)
-    const stepped = (k: number): boolean => k < marks.length && rec.picks.slice(marks[k - 1]! + 1, marks[k]).some(p => p.move === 'back')
-    const planners = rec.agents.filter(a => a.approvals > 0 && a.type === PLANNER && !stepped(a.approvals)).length
+    const stepped = (a: AgentLaunch): boolean =>
+      a.approvals < marks.length && rec.picks.slice(marks[a.approvals - 1]! + 1, a.picks).some(p => p.move === 'back')
+    const planners = rec.agents.filter(a => a.approvals > 0 && a.type === PLANNER && !stepped(a)).length
     if (planners > 0) found.push(`D105 the agent log holds ${planners} planner launch(es) after the approval`)
     const message = finalMessage(rec.lastAsk)
     if (message !== '' && last.subjects.includes(message)) found.push(`D105 a commit carries the final commit message before the commit question: ${message}`)
@@ -170,4 +172,51 @@ export function worldCheck(w: World, list: Entry[] = loadList()): void {
     return
   }
   throw new Error(found.join('\n'))
+}
+
+// ---- the check of this file, on made up input ---------------------------------------------------------------------
+//
+//   bun scripts/e2e/persons.ts --check   asserts the planner clause of the world check on made up records, with no run
+//                                        of the CLI; exit 0 or 1
+
+function check(): number {
+  let fails = 0
+  const eq = (name: string, got: unknown, want: unknown): void => {
+    const ok = JSON.stringify(got) === JSON.stringify(want)
+    if (!ok) fails++
+    const why = ok ? '' : ` (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`
+    console.log(`${ok ? 'PASS' : 'FAIL'}: persons ${name}${why}`)
+  }
+  const shot: Picture = {
+    at: 'start', branch: 'main', branches: ['main'], commits: 1, files: {}, config: '', overrides: '', commandLines: [],
+    accepted: [], intent: '', originRefs: [], ghLog: '', subjects: [], spec: '',
+  }
+  const arm = { question: 'plan.approve', option: 'approve-run', move: 'arm' }
+  const back = { question: 'build.fail', option: 'back-to-plan', move: 'back' }
+  const retry = { question: 'build.fail', option: 'retry', move: 'retry' }
+  // picks: how many answers the person had given at the launch; approvals: how many of them approved
+  const planner = (approvals: number, picks: number): AgentLaunch => ({ type: PLANNER, approvals, picks })
+  const run = (picks: Pick[], agents: AgentLaunch[]): string[] =>
+    worldFindings({
+      origin: '', ghLog: '', start: shot, approval: shot, first: shot, last: shot, lastAsk: null,
+      approvals: picks.filter(p => p.move === 'arm').length, picks, agents,
+    }).filter(l => l.includes('planner'))
+  const found = (n: number): string[] => [`D105 the agent log holds ${n} planner launch(es) after the approval`]
+  eq('D105 planner: the planner the step back launched, before the approval asked again, is excused',
+    run([arm, back, arm], [planner(0, 0), planner(1, 2)]), [])
+  eq('D105 planner: a planner launched by rule before a later step back is a finding (F2 of phase 4a)',
+    run([arm, back, arm], [planner(0, 0), planner(1, 1)]), found(1))
+  eq('D105 planner: a planner launched between two approvals with no step back is a finding',
+    run([arm, retry, arm], [planner(0, 0), planner(1, 2)]), found(1))
+  eq('D105 planner: a planner launched after the last approval is a finding, a step back before it or not',
+    run([arm, back, arm], [planner(0, 0), planner(1, 2), planner(2, 3)]), found(1))
+  eq('D105 planner: the planner before the first approval is no finding', run([arm], [planner(0, 0)]), [])
+  console.log(`persons --check: ${fails === 0 ? 'PASS' : `FAIL (${fails})`}`)
+  return fails === 0 ? 0 : 1
+}
+
+if (import.meta.main) {
+  if (process.argv[2] === '--check') process.exit(check())
+  console.log('usage: bun scripts/e2e/persons.ts --check')
+  process.exit(2)
 }
