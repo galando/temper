@@ -95,6 +95,15 @@ def measure_question_ids(doc):
     return 0
 
 
+def measure_handback_kinds(doc):
+    """entries of NEEDS in scripts/flow_base.py but the three the run driver does itself (more, accept, cancel)"""
+    for node in ast.parse(text("scripts/flow_base.py")).body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "NEEDS" for t in node.targets):
+            elts = node.value.elts if isinstance(node.value, (ast.Set, ast.List, ast.Tuple)) else []
+            return len([e for e in elts if getattr(e, "value", None) not in ("more", "accept", "cancel")])
+    return 0
+
+
 def measure_gate_rows(doc):
     """distinct _req names of the CLI, distinct row( names of the Python scripts, name lines of gate_rows.py"""
     req = set(re.findall(r'_req "([^"$]+)"', text("scripts/temper")))

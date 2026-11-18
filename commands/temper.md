@@ -21,11 +21,9 @@ gate, an option or a next stage yourself.
 
 
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
-With the mod on, the mod carries a run it can by itself (the run driver, 9.8.0: `docs/mod.md`) and hands it here for
-what needs you: `next` (go on with the loop below), `discuss <the person's words>` (a typed answer) or `chose <label>`
-(an option the person chose that needs you: see Arguments). The mod leaves the person's command as typed and gives
-these words in a note after it, `Temper hand back from the mod's run driver: ... : <words>`: when that note is there,
-take its words as the arguments. Either way the run is where the CLI says it is.
+With the mod on, the mod carries the run (the run driver: `docs/mod.md`) and hands one step here, one the person chose:
+the person's command stays as typed, with a note after it that ends `step <kind> <option id>` (see Arguments). Either
+way the run is where the CLI says it is.
 
 ## Arguments
 
@@ -39,8 +37,7 @@ feature description.
 | `help` | List these words with one line each. |
 | `approve`, `next`, `back`, `override`, `accept`, `drift` | A wish, never a decision: run the loop below. When it reaches a question, ask it as given; the person chooses there. |
 | `pr` | Write a pull request description from `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` (the verdicts), `.temper/overrides.json` (each skip with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review` (each accepted finding with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage build` (the drift answers) and the `loops` of `.temper/view.json`. |
-| `discuss <text>` | The person's message at the current question: as "Typed text" says (a question is answered, a change request goes to the stage's agent). |
-| `chose <label>` | From the mod's run driver: the person already chose the option `<label>` of the question `temper go` gives now. Do not ask it again: carry that option out as the answer it is (its calls, its `steps`, its `do`), then go on with the loop. |
+| `step <kind> <id>` | From the mod's run driver: the person chose the option `<id>` of the question `temper go` gives now (or, for `pull-request`, the steps of its `work` action). Do not ask it again: carry out that one step (the option's calls, `steps` and `do`), then end the turn with the line `Type /temper:temper to go on.` |
 | `mode`, `enforcement`, `pane` | These belong to the Temper mod. Without it, say they are not available here. |
 
 ## Start
@@ -108,7 +105,8 @@ whatever its exit code. When it prints `action: error`, say its `say` in one lin
   - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
     text there as it is, with each `'` in it written as `'\''`, so a backquote or a `$` in it stays text. Run `git commit` in a Bash call
     of its own, after the `git add` call.
-- **`ask`**: when it has `blocking`, ask those first (see "Every question"). Then ask `ask.question`
+- **`ask`**: when it has `card`, print its rows as they are in one code block. When it has `blocking`, ask those
+  first (see "Every question"). Then ask `ask.question`
   with AskUserQuestion exactly as given, and do what the chosen option of `ask.options` says: run its
   `calls`, then its `steps`, then `temper go` (the calls and `temper go` in one Bash call when the
   calls are only `temper` calls); or, for an option with `do`, do what it says, then ask the same
@@ -153,15 +151,11 @@ exit code, so the action goes on: run the calls after it, then `temper go`.
   ask its `reason_question` exactly as given. Any answer to it but "Cancel" is the reason, typed text
   included; "Cancel" asks the first question again. Put the reason in place of `{reason}`, as "Filling a
   placeholder" says.
-- **Typed text.** An answer typed in "Other" (not to a reason question), or a message the person
-  writes at a question, is a change request or a question. Record it first, so the next agent reads it:
-  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage {the run's stage} --phase note --kind input --claim '{the text}'`.
-  A question: answer it, and ask the same question again. A change request: you never make it yourself (during a run
-  this conversation writes no file; the mod refuses it). At Intent, Plan, Design or Build, run
-  `${CLAUDE_PLUGIN_ROOT}/scripts/temper state redo {the run's stage} --reason '{the text}'` and `temper go`: the stage's
-  agent runs again with the note. At Review, Check or Commit, ask the same question again: its options say how a change
-  is made there (a step back to Build, or "Make a small change"). A note meant for one Build task begins with `Task N:`,
-  for one group with `Group G<n>:`.
+- **Typed text.** An answer typed in "Other" (not to a reason or name question) is a change request: run the
+  question's `typed` calls with the text in place of `{text}` (the note the next agent reads, and where the stage writes
+  the work, the stage run again with it), then `temper go`. You never make the change yourself. A note meant for one
+  Build task begins with `Task N:`, for one group with `Group G<n>:`. A question with no `typed` takes no typed text:
+  ask it again.
 - **Blocking questions** (the `blocking` list): ask the `question` of each, exactly as given (the CLI writes three at most
   of its ready answers, the first recommended, then "Carry forward"), in one AskUserQuestion call (four questions at most
   per call; the rest in a second call). For each answer run its `answer` call with the answer in
@@ -180,14 +174,6 @@ exit code, so the action goes on: run the calls after it, then `temper go`.
   handling directly, no pipeline" in one line, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`
   at once (no run is active after it), then make the change, run the project's tests, and commit normally. If it turns out not to be
   trivial, stop and start `/temper:temper` again.
-- **A panel with a `DRIFT` section** (Build's fix pass): before anything else, ask the person about
-  each row, one AskUserQuestion per row: header `Scope drift`, a question whose first line is
-  `Outside the plan: {path}`, then `Why: {why}` and `Change: {change}` lines, and the options
-  "Add to plan", "Revert" and "Allow once". Record each answer with
-  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim 'drift {path}: {choice}: {why}'`
-  (the CLI and the mod read the answer there), then launch the same
-  agent again with one `Drift decision: {path}: {add|revert|allow-once}` line per answer. A drift is
-  never answered for the person, in an armed run either. A typed answer is a change request.
 - **An agent that fails or blocks**: show what it returned and ask the current question again.
 
 ## Entering at a stage (the stage commands)

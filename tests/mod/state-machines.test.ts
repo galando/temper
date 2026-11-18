@@ -6,7 +6,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { enforces, guardsRun, idleSnapshot } from '../../hooks/temper-mod/adapter'
 import type { Snapshot } from '../../hooks/temper-mod/adapter'
-import { ANSWER_LOOKS, STOPPED, drive, lookAtAgents } from '../../hooks/temper-mod/core/driver'
+import { ANSWER_LOOKS, STOPPED, drive, lookAtAgents, saved } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 import { adhocOpen, evaluate, trivialExit } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RunFacts } from '../../hooks/temper-mod/core/rules'
@@ -275,19 +275,19 @@ describe('C6: the person\'s interrupt ends the drive STOPPED, whichever step saw
 })
 
 describe('C7: every look of a wait counts toward its bound', () => {
-  test('the same after calls asked for again changed nothing: they run once, and the run is handed on', async () => {
+  test('the same after calls asked for again changed nothing: they run once, and the run stops saved (WP16)', async () => {
     const after = [`${CLI} task gate 3 --model opus --ms {ms}`]
     const wait: GoOut = { action: 'wait', stage: 'build', tasks: [{ after }] }
     const { p, log } = port([wait, wait, wait, wait])
     const end = await drive(p, CLI, null)
-    expect(end).toEqual({ kind: 'handback', args: 'next', why: 'the after calls of the waiting tasks changed nothing' })
+    expect(end).toEqual(saved('the after calls of the waiting tasks changed nothing'))
     expect(log.filter(l => l.includes('task gate 3'))).toEqual([`${CLI} task gate 3 --model opus --ms none`])
   })
 
   test('a wait whose after calls change every time is still bounded by the waits', async () => {
     const waits: GoOut[] = Array.from({ length: 200 }, (_, i) => ({ action: 'wait', stage: 'build', tasks: [{ after: [`${CLI} task gate ${i} --ms {ms}`] }] }))
     const { p, log } = port(waits)
-    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'the run waited too long' })
+    expect(await drive(p, CLI, null)).toEqual(saved('the run waited on its tasks for more than 120 looks'))
     expect(log.filter(l => l.includes('task gate')).length).toBe(120)
   })
 })

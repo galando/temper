@@ -497,6 +497,71 @@ d = json.loads(open(sys.argv[1]).read().split("= ", 1)[1])
 print(d["armed-build-pass"]["next"]["calls"][0].split("temper ", 1)[1])
 PY
 )"
+# WP16: what the fixture views hold of the closed list. _fx8 <python code>: runs the code with `views`, every view of
+# both generated modules by name, `walk(x)`, every dict inside x, and prints r.
+_fx8() {
+  python3 -B - "$REPO_ROOT" "$1" <<'PY'
+import json, re, sys
+root = sys.argv[1]
+views = {}
+for f in ("view-fixtures.ts", "view-fixtures-2.ts"):
+    text = open("%s/scripts/selftest/%s" % (root, f)).read()
+    views.update(json.loads(text.split("= ", 1)[1].strip().rstrip(";")))
+def walk(x):
+    if isinstance(x, dict):
+        yield x
+        for v in x.values():
+            yield from walk(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from walk(v)
+CLI = "/plugin/scripts/temper "
+SEVEN = ["config-suggestions", "depth-review", "html-review", "pipeline-fix", "pull-request", "small-change", "talk"]
+STAY = ["accept", "cancel", "more"]
+r = None
+exec(sys.argv[2])
+print(r)
+PY
+}
+assert_eq "view fixtures: no call of the flow is a foreign program: every string of every calls list starts with the CLI's path (WP16)" "0 []" \
+  "$(_fx8 "bad = ['%s: %s' % (n, str(c)[:60]) for n, v in sorted(views.items()) for d in walk(v) if isinstance(d.get('calls'), list) for c in d['calls'] if not str(c).startswith(CLI)]
+r = '%d %s' % (len(bad), bad[:2])")"
+assert_eq "view fixtures: every needs kind is on the closed list, and no option carries a do text without a needs (WP16)" \
+  "config-suggestions,depth-review,html-review,pipeline-fix,pull-request,small-change,talk|0 []|0 []|yes" \
+  "$(_fx8 "sys.path.insert(0, root + '/scripts')
+try:
+    from flow_base import NEEDS
+    kinds = ','.join(sorted(set(NEEDS) - set(STAY))) if set(NEEDS) <= set(SEVEN + STAY) else 'NEEDS holds %s' % sorted(NEEDS)
+except ImportError:
+    kinds = 'no NEEDS in scripts/flow_base.py'
+odd = ['%s: %s' % (n, d.get('needs')) for n, v in sorted(views.items()) for d in walk(v) if 'needs' in d and d.get('needs') not in SEVEN + STAY]
+bare = ['%s: %s' % (n, d.get('id')) for n, v in sorted(views.items()) for d in walk(v) if d.get('do') and not d.get('needs')]
+seen = any('needs' in d for v in views.values() for d in walk(v))
+r = '%s|%d %s|%d %s|%s' % (kinds, len(odd), odd[:2], len(bare), bare[:2], 'yes' if seen else 'no option carries a needs')")"
+assert_eq "view fixtures: a gate question carries typed calls, with the state redo call only at Intent, Plan, Design, Build and Fix (WP16)" "0 []|yes" \
+  "$(_fx8 "FIVE = ('intent', 'plan', 'design', 'build', 'fix')
+bad, redone = [], 0
+for n, v in sorted(views.items()):
+    a = v.get('ask') or {}
+    if a.get('kind') != 'gate':
+        continue
+    stage = a.get('stage') or (v.get('run') or {}).get('stage') or ''
+    t = a.get('typed')
+    calls = t.get('calls') if isinstance(t, dict) else None
+    if not calls:
+        bad.append('%s: no typed calls' % n)
+        continue
+    note = any(re.search(r\" evidence add --stage \\S+ --phase note --kind input --claim '\\{text\\}'\$\", c) for c in calls)
+    redo = [c for c in calls if ' state redo ' in c]
+    again = t.get('again') is True
+    redone += 1 if redo else 0
+    if not note:
+        bad.append('%s: no note call' % n)
+    if redo and not all(re.search(r\" state redo %s --reason '\\{text\\}'\$\" % stage, c) for c in redo):
+        bad.append('%s: %s' % (n, redo[0][-60:]))
+    if bool(redo) != (stage in FIVE and not again):
+        bad.append('%s: stage %s, again %s, redo %s' % (n, stage, again, bool(redo)))
+r = '%d %s|%s' % (len(bad), bad[:2], 'yes' if redone else 'no gate question holds a redo')")"
 # --- the end of run report page (scripts/run_report.py) ---
 fresh; printf '# Intent: </style><script>x</script>\n' > .temper/specs/demo/intent.md
 "$TEMPER" evidence add --stage review --claim "src/a.ts:3 a token </td> leaks" --severity high --confidence 0.85 >/dev/null 2>&1

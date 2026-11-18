@@ -2227,6 +2227,7 @@ cmd_group_continue() {
   local v; v="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" gate-verdict "$GROUPS_FILE" "$g")"
   [[ "$v" == "PASS" ]] || { echo "FAIL: group $g has not passed its gate (temper group gate $g)" >&2; return 1; }
   _groups_mutate group-confirm "$g" "$(_now)" || return 1
+  _rule_log advance build "group $g passed: it continues"   # WP16: a rule's move, in the record of the commit card
   echo "OK: group $g continues"
 }
 
@@ -2242,7 +2243,8 @@ cmd_group() {
          local rc=$?; _lock_release
          [[ $rc -eq 0 && -z "$(_json_get_path "$STATE_FILE" parked "")" && "$*" != *--commit* ]] && _rule_log "group fix" build "group ${1:-} fixed on its merged work"
          return $rc ;;   # 9.8.4: one fix agent on a failed group's merged tree
-    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|fix> ..." >&2; return 1 ;;
+    take-out|feedback) python3 -E -s "$SCRIPTS_DIR/cli_words.py" "$GROUPS_FILE" "$sub" "$@" ;;   # WP16
+    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|fix|take-out|feedback> ..." >&2; return 1 ;;
   esac
 }
 
@@ -4072,19 +4074,16 @@ main() {
     check) cmd_check "$@" ;;
     acceptance) cmd_acceptance "$@" ;;
     go) python3 -E -s "$SCRIPTS_DIR/go.py" "$PLUGIN_ROOT/scripts/temper" "$REPO_ROOT" "$@" ;;
-    spec) case "${1:-}" in   # 9.8.0: the git steps of leaving a stage (scripts/spec_ops.py)
-            branch) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" branch "$(cmd_state_get branch)") ;;
-            commit|deviations) local _sp; _sp="$(_spec_path "")"; [[ -n "$_sp" ]] || { echo "FAIL: no active run" >&2; return 1; }
-                    (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" "$1" "$_sp" "${@:2}") ;;
-            *) echo "FAIL: usage: temper spec branch | deviations | commit '<message>' [-- FILE...]" >&2; false ;;
-          esac ;;
+    spec) local _sp; _sp="$(_spec_path "")"   # 9.8.0: the git steps of leaving a stage (scripts/spec_ops.py)
+          (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/spec_ops.py" "${1:-}" "$(cmd_state_get branch)" "$_sp" "${@:2}") ;;
     brief) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/brief.py" "$REPO_ROOT" .temper/brief.md "$@") ;;   # 9.8.0: the project brief
     output) python3 -E -s "$SCRIPTS_DIR/output_ops.py" "$TEMPER_DIR" "$@" ;;   # 9.8.4: the last output of a gate or a group gate
+    card) _view_write; python3 -E -s "$SCRIPTS_DIR/card.py" text "$TEMPER_DIR/view.json" ;;
     panel) case "${1:-}" in   # 9.8.0: a stage's panel, drawn from the files it wrote (scripts/panel.py)
-            plan|design) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" "$1" "$(_spec_path "")" "$REPO_ROOT") ;;
+            design) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" design "$(_spec_path "")") ;;
             rca) [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper panel rca <rca.md>" >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" rca "$2") ;;
             task) shift; [[ $# -gt 0 ]] || { echo "FAIL: usage: temper panel task <N>..." >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" task "$(_spec_path "")" "$REPO_ROOT" "$@") ;;
-            *) echo "FAIL: usage: temper panel plan | design | rca <rca.md> | task <N>..." >&2; false ;;
+            *) echo "FAIL: usage: temper panel design | rca <rca.md> | task <N>..." >&2; false ;;
           esac ;;
     ""|-h|--help)
       cat "$SCRIPTS_DIR/temper-help.txt"
@@ -4094,7 +4093,7 @@ main() {
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor|review) ;;
+    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor|review|card) ;;
     next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;

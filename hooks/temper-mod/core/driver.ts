@@ -1,9 +1,12 @@
-// The run driver (9.8.0, round 5): with the mod loaded, a /temper:temper run is carried by the mod itself, with no model
-// in the main session. It runs `temper go` and the calls the CLI gives, launches the agents the CLI names with their
-// type, model and prompt as given, asks the CLI's questions word for word and runs the calls of the answer the person
-// picks. Whatever needs a model or the person's own words (a typed answer, a skill, a pull request, a DRIFT row, a
-// small change window, an unknown step) it hands back to the model loop of commands/temper.md, which goes on from the
-// same state: the CLI holds the run, the driver holds nothing. Pure: the engine is reached through `Port`.
+// The run driver (9.8.0, round 5): with the mod loaded, a /temper:temper run is carried by the mod itself, with no
+// model in the main session. It runs `temper go` and the calls the CLI gives, launches the agents the CLI names with
+// their type, model and prompt as given, asks the CLI's questions word for word and runs the calls of the answer the
+// person picks. WP16: a run leaves it only for one step on a closed list of seven kinds (an option's or a step's
+// `needs`: a skill to talk it through, the HTML review, the depth review, the config suggestions, a small change, a
+// pull request, a CI fix), each one the person asked for by an option; the conversation does that step, and the
+// person's next command takes the run up again. Everything else ends in the driver: a typed answer runs the question's
+// `typed` calls; a failed call, a question nobody answered or a bound ends as a saved stop that says what stopped. The
+// CLI holds the run, the driver holds nothing. Pure: the engine is reached through `Port`.
 
 // 9.8.5: the CLI's ids. A question of `temper go` has its `id` and `kind` beside `question`; each option its `id`, and a
 // `kind` when the driver acts on it (more, accept, cancel, carry, type). A question goes to the dialog exactly as given,
@@ -27,8 +30,14 @@ export type GoOption = {
   reason?: boolean
   reason_question?: GoQuestion
   answer_question?: GoQuestion
+  // WP16: what the answer needs beyond its calls, a kind of NEEDS (scripts/flow_base.py)
+  needs?: string
 }
-export type GoAsk = { id?: string; kind?: string; question: GoQuestion; options: GoOption[]; more?: GoAsk; accept?: GoAsk }
+// WP16: the calls a typed answer runs, with the text in place of {text}; `again`: the same question comes after them
+export type GoTyped = { calls: string[]; again?: boolean }
+export type GoAsk = { id?: string; kind?: string; question: GoQuestion; options: GoOption[]; more?: GoAsk; accept?: GoAsk; typed?: GoTyped }
+// WP16: the restart question of a run whose state cannot be read (`broken`), as `temper go` passes it
+export type GoRestart = { header: string; question: string; id?: string; kind?: string; multiSelect?: boolean; options: Array<GoOption & { description?: string }> }
 export type GoAgent = { type: string; model: string; prompt: string; before?: string[]; after?: string[]; gate?: string }
 export type GoBlocking = { question: GoQuestion; question_ids?: GoIds; answer: string; carry: string }
 export type GoOut = {
@@ -42,6 +51,12 @@ export type GoOut = {
   gate?: string
   setup?: string[]
   tasks?: Array<{ after?: string[] }>
+  // WP15: the rows of the question's card (the approval, the commit, a stop), as `temper card` prints them
+  card?: string[]
+  // WP16: steps that are the conversation's one step (a hand back kind) and the id of the option they came from
+  needs?: string
+  option?: string
+  restart?: GoRestart
 }
 
 export type Ran = { code: number; out: string }
@@ -55,9 +70,17 @@ export type Port = {
   askAll?(qs: GoQuestion[]): Promise<Array<string | null>>
   record(q: GoQuestion, answer: string): Promise<void>
   show(text: string): Promise<void>
+  // WP15: the card's rows, given once before the question is asked; absent: the card is not shown by the port.
+  card?(rows: string[]): Promise<void>
   stopped(): boolean
 }
-export type DriveEnd = { kind: 'done'; text: string } | { kind: 'handback'; args: string; why: string }
+// WP16: two ends. A hand back names the kind of the one step the conversation does (`needs`, one of HANDBACK_KINDS) and
+// the id of the option the person picked; every other end is `done`, a saved stop whose text says what stopped.
+export type DriveEnd = { kind: 'done'; text: string } | { kind: 'handback'; needs: string; option: string }
+
+// The seven hand back kinds: NEEDS of scripts/flow_base.py but the three this driver does itself (more, accept,
+// cancel).
+export const HANDBACK_KINDS: readonly string[] = ['talk', 'html-review', 'depth-review', 'config-suggestions', 'small-change', 'pull-request', 'pipeline-fix']
 
 const MAX_TURNS = 300
 
@@ -108,16 +131,11 @@ export function recordedVerdict(call: string, out: string): 'PASS' | 'FAIL' | 'P
   return scope === want || (want.startsWith('task:') && group) ? verdict : null
 }
 
-// A Build task's gate run after its agent (`task gate N`) that recorded a verdict: a failed one (a retry, a stronger
-// model, the group parked) or one refused because the group is parked. What else it decided is left to WP16.
-export function taskVerdict(call: string, out: string): boolean {
-  return / task gate \d+ /.test(` ${call} `) && recordedVerdict(call, out) !== null
-}
-
 // A CLI panel (`temper panel ...`) as the few rows the driver shows. A mod's log line is one row with the plugin's name
 // before it, and a dialog's preview cannot hold a panel of forty rows, so a box drawn row by row read as forty rows of
 // "temper:". Each box becomes its title (joined with its one fact row, as a task's panel has), a row a fact row, and a
-// row a section, its items joined; the lines outside the boxes (the Plan's diagram) give way to where they are.
+// row a section, its items joined; the lines outside the boxes give way (WP15: the Plan panel and its diagram
+// are gone).
 export function compactPanel(text: string): string[] {
   const out: string[] = []
   const rule = /^\+[-+]*\+$/
@@ -125,7 +143,6 @@ export function compactPanel(text: string): string[] {
   type Box = { title: string; facts: string[]; sections: Array<{ name: string; items: string[] }> }
   let box: Box | null = null
   let phase: 'title' | 'body' = 'title'
-  let dropped = false
   const add = (to: string[], cell: string) => {
     if (/^ {2}\S/.test(cell) && to.length > 0) to[to.length - 1] += ' ' + cell.trim()
     else to.push(cell.trim())
@@ -162,19 +179,29 @@ export function compactPanel(text: string): string[] {
       else add(box.sections.length > 0 ? box.sections[box.sections.length - 1]!.items : box.facts, cell)
       continue
     }
-    if (line.trim() !== '') dropped = true
   }
   if (box !== null) flush(box)
-  if (dropped && out.some(l => l.startsWith('PLAN:'))) out.push("The plan's diagram is in plan.md, under Diagram.")
   return out.length > 0 ? out : text.split(/\r?\n/).filter(l => l.trim() !== '')
 }
 
 // A throw out of the driver. At the person's interrupt the engine aborts the child the driver was reading, and the read
-// throws: that is the stop, with no model turn after it. Any other throw hands the run to the conversation, which takes
-// it up from the CLI's state.
+// throws: that is the stop, with no model turn after it. Any other throw is a defect: a saved stop with its reason.
 export function driverThrew(x: unknown, interrupted: boolean): DriveEnd {
   if (interrupted) return { kind: 'done', text: STOPPED }
-  return { kind: 'handback', args: 'next', why: `the driver stopped: ${String(x).slice(0, 120)}` }
+  return saved(`the driver stopped on a defect (${String(x).slice(0, 160)})`)
+}
+
+// WP16: a saved stop. Its text starts with what stopped, so it never reads as success; the run is where the CLI says.
+const SAVED_PREFIX = 'Temper stopped: '
+export function saved(what: string): DriveEnd {
+  return { kind: 'done', text: `${SAVED_PREFIX}${what}. The run is saved where the CLI shows it; /temper:temper takes it up again (/temper:fix for a fix run).` }
+}
+export const isSavedStop = (end: DriveEnd): boolean => end.kind === 'done' && end.text.startsWith(SAVED_PREFIX)
+
+// The line of a failed call's output that says why: the CLI's own FAIL line, else its first line, else the exit code.
+export function failLine(r: Ran): string {
+  const lines = r.out.split('\n').map(l => l.trim()).filter(l => l !== '')
+  return (lines.find(l => /^FAIL\b/.test(l)) ?? lines[0] ?? `exit ${r.code}`).slice(0, 300)
 }
 
 // A text as the rows `$.ui.log` can draw: one row a line (a line break inside a row is drawn as a mark), each at most
@@ -241,7 +268,8 @@ export function fill(call: string, fills: Record<string, string>): string {
 
 export type StepPlan = { kind: 'run'; call: string } | { kind: 'show-last' } | { kind: 'note'; text: string } | { kind: 'handback'; why: string }
 
-// What the driver does with one `steps` entry: a CLI call it runs; the report it shows; anything else is the model's.
+// What the driver does with one `steps` entry: a CLI call it runs; the report it shows; anything else is the
+// conversation's, and the action's `needs` says which kind of step it is (WP16).
 export function stepPlan(step: string, cli: string): StepPlan {
   const s = step.trim()
   if (s.startsWith(cli + ' ') && !/\{[a-z_]+\}/.test(s)) return { kind: 'run', call: s }
@@ -249,9 +277,6 @@ export function stepPlan(step: string, cli: string): StepPlan {
   if (/^There is no record commit/.test(s)) return { kind: 'note', text: s }
   return { kind: 'handback', why: s.slice(0, 160) }
 }
-
-// An agent's answer that lists files outside the plan: the Scope drift question is the model loop's to ask.
-export const hasDrift = (answer: string): boolean => /^\s*[|+]?[-\s]*DRIFT\b/m.test(answer) || /\+--- DRIFT \(\d+\)/.test(answer)
 
 // A question the driver asks with the labels the CLI gave: at most four (the CLI puts the rest under More options).
 export const labelsOf = (q: GoQuestion): string[] => q.options.map(o => o.label).slice(0, 4)
@@ -279,6 +304,7 @@ export type Effect =
   | { k: 'askAll'; qs: GoQuestion[] }
   | { k: 'record'; q: GoQuestion; answer: string }
   | { k: 'show'; text: string }
+  | { k: 'card'; rows: string[] }
   | { k: 'stopped' }
 type Steps<R> = Generator<Effect, R, unknown>
 
@@ -295,77 +321,106 @@ function* stopped(): Steps<boolean> {
   return (yield { k: 'stopped' }) as boolean
 }
 
-function* runAll(calls: string[], fills: Record<string, string>): Steps<Ran | null> {
-  let last: Ran = { code: 0, out: '' }
+// The calls of an answer, in order: null when they all ran (a call that recorded a verdict did, whatever its exit
+// code), else the failed call's FAIL line.
+function* runAll(calls: string[], fills: Record<string, string>): Steps<string | null> {
   for (const c of calls) {
-    last = yield* run(fill(c, fills))
-    if (last.code !== 0 && recordedVerdict(fill(c, fills), last.out) === null) return null
-  }
-  return last
-}
-
-// An agent's before calls: null when they all ran, else what the CLI said about the one that failed (its FAIL line), so
-// the hand back names the cause instead of "a before call failed".
-function* runBefore(calls: string[]): Steps<string | null> {
-  for (const c of calls) {
-    const r = yield* run(fill(c, {}))
-    if (r.code === 0) continue
-    const lines = r.out.split('\n').map(l => l.trim()).filter(l => l !== '')
-    const why = lines.find(l => /^FAIL\b/.test(l)) ?? lines[0] ?? `exit ${r.code}`
-    return `a before call failed: ${why.slice(0, 240)}`
+    const r = yield* run(fill(c, fills))
+    if (r.code !== 0 && recordedVerdict(fill(c, fills), r.out) === null) return failLine(r)
   }
   return null
 }
 
-const handback = (why: string, args = 'next'): DriveEnd => ({ kind: 'handback', args, why })
+// An agent's before calls: null when they all ran, else the CLI's FAIL line of the one that failed.
+function* runBefore(calls: string[]): Steps<string | null> {
+  for (const c of calls) {
+    const r = yield* run(fill(c, {}))
+    if (r.code !== 0) return `a before call failed: ${failLine(r)}`
+  }
+  return null
+}
+
+// The one hand back: an option or a step whose `needs` is a kind of the closed list leaves the driver with that kind
+// and the option's id; any other needs, or a step or a `do` text with none, is a saved stop.
+const handback = (needs: string, option: string): DriveEnd => ({ kind: 'handback', needs, option })
+function leave(needs: string | undefined, option: string, what: string): DriveEnd {
+  return needs !== undefined && HANDBACK_KINDS.includes(needs) ? handback(needs, option) : saved(`${what} needs ${needs ? `a ${needs} step` : 'a step'} the run driver does not carry`)
+}
+
+// The name question is asked until a name is typed or Cancel; this many asks at most.
+const NAME_ASKS = 20
 
 // One question of the CLI, asked as given; the option's calls run with the person's answer. Returns null when it went on,
-// or how the drive ends.
-function* answer(cli: string, q: GoAsk, depth = 0): Steps<DriveEnd | null> {
-  if (depth > 6) return handback('the question went round too many times')
+// or how the drive ends. `back` is the question an accept question came from: its Cancel asks that one again.
+function* answer(cli: string, q: GoAsk, depth = 0, back: GoAsk | null = null): Steps<DriveEnd | null> {
+  if (depth > 6) return saved('the question went round more than six times')
   const picked = yield* ask(q.question)
-  if (picked === null) return handback('nobody answered the question')
+  if (picked === null) return saved('nobody answered the question')
   const opt = optionOf(q, picked)
-  if (opt === undefined) return handback('the person typed an answer', `discuss ${picked}`)
+  if (opt === undefined) {
+    // A typed answer is a change request by rule: the question's typed calls carry it (a note for the next agent, and
+    // at a stage that writes the work, the stage run again with it), then the CLI says what comes next.
+    const typed = q.typed?.calls ?? []
+    if (typed.length === 0 || picked.trim() === '') return saved('a typed answer, at a question that takes none')
+    const failed = yield* runAll(typed, { text: picked.trim() })
+    return failed === null ? null : saved(`a call of your typed answer failed: ${failed}`)
+  }
   yield { k: 'record', q: q.question, answer: picked }
-  if (opt.kind === 'more' && q.more) return yield* answer(cli, q.more, depth + 1)
-  if (opt.kind === 'accept' && q.accept) return yield* answer(cli, q.accept, depth + 1)
-  // An option the conversation must carry out (a skill, the HTML review, a small change, a name to type, a step only a
-  // model can do): nothing of it runs here; the conversation runs it whole, as the answer the person already gave.
-  const needs = opt.do ? opt.do.slice(0, 160)
-      : (opt.steps ?? []).map(st => stepPlan(st, cli)).find(sp => sp.kind === 'handback')?.kind === 'handback' ? 'a step of the option needs the conversation' : null
-  if (needs !== null) return handback(needs, `chose ${opt.label}`)
+  const nav = opt.kind ?? opt.needs
+  if (nav === 'more' && q.more) return yield* answer(cli, q.more, depth + 1, back)
+  if (nav === 'accept' && q.accept) return yield* answer(cli, q.accept, depth + 1, q)
+  if (nav === 'cancel' && back !== null) return yield* answer(cli, back, depth + 1)
+  // What the conversation carries out (a skill, the HTML review, a small change, a pull request, a CI fix): nothing of
+  // it runs here; the conversation runs it whole, as the answer the person already gave.
+  const step = (opt.steps ?? []).some(st => stepPlan(st, cli).kind === 'handback')
+  if (opt.needs !== undefined || opt.do !== undefined || step) return leave(opt.needs, opt.id ?? opt.label, `the option ${opt.label}`)
   const fills: Record<string, string> = {}
   if (opt.reason_question && (opt.calls ?? []).some(c => c.includes('{reason}'))) {
     const r = yield* ask(opt.reason_question)
-    if (r === null) return handback('nobody answered the reason question')
-    if (kindOf(opt.reason_question, opt.reason_ids, r) === 'cancel') return yield* answer(cli, q, depth + 1)
+    if (r === null) return saved('nobody answered the reason question')
+    if (kindOf(opt.reason_question, opt.reason_ids, r) === 'cancel') return yield* answer(cli, q, depth + 1, back)
     yield { k: 'record', q: opt.reason_question, answer: r }
     fills.reason = r
   }
-  // A name question (who confirms a manual task): the person types it in the dialog; its own options only say to type
-  // (asked again) or go back (Cancel).
+  // A name question (who confirms a manual task, a change typed for a group): the person types it in the dialog; its
+  // own options only say to type (asked again) or go back (Cancel).
   if (opt.answer_question && (opt.calls ?? []).some(c => c.includes('{answer}'))) {
-    for (let k = 0; k < 3 && fills.answer === undefined; k++) {
+    for (let k = 0; fills.answer === undefined; k++) {
+      if (k >= NAME_ASKS) return saved(`no answer was typed in ${NAME_ASKS} asks`)
       const typed = yield* ask(opt.answer_question)
-      if (typed === null) return handback('nobody answered the name question')
-      if (kindOf(opt.answer_question, opt.answer_ids, typed) === 'cancel') return yield* answer(cli, q, depth + 1)
+      if (typed === null) return saved('nobody answered the name question')
+      if (kindOf(opt.answer_question, opt.answer_ids, typed) === 'cancel') return yield* answer(cli, q, depth + 1, back)
       if (opt.answer_question.options.some(o => o.label === typed) || typed.trim() === '') continue
       yield { k: 'record', q: opt.answer_question, answer: typed }
       fills.answer = typed.trim()
     }
-    if (fills.answer === undefined) return handback('no name was typed', `chose ${opt.label}`)
   }
-  if ((opt.calls ?? []).some(c => [...c.matchAll(/\{([a-z_]+)\}/g)].some(m => !((m[1] as string) in fills)))) return handback('the option needs a value the driver does not have', `chose ${opt.label}`)
-  if ((yield* runAll(opt.calls ?? [], fills)) === null) return handback('a call of the answer failed')
+  if ((opt.calls ?? []).some(c => [...c.matchAll(/\{([a-z_]+)\}/g)].some(m => !((m[1] as string) in fills)))) return saved(`the option ${opt.label} needs a value no question asked`)
+  const failed = yield* runAll(opt.calls ?? [], fills)
+  if (failed !== null) return saved(`a call of your answer failed: ${failed}`)
   for (const s of opt.steps ?? []) {
     const p = stepPlan(s, cli)
     if (p.kind === 'run') {
-      if ((yield* run(p.call)).code !== 0) return handback(`the step ${s.slice(0, 80)} failed`)
+      const r = yield* run(p.call)
+      if (r.code !== 0) return saved(`a step of your answer failed: ${failLine(r)}`)
     } else if (p.kind === 'note') yield* show(p.text)
   }
   if (opt.stop) return { kind: 'done', text: `Temper: ${opt.label}. The run is saved; /temper:temper takes it up again.` }
   return null
+}
+
+// WP16: `broken` asks the CLI's restart question (run.restart): Start over runs its calls and the run goes on from what
+// the CLI says next; Cancel, or no answer, keeps the run as it is, a saved stop.
+function* restart(g: GoOut): Steps<DriveEnd | null> {
+  const r = g.restart
+  if (!r || !Array.isArray(r.options)) return saved(`the run state cannot be read (${g.say ?? 'broken'})`)
+  const q: GoQuestion = { header: r.header, question: r.question, multiSelect: false, options: r.options.map(o => ({ label: o.label, description: o.description ?? '' })) }
+  const picked = yield* ask(q)
+  const opt = picked === null ? undefined : r.options.find(o => o.label === picked)
+  if (opt === undefined || opt.move !== 'restart') return saved(`the run state cannot be read (${g.say ?? 'broken'}), and the run was kept`)
+  yield { k: 'record', q, answer: opt.label }
+  const failed = yield* runAll(opt.calls ?? [], {})
+  return failed === null ? null : saved(`a call of Start over failed: ${failed}`)
 }
 
 export function* driveSteps(cli: string, request: string | null, slug: string | null = null): Steps<DriveEnd> {
@@ -380,7 +435,7 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
     if (yield* stopped()) return { kind: 'done', text: STOPPED }
     const g = parseGo((yield* run(takenUp ? `${cli} go --taken-up` : `${cli} go`)).out)
     takenUp = false
-    if (g === null) return handback('temper go gave no action')
+    if (g === null) return saved('temper go gave no action')
     for (const c of g.setup ?? []) {
       const r = yield* run(c)
       if (r.code !== 0) yield* show(`Temper: a setup call failed (${c.split('/').pop()}): ${r.out.trim().split('\n').slice(-3).join(' ')}`)
@@ -388,23 +443,28 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
     if (g.action === 'none') {
       if (!started && request !== null) {
         const init = yield* run(`${cli} state init ${slug ?? slugOf(request)} --feature ${shq(request)}`)
-        if (init.code !== 0) return handback('state init failed')
+        if (init.code !== 0) return saved(`the run could not start: ${failLine(init)}`)
         started = true
         continue
       }
       return { kind: 'done', text: g.say || 'Temper: the run is done.' }
     }
-    if (g.action === 'error' || g.action === 'broken') return handback(g.say || g.action)
+    if (g.action === 'error') return saved(g.say || 'temper go failed')
+    if (g.action === 'broken') {
+      const end = yield* restart(g)
+      if (end !== null) return end
+      continue
+    }
     if (g.say) yield* show(g.say)
     if (g.action === 'wait') {
       // Tasks started in an earlier conversation (the driver waits on its own agents before it asks again): their after
       // calls run now, as the command page says. With none to run, wait a little and ask again, up to ten minutes.
       // Each look counts toward the same bound; the same after calls asked for again changed nothing, and are not run twice.
       const after = (g.tasks ?? []).flatMap(t => t.after ?? [])
-      if (++waits > 120) return handback('the run waited too long')
+      if (++waits > 120) return saved('the run waited on its tasks for more than 120 looks')
       if (after.length > 0) {
         const key = after.join('\n')
-        if (key === lastAfter) return handback('the after calls of the waiting tasks changed nothing')
+        if (key === lastAfter) return saved('the after calls of the waiting tasks changed nothing')
         lastAfter = key
         for (const c of after) yield* run(fill(c, { ms: 'none' }))
         continue
@@ -424,9 +484,10 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
         for (let j = 0; j < chunk.length; j++) {
           const b = chunk[j] as GoBlocking
           const picked = picks[j] ?? null
-          if (picked === null) return handback('nobody answered a Blocking question')
+          if (picked === null) return saved('nobody answered a Blocking question')
           const call = kindOf(b.question, b.question_ids, picked) === 'carry' ? b.carry : fill(b.answer, { answer: picked })
-          if ((yield* run(call)).code !== 0) return handback('the answer call failed')
+          const r = yield* run(call)
+          if (r.code !== 0) return saved(`the call of your answer failed: ${failLine(r)}`)
         }
       }
       if ((g.blocking ?? []).length > 0) {
@@ -434,18 +495,18 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
         if (g.gate) yield* run(g.gate)
         continue
       }
-      if (!g.ask) return handback('a question with no question')
+      if (!g.ask) return saved('temper go gave a question with no question')
+      if ((g.card ?? []).length > 0) yield { k: 'card', rows: g.card as string[] }
       const end = yield* answer(cli, g.ask)
       if (end !== null) return end
       continue
     }
     if (g.action === 'work') {
       const agents = g.agents ?? []
-      let drift = false
       if (agents.length > 0) {
-        // Every agent's before calls (a Build task's `task start`) run before any agent starts. When one fails, the agents
-        // whose calls ran start and are followed to their after calls, and only then does the run go back to the
-        // conversation: a run once handed back with Task 1's agent running and nobody to follow it (9.8.0).
+        // Every agent's before calls (a Build task's `task start`) run before any agent starts. When one fails, the
+        // agents whose calls ran start and are followed to their after calls, and only then does the run stop (9.8.0:
+        // a run once left Task 1's agent running with nobody to follow it).
         if (yield* stopped()) return { kind: 'done', text: STOPPED }
         const ids: Array<[string, GoAgent]> = []
         const ready: GoAgent[] = []
@@ -463,45 +524,40 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
           }
           ids.push([id, a])
         }
-        if (ids.length === 0) return handback(failed ?? 'no agent started')
+        if (ids.length === 0) return saved(failed ?? 'no agent started')
         const ends = (yield { k: 'wait', ids: ids.map(([id]) => id) }) as Record<string, AgentEnd>
         for (const [id, a] of ids) {
           const end = ends[id] ?? { text: '', ms: null }
-          if (hasDrift(end.text)) drift = true
           // What stopped a Build task agent is the one thing the CLI did not record: its own line, shown as it wrote it.
           const stoppedLines = end.text.split('\n').filter(l => /^\s*TASK \d+: stopped:/.test(l)).map(l => l.trim())
           if (stoppedLines.length > 0) yield* show(stoppedLines.join('\n'))
           for (const c of a.after ?? []) {
             const r = yield* run(fill(c, { ms: end.ms === null ? 'none' : String(Math.round(end.ms)) }))
             if (/ panel [a-z]+/.test(c) && r.code === 0) yield* show(compactPanel(r.out).join('\n'))
-            if (r.code !== 0 && recordedVerdict(c, r.out) === null)
-              return handback(`an after call of the ${a.type} agent failed`)
+            if (r.code !== 0 && recordedVerdict(c, r.out) === null) return saved(`an after call of the ${a.type} agent failed: ${failLine(r)}`)
           }
         }
-        if (failed !== null) return handback(failed)
+        if (failed !== null) return saved(failed)
       }
-      if (drift) return handback('an agent listed files outside the plan (DRIFT)')
-      // Steps only the conversation can do (a pull request, a commit message to write): the conversation runs them all,
-      // before any of them runs here, so none is left half done.
-      const model = (g.steps ?? []).map(st => stepPlan(st, cli)).find(sp => sp.kind === 'handback')
-      if (model !== undefined && model.kind === 'handback') return handback(model.why)
+      // Steps only the conversation can do (a pull request): the conversation runs them all, before any of them runs
+      // here, so none is left half done; the action's `needs` names the kind of that one step.
+      if ((g.steps ?? []).some(st => stepPlan(st, cli).kind === 'handback')) return leave(g.needs, g.option ?? '', 'the next step')
       let last = ''
       for (const s of g.steps ?? []) {
         if (yield* stopped()) return { kind: 'done', text: STOPPED }
         const p = stepPlan(s, cli)
         if (p.kind === 'run') {
           const r = yield* run(p.call)
-          if (r.code !== 0) return handback(`the step ${s.slice(0, 80)} failed`)
+          if (r.code !== 0) return saved(`a step failed: ${failLine(r)}`)
           last = r.out
         } else if (p.kind === 'show-last') yield* show(last)
         else if (p.kind === 'note') yield* show(p.text)
-        else return handback(p.why)
       }
       continue
     }
-    return handback(`unknown action ${g.action}`)
+    return saved(`temper go gave an action the driver does not know (${g.action})`)
   }
-  return handback('the run did not end in time')
+  return saved(`the run did not end in ${MAX_TURNS} turns`)
 }
 
 // A fix run's slug from the bug: a ticket key keeps its case (`JIRA-123-checkout-500`), the rest as a request's slug.
@@ -523,26 +579,28 @@ export function rcaPrompt(plugin: string, bug: string, slug: string): string {
 
 // /temper:fix <bug> with no run active: the steps of commands/fix.md before the run exists (the CLI's setup, the root
 // cause agent, the panel the CLI draws from rca.md, the run's state and the fix branch), then the same loop as /temper.
+// With a run active it starts nothing: a saved stop that says so (the person's command with no words takes it up).
 export function* fixSteps(cli: string, bug: string, slug: string | null = null): Steps<DriveEnd> {
   const plugin = cli.replace(/\/scripts\/temper$/, '')
   const s = slug ?? fixSlug(bug)
   const g = parseGo((yield* run(`${cli} go`)).out)
-  if (g === null) return handback('temper go gave no action')
+  if (g === null) return saved('temper go gave no action')
   for (const c of g.setup ?? []) {
     const r = yield* run(c)
     if (r.code !== 0) yield* show(`Temper: a setup call failed (${c.split('/').pop()}): ${r.out.trim().split('\n').slice(-3).join(' ')}`)
   }
-  if (g.action !== 'none') return handback('a run is active')
+  if (g.action !== 'none') return saved('a run is active, so the fix starts no new one')
   const model = ((yield* run(`${cli} model rca`)).out.trim().split('\n').pop() ?? '').trim()
   const agent: GoAgent = { type: 'temper:temper-rca', model, prompt: rcaPrompt(plugin, bug, s) }
   yield* show(`RCA: the root cause agent is working${model ? ` on ${model}` : ''}. The run goes on when it returns.`)
   const id = (yield { k: 'spawn', agent }) as string | null
-  if (id === null) return handback('the temper:temper-rca agent could not start')
+  if (id === null) return saved('the temper:temper-rca agent could not start')
   const ends = (yield { k: 'wait', ids: [id] }) as Record<string, AgentEnd>
   const ms = ends[id]?.ms ?? null
   const panel = yield* run(`${cli} panel rca .temper/specs/${s}/rca.md`)
   if (panel.code === 0) yield* show(compactPanel(panel.out).join('\n'))
-  if ((yield* run(`${cli} state init ${s} --command fix`)).code !== 0) return handback('state init failed')
+  const init = yield* run(`${cli} state init ${s} --command fix`)
+  if (init.code !== 0) return saved(`the fix run could not start: ${failLine(init)}`)
   yield* run(`${cli} usage add --stage rca --model ${model || 'unknown'} --ms ${ms === null ? 'none' : String(Math.round(ms))}`)
   // The fix branch, as commands/fix.md says: with the git pack on, off main or master.
   yield* run(`if grep -Eq '^packs:.*\\bgit\\b' .claude/temper.config 2>/dev/null; then case "$(git branch --show-current)" in main|master) git checkout -q -b ${shq(`fix/${s}`)} ;; esac; fi; true`)
@@ -580,6 +638,7 @@ async function perform(port: Port, e: Effect): Promise<unknown> {
     case 'askAll': return port.askAll ? port.askAll(e.qs) : askEach(port, e.qs)
     case 'record': return port.record(e.q, e.answer)
     case 'show': return port.show(e.text)
+    case 'card': return port.card ? port.card(e.rows) : undefined
     case 'stopped': return port.stopped()
   }
 }
@@ -623,6 +682,7 @@ export type SyncPort = {
   askAll?(qs: GoQuestion[]): Array<string | null>
   record(q: GoQuestion, answer: string): void
   show(text: string): void
+  card?(rows: string[]): void
 }
 export function driveSync(port: SyncPort, cli: string, request: string | null, slug: string | null = null): DriveEnd {
   return runSync(port, driveSteps(cli, request, slug))
@@ -638,6 +698,7 @@ function runSync(port: SyncPort, steps: Steps<DriveEnd>): DriveEnd {
     const e = next.value
     input = e.k === 'run' ? port.run(e.call) : e.k === 'spawn' ? port.spawn(e.agent) : e.k === 'wait' ? port.wait(e.ids)
       : e.k === 'ask' ? port.ask(e.q) : e.k === 'askAll' ? (port.askAll ? port.askAll(e.qs) : e.qs.map(q => port.ask(q)))
-      : e.k === 'record' ? port.record(e.q, e.answer) : e.k === 'show' ? port.show(e.text) : false
+      : e.k === 'record' ? port.record(e.q, e.answer) : e.k === 'show' ? port.show(e.text)
+      : e.k === 'card' ? port.card?.(e.rows) : false
   }
 }

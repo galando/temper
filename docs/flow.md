@@ -25,8 +25,8 @@ the tables (`SEQ`, `MOVES`) and the readers, `flow_run.py` the class `Run`, `flo
   marker decides only that a carrier goes on: what comes next is always `temper next`, which reads the record.
   9.8.0, to shrink what every later turn reads again: an agent's gate call is `temper gate <stage> --brief`
   (its failed rows only; the question after it names them); `ask` keeps `question` as it is and, per option,
-  only what the answer runs (`label`, `calls`, `steps`, `do`, `stop`, `reason`, `reason_question`,
-  `answer_question`); `blocking` is the list of `{question, answer, carry}` below.
+  only what the answer runs (`label`, `calls`, `steps`, `do`, `needs`, `stop`, `reason`, `reason_question`,
+  `answer_question`), and the question's `typed` (WP16); `blocking` is the list of `{question, answer, carry}` below.
 - `.temper/view.json` is written by the CLI after every command that may change the run, and by
   `temper next`. The mod reads this file and nothing else of the CLI's, to draw the run and to check
   the person's answers.
@@ -55,6 +55,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `context_map` | at Plan, when `plan.md` has a Context Map: `{intro, file, rows, answer, table}`, the table as plain text |
 | `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto` and the person is asked about it (9.8.5, WP13: a flagged map under `auto`, every map under `always`, none under `off`, and not a map folded into the approval; else `null`): the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; 9.8.5: id `plan.context`, kind `context`, options `as-planned`, `include-left-out`, `type` and `carry`; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
 | `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
+| `card` | 9.8.5 (WP15), with `ask`: the card of a question that decides, or `null` for any other question. `{kind, run_id, step, title, tag, sections: [{id, title, note, rows: [{text, mark}], total, file}], foot}`; `kind` is `approval` (`plan.approve`, `rca.approve`, and `design.pass`, the approval when the person asked for Design), `commit` (`commit.confirm`, and `check.pass` of a run that asks at every stage) or `stop` (any other question at a stage whose check failed and is not skipped, or a stop of a run that goes on by itself); `run_id` and `step` are the question's. A section is cut when `total` is larger than the count of its rows, and `file` says where the rest is; `mark` is one of `proposed`, `create`, `modify`, `sensitive`, `left out`, `not found`, `not measured`, `open`, `skipped`, `by rule`, or `null`. The sections of the approval, in order: `request`, `assumptions`, `criteria`, `out_of_scope`, `answers`, `files`, `commands` (word for word, never cut), `context` (every flagged line whole), `launches`, `risk`, `baseline`; of the commit: `criteria`, `suite`, `coverage`, `planted_bugs`, `review`, `files`, `rule_log`, `skips`, `tree`, `run`, `message` (the message the click uses); of a stop: `what_fails`, `tried` (the budget used for the failure and the run), `reading`, `still_green`, `spent`. A section with no source is left out. No card holds dollars; a time is in minutes, and the approval's estimate is the median of the finished runs `.temper/runs.jsonl` keeps. The card is built by `scripts/card.py` in the same call as the question, and never goes into the question text. `temper card` prints its rows (76 columns), `temper go` gives them as `card` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
 
 The stages are Intent, Plan, Design, Build, Review, Check and Commit, and an optional **Pipeline** stage after a Commit that opened a pull
@@ -105,7 +106,8 @@ means:
 | `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept` (a review finding), `covered` (a Build task an earlier task already built), `keep`, `commitOverride`, `redo`, `pause`, `restart`, `grant` (more repeats, at `run.budget`), or `null` for an option that decides nothing |
 | `calls` | the CLI calls this answer makes, in order; `{reason}` is the person's reason. Every `{...}` text stands inside single quotes: put the text there with each `'` written as `'\''`, so a backquote or a `$` in it stays text |
 | `steps` | for Commit at a parked run: the commit steps |
-| `do` | for an option that decides nothing: what to do, then ask the question again |
+| `do` | for an option that decides nothing: what to do, then ask the question again (words for a person or a model; the mod's run driver never reads it) |
+| `needs` | WP16, on every option with a `do` and on More options, Accept a finding and Cancel: one kind of the closed list `NEEDS` (`scripts/flow_base.py`). `more`, `accept` and `cancel` are navigation the run driver does itself; the other seven are the hand back kinds, each one step the conversation does for the person: `talk`, `html-review`, `depth-review`, `config-suggestions`, `small-change`, `pull-request`, `pipeline-fix`. `opt()` refuses any other kind, and a `do` with none. A `work` action whose steps are the pull request's carries `needs: pull-request` and `option`, the id of the option the person chose them by |
 | `skill` | 9.8.0, with `do`: the skill the option carries out (`grill-me`, `teach-me`); the mod lets its own questions through while it runs |
 | `stop` | the run stops here (Save for later) |
 | `reason`, `reason_question`, `reason_ids` | the move needs the person's reason: their note on the option, or their answer to `reason_question` (any answer but Cancel, typed text included). 9.8.5: `reason_question` goes to the dialog as it is, so its ids sit beside it in `reason_ids`: `{id, kind, options}`, with the id of its question and `.reason`, the kind `reason`, and in the order of its options each ready reason's id `choice-N` and Cancel's id `cancel` with the kind `cancel` |
@@ -113,6 +115,30 @@ means:
 
 `more` is the second question of "More options"; `accept` is the question of "Accept a finding". Both
 have the same shape. A question holds four options at most.
+
+WP16: a question of kind `gate` (and its More question) carries `typed`, `{calls, again}`: the calls a typed answer
+runs, in order, with the person's text in place of `{text}`. The first is the note for the next agent (`temper evidence
+add --stage S --phase note --kind input --claim '{text}'`); at Intent, Plan, Design, Build and Fix, on the stage's own
+question and while the budget has room, the second is `temper state redo S --reason '{text}'` and `again` is false (the
+stage's agent runs again with the note). Elsewhere, and at the budget's limit, the note is the only call and `again` is
+true: the same question is asked again after it.
+
+Scope drift (WP16) is the CLI's question. A Build or Fix agent that needs a file outside the plan records it with
+`temper drift ask --path P --why W --change C` (a `drift` row of the Build ledger; a path of the plan is refused) and
+returns. Before the gate question and before any launch, `next` asks `scope.drift` (header `Scope drift`, first line
+`Outside the plan: P`, then `Why:` and `Change:` lines) with `Add to plan`, `Revert` and `Allow once`, each with move
+`drift` and the call that records the answer (`drift P: <label>: W`, phase `feedback`), in an unattended run too. With
+every one answered, the stage's agent runs again with one `Drift decision: P: add|revert|allow-once` line a file; its
+`before` call marks them given.
+
+The CLI words that take the place of calls that were no CLI calls (WP16): `temper spec branch --carry NAME` (the switch
+to the branch an earlier run left, carrying the spec files through a temp folder; a refused switch puts them back,
+fails, and names the folder), `temper spec branch --if-protected` (a fix run: from main, master or the default branch,
+the switch to the run's branch; on any other branch, that branch becomes the run's), `temper group take-out G SHA...`
+(commits the CLI did not make, taken out only when they are recorded as such and are the newest of the branch) and
+`temper group feedback G --text T` (Change at a passed group: the next `feedback #K` row, and `group.change` follows
+with K in its calls). No call of the flow is a foreign program, and no option call holds a placeholder outside a
+typed question.
 
 The person decides only by choosing an option. The mod counts an answer only when its header, its
 question and its label match exactly what `next` gave for the run and step it is at, so a reworded
@@ -395,8 +421,9 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   plan question follows with `ask-every-stage` and no `approve-run`.
 - **The Context check.** Under `auto` only a map with an `ignore` or a `gap` line is asked about; a clean pending map
   passes its row (`not asked: no flagged line`) and keeps `reviewed: pending`. A flagged map is folded into the
-  approval when it holds at most three `ignore` and two `gap` lines of at most 90 characters each: the row passes
-  (`N flagged line(s), answered at the approval`), the approval's text names the lines whole, the approving options
+  approval when the `context` section of the approval card holds every flagged line whole (WP15: a line of any length,
+  as many as a map holds; a card whose section is cut keeps the question): the row passes (`N flagged line(s),
+  answered at the approval`), the approval's text names the lines (cut at 90 characters), the approving options
   run `plan review --answer 'As planned (at the approval, N flagged lines shown)'`, and `Include what is left out`
   joins the More list. Any other flagged map keeps its own question; `always` asks every map, `off` none. When no
   Design follows and the run's branch clashes (WP12), the approval has no room for the fold (its More list would need
@@ -455,6 +482,7 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |
 | `usage` | `{ms, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{ms, runs}`, and a stage also to `models` (the models its launches asked for). The time is the total Claude Code gives for each agent; since 9.7.4 no token count is recorded |
+| `card` | 9.8.5 (WP15): the object `card` of `temper next`, or `null` |
 | `rule_log` | 9.8.5 (WP11): `[{kind, stage, what, ts}]` of `.temper/rule-log.json`; `kind` is `advance`, `repair`, `group fix`, `covered`, `stop`, `answer` or `ended` |
 | `time` | `{started, updated}` |
 

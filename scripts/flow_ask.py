@@ -14,7 +14,7 @@ import decisions
 import fresh_review
 import run_env
 
-from flow_base import (BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, OPTION_IDS, OPTION_KINDS, choice_id, goes_on, on_model,
+from flow_base import (BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, NEEDS, OPTION_IDS, OPTION_KINDS, choice_id, goes_on, on_model,
                        question_entry, read_json, same_failure)
 
 RECOMMENDED = " (Recommended)"   # the label's suffix: only opt() and set_rec() read or write it
@@ -46,15 +46,19 @@ class AskPart:
 
     # -- options ---------------------------------------------------------------------------
     def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None, answer=None,
-            oid=None, kind=None):
+            oid=None, kind=None, needs=None):
         """One option. `oid` is its id of OPTION_IDS (required), `kind` set only when a reader acts on it (OPTION_KINDS);
-        `recommended` is true when the label ends in the suffix, and set_rec() changes both together."""
+        `recommended` is true when the label ends in the suffix, and set_rec() changes both together. `needs` (WP16) is
+        the kind of NEEDS of what the answer needs beyond its calls; a `do` text is only the words for it."""
         if oid not in OPTION_IDS:
             raise ValueError("flow.py: the option id %r is not in OPTION_IDS" % oid)
         if kind is not None and kind not in OPTION_KINDS:
             raise ValueError("flow.py: the option kind %r is not in OPTION_KINDS" % kind)
         if move is not None and move not in MOVES:
             raise ValueError("flow.py: the move %r is not in MOVES" % move)
+        needs = needs or (kind if kind in ("more", "accept", "cancel") else None)
+        if (needs or do) and needs not in NEEDS:
+            raise ValueError("flow.py: the option %r needs %r, which is not in NEEDS" % (oid, needs))
         o = {"label": label, "description": description, "move": move, "calls": calls or [], "id": oid}
         if kind:
             o["kind"] = kind
@@ -71,6 +75,8 @@ class AskPart:
             o["steps"] = steps
         if do:
             o["do"] = do
+        if needs:
+            o["needs"] = needs
         if stop:
             o["stop"] = True
         if reason:
@@ -110,7 +116,8 @@ class AskPart:
                         move="pause", stop=True, oid="save")
 
     def skill(self, name, label, what):
-        o = self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name, oid=name)
+        o = self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name, oid=name,
+                     needs="talk")
         o["skill"] = name   # 9.8.0: the mod lets the skill's own questions through while it runs (its session guard)
         return o
 
@@ -191,9 +198,9 @@ class AskPart:
         if not branch or (self.r.ctx.get("branch") or "") == branch:
             return []
         clash = self.branch_clash()
-        if clash:
-            return [self.carry_switch(clash["branch"])]
-        return [self.c("spec branch")]   # 9.8.0: git checkout (-b) of the run's branch, by the CLI
+        # 9.8.0: git checkout (-b) of the run's branch, by the CLI; WP16: a clash carries the spec files across
+        # (spec_ops.py)
+        return [self.c("spec branch" + (" --carry %s" % shlex.quote(clash["branch"]) if clash else ""))]
 
     def shown(self):
         """WP12 (ADR 0019 decision 4): the digests of intent.md and tasks.md as the question shows them, as the arguments
@@ -217,16 +224,6 @@ class AskPart:
             n += 1
         return {"branch": want, "last": r.ctx.get("branch_last") or "", "new": "%s-%d" % (want, n)}
 
-    def carry_switch(self, branch):
-        """One shell call that carries the new spec files across the switch through a temp folder (never git stash, whose stack
-        every worktree shares): restore the spec folder to HEAD, switch, copy the files back. A refused switch puts them back,
-        fails, and names the temp folder."""
-        spec = shlex.quote(self.r.spec)
-        return ('t="$(mktemp -d)" && cp -R %s/. "$t"/ && { git restore --source=HEAD --worktree -- %s 2>/dev/null; git clean -fdq -- %s; } ; '
-                'if git checkout %s; then mkdir -p %s && cp -R "$t"/. %s/ && rm -rf "$t"; '
-                'else mkdir -p %s && cp -R "$t"/. %s/; echo "FAIL: could not switch to %s; your spec files are in $t" >&2; exit 1; fi'
-                % (spec, spec, spec, shlex.quote(branch), spec, spec, spec, spec, branch.replace('"', '')))
-
     def leave_intent(self):
         """Accept the intent (when there is one), advance. WP12 (rule 1): no branch and no commit before the approval."""
         return ([self.c("intent accept")] if self.r.intent else []) + [self.c("state advance intent_complete plan")]
@@ -249,11 +246,6 @@ class AskPart:
         run = self.opt("Approve and build", lead + self.armed_text(), move="arm",
                        calls=go("autonomous"), oid="approve-run")
         return [self.set_rec(ask, True), run] if r.run_default() == "ask" else [self.set_rec(run, True), ask]
-
-    def sensitive_line(self):
-        """The approval names the plan's files under a sensitive path (WP15 moves it to the card)."""
-        hits = self.r.sensitive()
-        return " The plan touches a sensitive path: %s. Nothing there is repaired by rule." % ", ".join(hits[:3]) if hits else ""
 
     def loop_opt(self, stage, back, rec=False):
         """Loop back from the stage to an earlier one, with the person's reason."""
@@ -321,9 +313,11 @@ class AskPart:
 
         if stage == "plan":
             html = self.opt("Open HTML review", "Open the plan as a page to comment on.",
-                            do="Follow %s/reference/plan-review.md (Open HTML review), then ask this question again." % self.plugin, oid="html-review")
+                            do="Follow %s/reference/plan-review.md (Open HTML review), then ask this question again." % self.plugin, oid="html-review",
+                            needs="html-review")
             share = self.opt("Share HTML review", "Publish the plan as a private Claude artifact others can comment on.",
-                             do="Follow %s/reference/plan-review.md (Share HTML review), then ask this question again." % self.plugin, oid="share-review")
+                             do="Follow %s/reference/plan-review.md (Share HTML review), then ask this question again." % self.plugin, oid="share-review",
+                             needs="html-review")
             grill = self.skill("grill-me", "Grill Me", "Stress test the plan.")
             teach = self.skill("teach-me", "Teach Me", "Walk through the plan.")
             fr = r.fresh()
@@ -356,7 +350,7 @@ class AskPart:
                         out = out if len(out) <= 4 else [o for o in out if o.get("id") != drop]
                     return out
                 ask_text = "Accept the intent, approve the plan and continue to %s?" if accepts else "Approve the plan and continue to %s?"
-                text = "Plan: %s.%s%s %s" % (state_of, said, self.sensitive_line(), ask_text % nl)
+                text = "Plan: %s.%s %s" % (state_of, said, ask_text % nl)
                 # 9.8.0: the fresh review's open findings below high pass the gate, and are the person's call: the question
                 # names them and offers Revise the plan (9.8.4: never recommended; they go to the builder as notes).
                 lesser = [f for f in fr["findings"] if f["state"] not in ("resolved", "accepted")] if not skipped else []
@@ -365,8 +359,8 @@ class AskPart:
                     shown = "; ".join("#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:120]) for f in lesser[:3])
                     # 9.8.4: only a high finding blocks; a medium or low one goes to the builder as a note (in the task's
                     # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
-                    text = "Plan: %s.%s%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. %s" % (
-                        state_of, said, self.sensitive_line(), len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", ask_text % nl)
+                    text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. %s" % (
+                        state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", ask_text % nl)
                     revise = self.revise_opt("The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                              "fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))
                 # The approval (WP11): here when no Design follows, at the Design question when it does.
@@ -419,7 +413,7 @@ class AskPart:
         if stage == "design":
             walk = self.opt("Walk through step by step", "Review the design section by section.",
                             do="Walk through the sections design.md has (architecture, API contracts, database changes, integration points, decision log), then ask this question again.",
-                            oid="walk-through")
+                            oid="walk-through", needs="talk")
             go = self.leave_design()
             opens = r.open_concerns()
             if passed:
@@ -437,8 +431,8 @@ class AskPart:
                     what = r.tasks_change_summary()
                     text = text[:-len(" Continue to Build?")].rstrip(".") + ". Design changed the plan's tasks (tasks.md%s); Continue approves them with the design. Continue to Build?" % (
                         ": " + "; ".join(what[:4]) + ("; and %d more" % (len(what) - 4) if len(what) > 4 else "") if what else "")
-                # WP11: the Design question is the approval when the person asked for Design
-                text = text[:-len(" Continue to Build?")] + self.sensitive_line() + " Continue to Build?"
+                # WP11: the Design question is the approval when the person asked for Design (WP15: its card names a
+                # sensitive path of the plan)
                 first = self.approval(lambda m: [self.bind(m)] + go, "design",
                                       "Accept the open concerns as written; " if opens else "")
                 return self.with_more(GATE_HEADER, text, stage, first + [walk],
@@ -474,7 +468,7 @@ class AskPart:
             go = [self.c("state advance review_complete check")]
             arch = self.opt("Architecture Depth Review", "Check the changed modules' depth, then come back here.",
                             do="Run the module depth analysis of %s/reference/architecture-depth.md on the changed files, add its [ARCH-DEPTH] findings to the summary, then ask this question again." % self.plugin,
-                            oid="depth-review")
+                            oid="depth-review", needs="depth-review")
             opens = r.open_findings()
             if passed:
                 # The open findings below the blocking severity (the gate counts only those at or above it).
@@ -526,7 +520,7 @@ class AskPart:
                 if r.spec and os.path.isfile(os.path.join(r.spec, "config-suggestions.json")):
                     opts.append(self.opt("Review config suggestions", "Accept, reject or defer each suggestion, then come back here.",
                                          do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again.",
-                                         oid="config-suggestions"))
+                                         oid="config-suggestions", needs="config-suggestions"))
                 # F1 of WP08: an open finding goes on to Check, so the question where the person commits lists it
                 return self.with_more(GATE_HEADER, "Check: %s%s. Commit?" % (state_of, self.open_listed()), stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.",
                                       qid="check.pass")
@@ -629,7 +623,7 @@ class AskPart:
                         move="adhoc", calls=[self.c("adhoc open --stage %s --reason '{reason}'" % stage)],
                         do="Make the small change: for a fix the person describes, ask them in one line what to change first; for the "
                            "review's, take what the review asked for. Then run %s, then run %s again." % (self.c("adhoc close"), self.c("next --json")),
-                        reason=["A small fix I will describe", "A change the review asked for"], oid="small-change")
+                        reason=["A small fix I will describe", "A change the review asked for"], oid="small-change", needs="small-change")
 
     def add_adhoc(self, out, stage):
         """Add Make a small change to the gate question of Build, Review, Check or Commit, before Save for later. Four options
@@ -766,7 +760,8 @@ class AskPart:
         text = "Pipeline: the check failed (%s). Apply the fix and push?" % (why or "see pipeline-context.json")
         return self.question(GATE_HEADER, text, stage="pipeline", qid="pipeline.fail", options=[
             self.opt("Apply the fix and push (Recommended)",
-                     "The fix list in pipeline-context.json is applied, pushed, and the checks are read again.", move="advance", steps=steps, oid="apply-fix"),
+                     "The fix list in pipeline-context.json is applied, pushed, and the checks are read again.", move="advance", steps=steps, oid="apply-fix",
+                     needs="pipeline-fix"),
             self.opt("End the run", "Finish here without the fix; the run state is cleared.", move="advance", calls=[self.c("state clear")], oid="end-run"), self.save()])
 
     def fresh_offer(self):

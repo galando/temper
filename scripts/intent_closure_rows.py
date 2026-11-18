@@ -25,13 +25,7 @@ SKIP = ('skipped \u2014 intent is %s; this check applies to drafts only (a recor
         'skipped: no recognized Status header (draft, accepted or completed); this check applies to drafts only, and the status header requirement reports the missing header')
 
 # --- out of scope stated: a '- Out of scope:' bullet with non-placeholder text ----------
-scope = A.section_lines(lines, 'Scope and Non-goals') or A.section_lines(lines, 'Scope')
-found = False
-for l in scope:
-    om = re.match(r'^\s*-\s*Out of scope:\s*(.*?)\s*$', l, re.I)
-    if om and re.search(r'[A-Za-z0-9]', A.blank_placeholders(om.group(1))):
-        found = True
-        break
+found = A.out_of_scope(lines) is not None   # the one reading, the approval card's too
 if status != 'draft':   # explicitly draft only
     add('out of scope stated', True, SKIP)
 else:

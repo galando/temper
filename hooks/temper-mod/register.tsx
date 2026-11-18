@@ -12,7 +12,7 @@ import { answeredResult, answersIn } from './core/answers'
 import { evaluate, trivialExit } from './core/rules'
 import { callWords, readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
-import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, logRows, lookAtAgents, slugOf } from './core/driver'
+import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, isSavedStop, logRows, lookAtAgents, slugOf } from './core/driver'
 import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import type { Stage } from './core/stages'
@@ -584,11 +584,13 @@ async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
   await recordAnswers($, { result: { questions: [{ header: q.header, question: q.question, options: q.options, multiSelect: false }], answers: { [q.question]: label } } })
 }
 
-// The run driver hands a run to the prompt based command (9.8.1): the command's event goes on unchanged, as the person
-// typed it, and the hand back is one note the model reads after the command's text (its `context`), the words the page
-// takes (`next`, `discuss <text>`, `chose <label>`: commands/temper.md, "Arguments"). The person's words are not rewritten.
-function handBack(result: CommandRunResult, args: string): CommandRunResult {
-  const note = `Temper hand back from the mod's run driver: take these as the arguments of this command in place of the ones typed: ${args}`
+// The run driver hands one step to the prompt based command (9.8.1, WP16): the command's event goes on unchanged, as
+// the person typed it, and the hand back is one note the model reads after the command's text (its `context`): `step
+// <kind> <option id>`, the one step of the closed list the person chose (commands/temper.md, "Arguments"). The
+// conversation does that step and ends its turn; the person's next command takes the run up in the driver. The words
+// are not rewritten.
+function handBack(result: CommandRunResult, end: { needs: string; option: string }): CommandRunResult {
+  const note = `Temper hand back from the mod's run driver: do this one step, then end the turn: step ${end.needs} ${end.option}`
   return { ...result, context: [...(result.context ?? []), note] }
 }
 
@@ -600,6 +602,13 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
     ask: q => hostAsk($, q),
     askAll: qs => hostAskAll($, qs),
     record: (q, label) => hostRecord($, q, label),
+    // WP15: the card of the question the driver asks next: the render hook draws it above the dialog in full mode;
+    // in any other mode its rows are logged
+    card: async rows => {
+      const ui = await readUi($).catch(() => null)
+      if (ui !== null && ui.mode === 'full') return
+      for (const row of logRows(rows.join('\n'))) $.ui.log(row)
+    },
     show: async text => {
       // `$.ui.log` appends one line: the terminal draws a line break inside it as a mark and cuts the line at 2000
       // characters, so a panel or a report (many rows, thousands of characters) is logged a row at a time.
@@ -612,12 +621,12 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
   return drive(port, pluginCli(), request, request === null ? null : slugOf(request))
 }
 
-// Whether the mod carries this /temper:temper: a request with no run active (a new run), or no words with a run of
-// /temper active (taking it up again). A run word, a request while another run is active (its restart question), a
-// /temper:fix run, an inert or switched off mod: the model loop of commands/temper.md, as before.
+// Whether the mod carries this /temper:temper: a request with no run active (a new run), or no words with a run active
+// (taking it up again, a /temper:fix run too: WP16). A run word, a request while another run is active (its restart
+// question), an inert or switched off mod: the model loop of commands/temper.md, as before.
 async function drives($: Api, args: string): Promise<{ request: string | null } | null> {
   const snap = await refresh($)
-  if (!enforces(snap) || snap.runCommand === 'fix') return null
+  if (!enforces(snap)) return null
   const req = requestOf(args)
   const active = snap.slug !== null
   if (req !== null && !active) return { request: req }
@@ -730,18 +739,20 @@ export const register: Register = (on, opts) => {
     if (e.command !== 'temper' && e.command !== 'temper:temper') {
       // A door (/temper:plan "...") or another command: no request is held to it.
       if (/^temper:/.test(e.command)) await dropRequest($)
-      // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; what needs a model goes to fix.md.
+      // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; WP16: so is /temper:fix with no
+      // words while a fix run is active (taken up again). The one step of a hand back goes to fix.md.
       if (e.command === 'temper:fix' || e.command === 'fix') {
         const bug = requestOf(e.args)
-        const snap = bug === null ? null : await refresh($).catch(() => null)
-        if (bug !== null && snap !== null && enforces(snap) && snap.slug === null) {
-          const end = await driveRun($, root, bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
+        const snap = await refresh($).catch(() => null)
+        const takeUp = bug === null && e.args.trim() === '' && snap !== null && snap.slug !== null && snap.runCommand === 'fix'
+        if (snap !== null && enforces(snap) && ((bug !== null && snap.slug === null) || takeUp)) {
+          const end = await driveRun($, root, takeUp ? null : bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
           const after = await refresh($).catch(() => null)
           if (after !== null) adopt($, after)
           if (end.kind === 'done') return { text: end.text }
           if (after === null || after.slug === null) return next(e)
-          $.ui.log(`Temper: the fix goes on in the conversation (${end.why}).`)
-          return handBack(await next(e), end.args)
+          $.ui.log(`Temper: one step goes to the conversation (${end.needs}); then /temper:fix takes the run up again.`)
+          return handBack(await next(e), end)
         }
       }
       return next(e)
@@ -755,8 +766,8 @@ export const register: Register = (on, opts) => {
     if (parsed === null) {
       // The person's own run word, from the prompt box, opens the pane in full mode; any other origin opens nothing.
       if (e.origin?.kind === 'composer') await openForPerson($).catch(() => undefined)
-      // 9.8.0 (round 5): the mod carries the run itself, with no model in the main session; what needs a model goes on
-      // in the prompt based command, from the same state. Any failure hands the run to that command as well.
+      // 9.8.0 (round 5): the mod carries the run itself, with no model in the main session. WP16: only a step of the
+      // closed list goes on in the prompt based command, from the same state; a failure is a saved stop that says so.
       const d = await drives($, e.args).catch(() => null)
       if (d !== null) {
         const end = await driveRun($, root, d.request, (next as { signal?: AbortSignal }).signal).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
@@ -764,11 +775,12 @@ export const register: Register = (on, opts) => {
         if (after !== null) adopt($, after)
         // A run is on: the request the driver started it with (or took up) is used.
         if (after !== null && after.slug !== null) await dropRequest($)
+        // No run was started (the driver stopped before its state init, or handed a step on): the request goes on as
+        // the person typed it, and the prompt based command starts the run. There is no run to save.
+        if (d.request !== null && (after === null || after.slug === null) && (end.kind === 'handback' || isSavedStop(end))) return next(e)
         if (end.kind === 'done') return { text: end.text }
-        // No run was started: the request goes on as the person typed it, and the prompt based command starts the run.
-        if (d.request !== null && (after === null || after.slug === null)) return next(e)
-        $.ui.log(`Temper: the run goes on in the conversation (${end.why}).`)
-        return handBack(await next(e), end.args)
+        $.ui.log(`Temper: one step goes to the conversation (${end.needs}); then /temper:temper takes the run up again.`)
+        return handBack(await next(e), end)
       }
       return next(e)
     }
@@ -916,12 +928,14 @@ export const register: Register = (on, opts) => {
     )
   })
 
-  // One Temper line above the engine's dialog, which stays exactly once in the tree.
+  // One Temper line above the engine's dialog, which stays exactly once in the tree. WP15: the card of the question
+  // too, only for a dialog the run driver raised itself (a dialog the conversation raised has the card's rows in the
+  // page).
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     const engine = await next(e)
     const ui = await readUi($).catch(() => null)
     if (ui === null || ui.mode !== 'full') return engine
-    return renderQuestion($.ui.resolve(e), ui.view, engine) ?? engine
+    return renderQuestion($.ui.resolve(e), ui.view, engine, asking !== null || askingAll !== null ? ui.view.card ?? null : null) ?? engine
   })
 
   // A line beneath the answer (stage, progress, next stage). Nothing is submitted.

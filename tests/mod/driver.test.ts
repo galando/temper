@@ -1,8 +1,8 @@
 // The run driver (9.8.0, round 5): the mod carries a /temper:temper run with no model in the main session. Its core is
 // pure; here a scripted port stands for the engine and a list of `temper go` answers for the CLI.
 import { describe, expect, test } from 'claude-code/testing'
-import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, recordedVerdict, taskVerdict, driveFix, fill, fixSlug, hasDrift, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
-import type { AgentEnd, GoAgent, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
+import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, recordedVerdict, driveFix, fill, fixSlug, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
+import type { AgentEnd, DriveEnd, GoAgent, GoAsk, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 import { deriveView, runFiles } from './run-files'
 import { world } from './world'
 
@@ -60,6 +60,29 @@ const KINDS: Record<string, string> = { 'Carry forward': 'carry', Cancel: 'cance
 const ids = (x: GoQuestion): GoIds => ({ options: x.options.map((o, i) => ({ id: KINDS[o.label] ?? `choice-${i + 1}`, ...(KINDS[o.label] ? { kind: KINDS[o.label] } : {}) })) })
 const agent = (type: string, after: string[] = []): GoAgent => ({ type, model: 'opus', prompt: `Follow ${type}.`, after, gate: after.find(c => / gate /.test(c)) })
 
+// WP16: the driver has two ends. A hand back carries the kind of the one step the conversation does (`needs`, one of
+// the seven hand back kinds) and the id of the option the person picked (`option`); every other end is a saved stop
+// (`done`) whose text says what stopped and that /temper:temper takes the run up. The CLI's new fields (`typed` on a
+// question, `needs` on an option, `restart` beside `broken`) are given through `loose`, as the CLI writes them.
+type End = { kind: string; needs?: unknown; option?: unknown; text?: unknown }
+const endOf = (e: DriveEnd): End => e as unknown as End
+const handedBack = (e: DriveEnd): string => {
+  const x = endOf(e)
+  return x.kind === 'handback' ? `${String(x.needs)} ${String(x.option)}` : `no hand back (${x.kind}: ${String(x.text ?? '')})`
+}
+// A saved stop: done, its text names /temper:temper, and it is not the interrupt's own text.
+const savedStop = (e: DriveEnd): [string, boolean, boolean] => {
+  const x = endOf(e)
+  const text = typeof x.text === 'string' ? x.text : ''
+  return [x.kind, text.includes('/temper:temper'), text !== STOPPED]
+}
+const SAVED: [string, boolean, boolean] = ['done', true, true]
+const textOf = (e: DriveEnd): string => String(endOf(e).text ?? '')
+const loose = <T>(x: unknown): T => x as T
+// The seven hand back kinds, each with the id of an option of the head that carries it.
+const SEVEN: Array<[string, string]> = [['talk', 'grill-me'], ['html-review', 'html-review'], ['depth-review', 'depth-review'],
+  ['config-suggestions', 'config-suggestions'], ['small-change', 'small-change'], ['pull-request', 'commit-pr'], ['pipeline-fix', 'apply-fix']]
+
 describe('the driver carries a run from the request to the end', () => {
   test('a new run: state init with the request whole, the agent launched as given, its after calls with its time, the gate answered', async () => {
     const plan = agent('temper:temper-plan', [`${CLI} usage add --stage plan --model opus --ms {ms}`, `${CLI} panel plan`, `${CLI} gate plan --brief`])
@@ -115,12 +138,12 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.asked).toEqual([])
   })
 
-  test('a dialog of several questions that nobody answers hands the run on, with no answer call run', async () => {
+  test('a dialog of several questions that nobody answers ends as a saved stop, with no answer call run (WP16)', async () => {
     const { p, log } = port({ goes: [{ action: 'ask', stage: 'intent', ask: { question: q('Intent?', ['Continue']), options: [] }, blocking: [
       { question: q('A?', ['x'], 'Question 1'), answer: `${CLI} intent answer 'A?' '{answer}'`, carry: `${CLI} intent carry 'A?'` },
       { question: q('B?', ['y'], 'Question 2'), answer: `${CLI} intent answer 'B?' '{answer}'`, carry: `${CLI} intent carry 'B?'` }] }] })
     p.askAll = async list => list.map(() => null)
-    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'nobody answered a Blocking question' })
+    expect(savedStop(await drive(p, CLI, null))).toEqual(SAVED)
     expect(log.ran.filter(c => c.includes('intent answer'))).toEqual([])
   })
 
@@ -149,12 +172,12 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran.filter(c => c.includes('task confirm'))).toEqual([])
   })
 
-  test('a typed answer goes to the conversation as the person\'s message (discuss), with nothing run', async () => {
+  test('a typed answer at a question with no typed calls runs no option and hands nothing back (WP16)', async () => {
     const { p, log } = port({
       goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'Loop back']), options: [{ label: 'Approve', calls: [`${CLI} state advance plan_complete build`] }, { label: 'Loop back' }] } }],
       answers: ['make the route admin only'],
     })
-    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'discuss make the route admin only', why: 'the person typed an answer' })
+    expect(endOf(await drive(p, CLI, null)).kind).toBe('done')
     expect(log.ran.filter(c => c.includes('state advance'))).toEqual([])
     expect(log.recorded).toEqual([])
   })
@@ -172,11 +195,11 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.recorded).toContain(`${rq.question} -> The plan cannot be built`)
   })
 
-  test('More options asks the rest of the question; an option with a `do` (a skill) runs its calls, then hands back', async () => {
-    const more = { question: q('More choices?', ['Grill Me', 'Cancel']), options: [{ label: 'Grill Me', do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' }, { label: 'Cancel' }] }
-    const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'More options']), options: [{ label: 'Approve' }, { label: 'More options', do: 'Ask the more question.', kind: 'more' }], more } }], answers: ['More options', 'Grill Me'] })
+  test('More options asks the rest of the question; an option whose needs is talk (a skill) hands back its kind and id (WP16)', async () => {
+    const more = loose<GoAsk>({ question: q('More choices?', ['Grill Me', 'Cancel']), options: [{ label: 'Grill Me', id: 'grill-me', needs: 'talk', do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' }, { label: 'Cancel' }] })
+    const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'More options']), options: [{ label: 'Approve' }, loose({ label: 'More options', id: 'more', needs: 'more', do: 'Ask the more question.', kind: 'more' })], more } }], answers: ['More options', 'Grill Me'] })
     const end = await drive(p, CLI, null)
-    expect(end.kind).toBe('handback')
+    expect(handedBack(end)).toBe('talk grill-me')
     expect(log.asked.map(x => x.question)).toEqual(['Approve?', 'More choices?'])
   })
 
@@ -187,11 +210,11 @@ describe('the driver carries a run from the request to the end', () => {
     expect(end.kind === 'done' && end.text).toContain('saved')
   })
 
-  test('an agent that lists DRIFT rows: its after calls run, then the conversation asks the Scope drift question', async () => {
+  test('an agent that lists DRIFT rows: its after calls run, and the run goes on to what the CLI gives next (WP16)', async () => {
     const b = agent('temper:temper-build-task', [`${CLI} task gate 1 --model haiku`])
-    const { p, log } = port({ goes: [{ action: 'work', agents: [b] }], ends: { ag1: { text: '+--- DRIFT (1) ---+\n| src/x.py: needed |', ms: 5 } } })
+    const { p, log } = port({ goes: [{ action: 'work', agents: [b] }, { action: 'none', say: 'end' }], ends: { ag1: { text: '+--- DRIFT (1) ---+\n| src/x.py: needed |', ms: 5 } } })
     const end = await drive(p, CLI, null)
-    expect(end.kind === 'handback' && end.why).toContain('DRIFT')
+    expect(end).toEqual({ kind: 'done', text: 'end' })
     expect(log.ran).toContain(`${CLI} task gate 1 --model haiku`)
   })
 
@@ -221,7 +244,7 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran).toContain(`${CLI} panel task 1 2`)
   })
 
-  test('every agent\'s before calls run before any agent starts; when one fails, the started agents are followed to their gates, then the run goes back naming the CLI\'s FAIL line', async () => {
+  test('every agent\'s before calls run before any agent starts; when one fails, the started agents are followed to their gates, then the run stops saved with the CLI\'s FAIL line (WP16)', async () => {
     const t = (n: number): GoAgent => ({ ...agent('temper:temper-build-task', [`${CLI} task gate ${n} --model haiku --if-running`]), before: [`${CLI} task start ${n}`] })
     const refused = 'FAIL: branch temper/x/T2 is left by an earlier attempt; delete it (git branch -D temper/x/T2), then run this again'
     const { p, log } = port({
@@ -240,25 +263,20 @@ describe('the driver carries a run from the request to the end', () => {
       order.push(`spawn ${a.type}`)
       return spawn0(a)
     }
-    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: `a before call failed: ${refused}` })
+    const end = await drive(p, CLI, null)
+    expect(savedStop(end)).toEqual(SAVED)
+    expect(textOf(end)).toContain(refused)
     expect(order.filter(c => / task (start|gate) \d|^spawn /.test(c))).toEqual([
       `${CLI} task start 1`, `${CLI} task start 2`, 'spawn temper:temper-build-task', `${CLI} task gate 1 --model haiku --if-running`])
     expect(log.spawned.length).toBe(1)
   })
 
-  test('when the first agent\'s before call fails, no agent starts and the run goes back at once', async () => {
+  test('when the first agent\'s before call fails, no agent starts and the run stops saved at once (WP16)', async () => {
     const t1: GoAgent = { ...agent('temper:temper-build-task', [`${CLI} task gate 1 --model haiku --if-running`]), before: [`${CLI} task start 1`] }
     const { p, log } = port({ goes: [{ action: 'work', agents: [t1] }], fail: c => c.endsWith('task start 1') })
-    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'a before call failed: exit 1' })
+    expect(savedStop(await drive(p, CLI, null))).toEqual(SAVED)
     expect(log.spawned).toEqual([])
     expect(log.ran.some(c => / task gate /.test(c))).toBe(false)
-  })
-
-  test('a task gate verdict is told from a call that broke', () => {
-    expect(taskVerdict('/p/scripts/temper task gate 3 --model haiku --if-running', 'FAIL: no green run\nNEXT: retry Task 3 on haiku\nVERDICT: task:3 FAIL')).toBe(true)
-    expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'VERDICT: group:G1 PARKED\nFAIL: group G1 is parked (Task 1 failed 3 attempts); task gate of Task 2 is refused')).toBe(true)
-    expect(taskVerdict('/p/scripts/temper task gate 2 --model haiku', 'Traceback (most recent call last)')).toBe(false)
-    expect(taskVerdict('/p/scripts/temper integrate', 'FAIL: interface missing\nNEXT: x')).toBe(false)
   })
 
   test('the report steps: CLI calls run and the report is shown as printed', async () => {
@@ -272,28 +290,31 @@ describe('the driver carries a run from the request to the end', () => {
 
   test('steps where one needs the conversation (a pull request): none runs here, so none is left half done', async () => {
     const { p, log } = port({ goes: [{ action: 'work', steps: [`${CLI} state archive`, 'Follow /p/reference/pr.md, section One PR.', `${CLI} state clear`] }] })
-    const end = await drive(p, CLI, null)
-    expect(end.kind === 'handback' && end.args).toBe('next')
+    await drive(p, CLI, null)
     expect(log.ran).toEqual([`${CLI} go --taken-up`])
   })
 
-  test('an option the conversation carries out (a skill): recorded, nothing of it run, handed on as chose <label>', async () => {
+  test('an option the conversation carries out (a skill): recorded, nothing of it run, handed on as its kind and id (WP16)', async () => {
     const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'Grill Me']), options: [
       { label: 'Approve', calls: [`${CLI} state advance plan_complete build`] },
-      { label: 'Grill Me', calls: [`${CLI} usage note grill`], do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' }] } }], answers: ['Grill Me'] })
-    expect(await drive(p, CLI, null)).toEqual({ kind: 'handback', args: 'chose Grill Me', why: 'Use the grill-me skill on this stage\'s work, then ask this question again.' })
+      loose({ label: 'Grill Me', id: 'grill-me', needs: 'talk', calls: [`${CLI} usage note grill`], do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' })] } }], answers: ['Grill Me'] })
+    expect(handedBack(await drive(p, CLI, null))).toBe('talk grill-me')
     expect(log.recorded).toEqual(['Approve? -> Grill Me'])
     expect(log.ran).toEqual([`${CLI} go --taken-up`])
   })
 
-  test('a failed call, an error action and a gate that records FAIL', async () => {
+  test('a failed call, an error action and a gate that records FAIL: the two first are saved stops (WP16)', async () => {
     const g = agent('temper:temper-plan', [`${CLI} gate plan --brief`])
     const { p: p1 } = port({ goes: [{ action: 'work', agents: [g] }, { action: 'none', say: 'end' }], fail: c => c.includes('gate plan'), out: c => (c.includes('gate plan') ? 'temper gate plan -> FAIL\nVERDICT: gate:plan FAIL' : '') })
     expect((await drive(p1, CLI, null)).kind).toBe('done')
     const { p: p2 } = port({ goes: [{ action: 'error', say: 'temper next failed' }] })
-    expect(await drive(p2, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'temper next failed' })
-    const { p: p3 } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [{ label: 'Approve', calls: [`${CLI} state advance plan_complete build`] }, { label: 'No' }] } }], answers: ['Approve'], fail: c => c.includes('state advance') })
-    expect((await drive(p3, CLI, null)).kind).toBe('handback')
+    const e2 = await drive(p2, CLI, null)
+    expect(savedStop(e2)).toEqual(SAVED)
+    expect(textOf(e2)).toContain('temper next failed')
+    const { p: p3 } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [{ label: 'Approve', calls: [`${CLI} state advance plan_complete build`] }, { label: 'No' }] } }], answers: ['Approve'], fail: c => c.includes('state advance'), out: c => (c.includes('state advance') ? 'FAIL: the plan changed since the question showed it' : '') })
+    const e3 = await drive(p3, CLI, null)
+    expect(savedStop(e3)).toEqual(SAVED)
+    expect(textOf(e3)).toContain('FAIL: the plan changed since the question showed it')
   })
 
   test('a wait for tasks started in an earlier conversation runs their after calls now', async () => {
@@ -303,9 +324,9 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran).toContain(`${CLI} task gate 2`)
   })
 
-  test('nobody answers (a session with no one to ask): the conversation takes the run on', async () => {
+  test('nobody answers (a session with no one to ask): the run stops saved, and no conversation takes it on (WP16)', async () => {
     const { p } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [{ label: 'Approve' }, { label: 'No' }] } }], answers: [] })
-    expect((await drive(p, CLI, null)).kind).toBe('handback')
+    expect(savedStop(await drive(p, CLI, null))).toEqual(SAVED)
   })
 })
 
@@ -321,7 +342,9 @@ describe('a call that printed its own marker recorded a verdict, whatever its ex
   const fixPass = (): GoOut => ({ action: 'work', stage: 'build',
     agents: [agent('temper:temper-build', [usage, integ, gate])] })
   const gateOut = 'temper gate build -> FAIL\n  [x] integration\nVERDICT: gate:build FAIL'
-  const afterFailed = { kind: 'handback', args: 'next', why: 'an after call of the temper:temper-build agent failed' }
+  // WP16: an after call that failed with no marker of its own is a saved stop that shows the CLI's FAIL line
+  const afterFailed = (e: DriveEnd, line: string): [string, boolean, boolean, boolean] => [...savedStop(e), textOf(e).includes(line)]
+  const SAVED_WITH: [string, boolean, boolean, boolean] = ['done', true, true, true]
 
   test('a group gate of the person\'s answer that exits 1 with its marker does not hand back', async () => {
     const out = 'VERDICT: group:G1 FAIL\nFAIL: group G1 Validate failed (exit 1): make test'
@@ -341,26 +364,189 @@ describe('a call that printed its own marker recorded a verdict, whatever its ex
     expect(recordedVerdict(integ, out) == null).toBe(false)
   })
 
-  test('an after call that exits 1 with no marker hands back, as before', async () => {
+  test('an after call that exits 1 with no marker stops the run saved, with its FAIL line (WP16)', async () => {
     const out = "FAIL: integrate runs on the run's feature branch 'feature/x' (current branch: 'main')"
     const { p, log } = port({ goes: [fixPass(), { action: 'none', say: 'end' }],
       fail: c => c === integ, out: c => (c === integ ? out : '') })
-    expect(await drive(p, CLI, null)).toEqual(afterFailed)
+    expect(afterFailed(await drive(p, CLI, null), out)).toEqual(SAVED_WITH)
     expect(log.ran).not.toContain(gate)
     expect(recordedVerdict(integ, out) == null).toBe(true)
   })
 
-  test('a marker of another scope hands back', async () => {
+  test('a marker of another scope is no verdict of the call: the run stops saved (WP16)', async () => {
     const other = 'VERDICT: group:G2 FAIL\nFAIL: group G1 Validate failed (exit 1): make test'
     const { p: p1 } = port({ goes: [groupFailed(), { action: 'none', say: 'end' }], answers: [twice],
       fail: c => c === again, out: c => (c === again ? other : '') })
-    expect(await drive(p1, CLI, null)).toEqual({ kind: 'handback', args: 'next', why: 'a call of the answer failed' })
+    expect(afterFailed(await drive(p1, CLI, null), 'FAIL: group G1 Validate failed (exit 1): make test')).toEqual(SAVED_WITH)
     const { p: p2, log } = port({ goes: [fixPass(), { action: 'none', say: 'end' }],
       fail: c => c === integ, out: c => (c === integ ? 'VERDICT: gate:build FAIL' : '') })
-    expect(await drive(p2, CLI, null)).toEqual(afterFailed)
+    expect(savedStop(await drive(p2, CLI, null))).toEqual(SAVED)
     expect(log.ran).not.toContain(gate)
     expect(recordedVerdict(again, other) == null).toBe(true)
     expect(recordedVerdict(integ, 'VERDICT: gate:build FAIL') == null).toBe(true)
+  })
+})
+
+// WP16: a run leaves the driver only for a step on the closed list of seven kinds, each one step the person asked for
+// by an option. A typed answer, Cancel, a dialog nobody answered, a failed call, a bound, a scope drift and a broken run
+// stay with the driver: each becomes the CLI's next question or a saved stop. One case per former cause.
+describe('a run leaves the driver only for a hand back kind (WP16)', () => {
+  const advance = `${CLI} state advance build_complete review`
+  const note = (stage: string) => `${CLI} evidence add --stage ${stage} --phase note --kind input --claim '{text}'`
+  const gateAsk = (stage: string, typed: { calls: string[]; again: boolean }): GoAsk => loose<GoAsk>({
+    id: `${stage}.pass`, kind: 'gate',
+    question: q(`${stage}: the check passed. Go on?`, ['Continue (Recommended)', 'Save for later']),
+    options: [{ label: 'Continue (Recommended)', id: 'continue', move: 'advance', calls: [advance] }, { label: 'Save for later', id: 'save', move: 'pause', stop: true }],
+    typed,
+  })
+  const TYPED = "make the route admin only, it's required"
+  const QUOTED = "'make the route admin only, it'\\''s required'"
+
+  test('a typed answer at a gate runs the typed calls: the driver fills {text}, runs them, and goes on; the end is never handback', async () => {
+    const ask = gateAsk('build', { calls: [note('build'), `${CLI} state redo build --reason '{text}'`], again: false })
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'build', ask }, { action: 'none', say: 'end' }], answers: [TYPED] })
+    const end = await drive(p, CLI, null)
+    expect(end).toEqual({ kind: 'done', text: 'end' })
+    expect(log.ran).toEqual([`${CLI} go --taken-up`,
+      `${CLI} evidence add --stage build --phase note --kind input --claim ${QUOTED}`, `${CLI} state redo build --reason ${QUOTED}`, `${CLI} go`])
+  })
+
+  test('a typed answer where the same question comes again (again): the note runs, and the question is asked again', async () => {
+    const ask = gateAsk('review', { calls: [note('review')], again: true })
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'review', ask }, { action: 'ask', stage: 'review', ask }, { action: 'none', say: 'end' }],
+      answers: [TYPED, 'Continue (Recommended)'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.asked.map(x => x.question)).toEqual(['review: the check passed. Go on?', 'review: the check passed. Go on?'])
+    expect(log.ran).toContain(`${CLI} evidence add --stage review --phase note --kind input --claim ${QUOTED}`)
+    expect(log.ran.filter(c => c === advance)).toEqual([advance])
+  })
+
+  test('Cancel at the accept question asks the gate question again', async () => {
+    const accept = { id: 'review.pass.accept', kind: 'gate', question: q('Which open finding is kept as it is?', ['Accept finding 1', 'Cancel']),
+      options: [{ label: 'Accept finding 1', id: 'choice-1', move: 'accept', calls: [`${CLI} evidence accept --stage review --id 1 --reason 'kept'`] },
+        { label: 'Cancel', id: 'cancel', kind: 'cancel', needs: 'cancel', do: 'Ask the Review question again.' }] }
+    const ask = loose<GoAsk>({ id: 'review.pass', kind: 'gate', question: q('Review: the check passed. Continue to Check?', ['Continue to Check (Recommended)', 'Accept a finding', 'Save for later']),
+      options: [{ label: 'Continue to Check (Recommended)', id: 'continue', move: 'advance', calls: [`${CLI} state advance review_complete check`] },
+        { label: 'Accept a finding', id: 'accept-finding', kind: 'accept', needs: 'accept', do: 'Ask the accept question.' },
+        { label: 'Save for later', id: 'save', move: 'pause', stop: true }], accept })
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'review', ask }, { action: 'none', say: 'end' }],
+      answers: ['Accept a finding', 'Cancel', 'Continue to Check (Recommended)'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.asked.map(x => x.question)).toEqual([ask.question.question, 'Which open finding is kept as it is?', ask.question.question])
+    expect(log.ran).toContain(`${CLI} state advance review_complete check`)
+    expect(log.ran.some(c => c.includes('evidence accept'))).toBe(false)
+  })
+
+  test('nobody answered ends as saved: a null answer at the gate, the reason, the name and a Blocking question each give done', async () => {
+    const gate = port({ goes: [{ action: 'ask', ask: gateAsk('build', { calls: [note('build')], again: true }) }], answers: [] })
+    const rq = q('Loop back to Plan. What is the reason?', ['The plan cannot be built', 'Cancel'])
+    const reason = port({ goes: [{ action: 'ask', ask: { question: q('Group G1 is parked. What now?', ['Loop back to Plan', 'Save for later']), options: [
+      { label: 'Loop back to Plan', calls: [`${CLI} state loop build plan --reason '{reason}'`], reason: true, reason_question: rq, reason_ids: ids(rq) }, { label: 'Save for later', stop: true }] } }],
+      answers: ['Loop back to Plan', null] })
+    const nameQ = { header: 'Manual task', question: 'Task 2: name?', options: [{ label: 'Type it below', description: '' }, { label: 'Cancel', description: '' }] }
+    const name = port({ goes: [{ action: 'ask', ask: { question: q('Confirm?', ['Confirm', 'Stop']), options: [
+      { label: 'Confirm', calls: [`${CLI} task confirm 2 --by '{answer}'`], answer_question: nameQ, answer_ids: ids(nameQ) }, { label: 'Stop', stop: true }] } }],
+      answers: ['Confirm', null] })
+    const blocking = port({ goes: [{ action: 'ask', stage: 'intent', ask: { question: q('Intent?', ['Continue']), options: [] }, blocking: [
+      { question: q('Who may refund?', ['Admins', 'Carry forward'], 'Question 1'), answer: `${CLI} intent answer 'Who may refund?' '{answer}'`, carry: `${CLI} intent carry 'Who may refund?'` }] }] })
+    blocking.p.askAll = async list => list.map(() => null)
+    const ends = [await drive(gate.p, CLI, null), await drive(reason.p, CLI, null), await drive(name.p, CLI, null), await drive(blocking.p, CLI, null)]
+    expect(ends.map(savedStop)).toEqual([SAVED, SAVED, SAVED, SAVED])
+    expect([...reason.log.ran, ...name.log.ran, ...blocking.log.ran].filter(c => !/ go( --taken-up)?$/.test(c))).toEqual([])
+  })
+
+  test('a failed before call ends as saved with the CLI\'s FAIL line; the same for state init, a step and a Blocking answer call', async () => {
+    const lines = {
+      before: 'FAIL: branch temper/x/T1 is left by an earlier attempt; delete it, then run this again',
+      init: 'FAIL: a run of refunds is active already',
+      step: 'FAIL: git commit: the commit hook refused it',
+      answer: "FAIL: intent.md has no open question 'Who may refund?'",
+    }
+    const t1: GoAgent = { ...agent('temper:temper-build-task', [`${CLI} task gate 1 --model haiku --if-running`]), before: [`${CLI} task start 1`] }
+    const before = port({ goes: [{ action: 'work', agents: [t1] }], fail: c => c.endsWith('task start 1'), out: c => (c.endsWith('task start 1') ? `Task 1\n${lines.before}\n` : '') })
+    const init = port({ goes: [{ action: 'none' }], fail: c => c.includes(' state init '), out: c => (c.includes(' state init ') ? lines.init : '') })
+    const step = port({ goes: [{ action: 'work', steps: [`${CLI} spec commit 'feat: refunds'`] }], fail: c => c.includes('spec commit'), out: c => (c.includes('spec commit') ? lines.step : '') })
+    const answer = port({ goes: [{ action: 'ask', stage: 'intent', ask: { question: q('Intent?', ['Continue']), options: [] }, blocking: [
+      { question: q('Who may refund?', ['Admins', 'Carry forward'], 'Question 1'), answer: `${CLI} intent answer 'Who may refund?' '{answer}'`, carry: `${CLI} intent carry 'Who may refund?'` }] }],
+      answers: ['Admins'], fail: c => c.includes('intent answer'), out: c => (c.includes('intent answer') ? lines.answer : '') })
+    const ends = [await drive(before.p, CLI, null), await drive(init.p, CLI, 'Add refunds', 'refunds'), await drive(step.p, CLI, null), await drive(answer.p, CLI, null)]
+    expect(ends.map(savedStop)).toEqual([SAVED, SAVED, SAVED, SAVED])
+    expect(ends.map((e, i) => textOf(e).includes(Object.values(lines)[i]!))).toEqual([true, true, true, true])
+    expect(before.log.spawned).toEqual([])
+  })
+
+  test('an agent that could not start ends as saved', async () => {
+    const { p } = port({ goes: [{ action: 'work', agents: [agent('temper:temper-plan', [`${CLI} gate plan --brief`])] }] })
+    p.spawn = async () => null
+    const end = await drive(p, CLI, null)
+    expect(savedStop(end)).toEqual(SAVED)
+    expect(textOf(end)).toContain('temper:temper-plan')
+  })
+
+  test('a bound ends as saved with its reason: question depth, 120 waits, the same after calls, 300 turns', async () => {
+    // a More question inside a More question, twelve deep: the driver goes no deeper than its bound
+    let round: Record<string, unknown> | undefined
+    for (let i = 0; i < 12; i++) round = { question: q(`Round ${i}?`, ['More options', 'Save for later']), options: [
+      { label: 'More options', id: 'more', kind: 'more', needs: 'more', do: 'Ask the more question.' }, { label: 'Save for later', id: 'save', move: 'pause', stop: true }], more: round }
+    const depth = port({ goes: [{ action: 'ask', ask: loose<GoAsk>(round) }], answers: Array<string>(12).fill('More options') })
+    const waits = port({ goes: Array.from({ length: 125 }, (): GoOut => ({ action: 'wait' })) })
+    const after = (): GoOut => ({ action: 'wait', tasks: [{ after: [`${CLI} task gate 2`] }] })
+    const same = port({ goes: [after(), after(), after()] })
+    const turns = port({ goes: Array.from({ length: 305 }, (): GoOut => ({ action: 'work' })) })
+    const ends = [await drive(depth.p, CLI, null), await drive(waits.p, CLI, null), await drive(same.p, CLI, null), await drive(turns.p, CLI, null)]
+    expect(ends.map(savedStop)).toEqual([SAVED, SAVED, SAVED, SAVED])
+    // each bound says its own reason
+    expect(new Set(ends.map(textOf)).size).toBe(4)
+  })
+
+  for (const [needs, id] of SEVEN) {
+    test(`an option whose needs kind is on the list hands back that kind and the option id: ${needs}`, async () => {
+      const ask = loose<GoAsk>({ id: 'check.pass', kind: 'gate', question: q('Check: the check passed. Commit?', ['Commit (Recommended)', `The ${needs} step`]),
+        options: [{ label: 'Commit (Recommended)', id: 'commit', move: 'advance', calls: [`${CLI} state advance check_complete commit`] },
+          { label: `The ${needs} step`, id, needs, do: 'The conversation does this one step, then the person types /temper:temper.' }] })
+      const { p, log } = port({ goes: [{ action: 'ask', stage: 'check', ask }], answers: [`The ${needs} step`] })
+      expect(handedBack(await drive(p, CLI, null))).toBe(`${needs} ${id}`)
+      expect(log.ran.some(c => c.includes('state advance'))).toBe(false)
+    })
+  }
+
+  test('a needs kind that is not on the list ends as saved, never a hand back; so does a do text with no needs', async () => {
+    const ask = (o: Record<string, unknown>) => loose<GoAsk>({ id: 'build.pass', kind: 'gate', question: q('Build: the check passed. Go on?', ['Continue (Recommended)', 'Talk it through']),
+      options: [{ label: 'Continue (Recommended)', id: 'continue', move: 'advance', calls: [advance] }, { label: 'Talk it through', ...o }] })
+    const off = port({ goes: [{ action: 'ask', ask: ask({ id: 'choice-1', needs: 'discuss', do: 'Talk it through with the person.' }) }], answers: ['Talk it through'] })
+    const bare = port({ goes: [{ action: 'ask', ask: ask({ id: 'choice-1', do: 'Talk it through with the person.' }) }], answers: ['Talk it through'] })
+    expect([savedStop(await drive(off.p, CLI, null)), savedStop(await drive(bare.p, CLI, null))]).toEqual([SAVED, SAVED])
+  })
+
+  test('the Scope drift question is the CLI\'s: after an agent that lists DRIFT rows, the driver asks it as any question and runs the option\'s call', async () => {
+    const b = agent('temper:temper-build', [`${CLI} gate build --brief`])
+    const record = (choice: string) => `${CLI} evidence add --stage build --phase feedback --claim 'drift src/x.py: ${choice}: the parser needs it'`
+    const drift = loose<GoAsk>({ id: 'scope.drift', kind: 'drift',
+      question: q('Outside the plan: src/x.py\nWhy: the parser needs it\nChange: one helper', ['Add to plan', 'Revert', 'Allow once'], 'Scope drift'),
+      options: [{ label: 'Add to plan', id: 'add-to-plan', move: 'drift', calls: [record('add')] },
+        { label: 'Revert', id: 'revert', move: 'drift', calls: [record('revert')] }, { label: 'Allow once', id: 'allow-once', move: 'drift', calls: [record('allow-once')] }] })
+    const { p, log } = port({ goes: [{ action: 'work', stage: 'build', agents: [b] }, { action: 'ask', stage: 'build', ask: drift }, { action: 'none', say: 'end' }],
+      ends: { ag1: { text: '+--- DRIFT (1) ---+\n| src/x.py: the parser needs it |', ms: 5 } }, answers: ['Add to plan'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.asked.map(x => x.header)).toEqual(['Scope drift'])
+    expect(log.ran).toContain(record('add'))
+  })
+
+  test('broken asks the restart question: Start over runs its call, Cancel keeps the run and stops saved', async () => {
+    const restart = { header: 'Temper resume', question: 'A run of pw is open at Build. Start over?', id: 'run.restart', kind: 'resume', multiSelect: false,
+      options: [{ label: 'Start over', description: 'The saved run state goes; the spec files stay.', id: 'start-over', move: 'restart', calls: [`${CLI} state clear`] },
+        { label: 'Cancel', description: 'Keep the run.', id: 'cancel', kind: 'cancel', move: null, calls: [] }] }
+    const broken = loose<GoOut>({ action: 'broken', say: 'The run state cannot be read.', restart })
+    const yes = port({ goes: [broken, { action: 'none', say: 'No run is active.' }], answers: ['Start over'] })
+    const no = port({ goes: [loose<GoOut>({ ...broken })], answers: ['Cancel'] })
+    const endYes = await drive(yes.p, CLI, null)
+    const endNo = await drive(no.p, CLI, null)
+    expect(yes.log.asked.map(x => [x.question, x.options.map(o => o.label).join('|')])).toEqual([[restart.question, 'Start over|Cancel']])
+    expect(yes.log.ran).toContain(`${CLI} state clear`)
+    expect(endOf(endYes).kind).toBe('done')
+    expect(no.log.asked.map(x => x.question)).toEqual([restart.question])
+    expect(no.log.ran).not.toContain(`${CLI} state clear`)
+    expect(savedStop(endNo)).toEqual(SAVED)
   })
 })
 
@@ -395,9 +581,9 @@ describe('the driver carries a /temper:fix run', () => {
     expect(log.ran.some(c => c.includes('panel rca'))).toBe(false)
     for (const c of approve) expect(log.ran).toContain(c)
   })
-  test('a run already active: the fix command takes it, as before', async () => {
+  test('a run already active: the fix command with a bug hands nothing back and starts no root cause agent (WP16)', async () => {
     const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [] } }] })
-    expect((await driveFix(p, CLI, 'a bug')).kind).toBe('handback')
+    expect(endOf(await driveFix(p, CLI, 'a bug')).kind).toBe('done')
     expect(log.spawned).toEqual([])
   })
   test('the fix slug keeps a ticket key\'s case', () => {
@@ -415,15 +601,71 @@ describe('the person interrupts', () => {
   })
 })
 
+// WP15: a question that decides carries a card: `temper go` gives its rows (`card`), and the driver gives them to the
+// port once, before it asks; the engine's port draws them (full mode) or logs them (any other mode). A question with no
+// card gives none. The port's `card` is set beside the scripted port, so the test holds the port as WP15 extends it.
+describe('the card of a question, before the dialog', () => {
+  type CardPort = Port & { card?: (rows: string[]) => Promise<void> }
+  const CARD = ['APPROVE BEFORE ANY CODE IS WRITTEN                      refunds · risk M',
+    'WHAT WILL BE TRUE (2 criteria)', ' AC-01 a refund is recorded', 'Nothing is pushed.']
+  const approve = (card?: string[]): GoOut => ({
+    action: 'ask', stage: 'plan', ...(card ? { card } : {}),
+    ask: {
+      question: q('Plan: the check passed. Approve the plan?', ['Approve (Recommended)', 'More options']),
+      options: [{ label: 'Approve (Recommended)', calls: [`${CLI} state advance plan_complete build`] },
+        { label: 'More options', kind: 'more' }],
+      more: { question: q('Plan: more options.', ['Save for later']),
+        options: [{ label: 'Save for later', stop: true }] },
+    },
+  }) as GoOut
+  const watch = (s: Script) => {
+    const { p, log } = port(s)
+    const events: string[] = []
+    const cards: string[][] = []
+    const cp = p as CardPort
+    const ask = p.ask
+    cp.ask = async x => {
+      events.push(`ask ${x.question}`)
+      return ask(x)
+    }
+    cp.card = async rows => {
+      events.push('card')
+      cards.push(rows)
+    }
+    return { cp, log, events, cards }
+  }
+
+  test('before it asks, the driver gives the card rows to the port once, also when the person goes on to More options',
+    async () => {
+    const goes = [approve(CARD), { action: 'none', say: 'done' }]
+    const { cp, events, cards } = watch({ goes, answers: ['More options', 'Save for later'] })
+    await drive(cp, CLI, null)
+    expect(cards).toEqual([CARD])
+    expect(events).toEqual(['card', 'ask Plan: the check passed. Approve the plan?', 'ask Plan: more options.'])
+  })
+
+  test('a question with no card gives the port no card', async () => {
+    const goes = [approve(), { action: 'none', say: 'done' }]
+    const { cp, log, events, cards } = watch({ goes, answers: ['Approve (Recommended)'] })
+    await drive(cp, CLI, null)
+    expect(cards).toEqual([])
+    expect(events).toEqual(['ask Plan: the check passed. Approve the plan?'])
+    expect(log.ran).toContain(`${CLI} state advance plan_complete build`)
+  })
+})
+
 describe('a throw out of the driver', () => {
-  test('at the interrupt it is the stop, with no hand back; otherwise the conversation takes the run up', () => {
+  test('at the interrupt it is the stop, with no hand back; otherwise a saved stop with the reason (WP16)', () => {
     expect(driverThrew(new Error('$.process.spawn(bash) aborted'), true)).toEqual({ kind: 'done', text: STOPPED })
-    expect(driverThrew(new Error('boom'), false)).toEqual({ kind: 'handback', args: 'next', why: 'the driver stopped: Error: boom' })
+    const end = driverThrew(new Error('boom'), false)
+    expect(savedStop(end)).toEqual(SAVED)
+    expect(textOf(end)).toContain('boom')
   })
 })
 
 describe('what the driver shows, as the rows the terminal draws', () => {
-  test('a CLI panel is a few rows: the title, a row a fact, a row a section, and where the diagram is', () => {
+  test('a CLI panel is a few rows: the title, a row a fact, a row a section; the lines outside the boxes give way',
+    () => {
     const W = 76
     const rule = '+' + '-'.repeat(W - 2) + '+'
     const row = (t: string) => '| ' + t.padEnd(W - 4) + ' |'
@@ -437,7 +679,6 @@ describe('what the driver shows, as the rows the terminal draws', () => {
       'ARCHITECTURE: create 1 files · RISK: L',
       'SCENARIOS (2): [Happy Path] N jokes, Covers: AC-01 · [Edge Cases] more than there are, Covers: AC-02',
       'DECISIONS (1): argparse type= function',
-      "The plan's diagram is in plan.md, under Diagram.",
     ])
   })
 
@@ -510,12 +751,10 @@ describe('the driver\'s small parts', () => {
     expect(shq("it's")).toBe("'it'\\''s'")
     expect(fill("x --reason '{reason}'", { reason: "it's" })).toBe("x --reason 'it'\\''s'")
   })
-  test('step plans and DRIFT', () => {
+  test('step plans', () => {
     expect(stepPlan(`${CLI} spec commit 'x'`, CLI)).toEqual({ kind: 'run', call: `${CLI} spec commit 'x'` })
     expect(stepPlan(`${CLI} spec commit '{message}'`, CLI).kind).toBe('handback')
     expect(stepPlan('git push', CLI).kind).toBe('handback')
-    expect(hasDrift('| DRIFT: src/a.py |')).toBe(true)
-    expect(hasDrift('no drift here, all in scope')).toBe(false)
   })
 })
 

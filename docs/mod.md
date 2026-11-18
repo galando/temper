@@ -284,9 +284,14 @@ with their answer calls), records your answer as the guard does, and runs the ca
 takes labels alone; the mod's own tool call hook gives each option back its description and its preview (the Context
 check's table) from the CLI's question, so the dialog shows what each choice does. A Build task's panel is the CLI's
 (`temper panel task`, after the task gates); of the agent's answer the driver shows only a `TASK N: stopped:` line,
-which the CLI cannot know. A panel the CLI draws is shown as a few rows: its title, a row a fact and a row a section,
-with the Plan's diagram left in plan.md (a mod's log line is one row with the plugin's name before it, and a box drawn
-row by row read as forty rows of "temper:"). A stage that only waits for your answers (open Blocking questions, the
+which the CLI cannot know. A panel the CLI draws is shown as a few rows: its title, a row a fact and a row a section
+(a mod's log line is one row with the plugin's name before it, and a box drawn row by row read as forty rows of
+"temper:"). The card of a question that decides (the approval, the commit, a stop; WP15, its fields in `docs/flow.md`)
+comes before the dialog: in full mode the mod draws it above the dialog the driver raised, under
+the dim question line (its title and tag, each section with its rows and marks, what a cut section leaves out, the
+foot); in any other mode the driver logs its rows. A dialog the conversation raised has the card's rows in the page
+(`commands/temper.md`), and the mod draws no card on it. The card only shows: you decide in the dialog.
+A stage that only waits for your answers (open Blocking questions, the
 Context check, a criterion you confirm) draws as the current stage, never red. A Temper agent's message is drawn in
 full, where the engine shows one folded line. The Blocking questions come in one dialog, four at most (each its own
 tab, then a review of the answers), as the conversation asks them without the mod. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
@@ -295,16 +300,24 @@ guard checks the driver's questions and agents as it checks the session's: each 
 benchmark measured why: the main session's own model time was 8% to 10% of a feature run's wall time and 20% to
 30% of a bug run's, and it cost $0.03 to $0.09 a run on Haiku, for steps that need no model.
 
-It hands the run to the conversation (the prompt based `/temper:temper`, which goes on from the same state; the
-CLI holds the run, the driver holds nothing) for anything that needs a model or your own words: an answer you
-type (passed on as `discuss <your words>`), a skill (Grill Me, Teach Me), the HTML plan review, a small change
-window, a pull request step, an agent's DRIFT rows (the Scope drift question), a call that fails and an action it
-does not know (a manual task's name question it asks itself, and runs the confirm calls with the typed name). It says so in one line. An option you chose that only the conversation can carry out
-(a skill, the HTML review, a small change) goes over as `chose <label>`, before any of its calls runs: the
-conversation carries it out as your answer, with no second question. `/temper:fix <bug>` with no run active is carried
-the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop). A run word (`approve`,
-`next`, ...) and a request while another run is active go to the conversation as before. Without the mod, the
-conversation carries every run, as before.
+WP16: a run leaves the driver only for one step on a closed list of seven kinds (`NEEDS` of `scripts/flow_base.py`
+but the three the driver does itself, `more`, `accept` and `cancel`; the cap `handback_kinds` holds the seven), each
+one you asked for by an option: `talk` (Grill Me, Teach Me, the Design walk through), `html-review` (Open or Share
+HTML review), `depth-review` (Architecture Depth Review), `config-suggestions`, `small-change` (Make a small change),
+`pull-request` (the pull request steps after the commit) and `pipeline-fix` (Apply the fix and push). The option's or
+the step's `needs` names the kind; the driver never reads a `do` text. Nothing of that option runs in the driver: the
+command goes on as typed, with one note after it that ends `step <kind> <option id>`; the conversation does that one
+step and ends its turn, and your next `/temper:temper` (or `/temper:fix`) takes the run up in the driver again.
+Everything else stays with the driver. An answer you type at a gate question runs the question's `typed` calls
+with your words (a note for the next agent and, at Intent, Plan, Design, Build and Fix while the budget has room, the
+stage run again with it). A failed call, a question nobody answered, a bound (questions six deep, 120 waits, the same
+after calls twice, 300 turns) and a defect end as a saved stop: the driver's text starts with what stopped (a failed
+call's own FAIL line), and the run is where the CLI says. Scope drift is the CLI's own question (`temper drift ask`),
+asked as any other; a run whose state cannot be read asks the restart question. A Cancel in the accept question asks
+the gate question again; a name question is asked until a name is typed or Cancel. `/temper:fix <bug>` with no run
+active is carried the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop), and
+`/temper:fix` with no words takes an active fix run up. A run word (`approve`, `next`, ...) and a request while another
+run is active go to the conversation as before. Without the mod, the conversation carries every run, as before.
 
 ## What the mod reads and writes
 
@@ -357,8 +370,8 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
     mode) and `report` keeps the run report in its store; `mode` and `enforcement` only say what is set. Every other word (`approve`, `back`, `override`
     and the rest) and any other command pass on unchanged, and the mod records nothing from them; in full mode, such
     a word typed in your prompt box opens the pane first. When the run driver hands a run to the conversation, the
-    command still passes on unchanged (9.8.1; before, its arguments were replaced); the words the run continues with
-    (`next`, `discuss <text>`, `chose <label>`) come as one note the model reads after the command, its `context`.
+    command still passes on unchanged (9.8.1; before, its arguments were replaced); the one step it hands on (WP16:
+    `step <kind> <option id>`) comes as one note the model reads after the command, its `context`.
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
     `session.start` also opens the pane during a run, as the first read that finds a run started later in the
     session does. Both return what the engine gives them: no context, instruction or setting is added.

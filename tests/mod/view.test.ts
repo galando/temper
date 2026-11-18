@@ -91,11 +91,57 @@ describe('the view of the run', () => {
     expect(v.failedChecks).toEqual([{ name: 'tests pass', detail: 'exit 1: 2 failed' }])
   })
 
+  // WP16, defect 1: the CLI writes context_check.question as the dialog's question object (header, question, options),
+  // as the gate question is written; the view reads the text and the options from that object.
+  test('the Context check of a view parses: contextCheck is not null, with the CLI\'s question and options (WP16)', () => {
+    const raw = view('context-check') as { context_check: { question: { header: string; question: string }; options: Array<{ label: string }>; answer?: string } }
+    const v = rv(view('context-check'))
+    expect(v.contextCheck === null).toBe(false)
+    expect(v.contextCheck?.ask.question.header).toBe(raw.context_check.question.header)
+    expect(v.contextCheck?.ask.question.question).toBe(raw.context_check.question.question)
+    expect(v.contextCheck?.ask.options.map(o => o.label)).toEqual(raw.context_check.options.map(o => o.label))
+    expect(v.contextCheck?.answer).toBe(raw.context_check.answer ?? '')
+  })
+
   test('the loops with their budget and reason, and the person\'s decisions as sentences', () => {
     const decisions: Decision[] = [{ ...answer('Loop back to Build (Recommended)', 'back', 'a real bug'), stage: 'review' }]
     const v = buildView(input('build-work', { decisions }, { loops: [{ from: 'review', to: 'build', reason: 'a real bug', iteration: 1, max: 2, at: 't' }] }))
     expect(v.loops).toEqual(['Review to Build: 1 of 2 (a real bug)'])
     expect(v.decisions).toEqual(['review: Loop back to Build (Recommended) (a real bug)'])
+  })
+})
+
+// WP15: the card of the question that decides (the approval, the commit, a stop) is a field of the view, parsed with
+// the view: a card of a kind outside the closed list reads as null, and a view with no card still parses.
+type CardRows = Array<{ id?: unknown; rows?: Array<{ text?: unknown }> }>
+type CardLike = { kind?: unknown; title?: unknown; sections?: CardRows }
+const cardOf = (v: unknown): CardLike | null | undefined => (v as { card?: CardLike | null }).card
+const shape = (c: CardLike | null | undefined) => ({
+  kind: c?.kind,
+  title: c?.title,
+  sections: (c?.sections ?? []).map(s => [s.id, (s.rows ?? []).map(x => x.text)]),
+})
+
+describe('the card of the question', () => {
+  test('parseRunView reads the card of the fixture plan-pass', () => {
+    const doc = view('plan-pass')
+    const want = doc.card as CardLike | undefined
+    expect(want?.kind, 'the fixture plan-pass holds an approval card').toBe('approval')
+    expect(shape(cardOf(rv(doc)))).toEqual(shape(want))
+  })
+
+  test('a card of a kind outside the closed list reads as null', () => {
+    const card = { kind: 'surprise', run_id: 'run-pw', step: 3, title: 'A CARD', tag: 'pw', sections: [], foot: [] }
+    expect(cardOf(rv({ ...view('plan-pass'), card }))).toBeNull()
+    expect(cardOf(rv({ ...view('plan-pass'), card: { ...card, kind: 'stop' } }))?.kind).toBe('stop')
+  })
+
+  test('a view with no card field still parses, with no card', () => {
+    const doc = view('build-work')
+    delete doc.card
+    const v = parseRunView(JSON.stringify(doc))
+    expect(v).not.toBeNull()
+    expect(cardOf(v)).toBeNull()
   })
 })
 

@@ -11,7 +11,8 @@ of 88 tool calls were such mechanical steps. `temper go` runs them inside the CL
 It stops, printing one compact JSON object, at the first point that needs the session:
 
   {"action": "work", "stage", "say", "ran": [...], "agents": [{type, model, prompt, before, after, ...}], "steps": [...]}
-  {"action": "ask", "stage", "say", "ran": [...], "ask": {the CLI's question, as `next` gives it}, "blocking", "gate"}
+  {"action": "ask", "stage", "say", "ran": [...], "ask": {the CLI's question, as `next` gives it}, "blocking", "gate",
+   "card": [the rows of the question's card, as `temper card` prints them (WP15), when it has one]}
   {"action": "wait" | "none" | "broken" | "error", "stage", "say", "ran": [...], ...}
 
 `temper go --taken-up` (WP11), the first call after /temper:temper was typed with no words, first records a stop of a run
@@ -27,9 +28,13 @@ about. `verdicts` lists the markers read, in order. The full view still goes to 
 Standard library only.
 """
 import json
+import os
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import card  # noqa: E402
 
 MAX_STEPS = 60
 MARKER = re.compile(r"^VERDICT: (\S+) (PASS|FAIL|PARKED)$")
@@ -71,18 +76,20 @@ def brief(call, cli):
     return call + " --brief" if re.fullmatch(re.escape(cli) + r" gate [a-z]+", call) else call
 
 
-SLIM_KEYS = ("id", "kind", "move", "recommended", "calls", "steps", "do", "stop", "reason", "reason_question", "reason_ids",
+SLIM_KEYS = ("id", "kind", "move", "recommended", "calls", "steps", "do", "needs", "stop", "reason", "reason_question", "reason_ids",
              "answer_question", "answer_ids")
 
 
 def slim(a):
-    """9.8.0: a question as the session needs it: `question` to ask exactly, its id and kind, and per option only what the
-    answer runs (its label, calls, steps, do, stop, reason and name questions, each with its ids beside it) and what a
-    reader selects it by (its id, kind, move and recommended: 9.8.5 keeps these few short keys, the price of selecting
-    by field and never by label). The description is in `question` too, and the run id, step and stage are the mod's, read from view.json."""
+    """9.8.0: a question as the session needs it: `question` to ask exactly, its id and kind, and per option only
+    what the answer runs (its label, calls, steps, do, stop, reason and name questions, each with its ids beside it)
+    and what a reader selects it by (its id, kind, move and recommended: 9.8.5 keeps these few short keys, the price
+    of selecting by field and never by label). WP16: `needs` (what an option needs beyond its calls) and the
+    question's `typed` (the calls a typed answer runs) too. The description is in `question` too, and the run id,
+    step and stage are the mod's, read from view.json."""
     if not isinstance(a, dict) or "question" not in a:
         return a
-    out = dict({k: a[k] for k in ("id", "kind") if a.get(k)}, question=a["question"])
+    out = dict({k: a[k] for k in ("id", "kind", "typed") if a.get(k)}, question=a["question"])
     out["options"] = [dict({"label": o.get("label")}, **{k: o[k] for k in SLIM_KEYS if o.get(k)}) for o in a.get("options") or []]
     for k in ("more", "accept"):
         if a.get(k):
@@ -99,11 +106,16 @@ def compact(n, ran, cli, verdicts=()):
                          for a in n.get("agents") or []]
         if n.get("steps"):
             out["steps"] = n["steps"]
+        for k in ("needs", "option"):   # WP16: steps that are the conversation's one step, and their option
+            if n.get(k):
+                out[k] = n[k]
         if n.get("gate"):
             out["gate"] = n["gate"]
     elif act == "ask":
         if n.get("ask"):
             out["ask"] = slim(n["ask"])
+        if n.get("card"):   # WP15: the card of the question as the rows `temper card` prints (scripts/card.py)
+            out["card"] = card.render(n["card"], card.WIDTH)
         if n.get("gate"):
             out["gate"] = n["gate"]
         if n.get("blocking_asks"):   # 9.8.0: each Blocking question ready to ask, with the call that records its answer

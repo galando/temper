@@ -60,39 +60,60 @@ class CommitPart:
             parts.append("Regression test: " + ", ".join(tests[:5]))
         return "\n\n".join(parts)
 
-    def record_steps(self):
+    def record_parts(self):
+        """What the run's record commit stages and the message it uses: {files, lessons, code, message}. The code is
+        what is still uncommitted (Build commits each task, each group and the merge); message is None when there is
+        nothing to stage. The commit card shows this message (WP15)."""
         r = self.r
-        steps = [self.c("state archive")]
         files = r.ctx.get("changed") or []
         if not r.spec_ignored() and r.spec:
             files = [r.spec + "/"] + [f for f in files if not f.startswith(r.spec + "/")]
         # A fix run's lesson is committed with it, unless the project keeps .temper out of git (then it stays local).
         lessons = [".temper/lessons.md"] if r.command == "fix" and ".temper/lessons.md" not in files and not r.ctx.get("lessons_ignored") else []
         code = [f for f in files if not (f.startswith(r.spec + "/") or f.startswith(".temper/"))] if r.spec else files
-        # The code this commit carries: what is still uncommitted (Build commits each task, each group and the merge).
         if code and git("rev-parse", "--verify", "-q", "HEAD"):
             code = [f for f in code if git("status", "--porcelain", "--", f)]
         if not code and not lessons and (r.spec_ignored() or not r.spec or not r.ctx.get("spec_dirty")):
+            message = None
+        elif r.command == "fix":
+            # 9.8.0: the CLI drafts the message from rca.md and the tests the fix changed; the person can still
+            # amend it.
+            message = self.fix_message()
+        elif files and not code:
+            # A grouped Build commits the code itself (each task, each group, the merge into this branch): this
+            # commit is the run's record, and its message says so.
+            message = "docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug
+        else:
+            # 9.8.0: the CLI drafts the message from the intent's title (one call fewer for the session).
+            message = self.feature_message()
+        return {"files": files, "lessons": lessons, "code": code, "message": message}
+
+    def commit_message(self):
+        """The message of the commit the commit question's click makes (WP15): at commit.confirm the change's own commit
+        when code is uncommitted (commit_calls), else the record commit's."""
+        return self.record_parts()["message"]
+
+    def commit_calls(self):
+        """WP15: the click of commit.confirm commits the change with the message its card shows (the uncommitted code
+        only); the report and the run's record commit follow, as after any commit."""
+        p = self.record_parts()
+        if not p["code"] or not p["message"]:
+            return []
+        return [self.c("spec commit %s -- %s" % (shlex.quote(p["message"]), " ".join(shlex.quote(f) for f in p["code"])))]
+
+    def record_steps(self):
+        r = self.r
+        steps = [self.c("state archive")]
+        p = self.record_parts()
+        files, lessons, message = p["files"], p["lessons"], p["message"]
+        if message is None:
             # F27: nothing to stage: no uncommitted code, no lesson file, and a spec folder git ignores. No git add, no git commit.
             steps.append("There is no record commit: no uncommitted code, no lesson file, and the spec folder is git-ignored or unchanged, so there is nothing to stage.")
         else:
-            if r.command == "fix":
-                # 9.8.0: the CLI drafts the message from rca.md and the tests the fix changed; the person can still amend it.
-                message = self.fix_message()
-            elif files and not code:
-                # A grouped Build commits the code itself (each task, each group, the merge into this branch): this commit is
-                # the run's record, and its message says so.
-                message = "docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug
-            else:
-                # 9.8.0: the CLI drafts the message from the intent's title (one call fewer for the session).
-                message = self.feature_message()
-            if files:
-                # 9.8.0: one CLI call stages the files and commits (scripts/spec_ops.py): the steps are all temper calls,
-                # run in one Bash call. Each name is one shell quoted word: a file name is never shell code.
-                steps.append(self.c("spec commit %s -- %s" % (shlex.quote(message), " ".join(shlex.quote(f) for f in files + lessons))))
-            else:
-                steps.append("git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
-                steps.append("git commit -m %s" % shlex.quote(message))
+            # 9.8.0: one CLI call stages the files and commits (scripts/spec_ops.py): the steps are all temper calls,
+            # run in one Bash call. Each name is one shell quoted word: a file name is never shell code. WP16: with no
+            # file list, the same call with the lesson file alone (no raw git add and git commit).
+            steps.append(self.c("spec commit %s -- %s" % (shlex.quote(message), " ".join(shlex.quote(f) for f in files + lessons))))
         pr = r.state.get("pr")
         if pr in ("one", "stacked") and not r.armed() and r.command == "temper":
             steps.append("Pull request: follow %s/reference/pr.md, section Capture, now: note base_sha, the branch, the default branch and the spec path, "
@@ -112,7 +133,9 @@ class CommitPart:
         the small change (add_adhoc) and Save for later. Its text names the open findings by level."""
         r = self.r
         steps = self.report_steps()
-        first = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=steps, oid="commit")]
+        # WP15: the click commits the change with the message the commit card shows, then the report and the record
+        first = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", calls=self.commit_calls(),
+                          steps=steps, oid="commit")]
         prs = self.pr_options([])   # a /temper:temper run only: one pull request, and stacked ones for two groups or more
         for o in prs:
             o["steps"] = steps
@@ -136,8 +159,13 @@ class CommitPart:
         if verdict == "PASS":
             end = r.state.get("end_report")
             if end in ("html", "none"):
-                return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.record_steps(),
-                        "say": "The commit carries the run's record."}
+                out = {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.record_steps(),
+                       "say": "The commit carries the run's record."}
+                if any("/reference/pr.md" in x for x in out["steps"]):
+                    # WP16: the pull request steps are the conversation's one step (a hand back kind of NEEDS), with the
+                    # id of the option the person chose them by
+                    out.update({"needs": "pull-request", "option": "commit-pr" if r.state.get("pr") == "one" else "commit-stacked-prs"})
+                return out
             if end == "shown":
                 # 9.8.0: the report page is written without a question (it is committed with the spec); the run asked
                 # "write it as HTML too?" at every commit before, one more decision with nothing at stake.
@@ -303,8 +331,10 @@ class CommitPart:
         opts = [self.opt("As planned (Recommended)", "The plan's context is right; check the plan again.", move="answer",
                          calls=[self.c("plan review --answer 'As planned'"), self.c("gate plan")], oid="as-planned")]
         opts += [o for o in [self.include_opt(cm)] if o]
-        opts.append(self.opt("Something else", "Type what Plan should change or read (Other); Plan revises the plan with it.",
-                             do="Ask the person to type it in Other, then run the question's `answer` call with their text.", oid="type", kind="type"))
+        # WP16: the typed answer fills the question's own `answer` call (no `do` text a session or the driver must read)
+        opts.append(self.opt("Something else", "Type what Plan should change or read (Other); Plan revises the plan with it.", move="answer",
+                             calls=[self.c("plan review --answer '{answer}' --redo")], answer=(GATE_HEADER, "What should Plan change or read? Type it below."),
+                             oid="type", kind="type"))
         carry = self.opt("Carry forward", "Decide later; the plan gate keeps naming this question.", move=None, calls=[], oid="carry", kind="carry")
         opts.append(carry)
         for o in opts:
