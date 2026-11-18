@@ -234,8 +234,9 @@ function main(): void {
   w.sh('git add -A && git commit -qm base')
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
   const cfg = path.join(w.dir, '.claude/temper.config')
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80',
-    `  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'`))
+  // WP19: the commands go at the top of the check block, whatever the template holds there
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace(/^check:\n/m,
+    `check:\n  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'\n`))
   w.sh('git add -A && git commit -qm config')
   w.sh(`${TEMPER} init`)
   w.sh(`${TEMPER} state init report --feature 'CI report'`)

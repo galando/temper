@@ -146,7 +146,7 @@ _d05() { # _d05 <case>: the state of one of the eight, then what next does and w
       "$TEMPER" evidence add --stage check --claim 'tests: the suite (run by the CLI)' --exit 1 >/dev/null 2>&1
       "$TEMPER" evidence add --stage check --claim 'setup fault: the JDK is 21 and pom.xml needs 24' --exit 1 >/dev/null 2>&1
       gfail check "tests pass" "the latest run of a test command failed: the suite" ;;
-    unmeasured) _unattended check; gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)" ;;
+    unmeasured) _unattended check; gfail check "tests pass" "no passing test-run evidence recorded" ;;
     person) _unattended check; sed -i '0,/Validate: scenario/s//Validate: manual/' .temper/specs/demo/intent.md
       gfail check "acceptance evidence" "AC-01 has no supported passing evidence row" ;;
     acceptance) _unattended check
@@ -518,7 +518,7 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
     plan.after-back|person.arm) _unattended build; "$TEMPER" state loop build plan --reason 'the plan cannot be built' >/dev/null 2>&1
       gpass plan; _stop44 "$_FORBID44|run_mode autonomous|state advance plan_complete" ;;
     person.override) _unattended check
-      gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"; _stop44 "$_FORBID44" ;;
+      gfail check "tests pass" "no passing test-run evidence recorded"; _stop44 "$_FORBID44" ;;
     person.plan-review) _unattended plan
       printf '# Plan\n\n## Context Map\n- use: intent.md AC-01..AC-02 - the scope\n- gap: no rate limit policy found in code or docs\n- reviewed: pending\n' \
         > .temper/specs/demo/plan.md
@@ -533,8 +533,6 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
       sed -i 's|^\*\*File:\*\* `src/demo.sh`$|**File:** `src/demo.sh`, `src/auth/login.sh`|' .temper/specs/demo/tasks.md
       _g44 "$(printf "$_GROUP44" '"fails": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}')"
       _stop44 "$_FORBID44|group (fix|reopen)" ;;
-    check.mutation-only) _unattended check   # WP11 stop 21: only the mutation row failed
-      gfail check "mutation score >= threshold" "40% of planted bugs caught < 60%"; _stop44 "$_FORBID44|state loop" ;;
     approval.changed) _approved_run44; _at check   # WP12: the row failed
       sed -i 's/demo criterion one/demo criterion one, changed after the approval/' .temper/specs/demo/intent.md
       gfail check "intent unchanged since the approval" "intent.md changed since the approval"

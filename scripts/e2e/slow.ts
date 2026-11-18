@@ -18,7 +18,8 @@
 //
 //   slow-first-run (plain, driver), row D11: the default person; the questions asked are plan.approve and commit.confirm
 //     and no other; no line of the tool log has exit 124; at most 3 whole suite runs; Check passed with its coverage row
-//     not measured; no call of the trace steps back to Plan; the config at the end is byte equal to what init wrote.
+//     not measured, which the commit card names so (WP19); no call of the trace steps back to Plan; the config at the
+//     end is byte equal to what init wrote.
 //   slow-at55 (plain), row D12: check.commands set; the coverage command prints backend/coverage-total.txt, which holds
 //     `TOTAL 100 45 55%` on the base. Check passes at 55%. A second pass, whose builder writes 50% into that file: Check
 //     fails with a row that names the drop.
@@ -285,7 +286,14 @@ export const slowFirstRun = (w: World): void => {
   withRemote(w)
   const p = startMaven(w, SLOW_FILES, { env: { TOOL_JDK: '24', MOCK_SLOW_S: SLOW_S, ...LIMITS } })
   const seen: Seen = { ids: [], gates: null }
-  promise('D11', () => orchestrate(w, mavenScript(mavenAgents(), watching(defaultPerson(['plan.approve', 'commit.confirm']), seen))))
+  // WP19: the text of the commit card, as `temper card` renders it, at the commit question
+  let card = ''
+  const person = watching(defaultPerson(['plan.approve', 'commit.confirm']), seen)
+  const reading: Person = (ask, wd) => {
+    if (idOf(ask) === 'commit.confirm') card = wd.run(`python3 -B ${path.join(ROOT, 'scripts/card.py')} text .temper/view.json`).out
+    return person(ask, wd)
+  }
+  promise('D11', () => orchestrate(w, mavenScript(mavenAgents(), reading)))
   const runs = toolRuns(p.log)
   const timedOut = runs.filter(r => r.exit === 124)
   expect(timedOut.length === 0, `D11 no limit is hit, and ${timedOut.length} run(s) of the tool log ended in exit 124: ${timedOut[0]?.line ?? ''}`)
@@ -296,6 +304,8 @@ export const slowFirstRun = (w: World): void => {
   expect(verdictOf(seen.gates, 'check') === 'PASS', `D11 Check passed on correct code (its verdict: ${verdictOf(seen.gates, 'check') || 'none'})`)
   const cov = rowsOf(seen.gates, 'check').find(r => /^coverage\b/.test(String(r.name)))
   expect(cov !== undefined && cov.pass === null && cov.state === 'not measured', `D11 Check shows its coverage row as not measured (${JSON.stringify(cov ?? null)})`)
+  expect(!seen.ids.some(id => id.startsWith('check.')), `D11 the run never stops at Check (${seen.ids.join(', ')})`)
+  expect(/coverage: not measured/i.test(card), `D11 the commit card text holds coverage: not measured (${card.split('\n').filter(l => /coverage/i.test(l)).join(' / ').slice(0, 200) || 'no coverage line'})`)
   const back = stepsBackToPlan(w)
   expect(back.length === 0, `D11 no call of the trace steps back to Plan (${back[0] ?? ''})`)
   const cfg = w.exists('.claude/temper.config') ? w.read('.claude/temper.config') : ''

@@ -25,10 +25,11 @@ export function startProject(w: World, config = '', before?: (w: World) => void)
   }
   w.sh('git add -A && git commit -qm base')
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
-  // 9.8.0: Check is run by the CLI. The driver names its commands (the suite, with a coverage total it prints) and turns
-  // the mutation gate off, so a run gives the same verdict on every machine.
+  // 9.8.0: Check is run by the CLI. The driver names its commands (the suite, with a coverage total it prints), so a
+  // run gives the same verdict on every machine. WP19: the lines go at the top of the check block, whatever the
+  // template holds there, and no key turns the planted bug score off: it gates nothing.
   const cfg = path.join(w.dir, '.claude/temper.config')
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80', `  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'`))
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace(/^check:\n/m, `check:\n  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'\n`))
   if (config) fs.appendFileSync(cfg, `\n${config}\n`)
   w.sh('git add -A && git commit -qm config')
   before?.(w)
@@ -1181,4 +1182,197 @@ export const policyRun = (w: World): void => {
   expect(ids.slice(approval + 1).join(',') === 'commit.confirm', `no question between the approval and the commit question (${ids.slice(approval + 1).join(', ')})`)
   expect(!w.exists('.temper/build-state.json') && w.sh('git log --format=%s -1 -- src/ci_shape.py').trim() !== '' && /VERSION = 1/.test(w.sh('git show HEAD:src/ci_shape.py')),
     'the run ended and the change is committed, the group fix with it')
+}
+
+// 9.8.5 (WP19): coverage judged against the project. A stand-in for coverage.py (the module the CLI runs as
+// `python3 -m coverage`, found through PYTHONPATH outside the project) traces the lines that ran and writes its
+// report in coverage.py's JSON shape, so the Check of the Python project has line data. The config names no Check command, so
+// the CLI detects the stack and runs that tool; the base value is written by hand, as WP20's baseline writes it.
+export const FAKE_COVERAGE = `import fnmatch, json, os, runpy, sys, threading, types
+
+DATA = ".coverage"
+
+
+def executable(path):
+    try:
+        code = compile(open(path, encoding="utf-8").read(), path, "exec")
+    except (OSError, SyntaxError, ValueError):
+        return set()
+    lines, todo = set(), [code]
+    while todo:
+        c = todo.pop()
+        lines.update(n for _, _, n in c.co_lines() if n)
+        todo.extend(k for k in c.co_consts if isinstance(k, types.CodeType))
+    return lines
+
+
+def run(args):
+    omit, append, i = [], False, 0
+    while i < len(args) and args[i] != "-m":
+        if args[i].startswith("--omit="):
+            omit = [x for x in args[i][7:].split(",") if x]
+        elif args[i] == "-a":
+            append = True
+        i += 1
+    module, rest, root, seen = args[i + 1], args[i + 2:], os.getcwd() + os.sep, {}
+    try:
+        old = json.load(open(DATA)) if append else {}
+    except (OSError, ValueError):
+        old = {}
+
+    def tracer(frame, event, arg):
+        f = frame.f_code.co_filename
+        if f.startswith(root):
+            seen.setdefault(f[len(root):], set()).add(frame.f_lineno)
+        return tracer
+
+    sys.argv = [module] + rest
+    sys.settrace(tracer)
+    threading.settrace(tracer)
+    code = 0
+    try:
+        runpy.run_module(module, run_name="__main__", alter_sys=True)
+    except SystemExit as e:
+        code = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+    finally:
+        sys.settrace(None)
+    files = old.get("files", {})
+    for f, ls in seen.items():
+        files[f] = sorted(set(files.get(f, [])) | ls)
+    json.dump({"files": files, "omit": omit or old.get("omit", [])}, open(DATA, "w"))
+    return code
+
+
+def report(args):
+    out = args[args.index("-o") + 1]
+    try:
+        data = json.load(open(DATA))
+    except (OSError, ValueError):
+        data = {"files": {}, "omit": []}
+    files, total, ran = {}, 0, 0
+    for d, dirs, names in os.walk("."):
+        dirs[:] = sorted(x for x in dirs if not x.startswith(".") and x != "__pycache__")
+        for n in sorted(names):
+            rel = os.path.relpath(os.path.join(d, n), ".")
+            if not n.endswith(".py") or any(fnmatch.fnmatch(rel, p) for p in data.get("omit", [])):
+                continue
+            lines = executable(rel)
+            hit = sorted(lines & set(data["files"].get(rel, [])))
+            miss = sorted(lines - set(hit))
+            total, ran = total + len(lines), ran + len(hit)
+            files[rel] = {"executed_lines": hit, "missing_lines": miss,
+                          "summary": {"covered_lines": len(hit), "num_statements": len(lines)}}
+    pct = 100.0 * ran / total if total else 100.0
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    json.dump({"files": files, "totals": {"covered_lines": ran, "num_statements": total, "percent_covered": pct}},
+              open(out, "w"))
+    print("TOTAL %d %d %d%%" % (total, total - ran, round(pct)))
+    return 0
+
+
+def main(argv):
+    if argv[:1] == ["--version"]:
+        print("Coverage.py, version 7.0.0 (the e2e stand-in)")
+        return 0
+    if argv[:1] == ["run"]:
+        return run(argv[1:])
+    if argv[:1] == ["json"]:
+        return report(argv[1:])
+    print("the e2e stand-in of coverage.py knows run, json and --version", file=sys.stderr)
+    return 2
+
+
+sys.exit(main(sys.argv[1:]))
+`
+// The scripted builder's code: 12 executable lines, of which the tests run 4 (the two lambdas, VERSION and the line
+// def stage_summary; no test calls stage_summary, so its 8 body lines never run).
+export const LOW_SHAPE = `VERSION = 1
+stage_object = lambda stage, verdict, requirements: {"stage": stage, "verdict": verdict, "requirements": list(requirements)}
+
+
+def stage_summary(stages):
+    out = []
+    failed = 0
+    for s in stages:
+        if s["verdict"] == "FAIL":
+            failed += 1
+            out.append(s["stage"])
+    out.sort()
+    return out, failed
+`
+export const LOW_BYTES = 'import json; document = lambda ledger: json.dumps(ledger, sort_keys=True, separators=(",", ":"))\n'
+
+// WP19 test 9: the scripted builder leaves 12 new lines of which 4 run; the base value is 71%. Check fails on the row
+// coverage (a measured drop, class code); the run the person approved takes its one counted repair, whose scripted
+// agent records RED and GREEN as a fix pass does and changes no line that runs; Check fails again and the run stops
+// with one question that names the row. It never passes on to the commit and never takes a second repair by itself.
+// WP24 turns the repair into one in place.
+export const coverageDrop = (w: World): void => {
+  const fake = `${w.dir}.fakecov`
+  fs.mkdirSync(path.join(fake, 'coverage'), { recursive: true })
+  fs.writeFileSync(path.join(fake, 'coverage/__init__.py'), '')
+  fs.writeFileSync(path.join(fake, 'coverage/__main__.py'), FAKE_COVERAGE)
+  w.env.PYTHONPATH = fake
+  startProject(w, '', wd => {
+    // no Check command and no old key: the CLI detects the Python stack and its coverage tool, and judges the project
+    const cfg = '.claude/temper.config'
+    const text = wd.read(cfg).split('\n').filter(l => !/^\s*(commands:|test: |coverage: |coverage-threshold:)/.test(l)).join('\n')
+    fs.writeFileSync(path.join(wd.dir, cfg), text)
+    wd.sh('git add -A && git commit -qm "config: no Check commands"')
+  })
+  fs.mkdirSync(path.join(w.dir, '.temper/evidence'), { recursive: true })
+  fs.writeFileSync(path.join(w.dir, '.temper/evidence/baseline.json'), JSON.stringify({ result: 'green', coverage: 71 }) + '\n')
+  const lowOne = (wd: World, n: number): void => {
+    const wt = path.relative(wd.dir, worktreeOf(t(wd, `task show ${n}`).out))
+    const [testFile, srcFile, stub, code, test] = n === 1
+      ? ['unit/test_ci_shape.py', 'src/ci_shape.py', SHAPE_STUB, LOW_SHAPE, SHAPE_TEST]
+      : ['unit/test_ci_bytes.py', 'src/ci_bytes.py', BYTES_STUB, LOW_BYTES, BYTES_TEST]
+    wd.write(path.join(wt, testFile), test)
+    wd.write(path.join(wt, srcFile), stub)
+    if (t(wd, `task test ${n} --phase red`).code === 0) throw new Error('RED passed')
+    wd.write(path.join(wt, srcFile), code)
+    const green = t(wd, `task test ${n} --phase green`)
+    if (green.code !== 0) throw new Error(`GREEN failed: ${green.out}`)
+  }
+  let repairs = 0
+  const asked: Json[] = []
+  let approved = false
+  const end = orchestrate(w, script({
+    agents: {
+      ...AGENTS,
+      'temper:temper-build-task': chained(lowOne),
+      // the repair the rule takes: test first, as a fix pass records it, its scripted agent adds only a comment, so the
+      // share of the changed lines that ran stays 4 of 12
+      'temper:temper-build': wd => {
+        repairs++
+        const check = "-- grep -q 'a comment of the repair' src/ci_shape.py"
+        t(wd, `evidence run --stage build --claim 'unit tests' --phase red ${check}`)
+        wd.write('src/ci_shape.py', `${wd.read('src/ci_shape.py').replace(/\n*$/, '\n')}# a comment of the repair\n`)
+        t(wd, `evidence run --stage build --claim 'unit tests' --phase green ${check}`)
+      },
+    },
+    person: (ask, wd) => {
+      if (String(ask.id ?? '') === 'plan.approve') {
+        approved = true
+        return recommended(ask, wd)
+      }
+      if (!approved) return recommended(ask, wd)
+      asked.push(ask)
+      return null   // the person reads the stop and ends the scenario there
+    },
+    afterFailStops: true,
+  }))
+  const flow = w.trace.join('\n')
+  const rows = ((w.json('.temper/gates.json').check?.requirements ?? []) as Json[])
+  const cov = rows.find(r => r.name === 'coverage')
+  expect(cov !== undefined && cov.pass === false && String(w.json('.temper/gates.json').check?.verdict) === 'FAIL',
+    `Check fails on the row coverage, a measured drop (${JSON.stringify(rows.filter(r => r.pass !== true)).slice(0, 300)})`)
+  expect(!rows.some(r => /mutation/i.test(String(r.name))), 'no row of Check names the planted bugs')
+  const log = (w.exists('.temper/rule-log.json') ? w.json('.temper/rule-log.json') : []) as unknown as Json[]
+  const ruled = log.filter(x => x.kind === 'repair' && x.stage === 'check').length
+  expect(repairs === 1 && ruled === 1, `the run takes its one counted repair and no second (${repairs} launches of the repair agent, ${ruled} repairs by rule at Check)`)
+  expect(asked.length === 1 && end.action === 'ask', `after the approval the run asks one question, at the stop (${asked.map(a => a.id).join(', ')})`)
+  const q = String(asked[0]?.question?.question ?? '')
+  expect(/\bcoverage\b/.test(q), `the stop's question names the row coverage (${q.slice(0, 200)})`)
+  expect(!/state advance check_complete/.test(flow) && !asked.some(a => a.id === 'commit.confirm'), 'the run never passes on to the commit')
 }

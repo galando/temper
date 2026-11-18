@@ -13,6 +13,27 @@ assert_eq "9.8.0: and writes to it, never to docs/decisions/.temper" "medium|no"
 
 # --- 2. Check is run by the CLI when it finds a test command; the agent stays for a stack it cannot read ---
 _gc() { "$TEMPER" gate check 2>&1 || true; }   # the gate's rows; its exit (FAIL is 1) is not the pipe's under pipefail
+_planted15() { # WP19: the planted bug score of the tree as it stands, which check ahead measures beside Review (Check plants
+               # no bug): the state of .temper/evidence/mutation.json, then "all caught" or "survivors"
+  rm -f .temper/evidence/mutation.json
+  "$TEMPER" check ahead >/dev/null 2>&1
+  local i
+  for i in $(seq 1 300); do
+    if [[ ! -f .temper/check/ahead.pid ]]; then
+      [[ -f .temper/evidence/mutation.json ]] && ! grep -q '"state": *"running"' .temper/evidence/mutation.json && break
+      [[ -f .temper/check/ahead.json && $i -gt 20 ]] && break
+    fi
+    sleep 0.2
+  done
+  python3 -c "
+import json
+try:
+    m = json.load(open('.temper/evidence/mutation.json'))
+except (OSError, ValueError):
+    m = {}
+ran, caught = m.get('ran') or 0, m.get('caught') or 0
+print('%s|%s' % (m.get('state', 'no mutation.json'), 'all caught' if ran >= 3 and caught == ran else 'survivors' if m.get('survivors') else 'caught %s of %s' % (caught, ran)))"
+}
 # The shared fixture folder keeps what earlier case files left at its top level (CI runs them all in one folder): a
 # section that reads the changed files or the stack clears it first, keeping the repository, the run and the README.
 _clear_root() { [[ "$PWD" == "$WORKDIR" ]] || return 1; find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .temper ! -name .claude ! -name README -exec rm -rf {} +; }
@@ -25,7 +46,7 @@ assert_eq "9.8.0: with no test command the CLI can find, Check is the agent as b
   "$(nx "'|'.join([d['action'], str(len(d['agents'])), str(sum(1 for c in d['calls'] if 'check run' in c))])")"
 python3 - <<'PYEOF'
 p = '.claude/temper.config'; s = open(p).read()
-s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 80\n  commands:\n    test: python3 -m unittest discover -s unit -t .\n', 1)
+s = s.replace('  coverage-threshold: 80\n', '  commands:\n    test: python3 -m unittest discover -s unit -t .\n', 1)   # WP19: no old key
 open(p, 'w').write(s)
 PYEOF
 mkdir -p unit lib; : > unit/__init__.py; : > lib/__init__.py
@@ -72,10 +93,10 @@ echo '[]' > .temper/evidence/check.json
 "$TEMPER" check run >/dev/null 2>&1
 assert_eq "9.8.0: check run records the suite as a CLI run that passed" "0|cli" \
   "$(python3 -c "import json; r=[x for x in json.load(open('.temper/evidence/check.json')) if x['claim'].startswith('tests:')][-1]; print('%s|%s' % (r['exit_code'], r['executed_by']))")"
-assert_eq "9.8.0: with no coverage command the coverage row names what to set" "yes" \
-  "$(_gc | grep -q "recorded coverage 'none' vs threshold 80% (set check.commands.coverage" && echo yes || echo no)"
-assert_eq "9.8.0: tests that pin every band catch the planted bugs: the mutation row passes" "yes" \
-  "$(_gc | grep -qE '\[v\] mutation score >= threshold — (100|9[0-9]|8[0-9]|7[0-9])' && echo yes || echo no)"
+assert_eq "9.8.0: with no coverage command the coverage row is not measured and names what to set" "yes" \
+  "$(_gc | grep -q "\[?\] coverage — not measured: .*set check.commands.coverage" && echo yes || echo no)"
+assert_eq "9.8.0: tests that pin every band catch the planted bugs: check ahead records each one caught" "measured|all caught" \
+  "$(_planted15)"
 cat > unit/test_calc.py <<'PYEOF'
 import unittest
 from lib import calc
@@ -87,8 +108,8 @@ class T(unittest.TestCase):
 PYEOF
 echo '[]' > .temper/evidence/check.json
 "$TEMPER" check run >/dev/null 2>&1
-assert_eq "9.8.0: a test that only runs the code misses the planted bugs: the mutation row fails" "yes" \
-  "$(_gc | grep -q '\[x\] mutation score >= threshold' && echo yes || echo no)"
+assert_eq "9.8.0: a test that only runs the code misses planted bugs: check ahead names survivors, and no gate row names them" \
+  "measured|survivors|0" "$(_planted15)|$(_gc | grep -c 'mutation')"
 
 # --- 3. A fix's regression proof: the new test must fail on the code before the fix ---
 fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --feature "the bug" --command fix >/dev/null 2>&1
@@ -265,12 +286,13 @@ PYEOF
   printf 'export function grade(s) {\n  if (s >= 90) return "A";\n  if (s >= 75) return "B";\n  return "F";\n}\n' > src/grade.js
   printf 'import test from "node:test";\nimport assert from "node:assert";\nimport { grade } from "../src/grade.js";\ntest("g", () => { for (const [s, g] of [[90,"A"],[89,"B"],[75,"B"],[74,"F"]]) assert.equal(grade(s), g); });\n' > test/grade.test.js
   echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
-  assert_eq "9.8.0: Node: the suite passes, its coverage is read from node --test, and pinned bands catch the planted bugs" "yes|yes|yes" \
-    "$(_gc | grep -q '\[v\] tests pass' && echo yes || echo no)|$(_gc | grep -q '\[v\] coverage >= threshold — 100' && echo yes || echo no)|$(_gc | grep -q '\[v\] mutation score >= threshold — 100' && echo yes || echo no)"
+  assert_eq "9.8.0: Node: the suite passes, its coverage is read from node --test, and check ahead finds pinned bands catch the planted bugs" \
+    "yes|yes|measured|all caught" \
+    "$(_gc | grep -q '\[v\] tests pass' && echo yes || echo no)|$(_gc | grep -q '\[v\] coverage — .*100' && echo yes || echo no)|$(_planted15)"
   printf 'import test from "node:test";\nimport assert from "node:assert";\nimport { grade } from "../src/grade.js";\ntest("g", () => { assert.ok("ABF".includes(grade(95))); });\n' > test/grade.test.js
   echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
-  assert_eq "9.8.0: Node: a test that only runs the code misses the planted bugs" "yes" \
-    "$(_gc | grep -q '\[x\] mutation score >= threshold' && echo yes || echo no)"
+  assert_eq "9.8.0: Node: a test that only runs the code misses the planted bugs, which check ahead names" "measured|survivors" \
+    "$(_planted15)"
 else
   echo "SKIP: 9.8.0 Node cases (node or npm is not installed)"
 fi
@@ -294,7 +316,7 @@ import re
 p = '.claude/temper.config'; s = open(p).read()
 s = re.sub(r'\n  commands:\n(    .*\n)+', '\n', s)
 s = s.replace('  coverage-threshold: 0\n', '  coverage-threshold: 80\n', 1)
-s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 0\n  mutation-threshold: 0\n  commands:\n    test: "true"\n    coverage: echo "TOTAL 10 1 90%"\n', 1)
+s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 0\n  commands:\n    test: "true"\n    coverage: echo "TOTAL 10 1 90%"\n', 1)
 open(p, 'w').write(s)
 PYEOF
 echo '[]' > .temper/evidence/check.json; python3 -c "import json; p='.temper/gates.json'; d=json.load(open(p)); d.pop('check', None); json.dump(d, open(p,'w'))"
@@ -406,17 +428,17 @@ JSON
 assert_eq "9.8.0: a corrected acceptance run that fails again fails its own row, never the tests row" "yes|yes" \
   "$(_gc | grep -q '\[v\] tests pass' && echo yes || echo no)|$(_gc | grep -q '\[x\] acceptance tests written before Build' && echo yes || echo no)"
 
-# a step back from Check carries the failing output, and the surviving mutants, to Build's fix pass
+# a step back from Check carries the failing output to Build's fix pass (WP19: the planted bug score is no row of Check,
+# so no surviving mutant goes with it)
 rm -f .temper/feedback-loops.json
 cat > .temper/evidence/check.json <<'JSON'
-[{"claim": "acceptance (written before Build)", "cmd": "x", "exit_code": 1, "output": "FAIL: test_ac08 AssertionError: 404 != 200"},
- {"claim": "mutation score", "cmd": "40 mutants", "exit_code": 0, "value": 50.0, "output": "lib/calc.py line 3: cmp"}]
+[{"claim": "acceptance (written before Build)", "cmd": "x", "exit_code": 1, "output": "FAIL: test_ac08 AssertionError: 404 != 200"}]
 JSON
 "$TEMPER" state loop check build --reason "The check found a real problem" >/dev/null 2>&1
-assert_eq "9.8.0: the step back keeps the failing test's output and the surviving mutants" "yes|yes" \
+assert_eq "9.8.0: the step back keeps the failing test's output" "yes" \
   "$(python3 -c "
 import json; f = json.load(open('.temper/feedback-loops.json'))['active_loops'][0]['findings']; j = ' '.join(f)
-print(('yes' if '404 != 200' in j else 'no') + '|' + ('yes' if 'lib/calc.py line 3: cmp' in j else 'no'))")"
+print('yes' if '404 != 200' in j else 'no')")"
 python3 -c "
 import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['built_before'] = True; json.dump(d, open(p, 'w'))"   # the fix pass
 assert_eq "9.8.0: the fix pass is told the acceptance tests are locked, and to report a wrong one instead of editing it" "yes" \
