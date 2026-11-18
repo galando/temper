@@ -181,6 +181,8 @@ _r53+="|ended=$(python3 -B -c "import json
 print(sum(1 for e in json.load(open('.temper/rule-log.json')) if e.get('kind') == 'ended'))" 2>/dev/null || echo 0)"
 assert_eq "bound: a refused approval leaves the run asking at every stage, and the rule log says the unattended run ended" \
   "half way=autonomous|refused=1|mode=interactive|at=plan|armed=False|ended=1" "$_r53"
+assert_eq "bound: a refused Run Design first writes no want_design either, its first call is the bound mode" \
+  "false" "$("$TEMPER" state get want_design false 2>/dev/null)"
 
 # --- the advance records intent_hash beside plan_hash, with the approving calls and with a bare advance ---
 _approved53; _h53_shown="$(_hashes53)"
@@ -276,6 +278,17 @@ _trivial53; printf '# Intent\n\n**Status:** draft\n\nAn intent written after the
 _t53+="|written later=$(_gate53 build)"
 assert_eq "bound: a run with no intent.md is bound too: a changed tasks.md or an intent.md written later fails the row" \
   "before=True|build=False,tasks.md|check=False,tasks.md|commit=False,tasks.md|written later=False,intent.md" "$_t53"
+_t53=""
+for _k53 in directory link; do   # an intent.md that is no regular file takes the trivial path of gate intent too
+  fresh; _repo53; rm -f .temper/specs/demo/intent.md
+  if [[ "$_k53" == directory ]]; then mkdir .temper/specs/demo/intent.md; else ln -s nowhere .temper/specs/demo/intent.md; fi
+  gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
+  "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  sed -i 's|^\*\*Test:\*\* `true`|**Test:** `true; true`|' .temper/specs/demo/tasks.md
+  _t53+="${_t53:+|}$_k53=$("$TEMPER" state get intent_hash none 2>/dev/null),$(_gate53 build)"
+done
+assert_eq "bound: an intent.md that is a directory or a dangling link is absent, and a changed tasks.md still fails the row" \
+  "directory=absent,False,tasks.md|link=absent,False,tasks.md" "$_t53"
 
 # --- a step back to Plan and a new approval record the new digests ---
 _approved53; _criterion53 "changed after the approval"

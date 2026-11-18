@@ -375,7 +375,7 @@ class AskPart:
                     # list, so every option stays within two dialogs (a More list of five made a third level, M2 of PR 115).
                     design = self.opt("Run Design first", "Approve the plan; Design runs next, and its question is the last "
                                       "one before Build.", move="approve", oid="run-design",
-                                      calls=[self.c("state set want_design true")] + self.leave_plan("design", fold=fold))
+                                      calls=self.leave_plan("design", fold=fold, then=[self.c("state set want_design true")]))
                     first = self.approval(lambda m: self.leave_plan(fold=fold, mode=m), "plan", lead)
                     if revise is not None:   # findings below high: revising is offered, after the ways on
                         return self.with_more(GATE_HEADER, text, stage, first + [revise], more([html, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")

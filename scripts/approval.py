@@ -91,9 +91,9 @@ def digest(path):
 
 
 def bound(path):
-    """What the approval records of intent.md: its digest, ABSENT when there is no such file, None when it cannot be
-    read."""
-    return digest(path) if os.path.lexists(path) else ABSENT
+    """What the approval records of intent.md: its digest, ABSENT when it is no regular file (the test of `gate intent`
+    for its trivial path, so a directory or a dangling link there is absent too), None when it cannot be read."""
+    return digest(path) if os.path.isfile(path) else ABSENT
 
 
 def read_state(path):
@@ -119,7 +119,7 @@ def binding_row(state, spec):
     want = {"intent.md": st.get("intent_hash"), "tasks.md": st.get("plan_hash")}
     changed = []
     if want["intent.md"] == ABSENT:
-        if os.path.lexists(os.path.join(spec, "intent.md")):
+        if os.path.isfile(os.path.join(spec, "intent.md")):
             changed.append("intent.md")
     elif digest(os.path.join(spec, "intent.md")) != want["intent.md"]:
         changed.append("intent.md")
