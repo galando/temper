@@ -148,9 +148,11 @@ export function worldFindings(rec: WorldRecord): string[] {
     if (JSON.stringify(last.accepted) !== JSON.stringify(ap.accepted) && !answered('accepted'))
       found.push('D105 the accepted findings changed after the approval, and no answer of the person accepted one')
     if (last.intent !== ap.intent) found.push('D105 intent.md does not have the digest recorded at the approval')
-    // after the approval the run is bound to: a planner the person's step back to Plan launched before the approval was
-    // asked again is approved by it (WP12)
-    const planners = rec.agents.filter(a => a.approvals > 0 && a.approvals === rec.approvals && a.type === PLANNER).length
+    // a planner launched between two approvals is approved by the second only when the person picked a step back (move
+    // `back`) between them; any other planner launch after an approval is a finding (WP12)
+    const marks = rec.picks.map((p, i) => (APPROVALS.includes(p.question) && APPROVING_MOVES.includes(p.move) ? i : -1)).filter(i => i >= 0)
+    const stepped = (k: number): boolean => k < marks.length && rec.picks.slice(marks[k - 1]! + 1, marks[k]).some(p => p.move === 'back')
+    const planners = rec.agents.filter(a => a.approvals > 0 && a.type === PLANNER && !stepped(a.approvals)).length
     if (planners > 0) found.push(`D105 the agent log holds ${planners} planner launch(es) after the approval`)
     const message = finalMessage(rec.lastAsk)
     if (message !== '' && last.subjects.includes(message)) found.push(`D105 a commit carries the final commit message before the commit question: ${message}`)
