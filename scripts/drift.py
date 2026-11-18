@@ -1,6 +1,7 @@
 """drift.py: where the code has moved away from the specs it was built from (9.7.6). Read only; run from the project folder.
 
   python3 drift.py SPECS_DIR [--run] [--json]
+  python3 drift.py SPECS_DIR ask --path P --why W --change C     `temper drift ask` (WP16): scripts/cli_words.py
 
 For each spec folder whose gate-ledger.json is committed (a finished run), it compares what the spec says with the tree
 as it is now:
@@ -97,6 +98,9 @@ def text(reports):
 
 
 def main(argv):
+    if argv[2:3] == ["ask"]:   # WP16: `temper drift ask`, an agent's file outside the plan (scripts/cli_words.py)
+        import cli_words
+        return cli_words.drift_ask(argv[3:])
     flags = argv[2:]
     if len(argv) < 2 or any(f not in ("--json", "--run") for f in flags):
         print(__doc__, file=sys.stderr)

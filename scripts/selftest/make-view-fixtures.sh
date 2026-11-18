@@ -424,7 +424,7 @@ verdict(bu, "check", False, "tests pass", "exit 1: 2 failed")
 snap2(bu, "check-budget", "run-budget")
 
 # A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
-for name in ("armed-review-pass", "review-fail"):   # WP15: the cards made the first module grow
+for name in ("armed-review-pass", "review-fail", "armed-check-fail"):   # WP15: the cards made it grow; WP16: typed calls
     extra[name] = views.pop(name)
 
 if len(sys.argv) > 3 and sys.argv[3] == "extra":

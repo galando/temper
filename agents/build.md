@@ -79,10 +79,10 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `plan.md`'s Files to Create and Files to Modify tables and on the `**File:**` lines of
    `tasks.md`; test files and the spec folder are always yours. Before you change any
    other file, stop: do not write it, not even another way. Finish what the task can do
-   without it, leave the task's box unticked, and list the file in the `DRIFT` section of
-   your panel: the path, why the task needs it (what goes wrong without it), and the change
-   you would make, in one row each. The orchestrator asks the person and launches you again
-   with one `Drift decision: {path}: {add|revert|allow-once}` line per answer. `add` and
+   without it, leave the task's box unticked, record each file with
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper drift ask --path {path} --why '{why}' --change '{the change}'`
+   (why: what goes wrong without it) and return. The CLI asks the person and launches you
+   again with one `Drift decision: {path}: {add|revert|allow-once}` line per answer. `add` and
    `allow-once` let you make that change (`allow-once`: one edit, so make it in one);
    `revert` means do the task without that file. Log every file you then wrote outside the
    plan in `build-context.json`'s `unplanned_files` with the person's decision.
@@ -106,7 +106,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 - Never write `.temper/build-state.json` or anything else the temper CLI owns; deviations
   go in the spec's `build-context.json`.
 - A file outside the plan is never written before the person's `Drift decision:` line
-  allows it. It goes in the `DRIFT` section, with why and what, and the task waits.
+  allows it. It goes to `temper drift ask`, with why and what, and the task waits.
 - A review finding you believe is wrong is not fixed and never accepted by you. Contest it with
   evidence the reviewer could read (`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence contest --stage review
   --id N --cite <file>[:<line>|:<symbol>] --quote '<the text there>' --reason '...'`; the CLI checks the citation), or escalate it
@@ -133,8 +133,6 @@ sections list this launch's commits and the feedback it answered:
 | {file} [{scenario}]                                                      |
 +--- COMMITS (N) ---+------------------------------------------------------+
 | {sha} {scenario} [AC-NN] — {files}                                       |
-+--- DRIFT (N) ---+--------------------------------------------------------+
-| {path} — why: {what goes wrong without it} — change: {what you'd change} |
 +--- FEEDBACK (N) ---+-----------------------------------------------------+
 | #{K} {text} -> applied|declined: {why}                                   |
 +--- BLOCKERS (N) ---+-----------------------------------------------------+

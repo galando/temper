@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """spec_ops.py: the git steps of leaving Intent, Plan and Design, run by the CLI (9.8.0).
 
-  spec_ops.py branch BRANCH            `temper spec branch`: switch to the run's branch (create it when it is new)
-  spec_ops.py deviations SPEC          `temper spec deviations`: the deviations build-context.json records, written into
+  spec_ops.py WORD BRANCH SPEC ARG...  BRANCH and SPEC are the run's branch and spec folder ('' with no run):
+  spec_ops.py branch BRANCH SPEC [--carry NAME | --if-protected]
+                                       `temper spec branch`: switch to the run's branch (create it when it is new);
+                                       with --carry NAME (WP16), switch to the branch NAME an earlier run left, and
+                                       carry the spec files across through a temp folder (never git stash, whose stack
+                                       every worktree shares); with --if-protected (WP16, a fix run), switch to the
+                                       run's branch only from main, master or the default branch, and on any other
+                                       branch record that branch as the run's and switch nothing
+  spec_ops.py deviations BRANCH SPEC   `temper spec deviations`: the deviations build-context.json records, written into
                                        plan.md as its `## Deviations` section (nothing when it records none)
-  spec_ops.py commit SPEC MESSAGE [-- FILE...]
+  spec_ops.py commit BRANCH SPEC MESSAGE [-- FILE...]
                                        `temper spec commit '<message>' [-- FILE...]`: stage the spec folder (and the files
                                        named after `--`, the run's record commit) and commit, when that holds a change
 
@@ -36,6 +43,52 @@ def branch(name):
         print("FAIL: git checkout %s: %s" % (name, (r.stderr or r.stdout).strip()[-300:]), file=sys.stderr)
         return 1
     print("OK: switched to %s%s" % ("" if exists else "a new branch ", name))
+    return 0
+
+
+def carry(spec, name):
+    """The spec folder to a temp folder, the folder back to HEAD, the switch, the files back. A refused switch puts the
+    files back too, fails, and names the temp folder, which keeps a copy."""
+    import os
+    import shutil
+    import tempfile
+    if not spec or not name or not os.path.isdir(spec):
+        print("FAIL: usage: temper spec branch --carry NAME (with an active run)", file=sys.stderr)
+        return 1
+    t = tempfile.mkdtemp(prefix="temper-spec-")
+    shutil.copytree(spec, t, dirs_exist_ok=True)
+    git("restore", "--source=HEAD", "--worktree", "--", spec)
+    git("clean", "-fdq", "--", spec)
+    r = git("checkout", name)
+    os.makedirs(spec, exist_ok=True)
+    shutil.copytree(t, spec, dirs_exist_ok=True)
+    if r.returncode != 0:
+        print("FAIL: could not switch to %s: %s; the spec files are back in place, and a copy is in %s"
+              % (name, " ".join((r.stderr or r.stdout).split())[-300:], t), file=sys.stderr)
+        return 1
+    shutil.rmtree(t, ignore_errors=True)
+    print("OK: switched to %s, with the spec files of the run" % name)
+    return 0
+
+
+def if_protected(name, spec):
+    """A fix run's branch: from main, master or the default branch, the switch to the run's branch (fix/<slug> when the
+    state names none); from any other branch, that branch is recorded as the run's, and nothing switches."""
+    import os
+    import subprocess
+    cur = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    default = git("symbolic-ref", "--short", "refs/remotes/origin/HEAD").stdout.strip().split("/", 1)[-1]
+    if cur in ("main", "master") or (default and cur == default):
+        return branch(name or "fix/%s" % os.path.basename(spec.rstrip("/")))
+    if not cur or cur == "HEAD":
+        print("FAIL: no branch is checked out", file=sys.stderr)
+        return 1
+    temper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temper")
+    r = subprocess.run([temper, "state", "set", "branch", cur], capture_output=True, text=True)
+    if r.returncode != 0:
+        print("FAIL: state set branch %s: %s" % (cur, (r.stderr or r.stdout).strip()[-300:]), file=sys.stderr)
+        return 1
+    print("OK: on %s, now the run's branch" % cur)
     return 0
 
 
@@ -102,13 +155,25 @@ def deviations(spec):
 
 
 def main(argv):
-    if argv[:1] == ["branch"] and len(argv) == 2:
-        return branch(argv[1])
-    if argv[:1] == ["deviations"] and len(argv) == 2:
-        return deviations(argv[1])
-    if argv[:1] == ["commit"] and len(argv) >= 3 and (len(argv) == 3 or argv[3] == "--"):
-        return commit(argv[1], argv[2], argv[4:])
-    print("FAIL: usage: temper spec branch | deviations | commit '<message>' [-- FILE...]", file=sys.stderr)
+    """argv: the word, the run's branch, the run's spec folder ('' with no run), then the word's own arguments."""
+    word, name, spec = (list(argv[:3]) + ["", "", ""])[:3]
+    rest = list(argv[3:])
+    if word == "branch":
+        if rest[:1] == ["--carry"] and len(rest) == 2:
+            return carry(spec, rest[1])
+        if rest == ["--if-protected"]:
+            return if_protected(name, spec)
+        if not rest:
+            return branch(name)
+    if word in ("commit", "deviations") and not spec:
+        print("FAIL: no active run", file=sys.stderr)
+        return 1
+    if word == "deviations" and not rest:
+        return deviations(spec)
+    if word == "commit" and rest and (len(rest) == 1 or rest[1] == "--"):
+        return commit(spec, rest[0], rest[2:])
+    print("FAIL: usage: temper spec branch [--carry NAME | --if-protected] | deviations | commit '<message>' [-- FILE...]",
+          file=sys.stderr)
     return 1
 
 

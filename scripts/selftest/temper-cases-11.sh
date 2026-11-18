@@ -252,10 +252,14 @@ assert_eq "F13: Change asks Which task changes? with one option per task; a task
   "Which task changes?|Task 1 (with Task 2)|Task 2|Task 3|Task 4" \
   "$(nx "c = d['ask']['change']['question']; c['question'] + '|' + '|'.join(o['label'] for o in c['options'])")"
 assert_eq "F13: a task's option reopens the task and its companions with the feedback number" \
-  "group reopen G1 --task 1 --task 2 --feedback {K}|Re-runs Task 1 and Task 2; the other tasks of G1 keep their work." \
+  "group reopen G1 --task 1 --task 2 --feedback 1|Re-runs Task 1 and Task 2; the other tasks of G1 keep their work." \
   "$(nx "o = d['ask']['change']['options'][0]; o['calls'][0].split('temper ', 1)[1] + '|' + o['description']")"
-assert_eq "F13: Change records each feedback item first" "1" \
-  "$(nx "str(int('evidence add --stage build --phase feedback --claim' in d['ask']['options'][1]['do'] and 'Which task changes?' in d['ask']['options'][1]['do']))")"
+assert_eq "F13: Change records each feedback item first" "group feedback G1 --text '{answer}'|1" \
+  "$(nx "o = d['ask']['options'][1]; o['calls'][0].split('temper ', 1)[1] + '|' + str(int(bool(o.get('answer_question')) and 'do' not in o))")"
+"$TEMPER" group feedback G1 --text 'Task 3: keep the old name' >/dev/null 2>&1
+assert_eq "F13 (WP16): the typed change is feedback #1 of G1, and the next question is Which task changes? with that number" \
+  "group.change|feedback #1: Group G1: Task 3: keep the old name|group reopen G1 --task 3 --feedback 1" \
+  "$(nx "d['ask']['id'] + '|' + __import__('json').load(open('.temper/evidence/build.json'))[-1]['claim'] + '|' + d['ask']['options'][2]['calls'][0].split('temper ', 1)[1]")"
 
 # --- F14. The small-change window ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1

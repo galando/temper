@@ -135,7 +135,7 @@ print('%s|%s|%d' % (g.get('action'), (g.get('ask') or {}).get('id'), len(moved))
 
 # --- the cap: the closed list of hand back kinds is exactly seven, counted from NEEDS ---
 _cap57="$(mktemp -d)"
-mkdir -p "$_cap57/scripts"; cp "$REPO_ROOT"/scripts/*.py "$_cap57/scripts/"
+mkdir -p "$_cap57/scripts"; find "$REPO_ROOT/scripts" -maxdepth 1 -type f -name '*.py' -exec cp {} "$_cap57/scripts/" \;
 python3 -B - "$_cap57/scripts/flow_base.py" <<'PY'
 import re, sys
 p = sys.argv[1]
@@ -158,7 +158,7 @@ try:
     real, copy = load(sys.argv[1], "check_caps_real"), load(sys.argv[2], "check_caps_copy")
     fn = real.MEASURES["handback_kinds"]
     src = inspect.getsource(fn)
-    mod = "names a file of the mod" if ("hooks/" in src or "temper-mod" in src or ".ts" in src) else "no mod file"
+    mod = "names a file of the mod" if (("hooks" + chr(47)) in src or "temper-mod" in src or ".ts" in src) else "no mod file"
     print("%s|%s|%s|%s|%s" % (cap["now"], cap["final"], fn(doc), copy.MEASURES["handback_kinds"](doc), mod))
 except Exception as e:
     print("no cap handback_kinds: %s %s" % (type(e).__name__, e))

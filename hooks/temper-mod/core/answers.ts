@@ -7,6 +7,8 @@
 import type { Ask, Option, Question, RunView } from './runview'
 
 export const CANCEL = 'Cancel'
+// WP16 (defect 2): the longest typed answer, the CLI's own (MAX_ANSWER of scripts/plan_ops.py), not 100
+export const MAX_ANSWER = 2000
 
 export type DriftChoice = 'add' | 'revert' | 'allow-once'
 
@@ -69,7 +71,8 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
     // The gate question, More options, Accept a finding: the chosen option, exactly. One that needs a reason counts with
     // the person's note; without one, it counts once the reason question is answered.
     for (const a of asks(view.ask, view.contextCheck?.ask ?? null)) {
-      if (!same(a.question, q.header, q.question)) continue
+      // WP16: a Scope drift question is read once, by the drift branch below (the write rule reads its choice)
+      if (!same(a.question, q.header, q.question) || a.question.header === view.drift.header) continue
       const option = a.options.find(o => o.label === answer)
       if (option === undefined || option.move === null) continue
       if ((option.reasonQuestion !== null || option.answerQuestion !== null) && note === '') continue
@@ -79,7 +82,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
     const check = view.contextCheck
     if (check !== null && same(check.ask.question, q.header, q.question) && !check.ask.options.some(o => o.label === answer)) {
       const text = answer.replace(/\s+/g, ' ').trim()
-      if (text !== '' && text.length <= 100 && answer !== CANCEL && check.answer !== '') {
+      if (text !== '' && text.length <= MAX_ANSWER && answer !== CANCEL && check.answer !== '') {
         const option: Option = {
           id: null, kind: null, recommended: false, label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null, skill: null,
           calls: [check.answer.replace("'{text}'", quote(text)), ...(check.ask.options[0]?.calls.slice(1) ?? [])],

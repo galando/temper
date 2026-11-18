@@ -43,6 +43,7 @@ What users have is 9.8.4 (`7c7a1c1`).
 | `scripts/guards/hold_before_approval.py` | the write rule before the approval with the mod off: only the stages Intent, Plan and Design of a feature run, only the tools that write a file | WP12, only if the directory accepts it | none |
 | `scripts/card.py`, `scripts/selftest/cards/` | the cards as data and as text; three golden texts | WP15 | WP17, WP19, WP20, WP22, WP24, WP25 and WP27 add rows here and nowhere else |
 | `run_summary.median_minutes`, `output_ops.last_run` and `last_failed`, `acceptance.out_of_scope`, `plan_ops.CARD_ROWS`; the flow's `record_parts`, `commit_message` and `commit_calls` | the readers the cards use (the estimate, the kept output lines, the out of scope bullet both the Intent gate and the card read, the rows of the `context` section; the message and the files of the commit) | WP15 | WP17, WP24, WP25 |
+| `scripts/cli_words.py` | the CLI words `group take-out`, `group feedback` and `drift ask` (the last through `scripts/drift.py`); `next_feedback` | WP16 | the flow (`flow_build.py`) |
 | `scripts/trivial.py` | the trivial verdict and its bound | WP17 | none |
 | `scripts/baseline.py` | the environment check, the baseline, the limits | WP20 | WP21 (plan commands), WP22, WP23 |
 | `scripts/failure.py` | the one typed failure record | WP23 | WP24, WP25 |
@@ -144,6 +145,7 @@ The view stays version 1: a field is added, none is renamed or removed (`D65`).
 | `rule_log` | the view | WP11 | WP15, WP24, WP25 |
 | `card` | `next`, the view; in `go` the text rows | WP15 | WP17, WP19, WP20 |
 | `typed`, `needs` | a gate question; an option | WP16 | WP17 |
+| `needs`, `option` on a `work` action | `next`, `go`: steps that are the conversation's one step (`pull-request`), and the id of the option they came from | WP16 | the mod's run driver |
 | `state` beside `pass` in `checks`; the entry `mutation` of `check_markers` | the view | WP19 | WP20 (`skipped`), WP23 |
 | `guard.adhoc_kind` | the view | WP24 | the mod |
 | `drift_ids` beside the options of `drift`, their ids at their places | the view | WP04 | every test |
@@ -287,6 +289,8 @@ Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT
 | card kinds and marks | `approval`, `commit`, `stop`; the marks of WP15 step 1 | WP15 | the mod's drawing |
 | the card entry of an end to end trace | one line `card <kind>` (indent allowed) in the step of the question that carries the card, before the calls of its answer, in plain, mod and driver mode; in driver mode a question `temper go` reached by its own steps gets its own line (`ask:<stage>:<id>:<option ids>`) before it | WP15 | `scripts/e2e/loop.ts`, the scenario `full-run`; WP17 |
 | the driver's effect `card` and the port's `card(rows)` | the card's rows, given once before the question is asked; the engine's port logs them outside full mode | WP15 | the mod; `scripts/e2e/loop.ts` |
+| the saved stop of the run driver | `saved(what)`, a `done` whose text starts `Temper stopped: ` and names `/temper:temper`; `isSavedStop` (`hooks/temper-mod/core/driver.ts`) | WP16 | `hooks/temper-mod/register.tsx`, the mod's tests |
+| the drift rows of the Build ledger | `drift ask <path>` with `Why:` and `Change:` lines (phase `drift`), the answer `drift <path>: <label>: <why>` (phase `feedback`), and `drift decided` (phase `drift`) once the agent got its lines | WP16 | the flow (`Run.drifts`), the scope row of the commit gate |
 | prompt lines the CLI writes | `Drift decision:` (WP16), `Repair in place:` and the brief section `Re-check:` (WP24), `Affected tasks:` (WP27), `Packs:` (WP29) | as named | the briefs |
 | the driver's hand back | the end of the run driver (`DriveEnd`, `hooks/temper-mod/core/driver.ts`): `{kind: 'done', text}`, or `{kind: 'handback', needs, option}` with `needs` one of the seven hand back kinds and `option` the id of the option picked; the note after the command's text ends `step <kind> <option id>`; the trace line of the e2e driver is `driver handback: step <kind> <option id>` | WP16 | `hooks/temper-mod/register.tsx`, `commands/temper.md`, `commands/fix.md`, `scripts/e2e/loop.ts`, `scripts/e2e/scenarios.ts`, `tests/mod/driver.test.ts`, `tests/mod/driver-wiring.test.ts`; WP17 |
 | selftest helpers | `_unattended <stage>` (WP07; WP11 changes its body), `_base_known` (WP20: the baseline is on record as not run, so no case of the base meets the new first step), `ev_red` and `ev_green` (WP30) | as named | the case files |

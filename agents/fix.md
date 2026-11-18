@@ -41,12 +41,12 @@ the plugin folder.
    `code-review-graph` MCP server is available, use `get_impact_radius_tool`
    (`[PROVEN]`), else grep-based detection (`[HEURISTIC]`). Fix same-pattern
    occurrences `rca.md` flagged. Cross-reference an active `intent.md` if one exists.
-4. **A file outside the fix: the person decides first.** The fix's files are the regression
-   test and the files `rca.md` names (the cause, the same-pattern occurrences, the related
-   files). Before you change any other file, stop: do not write it another way. List it in the `DRIFT` section of your panel: the path,
-   why the fix needs it, and the change you would make. The orchestrator asks the person and
-   launches you again with one `Drift decision: {path}: {add|revert|allow-once}` line per
-   answer; `revert` means fix without that file, `allow-once` allows one edit.
+4. **A file outside the fix: the person decides first.** The fix's files are the regression test and the files `rca.md`
+   names (the cause, the same-pattern occurrences, the related files). Before you change any other file, stop: do not
+   write it another way. Record it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper drift ask --path {path} --why '{why}'
+   --change '{the change}'` (why the fix needs it) and return. The CLI asks the person and launches you again with one
+   `Drift decision: {path}: {add|revert|allow-once}` line per answer; `revert` means fix without that file, `allow-once`
+   allows one edit.
 5. **The lesson** (9.8.0, written by you, not by the orchestrator at the commit): once the test is GREEN, append one
    entry for this fix to `.temper/lessons.md` (create it with a `# Lessons` header when it is absent) in the format of
    `${CLAUDE_PLUGIN_ROOT}/reference/fix.md`, Commit + record; `Fix:` is one line on what changed (the commit comes
@@ -87,8 +87,6 @@ TEST row, and every blocker is a row of the `BLOCKERS` section:
 | {file}                                                                   |
 +--- BLAST RADIUS (N) ---+-------------------------------------------------+
 | {consumers} consumers; same-pattern {n}/{m} — {file: each occurrence}    |
-+--- DRIFT (N) ---+--------------------------------------------------------+
-| {path} — why: {what goes wrong without it} — change: {what you'd change} |
 +--- BLOCKERS (N) ---+-----------------------------------------------------+
 | {what stops the fix, and what it needs}                                  |
 +--------------------------------------------------------------------------+

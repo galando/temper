@@ -115,9 +115,10 @@ class Stopped {
 }
 
 // 9.8.0: the mod's run driver (core/driver.ts) carries the run, as with the mod loaded: the same core, each step done at
-// once on this world. A hand back goes on in the model loop above, from the same state, as in a session.
+// once on this world. WP16: a hand back is one step the conversation does here (the option, or the action's steps), and
+// then the driver takes the run up again, as the person's next command does in a session.
 // /temper:fix with the mod: the driver's fix steps start the run (the root cause agent, the panel, the state), then the
-// same loop; a hand back goes on in the model loop, as in a session.
+// same loop.
 export function orchestrateFix(w: World, script: Script, bug: string, slug: string, limit = 400): Json {
   return driven(w, script, limit, port => driveFixSync(port, TEMPER, bug, slug))
 }
@@ -174,6 +175,12 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
         note = ''
         return r
       }
+      // WP16: a name question is asked until a name is typed: the person types the one the loop above fills in
+      if (name) {
+        const typed = note || 'Dana Cohen'
+        note = ''
+        return typed
+      }
       const full = found ?? { question: q, options: q.options }
       const pick = script.person(full, w)
       if (pick === null) return null
@@ -210,18 +217,22 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
     if (e instanceof Stopped) return e.n
     throw e
   }
-  w.trace.push(`  driver ${end.kind}: ${(end.kind === 'done' ? end.text : `${end.args}: ${end.why}`).slice(0, 100)}`)
+  w.trace.push(`  driver ${end.kind}: ${(end.kind === 'done' ? end.text : `step ${end.needs} ${end.option}`).slice(0, 100)}`)
   if (end.kind === 'done') return w.next()
   w.counts.handbacks++
-  if (end.args.startsWith('chose ')) {
-    // The person chose an option the conversation carries out: it runs it whole, as the answer given, with no new question.
-    const label = end.args.slice('chose '.length)
-    const n = w.next()
-    const q = asksOf(n).find(x => (x.options as Json[]).some(o => o.label === label))
-    if (q === undefined) throw new Error(`chose ${label}: no such option at ${n.action}`)
+  // WP16: the conversation does the one step of the hand back, as the person chose it: the option whole (by its id), or
+  // the action's steps (a pull request). Then the person types the command again, and the driver takes the run up.
+  const n = w.next()
+  const q = asksOf(n).find(x => (x.options as Json[]).some(o => o.id === end.option))
+  if (q !== undefined) {
+    const label = String((q.options as Json[]).find(o => o.id === end.option)!.label)
     if (applyOption(w, script, q, label, note, false)) return n
+  } else if (n.action === 'work') {
+    runSteps(w, script, n.steps ?? [])
+  } else {
+    throw new Error(`step ${end.needs} ${end.option}: no such option or step at ${n.action}`)
   }
-  return loop(w, script, limit)
+  return driven(w, script, limit)
 }
 
 function loop(w: World, script: Script, limit = 400): Json {

@@ -149,9 +149,12 @@ function ask(v: unknown): Ask | null {
   return { id: strOrNull(a.id), kind: strOrNull(a.kind), stage: str(a.stage), step: num(a.step, -1), runId: str(a.run_id), question: q, options: arr(a.options).map(option), more: ask(a.more), accept: ask(a.accept) }
 }
 
+// WP16 (defect 1): the CLI writes `question` as the dialog's question object (header, question, options), as it writes
+// a gate question; a view that held the text alone is read as before.
 function contextCheck(v: unknown, runId: string, step: number): { ask: Ask; answer: string } | null {
   const c = obj(v)
-  const q = question({ header: c.header, question: c.question, options: c.options })
+  const d = typeof c.question === 'string' ? { header: c.header, question: c.question, options: c.options } : obj(c.question)
+  const q = question({ header: d.header ?? c.header, question: d.question, options: d.options ?? c.options })
   if (q === null) return null
   return { ask: { id: strOrNull(c.id), kind: strOrNull(c.kind), stage: 'plan', step, runId, question: q, options: arr(c.options).map(option), more: null, accept: null }, answer: str(c.answer) }
 }

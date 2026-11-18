@@ -89,6 +89,23 @@ All notable changes to Temper are documented here. The plugin version lives in
   the approval's estimate is the median of the finished runs this project kept. A flagged map is now folded into the
   approval whenever the card shows its lines, of any length. A sensitive path of the plan is named on the card, no
   longer in the question's text. The Plan panel and `temper panel plan` are gone.
+- WP16: with the mod, a run leaves the run driver only for one step on a closed list of seven kinds, each one you chose
+  by an option: talk (Grill Me, Teach Me, the Design walk through), the HTML review, the depth review, the config
+  suggestions, a small change, the pull request and the CI fix (`NEEDS` of `scripts/flow_base.py`, the cap
+  `handback_kinds`). The note after the command ends `step <kind> <option id>`; the conversation does that step and ends
+  its turn, and your next `/temper:temper` (or `/temper:fix` with no words, which now takes an active fix run up) goes
+  on in the driver. A failed check, a failed call, a typed answer, a scope drift and a question nobody answered no
+  longer hand a run over: an answer you type at a gate runs the question's `typed` calls (a note for the next agent, and
+  at Intent, Plan, Design, Build and Fix the stage run again with it while the budget has room); a failed call, a bound
+  or a defect is a saved stop that starts with what stopped and shows the CLI's FAIL line; a run whose state cannot be
+  read asks the restart question. Scope drift is the CLI's question: an agent records a file outside the plan with
+  `temper drift ask`, and `next` asks `scope.drift` before anything else of the stage, in an unattended run too, then
+  launches the agent again with one `Drift decision:` line a file. The calls of the flow are all CLI calls: `temper spec
+  branch --carry NAME` (the branch clash switch), `temper spec branch --if-protected` (a fix run's branch), `temper
+  group take-out G SHA...` (commits the CLI did not make), `temper group feedback G --text T` (Change at a passed group,
+  typed in its own question). The record commit with no file list is `temper spec commit` too. A typed Context check
+  answer counts with the mod (its view held the question as an object), up to 2,000 characters. A group that continues
+  by rule is in the record of the commit card. The hand back words `next`, `discuss` and `chose` are gone.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

@@ -103,8 +103,8 @@ describe('the Context check: a typed answer, and what counts for nothing', () =>
     expect(answersIn({ result: { ...base.result, afkTimeoutMs: 1000 } }, rv)).toEqual([])
     expect(answersIn({ result: { ...base.result, followUp: true } }, rv)).toEqual([])
   })
-  test('a typed answer over 100 characters, or the word Cancel, records nothing', () => {
-    expect(answersIn(result(q.header, q.question, 'x'.repeat(101)), rv).filter(x => x.kind === 'gate')).toEqual([])
+  test('a typed answer over 2,000 characters (the CLI\'s limit, WP16), or the word Cancel, records nothing', () => {
+    expect(answersIn(result(q.header, q.question, 'x'.repeat(2001)), rv).filter(x => x.kind === 'gate')).toEqual([])
     expect(answersIn(result(q.header, q.question, 'Cancel'), rv).filter(x => x.kind === 'gate')).toEqual([])
   })
 })
