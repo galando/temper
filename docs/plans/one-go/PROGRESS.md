@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-17 19:53 UTC
+- Watch: one check is scheduled; the next is due 2026-11-18 04:03 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -53,8 +53,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP10 | done | `f5c8cef` | 2026-11-17 | one budget in `.temper/budget.json` (2 per failure, 6 per run), refused in the CLI's dispatcher, the question `run.budget` at the limit; D38a, D38b, D38c, D38e and budget-stop off the list, which holds 86 (68 selftest, 18 scenarios) |
 | WP18 | done | `93c03cf` | 2026-11-17 | `evidence resolve` takes only a commit the CLI made after the reviewed HEAD, denied to every agent by the mod; the Review completion row lists the files read and the gate compares them with `temper review files`; D34d and D37a off the list, which holds 84 (66 selftest, 18 scenarios) |
 | WP14 | done | `11f874b` | 2026-11-17 | Design runs only on the person's ask (option `run-design`); its concerns are Blocking questions of the plan, held by the plan gate; at risk H the fresh review runs by rule and `approve-run` needs a clean round; design-on-ask and D18d off the list, which holds 82 (65 selftest, 17 scenarios) |
-| WP11 | doing | | | tests `d5df54b` |
-| WP12 | todo | | | |
+| WP11 | done | `37aae8d` | 2026-11-18 | the approval runs to the commit by default (`run.default`); a passed check moves on, Review and Check by the closed rule list, a stop keeps the mode and `park --end` ends it; the commit question offers the pull request; `sensitive.py` and `rule_log.py`; stops 20 to 22; twelve checks off the list, which holds 71 (54 selftest, 17 scenarios) |
+| WP12 | doing | | | |
 | WP13 | todo | | | |
 | WP15 | todo | | | |
 | WP16 | todo | | | |
@@ -157,6 +157,12 @@ None.
 - 2026-11-17 WP14: `has_design` also reads `enter == design`, so the `/temper:design` door runs Design on a simple run too, as the spec asks.
 - 2026-11-17 WP14: the spec's grep for `intent_asked` and `phases.design` prints the lines of case 55 and case 15 that check the keys are gone; it is run with `--exclude-dir=selftest`. caps after the package: option_labels 74 (final 71), question_sites 53 (its final), option_sites back to its final 89; prompt_bytes 307,686 (final 307,712).
 - 2026-11-17 WP14: `docs/commands.md` and `docs/getting-started.md` still show an old list of plan options with Share HTML review; for WP31.
+- 2026-11-18 case 55 in CI: CI has no git identity, so the spec commit of "the approval offers run-design" failed; the case sets one in its repository (`f99cb35`). CI green after.
+- 2026-11-18 WP11: the container restarted twice during the builder's whole e2e run; from then on the suite runs in groups, one log per group, so a restart loses one group only.
+- 2026-11-18 WP11: `temper-cases-52.sh` (`_prsteps52`) had a Python syntax error from the test commit, so one check could never pass; the builder wrapped the conditional in parentheses, the assertion unchanged.
+- 2026-11-18 WP11: row D60d needed a version mark to tell a saved Review state from a fixture; `state init` stamps `saved_by: "9.8.5"`, `state set` refuses it, and a state saved at Review with no stamp and no files read runs Review once more. The key is added to contracts.md section 3 in its own commit (additive).
+- 2026-11-18 WP11: D05b (listed for WP24) passes and left the list in the package commit; `group-fail` stays listed for plain and mod, `group-fail-twice` for driver, both WP16. pyjokes and pyjokes-full moved to `asksEveryStage`. `policy_move` is named `rule_move`.
+- 2026-11-18 WP11: caps after the package: option_labels 75 (final 71), config_comment_keys 50 (final 46), cli_bytes 218,112 (final 222,144), prompt_bytes 307,451; no final moved. The replay's loops_recommended met its final 0; questions 9 to 5. Not run: whether a host cuts one long `temper go` at its time limit.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
@@ -166,9 +172,9 @@ None.
 - [ ] U3 dropped: `evidence void` is read in one place only; WP30 removes claimed runs and WP22 counts "run it anyway".
 - [ ] U4 (WP08 the test, done; WP22 the key and a record of every reuse): the store of reused passes had no test; its key has no tool versions.
 - [ ] U5 (WP09): `temper go` reports a failed group check or `integrate` as an error, so the mod hands the run back.
-- [ ] U6 (WP11): after one stop the run asks at every stage for good.
-- [ ] U7 (WP11, with the budget of WP10): the policy stops where the question recommends a retry.
-- [ ] U8 (WP11): an unattended run cannot end in a pull request.
+- [x] U6 (WP11): after one stop the run asks at every stage for good.
+- [x] U7 (WP11, with the budget of WP10): the policy stops where the question recommends a retry.
+- [x] U8 (WP11): an unattended run cannot end in a pull request.
 - [ ] U9 dropped as its own item: every group failure question has five options; WP10 and WP25 rebuild that question.
 - [ ] U10 (WP21): the preflight runs under the temp folder, Build inside the project.
 - [ ] U11 (WP21): any failure no pattern names passes as "needs new code".
