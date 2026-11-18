@@ -210,7 +210,7 @@ class AskPart:
         commits HEAD lacks: a plain switch would leave them behind, or carry the new spec onto old work. None when there is none."""
         r = self.r
         want = r.state.get("branch") or ""
-        if not want or (r.ctx.get("branch") or "") == want or not r.ctx.get("branch_exists") or not int(r.ctx.get("branch_ahead") or 0):
+        if not r.branch_clashes():
             return None
         n = 2
         while subprocess.run(["git", "show-ref", "--verify", "--quiet", "refs/heads/%s-%d" % (want, n)], capture_output=True).returncode == 0:
@@ -231,18 +231,23 @@ class AskPart:
         """Accept the intent (when there is one), advance. WP12 (rule 1): no branch and no commit before the approval."""
         return ([self.c("intent accept")] if self.r.intent else []) + [self.c("state advance intent_complete plan")]
 
+    def bind(self, mode):
+        """The first call of an approving option (WP11, WP12): the run's mode, set by the CLI only after it compared the
+        digests of what the question showed (`--shown`), so a stale approval writes nothing, no branch and no commit."""
+        return self.c("state set run_mode %s%s" % (mode, self.shown()))
+
     def approval(self, go, stage, lead=""):
         """WP11 (ADR 0019 decision 3): the first options of the approval (the plan question, or the Design question when
         the person asked for Design): approve-run lets the run go on to the commit, ask-every-stage keeps every gate's
         question. run.default orders them; approve-run is left out under never-unattended, for a skipped check, and when
-        may_run_alone() says no (WP14)."""
+        may_run_alone() says no (WP14). go(mode) is the option's calls, the first of them its bind(mode)."""
         r = self.r
         ask = self.opt("Ask me at every stage", lead + "Approve the plan; every later stage asks you.", move="approve",
-                       calls=[self.c("state set run_mode interactive")] + go, oid="ask-every-stage")
+                       calls=go("interactive"), oid="ask-every-stage")
         if r.run_default() == "never-unattended" or r.skip(stage) is not None or not self.may_run_alone():
             return [self.set_rec(ask, True)]
         run = self.opt("Approve and build", lead + self.armed_text(), move="arm",
-                       calls=[self.c("state set run_mode autonomous")] + go, oid="approve-run")
+                       calls=go("autonomous"), oid="approve-run")
         return [self.set_rec(ask, True), run] if r.run_default() == "ask" else [self.set_rec(run, True), ask]
 
     def sensitive_line(self):
@@ -371,7 +376,7 @@ class AskPart:
                     design = self.opt("Run Design first", "Approve the plan; Design runs next, and its question is the last "
                                       "one before Build.", move="approve", oid="run-design",
                                       calls=[self.c("state set want_design true")] + self.leave_plan("design", fold=fold))
-                    first = self.approval(go, "plan", lead)
+                    first = self.approval(lambda m: self.leave_plan(fold=fold, mode=m), "plan", lead)
                     if revise is not None:   # findings below high: revising is offered, after the ways on
                         return self.with_more(GATE_HEADER, text, stage, first + [revise], more([html, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
                     if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
@@ -434,7 +439,8 @@ class AskPart:
                         ": " + "; ".join(what[:4]) + ("; and %d more" % (len(what) - 4) if len(what) > 4 else "") if what else "")
                 # WP11: the Design question is the approval when the person asked for Design
                 text = text[:-len(" Continue to Build?")] + self.sensitive_line() + " Continue to Build?"
-                first = self.approval(go, "design", "Accept the open concerns as written; " if opens else "")
+                first = self.approval(lambda m: [self.bind(m)] + go, "design",
+                                      "Accept the open concerns as written; " if opens else "")
                 return self.with_more(GATE_HEADER, text, stage, first + [walk],
                                       [self.skill("grill-me", "Grill Me", "Stress test the design.")] + back_opt() +
                                       [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.", qid="design.pass")

@@ -310,9 +310,20 @@ class Run:
         return plan_ops.norm_mode(self.cfg("plan.context-check", "auto"))
 
     def context_folded(self, cm=None):
-        """9.8.5 (WP13): the map is answered at the approval, not by a question of its own (scripts/plan_ops.py folds)."""
+        """9.8.5 (WP13): the map is answered at the approval, not by a question of its own (scripts/plan_ops.py folds).
+        Not when the approval has no room for it: with no Design to follow and a branch clash, the More list would hold
+        the new branch, run-design, the step back, Include what is left out and Save for later, five options and a third
+        dialog (WP14: every option within two). The Context check then stays its own question, asked first."""
         cm = cm if cm is not None else self.context()
-        return bool(cm) and plan_ops.folds(cm["rows"], cm["reviewed"], self.context_mode())
+        return (bool(cm) and plan_ops.folds(cm["rows"], cm["reviewed"], self.context_mode())
+                and not (not self.has_design() and self.branch_clashes()))
+
+    def branch_clashes(self):
+        """WP12: the run's branch exists from an earlier run, the project is on another branch, and that branch holds
+        commits HEAD lacks (the facts of project_facts)."""
+        want = self.state.get("branch") or ""
+        return bool(want and (self.ctx.get("branch") or "") != want and self.ctx.get("branch_exists")
+                    and int(self.ctx.get("branch_ahead") or 0))
 
     def context_asked(self, cm=None):
         """9.8.5 (WP13): the Context check is its own question: the map is not reviewed, the mode asks about it, and it is

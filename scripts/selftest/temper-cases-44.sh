@@ -313,7 +313,8 @@ _d31a_adv=""
 while IFS= read -r _c; do
   [[ -n "$_c" ]] || continue
   bash -c "$_c" >/dev/null 2>&1; _rc=$?
-  [[ "$_c" == *"state advance plan_complete"* ]] && _d31a_adv="$_rc"
+  # the calls that carry the digests shown compare them: the first (the run's mode, WP12) before anything is written
+  [[ "$_c" == *"state advance plan_complete"* || "$_c" == *" --shown "* ]] && _d31a_adv="$_rc"
   [[ $_rc -eq 0 ]] || break
 done <<<"$_d31a_calls"
 assert_eq "D31a a criterion changed after the question was built: the approving advance is refused and the run stays at Plan" \

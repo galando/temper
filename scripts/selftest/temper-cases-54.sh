@@ -161,7 +161,7 @@ fresh; _repo54; _draft54; gpass intent; _plan54; gpass plan
 _a54_h1="$(_dg54 .temper/specs/demo/intent.md)"
 _a54_order="$(_x54 "h1 = '$_a54_h1'
 def kind(c):
-    if c == 'state set run_mode autonomous':
+    if c.split(' --shown ')[0] == 'state set run_mode autonomous':
         return 'mode'
     if c == 'spec branch':
         return 'branch'

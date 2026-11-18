@@ -204,7 +204,8 @@ describe('every wait point of the flow audit', () => {
     await api.session.start(START)
     expect(await sh(api, `${CLI} state set run_mode autonomous`)).toContain('only the user can turn on autonomous mode')
     await ask(api, w)
-    expect(await sh(api, `${CLI} state set run_mode autonomous`)).toBeUndefined()
+    // WP12: the arming call carries the digests the question showed, as the advance does
+    expect(await sh(api, `${CLI} state set run_mode autonomous${SHOWN}`)).toBeUndefined()
     expect(await sh(api, `${CLI} state advance plan_complete build${SHOWN}`)).toBeUndefined()
     expect(state(w).run_mode).toBe('autonomous')
   })

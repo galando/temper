@@ -96,7 +96,7 @@ assert_eq "next: with autonomy on, the Plan question offers the run to the commi
   "approve-run,True|ask-every-stage,False|fresh-review,False|more,False" \
   "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
 assert_eq "next: Approve and build starts the run to the commit before it advances" "arm|state set run_mode autonomous" \
-  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1].split(' --shown ')[0]")"
 assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Run Design first|Loop back to Intent|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 

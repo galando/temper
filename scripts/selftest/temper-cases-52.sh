@@ -117,7 +117,8 @@ _first52() { # the approval: its id; id, recommended, move and first call of its
   _x52 "a = d.get('ask') or {}
 top = a.get('options') or []
 more = (a.get('more') or {}).get('options') or []
-two = ['%s,%s,%s,%s' % (o.get('id'), bool(o.get('recommended')), o.get('move'), short((o.get('calls') or [''])[0]))
+two = ['%s,%s,%s,%s' % (o.get('id'), bool(o.get('recommended')), o.get('move'),
+                        short((o.get('calls') or [''])[0]).split(' --shown ')[0])
        for o in top[:2]]
 r = '%s|%s|rest=%s|more=%s' % (a.get('id'), '|'.join(two), ','.join(str(o.get('id')) for o in top[2:]),
                                ','.join(str(o.get('id')) for o in more))"
@@ -130,7 +131,8 @@ assert_eq "run: the default approval" "$_ap52_want" "$(_first52)"
 
 _ask52() { # the first two options of the approval: id, label and first call
   _x52 "top = (d.get('ask') or {}).get('options') or []
-r = '|'.join('%s,%s,%s' % (o.get('id'), o.get('label'), short((o.get('calls') or [''])[0])) for o in top[:2])"
+r = '|'.join('%s,%s,%s' % (o.get('id'), o.get('label'), short((o.get('calls') or [''])[0]).split(' --shown ')[0])
+             for o in top[:2])"
 }
 _ask52_want="ask-every-stage,Ask me at every stage (Recommended),state set run_mode interactive"
 _ask52_want+="|approve-run,Approve and build,state set run_mode autonomous"
@@ -164,13 +166,23 @@ assert_eq "run: the CLI refuses to start the unattended run away from the approv
   "build=refused,interactive|plan skipped=refused,interactive|approval=taken,autonomous,from=plan" "$_aw52"
 
 _plan52
-_hw52="first=$(_x52 "o = opt(d, 'approve-run') or {}; r = short((o.get('calls') or [''])[0])")"
+_hw52="first=$(_x52 "o = opt(d, 'approve-run') or {}; r = short((o.get('calls') or [''])[0]).split(' --shown ')[0]")"
 bash -c "$(_x52 "o = opt(d, 'approve-run') or {}; r = (o.get('calls') or ['true'])[0]")" >/dev/null 2>&1
 _hw52+="|next=$(_x52 "r = '%s,%s,run.armed=%s' % (d.get('action'), (d.get('ask') or {}).get('id'),
                                              (d.get('run') or {}).get('armed'))")"
 _hw52+="|guard.armed=$(vw "(d.get('guard') or {}).get('armed')")"
 assert_eq "run: a run whose approving calls stopped half way is not armed" \
   "first=state set run_mode autonomous|next=ask,plan.approve,run.armed=False|guard.armed=False" "$_hw52"
+
+# After approve-run stopped half way the person picks Run Design first: Design asks its own question, the last one
+# before Build, and the run asks at every stage (rule 3: only the option the person picked starts the unattended run)
+_plan52; _repo52
+bash -c "$(_x52 "o = opt(d, 'approve-run') or {}; r = (o.get('calls') or ['true'])[0]")" >/dev/null 2>&1
+_hd52="$(_run52 run-design)"; gpass design
+_hd52+="|mode=$("$TEMPER" state get run_mode 2>/dev/null)|next=$(_x52 "r = '%s,%s,run.armed=%s' % (
+    d.get('action'), (d.get('ask') or {}).get('id'), (d.get('run') or {}).get('armed'))")"
+assert_eq "run: Run Design first after a half way approve-run asks the Design question, and the run asks at every stage" \
+  "ran|mode=interactive|next=ask,design.pass,run.armed=False" "$_hd52"
 
 # --- a passed check moves on as the CLI's own action, in the run of the recommended option ---
 _approved52; gpass build
@@ -378,6 +390,19 @@ for _c52 in 7c7a1c1 10e965a; do
 done
 assert_eq "run: a run saved armed by an earlier version asks at every stage" \
   "9.8.4=interactive,ask build.pass,ask review.pass|base=interactive,ask build.pass,ask review.pass" "$_old52"
+
+# --- the unattended run ends at the commit: a commit that opened a pull request reaches Pipeline asking, so its
+# question is never asked from an armed run, and the person's answers there are no rule's ---
+_nogit52; _unattended commit; gpass commit; _auto52 >/dev/null   # the park call: the commit question is asked
+"$TEMPER" state set pr one >/dev/null 2>&1                         # the person's Commit and open PR, its record step
+"$TEMPER" state advance commit_complete pipeline >/dev/null 2>&1
+_pl52="mode=$("$TEMPER" state get run_mode 2>/dev/null)|$(_x52 "r = '%s,run.armed=%s' % (d.get('action'),
+  (d.get('run') or {}).get('armed'))")"
+gfail pipeline "CI checks pass" "1 check failed"
+_pl52+="|$(_x52 "r = '%s %s,run.armed=%s' % (d.get('action'), (d.get('ask') or {}).get('id'), (d.get('run') or {}).get('armed'))")"
+_pl52+="|guard.armed=$(vw "(d.get('guard') or {}).get('armed')")"
+assert_eq "run: the unattended run ends at the commit: Pipeline is asked from a run that asks at every stage" \
+  "mode=interactive|work,run.armed=False|ask pipeline.fail,run.armed=False|guard.armed=False" "$_pl52"
 
 # --- the rule log: what a rule decided, in .temper/rule-log.json and in the view ---
 _nogit52; _unattended build; rm -f .temper/rule-log.json   # what the helper's own approval and advances wrote goes

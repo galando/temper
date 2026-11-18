@@ -228,7 +228,7 @@ done
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1; gpass design
 assert_eq "9.8.0: the Design question offers the unattended run, which arms and leaves Design with the digests shown (WP12)" \
   "approve-run|arm|state set run_mode autonomous|state advance design_complete build|shown" \
-  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; c = o['calls'][1]; '|'.join([o['id'], o['move'], o['calls'][0].split('temper ', 1)[1], c.split('temper ', 1)[1].split(' --shown ')[0], 'shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else 'no digests'])")"
+  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; c = o['calls'][1]; '|'.join([o['id'], o['move'], o['calls'][0].split('temper ', 1)[1].split(' --shown ')[0], c.split('temper ', 1)[1].split(' --shown ')[0], 'shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else 'no digests'])")"
 
 # --- 8. A criterion validated by hand is confirmed by the person at Check; a deferred optional one needs no evidence ---
 _at_check
