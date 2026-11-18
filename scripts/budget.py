@@ -40,6 +40,8 @@ SPENDS = (
     (("task", "test"), "check again", "--phase green of a task that holds env_fault: task:<N>"),
     (("acceptance", "reopen"), "test corrected", "always: acceptance"),
     (("state", "set", "pipeline_round"), "CI fix", "always: pipeline"),
+    (("state", "set", "next_stage"), "step back", "to a stage before the one the run is at: as state loop "
+                                                  "<that stage> <to>"),
     (("integrate",), "merge again", "the integration record is FAIL and no repeat of gate:build paid for it: gate:build"),
 )
 
@@ -101,6 +103,13 @@ def integration(facts):
     return "%s|%s" % (i.get("ts", ""), i.get("reason", ""))
 
 
+def stages(facts):
+    """The run's own stage sequence as the CLI orders it (_run_seq of scripts/temper): a fix run's, else the full
+    one."""
+    from flow_base import SEQ
+    return list(SEQ["fix"]) if facts.state().get("command") == "fix" else list(SEQ["temper"]) + ["pipeline"]
+
+
 def key_of(words, facts):
     """(key, kind) when the call of these words (after `temper`) spends now, else None."""
     w = [str(x) for x in words] + ["", "", "", ""]
@@ -120,6 +129,11 @@ def key_of(words, facts):
         return ("gate:build", "step back") if plan.get("tasks") and not plan.get("groups") else None
     if a == "state" and b == "set" and c == "pipeline_round":
         return "pipeline", "CI fix"
+    if a == "state" and b == "set" and c == "next_stage":
+        # a step back by next_stage is the step back of state loop (cmd_state_set calls _go_back as it does)
+        cur, seq = str(facts.state().get("next_stage") or ""), stages(facts)
+        back = cur in seq and e in seq and seq.index(e) < seq.index(cur)
+        return key_of(["state", "loop", cur, e], facts) if back else None
     group = (facts.groups().get("groups") or {}).get(c) if a == "group" else None
     group = group if isinstance(group, dict) else {}
     if a == "group" and not re.fullmatch(r"G\d+", c):

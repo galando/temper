@@ -4019,7 +4019,7 @@ main() {
   esac
   case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
     "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"plan patch "*|"task retry "*|"task test "*|\
-"acceptance reopen "*|"state set pipeline_round"|"integrate "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
+"acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
   esac
   case "$sub" in
     init) cmd_init "$@" ;;

@@ -215,6 +215,20 @@ assert_eq "budget: the third repeat for one failure is refused" \
     _b51used gate:check)|$(python3 -c "import json
 print((json.load(open('.temper/gates.json')).get('check') or {}).get('verdict'))" 2>&1)"
 
+# --- a step back by state set next_stage spends as state loop does, and past the limit it is refused ---
+_b51check; _b51fail check
+_b51x="from a failed Check=$(_b51spend gate:check 'step back' state set next_stage build)"
+_b51check; gpass check
+_b51x+="|from a passed Check=$(_b51spend gate:check 'step back' state set next_stage build)"
+_b51check
+for _b51i in 1 2; do _b51fail check; "$TEMPER" state redo check --reason 'the suite again' >/dev/null 2>&1; done
+_b51fail check
+_b51before="$(_b51sum)"; _b51out="$("$TEMPER" state set next_stage build 2>&1)"; _b51rc=$?
+_b51x+="|at the limit=$_b51rc:$(head -1 <<<"$_b51out" | cut -d: -f1):$(
+  [[ "$(_b51sum)" == "$_b51before" ]] && echo unchanged || echo written):$("$TEMPER" state get next_stage 2>/dev/null)"
+assert_eq "budget: a step back by state set next_stage spends as state loop does" \
+  "from a failed Check=1:1|from a passed Check=0:0|at the limit=1:BLOCKED:unchanged:check" "$_b51x"
+
 # --- the seventh repeat of a run is refused: three keys, two each, then a fourth key ---
 _b51seven() { # groups.json of the run: G1 and G2 failed their checks, Task 1 of G1 is covered
   printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "branch": "temper/demo/G1", %s}, ' \
