@@ -31,7 +31,8 @@ KEY_RE = re.compile(r"^(?:gate:[a-z]+|group:G\d+|task:\d+|acceptance|pipeline)$"
 SPENDS = (
     (("state", "loop"), "step back", "the gate of <from> is FAIL and not skipped: gate:<from>; from Build, a group whose "
                                      "check is FAIL or that is parked: group:<G>, or tasks with no groups: gate:build"),
-    (("state", "redo"), "run again", "the gate of the stage is FAIL and not skipped: gate:<stage>"),
+    (("state", "redo"), "run again", "the gate of the stage is FAIL and not skipped: gate:<stage>; at Pipeline, not "
+                                     "when a CI fix round paid for that failure (one round is one entry)"),
     (("group", "fix"), "group fix", "with no flag: group:<G>"),
     (("group", "reopen"), "tasks again", "the group's gate is FAIL or the group is parked: group:<G>"),
     (("group", "gate"), "more time", "with --timeout-s, at a group gate that is FAIL already: group:<G>"),
@@ -39,7 +40,7 @@ SPENDS = (
     (("task", "retry"), "task again", "always: task:<N>"),
     (("task", "test"), "check again", "--phase green of a task that holds env_fault: task:<N>"),
     (("acceptance", "reopen"), "test corrected", "always: acceptance"),
-    (("state", "set", "pipeline_round"), "CI fix", "always: pipeline"),
+    (("state", "set", "pipeline_round"), "CI fix", "always: pipeline (the entry marks the failed Pipeline it answers)"),
     (("state", "set", "next_stage"), "step back", "to a stage before the one the run is at: as state loop "
                                                   "<that stage> <to>"),
     (("integrate",), "merge again", "the integration record is FAIL and no repeat of gate:build paid for it: gate:build"),
@@ -61,6 +62,7 @@ class Facts:
 
     def __init__(self, run=None):
         self._run, self._groups, self._state = run, None, None
+        self.pending = []   # the entries the calls before this one of a list would write (refused_seq)
 
     def run(self):
         if self._run is None:
@@ -110,11 +112,28 @@ def stages(facts):
     return list(SEQ["fix"]) if facts.state().get("command") == "fix" else list(SEQ["temper"]) + ["pipeline"]
 
 
+def failure(stage, facts):
+    """The failed verdict of a stage as the mark an entry carries when it pays for it (its time and its failed rows);
+    None when the gate did not fail."""
+    if not facts.failed(stage):
+        return None
+    r = facts.run()
+    g = r.gates.get(r.gate_of(stage)) if isinstance(r.gates.get(r.gate_of(stage)), dict) else {}
+    return "%s|%s" % (g.get("ts", ""), ";".join(str(x.get("detail") or x.get("name")) for x in r.failed_rows(stage)))
+
+
+def paid(key, mark, facts):
+    """Whether an entry of the key already paid for the failure of this mark."""
+    return bool(mark) and any(x.get("key") == key and x.get("of") == mark for x in record(facts)["used"])
+
+
 def key_of(words, facts):
     """(key, kind) when the call of these words (after `temper`) spends now, else None."""
     w = [str(x) for x in words] + ["", "", "", ""]
     a, b, c, e = w[:4]
     if a == "state" and b in ("loop", "redo"):
+        if b == "redo" and c == "pipeline" and paid("pipeline", failure("pipeline", facts), facts):
+            return None   # the CI fix round that answers this failure paid for it: CI read again is part of the round
         if c and facts.failed(c):
             return "gate:" + c, "step back" if b == "loop" else "run again"
         if b != "loop" or c != "build":
@@ -160,8 +179,7 @@ def key_of(words, facts):
         return "acceptance", "test corrected"
     if a == "integrate":
         mark = integration(facts)
-        paid = any(x.get("key") == "gate:build" and x.get("of") == mark for x in record(facts)["used"])
-        return ("gate:build", "merge again") if mark and not paid else None
+        return ("gate:build", "merge again") if mark and not paid("gate:build", mark, facts) else None
     return None
 
 
@@ -170,8 +188,8 @@ def record(facts):
     rid = facts.state().get("run_id") or ""
     d = read_json(PATH, {})
     if not rid or d.get("run") != rid:
-        return {"v": 1, "run": rid, "used": [], "grants": []}
-    return {"v": 1, "run": rid, "used": [x for x in d.get("used") or [] if isinstance(x, dict)],
+        return {"v": 1, "run": rid, "used": list(facts.pending), "grants": []}
+    return {"v": 1, "run": rid, "used": [x for x in d.get("used") or [] if isinstance(x, dict)] + list(facts.pending),
             "grants": [x for x in d.get("grants") or [] if isinstance(x, dict)]}
 
 
@@ -215,6 +233,19 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def entry(key, kind, words, facts):
+    """The entry a call that spends writes."""
+    why = next((y for x, y in zip(words, list(words[1:])) if x == "--reason"), "") or " ".join(str(x) for x in words)
+    e = {"key": key, "kind": kind, "stage": facts.state().get("next_stage") or "",
+         "why": " ".join(str(why).split())[:200], "ts": now()}
+    # the failure this repeat answers: a merge after a failed integrate, or the CI read again in the same fix round,
+    # spends nothing more
+    mark = integration(facts) if key == "gate:build" else failure("pipeline", facts) if key == "pipeline" else None
+    if mark:
+        e["of"] = mark
+    return e
+
+
 def spend(words, facts):
     """(exit code, line) of one call: the entry is written only when the call spends and both limits have room."""
     hit = key_of(words, facts) if facts.state().get("run_id") else None
@@ -229,13 +260,7 @@ def spend(words, facts):
         return 1, "BLOCKED: this run made %d repeats (limit %d); the person grants more at the question" % (
             rm["run_used"], rm["run_limit"])
     d = record(facts)
-    why = next((y for x, y in zip(words, list(words[1:])) if x == "--reason"), "") or " ".join(str(x) for x in words)
-    entry = {"key": key, "kind": kind, "stage": facts.state().get("next_stage") or "",
-             "why": " ".join(str(why).split())[:200], "ts": now()}
-    mark = integration(facts) if key == "gate:build" else None
-    if mark:
-        entry["of"] = mark   # the failed integrate this repeat answers: a merge after it spends nothing more
-    d["used"].append(entry)
+    d["used"].append(entry(key, kind, words, facts))
     os.makedirs(TEMPER, exist_ok=True)
     save(d)
     return 0, "OK: repeat %d of %d for %s (%d of %d in this run)" % (rm["used"] + 1, rm["limit"], key,
@@ -299,21 +324,39 @@ def main(argv):
     return 2
 
 
-def key_in(call, cli, facts):
-    """The key a call (a command line the flow writes) spends now, else None."""
+def words_of(call, cli):
+    """The words after `temper` of a command line the flow writes, else None."""
     try:
         w = shlex.split(call)
     except ValueError:
         return None
     at = next((i for i, x in enumerate(w) if x == cli or x == "temper" or x.endswith("/temper")), None)
-    hit = key_of(w[at + 1:], facts) if at is not None else None
+    return w[at + 1:] if at is not None else None
+
+
+def key_in(call, cli, facts):
+    """The key a call (a command line the flow writes) spends now, else None."""
+    w = words_of(call, cli)
+    hit = key_of(w, facts) if w is not None else None
     return hit[0] if hit else None
 
 
-def refused(call, cli, facts):
-    """The key of a call the budget refuses now, else None."""
-    key = key_in(call, cli, facts)
-    return key if key and not room(key, facts)["ok"] else None
+def refused(calls, cli, facts):
+    """The key of the first call of a list, run in order, that the budget refuses: each call before it counted as
+    spent, so the calls of one option are checked together against both limits; else None."""
+    saved = facts.pending
+    facts.pending = []
+    try:
+        for call in calls:
+            w = words_of(call, cli)
+            hit = key_of(w, facts) if w is not None else None
+            if hit and not room(hit[0], facts)["ok"]:
+                return hit[0]
+            if hit:
+                facts.pending = facts.pending + [entry(hit[0], hit[1], w, facts)]
+        return None
+    finally:
+        facts.pending = saved
 
 
 if __name__ == "__main__":

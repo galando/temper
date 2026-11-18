@@ -57,21 +57,22 @@ _b51failat() { # _b51failat <review or check>: from a run at Build, pass the sta
   if [[ "$1" == check ]]; then gpass review; "$TEMPER" state advance review_complete check >/dev/null 2>&1; fi
   _b51fail "$1"
 }
-_b51full() { # a budget record of this run that already holds the limit of the run: six repeats, two for each of three
-             # keys no case below fails (the record as docs/plans/one-go/wp/phase-4a-flow-core.md, WP10, step 1,
-             # fixes it)
-  python3 - <<'PY'
-import json
+_b51full() { # _b51full [n]: a budget record of this run that already holds the limit of the run: six repeats, two for
+             # each of three keys no case below fails (the record as docs/plans/one-go/wp/phase-4a-flow-core.md, WP10,
+             # step 1, fixes it); with n, its first n entries
+  python3 - "${1:-6}" <<'PY'
+import json, sys
 rid = json.load(open(".temper/build-state.json")).get("run_id")
 used = [{"key": k, "kind": kind, "stage": s, "why": "an earlier repeat", "ts": "2026-11-16T10:00:00Z"}
         for k, kind, s in (("gate:plan", "run again", "plan"), ("gate:build", "run again", "build"),
                            ("acceptance", "test corrected", "check")) for _ in (1, 2)]
-json.dump({"v": 1, "run": rid, "used": used, "grants": []}, open(".temper/budget.json", "w"))
+json.dump({"v": 1, "run": rid, "used": used[:int(sys.argv[1])], "grants": []}, open(".temper/budget.json", "w"))
 PY
 }
 _b51next() { # _b51next <python code over d, the JSON of temper next, that sets r>: prints r. The code has
-             # ask(), every_option(q), calls_of(d) and refused(calls): the calls of a list the budget would refuse now,
-             # each call mapped to its key by the table SPENDS and that key run through `budget.py room`
+             # ask(), every_option(q), calls_of(d) and refused(calls): the calls of a list the budget would refuse,
+             # each call mapped to its key by the table SPENDS and that key run through `budget.py room`, the calls
+             # of the list before it counted as spent (an option's calls and steps run in order, against both limits)
   python3 - "$1" "$("$TEMPER" next --json 2>/dev/null)" "$REPO_ROOT" <<'PY'
 import json, os, shlex, subprocess, sys
 try:
@@ -96,13 +97,20 @@ def every_option(q):
     return out
 def calls_of(d):
     agents = d.get("agents") or []
-    return list(d.get("calls") or []) + [c for a in agents for c in (a.get("before") or []) + (a.get("after") or [])]
+    return list(d.get("calls") or []) + list(d.get("steps") or []) + [
+        c for a in agents for c in (a.get("before") or []) + (a.get("after") or [])]
 def failed(stage):
     g = gates.get(stage) or {}
     return g.get("verdict") == "FAIL" and not any(isinstance(o, dict) and o.get("stage") == stage for o in overrides)
 def group(gid):
     return (groups.get("groups") or {}).get(gid) or {}
-def key_of(call):
+def pipeline_paid():
+    """The latest entry of the key pipeline (a CI fix round) answers the Pipeline failure recorded now."""
+    g = gates.get("pipeline") or {}
+    last = [x for x in load(".temper/budget.json", {}).get("used") or []
+            if isinstance(x, dict) and x.get("key") == "pipeline"]
+    return bool(last) and g.get("verdict") == "FAIL" and str(last[-1].get("of") or "").startswith("%s|" % g.get("ts"))
+def key_of(call, spent=()):
     try:
         w = shlex.split(call)
     except ValueError:
@@ -112,6 +120,8 @@ def key_of(call):
         return None
     w = w[i + 1:]
     a, b, c, e = (w + ["", "", "", ""])[:4]
+    if a == "state" and b == "redo" and c == "pipeline" and ("pipeline" in spent or pipeline_paid()):
+        return None   # one CI fix round is one entry, under pipeline: CI read again in it spends nothing more
     if a == "state" and b in ("loop", "redo"):
         return "gate:" + c if failed(c) else None
     if a == "state" and b == "set" and c == "pipeline_round":
@@ -134,9 +144,9 @@ def key_of(call):
         return "acceptance"
     return None
 def refused(calls):
-    out = []
+    out, spent = [], []
     for call in calls:
-        k = key_of(call)
+        k = key_of(call, spent)
         if k is None:
             continue
         p = subprocess.run([sys.executable, os.path.join(sys.argv[3], "scripts", "budget.py"), "room", k],
@@ -145,9 +155,13 @@ def refused(calls):
             room = json.loads(p.stdout)
         except ValueError:
             room = None
-        if not isinstance(room, dict) or room.get("ok") is not True:
+        ok = isinstance(room, dict) and room.get("ok") is True and room["used"] + spent.count(k) < room["limit"] and (
+            room["run_used"] + len(spent) < room["run_limit"])
+        if not ok:
             why = "no room" if isinstance(room, dict) else "no answer"
             out.append("%s (%s: %s)" % (call.split("/scripts/")[-1], k, why))
+        else:
+            spent.append(k)
     return out
 r = None
 exec(sys.argv[1])
@@ -292,9 +306,9 @@ r = "|".join([str(a.get("id")), str(a.get("kind")), str(q.get("header")),
     "recommended=%s" % ",".join(str(x.get("id")) for x in o if x.get("recommended")),
     "grant=%s:%s:%s" % (g.get("label"), g.get("move"),
                         any(" budget grant --key %s --reason " % KEY in c for c in g.get("calls") or [])),
-    "count=%s" % ("was repeated 2 times (limit 2)" in str(q.get("question"))),
+    "count=%s" % (globals().get("COUNT", "was repeated 2 times (limit 2)") in str(q.get("question"))),
     "ends=%s" % str(q.get("question")).endswith("Save the run for later, or allow two more?"),
-    "refused=%s" % ("; ".join(refused([c for x in o for c in x.get("calls") or []])) or "none")])'
+    "refused=%s" % ("; ".join(c for x in o for c in refused(calls_of(x))) or "none")])'
 _b51want="run.budget|gate|Temper gate|first=save:True|recommended=save|grant=Allow two more:grant:True|count=True"
 _b51want+="|ends=True|refused=none"
 _b51check
@@ -308,6 +322,43 @@ for _b51i in 1 2; do _b51g "$_B51GFAIL" '"status": "passed"'; "$TEMPER" group fi
 _b51g "$_B51GFAIL"', "fix_tries": 2' '"status": "passed"'
 assert_eq "budget: at the limit next asks run.budget: a failed group check fixed twice" "$_b51want" \
   "$(_b51next "KEY = 'group:G1'
+$_b51q")"
+
+# --- a CI fix round: one entry under pipeline, and the round the flow offers runs to its end ---
+_b51red() { # a run at Pipeline whose CI result is red and whose gate failed on it; with n, a record of n repeats
+  _pl
+  _plctx '{"status": "red", "failed_jobs": [{"name": "unit", "stage": "test", "id": "1", "error": "boom"}],
+    "fix": ["unit/a.sh: the value is 4"], "round": 1}'
+  "$TEMPER" gate pipeline >/dev/null 2>&1
+  [[ -n "${1:-}" ]] && _b51full "$1"
+  return 0
+}
+_b51round() { # runs, in order, the calls of the steps of Apply the fix and push that are in SPENDS; prints the id of
+              # the question, then each call's exit code and the first word of its output
+  local c out rc res
+  res="$(_b51next "r = ask().get('id')")"
+  while IFS= read -r c; do
+    [[ -n "$c" ]] || continue
+    out="$(bash -c "$c" 2>&1)"; rc=$?
+    res+="|$rc:$(head -1 <<<"$out" | cut -d: -f1)"
+  done < <(_b51next "r = chr(10).join(c for x in every_option(ask()) if x.get('id') == 'apply-fix'
+    for c in x.get('steps') or [] if ' state set pipeline_round ' in c or ' state redo pipeline ' in c)")
+  echo "$res"
+}
+_b51red
+assert_eq "budget: one CI fix round spends one entry, under pipeline" "pipeline.fail|0:OK|0:OK|pipeline=1|all=1" \
+  "$(_b51round)|pipeline=$(_b51used pipeline 'CI fix')|all=$(_b51used)"
+_b51red 5
+assert_eq "budget: at the limit next offers no refused call: a red Pipeline with one repeat left in the run" \
+  "pipeline.fail|refused=none" \
+  "$(_b51next "r = '%s|refused=%s' % (ask().get('id'), '; '.join(c for x in every_option(ask())
+    for c in refused(calls_of(x))) or 'none')")"
+_b51red 5
+assert_eq "budget: a CI fix round the flow offers with one repeat left in the run is never refused" \
+  "pipeline.fail|0:OK|0:OK|all=6" "$(_b51round)|all=$(_b51used)"
+_b51red 6
+assert_eq "budget: at the limit next asks run.budget: a red Pipeline in a run with no repeat left" "$_b51want" \
+  "$(_b51next "KEY = 'pipeline'; COUNT = 'This run made 6 repeats (limit 6)'
 $_b51q")"
 
 # --- with a record at the limit of the run, no auto or work action holds a call the budget refuses ---
