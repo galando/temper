@@ -351,6 +351,11 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   again`. The arguments are optional: a call without them records what it finds. `plan_complete` is refused while
   `intent.md` is a draft. `intent accept --digest <H1>` refuses the same way. `python3 scripts/approval.py digest FILE`
   prints a digest, `row STATE SPEC` the row, `check STATE SPEC NAME=DIGEST...` the refusal.
+- **The check comes first.** Every approving option starts with `state set run_mode autonomous|interactive --shown
+  intent.md=<H1> --shown tasks.md=<H2>` (`Run Design first` after its `state set want_design true`, the plan
+  question with Design to follow and the skip's way on too). `state set run_mode` compares the digests before it
+  writes the mode, so a stale approval writes no mode, makes no branch and no commit, and leaves the run at its
+  question, which `next` asks again with the digests of the files as they are now.
 - **The state keys.** `state advance plan_complete` records `intent_hash` beside `plan_hash` and `approved_files`;
   `design_complete` records both digests again. `state set` refuses them, and `from_branch`: the branch the run stands
   on before its approval (written at `state init` and when the run leaves Intent), which the commit hook gates too.
@@ -375,7 +380,8 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   answer is no note: once the gate passes again the rule moves on); the run did not come back to Intent; the person
   typed no note at Intent; no door walked Intent. Otherwise `intent.accept` (or `intent.fail`, or `run.walked`) is
   asked as before. `temper go` runs that work by itself. The intent stays a draft.
-- **The approval accepts it.** Its first options run, in order: `state set run_mode autonomous` (or `interactive`),
+- **The approval accepts it.** Its first options run, in order: `state set run_mode autonomous` (or `interactive`,
+  each with the `--shown` digests),
   the folded Context check's `plan review` call, `spec branch` when the project is on another branch, `intent accept
   --digest <H1>` while the intent is a draft (`Accepted-by: the person, at the plan approval`), one `spec commit` and
   the advance with its `--shown` digests. The text says `Accept the intent, approve the plan and continue to <next>?`

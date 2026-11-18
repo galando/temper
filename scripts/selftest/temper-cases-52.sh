@@ -117,7 +117,8 @@ _first52() { # the approval: its id; id, recommended, move and first call of its
   _x52 "a = d.get('ask') or {}
 top = a.get('options') or []
 more = (a.get('more') or {}).get('options') or []
-two = ['%s,%s,%s,%s' % (o.get('id'), bool(o.get('recommended')), o.get('move'), short((o.get('calls') or [''])[0]))
+two = ['%s,%s,%s,%s' % (o.get('id'), bool(o.get('recommended')), o.get('move'),
+                        short((o.get('calls') or [''])[0]).split(' --shown ')[0])
        for o in top[:2]]
 r = '%s|%s|rest=%s|more=%s' % (a.get('id'), '|'.join(two), ','.join(str(o.get('id')) for o in top[2:]),
                                ','.join(str(o.get('id')) for o in more))"
@@ -130,7 +131,8 @@ assert_eq "run: the default approval" "$_ap52_want" "$(_first52)"
 
 _ask52() { # the first two options of the approval: id, label and first call
   _x52 "top = (d.get('ask') or {}).get('options') or []
-r = '|'.join('%s,%s,%s' % (o.get('id'), o.get('label'), short((o.get('calls') or [''])[0])) for o in top[:2])"
+r = '|'.join('%s,%s,%s' % (o.get('id'), o.get('label'), short((o.get('calls') or [''])[0]).split(' --shown ')[0])
+             for o in top[:2])"
 }
 _ask52_want="ask-every-stage,Ask me at every stage (Recommended),state set run_mode interactive"
 _ask52_want+="|approve-run,Approve and build,state set run_mode autonomous"
@@ -164,7 +166,7 @@ assert_eq "run: the CLI refuses to start the unattended run away from the approv
   "build=refused,interactive|plan skipped=refused,interactive|approval=taken,autonomous,from=plan" "$_aw52"
 
 _plan52
-_hw52="first=$(_x52 "o = opt(d, 'approve-run') or {}; r = short((o.get('calls') or [''])[0])")"
+_hw52="first=$(_x52 "o = opt(d, 'approve-run') or {}; r = short((o.get('calls') or [''])[0]).split(' --shown ')[0]")"
 bash -c "$(_x52 "o = opt(d, 'approve-run') or {}; r = (o.get('calls') or ['true'])[0]")" >/dev/null 2>&1
 _hw52+="|next=$(_x52 "r = '%s,%s,run.armed=%s' % (d.get('action'), (d.get('ask') or {}).get('id'),
                                              (d.get('run') or {}).get('armed'))")"

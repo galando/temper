@@ -607,7 +607,7 @@ assert_eq "design: the question names each open area of concern" "1|0" \
   "$(nx "int('with 1 open area(s) of concern: 1. 1. The cache can serve stale prices for a minute' in d['ask']['question']['question'])")|$(nx "int('Logs hold' in d['ask']['question']['question'])")"
 assert_eq "design: Ask me at every stage leaves Design with the digests shown, then commits design.md (WP11, WP12)" \
   "ask-every-stage|state set run_mode interactive|state advance design_complete build|shown|spec commit|3" \
-  "$(nx "o = d['ask']['options'][0]; c = o['calls']; o['id'] + '|' + c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c[1] and ' --shown tasks.md=' in c[1] else '|no digests') + '|' + c[2].split('temper ', 1)[1][:11] + '|' + str(len(c))")"
+  "$(nx "o = d['ask']['options'][0]; c = o['calls']; o['id'] + '|' + c[0].split('temper ', 1)[1].split(' --shown ')[0] + '|' + c[1].split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c[1] and ' --shown tasks.md=' in c[1] else '|no digests') + '|' + c[2].split('temper ', 1)[1][:11] + '|' + str(len(c))")"
 python3 -c "p='.claude/temper.config'; s=open(p).read(); open(p, 'w').write(s.replace('autonomy:\n  enabled: false', 'autonomy:\n  enabled: true'))"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='autonomous'; d['unattended_from']='plan'; json.dump(d, open(p, 'w'))"
 assert_eq "design: an armed run parks at a Design with open concerns, for the person" "auto|1" \
