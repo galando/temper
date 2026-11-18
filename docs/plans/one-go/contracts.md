@@ -327,6 +327,7 @@ name is what `bun scripts/e2e/run.ts <mode> <name>` takes, what `scripts/e2e/flo
 | `plan-command-fails` | `scripts/e2e/scenarios.ts` | WP21 | none |
 | `setup-at-build` | `scripts/e2e/scenarios.ts` | WP23 | none |
 | `blocked-task-amended`, `blocked-outside-plan` | `scripts/e2e/scenarios.ts` | WP25 | none |
+| `context-fold` | `scripts/e2e/scenarios.ts` | WP13 | WP15 (the card shows the flagged line) |
 
 ## 10. Selftest case files
 
