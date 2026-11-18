@@ -1702,7 +1702,7 @@ _grouped_parse() { # _grouped_parse <tasks.md>
 _plan_digest() { # _plan_digest <parsed-plan-json>
   python3 -I "$SCRIPTS_DIR/approval.py" plan-digest "$1"
 }
-_intent_digest() { python3 -I "$SCRIPTS_DIR/approval.py" digest "$1/intent.md" 2>/dev/null; }   # _intent_digest <spec>
+_intent_digest() { python3 -I "$SCRIPTS_DIR/approval.py" bound "$1/intent.md" 2>/dev/null; }   # _intent_digest <spec>
 
 # Refuses (returns 1) when the plan changed since the person approved it: the digest `state advance plan_complete`
 # recorded, else the one the first group start recorded (a run that left Plan before the plan gate recorded one). No

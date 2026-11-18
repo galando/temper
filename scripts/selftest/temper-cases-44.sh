@@ -84,6 +84,15 @@ _approved44() { # an approved run at Build in a repository, from the approval's 
   fresh; _repo44; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
   _run44 ask-every-stage >/dev/null
 }
+_approved_run44() { # an unattended run at Build in a repository, started at the approval by its option approve-run
+  fresh; _repo44; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+  _run44 approve-run >/dev/null
+}
+_armed44() { # _armed44 [ERE]: what _stop44 prints when the run goes on by itself, else "not unattended": a leg whose
+             # state is no unattended run proves nothing of the rule
+  if [[ "$("$TEMPER" state get run_mode 2>/dev/null)" == autonomous ]]; then _stop44 "${1:-}"
+  else echo "not unattended"; fi
+}
 _g44() { printf '%s\n' "$1" > .temper/groups.json; }   # _g44 <groups.json text>
 _GROUP44='{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", %s}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}'
 
@@ -520,9 +529,10 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
       _stop44 "$_FORBID44|group (fix|reopen)" ;;
     check.mutation-only) _unattended check   # WP11 stop 21: only the mutation row failed
       gfail check "mutation score >= threshold" "40% of planted bugs caught < 60%"; _stop44 "$_FORBID44|state loop" ;;
-    approval.changed) _approved44; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1; _at check   # WP12: the row failed
+    approval.changed) _approved_run44; _at check   # WP12: the row failed
       sed -i 's/demo criterion one/demo criterion one, changed after the approval/' .temper/specs/demo/intent.md
-      gfail check "intent unchanged since the approval" "intent.md changed since the approval"; _stop44 "$_FORBID44|state loop" ;;
+      gfail check "intent unchanged since the approval" "intent.md changed since the approval"
+      _armed44 "$_FORBID44|state loop" ;;
     run.taken-up) _unattended build; gpass build   # WP11 stop 22: the run taken up again asks its stage once
       "$TEMPER" go --taken-up >/dev/null 2>&1; _stop44 "$_FORBID44|state advance" ;;
     *) echo "no state is built for this stop" ;;
@@ -552,9 +562,10 @@ _d33f() { # _d33f <temptation>: its state in an unattended run, then what next d
     base-validate) _unattended build
       printf '{"result": "green", "seconds": 1, "plan": {"true": {"result": "fail", "exit": 1, "seconds": 1, "class": "command", "kind": "fails-on-base", "why": "exit 1", "fail_lines": ["FAIL: test_a"], "tail": ""}}}\n' \
         > .temper/evidence/baseline.json ;;
-    criterion) _approved44; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+    criterion) _approved_run44
       sed -i 's/demo criterion one/demo criterion one, changed after the approval/' .temper/specs/demo/intent.md
-      "$TEMPER" gate build >/dev/null 2>&1 ;;
+      "$TEMPER" gate build >/dev/null 2>&1
+      _armed44 "$_FORBID44"; return ;;
     blocked) _unattended build; sed -i 's|^- \[x\] done task|- [ ] done task|' .temper/specs/demo/tasks.md
       _g44 '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "branch": "temper/demo/G1", "parked_reason": "Task 1 is blocked: its test needs src/nobody.sh"}}, "tasks": {"1": {"status": "failed", "group": "G1", "blocked": {"needs": "src/nobody.sh", "owners": [], "reason": "the test needs it", "ts": "2026-01-01T00:00:00Z"}}}}' ;;
     budget) _unattended check
