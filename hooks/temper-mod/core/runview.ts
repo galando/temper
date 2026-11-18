@@ -94,7 +94,17 @@ export type RunView = {
   skips: Array<{ stage: string; reason: string; by: string }>
   usage: { ms: number; byStage: Array<{ stage: string; ms: number; runs: number }>; byModel: Array<{ model: string; ms: number; runs: number }> }
   time: { started: string | null; updated: string | null }
+  // WP15: the card of the current question; null for a question with none, and in a view written before it
+  card: Card | null
 }
+
+// WP15: the card of a question that decides (scripts/card.py): the approval, the commit, or a stop. A section is cut
+// when `total` is larger than the count of its rows; `file` says where the rest is. The mod draws it; it decides
+// nothing.
+export const CARD_KINDS = ['approval', 'commit', 'stop'] as const
+export type CardRow = { text: string; mark: string | null }
+export type CardSection = { id: string; title: string; note: string | null; rows: CardRow[]; total: number; file: string | null }
+export type Card = { kind: typeof CARD_KINDS[number]; runId: string; step: number; title: string; tag: string; sections: CardSection[]; foot: string[] }
 
 export type FreshFinding = { id: number; severity: string; lens: string; claim: string; state: 'open' | 'resolved' | 'accepted' | 'contested' | 'escalated'; cite: string | null }
 
@@ -144,6 +154,25 @@ function contextCheck(v: unknown, runId: string, step: number): { ask: Ask; answ
   const q = question({ header: c.header, question: c.question, options: c.options })
   if (q === null) return null
   return { ask: { id: strOrNull(c.id), kind: strOrNull(c.kind), stage: 'plan', step, runId, question: q, options: arr(c.options).map(option), more: null, accept: null }, answer: str(c.answer) }
+}
+
+// A card of a kind outside the closed list is no card.
+function card(v: unknown): Card | null {
+  const c = obj(v)
+  if (!CARD_KINDS.includes(c.kind as Card['kind'])) return null
+  return {
+    kind: c.kind as Card['kind'],
+    runId: str(c.run_id),
+    step: num(c.step, -1),
+    title: str(c.title),
+    tag: str(c.tag),
+    sections: arr(c.sections).map(x => {
+      const s = obj(x)
+      const rows = arr(s.rows).map(y => ({ text: str(obj(y).text), mark: strOrNull(obj(y).mark) }))
+      return { id: str(s.id), title: str(s.title), note: strOrNull(s.note), rows, total: num(s.total, rows.length), file: strOrNull(s.file) }
+    }),
+    foot: strs(c.foot),
+  }
 }
 
 const TASK_STATES: readonly TaskState[] = ['waiting', 'running', 'red', 'green', 'covered', 'pass', 'fail', 'parked']
@@ -297,5 +326,6 @@ export function parseRunView(text: string): RunView | null {
       byModel: Object.entries(obj(usage.by_model)).map(([model, x]) => ({ model, ms: num(obj(x).ms), runs: num(obj(x).runs) })),
     },
     time: { started: strOrNull(time.started), updated: strOrNull(time.updated) },
+    card: card(v.card),
   }
 }

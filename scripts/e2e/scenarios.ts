@@ -194,6 +194,25 @@ export const fullRun = (w: World): void => {
   expect(whole !== undefined && whole.row.pass === true && String(whole.row.detail).startsWith(all),
     `the second Review names every file and the gate passes (${JSON.stringify(whole?.row)})`)
   expect(end.action === 'none', `the run goes on to its end (last action ${end.action})`)
+  // WP15: the approval and the commit each show their card before the person answers. The trace holds one entry
+  // `card approval` in the step of the question plan.approve, before the call that approves, and one `card commit` in
+  // the step of the commit decision (this run asks at every stage, so its passed Check question), before the call that
+  // goes on to the commit. A step of the trace starts at a line with no indent.
+  const cardBefore = (kind: string, ask: RegExp, answer: RegExp): string => {
+    const tr = w.trace
+    const at = tr.flatMap((l, i) => (new RegExp(`^\\s*card ${kind}(\\s|$)`).test(l) ? [i] : []))
+    if (at.length !== 1) return `${at.length} entries card ${kind}`
+    const c = at[0]!
+    const q = tr.findIndex(l => ask.test(l))
+    const a = tr.findIndex((l, i) => i > q && answer.test(l))
+    const inStep = q >= 0 && q < c && tr.slice(q + 1, c).every(l => l.startsWith(' '))
+    return inStep && a > c ? 'before' : `card ${kind} at ${c}, its question at ${q}, the answer at ${a}`
+  }
+  const approval = cardBefore('approval', /^ask:plan:plan\.approve:/, /call temper state advance plan_complete /)
+  expect(approval === 'before', `one entry card approval before the approval's answer (${approval})`)
+  const commit = cardBefore('commit', /^ask:(check:check\.pass|commit:commit\.confirm):/,
+    /call temper (state advance check_complete commit|spec commit|git commit)/)
+  expect(commit === 'before', `one entry card commit before the commit's answer (${commit})`)
 }
 export { Json }
 
@@ -403,12 +422,12 @@ export const prAndPipeline = (w: World): void => {
 }
 
 // The Context check of Plan: the map has a gap, so the CLI asks the person (not Plan); the answer runs plan review through the mod.
-// WP13: a flagged line that fits the approval is folded into it (the scenario context-fold), so the gap here is the
-// longest a map line allows (93 characters), which the question cuts at 90: the Context check stays its own question.
-// Until WP15, which gives this scenario the config line plan.context-check: always to keep it.
+// WP13: a flagged line that fits the approval is folded into it (the scenario context-fold). WP15: the card shows a
+// flagged line of any length the map allows whole, so the gap here (93 characters, the longest a map line allows) is
+// folded too; the config line plan.context-check: always keeps the Context check its own question.
 const LONG_GAP = 'no rate limit policy was found in the code, the docs, the ticket or the notes of the releases'
 export const contextCheck = (w: World): void => {
-  startProject(w)
+  startProject(w, 'plan:\n  context-check: always')
   const agents: Record<string, Agent> = {
     ...AGENTS,
     'temper:temper-plan': (wd, a) => {

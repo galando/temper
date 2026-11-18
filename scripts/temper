@@ -4080,11 +4080,12 @@ main() {
           esac ;;
     brief) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/brief.py" "$REPO_ROOT" .temper/brief.md "$@") ;;   # 9.8.0: the project brief
     output) python3 -E -s "$SCRIPTS_DIR/output_ops.py" "$TEMPER_DIR" "$@" ;;   # 9.8.4: the last output of a gate or a group gate
+    card) _view_write; python3 -E -s "$SCRIPTS_DIR/card.py" text "$TEMPER_DIR/view.json" ;;
     panel) case "${1:-}" in   # 9.8.0: a stage's panel, drawn from the files it wrote (scripts/panel.py)
-            plan|design) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" "$1" "$(_spec_path "")" "$REPO_ROOT") ;;
+            design) (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" design "$(_spec_path "")") ;;
             rca) [[ -n "${2:-}" ]] || { echo "FAIL: usage: temper panel rca <rca.md>" >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" rca "$2") ;;
             task) shift; [[ $# -gt 0 ]] || { echo "FAIL: usage: temper panel task <N>..." >&2; false; } && (cd "$REPO_ROOT" && python3 -E -s "$SCRIPTS_DIR/panel.py" task "$(_spec_path "")" "$REPO_ROOT" "$@") ;;
-            *) echo "FAIL: usage: temper panel plan | design | rca <rca.md> | task <N>..." >&2; false ;;
+            *) echo "FAIL: usage: temper panel design | rca <rca.md> | task <N>..." >&2; false ;;
           esac ;;
     ""|-h|--help)
       cat "$SCRIPTS_DIR/temper-help.txt"
@@ -4094,7 +4095,7 @@ main() {
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor|review) ;;
+    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor|review|card) ;;
     next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;

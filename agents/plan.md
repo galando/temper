@@ -119,13 +119,8 @@ orchestrator's conversation carries over except the prompt you were launched wit
 - The intent is your input. Refine it only with a stated reason, and never
   re-derive its Problem.
 
-**Your panel is drawn by the CLI** (9.8.0, round 5): `temper panel plan` draws the Plan panel from intent.md, plan.md
-and tasks.md (the problem, the criteria and scenarios it counts, the files to create or modify, the risk, the
-complexity, the approach decisions), and the orchestrator prints it. Draw no panel and no box, and write no script to
-draw one. Put the terminal drawing of the diagram in plan.md's `## Diagram` section as a fenced `text` block of ASCII art
-(box-drawing characters, under 80 columns) right after the mermaid block: the CLI prints it after the panel. The panel
-lists the `###` headings under `## Approach Decisions` (the template's `### Decision {N}: {chosen approach in one
-line}`), so each names the choice.
+**Your panel is drawn by the CLI** (9.8.5): the CLI draws the card (`temper card`) of the approval from intent.md,
+plan.md and tasks.md, and the orchestrator prints it. Draw no panel and no box, and write no script to draw one.
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the risk is the letter it prints,
 never your own estimate. When the change adds or changes a data model or a stored schema, moves money, changes who may

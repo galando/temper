@@ -250,11 +250,6 @@ class AskPart:
                        calls=go("autonomous"), oid="approve-run")
         return [self.set_rec(ask, True), run] if r.run_default() == "ask" else [self.set_rec(run, True), ask]
 
-    def sensitive_line(self):
-        """The approval names the plan's files under a sensitive path (WP15 moves it to the card)."""
-        hits = self.r.sensitive()
-        return " The plan touches a sensitive path: %s. Nothing there is repaired by rule." % ", ".join(hits[:3]) if hits else ""
-
     def loop_opt(self, stage, back, rec=False):
         """Loop back from the stage to an earlier one, with the person's reason."""
         return self.opt("Loop back to %s%s" % (LABEL[back], " (Recommended)" if rec else ""),
@@ -356,7 +351,7 @@ class AskPart:
                         out = out if len(out) <= 4 else [o for o in out if o.get("id") != drop]
                     return out
                 ask_text = "Accept the intent, approve the plan and continue to %s?" if accepts else "Approve the plan and continue to %s?"
-                text = "Plan: %s.%s%s %s" % (state_of, said, self.sensitive_line(), ask_text % nl)
+                text = "Plan: %s.%s %s" % (state_of, said, ask_text % nl)
                 # 9.8.0: the fresh review's open findings below high pass the gate, and are the person's call: the question
                 # names them and offers Revise the plan (9.8.4: never recommended; they go to the builder as notes).
                 lesser = [f for f in fr["findings"] if f["state"] not in ("resolved", "accepted")] if not skipped else []
@@ -365,8 +360,8 @@ class AskPart:
                     shown = "; ".join("#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:120]) for f in lesser[:3])
                     # 9.8.4: only a high finding blocks; a medium or low one goes to the builder as a note (in the task's
                     # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
-                    text = "Plan: %s.%s%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. %s" % (
-                        state_of, said, self.sensitive_line(), len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", ask_text % nl)
+                    text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. %s" % (
+                        state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", ask_text % nl)
                     revise = self.revise_opt("The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                              "fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))
                 # The approval (WP11): here when no Design follows, at the Design question when it does.
@@ -437,8 +432,8 @@ class AskPart:
                     what = r.tasks_change_summary()
                     text = text[:-len(" Continue to Build?")].rstrip(".") + ". Design changed the plan's tasks (tasks.md%s); Continue approves them with the design. Continue to Build?" % (
                         ": " + "; ".join(what[:4]) + ("; and %d more" % (len(what) - 4) if len(what) > 4 else "") if what else "")
-                # WP11: the Design question is the approval when the person asked for Design
-                text = text[:-len(" Continue to Build?")] + self.sensitive_line() + " Continue to Build?"
+                # WP11: the Design question is the approval when the person asked for Design (WP15: its card names a
+                # sensitive path of the plan)
                 first = self.approval(lambda m: [self.bind(m)] + go, "design",
                                       "Accept the open concerns as written; " if opens else "")
                 return self.with_more(GATE_HEADER, text, stage, first + [walk],

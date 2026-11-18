@@ -36,6 +36,16 @@ export type TemperView = {
   loops: string[]
   line: string | null
   next: { action: string; say: string; header: string | null }
+  // WP15: the card of the question (the approval, the commit, a stop), drawn above the dialog; null for none
+  card: {
+    kind: 'approval' | 'commit' | 'stop'
+    runId: string
+    step: number
+    title: string
+    tag: string
+    sections: Array<{ id: string; title: string; note: string | null; rows: Array<{ text: string; mark: string | null }>; total: number; file: string | null }>
+    foot: string[]
+  } | null
 }
 
 export type TemperRun = {

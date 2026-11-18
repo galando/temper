@@ -234,6 +234,7 @@ def view(run, nxt):
         "blocking_asks": nxt.get("blocking_asks") or [],
         "context_map": nxt.get("context_map"),
         "context_check": nxt.get("context_check"),
+        "card": nxt.get("card"),   # WP15: the card of the question (scripts/card.py), or null
         "restart": nxt.get("restart"),
         "drift": drift_info(),
         "guard": {"stage": r.stage, "spec": r.spec, "slug": r.slug, "fix_run": r.command == "fix",

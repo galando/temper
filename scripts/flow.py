@@ -20,6 +20,7 @@ import shlex
 import sys
 
 import budget
+import card
 import fresh_review
 import run_summary
 
@@ -65,6 +66,10 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                         out["ask"] = q
         self.stop_answer(out)
         self.add_note(out)
+        if out.get("action") == "ask":
+            # WP15: the card of a question that decides (the approval, the commit, a stop), built in the same call
+            # as the question and its digests; null for any other question. Never part of the question text.
+            out["card"] = card.build(self, out)
         return out
 
     def stop_answer(self, out):
