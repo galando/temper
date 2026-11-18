@@ -3420,8 +3420,9 @@ cmd_gate() {
 
   local verdict="FAIL"
   [[ "$all_pass" == "1" ]] && verdict="PASS"
-  if [[ "$record" == "1" ]]; then
-    _gate_write_verdict "$stage" "$verdict" "$reqs_json"
+  local wrote=0
+  if [[ "$record" == "1" ]] && _gate_write_verdict "$stage" "$verdict" "$reqs_json"; then
+    wrote=1
     # The walked Build of a door's run passed on the earlier run's ledger: a loop back to Build mends that code (the fix
     # pass), it does not build the plan again.
     if [[ "$stage" == "build" && -z "$(cmd_state_get built_before "")" ]]; then
@@ -3448,8 +3449,13 @@ cmd_gate() {
   # --brief (9.8.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
   # passed row was context the session read again on every later turn.
   python3 -I "$SCRIPTS_DIR/ledger_ops.py" print-rows "$reqs_json" "$brief"
-  # the marker last, of a recorded verdict only; the commit hook's reader is a person
-  [[ "$record" == "1" && "$from_hook" != "1" ]] && _verdict "gate:$stage" "$verdict"
+  # the marker last, of a written verdict only; the commit hook's reader is a person. A write that failed recorded
+  # nothing: no marker, and the orchestrator's call is an error, never a PASS (the commit hook keeps the verdict's code)
+  [[ "$wrote" == "1" && "$from_hook" != "1" ]] && _verdict "gate:$stage" "$verdict"
+  if [[ "$record" == "1" && "$wrote" != "1" ]]; then
+    echo "FAIL: the verdict of gate:$stage could not be written to $GATES_FILE; nothing was recorded" >&2
+    [[ "$from_hook" != "1" ]] && return 1
+  fi
 
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
 }
@@ -4013,7 +4019,7 @@ main() {
   esac
   case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
     "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"plan patch "*|"task retry "*|"task test "*|\
-"acceptance reopen "*|"state set pipeline_round"|"integrate "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
+"acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
   esac
   case "$sub" in
     init) cmd_init "$@" ;;

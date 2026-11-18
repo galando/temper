@@ -298,11 +298,14 @@ check that failed, its key: `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance
 spends under `gate:build`). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
 gate (from Build, a failed or parked group's key), a group fix, the group's tasks again, more time at a failed group
 check, a plan patch, a task retry, a task checked again after an environment fault, a reopened acceptance test, a CI
-fix round, and a merge again after a failed `integrate`. A change at a passed gate spends nothing. The CLI's dispatcher
+fix round, and a merge again after a failed `integrate`. A step back by `state set next_stage` spends as a
+`state loop` does. One CI fix round is one entry, under `pipeline`: the `state redo pipeline` of its steps answers the
+failure that round paid for and spends nothing more. A change at a passed gate spends nothing. The CLI's dispatcher
 checks the call before it runs: past a limit it prints `BLOCKED: ...`, exits 1 and writes nothing. No flag and no
 variable exempts a call, and a call refused later for its own reason has spent its repeat.
 
-`temper next` never offers a call the budget refuses. A question that would offer one becomes `run.budget` (header
+`temper next` never offers a call the budget refuses: the calls and steps of one option are checked
+together, in order, against both limits. A question that would offer one becomes `run.budget` (header
 `Temper gate`): the stage's first sentence, the count, then Save for later (recommended), `Allow two more` (move
 `grant`, the call `temper budget grant --key <key> --reason '{reason}'`, the person's only) and the options of the
 stage's question that spend nothing. An `auto` or `work` action that holds one parks an armed run, or asks the same
