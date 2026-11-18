@@ -261,15 +261,17 @@ class CommitPart:
         d = approval.digest(os.path.join(r.spec, "intent.md"))
         return [self.c("intent accept" + (" --digest %s" % d if d else ""))]
 
-    def leave_plan(self, nxt=None, fold=()):
-        """The approval: the folded Context check's answer (WP13), switch to the run's branch, accept a draft intent bound
-        to the text shown (WP13: the approval accepts it), commit the spec folder there (the intent and the plan) once,
-        advance with the digests of what the question showed. A skip of the plan gate never takes it for a draft
-        (skip_then)."""
+    def leave_plan(self, nxt=None, fold=(), mode=None):
+        """The approval: the run's mode when the option names one (WP11, rule 3: an option that does not start the
+        unattended run sets it to ask, so a run whose approve-run stopped half way does not go on by itself), the folded
+        Context check's answer (WP13), switch to the run's branch, accept a draft intent bound to the text shown (WP13:
+        the approval accepts it), commit the spec folder there (the intent and the plan) once, advance with the digests
+        of what the question showed. A skip of the plan gate never takes it for a draft (skip_then)."""
         r, nxt = self.r, nxt or self.r.next_of("plan") or "build"
         acc = self.accept_draft()
         what = "accept the intent and approve the plan" if acc else "approve the intent and the plan"
-        return list(fold) + self.to_branch() + acc + self.spec_commit("docs(plan): %s of %s" % (what, r.slug), changes=bool(acc or fold)) + \
+        return ([self.c("state set run_mode %s" % mode)] if mode else []) + list(fold) + self.to_branch() + acc + \
+            self.spec_commit("docs(plan): %s of %s" % (what, r.slug), changes=bool(acc or fold)) + \
             [self.c("state advance plan_complete %s%s" % (nxt, self.shown()))]
 
     def skip_then(self):

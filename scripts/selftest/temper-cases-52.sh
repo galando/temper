@@ -172,6 +172,16 @@ _hw52+="|guard.armed=$(vw "(d.get('guard') or {}).get('armed')")"
 assert_eq "run: a run whose approving calls stopped half way is not armed" \
   "first=state set run_mode autonomous|next=ask,plan.approve,run.armed=False|guard.armed=False" "$_hw52"
 
+# After approve-run stopped half way the person picks Run Design first: Design asks its own question, the last one
+# before Build, and the run asks at every stage (rule 3: only the option the person picked starts the unattended run)
+_plan52; _repo52
+bash -c "$(_x52 "o = opt(d, 'approve-run') or {}; r = (o.get('calls') or ['true'])[0]")" >/dev/null 2>&1
+_hd52="$(_run52 run-design)"; gpass design
+_hd52+="|mode=$("$TEMPER" state get run_mode 2>/dev/null)|next=$(_x52 "r = '%s,%s,run.armed=%s' % (
+    d.get('action'), (d.get('ask') or {}).get('id'), (d.get('run') or {}).get('armed'))")"
+assert_eq "run: Run Design first after a half way approve-run asks the Design question, and the run asks at every stage" \
+  "ran|mode=interactive|next=ask,design.pass,run.armed=False" "$_hd52"
+
 # --- a passed check moves on as the CLI's own action, in the run of the recommended option ---
 _approved52; gpass build
 assert_eq "run: a passed Build moves on as auto" "auto,advance,at=review,mode=autonomous" "$(_moves52 build review)"
