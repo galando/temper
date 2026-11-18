@@ -179,7 +179,8 @@ export type Picture = {
   subjects: string[]                        // every commit subject of every branch
   spec: string                              // the run's spec folder
 }
-export type AgentLaunch = { type: string; approvals: number }   // approvals: how many approvals the person had met
+// approvals: how many approvals the person had met at the launch; picks: how many answers the person had given then
+export type AgentLaunch = { type: string; approvals: number; picks: number }
 export type Pick = { question: string; option: string; move: string }
 export type WorldRecord = {
   origin: string
@@ -220,7 +221,7 @@ export function withRemote(w: World): WorldRecord {
   }
   const guardAgent = w.guardAgent.bind(w)
   w.guardAgent = a => {
-    rec.agents.push({ type: String(a.type), approvals: rec.approvals })
+    rec.agents.push({ type: String(a.type), approvals: rec.approvals, picks: rec.picks.length })
     guardAgent(a)
   }
   return rec

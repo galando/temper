@@ -126,11 +126,11 @@ git config user.email t@example.com; git config user.name T   # the spec commit 
 _rd55="$(_x55 "o = opt(d, 'run-design')
 c = (o or {}).get('calls') or []
 r = 'none' if o is None else '%s|%s|first=%s|last=%s' % (o.get('label'), o.get('move'),
-    'want_design' if c and c[0].endswith('state set want_design true') else c[:1],
+    'mode,want_design' if len(c) > 1 and 'state set run_mode ' in c[0] and c[1].endswith('state set want_design true') else c[:2],
     'design' if c and c[-1].split(' --shown ')[0].endswith('state advance plan_complete design') and ' --shown tasks.md=' in c[-1] else c[-1:])")"
 _rd55+="|$(_calls55 "(opt(d, 'run-design') or {}).get('calls') or []")"
 assert_eq "design: the approval offers run-design, and its calls end in state advance plan_complete design with the digests shown (WP12)" \
-  "Run Design first|approve|first=want_design|last=design|ran|stage=design|want_design=true" \
+  "Run Design first|approve|first=mode,want_design|last=design|ran|stage=design|want_design=true" \
   "$_rd55|stage=$(_stage55)|want_design=$("$TEMPER" state get want_design 2>/dev/null)"
 
 # The More list grows by one, and a list of more than four makes a second level (M2 of pull request 115): every option
@@ -148,6 +148,32 @@ _plan55; fresh_reviewed
 gpass plan; _rc55+="revise=$(_reach55)"
 assert_eq "design: every option of the plan question is reachable in at most two dialogs, run-design among them" \
   "offer=ok|plain=ok|revise=ok" "$_rc55"
+
+# A branch clash (the run's branch holds commits of an earlier run) and a flagged map that would fold into the approval
+# meet: the More list would hold five options (the new branch, run-design, the step back, Include what is left out, Save
+# for later), a third dialog. So the Context check stays its own question, and after it every option of the plan
+# question is reachable in at most two dialogs.
+_clash55() { # a repository on main whose feature/demo holds a commit this checkout lacks (case 12, F28)
+  rm -rf .git; git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T
+  git checkout -q -B main 2>/dev/null; echo base > README; git add README; git commit -qm base
+  git checkout -q -b feature/demo; echo old > old.txt; git add old.txt; git commit -qm "an earlier run's work"
+  git checkout -q main
+}
+_cf55=""
+for _v55 in offer plain; do
+  if [[ $_v55 == offer ]]; then _plan55; else _plan55 $'plan:\n  fresh-review: off'; fi
+  _clash55
+  { printf '# Plan\n\n## Context Map\n- use: intent.md AC-01 - the accepted scope\n'
+    printf -- '- ignore: .temper/specs/old-login/ - a finished feature of another scope\n- reviewed: pending\n'
+    printf '\n## Approach\nThe demo.\n'; } > .temper/specs/demo/plan.md
+  _q55="$(_x55 "r = 'context check' if (d.get('ask') or {}).get('id') == 'plan.context' else None")"
+  [[ "$_q55" == "context check" ]] || _q55="$(_reach55)"
+  _cf55+="${_cf55:+|}$_v55=$_q55"
+  "$TEMPER" plan review --answer 'As planned' >/dev/null 2>&1; gpass plan   # the person's As planned
+  _cf55+=",then $(_reach55),$(_x55 "r = 'new-branch' if opt(d, 'new-branch') else 'no new-branch'")"
+done
+assert_eq "design: with a branch clash and a flagged map the Context check is its own question; then two dialogs at most" \
+  "offer=context check,then ok,new-branch|plain=context check,then ok,new-branch" "$_cf55"
 
 # --- the answers reach the plan: the row tasks agree with decisions is the plan gate's ---
 _sched55; "$TEMPER" intent answer 'Which schedule does a job use?' 'Its own.' >/dev/null 2>&1   # the first choice

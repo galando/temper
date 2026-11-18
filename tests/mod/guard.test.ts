@@ -182,7 +182,9 @@ describe('what only the person may cause, at the step the run is at', () => {
   })
 
   test('arming autonomy needs the Approve and build answer at the plan gate', () => {
-    const arm = `${CLI} state set run_mode autonomous`
+    // WP12: the arming call carries the digests the question showed (--shown), so it is read from the option
+    const arm = optionCalls('plan-pass-autonomy', 'Approve and build (Recommended)').find(c => c.includes('run_mode autonomous'))!
+      .replace(/^\S+/, CLI)
     expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Approve and build (Recommended)') }), arm)).toBe(true)
     expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Ask me at every stage') }), arm))).toBe(true)
     expect(isDeny(bash(ctx('build'), arm))).toBe(true)

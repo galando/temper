@@ -112,33 +112,77 @@ _d53_adv=""
 while IFS= read -r _c; do
   [[ -n "$_c" ]] || continue
   bash -c "$_c" >/dev/null 2>&1; _rc=$?
-  [[ "$_c" == *"state advance design_complete"* ]] && _d53_adv="$_rc"
-  [[ $_rc -eq 0 ]] || break
+  # the first call (the run's mode, with the digests shown) compares them before anything is written (WP12)
+  [[ $_rc -eq 0 ]] || { _d53_adv="${_c##*/temper }"; _d53_adv="${_d53_adv%% --shown *},$_rc"; break; }
 done <<<"$_d53_calls"
 assert_eq "bound: the approving options carry both digests at the Design question; a stale digest is refused there" \
-  "approve-run=ok|ask-every-stage=ok|advance=1|at=design" \
-  "$_d53_tails|advance=${_d53_adv:-not run}|at=$("$TEMPER" state get next_stage 2>/dev/null)"
+  "approve-run=ok|ask-every-stage=ok|refused=state set run_mode interactive,1|at=design" \
+  "$_d53_tails|refused=${_d53_adv:-not run}|at=$("$TEMPER" state get next_stage 2>/dev/null)"
 
 # --- a stale digest is refused and nothing advances: no branch and no commit are made by the refused advance ---
 _intent53
 _s53_calls="$(_calls53 ask-every-stage)"
 _criterion53 "changed after the question was built"
-_s53_adv=""; _s53_head=""; _s53_br=""
+_s53_adv=""
+# HEAD and the branches before the option's first call: no call of a refused approval makes a branch or a commit
+_s53_head="$(git rev-parse HEAD)"; _s53_br="$(git rev-parse --abbrev-ref HEAD),$(git branch --list | wc -l)"
 while IFS= read -r _c; do
   [[ -n "$_c" ]] || continue
-  if [[ "$_c" == *"state advance plan_complete"* ]]; then
-    _s53_head="$(git rev-parse HEAD)"; _s53_br="$(git rev-parse --abbrev-ref HEAD),$(git branch --list | wc -l)"
-    bash -c "$_c" >/dev/null 2>&1; _s53_adv="$?"
-    break
-  fi
-  bash -c "$_c" >/dev/null 2>&1 || break
+  bash -c "$_c" >/dev/null 2>&1; _rc=$?
+  [[ $_rc -eq 0 ]] || { _s53_adv="${_c##*/temper }"; _s53_adv="${_s53_adv%% --shown *},$_rc"; break; }
 done <<<"$_s53_calls"
 assert_eq "bound: a stale digest is refused and nothing advances: exit 1, at Plan, no branch and no commit by it" \
-  "advance=1|at=plan|head=same|branch=same" \
-  "advance=${_s53_adv:-not run}|at=$("$TEMPER" state get next_stage 2>/dev/null)|head=$(
+  "refused=state set run_mode interactive,1|at=plan|head=same|branch=same" \
+  "refused=${_s53_adv:-not run}|at=$("$TEMPER" state get next_stage 2>/dev/null)|head=$(
     [[ -n "$_s53_head" && "$(git rev-parse HEAD)" == "$_s53_head" ]] && echo same || echo moved)|branch=$(
     [[ -n "$_s53_br" && "$(git rev-parse --abbrev-ref HEAD),$(git branch --list | wc -l)" == "$_s53_br" ]] \
     && echo same || echo moved)"
+
+# --- the binding check runs first: a stale approval writes no run_mode, makes no branch and no commit (rules 1, 2) ---
+_f53=""
+for _o53 in approve-run ask-every-stage run-design; do
+  _intent53
+  _f53_calls="$(_calls53 "$_o53")"
+  _criterion53 "changed after the question was built"
+  _f53_head="$(git rev-parse HEAD)"; _f53_br="$(git rev-parse --abbrev-ref HEAD),$(git branch --list | wc -l)"
+  _f53_ran=""
+  while IFS= read -r _c; do
+    [[ -n "$_c" ]] || continue
+    bash -c "$_c" >/dev/null 2>&1 || break
+    _f53_ran+="${_c##*/temper };"
+  done <<<"$_f53_calls"
+  _f53+="${_f53:+|}$_o53=$([[ "$_f53_ran" =~ run_mode|spec\ branch|spec\ commit|checkout ]] && echo "written first" \
+    || echo "checked first"),$("$TEMPER" state get next_stage 2>/dev/null),$("$TEMPER" state get run_mode interactive \
+    2>/dev/null),head=$([[ "$(git rev-parse HEAD)" == "$_f53_head" ]] && echo same || echo moved),branch=$(
+    [[ "$(git rev-parse --abbrev-ref HEAD),$(git branch --list | wc -l)" == "$_f53_br" ]] && echo same || echo moved)"
+done
+_f53_want=""
+for _o53 in approve-run ask-every-stage run-design; do
+  _f53_want+="${_f53_want:+|}$_o53=checked first,plan,interactive,head=same,branch=same"
+done
+assert_eq "bound: a stale approval is refused before any run_mode, branch or commit is written, for each option" \
+  "$_f53_want" "$_f53"
+
+# --- a refused approval leaves the run asking at every stage (rules 3 and 4): approve-run stopped half way (its first
+# call alone), then a criterion changed, then the person picked Run Design first of the question as it was shown ---
+_intent53
+_r53_arm="$(_calls53 approve-run | head -n 1)"; _r53_calls="$(_calls53 run-design)"
+bash -c "$_r53_arm" >/dev/null 2>&1
+_r53="half way=$("$TEMPER" state get run_mode interactive 2>/dev/null)"
+_criterion53 "changed after the question was built"
+_r53_rc=0
+while IFS= read -r _c; do
+  [[ -n "$_c" ]] || continue
+  bash -c "$_c" >/dev/null 2>&1 || { _r53_rc=1; break; }
+done <<<"$_r53_calls"
+_r53+="|refused=$_r53_rc|mode=$("$TEMPER" state get run_mode interactive 2>/dev/null)"
+_r53+="|at=$("$TEMPER" state get next_stage 2>/dev/null)|armed=$(_x53 "r = (d.get('run') or {}).get('armed')")"
+_r53+="|ended=$(python3 -B -c "import json
+print(sum(1 for e in json.load(open('.temper/rule-log.json')) if e.get('kind') == 'ended'))" 2>/dev/null || echo 0)"
+assert_eq "bound: a refused approval leaves the run asking at every stage, and the rule log says the unattended run ended" \
+  "half way=autonomous|refused=1|mode=interactive|at=plan|armed=False|ended=1" "$_r53"
+assert_eq "bound: a refused Run Design first writes no want_design either, its first call is the bound mode" \
+  "false" "$("$TEMPER" state get want_design false 2>/dev/null)"
 
 # --- the advance records intent_hash beside plan_hash, with the approving calls and with a bare advance ---
 _approved53; _h53_shown="$(_hashes53)"
@@ -171,6 +215,37 @@ assert_eq "bound: the CLI's own lines are exempt: intent accept and intent compl
   "accepted-by=1|completed=1|build=True|check=True|commit=True" \
   "accepted-by=$_o53_acc|completed=$_o53_cmp|build=$(_gate53 build)|check=$(_gate53 check)|commit=$(_gate53 commit)"
 
+# --- only the forms the CLI writes are exempt: text added on such a line, or a second such line, is bound ---
+_own53() { # _own53 <sed script>: "bound" when the edit of intent.md changes the approval digest and the fresh review's
+           # digest of intent.md (scripts/fresh_review.py), "exempt" when it changes neither, else what it changed;
+           # the file is restored after
+  local f=.temper/specs/demo/intent.md a0 a1 r0 r1
+  _fr53() { python3 -B -c 'import hashlib, sys
+sys.path.insert(0, sys.argv[1])
+import fresh_review
+print(hashlib.sha256(fresh_review.without_own_lines(open(sys.argv[2], "rb").read())).hexdigest())' \
+    "$REPO_ROOT/scripts" "$f" 2>/dev/null; }
+  cp "$f" "$f.keep53"; a0="$(_dg53 "$f")"; r0="$(_fr53)"
+  sed -i "$1" "$f"; a1="$(_dg53 "$f")"; r1="$(_fr53)"
+  mv "$f.keep53" "$f"
+  if [[ -z "$a0" || -z "$r0" ]]; then echo "no digest"
+  elif [[ "$a0" != "$a1" && "$r0" != "$r1" ]]; then echo bound
+  elif [[ "$a0" == "$a1" && "$r0" == "$r1" ]]; then echo exempt
+  else echo "approval=$([[ "$a0" == "$a1" ]] && echo same || echo changed),review=$(
+    [[ "$r0" == "$r1" ]] && echo same || echo changed)"; fi
+}
+_approved53; "$TEMPER" intent complete >/dev/null 2>&1
+_w53="status=$(_own53 's/^\(\*\*Status:\*\* [a-z]*\)$/\1. Also: the tool deletes every file under data\//')"
+_w53+="|completed=$(_own53 '$a **Completed:** - [ ] the build also drops the users table')"
+_w53+="|own accepted-by=$(_own53 '$a **Accepted-by:** the person, at the plan approval')"
+_w53+="|accepted-by=$(_own53 '$a **Accepted-by:** the person, at the plan approval, and the build may drop a table')"
+_w53+="|second status=$(_own53 '$a **Status:** accepted')"
+sed -i 's/^\(\*\*Status:\*\* [a-z]*\)$/\1. Also: the tool deletes every file under data\//' .temper/specs/demo/intent.md
+_w53+="|build=$(_gate53 build)"
+assert_eq "bound: only the forms the CLI writes are exempt: text added on such a line or a second such line is bound" \
+  "status=bound|completed=bound|own accepted-by=exempt|accepted-by=bound|second status=bound|build=False,intent.md" \
+  "$_w53"
+
 # --- a changed Test line of tasks.md fails the three gates too, and the detail names tasks.md ---
 _approved53; sed -i 's|^\*\*Test:\*\* `true`|**Test:** `true; true`|' .temper/specs/demo/tasks.md
 assert_eq "bound: a changed Test line of tasks.md fails the three gates too, and the detail names tasks.md" \
@@ -189,6 +264,31 @@ PY
 _criterion53 "changed in a run saved before WP12"
 assert_eq "bound: a run with no recorded digest passes the row" "build=True|check=True" \
   "build=$(_gate53 build)|check=$(_gate53 check)"
+
+# --- a run with no intent.md (the trivial path) is bound too: the approval records that intent.md was absent ---
+_trivial53() { # an approved run at Build with no intent.md, from a bare advance
+  fresh; _repo53; rm -f .temper/specs/demo/intent.md; gpass intent
+  "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
+  "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+}
+_trivial53; _t53="before=$(_gate53 build)"
+sed -i 's|^\*\*Test:\*\* `true`|**Test:** `true; true`|' .temper/specs/demo/tasks.md
+_t53+="|build=$(_gate53 build)|check=$(_gate53 check)|commit=$(_gate53 commit)"
+_trivial53; printf '# Intent\n\n**Status:** draft\n\nAn intent written after the approval.\n' > .temper/specs/demo/intent.md
+_t53+="|written later=$(_gate53 build)"
+assert_eq "bound: a run with no intent.md is bound too: a changed tasks.md or an intent.md written later fails the row" \
+  "before=True|build=False,tasks.md|check=False,tasks.md|commit=False,tasks.md|written later=False,intent.md" "$_t53"
+_t53=""
+for _k53 in directory link; do   # an intent.md that is no regular file takes the trivial path of gate intent too
+  fresh; _repo53; rm -f .temper/specs/demo/intent.md
+  if [[ "$_k53" == directory ]]; then mkdir .temper/specs/demo/intent.md; else ln -s nowhere .temper/specs/demo/intent.md; fi
+  gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
+  "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  sed -i 's|^\*\*Test:\*\* `true`|**Test:** `true; true`|' .temper/specs/demo/tasks.md
+  _t53+="${_t53:+|}$_k53=$("$TEMPER" state get intent_hash none 2>/dev/null),$(_gate53 build)"
+done
+assert_eq "bound: an intent.md that is a directory or a dangling link is absent, and a changed tasks.md still fails the row" \
+  "directory=absent,False,tasks.md|link=absent,False,tasks.md" "$_t53"
 
 # --- a step back to Plan and a new approval record the new digests ---
 _approved53; _criterion53 "changed after the approval"

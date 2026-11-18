@@ -749,6 +749,13 @@ cmd_state_set() {
   case "$1" in
     run_mode)
       [[ "$2" == "interactive" || "$2" == "autonomous" ]] || { echo "FAIL: run_mode is interactive or autonomous; got '$2'" >&2; return 1; }
+      # WP12 (rules 1 and 2): the first call of an approving option carries the digests its question showed
+      # (--shown NAME=DIGEST); they are compared before anything is written, so a stale approval writes nothing
+      local a want=0 sh=()
+      for a in "${@:3}"; do
+        if [[ $want -eq 1 ]]; then sh+=("$a"); want=0; elif [[ "$a" == --shown ]]; then want=1; fi
+      done
+      [[ ${#sh[@]} -eq 0 ]] || _approval_bound "${sh[@]}" || return 1
       # WP11 (ADR 0019 decision 3): the run goes on by itself only from the approval the person answered
       if [[ "$2" == "autonomous" ]]; then
         local why; why="$(python3 -I "$SCRIPTS_DIR/state_ops.py" may-start "$STATE_FILE" "$GATES_FILE" "$OVERRIDES_FILE" "$(_cfg_get run.default "")" "$(_cfg_get autonomy.enabled "")")" \
@@ -927,8 +934,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   # ADR 0013: the run leaves the stage it is at, to its next stage, once the check passed or the person skipped it
   local why; why="$(python3 "$SCRIPTS_DIR/flow.py" advance-ok "$stage" "$next")" || {
     echo "FAIL: $why" >&2; return 1; }
-  [[ ${#shown[@]} -eq 0 ]] \
-    || python3 -I "$SCRIPTS_DIR/approval.py" check "$STATE_FILE" "$(_spec_path "")" "${shown[@]}" || return 1
+  [[ ${#shown[@]} -eq 0 ]] || _approval_bound "${shown[@]}" || return 1
   if [[ "$stage" == "plan_complete" ]]; then
     # The commit the diff is read against, the files the person approved and the digest of the tasks they approved:
     # Build is held to these, so a plan.md or tasks.md edited after the plan gate does not change what Build runs
@@ -977,6 +983,8 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   fi
   [[ "$stage" == intent_complete ]] && _from_branch
   local held; held="$(_json_get_path "$STATE_FILE" parked "")"   # WP11: an answer to a stop is the person's, no rule's
+  # WP11: the unattended run ends at the commit; a run that opened a pull request reaches Pipeline asking at every stage
+  [[ "$stage" == commit_complete ]] && _unattended_end "the commit" >/dev/null
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
   # A commit verdict written before the run reached Commit (the hook of a spec commit) is not the commit gate's: the
   # run enters Commit with no commit verdict and no commit skip, so the commit gate runs for it.
@@ -1694,7 +1702,7 @@ _grouped_parse() { # _grouped_parse <tasks.md>
 _plan_digest() { # _plan_digest <parsed-plan-json>
   python3 -I "$SCRIPTS_DIR/approval.py" plan-digest "$1"
 }
-_intent_digest() { python3 -I "$SCRIPTS_DIR/approval.py" digest "$1/intent.md" 2>/dev/null; }   # _intent_digest <spec>
+_intent_digest() { python3 -I "$SCRIPTS_DIR/approval.py" bound "$1/intent.md" 2>/dev/null; }   # _intent_digest <spec>
 
 # Refuses (returns 1) when the plan changed since the person approved it: the digest `state advance plan_complete`
 # recorded, else the one the first group start recorded (a run that left Plan before the plan gate recorded one). No
@@ -3420,8 +3428,9 @@ cmd_gate() {
 
   local verdict="FAIL"
   [[ "$all_pass" == "1" ]] && verdict="PASS"
-  if [[ "$record" == "1" ]]; then
-    _gate_write_verdict "$stage" "$verdict" "$reqs_json"
+  local wrote=0
+  if [[ "$record" == "1" ]] && _gate_write_verdict "$stage" "$verdict" "$reqs_json"; then
+    wrote=1
     # The walked Build of a door's run passed on the earlier run's ledger: a loop back to Build mends that code (the fix
     # pass), it does not build the plan again.
     if [[ "$stage" == "build" && -z "$(cmd_state_get built_before "")" ]]; then
@@ -3448,8 +3457,13 @@ cmd_gate() {
   # --brief (9.8.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
   # passed row was context the session read again on every later turn.
   python3 -I "$SCRIPTS_DIR/ledger_ops.py" print-rows "$reqs_json" "$brief"
-  # the marker last, of a recorded verdict only; the commit hook's reader is a person
-  [[ "$record" == "1" && "$from_hook" != "1" ]] && _verdict "gate:$stage" "$verdict"
+  # the marker last, of a written verdict only; the commit hook's reader is a person. A write that failed recorded
+  # nothing: no marker, and the orchestrator's call is an error, never a PASS (the commit hook keeps the verdict's code)
+  [[ "$wrote" == "1" && "$from_hook" != "1" ]] && _verdict "gate:$stage" "$verdict"
+  if [[ "$record" == "1" && "$wrote" != "1" ]]; then
+    echo "FAIL: the verdict of gate:$stage could not be written to $GATES_FILE; nothing was recorded" >&2
+    [[ "$from_hook" != "1" ]] && return 1
+  fi
 
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
 }
@@ -3535,6 +3549,13 @@ cmd_override() {
 _rule_log() { # _rule_log <kind> <stage> <what>: one entry of .temper/rule-log.json (scripts/rule_log.py decides when a kind of a
              # rule is written: while the run goes on by itself and no stop is open)
   python3 -I "$SCRIPTS_DIR/rule_log.py" append "$1" "$2" "$3" >/dev/null 2>&1 || true
+}
+
+_approval_bound() { # _approval_bound NAME=DIGEST...: refuses an approval whose files changed since its question showed
+                    # them (WP12, scripts/approval.py); a refused approval leaves the run asking at every stage (rule 3)
+  python3 -I "$SCRIPTS_DIR/approval.py" check "$STATE_FILE" "$(_spec_path "")" "$@" && return 0
+  _unattended_end "the approval was refused" >/dev/null
+  return 1
 }
 
 _unattended_end() { # _unattended_end <what>: the run asks at every stage from here (rule 3); recorded in the rule log
@@ -4013,7 +4034,7 @@ main() {
   esac
   case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
     "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"plan patch "*|"task retry "*|"task test "*|\
-"acceptance reopen "*|"state set pipeline_round"|"integrate "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
+"acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
   esac
   case "$sub" in
     init) cmd_init "$@" ;;

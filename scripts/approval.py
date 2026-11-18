@@ -7,6 +7,7 @@ tasks.md=<H2>`), and the CLI refuses them when a file changed since. The advance
 commit gates until the person approves again.
 
   python3 approval.py digest FILE              the digest of intent.md (or another spec text) or of tasks.md
+  python3 approval.py bound FILE               what the approval records of intent.md: its digest, or absent
   python3 approval.py row STATE SPEC           the row, one JSON line as the CLI's _req prints it
   python3 approval.py check STATE SPEC NAME=DIGEST...
                                                exit 1 with the reason when a named file of SPEC has another digest now
@@ -26,8 +27,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tasks_md  # noqa: E402
 
 ROW = "intent unchanged since the approval"
-# The lines of intent.md the CLI writes itself (`temper intent accept`, `temper intent complete`): no digest holds them.
-OWN = re.compile(r"^\*\*(?:Status|Accepted-by|Completed):\*\*")
+# What the approval records for a run with no intent.md (the trivial path): the row then holds intent.md absent
+ABSENT = "absent"
+# The lines of intent.md the CLI writes itself (`temper intent accept`, `temper intent complete`, through
+# scripts/spec_text.py intent-status with the values cmd_intent of scripts/temper passes), in the forms it writes them:
+# no digest holds them. Only the first line of each form is the CLI's; other text on such a line, or a second line of a
+# form, is the person's and is bound. The Status line is also the line the CLI rewrites, so it takes the forms the
+# Intent gate reads as a status header (the word in any case, spaces around it), never any other text.
+OWN = (re.compile(r"^\*\*Status:\*\*\s*(?:draft|accepted|completed)\s*$", re.I),
+       re.compile(r"^\*\*Accepted-by:\*\* the person(?:, at the plan approval| at the Intent gate)$"),
+       re.compile(r"^\*\*Completed:\*\* \d{4}-\d{2}-\d{2}$"))
+
+
+def without_own(lines):
+    """The lines of intent.md without the CLI's own: the first line that matches each form of OWN is left out."""
+    left, kept = list(OWN), []
+    for l in lines:
+        hit = next((rx for rx in left if rx.match(l)), None)
+        if hit is None:
+            kept.append(l)
+        else:
+            left.remove(hit)
+    return kept
 
 
 def intent_digest(path):
@@ -37,7 +58,7 @@ def intent_digest(path):
             lines = f.read().split("\n")
     except OSError:
         return None
-    kept = "\n".join(l for l in lines if not OWN.match(l))
+    kept = "\n".join(without_own(lines))
     return hashlib.sha256(kept.encode("utf-8", "surrogateescape")).hexdigest()
 
 
@@ -69,6 +90,12 @@ def digest(path):
     return intent_digest(path)
 
 
+def bound(path):
+    """What the approval records of intent.md: its digest, ABSENT when it is no regular file (the test of `gate intent`
+    for its trivial path, so a directory or a dangling link there is absent too), None when it cannot be read."""
+    return digest(path) if os.path.isfile(path) else ABSENT
+
+
 def read_state(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -83,13 +110,21 @@ def row(name, ok, detail):
 
 
 def binding_row(state, spec):
-    """Pass when no intent_hash is recorded (a run saved before 9.8.5 or by the base), or when both digests equal the
-    recorded ones; else fail, naming the file that changed."""
+    """Pass when the state holds no intent_hash key (a run saved before WP12), or when intent.md and tasks.md are as
+    recorded: intent.md with the digest recorded, or still absent when the approval recorded it absent, and tasks.md
+    with plan_hash when one is recorded. Else fail, naming the file that changed."""
     st = read_state(state)
-    want = {"intent.md": st.get("intent_hash"), "tasks.md": st.get("plan_hash")}
-    if not want["intent.md"]:
+    if "intent_hash" not in st:
         return row(ROW, True, "no digest was recorded at the approval (a run saved before 9.8.5)")
-    changed = [name for name, h in want.items() if h and digest(os.path.join(spec, name)) != h]
+    want = {"intent.md": st.get("intent_hash"), "tasks.md": st.get("plan_hash")}
+    changed = []
+    if want["intent.md"] == ABSENT:
+        if os.path.isfile(os.path.join(spec, "intent.md")):
+            changed.append("intent.md")
+    elif digest(os.path.join(spec, "intent.md")) != want["intent.md"]:
+        changed.append("intent.md")
+    if want["tasks.md"] and digest(os.path.join(spec, "tasks.md")) != want["tasks.md"]:
+        changed.append("tasks.md")
     if not changed:
         return row(ROW, True, "the intent and the plan are as the person approved them")
     return row("intent unchanged since the approval", False,
@@ -115,6 +150,11 @@ def main(argv):
         if d:
             print(d)
         return 0 if d else 1
+    if word == "bound" and len(argv) == 3:
+        d = bound(argv[2])
+        if d:
+            print(d)
+        return 0 if d else 1
     if word == "plan-digest" and len(argv) == 3:
         d = plan_digest(json.loads(argv[2]))
         if d:
@@ -129,8 +169,8 @@ def main(argv):
             print("FAIL: %s" % why, file=sys.stderr)
             return 1
         return 0
-    print("usage: approval.py digest FILE | row STATE SPEC | check STATE SPEC NAME=DIGEST... | plan-digest JSON",
-          file=sys.stderr)
+    print("usage: approval.py digest FILE | bound FILE | row STATE SPEC | check STATE SPEC NAME=DIGEST... "
+          "| plan-digest JSON", file=sys.stderr)
     return 2
 
 

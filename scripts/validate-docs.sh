@@ -275,6 +275,18 @@ else
   echo "$FLOW_TEXT" | sed 's/^/  /'
 fi
 
+# A table row of a tracked page is one line: a line that starts with a pipe ends with one. A row split over two lines
+# renders as two rows, and the cells after the break belong to neither (the saved_by row of the contracts, phase 4a).
+SPLIT_ROWS=$( (cd "$REPO_ROOT" && git ls-files -z -co --exclude-standard -- '*.md' 2>/dev/null || true) \
+  | (cd "$REPO_ROOT" && xargs -0 -r grep -nE '^\|' -- 2>/dev/null || true) \
+  | grep -vE '\|[[:space:]]*$' || true)
+if [[ -z "$SPLIT_ROWS" ]]; then
+  ok
+else
+  fail "table rows split over two lines (a line that starts with | and does not end with one):"
+  echo "$SPLIT_ROWS" | sed 's/^/  /'
+fi
+
 echo ""
 echo "=== validate-docs.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

@@ -298,11 +298,14 @@ check that failed, its key: `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance
 spends under `gate:build`). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
 gate (from Build, a failed or parked group's key), a group fix, the group's tasks again, more time at a failed group
 check, a plan patch, a task retry, a task checked again after an environment fault, a reopened acceptance test, a CI
-fix round, and a merge again after a failed `integrate`. A change at a passed gate spends nothing. The CLI's dispatcher
+fix round, and a merge again after a failed `integrate`. A step back by `state set next_stage` spends as a
+`state loop` does. One CI fix round is one entry, under `pipeline`: the `state redo pipeline` of its steps answers the
+failure that round paid for and spends nothing more. A change at a passed gate spends nothing. The CLI's dispatcher
 checks the call before it runs: past a limit it prints `BLOCKED: ...`, exits 1 and writes nothing. No flag and no
 variable exempts a call, and a call refused later for its own reason has spent its repeat.
 
-`temper next` never offers a call the budget refuses. A question that would offer one becomes `run.budget` (header
+`temper next` never offers a call the budget refuses: the calls and steps of one option are checked
+together, in order, against both limits. A question that would offer one becomes `run.budget` (header
 `Temper gate`): the stage's first sentence, the count, then Save for later (recommended), `Allow two more` (move
 `grant`, the call `temper budget grant --key <key> --reason '{reason}'`, the person's only) and the options of the
 stage's question that spend nothing. An `auto` or `work` action that holds one parks an armed run, or asks the same
@@ -335,7 +338,8 @@ A stop is the park call, then the stage's own question. `temper park` keeps `run
 false and ends when the run changes stage or by `temper park --end [--answer ID]` (not at Commit). The question asked
 while `parked` is set says `After your answer the run goes on by itself.`, every option with calls and no `stop` ends
 with `park --end --answer <its id>`, and `ask-every-stage` ("Ask me at every stage from here") is added. A skip, an
-accepted finding and a step back to Intent, Plan or Design end the run to the commit. The commit question always
+accepted finding and a step back to Intent, Plan or Design end the run to the commit, and so does a refused approval
+and the advance out of Commit: a run that opened a pull request reaches Pipeline asking. The commit question always
 asks: `commit`, `commit-pr`, `back` (`state loop check build`), and under More the stacked pull requests, the small
 change and `save`. A failed commit gate with a changed sensitive file outside the plan offers `confirm`
 (`temper override sensitive-path:<path>`). `temper go --taken-up` records a stop of such a run first, so its stage asks
@@ -351,6 +355,11 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   again`. The arguments are optional: a call without them records what it finds. `plan_complete` is refused while
   `intent.md` is a draft. `intent accept --digest <H1>` refuses the same way. `python3 scripts/approval.py digest FILE`
   prints a digest, `row STATE SPEC` the row, `check STATE SPEC NAME=DIGEST...` the refusal.
+- **The check comes first.** Every approving option starts with `state set run_mode autonomous|interactive --shown
+  intent.md=<H1> --shown tasks.md=<H2>` (`Run Design first` after its `state set want_design true`, the plan
+  question with Design to follow and the skip's way on too). `state set run_mode` compares the digests before it
+  writes the mode, so a stale approval writes no mode, makes no branch and no commit, and leaves the run at its
+  question, which `next` asks again with the digests of the files as they are now.
 - **The state keys.** `state advance plan_complete` records `intent_hash` beside `plan_hash` and `approved_files`;
   `design_complete` records both digests again. `state set` refuses them, and `from_branch`: the branch the run stands
   on before its approval (written at `state init` and when the run leaves Intent), which the commit hook gates too.
@@ -375,7 +384,8 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   answer is no note: once the gate passes again the rule moves on); the run did not come back to Intent; the person
   typed no note at Intent; no door walked Intent. Otherwise `intent.accept` (or `intent.fail`, or `run.walked`) is
   asked as before. `temper go` runs that work by itself. The intent stays a draft.
-- **The approval accepts it.** Its first options run, in order: `state set run_mode autonomous` (or `interactive`),
+- **The approval accepts it.** Its first options run, in order: `state set run_mode autonomous` (or `interactive`,
+  each with the `--shown` digests),
   the folded Context check's `plan review` call, `spec branch` when the project is on another branch, `intent accept
   --digest <H1>` while the intent is a draft (`Accepted-by: the person, at the plan approval`), one `spec commit` and
   the advance with its `--shown` digests. The text says `Accept the intent, approve the plan and continue to <next>?`
@@ -388,7 +398,9 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   approval when it holds at most three `ignore` and two `gap` lines of at most 90 characters each: the row passes
   (`N flagged line(s), answered at the approval`), the approval's text names the lines whole, the approving options
   run `plan review --answer 'As planned (at the approval, N flagged lines shown)'`, and `Include what is left out`
-  joins the More list. Any other flagged map keeps its own question; `always` asks every map, `off` none.
+  joins the More list. Any other flagged map keeps its own question; `always` asks every map, `off` none. When no
+  Design follows and the run's branch clashes (WP12), the approval has no room for the fold (its More list would need
+  a third dialog), so the Context check is asked first as its own question, and the approval after it.
 - **The draft beside its plan.** The Intent row `no scenarios in draft` passes once `tasks.md` is beside the intent:
   Plan wrote those scenarios.
 

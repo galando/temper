@@ -36,7 +36,9 @@ describe('a gate question answered exactly', () => {
     const q = asked('plan-pass-autonomy')
     const a = gate(answersIn(result(q, 'Approve and build (Recommended)'), rv('plan-pass-autonomy')))
     expect(a[0]?.option.move).toBe('arm')
-    expect(a[0]?.option.calls.some(c => c.endsWith('temper state set run_mode autonomous'))).toBe(true)
+    // WP12: the arming call carries the digests the question showed (--shown), compared before the mode is written
+    const arm = (c: string): boolean => c.split(' --shown ')[0]!.endsWith('temper state set run_mode autonomous')
+    expect(a[0]?.option.calls.some(arm)).toBe(true)
   })
 
   test('Save for later in the More options question', () => {

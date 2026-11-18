@@ -59,6 +59,10 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                     rows = r.failed_rows("plan")
                     if out.get("action") == "ask" and len(rows) == 1 and rows[0].get("name") == "context map reviewed":
                         out["ask"] = q    # the only failed row is the pending check: ask the check itself, so a refused call can be answered again
+                    elif out.get("action") == "ask" and (out.get("ask") or {}).get("id") == "plan.approve":
+                        # WP14: a map the gate passed as folded that the approval has no room for (Run.context_folded):
+                        # the Context check is asked first, and the approval after it, with no fold
+                        out["ask"] = q
         self.stop_answer(out)
         self.add_note(out)
         return out
@@ -137,7 +141,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
         nothing."""
         r, facts = self.r, budget.Facts(self.r)
         calls_of = lambda o: list(o.get("calls") or []) + list(o.get("steps") or [])
-        refused = lambda calls: next((k for c in calls for k in [budget.refused(c, self.cli, facts)] if k), None)
+        refused = lambda calls: budget.refused(calls, self.cli, facts)   # the calls of one option or action, in order
         if out.get("action") in ("auto", "work"):
             key = refused(calls_of(out) + [c for a in out.get("agents") or [] for c in (a.get("before") or []) + (a.get("after") or [])])
             if key is None:
@@ -157,7 +161,8 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             return out
         shown = list(q.get("options") or []) + list((q.get("more") or {}).get("options") or [])
         subs = [s for s in (q.get("accept"), q.get("change")) if isinstance(s, dict)]
-        key = refused([c for o in shown + [o for s in subs for o in s.get("options") or []] for c in calls_of(o)])
+        every = shown + [o for s in subs for o in s.get("options") or []]
+        key = next((k for o in every for k in [refused(calls_of(o))] if k), None)
         if key is None:
             return out
         free = [self.set_rec(copy.deepcopy(o), False) for o in shown if o.get("kind") != "more" and o.get("id") != "save"

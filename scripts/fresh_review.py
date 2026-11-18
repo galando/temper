@@ -65,7 +65,8 @@ def without_context_map(data):
 def without_own_lines(data):
     """intent.md without the lines the CLI writes itself (Status, Accepted-by, Completed, scripts/approval.py OWN): 9.8.5
     (WP13) the approval accepts the intent after the review read it, and the accept changes no word the reviewer read."""
-    return b"\n".join(l for l in data.split(b"\n") if not approval.OWN.match(l.decode("utf-8", "surrogateescape")))
+    lines = [l.decode("utf-8", "surrogateescape") for l in data.split(b"\n")]
+    return b"\n".join(l.encode("utf-8", "surrogateescape") for l in approval.without_own(lines))
 
 
 def digest(spec):
