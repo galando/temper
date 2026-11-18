@@ -59,6 +59,10 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                     rows = r.failed_rows("plan")
                     if out.get("action") == "ask" and len(rows) == 1 and rows[0].get("name") == "context map reviewed":
                         out["ask"] = q    # the only failed row is the pending check: ask the check itself, so a refused call can be answered again
+                    elif out.get("action") == "ask" and (out.get("ask") or {}).get("id") == "plan.approve":
+                        # WP14: a map the gate passed as folded that the approval has no room for (Run.context_folded):
+                        # the Context check is asked first, and the approval after it, with no fold
+                        out["ask"] = q
         self.stop_answer(out)
         self.add_note(out)
         return out

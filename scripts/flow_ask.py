@@ -210,7 +210,7 @@ class AskPart:
         commits HEAD lacks: a plain switch would leave them behind, or carry the new spec onto old work. None when there is none."""
         r = self.r
         want = r.state.get("branch") or ""
-        if not want or (r.ctx.get("branch") or "") == want or not r.ctx.get("branch_exists") or not int(r.ctx.get("branch_ahead") or 0):
+        if not r.branch_clashes():
             return None
         n = 2
         while subprocess.run(["git", "show-ref", "--verify", "--quiet", "refs/heads/%s-%d" % (want, n)], capture_output=True).returncode == 0:

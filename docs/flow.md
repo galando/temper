@@ -395,7 +395,9 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   approval when it holds at most three `ignore` and two `gap` lines of at most 90 characters each: the row passes
   (`N flagged line(s), answered at the approval`), the approval's text names the lines whole, the approving options
   run `plan review --answer 'As planned (at the approval, N flagged lines shown)'`, and `Include what is left out`
-  joins the More list. Any other flagged map keeps its own question; `always` asks every map, `off` none.
+  joins the More list. Any other flagged map keeps its own question; `always` asks every map, `off` none. When no
+  Design follows and the run's branch clashes (WP12), the approval has no room for the fold (its More list would need
+  a third dialog), so the Context check is asked first as its own question, and the approval after it.
 - **The draft beside its plan.** The Intent row `no scenarios in draft` passes once `tasks.md` is beside the intent:
   Plan wrote those scenarios.
 

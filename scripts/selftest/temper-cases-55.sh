@@ -149,6 +149,32 @@ gpass plan; _rc55+="revise=$(_reach55)"
 assert_eq "design: every option of the plan question is reachable in at most two dialogs, run-design among them" \
   "offer=ok|plain=ok|revise=ok" "$_rc55"
 
+# A branch clash (the run's branch holds commits of an earlier run) and a flagged map that would fold into the approval
+# meet: the More list would hold five options (the new branch, run-design, the step back, Include what is left out, Save
+# for later), a third dialog. So the Context check stays its own question, and after it every option of the plan
+# question is reachable in at most two dialogs.
+_clash55() { # a repository on main whose feature/demo holds a commit this checkout lacks (case 12, F28)
+  rm -rf .git; git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T
+  git checkout -q -B main 2>/dev/null; echo base > README; git add README; git commit -qm base
+  git checkout -q -b feature/demo; echo old > old.txt; git add old.txt; git commit -qm "an earlier run's work"
+  git checkout -q main
+}
+_cf55=""
+for _v55 in offer plain; do
+  if [[ $_v55 == offer ]]; then _plan55; else _plan55 $'plan:\n  fresh-review: off'; fi
+  _clash55
+  { printf '# Plan\n\n## Context Map\n- use: intent.md AC-01 - the accepted scope\n'
+    printf -- '- ignore: .temper/specs/old-login/ - a finished feature of another scope\n- reviewed: pending\n'
+    printf '\n## Approach\nThe demo.\n'; } > .temper/specs/demo/plan.md
+  _q55="$(_x55 "r = 'context check' if (d.get('ask') or {}).get('id') == 'plan.context' else None")"
+  [[ "$_q55" == "context check" ]] || _q55="$(_reach55)"
+  _cf55+="${_cf55:+|}$_v55=$_q55"
+  "$TEMPER" plan review --answer 'As planned' >/dev/null 2>&1; gpass plan   # the person's As planned
+  _cf55+=",then $(_reach55),$(_x55 "r = 'new-branch' if opt(d, 'new-branch') else 'no new-branch'")"
+done
+assert_eq "design: with a branch clash and a flagged map the Context check is its own question; then two dialogs at most" \
+  "offer=context check,then ok,new-branch|plain=context check,then ok,new-branch" "$_cf55"
+
 # --- the answers reach the plan: the row tasks agree with decisions is the plan gate's ---
 _sched55; "$TEMPER" intent answer 'Which schedule does a job use?' 'Its own.' >/dev/null 2>&1   # the first choice
 "$TEMPER" gate plan >/dev/null 2>&1
