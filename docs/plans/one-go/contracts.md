@@ -102,8 +102,7 @@ Keys of `.temper/build-state.json`:
 | `from_branch` | the branch the run stands on before its approval, which the commit hook gates too; `state set` refuses it | WP12 | none |
 | `repair`, `repairs` | the open repair window; the closed repairs | WP24 | WP25 |
 | `trivial` | the trivial verdict, until the flow closes the run | WP17 | none |
-| `saved_by` | the Temper version that saved the state (`state init` stamps it); `state set` refuses it; a state saved at
-Review without it runs Review once more (row D60) | WP11 | WP28 |
+| `saved_by` | the Temper version that saved the state (`state init` stamps it); `state set` refuses it; a state saved at Review without it runs Review once more (row D60) | WP11 | WP28 |
 
 Keys that go: `intent_asked` (WP14), `env_agent` (WP21), `record_pass` (WP27), `enter` and `built_before` (WP28; the
 two stay refused keys and stay in the mod's guard list). `cli_commits` of `.temper/groups.json` exists at the head;
