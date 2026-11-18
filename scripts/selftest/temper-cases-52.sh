@@ -391,6 +391,19 @@ done
 assert_eq "run: a run saved armed by an earlier version asks at every stage" \
   "9.8.4=interactive,ask build.pass,ask review.pass|base=interactive,ask build.pass,ask review.pass" "$_old52"
 
+# --- the unattended run ends at the commit: a commit that opened a pull request reaches Pipeline asking, so its
+# question is never asked from an armed run, and the person's answers there are no rule's ---
+_nogit52; _unattended commit; gpass commit; _auto52 >/dev/null   # the park call: the commit question is asked
+"$TEMPER" state set pr one >/dev/null 2>&1                         # the person's Commit and open PR, its record step
+"$TEMPER" state advance commit_complete pipeline >/dev/null 2>&1
+_pl52="mode=$("$TEMPER" state get run_mode 2>/dev/null)|$(_x52 "r = '%s,run.armed=%s' % (d.get('action'),
+  (d.get('run') or {}).get('armed'))")"
+gfail pipeline "CI checks pass" "1 check failed"
+_pl52+="|$(_x52 "r = '%s %s,run.armed=%s' % (d.get('action'), (d.get('ask') or {}).get('id'), (d.get('run') or {}).get('armed'))")"
+_pl52+="|guard.armed=$(vw "(d.get('guard') or {}).get('armed')")"
+assert_eq "run: the unattended run ends at the commit: Pipeline is asked from a run that asks at every stage" \
+  "mode=interactive|work,run.armed=False|ask pipeline.fail,run.armed=False|guard.armed=False" "$_pl52"
+
 # --- the rule log: what a rule decided, in .temper/rule-log.json and in the view ---
 _nogit52; _unattended build; rm -f .temper/rule-log.json   # what the helper's own approval and advances wrote goes
 gpass build; _auto52 >/dev/null                                                                 # an advance

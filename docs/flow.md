@@ -335,7 +335,8 @@ A stop is the park call, then the stage's own question. `temper park` keeps `run
 false and ends when the run changes stage or by `temper park --end [--answer ID]` (not at Commit). The question asked
 while `parked` is set says `After your answer the run goes on by itself.`, every option with calls and no `stop` ends
 with `park --end --answer <its id>`, and `ask-every-stage` ("Ask me at every stage from here") is added. A skip, an
-accepted finding and a step back to Intent, Plan or Design end the run to the commit. The commit question always
+accepted finding and a step back to Intent, Plan or Design end the run to the commit, and so does a refused approval
+and the advance out of Commit: a run that opened a pull request reaches Pipeline asking. The commit question always
 asks: `commit`, `commit-pr`, `back` (`state loop check build`), and under More the stacked pull requests, the small
 change and `save`. A failed commit gate with a changed sensitive file outside the plan offers `confirm`
 (`temper override sensitive-path:<path>`). `temper go --taken-up` records a stop of such a run first, so its stage asks

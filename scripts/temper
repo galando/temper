@@ -983,6 +983,8 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   fi
   [[ "$stage" == intent_complete ]] && _from_branch
   local held; held="$(_json_get_path "$STATE_FILE" parked "")"   # WP11: an answer to a stop is the person's, no rule's
+  # WP11: the unattended run ends at the commit; a run that opened a pull request reaches Pipeline asking at every stage
+  [[ "$stage" == commit_complete ]] && _unattended_end "the commit" >/dev/null
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
   # A commit verdict written before the run reached Commit (the hook of a spec commit) is not the commit gate's: the
   # run enters Commit with no commit verdict and no commit skip, so the commit gate runs for it.
