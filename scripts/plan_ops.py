@@ -15,9 +15,9 @@ Modes (python3 plan_ops.py <mode> ...):
   map SPEC_DIR                 the map as JSON for `temper next` and the view
 
 9.8.5 (WP13): the person is asked only about a map with an `ignore` or a `gap` line (auto), every map (always) or none
-(off). A clean pending map passes its row unasked; a flagged one under auto whose lines fit the approval is folded into
-it, and the approving option records the answer (`plan review --answer 'As planned (at the approval, N flagged lines
-shown)'`).
+(off). A clean pending map passes its row unasked; a flagged one under auto whose lines the approval card shows whole
+is folded into it (WP15), and the approving option records the answer (`plan review --answer 'As planned (at the
+approval, N flagged lines shown)'`).
 
 The CLI writes the `reviewed:` line, never Plan and never a model by hand: auto mode may refuse an edit of it
 (docs/auto-mode.md). Text is data: one line, at most 100 characters (an answer: 2000, shown cut to the line). Standard library only.
@@ -83,8 +83,9 @@ def row(ok, detail):
     return {"name": "context map reviewed", "pass": ok, "detail": detail}
 
 
-SHOWN = 90         # 9.8.5 (WP13): the longest flagged line a question shows whole (the cut of the Context check's text)
-SHOWN_IGNORE, SHOWN_GAP = 3, 2   # the ignore and gap lines a question shows
+# 9.8.5 (WP15): the approval card shows every flagged line whole, of any length, as many as a map may hold
+# (MAX_ENTRIES); the question text still cuts a line at 90 (flow_commit.context_text)
+CARD_ROWS = MAX_ENTRIES
 
 
 def flagged(entries):
@@ -99,15 +100,14 @@ def asks(entries, mode):
 
 
 def fits(entries):
-    """Every flagged line can be shown whole in the approval's text: at most three ignore and two gap lines, each of at
-    most SHOWN characters (the cuts of the Context check's text). WP15 widens this to the approval card."""
-    ign = [e for e in entries or [] if e.get("kind") == "ignore"]
-    gap = [e for e in entries or [] if e.get("kind") == "gap"]
-    return len(ign) <= SHOWN_IGNORE and len(gap) <= SHOWN_GAP and all(len(e.get("text") or "") <= SHOWN for e in ign + gap)
+    """WP15: the context section of the approval card holds every flagged line whole, of any length: at most CARD_ROWS
+    of them. A card whose section would be cut records no answer, and the Context check is asked."""
+    return len(flagged(entries)) <= CARD_ROWS
 
 
 def folds(entries, reviewed, mode):
-    """9.8.5 (WP13): a pending map under auto whose flagged lines fit the approval is answered there, not on its own."""
+    """9.8.5 (WP13, WP15): a pending map under auto whose flagged lines the approval card shows whole is answered there,
+    not on its own."""
     return mode == "auto" and reviewed == "pending" and bool(flagged(entries)) and fits(entries)
 
 

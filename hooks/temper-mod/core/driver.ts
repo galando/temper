@@ -42,6 +42,8 @@ export type GoOut = {
   gate?: string
   setup?: string[]
   tasks?: Array<{ after?: string[] }>
+  // WP15: the rows of the question's card (the approval, the commit, a stop), as `temper card` prints them
+  card?: string[]
 }
 
 export type Ran = { code: number; out: string }
@@ -55,6 +57,8 @@ export type Port = {
   askAll?(qs: GoQuestion[]): Promise<Array<string | null>>
   record(q: GoQuestion, answer: string): Promise<void>
   show(text: string): Promise<void>
+  // WP15: the card's rows, given once before the question is asked; absent: the card is not shown by the port.
+  card?(rows: string[]): Promise<void>
   stopped(): boolean
 }
 export type DriveEnd = { kind: 'done'; text: string } | { kind: 'handback'; args: string; why: string }
@@ -117,7 +121,8 @@ export function taskVerdict(call: string, out: string): boolean {
 // A CLI panel (`temper panel ...`) as the few rows the driver shows. A mod's log line is one row with the plugin's name
 // before it, and a dialog's preview cannot hold a panel of forty rows, so a box drawn row by row read as forty rows of
 // "temper:". Each box becomes its title (joined with its one fact row, as a task's panel has), a row a fact row, and a
-// row a section, its items joined; the lines outside the boxes (the Plan's diagram) give way to where they are.
+// row a section, its items joined; the lines outside the boxes give way (WP15: the Plan panel and its diagram
+// are gone).
 export function compactPanel(text: string): string[] {
   const out: string[] = []
   const rule = /^\+[-+]*\+$/
@@ -125,7 +130,6 @@ export function compactPanel(text: string): string[] {
   type Box = { title: string; facts: string[]; sections: Array<{ name: string; items: string[] }> }
   let box: Box | null = null
   let phase: 'title' | 'body' = 'title'
-  let dropped = false
   const add = (to: string[], cell: string) => {
     if (/^ {2}\S/.test(cell) && to.length > 0) to[to.length - 1] += ' ' + cell.trim()
     else to.push(cell.trim())
@@ -162,10 +166,8 @@ export function compactPanel(text: string): string[] {
       else add(box.sections.length > 0 ? box.sections[box.sections.length - 1]!.items : box.facts, cell)
       continue
     }
-    if (line.trim() !== '') dropped = true
   }
   if (box !== null) flush(box)
-  if (dropped && out.some(l => l.startsWith('PLAN:'))) out.push("The plan's diagram is in plan.md, under Diagram.")
   return out.length > 0 ? out : text.split(/\r?\n/).filter(l => l.trim() !== '')
 }
 
@@ -279,6 +281,7 @@ export type Effect =
   | { k: 'askAll'; qs: GoQuestion[] }
   | { k: 'record'; q: GoQuestion; answer: string }
   | { k: 'show'; text: string }
+  | { k: 'card'; rows: string[] }
   | { k: 'stopped' }
 type Steps<R> = Generator<Effect, R, unknown>
 
@@ -435,6 +438,7 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
         continue
       }
       if (!g.ask) return handback('a question with no question')
+      if ((g.card ?? []).length > 0) yield { k: 'card', rows: g.card as string[] }
       const end = yield* answer(cli, g.ask)
       if (end !== null) return end
       continue
@@ -580,6 +584,7 @@ async function perform(port: Port, e: Effect): Promise<unknown> {
     case 'askAll': return port.askAll ? port.askAll(e.qs) : askEach(port, e.qs)
     case 'record': return port.record(e.q, e.answer)
     case 'show': return port.show(e.text)
+    case 'card': return port.card ? port.card(e.rows) : undefined
     case 'stopped': return port.stopped()
   }
 }
@@ -623,6 +628,7 @@ export type SyncPort = {
   askAll?(qs: GoQuestion[]): Array<string | null>
   record(q: GoQuestion, answer: string): void
   show(text: string): void
+  card?(rows: string[]): void
 }
 export function driveSync(port: SyncPort, cli: string, request: string | null, slug: string | null = null): DriveEnd {
   return runSync(port, driveSteps(cli, request, slug))
@@ -638,6 +644,7 @@ function runSync(port: SyncPort, steps: Steps<DriveEnd>): DriveEnd {
     const e = next.value
     input = e.k === 'run' ? port.run(e.call) : e.k === 'spawn' ? port.spawn(e.agent) : e.k === 'wait' ? port.wait(e.ids)
       : e.k === 'ask' ? port.ask(e.q) : e.k === 'askAll' ? (port.askAll ? port.askAll(e.qs) : e.qs.map(q => port.ask(q)))
-      : e.k === 'record' ? port.record(e.q, e.answer) : e.k === 'show' ? port.show(e.text) : false
+      : e.k === 'record' ? port.record(e.q, e.answer) : e.k === 'show' ? port.show(e.text)
+      : e.k === 'card' ? port.card?.(e.rows) : false
   }
 }

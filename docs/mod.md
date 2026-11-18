@@ -284,9 +284,14 @@ with their answer calls), records your answer as the guard does, and runs the ca
 takes labels alone; the mod's own tool call hook gives each option back its description and its preview (the Context
 check's table) from the CLI's question, so the dialog shows what each choice does. A Build task's panel is the CLI's
 (`temper panel task`, after the task gates); of the agent's answer the driver shows only a `TASK N: stopped:` line,
-which the CLI cannot know. A panel the CLI draws is shown as a few rows: its title, a row a fact and a row a section,
-with the Plan's diagram left in plan.md (a mod's log line is one row with the plugin's name before it, and a box drawn
-row by row read as forty rows of "temper:"). A stage that only waits for your answers (open Blocking questions, the
+which the CLI cannot know. A panel the CLI draws is shown as a few rows: its title, a row a fact and a row a section
+(a mod's log line is one row with the plugin's name before it, and a box drawn row by row read as forty rows of
+"temper:"). The card of a question that decides (the approval, the commit, a stop; WP15, its fields in `docs/flow.md`)
+comes before the dialog: in full mode the mod draws it above the dialog the driver raised, under
+the dim question line (its title and tag, each section with its rows and marks, what a cut section leaves out, the
+foot); in any other mode the driver logs its rows. A dialog the conversation raised has the card's rows in the page
+(`commands/temper.md`), and the mod draws no card on it. The card only shows: you decide in the dialog.
+A stage that only waits for your answers (open Blocking questions, the
 Context check, a criterion you confirm) draws as the current stage, never red. A Temper agent's message is drawn in
 full, where the engine shows one folded line. The Blocking questions come in one dialog, four at most (each its own
 tab, then a review of the answers), as the conversation asks them without the mod. An interrupt stops the driver between two steps or while it waits on an agent; it starts no

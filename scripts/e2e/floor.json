@@ -1150,6 +1150,80 @@
     }
    }
   },
+  "flagged-map": {
+   "plain": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 6,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 3
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 6,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 3
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 18,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 3
+    }
+   }
+  },
   "fresh-ask": {
    "plain": {
     "now": {

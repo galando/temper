@@ -214,7 +214,11 @@ MD
 A counter per account.
 MD
   "$TEMPER" state init login-lockout --feature "lock accounts after too many failed logins" >/dev/null 2>&1
-  gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" risk >/dev/null 2>&1
+  gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+  # the sample's risk M, as the spec's sample shows it: `temper risk` rates the sensitive path H, and at H the fresh
+  # review of the plan runs before the approval is asked
+  python3 -B -c "import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['risk'] = 'M'
+json.dump(d, open(p, 'w'), indent=2)"
 }
 
 # --- the approval card: its sections in the order of the spec's table, the run and step of its question ---

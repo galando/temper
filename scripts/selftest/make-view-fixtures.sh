@@ -102,6 +102,7 @@ def snap(cwd, name, run_name):
     text = text.replace(root, "/plugin").replace(cwd, "/project").replace(work, "/work")
     if head:
         text = text.replace(head, "0" * 40)
+        text = re.sub(r"\b%s\b" % head[:7], "0" * 7, text)   # WP15: the commit card's tree names HEAD short
     text = re.sub(r"its last commit is [0-9a-f]{7,40} ", "its last commit is 0000000 ", text)
     d = json.loads(text)
     rid = (d.get("run") or {}).get("id")
@@ -115,7 +116,7 @@ def snap(cwd, name, run_name):
 
 
 CAPTURE = os.environ.get("TEMPER_CAPTURE_DIR", "")
-READS = [["next", "--json"], ["status"], ["report"], ["schedule"], ["panel", "plan"], ["model", "--all"],
+READS = [["next", "--json"], ["status"], ["report"], ["schedule"], ["card"], ["model", "--all"],
          ["state", "get", "next_stage"], ["evidence", "list", "--stage", "build"]] + \
         [["gate", s] for s in ("intent", "plan", "design", "build", "review", "check", "commit")] + \
         [["status"], ["report"], ["go"], ["next", "--json"]]
@@ -423,7 +424,7 @@ verdict(bu, "check", False, "tests pass", "exit 1: 2 failed")
 snap2(bu, "check-budget", "run-budget")
 
 # A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
-for name in ("armed-review-pass",):
+for name in ("armed-review-pass", "review-fail"):   # WP15: the cards made the first module grow
     extra[name] = views.pop(name)
 
 if len(sys.argv) > 3 and sys.argv[3] == "extra":

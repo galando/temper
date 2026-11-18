@@ -40,6 +40,21 @@ def show_run(r):
         print(out)
 
 
+def last_run(tdir, stage):
+    """(the stage's last failed run the CLI recorded with its output, or its last run when none failed; whether it
+    failed), or (None, False)."""
+    runs = [r for r in load(os.path.join(tdir, "evidence", "%s.json" % stage), [])
+            if isinstance(r, dict) and (r.get("output") or r.get("cmd")) and isinstance(r.get("exit_code"), int)]
+    failed = [r for r in runs if r.get("exit_code") != 0]
+    return (failed[-1] if failed else (runs[-1] if runs else None)), bool(failed)
+
+
+def last_failed(tdir, stage):
+    """The stage's last failed run, as `temper output` prints it (the stop card's kept lines), or None."""
+    run, failed = last_run(tdir, stage)
+    return run if failed else None
+
+
 def main(argv):
     if len(argv) != 3:
         print("FAIL: usage: temper output <stage>|G<n>", file=sys.stderr)
@@ -67,10 +82,7 @@ def main(argv):
             if isinstance(q, dict) and not q.get("pass"):
                 print("  %s: %s" % (q.get("name"), q.get("detail")))
         shown = True
-    runs = [r for r in load(os.path.join(tdir, "evidence", "%s.json" % what), [])
-            if isinstance(r, dict) and (r.get("output") or r.get("cmd")) and isinstance(r.get("exit_code"), int)]
-    failed = [r for r in runs if r.get("exit_code") != 0]
-    pick = failed[-1] if failed else (runs[-1] if runs else None)
+    pick, failed = last_run(tdir, what)
     if pick is not None:
         print("Its last %s run:" % ("failed" if failed else "recorded"))
         show_run(pick)

@@ -600,6 +600,13 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
     ask: q => hostAsk($, q),
     askAll: qs => hostAskAll($, qs),
     record: (q, label) => hostRecord($, q, label),
+    // WP15: the card of the question the driver asks next: the render hook draws it above the dialog in full mode;
+    // in any other mode its rows are logged
+    card: async rows => {
+      const ui = await readUi($).catch(() => null)
+      if (ui !== null && ui.mode === 'full') return
+      for (const row of logRows(rows.join('\n'))) $.ui.log(row)
+    },
     show: async text => {
       // `$.ui.log` appends one line: the terminal draws a line break inside it as a mark and cuts the line at 2000
       // characters, so a panel or a report (many rows, thousands of characters) is logged a row at a time.
@@ -916,12 +923,14 @@ export const register: Register = (on, opts) => {
     )
   })
 
-  // One Temper line above the engine's dialog, which stays exactly once in the tree.
+  // One Temper line above the engine's dialog, which stays exactly once in the tree. WP15: the card of the question
+  // too, only for a dialog the run driver raised itself (a dialog the conversation raised has the card's rows in the
+  // page).
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     const engine = await next(e)
     const ui = await readUi($).catch(() => null)
     if (ui === null || ui.mode !== 'full') return engine
-    return renderQuestion($.ui.resolve(e), ui.view, engine) ?? engine
+    return renderQuestion($.ui.resolve(e), ui.view, engine, asking !== null || askingAll !== null ? ui.view.card ?? null : null) ?? engine
   })
 
   // A line beneath the answer (stage, progress, next stage). Nothing is submitted.

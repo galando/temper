@@ -1,0 +1,11 @@
+STOPPED: CHECK DID NOT PASS                                               pw
+
+WHAT FAILS
+ tests pass: exit 1: 2 failed
+
+WHAT WAS TRIED (0 of 2 repeats for this failure, 0 of 6 for the run)
+ no repeat yet: this is its first failure
+
+STILL GREEN: Intent · Plan · Build · Review
+SPENT: 0 min of agent time, 0 launches
+After your answer the run asks you at each stage. Nothing is pushed.

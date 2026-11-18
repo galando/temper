@@ -108,7 +108,8 @@ whatever its exit code. When it prints `action: error`, say its `say` in one lin
   - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
     text there as it is, with each `'` in it written as `'\''`, so a backquote or a `$` in it stays text. Run `git commit` in a Bash call
     of its own, after the `git add` call.
-- **`ask`**: when it has `blocking`, ask those first (see "Every question"). Then ask `ask.question`
+- **`ask`**: when it has `card`, print its rows as they are in one code block. When it has `blocking`, ask those
+  first (see "Every question"). Then ask `ask.question`
   with AskUserQuestion exactly as given, and do what the chosen option of `ask.options` says: run its
   `calls`, then its `steps`, then `temper go` (the calls and `temper go` in one Bash call when the
   calls are only `temper` calls); or, for an option with `do`, do what it says, then ask the same

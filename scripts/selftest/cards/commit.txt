@@ -1,0 +1,25 @@
+READY TO COMMIT                                                           pw
+
+WHAT IS TRUE (0 of 5 met)
+ AC-01 criterion 1                                                    [open]
+ AC-02 criterion 2                                                    [open]
+ AC-03 criterion 3                                                    [open]
+ AC-04 criterion 4                                                    [open]
+ AC-05 criterion 5                                                    [open]
+
+THE SUITE: no run is recorded [not measured]
+COVERAGE: no value is recorded [not measured]
+
+REVIEW (open: 1 critical, 1 low)
+ [critical] src/app.ts:12 the token never expires                     [open]
+ [low] src/mail.ts:4 the subject is not localized                     [open]
+
+TREE: every verdict is of commit 0000000 and 0 files not committed yet
+RUN: 0 min of agent time, 0 launches, 9 dialogs
+
+THE COMMIT
+ docs(pw): record the run: spec, gate ledger and report (the code is in the
+   commits before it)
+ on feature/pw, not pushed
+The commit gate runs first; the report and the commit follow with no
+question. Nothing is pushed.

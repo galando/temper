@@ -8,7 +8,8 @@ Usage:
   temper evidence add --stage review --claim 'review completed' --exit 0 --read FILE   (once for each file read whole)
   temper review files                     (read only: the changed files Review must read, the set its gate compares)
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
-  temper panel plan | design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
+  temper panel design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
+  temper card                                (the card of the question: the approval, the commit or a stop)
   temper brief [--text TEXT | --stdin]   (.temper/brief.md: the code the request reaches, for Plan, Design, RCA)
   temper model <intent|plan|design|build|review|check|rca|fix> | --all
   temper override <stage> --reason "..."

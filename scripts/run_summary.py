@@ -3,6 +3,7 @@
   python3 run_summary.py append TEMPER_DIR NOW     `temper state clear` calls it before it deletes the run's files: one
                                                    JSON line goes to TEMPER_DIR/runs.jsonl, which keeps its last 200
   run_summary.record_ask(TEMPER_DIR, next)         flow.run_view records the question `temper next` hands the carrier
+  run_summary.median_minutes(TEMPER_DIR)           the approval card's estimate: the median of the finished runs kept
 
 The line: {"v": 1, "at", "run", "slug", "command", "version", "mode", "ended", "asks": {"n", "by_stage", "by_kind"},
 "steps_back": [{"from", "to", "n"}], "launches": {"by_stage"}, "seconds", "agent_seconds", "skips"}. It is made from the
@@ -157,6 +158,30 @@ def append(temper_dir, now):
         f.write("\n".join(kept) + "\n")
     os.replace(tmp, path)
     return 0
+
+
+def median_minutes(temper_dir):
+    """(the median in minutes of the finished runs runs.jsonl keeps, their count) for the approval card's estimate
+    (WP15); None when it keeps no finished run. A finished run ended with its commit and has its seconds."""
+    secs = []
+    try:
+        with open(os.path.join(temper_dir, RUNS), encoding="utf-8") as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                s = d.get("seconds") if isinstance(d, dict) and d.get("ended") == "committed" else None
+                if isinstance(s, (int, float)) and not isinstance(s, bool) and s > 0:
+                    secs.append(s)
+    except OSError:
+        return None
+    if not secs:
+        return None
+    secs.sort()
+    mid = len(secs) // 2
+    med = secs[mid] if len(secs) % 2 else (secs[mid - 1] + secs[mid]) / 2.0
+    return int(round(med / 60.0)), len(secs)
 
 
 def main(argv):

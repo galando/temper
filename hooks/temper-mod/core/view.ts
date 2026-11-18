@@ -5,7 +5,7 @@
 
 import type { Decision } from './decisions'
 import { describe } from './decisions'
-import type { RunView } from './runview'
+import type { Card, RunView } from './runview'
 import type { Stage } from './stages'
 import { cliStage, isStage, stageLabel } from './stages'
 
@@ -83,6 +83,8 @@ export type View = {
   line: string | null
   // What `temper next` does now (the system prompt names it).
   next: { action: string; say: string; header: string | null }
+  // WP15: the card of the question (the approval, the commit, a stop), drawn above the dialog; null for none.
+  card: Card | null
 }
 
 export type ViewInput = {
@@ -186,6 +188,7 @@ export function buildView(input: ViewInput): View {
     loops: rv.loops.map(l => `${cap(l.from)} to ${cap(l.to)}: ${l.iteration} of ${l.max}${l.reason ? ` (${l.reason})` : ''}`),
     line: input.line ?? null,
     next: { action: rv.next.action, say: rv.next.say, header: rv.ask?.question.header ?? null },
+    card: rv.card,
     clock: { minutes: minutesOf(rv.time.started, rv.time.updated) },
     loopMarks: rv.loops.map(l => ({ from: l.from, to: l.to, iteration: l.iteration, max: l.max, reason: l.reason })),
     planTree: planTreeOf(rv),

@@ -283,9 +283,10 @@ class WorkPart:
             # 9.8.0: the CLI runs Check's suite, coverage and mutation score while Review reads the change (Review writes
             # no code); Check adopts that run when the tree is unchanged.
             a["before"] = (a.get("before") or []) + [self.c("check ahead")]
-        if stage in ("plan", "design"):
-            # 9.8.0 (round 5): the CLI draws the stage's panel from the files the agent wrote; the agent draws none.
-            a["after"].append(self.c("panel %s" % stage))
+        if stage == "design":
+            # 9.8.0 (round 5): the CLI draws the stage's panel from the files the agent wrote; the agent draws
+            # none. WP15: Plan has none: its approval card shows the plan, and the question follows at once.
+            a["after"].append(self.c("panel design"))
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
         a["gate"] = a["after"][-1]
         return {"action": "work", "stage": stage, "calls": [self.c("brief")] if stage in ("plan", "design") else [], "agents": [a],
