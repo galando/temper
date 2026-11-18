@@ -76,14 +76,18 @@ computes whether its artifacts exist, every criterion has a scenario, and
 medium/complex changes documented a blast radius. Grill Me / walkthrough / HTML
 review are the playbook's "interrogate the plan" made concrete. **[NEW]** Each
 acceptance is a recorded, committed event: intent acceptance at the intent gate
-(`Accepted-by:` + a committed `docs(intent)` commit), plan approval at the plan gate
-(a committed `docs(plan)` commit — the commit gate passes artifact-only commits by
-design), so the diff has a committed baseline from the moment build starts; at the
+(`Accepted-by:`), then the intent and the plan approved together at the plan gate (one
+committed `docs(plan)` commit on the run's branch, which the approval makes; before it a
+run makes no branch and no commit, and the approving call carries the digests of the
+intent and the plan as shown), so the diff has a committed baseline from the moment
+build starts; at the
 end, recorded deviations are written into plan.md as a `## Deviations` section in the
 same commit as the code. With the mod (Claude Code 2.1.287 or later), a source edit
 before plan acceptance is refused at the tool layer: at Intent only `intent.md` may be
-written, at Plan and Design only the spec files. Without the mod that control is
-prompt level, and Temper is not a sandbox either way: a Claude set on getting around a
+written, at Plan and Design only the spec files. Without the mod a classic hook
+(`scripts/guards/hold_before_approval.py`) holds that rule for the tools that write a
+file, and the commit hook refuses a commit of a project file; a write by a shell command
+is outside the hook, and Temper is not a sandbox either way: a Claude set on getting around a
 gate through Bash can ([Trust](trust.md)).
 
 **Auto mode.** Aligned, more conservative than the playbook: Autonomous Continuation

@@ -325,9 +325,9 @@ state with none, saved at Review, loses its Review verdict once, so Review runs 
 `Run.armed` is `run_mode: autonomous`, an `unattended_from` other than the stage the run is at, and no `parked`. Then a
 passed Design, Build, group, Review or Check is an `auto` advance. Review: an open finding at a level of
 `review.block-on` takes the repair; one below goes on and is named at the commit question. Check: a setup fault, a
-missing measurement, the acceptance rows, a criterion only the person can confirm and a failed mutation row alone stop;
-anything else takes the repair. The repair is one counted `state loop <stage> build --reason 'rule: ...'`; a second one,
-a plan that declares a file under `autonomy.park-on-touch`, or a key with no room stops. A failed group check takes its
+missing measurement, the acceptance rows, a criterion only the person can confirm, a failed mutation row alone and the
+row `intent unchanged since the approval` stop; anything else takes the repair. The repair is one counted `state loop
+<stage> build --reason 'rule: ...'`; a second one, a plan that declares a file under `autonomy.park-on-touch`, or a key with no room stops. A failed group check takes its
 recommended option when it has calls, needs nothing typed, does not save the run, is no step back and the group declares
 no sensitive file. Every other case is a stop (`scripts/stops.json`).
 
@@ -340,6 +340,30 @@ asks: `commit`, `commit-pr`, `back` (`state loop check build`), and under More t
 change and `save`. A failed commit gate with a changed sensitive file outside the plan offers `confirm`
 (`temper override sensitive-path:<path>`). `temper go --taken-up` records a stop of such a run first, so its stage asks
 once. What a rule decided, each stop and each answer are entries of `.temper/rule-log.json` (`scripts/rule_log.py`).
+
+### The approval is bound to what was shown (9.8.5, WP12, ADR 0019 decision 4)
+
+- **The arguments.** The approving options of `plan.approve` (and of `design.pass` when the person asked for Design)
+  end in `state advance plan_complete <next> --shown intent.md=<H1> --shown tasks.md=<H2>` (or `design_complete`). The
+  digests are taken by `scripts/approval.py` in the `next` call that builds the question: of `intent.md` without its
+  `Status`, `Accepted-by` and `Completed` lines, of `tasks.md` the plan digest. The CLI hashes each named file again
+  before it writes anything and refuses the call with `FAIL: intent.md changed since the question was shown; ask
+  again`. The arguments are optional: a call without them records what it finds. `plan_complete` is refused while
+  `intent.md` is a draft. `intent accept --digest <H1>` refuses the same way. `python3 scripts/approval.py digest FILE`
+  prints a digest, `row STATE SPEC` the row, `check STATE SPEC NAME=DIGEST...` the refusal.
+- **The state keys.** `state advance plan_complete` records `intent_hash` beside `plan_hash` and `approved_files`;
+  `design_complete` records both digests again. `state set` refuses them, and `from_branch`: the branch the run stands
+  on before its approval (written at `state init` and when the run leaves Intent), which the commit hook gates too.
+- **The row.** `intent unchanged since the approval`, a row of the Build, Check and commit gates (in the commit gate
+  after the stage rows, so a spec only commit and a Build checkpoint commit do not compute it). It passes with no
+  `intent_hash` recorded or with both digests as recorded, and fails naming `intent.md` or `tasks.md`. In a run that
+  goes on by itself it is a stop (`approval.changed` of `scripts/stops.json`).
+- **No branch and no commit before the approval.** Leaving Intent is `intent accept` and the advance. The approval is
+  `spec branch`, one `spec commit` (`docs(plan): approve the intent and the plan of <slug>`) and the advance. When the
+  run's branch exists from an earlier run with commits the project lacks, the approval's text says `The branch <name>
+  exists from an earlier run; its last commit is <subject>.` and `The approval continues on it.`; its switch is the
+  carried one (the spec files go across through a temp folder), and its More list holds `Build on a new branch <new>`
+  (`new-branch`, the one call `state set branch <new>`), after which the approval is asked again with no clash.
 
 ### Evidence, the lock and a note (9.8.5)
 

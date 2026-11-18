@@ -21,9 +21,9 @@ assert_eq "next: Intent PASS asks the Temper gate question with its four options
   "$(nx "d['action'] + '|' + d['ask']['question']['header'] + '|' + d['ask']['question']['question']")"
 assert_eq "next: the Intent PASS options" "Continue to Plan (Recommended)|Grill Me|Teach Me|Save for later" "$(labels)"
 _b="$(git symbolic-ref -q HEAD)"; git branch -f temper-test-other HEAD >/dev/null 2>&1; git symbolic-ref HEAD refs/heads/temper-test-other   # on another branch than the run's, at the same commit
-assert_eq "next: Continue to Plan is the person's approval: switch to the run's branch, accept the intent, commit it, then advance (9.8.0: each a temper call)" \
-  "approve|spec branch|intent accept|spec commit 'docs(intent): accept demo'|state advance intent_complete plan" \
-  "$(nx "o = d['ask']['options'][0]; '|'.join([o['move']] + [c.split('temper ', 1)[1] for c in (o['calls'][0], o['calls'][1], o['calls'][2], o['calls'][-1])])")"
+assert_eq "next: Continue to Plan is the person's answer: accept the intent, then advance; no branch and no commit before the approval (WP12)" \
+  "approve|intent accept|state advance intent_complete plan|2" \
+  "$(nx "o = d['ask']['options'][0]; '|'.join([o['move']] + [c.split('temper ', 1)[1] for c in (o['calls'][0], o['calls'][-1])] + [str(len(o['calls']))])")"
 git symbolic-ref HEAD "$_b"
 assert_eq "next: Save for later stops the run and is a pause" "pause|True" "$(nx "o = d['ask']['options'][3]; o['move'] + '|' + str(o['stop'])")"
 assert_eq "next: the ask carries the run id and step it belongs to" "yes|0" "$(nx "('yes' if d['ask']['run_id'] == d['run']['id'] else 'no') + '|' + str(d['ask']['step'])")"
@@ -101,12 +101,13 @@ assert_eq "next: the Plan question has no walk through: More options holds the r
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH; fresh_reviewed
-assert_eq "next: a medium plan at risk H goes on to Build: Design runs only when asked (WP14)" \
-  "ask-every-stage,True|state advance plan_complete build" \
-  "$(nx "o = d['ask']['options'][0]; '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + o['calls'][-1].split('temper ', 1)[1]")"
+assert_eq "next: a medium plan at risk H goes on to Build: Design runs only when asked (WP14), with the digests shown (WP12)" \
+  "ask-every-stage,True|state advance plan_complete build|shown" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls'][-1]; '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + c.split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else '|no digests')")"
 "$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design (the option run-design)
-assert_eq "next: a plan whose person asked for Design goes on to Design" "Continue to Design (Recommended)|state advance plan_complete design" \
-  "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
+assert_eq "next: a plan whose person asked for Design goes on to Design, with the digests shown (WP12)" \
+  "Continue to Design (Recommended)|state advance plan_complete design|shown" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls'][-1]; o['label'] + '|' + c.split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else '|no digests')")"
 assert_exit "advance: a run whose person asked for Design may not skip it" 1 "$TEMPER" state advance plan_complete build
 
 # --- Review, Check, the loop budget ---

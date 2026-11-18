@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 
+import approval
 import config_yaml
 import fresh_review
 import intent_parse
@@ -44,18 +45,8 @@ class Run:
 
     @staticmethod
     def plan_core_digest(m):
-        """The digest of a parsed plan, the same as the CLI's _plan_digest (None when the plan does not parse)."""
-        import hashlib
-        n = lambda p: p.strip()[2:] if p.strip().startswith("./") else p.strip()
-        try:
-            core = {"tasks": [{"n": t["n"], "group": t["group"], "files": [n(f) for f in t["files"]], "depends": t["depends"], "test": t["test"]}
-                              for t in m["tasks"]],
-                    "groups": [{"id": g["id"], "depends": g["depends"], "validate": g["validate"], "interfaces": g["interfaces"],
-                                "context": g["context"], "tasks": g["tasks"]} for g in m["groups"]],
-                    "integration": m["integration"]}
-        except (KeyError, TypeError):
-            return None
-        return hashlib.sha256(json.dumps(core, sort_keys=True).encode("utf-8")).hexdigest()
+        """The digest of a parsed plan: the one rule of scripts/approval.py (None when the plan does not parse)."""
+        return approval.plan_digest(m)
 
     def tasks_changed(self):
         """True when tasks.md differs from the tasks the person approved at the plan gate (the digest `state advance

@@ -8,7 +8,7 @@ import type { RuleContext, RuleResult, RunFacts } from '../../hooks/temper-mod/c
 import type { Stage } from '../../hooks/temper-mod/core/stages'
 import { STAGES } from '../../hooks/temper-mod/core/stages'
 import { stateAt } from './helpers'
-import { nextCalls, optionCalls } from './run-files'
+import { nextCalls, optionCalls, shownOf } from './run-files'
 import { CLI_SEQ } from './world'
 
 const SPEC = '.temper/specs/pw'
@@ -69,6 +69,22 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
     expect(isDeny(write(ctx('build'), `${SPEC}/tasks.md`, 'Edit'))).toBe(true)
   })
 
+  // WP12: the approval is bound to the intent as shown; from Build on a change to it needs a step back to Plan and a
+  // new approval, so no tool writes the run's intent.md. Before the approval the agents of Intent and Plan write it.
+  test('a write to the run\'s intent.md is refused at Build, Review, Check and Commit and allowed at Intent, Plan and Design', () => {
+    for (const tool of ['Write', 'Edit']) {
+      for (const stage of ['intent', 'plan', 'design'] as const) expect('allow' in write(ctx(stage), `${SPEC}/intent.md`, tool)).toBe(true)
+      for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+        const r = write(ctx(stage), `${SPEC}/intent.md`, tool)
+        expect(isDeny(r)).toBe(true)
+        if (isDeny(r)) {
+          expect(r.deny.startsWith('Temper: ')).toBe(true)
+          expect(r.deny).toContain('Plan')
+        }
+      }
+    }
+  })
+
   test('absolute paths inside the root and traversal are normalised', () => {
     const c = { ...ctx('plan'), root: '/repo' }
     expect('allow' in write(c, `/repo/${SPEC}/plan.md`)).toBe(true)
@@ -118,13 +134,16 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect(bash(ctx('intent'), adv('intent', 'plan'))).toEqual({ deny: ONLY_USER })
     expect(bash(ctx('plan'), adv('plan', 'build'))).toEqual({ deny: ONLY_USER })
     expect('allow' in bash(ctx('intent', { allowed: optionCalls('intent-pass', 'Continue to Plan (Recommended)') }), adv('intent', 'plan'))).toBe(true)
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'build'))).toBe(true)
+    // WP12: the approving advance carries the digests the question showed; the click lets that call through, word for word
+    const shown = shownOf('plan-pass', 'Ask me at every stage')
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'build') + shown)).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'build')))).toBe(true)
     // The script by any path: the words after it are the call.
-    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), 'cd x && /a/b/scripts/temper state advance plan_complete build')).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), 'cd x && /a/b/scripts/temper state advance plan_complete build' + shown)).toBe(true)
     // Another next stage than the answer names is another call.
     expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Ask me at every stage') }), adv('plan', 'design')))).toBe(true)
     const design = optionCalls('design-plan-pass', 'Continue to Design (Recommended)')
-    expect('allow' in bash(ctx('plan', { allowed: design }), adv('plan', 'design'))).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: design }), adv('plan', 'design') + shownOf('design-plan-pass', 'Continue to Design (Recommended)'))).toBe(true)
     expect(isDeny(bash(ctx('plan', { allowed: design }), adv('plan', 'build')))).toBe(true)
     // Save for later is no approval.
     expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Save for later', { more: true }) }), adv('plan', 'build')))).toBe(true)
@@ -261,7 +280,8 @@ describe('review of the one flow: what goes around a gate', () => {
   test('legit at the commit stage: the Commit steps (writes, archive, a plain commit, clear)', () => {
     // The commit steps come after the report and the person's answer about the page (scripts/flow.py, the end of the run).
     const c = ctx('commit', { allowed: nextCalls('commit-record') })
-    expect('allow' in write(c, `${SPEC}/intent.md`)).toBe(true)
+    // WP12: the intent is the approved one; the CLI completes it (`intent complete`), no tool writes it
+    expect(isDeny(write(c, `${SPEC}/intent.md`))).toBe(true)
     // Round 4 of the release audit: the code is what Review and Check passed; at Commit it is not written.
     expect(isDeny(write(c, 'src/anything.ts'))).toBe(true)
     for (const cmd of [`${CLI} state archive`, 'git add -A && git commit -m "feat: x"', `${CLI} state clear`, `${CLI} state set run_mode interactive`]) {

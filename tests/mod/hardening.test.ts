@@ -4,7 +4,7 @@
 // regression test. Findings are numbered as in the review.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { LATER, SPEC, questionOf, runFiles } from './run-files'
+import { LATER, SPEC, questionOf, runFiles, shownOf } from './run-files'
 import { NO_RUN_VIEW, viewText, world } from './world'
 import type { Answer, World } from './world'
 
@@ -315,37 +315,40 @@ describe('finding 4: a plain commit is for the native hook; a commit the hook do
   })
 })
 
+// WP12: the digests the approving advance of the plan question carries (the mod matches the call word for word)
+const SHOWN = shownOf('plan-pass', 'Ask me at every stage')
+
 // ---- 5. a decision counts at the run and the step it was made at ----------------------------------------------
 describe('finding 5: a decision counts at its run and step, and no longer', () => {
   test('advance; exit 1 executed the advance: the approval does not approve a second advance', async ($, on) => {
     const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Ask me at every stage'] })
     await ask(api, w)
-    const first = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build; exit 1' })
+    const first = await api.tool.call({ tool: 'Bash', command: `scripts/temper state advance plan_complete build${SHOWN}; exit 1` })
     expect(first.deny).toBeUndefined()
     expect(first.isError).toBe(true)
     expect(JSON.parse(w.files.get('.temper/build-state.json') ?? '{}').next_stage).toBe('build')
-    expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
+    expect(await sh(api, 'scripts/temper state advance plan_complete build' + SHOWN)).toMatch(T)
   })
 
   test('a call that failed with no effect leaves the approval in place (the retry works)', async ($, on) => {
     const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Ask me at every stage'] })
     await ask(api, w)
     w.cliFailures = 1
-    const failed = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build' })
+    const failed = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build' + SHOWN })
     expect(failed.isError).toBe(true)
-    expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
+    expect(await sh(api, 'scripts/temper state advance plan_complete build' + SHOWN)).toBeUndefined()
   })
 
   test('an approval made before a step back to the plan is not an approval any more', async ($, on) => {
     const { w, api } = await begin($, on, { gates: ['intent', 'plan'], answers: ['Ask me at every stage', why('Loop back to Plan', 'rework the plan')] })
     await ask(api, w)
-    expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
+    expect(await sh(api, 'scripts/temper state advance plan_complete build' + SHOWN)).toBeUndefined()
     w.files.set('.temper/gates.json', JSON.stringify({ intent: { verdict: 'PASS' }, plan: { verdict: 'PASS' }, build: { verdict: 'FAIL' } }))
     w.files.delete('.temper/view.json')
     await ask(api, w)
     expect(await sh(api, "scripts/temper state loop build plan --reason 'rework the plan'")).toBeUndefined()
     expect(JSON.parse(w.files.get('.temper/build-state.json') ?? '{}').next_stage).toBe('plan')
-    expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
+    expect(await sh(api, 'scripts/temper state advance plan_complete build' + SHOWN)).toMatch(T)
   })
 
   test('a decision of another run does not count', async ($, on) => {
@@ -394,7 +397,7 @@ describe('finding 6: an advance does not move the run backwards, and does not sw
     const { w, api } = await begin($, on, { next: 'plan', gates: ['intent'], fail: ['plan'], answers: [why('Override and continue', 'skip plan')] })
     await ask(api, w)
     expect(await sh(api, "scripts/temper override plan --reason 'skip plan'")).toBeUndefined()
-    expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
+    expect(await sh(api, 'scripts/temper state advance plan_complete build' + shownOf('plan-fail', 'Override and continue'))).toBeUndefined()
   })
 })
 

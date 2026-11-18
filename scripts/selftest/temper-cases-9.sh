@@ -40,12 +40,15 @@ setup; rm -f .temper/build-state.json   # the earlier run is over: its spec is c
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm "the spec of an earlier run" >/dev/null 2>&1
 _b="$(git symbolic-ref -q HEAD)"; git branch -f temper-test-other HEAD >/dev/null 2>&1; git symbolic-ref HEAD refs/heads/temper-test-other   # on another branch than the run's, at the same commit
 "$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
-assert_eq "round 4, 7: a walked Intent whose spec is committed and accepted makes no empty commit" "spec branch|intent accept|0|state advance intent_complete plan" \
-  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if ' spec commit ' in x)) + '|' + c[-1].split('temper ', 1)[1]")"
+assert_eq "round 4, 7: a walked Intent makes no branch and no commit: it accepts the intent and advances (WP12)" "intent accept|0|0|state advance intent_complete plan" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if ' spec branch' in x)) + '|' + str(sum(1 for x in c if ' spec commit ' in x)) + '|' + c[-1].split('temper ', 1)[1]")"
 git symbolic-ref HEAD "$_b"
 printf '\nA note.\n' >> .temper/specs/demo/intent.md
-assert_eq "round 4, 7: with a change in the spec folder the approval commits it" "1" \
-  "$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if ' spec commit ' in x)")"
+_r47="$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if ' spec commit ' in x)")"
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan   # the walked Plan: its question is the approval
+assert_eq "round 4, 7: with a change in the spec folder leaving Intent commits nothing, and the approval commits it (WP12)" "0|1" \
+  "$_r47|$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if ' spec commit ' in x)")"
+_at intent
 git checkout -q -- .temper/specs/demo/intent.md
 assert_eq "round 4, 7: the view holds the same calls as next" "same" \
   "$([[ "$(nx "d['ask']['options'][0]['calls']")" == "$(vw "d['ask']['options'][0]['calls']")" ]] && echo same || echo differs)"
@@ -257,7 +260,8 @@ setup; rm -f .temper/build-state.json
 sed -i 's/^\*\*Status:\*\* accepted$/**Status:** accepted (pending review)/' .temper/specs/demo/intent.md
 git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm "a committed spec" >/dev/null 2>&1
 "$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
-assert_eq "re-audit: a Status that is not exactly accepted is rewritten by the accept, so the approval commits it" "1" \
+"$TEMPER" intent accept >/dev/null 2>&1; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
+assert_eq "re-audit: a Status that is not exactly accepted is rewritten by the accept, so the approval commits it (WP12: at Plan)" "1" \
   "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if ' spec commit ' in c)")"
 rm -rf .git
 
@@ -268,12 +272,19 @@ sed -i 's/^\*\*Status:\*\* accepted$/**Status:** draft/' .temper/specs/demo/inte
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
 rm -f .temper/build-state.json; "$TEMPER" state init demo >/dev/null 2>&1; gpass intent
 CALLS="$(nx "'\n'.join(d['ask']['options'][0]['calls'])")"
-assert_eq "live run: Continue to Plan on main switches to the run's branch before the intent's commit" "spec branch|1" \
-  "$(head -1 <<<"$CALLS" | sed 's|.*/scripts/temper ||')|$(grep -c ' spec commit ' <<<"$CALLS")"
+assert_eq "live run: Continue to Plan on main makes no branch and no commit: it accepts the intent and advances (WP12)" "intent accept|0|0" \
+  "$(head -1 <<<"$CALLS" | sed 's|.*/scripts/temper ||')|$(grep -c ' spec branch' <<<"$CALLS")|$(grep -c ' spec commit ' <<<"$CALLS")"
 while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
-assert_eq "live run: the intent's commit is on feature/demo, and main has none" "feature/demo|docs(intent): accept demo|base" \
-  "$(git branch --show-current)|$(git log -1 --format=%s feature/demo)|$(git log -1 --format=%s main)"
 gpass plan
+CALLS="$(nx "'\n'.join(d['ask']['options'][0]['calls'])")"
+assert_eq "live run: the approval switches to the run's branch before its commit" "spec branch|spec commit" \
+  "$(grep -o ' spec branch\| spec commit' <<<"$CALLS" | sed 's/^ //' | paste -sd'|')"
+while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
+assert_eq "live run: the approval's commit is on feature/demo, and main has none (WP12)" \
+  "feature/demo|docs(plan): approve the intent and the plan of demo|base|accepted" \
+  "$(git branch --show-current)|$(git log -1 --format=%s feature/demo)|$(git log -1 --format=%s main)|$(
+    git show feature/demo:.temper/specs/demo/intent.md 2>/dev/null | sed -n 's/^\*\*Status:\*\* //p')"
+_at plan; gpass plan
 assert_eq "live run: on the run's branch already, leaving Plan switches nothing" "0" \
   "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if c.startswith('git checkout') or ' spec branch' in c)")"
 git checkout -q main 2>/dev/null; rm -rf .git
@@ -593,9 +604,9 @@ MD
 gpass design
 assert_eq "design: the question names each open area of concern" "1|0" \
   "$(nx "int('with 1 open area(s) of concern: 1. 1. The cache can serve stale prices for a minute' in d['ask']['question']['question'])")|$(nx "int('Logs hold' in d['ask']['question']['question'])")"
-assert_eq "design: Ask me at every stage leaves Design, then commits design.md (WP11: after its run_mode call)" \
-  "ask-every-stage|state set run_mode interactive|state advance design_complete build|spec commit|3" \
-  "$(nx "o = d['ask']['options'][0]; c = o['calls']; o['id'] + '|' + c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1] + '|' + c[2].split('temper ', 1)[1][:11] + '|' + str(len(c))")"
+assert_eq "design: Ask me at every stage leaves Design with the digests shown, then commits design.md (WP11, WP12)" \
+  "ask-every-stage|state set run_mode interactive|state advance design_complete build|shown|spec commit|3" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls']; o['id'] + '|' + c[0].split('temper ', 1)[1] + '|' + c[1].split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c[1] and ' --shown tasks.md=' in c[1] else '|no digests') + '|' + c[2].split('temper ', 1)[1][:11] + '|' + str(len(c))")"
 python3 -c "p='.claude/temper.config'; s=open(p).read(); open(p, 'w').write(s.replace('autonomy:\n  enabled: false', 'autonomy:\n  enabled: true'))"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='autonomous'; d['unattended_from']='plan'; json.dump(d, open(p, 'w'))"
 assert_eq "design: an armed run parks at a Design with open concerns, for the person" "auto|1" \

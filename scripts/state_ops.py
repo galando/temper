@@ -333,6 +333,11 @@ def approve_plan(argv):
         d['plan_hash'] = argv[3]
     else:
         d.pop('plan_hash', None)
+    # WP12: the digest of intent.md as approved (scripts/approval.py), beside the plan's
+    if len(argv) > 4 and argv[4]:
+        d['intent_hash'] = argv[4]
+    else:
+        d.pop('intent_hash', None)
     tmp = '%s.tmp.%d' % (p, os.getpid())
     with open(tmp, 'w') as f:
         json.dump(d, f, indent=2)

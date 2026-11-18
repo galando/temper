@@ -1,6 +1,52 @@
 {
  "version": 1,
  "scenarios": {
+  "approval-first": {
+   "plain": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "intent": 1,
+      "plan": 2
+     },
+     "by_kind": {
+      "context": 1,
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1
+     },
+     "launch_total": 2,
+     "auto": 0,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 1
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "intent": 1,
+      "plan": 2
+     },
+     "by_kind": {
+      "context": 1,
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1
+     },
+     "launch_total": 2,
+     "auto": 0,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 1
+    }
+   }
+  },
   "armed-run": {
    "plain": {
     "now": {
@@ -176,15 +222,15 @@
   "branch-clash": {
    "plain": {
     "now": {
-     "dialogs": 4,
+     "dialogs": 6,
      "by_stage": {
       "commit": 1,
       "intent": 1,
-      "plan": 2
+      "plan": 4
      },
      "by_kind": {
       "context": 1,
-      "gate": 3
+      "gate": 5
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -202,15 +248,15 @@
    },
    "mod": {
     "now": {
-     "dialogs": 4,
+     "dialogs": 6,
      "by_stage": {
       "commit": 1,
       "intent": 1,
-      "plan": 2
+      "plan": 4
      },
      "by_kind": {
       "context": 1,
-      "gate": 3
+      "gate": 5
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -228,15 +274,15 @@
    },
    "driver": {
     "now": {
-     "dialogs": 4,
+     "dialogs": 6,
      "by_stage": {
       "commit": 1,
       "intent": 1,
-      "plan": 2
+      "plan": 4
      },
      "by_kind": {
       "context": 1,
-      "gate": 3
+      "gate": 5
      },
      "launches": {
       "temper:temper-acceptance": 1,

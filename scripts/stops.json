@@ -211,6 +211,12 @@
    "where": "any stage",
    "trigger": "the person took the run up again: the stage's question, once (temper go --taken-up)",
    "check": "run: a run taken up again asks its stage once"
+  },
+  {
+   "id": "approval.changed",
+   "where": "Build, Check",
+   "trigger": "the row `intent unchanged since the approval` failed: a rule never changes the intent or the approved plan, so the person approves again or restores the file",
+   "check": "bound: an unattended run stops at the failed row: next is the park call, never a loop back"
   }
  ]
 }

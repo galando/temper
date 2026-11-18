@@ -6,11 +6,13 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { ONLY_USER } from '../../hooks/temper-mod/core/rules'
 import { FEATURE_DENY } from '../../hooks/temper-mod/core/session'
-import { SPEC, questionOf, runFiles } from './run-files'
+import { SPEC, questionOf, runFiles, shownOf } from './run-files'
 import { COMPOSE, viewText, world } from './world'
 import type { Answer, World } from './world'
 
 const CLI = '/home/u/.claude/plugins/temper/scripts/temper'
+// WP12: the digests the approving advance of the plan question carries (the mod matches the call word for word)
+const SHOWN = shownOf('plan-pass', 'Ask me at every stage')
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
 type Api = {
   session: { start: (a: unknown) => Promise<unknown> }
@@ -191,7 +193,7 @@ describe('every wait point of the flow audit', () => {
     expect(await sh(api, `${CLI} state set run_mode autonomous`)).toContain('only the user can turn on autonomous mode')
     await ask(api, w)
     expect(await sh(api, `${CLI} state set run_mode autonomous`)).toBeUndefined()
-    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance plan_complete build${SHOWN}`)).toBeUndefined()
     expect(state(w).run_mode).toBe('autonomous')
   })
 
@@ -286,7 +288,7 @@ describe('a stage command is a door into /temper', () => {
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state advance plan_complete build`)).toBe(ONLY_USER)
-    expect(await sh(api, `${CLI} state advance plan_complete design`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance plan_complete design${shownOf('design-plan-pass', 'Continue to Design (Recommended)')}`)).toBeUndefined()
     expect(state(w).next_stage).toBe('design')
   })
 
@@ -298,7 +300,7 @@ describe('a stage command is a door into /temper', () => {
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()
     gates(w, { intent: 'PASS', plan: 'PASS' })
     await ask(api, w)
-    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance plan_complete build${SHOWN}`)).toBeUndefined()
     expect(state(w).next_stage).toBe('build')
   })
 })
@@ -343,7 +345,7 @@ describe('Build is judged against the plan the person approved', () => {
     const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Ask me at every stage'])
     await api.session.start(START)
     await ask(api, w)
-    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance plan_complete build${SHOWN}`)).toBeUndefined()
     // At Build the spec folder is writable, plan.md too. A wildcard row added there must not widen the approved plan.
     expect(await write(api, `${SPEC}/plan.md`)).toBeUndefined()
     w.files.set(`${SPEC}/plan.md`, '### Files to Modify\n\n| File | Change |\n|---|---|\n| `src/app.ts` | edit |\n| `**/*` | anything |\n')
@@ -357,14 +359,14 @@ describe('Build is judged against the plan the person approved', () => {
     const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Ask me at every stage', why('Loop back to Plan', 'the plan misses billing'), 'Ask me at every stage'])
     await api.session.start(START)
     await ask(api, w)
-    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance plan_complete build${SHOWN}`)).toBeUndefined()
     gates(w, { intent: 'PASS', plan: 'PASS', build: 'FAIL' })
     await ask(api, w)
     expect(await sh(api, `${CLI} state loop build plan --reason 'the plan misses billing'`)).toBeUndefined()
     w.files.set(`${SPEC}/plan.md`, '### Files to Modify\n\n| File | Change |\n|---|---|\n| `src/app.ts` | edit |\n| `src/billing.ts` | add |\n')
     gates(w, { intent: 'PASS', plan: 'PASS' })
     await ask(api, w)
-    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance plan_complete build${SHOWN}`)).toBeUndefined()
     expect(await write(api, 'src/billing.ts')).toBeUndefined()
   })
 })

@@ -9,6 +9,7 @@ import re
 import shlex
 import subprocess
 
+import intent_parse
 import tasks_md
 
 
@@ -49,7 +50,6 @@ OPTION_KINDS = ("more", "accept", "cancel", "carry", "type")
 QUESTIONS = {
     "intent.accept": {"kind": "gate", "decision": "Whether the intent is right, so the run goes on to Plan with it."},
     "intent.fail": {"kind": "gate", "decision": "Whether to correct the intent or skip its failed check."},
-    "intent.branch": {"kind": "gate", "decision": "Which branch the run goes on, when its branch exists from an earlier run."},
     "intent.blocking": {"kind": "blocking", "decision": "The answer to an open question of the intent, or that it waits."},
     "rca.approve": {"kind": "gate", "decision": "Whether the root cause is right, so the fix is written from it."},
     "plan.approve": {"kind": "gate", "decision": "Whether the plan is approved, and whether the run then asks at every stage."},
@@ -98,7 +98,7 @@ OPTION_IDS = frozenset((
     # the rest of the head, by the rule: one id a meaning
     "grill-me", "teach-me", "html-review", "share-review", "revise-plan", "fresh-review", "fresh-again", "find-setup",
     "walk-through", "change", "depth-review", "commit-pr", "commit-stacked-prs", "config-suggestions", "restore-tests",
-    "correct-test", "end-run", "apply-fix", "continue-on-branch", "new-branch", "merge-groups", "take-out",
+    "correct-test", "end-run", "apply-fix", "new-branch", "merge-groups", "take-out",
     "keep-commits", "accept-done", "twice-the-time", "fix-group", "change-command", "add-to-plan", "include-left-out",
     "revert", "allow-once",
     # WP08
@@ -233,6 +233,9 @@ def advance_ok(run, done, nxt):
         # the mod or without it
         return ("intent.md holds %d open Blocking question(s) (%s): answer each with temper intent answer, or carry it "
                 "forward with temper intent carry, before the plan is approved" % (len(run.blocking()), run.blocking()[0][:120]))
+    if stage == "plan" and intent_parse.status(run.intent) == "draft":
+        # WP12: the approval is of an accepted intent; a draft is accepted first (temper intent accept)
+        return "intent.md is a draft: the intent is accepted (temper intent accept) before the plan is approved"
     if run.verdict(stage) == "PASS" or run.skip(stage) is not None:
         return None
     v = run.verdict(stage)

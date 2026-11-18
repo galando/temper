@@ -16,15 +16,26 @@ config names, which may be in your home folder; it reads no name or email from g
 override records that the person decided it at the gate). It reads no key, login, transcript, settings or other
 Claude Code file. A pack's link targets come from the skills and commands your session lists.
 
-- **Plugin hooks.** The plugin's hooks file registers three classic hooks and the mod module.
+- **Plugin hooks.** The plugin's hooks file registers four classic hooks and the mod module.
   `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes that a `/temper:intent`
   session owes an intent gate (the other stage commands are doors into `/temper` and owe none).
   `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. `PreToolUse` on Bash runs
   `scripts/guards/block_stdin_wait.py` (9.8.0; a Python file since 9.8.1, answering deny as JSON), which refuses, in a folder with a `.temper` folder at or above it, a
   command whose `cat` has no input while the command holds a heredoc: Claude Code leaves that command's input open,
-  so the `cat` would wait until the Bash timeout. It reads only the command and looks for that folder. All three
-  fail open.
+  so the `cat` would wait until the Bash timeout. It reads only the command and looks for that folder.
+  `PreToolUse` on the tools that write a file (Write, Edit, MultiEdit, NotebookEdit) runs
+  `scripts/guards/hold_before_approval.py` (9.8.5), which holds rule 1 with the mod off: at Intent, Plan and Design of
+  a `/temper:temper` run, before you approve the plan, it refuses a write of a project file (a path of the project
+  outside `.temper/`, where the spec folder is), as the mod's own rule does. A `/temper:fix` run and a shell command
+  that writes a file are outside it; for those the commit hook still refuses a commit of a project file before the
+  approval. It reads the run state and the path, and only ever answers deny. All four fail open.
+- **The approval is bound to what was shown (9.8.5).** The approving call carries the digests of `intent.md` and
+  `tasks.md` as the question showed them, and the CLI refuses it when a file changed since. With the mod the click is
+  checked against those digests (the call is matched word for word); with the mod off nothing checks the click, but
+  the Build, Check and commit gates still fail on a later change to either file (the row `intent unchanged since the
+  approval`) until you approve again. Before the approval a run makes no branch and no commit; the commit hook gates
+  the branch the run stands on then too.
 - **The run driver (9.8.0).** With the mod loaded, the mod carries a `/temper:temper` run itself: it runs the temper CLI's
   calls (`temper go` and the calls it gives: the plugin's own `scripts/temper` by its path with plain arguments, in the
   project, never through a shell since 9.8.1), launches the agents

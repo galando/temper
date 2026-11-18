@@ -40,7 +40,6 @@ selftest:D103                  WP31           D103
 selftest:D104                  WP30           D104
 selftest:D108                  WP31           D108
 e2e:two-dialogs                WP13           D01
-e2e:approval-first             WP12           D30a
 e2e:flagged-map                WP15           D02
 e2e:fix-two                    WP17           D03
 e2e:vague-run                  WP13           D04
@@ -57,12 +56,6 @@ selftest:D15                   WP22           D15
 selftest:D15b                  WP22           D15
 selftest:D22a                  WP15           D22
 selftest:D22b                  WP15           D22
-selftest:D30b                  WP12           D30
-selftest:D30c                  WP12           D30
-selftest:D31a                  WP12           D31
-selftest:D31b                  WP12           D31
-selftest:D31c                  WP12           D31
-selftest:D31d                  WP25           D31
 selftest:D31e                  WP15           D31
 selftest:D31f                  WP13           D31
 selftest:D33f                  WP21           D33

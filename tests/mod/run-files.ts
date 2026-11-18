@@ -235,6 +235,14 @@ export function optionCalls(name: string, label: string, which: { more?: boolean
   return [...((o.calls as string[]) ?? []), ...((o.steps as string[]) ?? [])]
 }
 
+// WP12: the digests an approving option of a fixture view carries, ` --shown intent.md=<H1> --shown tasks.md=<H2>`: the
+// words its advance has after the next stage. The mod matches the call word for word, so the click is bound to them.
+export function shownOf(name: string, label: string, which: { more?: boolean } = {}): string {
+  const c = optionCalls(name, label, which).find(x => /state advance (?:plan|design)_complete \S+ --shown /.test(x))
+  if (c === undefined) throw new Error(`no approving advance in ${label} of ${name}`)
+  return c.replace(/^.*state advance (?:plan|design)_complete \S+/, '')
+}
+
 // The calls and steps of the CLI's own action in a fixture view (an armed run's move, the commit steps).
 export function nextCalls(name: string): string[] {
   const n = (VIEWS[name] as J).next as J

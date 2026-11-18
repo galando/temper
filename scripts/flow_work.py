@@ -7,6 +7,7 @@ import os
 import re
 import shlex
 
+import approval
 import check_run
 import decisions
 import doctor
@@ -87,6 +88,8 @@ class WorkPart:
         if stage == "check":
             if verdict == "PASS":
                 return go
+            if any(x.get("name") == approval.ROW for x in rows):
+                return self.stop(stage, why)   # WP12: a rule never changes the intent or the approved plan
             if self.setup_fault():
                 return self.stop(stage, "SETUP: " + self.setup_fault())
             if self.measurement_gap(rows) or any(str(x.get("name", "")).startswith("acceptance tests written before Build") for x in rows):
