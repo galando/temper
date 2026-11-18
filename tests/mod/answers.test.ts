@@ -105,3 +105,21 @@ describe('Start over', () => {
     expect(answersIn(result(q, 'Cancel'), rv('build-work'))).toEqual([])
   })
 })
+
+// WP16, defects 1 and 2: a typed answer to the Context check counts (the view reads the check's question object), and
+// the limit of a typed answer is the CLI's own, 2,000 characters (MAX_ANSWER of scripts/plan_ops.py), not 100.
+describe('a typed Context check answer (WP16)', () => {
+  const v = rv('context-check')
+  const cq = (view('context-check') as { context_check: { question: Q } }).context_check.question
+  const q: Q = { header: cq.header, question: cq.question }
+  test('a typed Context check answer of 1,500 characters counts, with the text in its call', () => {
+    const text = 'x'.repeat(1500)
+    const a = gate(answersIn(result(q, text), v))
+    expect(a).toHaveLength(1)
+    expect(a[0]?.option.move).toBe('answer')
+    expect(a[0]?.option.calls.some(c => c.includes(`'${text}'`))).toBe(true)
+  })
+  test('a typed Context check answer of 2,001 characters does not count', () => {
+    expect(answersIn(result(q, 'x'.repeat(2001)), v)).toEqual([])
+  })
+})

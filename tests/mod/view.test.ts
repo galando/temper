@@ -91,6 +91,18 @@ describe('the view of the run', () => {
     expect(v.failedChecks).toEqual([{ name: 'tests pass', detail: 'exit 1: 2 failed' }])
   })
 
+  // WP16, defect 1: the CLI writes context_check.question as the dialog's question object (header, question, options),
+  // as the gate question is written; the view reads the text and the options from that object.
+  test('the Context check of a view parses: contextCheck is not null, with the CLI\'s question and options (WP16)', () => {
+    const raw = view('context-check') as { context_check: { question: { header: string; question: string }; options: Array<{ label: string }>; answer?: string } }
+    const v = rv(view('context-check'))
+    expect(v.contextCheck === null).toBe(false)
+    expect(v.contextCheck?.ask.question.header).toBe(raw.context_check.question.header)
+    expect(v.contextCheck?.ask.question.question).toBe(raw.context_check.question.question)
+    expect(v.contextCheck?.ask.options.map(o => o.label)).toEqual(raw.context_check.options.map(o => o.label))
+    expect(v.contextCheck?.answer).toBe(raw.context_check.answer ?? '')
+  })
+
   test('the loops with their budget and reason, and the person\'s decisions as sentences', () => {
     const decisions: Decision[] = [{ ...answer('Loop back to Build (Recommended)', 'back', 'a real bug'), stage: 'review' }]
     const v = buildView(input('build-work', { decisions }, { loops: [{ from: 'review', to: 'build', reason: 'a real bug', iteration: 1, max: 2, at: 't' }] }))
