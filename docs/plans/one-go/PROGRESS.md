@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-18 04:03 UTC
+- Watch: one check is scheduled; the next is due 2026-11-18 07:07 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -54,8 +54,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP18 | done | `93c03cf` | 2026-11-17 | `evidence resolve` takes only a commit the CLI made after the reviewed HEAD, denied to every agent by the mod; the Review completion row lists the files read and the gate compares them with `temper review files`; D34d and D37a off the list, which holds 84 (66 selftest, 18 scenarios) |
 | WP14 | done | `11f874b` | 2026-11-17 | Design runs only on the person's ask (option `run-design`); its concerns are Blocking questions of the plan, held by the plan gate; at risk H the fresh review runs by rule and `approve-run` needs a clean round; design-on-ask and D18d off the list, which holds 82 (65 selftest, 17 scenarios) |
 | WP11 | done | `37aae8d` | 2026-11-18 | the approval runs to the commit by default (`run.default`); a passed check moves on, Review and Check by the closed rule list, a stop keeps the mode and `park --end` ends it; the commit question offers the pull request; `sensitive.py` and `rule_log.py`; stops 20 to 22; twelve checks off the list, which holds 71 (54 selftest, 17 scenarios) |
-| WP12 | doing | | | |
-| WP13 | todo | | | |
+| WP12 | done | `90d25cc` | 2026-11-18 | the approving calls carry `--shown` digests of intent.md and tasks.md (`approval.py`) and a stale one is refused; the row `intent unchanged since the approval` fails the Build, Check and commit gates; leaving Intent makes no branch and no commit, the approval makes the branch and one commit; the classic hook `hold_before_approval.py`; the D105 world check is armed; seven checks off the list, which holds 64 (48 selftest, 16 scenarios) |
+| WP13 | doing | | | |
 | WP15 | todo | | | |
 | WP16 | todo | | | |
 | WP17 | todo | | | |
@@ -163,6 +163,11 @@ None.
 - 2026-11-18 WP11: row D60d needed a version mark to tell a saved Review state from a fixture; `state init` stamps `saved_by: "9.8.5"`, `state set` refuses it, and a state saved at Review with no stamp and no files read runs Review once more. The key is added to contracts.md section 3 in its own commit (additive).
 - 2026-11-18 WP11: D05b (listed for WP24) passes and left the list in the package commit; `group-fail` stays listed for plain and mod, `group-fail-twice` for driver, both WP16. pyjokes and pyjokes-full moved to `asksEveryStage`. `policy_move` is named `rule_move`.
 - 2026-11-18 WP11: caps after the package: option_labels 75 (final 71), config_comment_keys 50 (final 46), cli_bytes 218,112 (final 222,144), prompt_bytes 307,451; no final moved. The replay's loops_recommended met its final 0; questions 9 to 5. Not run: whether a host cuts one long `temper go` at its time limit.
+- 2026-11-18 WP12 tests: the new `bound:` checks cannot go on the expected to fail list (it takes only tokens of done.md), so they failed on the package branch until the builder's commit, as the tests of WP11, WP14 and WP18 did.
+- 2026-11-18 WP12: with the mod off, the commit hook let any commit on main through before the approval (F29 gates only the run's branch); the new state key `from_branch` (written at `state init` and on leaving Intent, refused by `state set`) makes the hook gate the branch the run stands on before the approval. Added to contracts.md with `approval.py plan-digest`.
+- 2026-11-18 WP12: a draft intent at Plan (runs saved by 9.8.4 and by the base) made D60a loop under the new refusal of `plan_complete`; the approving options put `intent accept --digest <H1>` first when the intent is a draft. The `intent.branch` question is gone; a branch clash is named at the approval, whose More list gains `new-branch`. D31d passed and left the list.
+- 2026-11-18 WP12: the builder read the D105 assert for a run with two approvals: rule 1 at the first approval (the second finds the branch the first made), and the planner clause of rule 4 counted only launches after the last approval. My decision: the second part excused a planner the run launched by itself between two approvals, so I narrowed it in `4707da7`: a launch between two approvals is excused only when the person picked a step back (move `back`) between them. A synthetic record proves it still reports the launch without one; budget-stop, group-fail-twice and repair-worse pass.
+- 2026-11-18 WP12: caps after the package: gate_rows 56 (final 55; the spec adds the row), option_labels 74 (final 71), question_ids 35 (its final), question_sites 52 and option_sites 88 (under their finals), cli_bytes 220,326. No final moved. Floor: approval-first new (3 dialogs); branch-clash 4 to 6 dialogs (More, the new branch, the approval again).
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
 
 ## Follow ups of pull request 115
