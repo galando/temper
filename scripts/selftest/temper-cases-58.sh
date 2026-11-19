@@ -358,4 +358,12 @@ _ss58+="|$(_x58 "r = 'close' if any('intent trivial --close' in str(c) for c in 
 _o58="$("$TEMPER" state set trivial x 2>&1)"; _ss58+="|trivial=$?,$(grep -o '^FAIL' <<<"$_o58" | head -n 1)"
 assert_eq "trivial: state set trivial, or a path below it, is refused, so no window opens and nothing closes the run" \
   "trivial.why=1,FAIL|no record|no close|trivial=1,FAIL" "$_ss58"
+
+# --- a staged binary file is over the bound, whatever its size (phase 4b review) ---
+_closed58; python3 -B -c 'open("src/one.bin", "wb").write(bytes(range(256)))'; git add src/one.bin; _gc58
+_bn58="binary=$_gc58_rc"
+_bn58+=",$([[ "$_gc58_out" == *src/one.bin* && "$_gc58_out" == *binary* ]] && echo named || echo "not named")"
+git reset -q --hard; rm -f src/one.bin
+assert_eq "trivial: a staged binary production file fails the bound, and the row names it as binary" \
+  "binary=1,named" "$_bn58"
 setup

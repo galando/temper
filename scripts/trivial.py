@@ -166,8 +166,13 @@ def gate():
         if TEST.search(parts[2]):
             tests += 1
             continue
+        if not (parts[0].isdigit() and parts[1].isdigit()):
+            # a binary file (numstat counts `-`): its lines are not counted, so it is over the bound whatever its size
+            files.append("%s (binary)" % parts[2])
+            lines += BOUND["lines"] + 1
+            continue
         files.append(parts[2])
-        lines += sum(int(x) for x in parts[:2] if x.isdigit())
+        lines += sum(int(x) for x in parts[:2])
     what = "%d production file%s (%s), %d line%s%s" % (len(files), "" if len(files) == 1 else "s", ", ".join(files[:5]) or "none",
                                                       lines, "" if lines == 1 else "s", ", and %d test file(s)" % tests if tests else "")
     if len(files) <= BOUND["files"] and lines <= BOUND["lines"]:
