@@ -348,4 +348,14 @@ print("src/b.sh" if "src/b.sh" in (t.get("dirty_before") or []) else "not listed
 _add58 src/a.sh 1; git add src/a.sh src/b.sh; _gc58; _db58+="|before=$_gc58_rc"; git reset -q --hard
 _closed58; _add58 src/a.sh 1; _add58 src/b.sh 30; git add src/a.sh src/b.sh; _gc58; _db58+="|after=$_gc58_rc"; git reset -q --hard
 assert_eq "trivial: work that was there before is not counted" "dirty_before=src/b.sh|before=0|after=1" "$_db58"
+
+# --- the verdict is the CLI's: state set trivial, or a path below it, is refused (phase 4b review) ---
+_triv58; printf '# Intent: x\n' > .temper/specs/demo/intent.md
+_o58="$("$TEMPER" state set trivial.why x 2>&1)"; _ss58="trivial.why=$?,$(grep -o '^FAIL' <<<"$_o58" | head -n 1)"
+"$TEMPER" gate intent >/dev/null 2>&1
+_ss58+="|$(_tr58)"
+_ss58+="|$(_x58 "r = 'close' if any('intent trivial --close' in str(c) for c in d.get('calls') or []) else 'no close'")"
+_o58="$("$TEMPER" state set trivial x 2>&1)"; _ss58+="|trivial=$?,$(grep -o '^FAIL' <<<"$_o58" | head -n 1)"
+assert_eq "trivial: state set trivial, or a path below it, is refused, so no window opens and nothing closes the run" \
+  "trivial.why=1,FAIL|no record|no close|trivial=1,FAIL" "$_ss58"
 setup

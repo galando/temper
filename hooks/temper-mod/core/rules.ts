@@ -348,7 +348,8 @@ const AUTONOMY_DENY =
   `Next: ${ASK} at the plan gate (or the Design gate, when Design runs), exactly as \`temper next --json\` gives it.`
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'intent_hash', 'from_branch', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason'])
+// trivial (WP17) is the verdict of `temper intent trivial`, a path below it too: set by hand it would open the window.
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'intent_hash', 'from_branch', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason', 'trivial'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +
@@ -467,7 +468,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     const w = callWords(call)
     const [a, b, key, value] = w
     if (a === 'state' && b === 'set' && key !== undefined) {
-      if (GUARD_KEYS.has(key) && !(key === 'branch' && ctx.allowed.some(written => sameCall(written, w)))) return { deny: KEY_DENY(key) }
+      if ((GUARD_KEYS.has(key) || key.startsWith('trivial.')) && !(key === 'branch' && ctx.allowed.some(written => sameCall(written, w)))) return { deny: KEY_DENY(key) }
       // The keys the orchestrator sets itself, only in the form and the stage it sets them: the complexity while the
       // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build.
       if (key === 'complexity' && !((r.stage === 'intent' || r.stage === 'plan') && /^(?:trivial|simple|medium|complex)$/.test(value ?? ''))) return { deny: KEY_DENY(key) }
