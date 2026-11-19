@@ -349,7 +349,18 @@ tree that changed after `integrate` (a repair at Review) every command runs agai
 regression proof are on the Build ledger before Review is paid for, and the Build gate of a fix run has the rows `tests
 pass` and `regression proof`. Only a regression proof the CLI ran counts, at the Build gate, the Check gate and on the
 commit card; a row written with `evidence add` fails the row. A program of the repository named by its full path is
-never started with `--version` to read its version for the key.
+never started with `--version` to read its version for the key. A group's Validate whose text is the owner's test text
+runs in the owner's run text, with its coverage measured as `integrate` measures it (`run_env.as_owner`, used by
+`grouprun` of `scripts/task_ops.py`), so the last group's gate and `integrate` share one key on the merged tree and the
+suite runs once. A regression proof that fails twice with the same text (a run again changed nothing) asks `fix.fail`
+with `Correct the regression test` (`correct-test`, the label `Correct the %s test` the acceptance tests use): its calls
+are `state redo fix --reason '{reason}'` and `state set wrong_test '{reason}'`, and the Fix agent gets the reason as the
+person's note that the regression test is wrong, and writes it again (beside the old one when the shield of
+`regression_test` keeps that file; lifting the shield stays the person's, in a terminal). `Save for later` stays
+recommended. `check ahead` beside Review runs
+no check in a feature run, whose store is warm from `integrate`: it plants bugs only, timed by the store's entry of the
+suite on the tree as it is, and with no entry it writes `not run` with the reason. In a fix run it runs Check's
+commands through the store first, as WP22 made it.
 
 ### Failure text, the SETUP verdict and recommendations that follow the evidence (9.8.5)
 
@@ -365,7 +376,13 @@ CLI runs `integrate` and `gate build` again, and a failure there names the fault
 
 **A fix that changed nothing.** `temper group fix G<n> --commit` with no change keeps the group's check failed (the same
 tree would fail the same way, so it does not run again) and counts `fix_empty`. The next question recommends the loop
-back to Plan (or Save for later), and says the cause is the plan's command or the environment. A first time-out is
+back to Plan (or Save for later), and says the cause is the plan's command or the environment. The questions read the
+reuse store first (WP22 step 8, `run_env.kept_again`): a check whose newest row came back from the kept failure (nothing
+ran, the tree had not changed) or whose environment fault the store ran again and saw fail is the same failure,
+whatever the text. A group's check asked again on the same tree counts as `fix_empty` does, and the question says it
+failed again on the same tree; after a run again of Build, Fix or Check (a fix pass by rule names its reason `rule:
+...`, which no text compare matches), `Save for later` is recommended. The text compares stay for a failure the store
+holds no key of. A first time-out is
 no question: the CLI runs the check again with twice the limit (WP20, above); a second one asks, with the command change
 first.
 
@@ -562,8 +579,8 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   BUG`), `cause`, `fix`, `test`, `files`, `commands` and `risk`, read from `rca.md` by `panel.rca_fields`; its foot
   names the branch the click makes and ends `Nothing is pushed.`
 - **In between.** Approved with `approve-run`, a passed Fix, Review and Check move on as the CLI's own action, a failed
-  check takes the one repair (`state loop <stage> fix`), and Review starts Check's run (`check ahead`), as in a feature
-  run. The commit question of a fix run offers `commit`, `back` (`state loop check fix`) and `save`: no pull request
+  check takes the one repair (`state loop <stage> fix`), and Review starts Check's run (`check ahead`); in a feature
+  run the same call plants bugs only, the store being warm from `integrate`. The commit question of a fix run offers `commit`, `back` (`state loop check fix`) and `save`: no pull request
   and no small change; its card's `message` is the message the CLI drafts from `rca.md`.
 - **TRIVIAL.** The Intent agent of a `/temper:temper` run at Intent, at step 0, with no spec file, calls `temper
   intent trivial --why TEXT` (`scripts/trivial.py`): the run state takes `trivial: {why, head, at, dirty_before}` and

@@ -223,6 +223,7 @@ rm -f .git/count60
 _cmds60 "cksum < lib/calc.py >> $WORKDIR/.git/count60; sleep 1; python3 -m unittest discover -s unit -t ."
 gpass intent plan build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 _real60="$(cksum < lib/calc.py)"
+"$TEMPER" check build-checks >/dev/null 2>&1   # WP23 trap 9: the suite's time is the one integrate's run left in the store
 TEMPER_MUTATION_BUDGET_S=2 "$TEMPER" check ahead >/dev/null 2>&1
 _mut_done60() { # waits as _ahead_done of case 15 does: the background run has ended and left its file
   local i

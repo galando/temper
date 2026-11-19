@@ -527,6 +527,10 @@ class BuildPart:
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = []
         empty = int(ginfo.get("fix_empty") or 0)   # 9.8.5 (S8): a fix agent that changed nothing: the code is not the cause
+        # WP22 step 8: the store first. Its check asked again on the same tree got the kept failure back: what ran in between
+        # (a rerun of its tasks, a fix) changed nothing, which is what the count fix_empty says of a fix
+        kept = not empty and self.kept_again("build", claim="Group %s validate" % gid)
+        empty = empty or int(kept)
         fix_rec = fixable and not tried and not empty
         fix = self.opt("Fix the group's merged work" + (" (Recommended)" if fix_rec else ""),
                        "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
@@ -570,7 +574,11 @@ class BuildPart:
         text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
         if fl:
             text += " What failed: %s." % fl
-        if empty:
+        if kept:
+            text += (" It failed again on the same tree (Temper kept that failure and gave it back, nothing ran), so what ran "
+                     "in between changed nothing: the plan's command or the environment is the likelier cause (temper doctor "
+                     "shows the environment).")
+        elif empty:
             text += (" A fix agent changed nothing, so the cause is not in the group's code: the plan's command or the "
                      "environment is (temper doctor shows the environment).")
         elif tried and fixable:

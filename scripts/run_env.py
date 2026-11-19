@@ -495,6 +495,69 @@ def _recheck_base(root, cmd, out, rc, setup):
     return base[0], base[1], [x for x in lines if baseline.mask(x) not in base[1]]
 
 
+def as_owner(wt, cmd, root=None):
+    """WP23 mechanism 2, one owner: a command whose text is the owner's test text (check_run.det_for of the project
+    folder `root`, as integrate reads it) runs in the owner's run text, its coverage measured as integrate measures it,
+    so a group's Validate on the merged tree and integrate share one key. (command, info) for run_cached; the command as
+    given, with no info, when it is not the owner's test text or the owner has no other run text."""
+    import json
+    root = root or os.getcwd()
+    text = ' '.join(cmd).strip()
+    try:
+        import check_run
+        cfg = config_yaml.load(os.path.join(root, '.claude', 'temper.config'))
+        det = check_run.det_for(root, *(str(config_yaml.get(cfg, k, '') or '').strip()
+                                         for k in ('check.commands.test', 'check.commands.coverage')))
+        run = ((det.get('coverage') or {}).get('run') or '') if det.get('test', '').strip() == text else ''
+        if not run or run == text:
+            return cmd, {}
+        try:
+            base = json.load(open(os.path.join(root, '.temper', 'build-state.json'))).get('base_sha') or ''
+        except (OSError, ValueError, AttributeError):
+            base = ''
+        base = base or _git(root, 'rev-parse', 'HEAD')   # as `check build-checks` takes it
+        return [run], {'measure': check_run.measure_of(wt, det, base), 'need_extra': True}
+    except Exception:   # the owner unknown: the command runs as the plan wrote it
+        return cmd, {}
+
+
+def kept(wt, cmd, setup=None, root=None):
+    """What the store holds of cmd on the tree of wt as it is now, without running it (WP23 trap 9, the planted bugs read
+    the suite's time here): ('pass' | 'fail', its record) as the runner would give it, or None when it holds nothing."""
+    if setup is None:
+        setup = load_setup()
+    root = root or os.getcwd()
+    path = _store(wt)
+    store = store_read(path) if path else {}
+    key = result_key(wt, cmd, setup, None, tree_key(wt, byproducts_of(wt, store, root), root))[0] if path else None
+    e = store.get(key) if key else None
+    if not isinstance(e, dict):
+        return None
+    p, f = (e.get(x) if isinstance(e.get(x), dict) else None for x in ('pass', 'fail'))
+    if f and (e.get('last') == 'fail' or not p):
+        return 'fail', f
+    return ('pass', p) if p else None
+
+
+def kept_again(wt, rows, since=''):
+    """WP22 step 8: True when the store already knows that a check of `rows` (a ledger) failed again on the same key since
+    `since`: the newest row of that check, written then, came back from the kept failure (nothing ran, so the tree, the
+    command and the setup did not change), or the store ran an environment or not measured failure again there and it
+    failed. The questions read this before they compare failure texts and before the count fix_empty."""
+    last = {}
+    for x in rows or []:
+        if isinstance(x, dict) and str(x.get('ts') or '') >= since:
+            last[(x.get('claim'), x.get('group'), x.get('scenario'), x.get('cmd'))] = x
+    want = [x for x in last.values() if x.get('key') and x.get('exit_code') not in (0, None)]
+    store = store_read(_store(wt)) if want else {}
+    for x in want:
+        e = store.get(x['key'])
+        f = e.get('fail') if isinstance(e, dict) else None
+        if isinstance(f, dict) and e.get('last', 'fail') == 'fail' and (x.get('reused') or int(f.get('again') or 0) >= 1):
+            return True
+    return False
+
+
 def row_fields(info):
     """The fields a row of a runner call carries: tree, key, seconds and reused (the date, or null); flaky and forced
     when they hold."""

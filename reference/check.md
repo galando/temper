@@ -200,7 +200,10 @@ and exit codes, never by output text:
 
 The planted bug score is no row of the gate: `temper check ahead`, beside Review, plants one small bug at a time in
 the changed lines when three runs of the suite fit the budget, and writes `.temper/evidence/mutation.json`. The commit
-card and the Check markers show it as information; it gates nothing and moves nothing.
+card and the Check markers show it as information; it gates nothing and moves nothing. In a feature run it runs no
+check: the store is warm from `integrate`, and the suite's time and result are the store's entry of the tree as it is;
+with no entry nothing runs, and the file says why. In a fix run, which has no `integrate`, it first runs Check's
+commands through the store.
 
 ## Maven
 
