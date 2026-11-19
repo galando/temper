@@ -88,6 +88,18 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 
 None.
 
+## Added by the owner after the plan
+
+On 2026-11-19 the owner read a survey of planning methods (`https://yotamfromm.dev/developer/blog/planning-in-claude-code.md`)
+and asked for three additions to this build. Each is written into the spec of the package that touches its files,
+under a heading that starts with the package id and "added by the owner on 2026-11-19". The builder of that package
+builds it with the package; none of them is a new stage, agent or question.
+
+- [ ] WP26: Intent looks a fact up and never asks it (`wp/phase-7-and-8-front-and-surface.md`, before WP27).
+- [ ] WP30: Grill Me asks in rounds, each question with a recommended answer (same file, before WP31).
+- [ ] WP32: the scorecard gains `amendments` and `first_review_high`, and rule (d) of the model test reads both
+  (`wp/phase-0-and-9-setup-and-final.md`, at the end of WP32). Its code is in place before round (b).
+
 ## Found on the way
 
 - 2026-11-16 WP00: the first merge of `10e965a` went as a fast forward; both merges were made again with `--no-ff` before any push, so the history shows two merge commits.
