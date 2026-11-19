@@ -269,7 +269,17 @@ def baseline():
     else:
         text = "unknown: %s" % (d.get("why") or "no result")
         mark = "not measured"
-    return sec("baseline", "BASELINE", [cell(text, mark)])
+    cells = [cell(text, mark)]
+    plan = [e for e in (d.get("plan") or {}).values() if isinstance(e, dict)] if isinstance(d.get("plan"), dict) else []
+    if plan:   # WP21: the plan's commands on the current code; one still running says so, and nothing waits for it
+        n = {}
+        for e in plan:
+            k = "skipped" if e.get("skipped") else str(e.get("result") or "unknown")
+            n[k] = n.get(k, 0) + 1
+        what = ", ".join("%d %s" % (v, k) for k, v in sorted(n.items()))
+        cells.append(cell("the plan's commands on the current code: %s" % what,
+                          "open" if any(k in ("running", "fail", "timeout") for k in n) else None))
+    return sec("baseline", "BASELINE", cells)
 
 
 def estimate():

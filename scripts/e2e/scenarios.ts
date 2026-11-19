@@ -1500,3 +1500,58 @@ export const coverageDrop = (w: World): void => {
   expect(/\bcoverage\b/.test(q), `the stop's question names the row coverage (${q.slice(0, 200)})`)
   expect(!/state advance check_complete/.test(flow) && !asked.some(a => a.id === 'commit.confirm'), 'the run never passes on to the commit')
 }
+
+// WP21: a command the plan wrote fails on the base (the scenario plan-command-fails). The scripted planner writes a
+// Validate for G1 that exits 2 on the current code and names no file a task creates; the base suite is green (a
+// passing test is committed first, so the base is not red and the failure is the command's own). The CLI runs the
+// Validate once after the planner returned (`temper baseline plan`, in the foreground here) and asks `plan.command`
+// before any task agent is launched; the person changes the command (a typed answer, `plan patch`), and Build goes on
+// with both tasks, to the commit.
+const PCF_BAD = 'python3 -m unittest discover -s unit -t . --no-such-flag'
+const PCF_GOOD = 'python3 -m unittest unit.test_ci_shape'
+export const planCommandFails = (w: World): void => {
+  w.env.TEMPER_BASELINE_FOREGROUND = '1'
+  startProject(w, '', wd => {
+    wd.write('unit/test_base.py', 'import unittest\n\n\nclass BaseTest(unittest.TestCase):\n    def test_the_base_holds(self):\n        self.assertTrue(True)\n')
+    wd.sh('git add -A && git commit -qm "a passing test on the base"')
+  })
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/tasks.md`, wd.read(`${SPEC}/tasks.md`).replace(`**Validate:** \`${PCF_GOOD}\``, `**Validate:** \`${PCF_BAD}\``))
+    },
+  }
+  const patches = (o: Json): boolean => ((o.calls ?? []) as string[]).some(c => /\splan patch\s/.test(` ${c}`))
+  const asked: string[] = []
+  const atQuestion: Array<{ tasks: number; text: string }> = []
+  let atApproval = ''
+  const end = orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      const id = String(ask.id ?? '')
+      asked.push(id)
+      if (id === 'plan.fail')
+        throw new Error(`the Validate that fails on the base failed the plan gate (plan.fail), where the gate runs no command: ${String(ask.question?.question ?? '').slice(0, 200)}`)
+      if (id === 'plan.approve') atApproval = wd.exists(`${SPEC}/tasks.md`) ? wd.read(`${SPEC}/tasks.md`) : ''
+      const opts = (ask.options ?? []) as Json[]
+      const change = opts.find(patches)
+      if (id === 'plan.command') atQuestion.push({ tasks: wd.counts.launches['temper:temper-build-task'] ?? 0, text: String(ask.question?.question ?? '') })
+      if (change !== undefined) return { label: String(change.label), note: PCF_GOOD }
+      const more = opts.find(o => o.kind === 'more')
+      if (id === 'plan.command' && more !== undefined && ((ask.more?.options ?? []) as Json[]).some(patches)) return String(more.label)
+      return recommended(ask, wd)
+    },
+  }))
+  expect(atQuestion.length >= 1, `the Validate that fails on the base is asked as plan.command (asked ${asked.join(', ')})`)
+  expect(atQuestion[0]!.tasks === 0, `the person is asked before any task agent is launched (${atQuestion[0]!.tasks} launched)`)
+  expect(atQuestion[0]!.text.includes(PCF_BAD), `the question names the command (${atQuestion[0]!.text.slice(0, 200)})`)
+  expect(asked.filter(x => x === 'plan.command').length === 1 && asked.indexOf('plan.command') < asked.indexOf('plan.approve'),
+    `one plan.command, before the approval (asked ${asked.join(', ')})`)
+  expect(atApproval.includes(`**Validate:** \`${PCF_GOOD}\``) && !atApproval.includes(PCF_BAD) && (atApproval.match(/^### Task \d+/gm) ?? []).length === 2,
+    `the answer patched the command and kept every task (${atApproval.split('\n').filter(l => /Validate:|^### Task/.test(l)).join(' / ')})`)
+  expect((w.counts.launches['temper:temper-plan'] ?? 0) === 1 && !/state (loop \S+|redo) plan\b/.test(w.trace.join('\n')),
+    `no second planner and no step back to Plan (${w.counts.launches['temper:temper-plan'] ?? 0} planner launches)`)
+  expect(end.action === 'none' && !w.exists('.temper/build-state.json') && w.run('git show HEAD:src/ci_bytes.py').code === 0 &&
+    w.run('git show HEAD:src/ci_shape.py').code === 0, `Build went on with both tasks to the commit (last action ${end.action})`)
+}

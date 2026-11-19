@@ -11,6 +11,9 @@ pass together. PYTHONPATH puts the folder first so a package importable from
 both the project root (an editable install) and the task's worktree resolves to the worktree's copy; other languages
 ignore it.
 
+  run_env.programs(cmd)      the first word of each step of a shell line
+  run_env.env_fault(out, rc, cmd)   why a failed run is the environment's: one of three sure signs, else ""
+
   run_env.load_setup(config=None)   the setup block of .claude/temper.config ($TEMPER_SETUP_CONFIG, which the CLI sets, else
                              $TEMPER_CONFIG, else ./.claude/temper.config):
                              {} without one, else {'run', 'env', 'services', 'tools', 'dropped'}
@@ -94,6 +97,42 @@ def fail_lines(out, keep=8, rc=None):
     hits = [l for l in lines if FAIL_LINE.search(l) and not LOG_LINE.search(l)]
     picked = list(dict.fromkeys(head + hits))
     return picked[:keep] if picked else lines[-3:]
+
+
+def programs(cmd):
+    """The first word of each step of a shell line (assignments left out): the programs it starts (9.8.5, WP21)."""
+    out = set()
+    for seg in re.split(r'&&|\|\||;|\|', cmd or ''):
+        toks = [t for t in seg.split() if not re.match(r'^\w+=', t)]
+        if toks:
+            out.add(toks[0])
+    return out
+
+
+def env_fault(out, rc, cmd, setup=None):
+    """The reason a failed run is the environment's, or "": only a sure sign (WP21). The setup line failed (exit 125
+    with its marker); exit 127 with `X: command not found` for a program the command starts; a service of the setup
+    block that does not answer right after the failed run. No text of the output counts beyond those, and a time out
+    is the code's."""
+    text = out.decode('utf-8', 'replace') if isinstance(out, bytes) else str(out or '')
+    if rc in (0, None, 124):
+        return ''
+    if 'temper-setup: FAIL' in text:
+        m = re.search(r'temper-setup: FAIL \(exit \d+\)', text)
+        return 'the setup block failed (%s)' % (m.group(0) if m else 'temper-setup: FAIL')
+    if rc == 127:
+        for name in re.findall(r'([^\s:]+): command not found', text):
+            if name in programs(cmd):
+                return '%s: command not found' % name
+    if setup is None:
+        setup = load_setup()
+    services = (setup or {}).get('services') or {}
+    if services:
+        import doctor
+        down = ['%s at %s' % (n, a) for n, a in services.items() if not doctor.answers(a)]
+        if down:
+            return 'the service %s does not answer after the run' % ', '.join(down)
+    return ''
 
 
 def load_setup(config=None):

@@ -159,7 +159,7 @@ _arm52() { # the session types the call that starts the unattended run: taken or
 }
 fresh; gpass intent plan build; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1; _aw52="build=$(_arm52)"
-fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gfail plan "preflight" "x"
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gfail plan "tasks have a test" "x"
 "$TEMPER" override plan --reason 'skip it' >/dev/null 2>&1; _aw52+="|plan skipped=$(_arm52)"
 _plan52; _aw52+="|approval=$(_arm52),from=$("$TEMPER" state get unattended_from 2>/dev/null)"
 assert_eq "run: the CLI refuses to start the unattended run away from the approval" \

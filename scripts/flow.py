@@ -346,12 +346,16 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             if redo:
                 out.update(redo)
                 return out
+            cmds = self.plan_command_step()   # WP21: the plan's commands on the base, once the plan was checked
+            if cmds:
+                out.update(cmds)
+                return out
         if verdict is None and not skipped:
             if self.walked(stage):
                 out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % stage)], "agents": [],
                             "say": "%s ran before this run started; it is checked." % LABEL[stage]})
             elif stage == "build" and r.command == "temper":
-                out.update(self.build_work())
+                out.update(self.plan_command_step(after=True) or self.build_work())
             else:
                 out.update(self.stage_work(stage))
             return out

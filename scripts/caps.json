@@ -27,7 +27,7 @@
    "measure": "measure_option_labels: distinct first arguments (a string) of those calls"
   },
   "question_ids": {
-   "now": 36,
+   "now": 37,
    "final": 35,
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
@@ -37,7 +37,7 @@
    "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row( names of the Python scripts, name lines of gate_rows.py"
   },
   "agent_briefs": {
-   "now": 13,
+   "now": 12,
    "final": 13,
    "measure": "measure_agent_briefs: files of agents/*.md"
   },
@@ -57,17 +57,17 @@
    "measure": "measure_config_live_keys: key lines of the config template that are not comments"
   },
   "config_comment_keys": {
-   "now": 50,
+   "now": 48,
    "final": 46,
    "measure": "measure_config_comment_keys: commented key lines of the config template"
   },
   "config_lines": {
-   "now": 161,
+   "now": 158,
    "final": 60,
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 306891,
+   "now": 301504,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
@@ -77,7 +77,7 @@
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 221169,
+   "now": 221225,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

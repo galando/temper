@@ -163,7 +163,7 @@ def capture(cwd, name, run_name, rid):
         if h:
             text = text.replace(h, str(i) * 40)
     text = re.sub(r"its last commit is [0-9a-f]{7,40} ", "its last commit is 0000000 ", text)
-    # the plan preflight's cache key is a hash over HEAD, which the fixture's commit time makes new on every run
+    # a key that is a hash over HEAD (the baseline's), which the fixture's commit time makes new on every run
     text = re.sub(r'"key": "[0-9a-f]{64}"', '"key": "(a hash over HEAD)"', text)
     if rid:
         text = text.replace(rid, run_name)

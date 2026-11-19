@@ -44,14 +44,15 @@ Usage:
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
-  temper plan preflight                   (run each group's Validate and the Integration line on HEAD again; the plan
-                                          gate reads it)
   temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)
-  temper doctor [--propose [--write [--expect H]]]   (reads the toolchain, setup block and services; --propose prints
+  temper doctor [--propose [--write --expect H]]   (reads the toolchain, setup block and services; --propose prints
                                           a block, --propose --write adds it, only as the call of your answer)
   temper baseline start [--again] [--env-only] | clean | accept-red --reason R
                                           (the environment check, then the suite once on the current code; accept-red
                                           is the person's Go on anyway at base.red)
+  temper baseline plan [--cmd C] | skip --cmd C --reason R
+                                          (each group's Validate and the Integration line once on the current code,
+                                          after the planner; skip is the person's, with a reason, at plan.command)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
   temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)

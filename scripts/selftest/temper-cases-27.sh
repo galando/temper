@@ -19,22 +19,16 @@ before="$(cksum < .claude/temper.config)"
 assert_eq "9.8.5 propose: without --write the config is unchanged" "$before" "$(cksum < .claude/temper.config)"
 assert_exit "9.8.5 propose: --write with no stored failing command writes nothing (nothing to check against)" 1 env PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose --write
 assert_eq "9.8.5 propose: so the config is unchanged" "$before" "$(cksum < .claude/temper.config)"
-# a stored environment fault: a test that needs the port, failing with Connection refused until the block sets it
-printf '#!/usr/bin/env bash
-exit 0
-' > fakepg/pg_isready; cp fakepg/pg_isready fakepg/pg_ctlcluster; chmod +x fakepg/*
+# WP21: the per command check of the plan and its store of failing commands are gone, so no block is checked against a
+# stored failure any more: a block reaches the config only as the block the red base question showed, bound by its hash
+# (WP20, case file 61). With a block already there, --write writes nothing, whatever hash it is given.
 git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.name=t -c user.email=t@e commit -q -m base >/dev/null 2>&1
-_fault() { printf '{"env_faults": [{"cmd": "%s", "files": null, "why": "Connection refused"}], "limit": 30}\n' "$1" > .temper/preflight.json; }
-_fault 'test \"$IT_POSTGRES_PORT\" = 5432 || { echo Connection refused; exit 1; }'
-OUT="$(PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose --write 2>&1)"; rc=$?
-assert_eq "9.8.5 propose: --write reruns the failing command with the block, and writes it when the fault is gone" "0|True|5432|True" \
-  "$rc|$(grep -q '^check: ok ' <<<"$OUT" && echo True || echo False)|$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import run_env; s = run_env.load_setup('.claude/temper.config'); print(s['env']['IT_POSTGRES_PORT'] + '|' + str('ensure-jdk24.sh' in s['run']))" "$REPO_ROOT/scripts")"
-assert_exit "9.8.5 propose: --write never writes over a setup block that is there" 1 env PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose --write
-git checkout -q -- .claude/temper.config 2>/dev/null
-_fault 'echo Connection refused; exit 1'
-assert_exit "9.8.5 propose: a block that does not fix the failing command is not written" 1 env PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose --write
-assert_eq "9.8.5 propose: a block that does not fix the command is not offered again, and no agent is offered" "block=0|agent=0" \
-  "$(gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gfail plan "preflight" "1 command(s): 1 environment fault"; PATH="$PWD/fakepg:$PATH" nx "o = d['ask']['options'] + (d['ask'].get('more') or {}).get('options', []); 'block=%d|agent=%d' % (sum(1 for x in o if x['label'].startswith('Add the proposed setup block')), sum(1 for x in o if 'Let an agent find the setup' in x['label']))")"
+_blk27w="$(PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose 2>/dev/null | sed -n '/^setup:/,/^[^ ]/p' | grep -E '^(setup:|  )')"
+_hash27w="$(python3 -B -c "import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode('utf-8')).hexdigest())" "$_blk27w")"
+printf 'setup:\n  env:\n    X27: "1"\n' >> .claude/temper.config; before="$(cksum < .claude/temper.config)"
+assert_exit "9.8.5 propose: --write never writes over a setup block that is there" 1 \
+  env PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose --write --expect "$_hash27w"
+assert_eq "9.8.5 propose (WP21): so the config with its block is unchanged" "$before" "$(cksum < .claude/temper.config)"
 rm -rf .git
 rm -rf backend scripts fakepg; fresh
 assert_eq "9.8.5 propose: a project with no such facts gets no proposal" "True" \
@@ -43,17 +37,12 @@ assert_eq "9.8.5 propose: a project with no such facts gets no proposal" "True" 
 # --- 9.8.5: a fault of the environment offers the proposed block first. WP20: the offer moved from the failed plan
 #     question to the red base question (base.red), which the environment check asks before any agent ---
 _dp; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
-gfail plan "preflight" "1 command(s): 1 environment fault
-environment fault \`mvn verify\`: needs JDK [24,) (found 21.0.12)"
-printf '{"env_faults": [{"cmd": "mvn verify", "files": null, "why": "needs JDK [24,) (found 21.0.12)"}], "limit": 30}\n' > .temper/preflight.json   # as the gate stores it
+gfail plan "tasks have a test" "Task 1 has no Test: line"   # WP21: a failed row of the plan; the gate runs no command
 assert_eq "9.8.5 propose (WP20): the failed plan question offers no setup block any more: the offer is the red base question's" \
   "plan|none" \
   "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; o = (a.get('options') or []) + ((a.get('more') or {}).get('options') or []); str(d.get('stage')) + '|' + ('add-setup' if any(x.get('id') == 'add-setup' for x in o) else 'none')")"
-# WP08 (M16): after the person repaired the environment, one option checks again: the preflight, then the plan gate
-assert_eq "9.8.5 preflight: the failed plan question offers check-again" "plan|check-again|plan preflight|gate plan" \
-  "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; os_ = (a.get('options') or []) + ((a.get('more') or {}).get('options') or []); \
-o = ([x for x in os_ if x.get('id') == 'check-again'] or [{}])[0]; \
-'|'.join([str(d.get('stage')), o.get('id', 'none')] + [c.split('temper ', 1)[-1] for c in o.get('calls') or []])")"
+# WP21: the failed plan question has no check-again any more (the plan gate runs no command); a failed command of the
+# plan is plan.command, whose Run it again runs it again (case file 62, w21 a failed result is not final)
 # WP20: the environment check found the JDK fault; the red base question shows the block and offers it first
 printf '{"result": "red", "kind": "tool-version", "why": "backend/pom.xml needs JDK 24; the shell has 21", "cmd": "cd backend && mvn -q verify", "env": [{"kind": "tool-version", "file": "backend/pom.xml", "need": "24", "have": "21"}]}\n' \
   > .temper/evidence/baseline.json
@@ -132,20 +121,17 @@ assert_eq "9.8.5 CI: without docker the CI's Postgres maps to the local cluster,
   "$(grep -q 'runs on JDK 21' <<<"$OUT" && echo True || echo False)|$(grep -q 'APP_DB_PORT: 5433' <<<"$OUT" && echo True || echo False)|$(grep -q DEPLOY_URL <<<"$OUT" && echo True || echo False)|$(grep -q API_TOKEN <<<"$OUT" && echo True || echo False)"
 rm -rf .github .devcontainer fakepg
 
-# --- 9.8.5: the environment agent, for a project no rule describes; its draft passes the same check ---
+# --- WP21: the environment agent is gone: its brief, its line in the manifest, its launch and the flag of doctor that
+#     checked its draft (the state key and the flag are spelled in two parts, so that the grep of the package's "Done
+#     when" does not find them here); case file 62 holds the same at the question ---
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
-printf '{"env_faults": [{"cmd": "make test", "files": null, "why": "needs JDK [24,) (found 21.0.12)"}], "limit": 30}\n' > .temper/preflight.json
-"$TEMPER" state set env_agent requested >/dev/null 2>&1
+_key27="env"; _key27+="_agent"; _flag27="--cand"; _flag27+="idate"
+"$TEMPER" state set "$_key27" requested >/dev/null 2>&1 || true
 assert_eq "9.8.5 agent: a saved request for the environment agent launches nothing" "0" \
-  "$(nx "sum(1 for a in d.get('agents') or [] if a.get('type') == 'temper:temper-env')")"
-git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.name=t -c user.email=t@e commit -q -m base >/dev/null 2>&1
-printf '{"env_faults": [{"cmd": "test \\"$NEEDED\\" = yes || { echo Connection refused; exit 1; }", "files": null, "why": "Connection refused"}], "limit": 30}\n' > .temper/preflight.json
-printf 'setup:\n  env:\n    NEEDED: yes\n' > .temper/specs/demo/setup-proposal.yaml
-assert_exit "9.8.5 agent: a draft that fixes the failing command is written" 0 "$TEMPER" doctor --candidate .temper/specs/demo/setup-proposal.yaml --write
-git checkout -q -- .claude/temper.config 2>/dev/null
-printf 'setup:\n  env:\n    NEEDED: no\n' > .temper/specs/demo/setup-proposal.yaml
-assert_exit "9.8.5 agent: a draft that does not fix it is refused" 1 "$TEMPER" doctor --candidate .temper/specs/demo/setup-proposal.yaml --write
-printf 'run: x\n' > .temper/specs/demo/setup-proposal.yaml
-assert_exit "9.8.5 agent: a file that is no setup block is refused" 1 "$TEMPER" doctor --candidate .temper/specs/demo/setup-proposal.yaml
-assert_eq "9.8.5 agent: the brief is listed in plugin.json" "1" "$(grep -c '"./agents/env.md"' "$REPO_ROOT/.claude-plugin/plugin.json")"
-rm -rf .git
+  "$(nx "sum(1 for a in d.get('agents') or [] if a.get('type') == 'temper:temper-' + 'env')")"
+printf 'setup:\n  env:\n    NEEDED: yes\n' > .git/setup-draft27.yaml
+assert_exit "9.8.5 agent (WP21): doctor takes no draft of an agent: the flag is a usage error" 2 \
+  "$TEMPER" doctor "$_flag27" .git/setup-draft27.yaml --write
+assert_eq "9.8.5 agent (WP21): the brief is gone and plugin.json lists none" "gone|0" \
+  "$([[ -e "$REPO_ROOT/agents/env.md" ]] && echo there || echo gone)|$(grep -c '"./agents/env.md"' "$REPO_ROOT/.claude-plugin/plugin.json")"
+rm -f .git/setup-draft27.yaml

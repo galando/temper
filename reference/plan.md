@@ -340,13 +340,14 @@ task's `**File:**`: the plan gate fails a task whose `**Test:**` command names a
 argument) that is neither declared by the task nor already in the project, because the task's commit check
 would otherwise reject the new test file as an undeclared change.
 
-**Each Validate runs before Build.** The plan gate's preflight runs each group's Validate
-and the Integration line once on the committed base (a throwaway worktree of HEAD), with the project's `setup:`
-block, under one limit for all (`plan.preflight-timeout`, 300 s); no task or scenario Test runs. Each is sorted into:
-passes; needs new code (expected); not checked (over the limit; the row passes); environment fault (a JDK out of
-range, a database that does not answer, a program not on PATH, a failed setup line); command fault (the command itself
-cannot pass, such as a `verify` filtered with `-Dtest=` under a JaCoCo BUNDLE rule). The two faults fail the gate with
-the real error. Only the person skips it, with `plan.preflight-skip: "<reason>"` in the config.
+**Each Validate runs once on the base.** A group's Validate and the Integration line must pass on the current code.
+The plan gate runs no command: after the planner returns, the CLI runs each once (`temper baseline plan`) in the
+baseline's worktree, with the project's `setup:` block, under the limit Build gives it, in a process of its own. Left
+out: a command whose text is the suite the baseline ran, a command that names a file a task creates, and every task
+and scenario Test (they fail on the base by design). The exit code alone decides: 0 passes; a time out is no fault of
+the environment and offers more time; exit 125 (the setup line) and a program the shell does not find are the
+environment's; any other exit fails, unless the base itself is red. A failed or timed out command is the person's
+question `plan.command`: more time, another command, a revised plan, or a skip with a reason.
 
 **A group passes its own Validate.** A group's worktree holds its own work and the work of the groups it
 depends on, nothing else. So the task that updates an existing test file a group's `**Validate:**` runs
