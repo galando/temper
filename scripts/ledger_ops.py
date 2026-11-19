@@ -170,6 +170,15 @@ def write_verdict(argv):
     with open(tmp, 'w') as fh:
         json.dump(d, fh, indent=2)
     os.replace(tmp, f)
+    if verdict == 'FAIL':   # WP23: one failure record per failed row that no run recorded yet
+        try:
+            import importlib.util   # by its full path, no folder on the import path (this module runs isolated)
+            spec = importlib.util.spec_from_file_location('failure', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'failure.py'))
+            failure = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(failure)
+            failure.of_gate(stage, d[stage]['requirements'], os.path.dirname(os.path.dirname(os.path.abspath(f))))
+        except Exception:
+            pass
 
 
 def last_value(argv):
@@ -179,26 +188,6 @@ def last_value(argv):
     vals = [e.get('value') for e in entries
             if (not keyword or re.search(keyword, e.get('claim') or '', re.I)) and e.get('value') is not None]
     print(vals[-1] if vals else '')
-
-
-def last_claim(argv):
-    import json, re, sys
-    try:
-        rows = json.load(open(argv[1]))
-    except Exception:
-        rows = []
-    hits = [str(r.get('claim')) for r in rows if isinstance(r, dict) and re.search(argv[2], str(r.get('claim') or ''))]
-    print(hits[-1] if hits else '')
-
-
-def last_row(argv):
-    import json, re, sys
-    try:
-        rows = json.load(open(argv[1]))
-    except Exception:
-        rows = []
-    hits = [r for r in rows if isinstance(r, dict) and re.search(argv[2], str(r.get('claim') or ''))]
-    print('%s|%s' % (hits[-1].get('exit_code'), ' '.join(str(hits[-1].get('output') or '').split())[:300]) if hits else '')
 
 
 def scenarios_covered(argv):
@@ -237,8 +226,6 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('confirm_row', confirm_row),
     ('write_verdict', write_verdict),
     ('last_value', last_value),
-    ('last_claim', last_claim),
-    ('last_row', last_row),
     ('scenarios_covered', scenarios_covered),
     ('latest_claim_exit', latest_claim_exit),
     ('print_rows', print_rows),

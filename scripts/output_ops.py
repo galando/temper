@@ -87,6 +87,14 @@ def main(argv):
         print("Its last %s run:" % ("failed" if failed else "recorded"))
         show_run(pick)
         shown = True
+    recs = [x for x in load(os.path.join(tdir, "evidence", "failures.json"), []) if isinstance(x, dict)
+            and x.get("resolved") is None and x.get("stage") == what]
+    if recs:   # WP23: the open failure records of the stage (scripts/failure.py)
+        print("Open failure records:")
+        for x in recs[-5:]:
+            print("  %s %s (%s, %s): %s%s" % (x.get("id"), x.get("scope"), x.get("class"), x.get("kind"), x.get("why"),
+                                             "; step: %s" % x["step"] if x.get("step") else ""))
+        shown = True
     if not shown:
         print("%s: no gate verdict and no run recorded" % what)
         return 1

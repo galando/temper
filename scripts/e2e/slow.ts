@@ -277,7 +277,7 @@ export type Seen = { ids: string[]; gates: Json | null }
 export function watching(person: Person, seen: Seen): Person {
   return (ask, w) => {
     seen.ids.push(idOf(ask))
-    if (idOf(ask) === 'commit.confirm' || idOf(ask).startsWith('check.')) {
+    if (idOf(ask) === 'commit.confirm' || idOf(ask).startsWith('check.') || idOf(ask) === 'build.fail') {   // WP23: build.fail too
       seen.gates = w.exists('.temper/gates.json') ? w.json('.temper/gates.json') : null
     }
     return person(ask, w)
@@ -409,7 +409,7 @@ function at55Pass(w: World, drop: boolean): Seen {
   const base = defaultPerson()
   const person: Person = (ask, wd) => {
     const id = idOf(ask)
-    if (id === 'check.fail' && drop) return null   // the second pass ends at the failed Check
+    if (id === 'build.fail' && drop) return null   // the second pass ends at the failed Build gate (WP23: integrate measures coverage)
     // WP20: the second pass asks at every stage: a run that goes on by itself would take the one repair of the measured
     // drop (WP19) and loop back to Build, where this scripted builder has nothing to fix
     if (id === 'plan.approve' && drop) return pickId(wd, ask, 'ask-every-stage')
@@ -434,10 +434,10 @@ export const slowAt55 = (w: World): void => {
   const w2 = new World(w.mode, `${w.name}-drop`)
   w2.limitS = w.limitS
   const second = at55Pass(w2, true)
-  const failing = rowsOf(second.gates, 'check').filter(r => r.pass === false)
+  const failing = rowsOf(second.gates, 'build').filter(r => r.pass === false)
   const drop = failing.find(r => /coverage/i.test(String(r.name)) && /55/.test(String(r.detail ?? '')) && /50/.test(String(r.detail ?? '')))
-  expect(verdictOf(second.gates, 'check') === 'FAIL' && drop !== undefined,
-    `D12 a drop from 55% to 50% fails Check with a row that names it (verdict ${verdictOf(second.gates, 'check') || 'none'}; failed rows: ${failing.map(r => `${r.name}: ${r.detail}`).join('; ').slice(0, 300)})`)
+  expect(verdictOf(second.gates, 'build') === 'FAIL' && drop !== undefined,
+    `D12 a drop from 55% to 50% fails the Build gate with a row that names it (verdict ${verdictOf(second.gates, 'build') || 'none'}; failed rows: ${failing.map(r => `${r.name}: ${r.detail}`).join('; ').slice(0, 300)})`)
   worldCheck(w2)
 }
 

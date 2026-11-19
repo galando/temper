@@ -59,6 +59,8 @@ Usage:
   temper spec branch --carry NAME | --if-protected  (switch carrying the spec files; a fix run's branch off main)
   temper check run [--fresh]|detect       (Check by the CLI: suite, coverage, scenarios, a fix's regression proof;
                                            --fresh runs whatever the reuse store holds, one repeat)
+  temper check build-checks               (the checks when Build ends, into the Build ledger: the suite with coverage,
+                                           the scenario and acceptance tests, a fix's regression proof; run when Build ends)
   temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
                                                              (the acceptance tests written from the intent before Build)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)

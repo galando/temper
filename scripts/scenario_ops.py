@@ -3,12 +3,11 @@ shell command that proves it on the merged tree. The commands run through run_en
 out and the folder they run in comes first on PYTHONPATH, and through its reuse store (WP22): the same test on the same tree
 runs once.
 
-  python3 scenario_ops.py integrate INTENT CWD TIMEOUT LEDGER    run every Test: command, record one CLI-run row each, print
-                                                                 one line each (name, exit, seconds); exit 0 whatever they give
   python3 scenario_ops.py owed INTENT TASKS.md N                 the scenarios Task N owes, one `name<TAB>command` per line
   python3 scenario_ops.py group-run INTENT TASKS.md G CWD TIMEOUT  run the scenarios a group owes; print the failure or nothing
 
-Library use (task_ops.py): owed(), group_owed(), run_owed(), failure(). Standard library only.
+Library use (task_ops.py): owed(), group_owed(), run_owed(), failure(). The run of every scenario test on the merged tree
+is part of the checks when Build ends (check_run.py build-checks, WP23). Standard library only.
 """
 import json
 import os
@@ -132,37 +131,7 @@ def run_owed(items, cwd, timeout):
     return ""
 
 
-def integrate(intent_path, cwd, timeout, ledger):
-    """Run every scenario's Test: command at the merged tree and record a CLI-run row each (a failing one too: the Build gate
-    then fails for a real reason). Prints one line each."""
-    try:
-        rows = json.load(open(ledger))
-        rows = rows if isinstance(rows, list) else []
-    except (OSError, ValueError):
-        rows = []
-    for b in blocks(intent_path):
-        if not b["cmd"].strip():
-            continue
-        import baseline
-        info = {}
-        out, rc, _ = run_env.run_cached(cwd, baseline.limit_for(b["cmd"], timeout), [b["cmd"]], info=info)   # WP20, WP22
-        secs = float(info.get("seconds") or 0)
-        rows.append(dict({"claim": "scenario test at integration", "cmd": b["cmd"], "exit_code": rc, "artifact": None,
-                          "sha256": None, "value": None, "severity": None, "phase": "scenario", "scenario": b["name"],
-                          "criterion": None, "label": "PROVEN" if rc == 0 else "HEURISTIC", "executed_by": "cli",
-                          "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                          "output": out[-2048:].decode("utf-8", "replace")}, **run_env.row_fields(info)))
-        print("scenario '%s': exit %d, %.1f s" % (b["name"], rc, secs))
-    tmp = "%s.tmp.%d" % (ledger, os.getpid())
-    with open(tmp, "w") as f:
-        json.dump(rows, f, indent=2)
-    os.replace(tmp, ledger)
-
-
 def main(argv):
-    if len(argv) == 6 and argv[1] == "integrate":
-        integrate(argv[2], argv[3], argv[4], argv[5])
-        return 0
     if len(argv) == 7 and argv[1] == "group-run":   # the failure message of the group's scenario tests, '' when all pass
         print(run_owed(group_owed(tasks_md.parse(argv[3]), argv[2], argv[4]), argv[5], argv[6]))
         return 0

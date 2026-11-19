@@ -59,6 +59,13 @@ def main(argv):
         json.dump(d, fh, indent=2)
         fh.write("\n")
     os.replace(tmp, path)
+    try:   # WP23: one failure record of class plan; it never fails the block
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import failure
+        failure.record("build", "task:%d" % n, "task-test", "blocked-task", "Task %d needs %s: %s" % (n, needs, reason),
+                       ran_by="agent", class_by="structure")
+    except Exception:
+        pass
     owner = ("declared by " + ", ".join("Task %d" % o for o in owners)) if owners else "declared by no task"
     print("OK: Task %d is blocked: its test needs %s (%s). Gate it now: it fails once and the group parks for the person; "
           "it is not retried." % (n, needs, owner))

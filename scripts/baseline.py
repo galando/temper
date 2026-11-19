@@ -336,6 +336,23 @@ def finish(root, doc, started):
         d.clear()
         d.update(doc, **keep)
     update(root, put)
+    if doc.get("result") == "red":   # WP23: a red base is one failure record of class environment
+        failed_record(root, "base", "suite", doc.get("kind"), doc.get("why"), doc.get("run") or doc.get("cmd") or "",
+                      doc.get("exit_code"), doc.get("fail_lines"), "base" if doc.get("kind") == "red-base" else "exit")
+
+
+def failed_record(root, scope, check, kind, why, cmd, rc, lines, by, key=""):
+    """WP23: one record of scripts/failure.py; it never fails the baseline."""
+    try:
+        import failure
+        try:
+            st = json.load(open(os.path.join(root, ".temper", "build-state.json"))).get("next_stage") or "plan"
+        except (OSError, ValueError, AttributeError):
+            st = "plan"
+        failure.record(st, scope, check, kind or "red-base", why or "", cmd=cmd, exit=rc if isinstance(rc, int) else None,
+                       fail_lines=lines or [], class_by=by, key=key, root=root)
+    except Exception:
+        pass
 
 
 def start(root, config, spec, again=False, env_only=False):
@@ -768,6 +785,10 @@ def _plan_run(root, config, spec, started, d, todo):
         out, rc, _ = run_env.run_cached(folder, limit, [c], setup, info, fresh=fresh, root=root)   # WP22: the store
         e = dict(judge(c, out, rc, float(info.get("seconds") or 0), limit, red, missing), where=w, ended=now(),
                  **{k: v for k, v in run_env.row_fields(info).items() if k in ("tree", "reused")})
+        if e["result"] != "pass":   # WP23: a plan command that fails on the base is one failure record
+            failed_record(root, "plan-command", "validate", e.get("kind"), "%s: %s" % (c[:160], e.get("why")), c, rc,
+                          e.get("fail_lines"), "base" if e.get("kind") in ("red-base", "fails-on-base") else "exit",
+                          info.get("key") or "")
 
         def put(d, c=c, e=e):
             d.setdefault("plan", {})[c] = e

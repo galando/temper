@@ -384,12 +384,17 @@ def tree_key(wt, byproducts=None, root=None):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def versions(cmd, setup=None):
+def versions(cmd, setup=None, wt=None):
     """{program: its first version line} of each program the command starts (a path into the tree is part of the
-    digest) and of each tool of the setup block: one shell call for those not read yet in this process."""
+    digest) and of each tool of the setup block: one shell call for those not read yet in this process. A program of
+    the repository itself, named by its full path (a script in the work tree or in the git folder), is the project's
+    own: it is never started with --version, which would run it (WP23)."""
     text = cmd[0] if len(cmd) == 1 else (cmd[0] if cmd else '')
-    progs = sorted({p for p in programs(text) if p not in BUILTINS and ('/' not in p or p.startswith('/'))}
-                   | set((setup or {}).get('tools') or []))
+    own = [x.rstrip('/') + '/' for x in (_git(wt, 'rev-parse', '--show-toplevel'), _git(wt, 'rev-parse', '--git-common-dir'))
+           if x] if wt else []
+    own = [os.path.realpath(x if os.path.isabs(x) else os.path.join(os.path.abspath(wt), x)) + '/' for x in own]
+    progs = sorted({p for p in programs(text) if p not in BUILTINS and ('/' not in p or p.startswith('/'))
+                    and not (p.startswith('/') and any(os.path.realpath(p).startswith(x) for x in own))} | set((setup or {}).get('tools') or []))
     todo = [p for p in progs if p not in _VERSIONS]
     if todo:
         import shlex
@@ -421,7 +426,7 @@ def result_key(wt, cmd, setup, extra=None, tree=None):
     if not tree:
         return None, ''
     folder = _git(wt, 'rev-parse', '--show-prefix')
-    raw = json.dumps([tree, list(cmd), setup or {}, folder, versions(cmd, setup), extra], sort_keys=True, default=str)
+    raw = json.dumps([tree, list(cmd), setup or {}, folder, versions(cmd, setup, wt), extra], sort_keys=True, default=str)
     return hashlib.sha256(raw.encode('utf-8')).hexdigest(), tree
 
 

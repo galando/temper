@@ -22,6 +22,13 @@ the stage it was made at (`unattended_from`).
   typed, is no step back and the group declares no sensitive path. A finding below the level goes on and is named at
   the commit question.
 - A task an earlier task built is taken as done.
+- At a failed Build gate (the checks run when Build ends, 9.8.5, WP23) the failure record's class picks the step: a
+  fault of the environment (`environment`) is a stop with the setup question, and no fix pass; a locked acceptance test
+  that fails alone gets the triage agent, in every mode; a test the triage blames on the code gets one fix pass as the
+  CLI's own action (one repeat of `gate:build`), and then the run asks; a test the triage calls wrong is a stop with
+  the question, whose `Correct the acceptance test` is the person's. A failed suite or a measured coverage drop
+  (`code`, the only failed rows) gets one fix pass by rule, then a stop; any other failed Build gate is a stop. No rule
+  changes code for a test the triage does not blame on the code, and a class never changes a verdict.
 
 **A stop** is everything else: the park call (`temper park`), then the stage's own question, whose text says the run
 goes on by itself after the answer. The run keeps its mode; the answer's last call, `temper park --end --answer <id>`,

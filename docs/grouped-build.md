@@ -108,8 +108,11 @@ escalation, and the question recommends the loop back to Plan.
    The group gate also fails while the group is parked and when a passed task's commit is no
    longer on the group branch.
 7. **Integrate.** `temper integrate` merges the passed group branches into the feature branch
-   (`--no-ff`), removes the worktrees, runs the full suite and checks the declared
-   interfaces. A conflict or failure stops the run before Review with the cause recorded.
+   (`--no-ff`), removes the worktrees, runs the checks when Build ends in one call (`temper check
+   build-checks`: the suite in the owner's run text with its coverage, each scenario test and the
+   locked acceptance tests, into the Build ledger) and checks the declared interfaces. A conflict
+   or a failing suite stops the run before Review with the cause recorded, in the failure record
+   too; a failing scenario test, acceptance test or coverage row fails the Build gate on its row.
    Before any merge it checks that every commit on each group's branch is the CLI's or one you
    kept. When one is not, the orchestrator asks you: take the commits out of the group's branch
    (newest first; the groups are merged again), or keep them with your reason

@@ -184,6 +184,16 @@ All notable changes to Temper are documented here. The plugin version lives in
   the commit gate fails (`checked tree`) when the project changed after Check. Run it anyway (`--fresh` on `check run`,
   `group gate` and `integrate`, the option `run-anyway`) runs whatever the store holds, spends one repeat and marks the
   row `forced`. `check ahead` warms the store: gone are its adopt step, `tree_digest` and `.temper/check/ahead.json`.
+- WP23: the checks run when Build ends; one failure record. `temper integrate` runs, in one call (`temper check
+  build-checks`), the suite in the owner's run text with its coverage, each scenario test and the locked acceptance
+  tests into the Build ledger; the Build gate gains the rows `acceptance tests written before Build` and `coverage`, and
+  Check on the tree integrate left runs no command (its rows are reused). A failing locked test gets the triage first,
+  in every mode: `code` is one fix pass as the CLI's own action, `test` is the question, whose `Correct the acceptance
+  test` is yours. A fault of the environment is the setup question at Build, with no fix agent (`check-again`,
+  `it-is-the-code`, `save`). A fix run runs the suite and the regression proof when the Fix agent returns, and only a
+  proof the CLI ran counts. Every failure is one typed record in `.temper/evidence/failures.json`
+  (`scripts/failure.py`), of one of five classes; a class picks the next step and never a verdict; a step back keeps
+  it, and `state archive` copies it into `gate-ledger.json`.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

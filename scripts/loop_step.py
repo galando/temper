@@ -92,6 +92,16 @@ def step(f, frm, to, reason, ts, ledger="", state=""):
             return ''
         out = ' '.join(str(e.get('output') or '').split())
         return (': ' + out[-600:]) if out else ''
+    # WP23: the failure records of the stage the loop leaves, by id (scripts/failure.py): the text below is a copy of them
+    try:
+        recs = json.load(open(os.path.join(os.path.dirname(os.path.abspath(f)), 'evidence', 'failures.json')))
+        ids = [x['id'] for x in recs if isinstance(x, dict) and x.get('resolved') is None and x.get('stage') == frm and x.get('id')]
+    except Exception:
+        ids = []
+    if ids:
+        loop['records'] = ids[-20:]
+    else:
+        loop.pop('records', None)
     left = group_failures(f) if frm == 'build' else []
     left += [('[%s] ' % e['severity'] if e.get('severity') else '') + str(e.get('claim', ''))[:300] + out_of(e) for e in rows
              if open_row(e)]
