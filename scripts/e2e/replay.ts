@@ -160,6 +160,10 @@ const buildOne = (w: World, n: number): void => {
   t(w, `task test ${n} --phase green`)
 }
 
+// WP21: the rows the planner's own first gate failed on. The filtered verify is caught by the row
+// `maven filtered verify` as before; the plan gate runs no project command, so no other row names the JDK or the
+// database there.
+const planGateFailed: string[] = []
 const AGENTS: Record<string, Agent> = {
   'temper:temper-intent': w => {
     w.write(`${SPEC}/intent.md`, fs.readFileSync(path.join(ROOT, 'templates/example-intent.md'), 'utf8'))
@@ -175,6 +179,7 @@ const AGENTS: Record<string, Agent> = {
     t(w, 'state set complexity simple')
     t(w, 'risk')
     const gate = t(w, 'gate plan').out
+    if (planGateFailed.length === 0) planGateFailed.push(...[...gate.matchAll(/^\s*\[x\]\s+(.+?)\s+—/gm)].map(x => x[1]!), '')
     if (/\[x\] maven filtered verify/.test(gate)) w.write(`${SPEC}/tasks.md`, tasksMd(GOOD_VALIDATE))
   },
   'temper:temper-plan-review': () => undefined,
@@ -315,6 +320,7 @@ function main(): void {
     loops_recommended: m.loops,
     mvn_calls: calls.length, mvn_calls_failed_on_environment: envRuns.length,
     defect_in_commit: committed.length > 2 && !/fixed order/.test(w.run('git show HEAD:backend/src/Bytes.java 2>/dev/null').out),
+    plan_gate_failed_rows: planGateFailed.filter(Boolean),
     bad_validate_line_in_plan_at_end: (w.exists(`${SPEC}/tasks.md`) ? w.read(`${SPEC}/tasks.md`) : head).includes(BAD_VALIDATE),
     cli_seconds: Math.round(m.cli_ms / 1000),
     questions_asked: m.question_texts,

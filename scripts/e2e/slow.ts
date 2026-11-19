@@ -314,6 +314,11 @@ export const slowFirstRun = (w: World): void => {
   expect(w.counts.dialogs === 2, `D11 the run asks 2 dialogs (${w.counts.dialogs}: ${JSON.stringify(w.counts.by_stage)})`)
   const planners = w.counts.launches['temper:temper-plan'] ?? 0
   expect(planners === 1, `D11 the run never steps back to Plan: temper:temper-plan is launched once (${planners})`)
+  // WP21: the plan's Validate and Integration line are the owner's text, which the baseline ran, so `baseline plan` has
+  // nothing to run: the whole suite runs on the base (the tree of the commit the run started on) once, not twice
+  const baseTree = w.run("git log --all --format=%T -1 --grep='^chore: set up temper$'").out.trim()
+  const onBase = runs.filter(r => r.suite && baseTree !== '' && r.tree === baseTree)
+  expect(onBase.length === 1, `W21 the whole suite runs on the base once, not twice (${onBase.length} runs: ${onBase.map(r => r.args).join(' / ').slice(0, 200)})`)
   worldCheck(w)
 }
 

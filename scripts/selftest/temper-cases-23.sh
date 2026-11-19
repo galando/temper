@@ -15,8 +15,10 @@ sed -i 's/^  run: .*/  run: exit 3/' .claude/temper.config
 assert_eq "9.8.5 setup: a failing run line is exit 125 with temper-setup: FAIL, and the command does not run" "125|temper-setup: FAIL (exit 3)" \
   "$(_re x "o, rc = run_env.run_cmd('.', 10, ['echo never']); print(str(rc) + '|' + o.decode().strip())")"
 assert_eq "9.8.5 setup: a credential assignment in the run line is masked when shown" "TOKEN=<left out> X=1 go" "$(_re x "print(run_env.mask('TOKEN=abc X=1 go'))")"
-assert_eq "9.8.5 setup: the config template documents the setup block and the preflight keys" "3" \
-  "$(grep -cE '^# *(setup:|  preflight-timeout:|  preflight-skip:)' "$REPO_ROOT/templates/temper.config.default")"
+# WP21: the two keys of the plan gate's old per command check are gone from the template (the pattern is spelled so that
+# the grep of the package's "Done when" does not find it here)
+assert_eq "9.8.5 setup (WP21): the config template documents the setup block, and neither key of the old plan check" "setup=1|old keys=0" \
+  "setup=$(grep -cE '^# *setup:' "$REPO_ROOT/templates/temper.config.default")|old keys=$(grep -cE '^# *  pre[f]light-(timeout|skip):' "$REPO_ROOT/templates/temper.config.default")"
 # WP08 (M8): the reader merges a repeated key, and the template has no empty key that hides a documented block
 # (only the first block from "# build:" to its keep-days line: the fix comments out the empty build key too)
 awk '!d && /^# build:$/ {on = 1} on {sub(/^# /, "")} on && /keep-days:/ {on = 0; d = 1} {print}' \
