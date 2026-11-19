@@ -268,6 +268,18 @@ bad = [c for o in opts(d) for c in o.get('calls') or [] if re.search(r' state (r
 r = '%s:%s:%s' % (d.get('action'), a.get('id'), 'no refused call' if not bad else 'offers a refused call')")"
 assert_eq "D38c no variable and no argument exempts a call; at the limit next is the question run.budget and offers no refused call" \
   "env=1|arg=1|count=2:2|ask:run.budget:no refused call" "env=$_d38c_env|arg=$_d38c_arg|count=$_d38c_n:$(_used45)|$_d38c_next"
+# A run whatever the reuse store holds is the counted `check run --fresh` only: an inherited TEMPER_FRESH and the flag on
+# `check build-checks` run nothing a kept pass holds, and spend nothing.
+_check45; rm -rf .git src; git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T
+mkdir -p src; echo 'echo demo' > src/demo.sh; git add -A -- . ':(exclude).temper' ':(exclude).claude'; git commit -q -m base
+printf 'check:\n  commands:\n    test: "echo run >> .temper/count45"\n' >> .claude/temper.config
+_n45() { if [[ -f .temper/count45 ]]; then wc -l < .temper/count45 | tr -d ' '; else echo 0; fi; }
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" check run >/dev/null 2>&1; _d38c_kept="kept=$(_n45):$(_used45)"
+TEMPER_FRESH=1 "$TEMPER" check run >/dev/null 2>&1; _d38c_kept+="|variable=$(_n45):$(_used45)"
+"$TEMPER" check build-checks --fresh >/dev/null 2>&1; _d38c_kept+="|build-checks=$(_n45):$(_used45)"
+assert_eq "D38c an inherited TEMPER_FRESH and check build-checks --fresh run nothing a kept pass holds and spend nothing" \
+  "kept=1:0|variable=1:0|build-checks=1:0" "$_d38c_kept"
+rm -rf .git src
 
 _check45
 printf 'fix:\n  max-loops: 9\nfeedback:\n  enabled: false\n' >> .claude/temper.config

@@ -278,6 +278,7 @@ def store_change(path, fn):
         if len(keys) > KEEP:
             for k in sorted(keys, key=lambda k: _newest(d[k]))[:len(keys) - KEEP]:
                 d.pop(k, None)
+        _drop_locks(path, d)
         try:
             tmp = '%s.tmp.%d' % (path, os.getpid())
             with open(tmp, 'w') as f:
@@ -286,6 +287,33 @@ def store_change(path, fn):
         except OSError:
             pass
         return d
+
+
+def _drop_locks(path, d):
+    """The lock file of a key the store no longer holds goes, unless a run holds it now: the folder stays small."""
+    folder = os.path.join(os.path.dirname(path), 'temper-locks')
+    try:
+        import fcntl
+        names = [n for n in os.listdir(folder) if n.endswith('.lock') and not isinstance(d.get(n[:-5]), dict)]
+    except (ImportError, OSError):
+        return
+    for n in names:
+        try:
+            fd = os.open(os.path.join(folder, n), os.O_RDWR)
+        except OSError:
+            continue
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.unlink(os.path.join(folder, n))
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+
+
+def _tops(wt):
+    """The top folder of every worktree of the clone."""
+    return [x[9:] for x in _git(wt, 'worktree', 'list', '--porcelain').splitlines() if x.startswith('worktree ')]
 
 
 def untracked(wt):
@@ -538,7 +566,7 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
             note = '[temper: the same command passed on this same tree at %s; reused, not run again]\n' % rec.get('ts', '?')
             return (note + str(rec.get('tail', ''))).encode('utf-8'), 0, str(rec.get('ts', ''))
         note = ('[temper: the same command failed on this same tree at %s (exit %s); not run again: change the code, the '
-                'command or the environment, or run it anyway]\n' % (rec.get('ts', '?'), rec.get('rc')))
+                'command or the setup block, or run it anyway]\n' % (rec.get('ts', '?'), rec.get('rc')))
         return (note + str(rec.get('tail', ''))).encode('utf-8'), int(rec.get('rc') or 1), str(rec.get('ts', ''))
     if key and not fresh:
         got = hit(store.get(key))
@@ -580,6 +608,7 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
         if new:
             new = byproducts_of(wt, None, root, new)
         ts = _now()
+        tops = _tops(wt) if new or store.get(BYPRODUCTS) else []
 
         def put(d):
             e = d.get(key) if isinstance(d.get(key), dict) else {}
@@ -596,8 +625,9 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
             if fresh:
                 e['forced'] = ts
             d[key] = e
-            if new:
-                d[BYPRODUCTS] = sorted(set(x for x in d.get(BYPRODUCTS) or [] if isinstance(x, str)) | set(new))
+            if new or (tops and d.get(BYPRODUCTS)):   # a byproduct no worktree holds any more leaves the list
+                d[BYPRODUCTS] = sorted(x for x in set(x for x in d.get(BYPRODUCTS) or [] if isinstance(x, str)) | set(new)
+                                       if not tops or any(os.path.lexists(os.path.join(t, x)) for t in tops))
         store_change(path, put)
     return out, rc, ''
 

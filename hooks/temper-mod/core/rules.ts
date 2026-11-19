@@ -387,7 +387,7 @@ const TOO_MANY_DENY =
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
-  'budget', 'grant', 'baseline', 'accept-red', 'skip', ...STAGES]
+  'budget', 'grant', 'baseline', 'accept-red', 'skip', '--fresh', ...STAGES]
 
 const RESOLVE_DENY =
   'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
@@ -529,6 +529,8 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   // baseline's own calls (start, clean, plan) are the CLI's. WP21: a skip of a command the plan wrote, with a reason,
   // is the person's at plan.command.
   if (a === 'baseline') return b === 'accept-red' || b === 'skip'
+  // WP22 (step 11): Run it anyway, a check run whatever the reuse store holds, is the person's option only.
+  if (w.includes('--fresh') && ((a === 'check' && (b === 'run' || b === 'build-checks')) || (a === 'group' && b === 'gate') || a === 'integrate')) return true
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true
