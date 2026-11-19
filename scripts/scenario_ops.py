@@ -122,13 +122,55 @@ def failure(name, cmd, rc, out=b""):
 
 
 def run_owed(items, cwd, timeout):
-    """Run (name, cmd) pairs; returns the first failure message, or ''. Records nothing."""
+    """Run (name, cmd) pairs; returns the first failure message, or ''. Records only a flaky pass (_flaky_row)."""
     import baseline
     for name, cmd in items:   # WP22: through the reuse store, so the same test on the same tree runs once
-        out, rc, _ = run_env.run_cached(cwd, baseline.limit_for(cmd, timeout), [cmd])   # WP20: the limit from the base
+        info = {}
+        out, rc, _ = run_env.run_cached(cwd, baseline.limit_for(cmd, timeout), [cmd], info=info)   # WP20: the limit from the base
         if rc != 0:
             return failure(name, cmd, rc, out)
+        if info.get("flaky"):
+            _flaky_row(name, cmd, info)
     return ""
+
+
+def _flaky_row(name, cmd, info):
+    """WP22 step 9: a flaky pass of an owed scenario test is a row of the Build ledger, which the commit card lists. It is
+    appended under the CLI's own lock (.temper/.lock, taken as the CLI takes it); a lock not had in 10 s leaves it out."""
+    import shutil
+    lock, tok = os.path.join(".temper", ".lock"), "%d.%d" % (os.getpid(), int(time.time() * 1e6))
+    end, nw = time.time() + 10, os.path.join(".temper", ".lock.new." + tok)
+    while True:
+        try:
+            if not os.path.exists(lock):
+                os.mkdir(nw)
+                open(os.path.join(nw, "owner"), "w").write(tok)
+                os.rename(nw, lock)
+                if open(os.path.join(lock, "owner")).read() == tok:
+                    break
+        except OSError:
+            pass
+        shutil.rmtree(nw, ignore_errors=True)
+        if time.time() > end:
+            return
+        time.sleep(0.02)
+    try:
+        p = os.path.join(".temper", "evidence", "build.json")
+        try:
+            rows = json.load(open(p))
+        except (OSError, ValueError):
+            rows = []
+        rows = rows if isinstance(rows, list) else []
+        rows.append(dict({"claim": "scenario test at a gate: %s" % name, "cmd": cmd, "exit_code": 0, "phase": "scenario",
+                          "executed_by": "cli", "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+                         **run_env.row_fields(info)))
+        with open(p + ".tmp.%d" % os.getpid(), "w") as fh:
+            json.dump(rows, fh, indent=2)
+        os.replace(p + ".tmp.%d" % os.getpid(), p)
+    except OSError:
+        pass
+    finally:
+        shutil.rmtree(lock, ignore_errors=True)
 
 
 def main(argv):

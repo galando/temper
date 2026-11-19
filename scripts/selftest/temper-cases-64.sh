@@ -265,6 +265,18 @@ _w3+="|rows=$(_ledger64 check "','.join('%s%s' % (kind(x), '+' if x.get('reused'
 _w3+="|edited=suite $(_n64 suite),first $(_n64 'scenario first'),second $(_n64 'scenario second'),acceptance $(_n64 acceptance)"
 assert_eq "w23 Check reuses: on the tree integrate left check run runs no command and records the suite, coverage, scenario and acceptance rows as reused with their tree; after one edit of a tracked file every one of them runs" \
   "same tree=0 runs|rows=suite+,coverage+,scenario+,scenario+,acceptance+|edited=suite 1,first 1,second 1,acceptance 1" "$_w3"
+# the plan's Integration line owns the suite when the config and detect name none: at Check too, so Check runs through the
+# CLI and reuses integrate's run of it, and never ends for want of a test command
+_tasks64 | sed "s|^\*\*Integration:\*\* \`true\`\$|**Integration:** \`$P64/suite\`|" | m_setup
+_progs64; _intent64; _acc64; _passed64
+"$TEMPER" evidence add --stage build --phase red --claim 'unit tests' --cmd 'true' --exit 1 >/dev/null 2>&1
+"$TEMPER" evidence add --stage build --phase green --claim 'unit tests' --cmd 'true' --exit 0 >/dev/null 2>&1
+: > "$P64/log"; _integ64; gpass build review; _at check
+_w3b="next=$(_x64 "r = 'the CLI runs Check' if any(short(c).startswith('check run') for c in d.get('calls') or []) else '%s:%s' % (d.get('action'), [short(c)[:40] for c in d.get('calls') or []])")"
+"$TEMPER" check run >/dev/null 2>&1; _w3b+="|check run=exit $?"
+_w3b+="|suite=integrate $(_ledger64 build "sum(1 for x in rows if kind(x) == 'suite')"),runs $(_n64 suite),check $(_ledger64 check "next(('reused' if x.get('reused') else 'ran') for x in rows if kind(x) == 'suite') if any(kind(x) == 'suite' for x in rows) else 'no suite row'")"
+assert_eq "w23 one owner: with no test command in the config and none detected, the plan's Integration line is the suite at Check too, which reuses integrate's run" \
+  "next=the CLI runs Check|check run=exit 0|suite=integrate 1,runs 1,check reused" "$_w3b"
 
 # --- w23 triage first, in every mode: a failing locked test at the Build gate gets the triage agent ---
 _accfail64() { # _accfail64: a run at Build, integrated, whose Build gate failed on the locked acceptance test alone

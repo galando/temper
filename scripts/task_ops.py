@@ -414,6 +414,8 @@ elif mode == 'testrun':
         out, rc = run_cmd(wt, timeout, ['python3', '-E', '-s', loop, 'run', wt, str(timeout), cmd[0]] + task['files'])
     else:
         out, rc = run_cmd(wt, timeout, cmd)
+    if rc == 124:   # WP20 mechanism 14: twice the limit is kept, the next run's limit
+        baseline.timed_out(' '.join(cmd), timeout)
     # F5: untracked paths that first appear during this CLI run (__pycache__, coverage files, logs) are the test
     # command's byproducts; the task verdict does not count them as undeclared changes
     byproducts = sorted(untracked(wt) - before)

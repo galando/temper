@@ -749,8 +749,10 @@ class WorkPart:
                 and not (c.get("deferred") and c.get("optional"))]
 
     def cli_check(self):
-        """True when the CLI can run Check itself: a configured test command, or one it detects for the stack."""
+        """True when the CLI can run Check itself: a configured test command, one it detects for the stack, or else the
+        plan's Integration line (WP23 mechanism 2, as check_run.run reads it)."""
         try:
-            return bool(check_run.det_for(os.getcwd(), self.r.cfg("check.commands.test", ""), self.r.cfg("check.commands.coverage", "")))
+            return bool(check_run.det_for(os.getcwd(), self.r.cfg("check.commands.test", ""), self.r.cfg("check.commands.coverage", ""))
+                        or check_run.plan_line(self.r.spec))
         except Exception:
             return False

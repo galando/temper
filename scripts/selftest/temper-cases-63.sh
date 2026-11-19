@@ -313,6 +313,25 @@ _r0=$(_runs63); FLAKY63_LINE='FAIL: src/clock63.sh:3 expected the final value' _
 _l63+="|declared=$(( $(_runs63) - _r0 )) run,$(_row63 .temper/evidence/check.json tests "'flaky' if x.get('flaky') else 'not flaky'")"
 assert_eq "w22 flaky: a command that passed on the base, fails once and then passes runs twice in one call (no agent between), and the row and the store entry say flaky; a failure that names a declared file runs once" \
   "base=green|one call=2 runs|row=flaky,0|store=flaky|declared=1 run,not flaky" "$_l63"
+# The flaky pass reaches the commit card when it is reused (a run beside Review, integrate's run) and when a gate's owed
+# scenario test made it (scenario_ops.run_owed, which records no row of its own)
+_flaky63; _check63; _check63
+_g63="reused=$(_row63 .temper/evidence/check.json tests "'%s,%s' % ('reused' if x.get('reused') else 'ran', 'flaky' if x.get('flaky') else 'not flaky')")"
+_flaky63
+_g63+="|owed=$(python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import scenario_ops
+why = scenario_ops.run_owed([("first", "bash flaky63.sh")], os.getcwd(), "60")
+try:
+    rows = json.load(open(".temper/evidence/build.json"))
+except (OSError, ValueError):
+    rows = []
+print(why or ("flaky" if any(isinstance(x, dict) and isinstance(x.get("flaky"), dict) for x in rows) else "no flaky row"))
+PY
+)"
+assert_eq "w22 flaky: a reused flaky pass keeps flaky on its row, and an owed scenario test's flaky pass is a Build row the card lists" \
+  "reused=reused,flaky|owed=flaky" "$_g63"
 # The base itself fails one test (a red base the person went on with, as in the scenario broken-flaky): a failure known
 # at the base counts as the base's pass. The change meets a flaky test once; the second run fails like the base.
 _suite63 "bash flaky63.sh"; rm -f .git/flaky63.done
@@ -454,4 +473,11 @@ echo 'echo edited' > src/a63.sh; "$TEMPER" gate check >/dev/null 2>&1
 _v63+="|edited=$([[ "$(_tree63 check)" != None && "$(_tree63 check)" != "$_t63" && "$(_tree63 check)" != "$_head63" ]] && echo changed || echo "same ($(_tree63 check))")"
 assert_eq "w22 every verdict names its tree: after gate build and gate check each entry of gates.json holds the tree of the clean project, and an edit of a tracked file changes it" \
   "build=HEAD tree|check=HEAD tree|edited=changed" "$_v63"
+_suite63 "bash pass63.sh"; _check63
+_ran63="$(_row63 .temper/evidence/check.json tests "x.get('tree') or ''")"
+echo 'echo edited after check run' > src/a63.sh; "$TEMPER" gate check >/dev/null 2>&1
+_e63="verdict=$([[ -n "$_ran63" && "$(_tree63 check)" == "$_ran63" ]] && echo 'the rows tree' || echo "$(_tree63 check), rows $_ran63")"
+_e63+="|commit gate=$(python3 -B "$REPO_ROOT/scripts/run_env.py" checked .temper/gates.json "$PWD" | cut -c1-4)"
+assert_eq "w22 every verdict names its tree: an edit between check run and gate check leaves the verdict on the tree its rows ran on, and the commit gate fails" \
+  "verdict=the rows tree|commit gate=FAIL" "$_e63"
 _clean63; rm -f .git/count63

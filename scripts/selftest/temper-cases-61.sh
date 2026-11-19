@@ -393,6 +393,27 @@ done < <(_x61 "r = '\n'.join(d.get('calls') or []) if d.get('action') == 'auto' 
 _t61+="|again=$(_gv61)|then=$(_x61 "r = '%s:%s' % (d.get('action'), (d.get('ask') or {}).get('id'))")"
 assert_eq "w20 limits: the group gate's limit follows the base; after one time out the CLI's own call runs it with twice the limit, and after a second the run asks" \
   "measured=PASS|none=FAIL|1|then=auto:group gate G1 --timeout-s 2|again=FAIL|2|then=ask:group.fail" "$_t61"
+_lim_kept61() { _b61 "(d.get('limits') or {}).get('bash slow61.sh')"; }   # the limit kept for the slow script
+fresh; _clean61; _scripts61; _cmd61 "bash slow61.sh"; _repo61; gpass intent plan build review; _at check
+TEMPER_CHECK_TIMEOUT_S=1 "$TEMPER" check run >/dev/null 2>&1
+_o61="check=$(_lim_kept61)"
+TEMPER_CHECK_TIMEOUT_S=1 "$TEMPER" check run >/dev/null 2>&1
+_o61+="|runs=$(wc -l < .git/count61 | tr -d ' ')"
+_known61; python3 -B "$REPO_ROOT/scripts/task_ops.py" testrun . 1 "$WORKDIR/.git/row61" 1 G1 1 green -- bash slow61.sh \
+  >/dev/null 2>&1 </dev/null
+_o61+="|task=$(_lim_kept61)"
+assert_eq "w20 limits: a time out of Check's suite or of a task test keeps twice its limit, and the next Check runs it again" \
+  "check=2|runs=2|task=2" "$_o61"
+fresh; _clean61; _scripts61; _cmd61 "true"; _repo61; gpass intent plan build review; _at check
+mkdir -p .temper/specs/demo/acceptance; printf 'sleep 2\necho ok\n' > .temper/specs/demo/acceptance/test_acc61.sh
+"$TEMPER" acceptance lock --cmd "bash .temper/specs/demo/acceptance/test_acc61.sh" >/dev/null 2>&1
+printf '{"result": "unknown", "limits": {"bash .temper/specs/demo/acceptance/test_acc61.sh": 30}}\n' > .temper/evidence/baseline.json
+TEMPER_CHECK_TIMEOUT_S=1 "$TEMPER" check run >/dev/null 2>&1
+assert_eq "w20 limits: Check's run of the locked acceptance tests takes its limit from the baseline (limit_for)" "0" \
+  "$(python3 -B -c "
+import json
+r = [x for x in json.load(open('.temper/evidence/check.json')) if str(x.get('claim', '')).startswith('acceptance (written')]
+print(r[-1].get('exit_code') if r else 'no acceptance row')" 2>&1)"
 
 # --- w20 fix run and door: a red base of kind red-base in a fix run is recorded, a failing setup line asks; a door
 #     into Review checks the environment and runs no suite ---
