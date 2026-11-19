@@ -87,7 +87,8 @@ export type RunView = {
     integration: string | null
   }
   findings: Array<{ id: number; severity: string; confidence: number | null; claim: string; file: string | null; line: number | null; state: 'open' | 'resolved' | 'accepted'; label: string | null }>
-  checks: Array<{ name: string; pass: boolean; detail: string }>
+  // WP19: `state` beside `pass`: 'not measured' is the third state (the CLI's pass null), never read as passed
+  checks: Array<{ name: string; pass: boolean; state: string | null; detail: string }>
   markers: Array<{ name: string; state: 'pass' | 'fail' | 'info' | 'none'; detail: string; value: number | null; lines: string[] }>
   criteria: Array<{ id: string; priority: string; status: string; text: string; evidence: string[] }>
   loops: Array<{ from: string; to: string; reason: string; iteration: number; max: number; at: string }>
@@ -312,7 +313,7 @@ export function parseRunView(text: string): RunView | null {
         label: strOrNull(f.label),
       }
     }),
-    checks: arr(v.checks).map(x => ({ name: str(obj(x).name), pass: obj(x).pass === true, detail: str(obj(x).detail) })),
+    checks: arr(v.checks).map(x => ({ name: str(obj(x).name), pass: obj(x).pass === true, state: strOrNull(obj(x).state), detail: str(obj(x).detail) })),
     markers: arr(v.check_markers).map(x => {
       const m = obj(x)
       return { name: str(m.name), state: oneOf(m.state, ['pass', 'fail', 'info', 'none'] as const, 'none'), detail: str(m.detail), value: numOrNull(m.value), lines: strs(m.lines) }

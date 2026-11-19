@@ -205,7 +205,7 @@ Temper will:
    Scenario Coverage: 5/5
 
 ✅ All tests passing
-✅ Coverage: 85% (threshold: 80%)
+✅ Coverage: 85% (rule total, against the base value 84%)
 ```
 
 ## Configuration
@@ -228,9 +228,8 @@ review:
   block-on: [critical, high]
   confidence-threshold: 0.7
 
-# Check options
+# Check options (coverage is judged against the project: no threshold key)
 check:
-  coverage-threshold: 80
   live-scenarios: prompt    # prompt | always | never
 
 # MCP-powered analysis (optional)

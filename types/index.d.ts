@@ -20,6 +20,7 @@ export type TemperView = {
   status: string
   detail: string[]
   failedChecks: Array<{ name: string; detail: string }>
+  unmeasured: Array<{ name: string; detail: string }>
   groups: Array<{ id: string; title: string; state: 'waiting' | 'running' | 'passed' | 'parked'; tasks: TemperTask[] }> | null
   findings: Array<{ id: string; severity: string; claim: string }>
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string; evidence: string[] }>

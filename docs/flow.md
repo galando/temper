@@ -355,8 +355,10 @@ state with none, saved at Review, loses its Review verdict once, so Review runs 
 `Run.armed` is `run_mode: autonomous`, an `unattended_from` other than the stage the run is at, and no `parked`. Then a
 passed Design, Build, group, Review or Check is an `auto` advance. Review: an open finding at a level of
 `review.block-on` takes the repair; one below goes on and is named at the commit question. Check: a setup fault, a
-missing measurement, the acceptance rows, a criterion only the person can confirm, a failed mutation row alone and the
-row `intent unchanged since the approval` stop; anything else takes the repair. The repair is one counted `state loop
+missing test run, the acceptance rows, a criterion only the person can confirm and the row `intent unchanged since the
+approval` stop; anything else, a measured coverage drop with it, takes the repair. A coverage not measured fails
+nothing: the run moves on and the commit card names it; no rule repairs it. The planted bug score moves nothing.
+The repair is one counted `state loop
 <stage> build --reason 'rule: ...'`; a second one, a plan that declares a file under `autonomy.park-on-touch`, or a key with no room stops. A failed group check takes its
 recommended option when it has calls, needs nothing typed, does not save the run, is no step back and the group declares
 no sensitive file. Every other case is a stop (`scripts/stops.json`).
@@ -508,8 +510,8 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 | `fresh` | 9.7.6: the fresh review of the plan, `null` when it does not apply: `{paraphrase, missing, stale, findings: [{id, severity, lens, claim, state, cite}]}`; `missing` names each lens and reviewer with no completion row (`readiness A`); `state` is `open`, `resolved`, `accepted`, `contested` or `escalated`; `cite` is a contest's checked citation |
 | `build` | `{groups: [{id, title, status, verdict, tasks: [{n, title, files, state, model, attempts}]}], integration}`; a task's `state` is `waiting`, `running`, `red`, `green`, `pass`, `fail` or `parked` |
 | `findings` | `[{id, severity, confidence, claim, file, line, state, label}]`; `confidence` is the reviewer's 0 to 1 (`temper evidence add --confidence`) or `null`; `file` and `line` come from a claim that starts `file:line`; `state` is `open`, `resolved` or `accepted` |
-| `checks` | the rows of the Check gate: `[{name, pass, detail}]` |
-| `check_markers` | `[{name, state, detail, value?, lines}]` for compile, tests, coverage, lint and security; `state` is `pass`, `fail`, `info` or `none` |
+| `checks` | the rows of the Check gate: `[{name, pass, detail, state?}]`; 9.8.5 (WP19): `pass` is `null` and `state` is `not measured` for a measurement that was not taken (the row `coverage` with no coverage tool or no base value), which fails nothing and passes nothing |
+| `check_markers` | `[{name, state, detail, value?, lines}]` for compile, tests, coverage, lint and security, and `mutation` (WP19) when `.temper/evidence/mutation.json` measured the tree as it is: the planted bug score beside Review, always `info`; `state` is `pass`, `fail`, `info` or `none`; the coverage marker follows the gate's row `coverage`, `info` with the detail `not measured: <why>` for the third state |
 | `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |

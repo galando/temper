@@ -8,7 +8,7 @@ WHAT IS TRUE (0 of 5 met)
  AC-05 criterion 5                                                    [open]
 
 THE SUITE: no run is recorded [not measured]
-COVERAGE: no value is recorded [not measured]
+COVERAGE: not measured: no coverage was recorded
 
 REVIEW (open: 1 critical, 1 low)
  [critical] src/app.ts:12 the token never expires                     [open]

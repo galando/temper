@@ -69,8 +69,32 @@ export class World {
     this.env.TEMPER_E2E_COUNT = this.countFile
     this.sh('git init -q . && git checkout -q -B main')
   }
+  // WP19: the planted bugs of `temper check ahead` go on in the background after Check adopted its run (Check never
+  // waits for them). Their runs of the suite are counted once that process of this world has ended (at most two
+  // minutes), so the count is the same on every run. Where /proc cannot be read, nothing is waited for.
+  waitAhead(limitMs = 120000): void {
+    const mine = (): boolean => {
+      let ids: string[] = []
+      try {
+        ids = fs.readdirSync('/proc').filter(x => /^\d+$/.test(x))
+      } catch {
+        return false
+      }
+      return ids.some(id => {
+        try {
+          const c = fs.readFileSync(`/proc/${id}/cmdline`, 'utf8')
+          return c.includes('check_run.py') && c.includes('\0ahead\0') && c.includes(this.dir)
+        } catch {
+          return false
+        }
+      })
+    }
+    const t0 = Date.now()
+    while (mine() && Date.now() - t0 < limitMs) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+  }
   // The counts of the run so far, with the suite runs read from the count file and `launch_total`, the sum of the launches.
   finalCounts(): Counts & { launch_total: number } {
+    this.waitAhead()
     let suite = 0
     try {
       suite = fs.readFileSync(this.countFile, 'utf8').split('\n').filter(Boolean).length
