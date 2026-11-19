@@ -7,9 +7,10 @@ import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult, RunFacts } from '../../hooks/temper-mod/core/rules'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
 import { STAGES } from '../../hooks/temper-mod/core/stages'
+import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import { stateAt } from './helpers'
-import { nextCalls, optionCalls, shownOf } from './run-files'
-import { CLI_SEQ } from './world'
+import { deriveView, nextCalls, optionCalls, runFiles, shownOf } from './run-files'
+import { CLI_SEQ, denyText, world } from './world'
 
 const SPEC = '.temper/specs/pw'
 const CLI = 'scripts/temper'
@@ -162,7 +163,7 @@ describe('what only the person may cause, at the step the run is at', () => {
   })
 
   test('a step back needs the person\'s step back to that stage', () => {
-    const back = optionCalls('review-fail', 'Loop back to Build (Recommended)')
+    const back = optionCalls('review-fail', 'Loop back to Build')
     expect('allow' in bash(ctx('review', { allowed: back }), `${CLI} state loop review build --reason "a real bug"`)).toBe(true)
     expect(isDeny(bash(ctx('review', { allowed: back }), `${CLI} state loop review plan --reason x`))).toBe(true)
     expect(isDeny(bash(ctx('review'), `${CLI} state loop review build --reason x`))).toBe(true)
@@ -309,7 +310,7 @@ describe('review of the one flow: what goes around a gate', () => {
 
   test('a step back and a move on in one command: the mod lets the step back through, the CLI refuses the move on', () => {
     // After the loop the run is at Build; `state advance check_complete commit` then fails in the CLI (advance_ok).
-    const back = ctx('check', { allowed: optionCalls('check-fail', 'Loop back to Build (Recommended)') })
+    const back = ctx('check', { allowed: optionCalls('check-fail', 'Loop back to Build') })
     expect('allow' in bash(back, `${CLI} state loop check build --reason x && ${CLI} state advance check_complete commit`)).toBe(true)
     expect(isDeny(bash(back, `${CLI} state loop check plan --reason x`))).toBe(true)
   })
@@ -412,7 +413,7 @@ describe('the budget: only the person grants more, and its record is the CLI\'s'
       expect(bash(ctx(stage), grant(`gate:${stage}`, 'the next try is different')), stage).toEqual({ deny: ONLY_USER })
     }
     // no other call of an answer lets it through: the step back of the same question is not a grant
-    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    const back = optionCalls('check-fail', 'Loop back to Build')
     expect(bash(ctx('check', { allowed: back }), grant('gate:check'))).toEqual({ deny: ONLY_USER })
   })
 
@@ -465,7 +466,7 @@ describe('the red base: only the person goes on anyway', () => {
       expect(bash(ctx(stage), accept()), stage).toEqual({ deny: ONLY_USER })
     }
     // the call of another answer does not let it through
-    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    const back = optionCalls('check-fail', 'Loop back to Build')
     expect(bash(ctx('check', { allowed: back }), accept())).toEqual({ deny: ONLY_USER })
   })
 
@@ -554,5 +555,90 @@ describe('a command the plan wrote: only the person skips its check', () => {
     for (const cmd of [`${CLI} baseline plan`, `${CLI} baseline plan --cmd 'make check'`]) {
       expect('allow' in bash(ctx('plan'), cmd), cmd).toBe(true)
     }
+  })
+})
+
+// 9.8.5 (WP24): a finding is repaired in its stage. `repair start` is the person's unless it is the CLI's own action;
+// `repair commit`, `close` and `revert` pass only as calls of the action the view names (the fixer's after call, the
+// recheck's, the CLI's revert). Inside a repair window (the view's guard.adhoc_kind `repair`) the write rule is
+// Build's: a planned file or a test passes, any other path is scope drift; the small change window still allows any
+// path.
+describe('WP24: the repair in the stage', () => {
+  const REPAIR = { adhocStage: 'review', ...({ adhocKind: 'repair' } as unknown as Over) }
+  test('repair start typed by an agent or the session is refused, at Review and at Check', () => {
+    for (const stage of ['review', 'check'] as const) {
+      for (const cmd of [`${CLI} repair start --stage ${stage}`, `${CLI} repair start --stage ${stage} --again`]) {
+        expect(isDeny(bash(ctx(stage), cmd)), cmd).toBe(true)
+      }
+    }
+  })
+  test('repair start passes as the CLI\'s own action, and the Repair again answer as the person\'s', () => {
+    const own = `${CLI} repair start --stage review`
+    expect('allow' in bash(ctx('review', { allowed: [own] }), own)).toBe(true)
+    const again = `${CLI} repair start --stage review --again`
+    expect('allow' in bash(ctx('review', { allowed: [again] }), again)).toBe(true)
+    expect(isDeny(bash(ctx('review', { allowed: [own] }), again))).toBe(true)
+  })
+  test('repair commit, close and revert pass only as calls of the action the view names', () => {
+    for (const word of ['commit', 'close', 'revert']) {
+      const cmd = `${CLI} repair ${word}`
+      expect(isDeny(bash(ctx('review'), cmd)), cmd).toBe(true)
+      expect('allow' in bash(ctx('review', { allowed: [cmd] }), cmd), cmd).toBe(true)
+    }
+  })
+  test('the fixer\'s test runs and the status are no decision: repair test and repair status pass', () => {
+    for (const cmd of [`${CLI} repair test 1 --phase red -- sh unit/app.test.sh`, `${CLI} repair test 1 --phase green -- sh unit/app.test.sh`,
+      `${CLI} repair status`]) {
+      expect('allow' in bash(ctx('review', { facts: REPAIR }), cmd), cmd).toBe(true)
+    }
+  })
+  test('inside a repair window a write outside the plan is refused with the scope drift text; a planned file and a test pass', () => {
+    for (const tool of ['Write', 'Edit']) {
+      const r = write(ctx('review', { facts: REPAIR }), 'src/billing.ts', tool)
+      expect(isDeny(r) && r.drift, tool).toBe('src/billing.ts')
+      for (const word of ['scope drift', 'src/billing.ts', 'add to plan', 'revert', 'allow once']) expect(isDeny(r) && r.deny, `${tool} ${word}`).toContain(word)
+      expect('allow' in write(ctx('review', { facts: REPAIR }), 'src/app.ts', tool), tool).toBe(true)
+      expect('allow' in write(ctx('review', { facts: REPAIR }), 'unit/app.test.ts', tool), tool).toBe(true)
+    }
+    const atCheck = { adhocStage: 'check', ...({ adhocKind: 'repair' } as unknown as Over) }
+    expect(isDeny(write(ctx('check', { facts: atCheck }), 'src/billing.ts'))).toBe(true)
+    expect('allow' in write(ctx('check', { facts: atCheck }), 'src/app.ts')).toBe(true)
+  })
+  test('the control: a small change window still allows any path', () => {
+    for (const stage of ['review', 'check'] as const) {
+      expect('allow' in write(ctx(stage, { facts: { adhocStage: stage } }), 'src/billing.ts'), stage).toBe(true)
+      const small = { adhocStage: stage, ...({ adhocKind: 'small' } as unknown as Over) }
+      expect('allow' in write(ctx(stage, { facts: small }), 'src/billing.ts'), stage).toBe(true)
+    }
+  })
+})
+
+// The same through the real hook: the mod reads guard.adhoc_kind of the view the CLI wrote (core/runview.ts,
+// adapter.ts).
+describe('WP24: the repair window is read from the view', () => {
+  const START = { cwd: '/repo', surface: null, isInteractive: false } as const
+  const files = (kind: string | null): Record<string, string> => {
+    const f = runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'PASS', review: 'FAIL' } })
+    const v = JSON.parse(deriveView(p => f[p]) ?? '{}') as { guard: Record<string, unknown> }
+    v.guard.adhoc_stage = 'review'
+    if (kind !== null) v.guard.adhoc_kind = kind
+    return { ...f, '.temper/view.json': JSON.stringify(v) }
+  }
+  test('parseRunView reads adhoc_kind beside adhoc_stage', () => {
+    const rv = parseRunView(files('repair')['.temper/view.json'] as string)
+    expect(rv?.guard?.adhocStage).toBe('review')
+    expect((rv?.guard as unknown as Record<string, unknown> | null | undefined)?.adhocKind).toBe('repair')
+  })
+  test('an agent\'s write outside the plan is scope drift in a repair window, and passes in a small change window', async ($, on) => {
+    world(on, files('repair'), { projectRoot: '/repo' })
+    await $.session.start(START)
+    const outside = denyText(await $.tool.call({ tool: 'Write', file_path: 'src/billing.ts', content: 'x', agentId: 'agent' } as never))
+    const planned = denyText(await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x', agentId: 'agent' } as never))
+    expect([outside.includes('scope drift'), planned]).toEqual([true, ''])
+  })
+  test('the control: in a small change window the same write passes', async ($, on) => {
+    world(on, files(null), { projectRoot: '/repo' })
+    await $.session.start(START)
+    expect(denyText(await $.tool.call({ tool: 'Write', file_path: 'src/billing.ts', content: 'x', agentId: 'agent' } as never))).toBe('')
   })
 })

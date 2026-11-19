@@ -115,13 +115,16 @@ assert_exit "advance: a run whose person asked for Design may not skip it" 1 "$T
 fresh; gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 "$TEMPER" evidence add --stage review --claim "src/demo.sh:3 the input is not checked" --severity critical >/dev/null 2>&1
 gfail review "no blocking findings" "1 open finding"
-assert_eq "next: Review FAIL with an open finding: loop back first, accept a finding, override" \
-  "Loop back to Build (Recommended)|Accept a finding|Override and continue|More options" "$(labels)"
+# WP24: the loop back to Build is no longer the first answer to a blocking finding: the repair in the stage is (Repair
+# again, while the budget allows); the loop back stays offered as the way out
+assert_eq "WP24 next: Review FAIL with an open finding: Repair again first and recommended, then the loop back, accept a finding, override" \
+  "repair-again,True,repair|back,accept-finding,override|back not recommended" \
+  "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); i = [x['id'] for x in a]; b = [x for x in a if x['id'] == 'back']; '%s,%s,%s' % (o['id'], bool(o.get('recommended')), o.get('move')) + '|' + ','.join(x for x in ('back', 'accept-finding', 'override') if x in i) + '|' + ('back not recommended' if b and not b[0].get('recommended') else 'back %s' % ('recommended' if b else 'not offered'))")"
 assert_eq "next: the accept question lists the open finding by id, with its own reason question" \
   "Accept finding 1|accept|True|evidence accept --stage review --id 1 --reason '{reason}'" \
   "$(nx "o = d['ask']['accept']['options'][0]; '|'.join([o['label'], o['move'], str(o['reason']), o['calls'][0].split('temper ', 1)[1]])")"
-assert_eq "next: the step back is a state loop with the person's reason" "back|state loop review build --reason '{reason}'" \
-  "$(nx "o = d['ask']['options'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+assert_eq "WP24 next: the step back is a state loop with the person's reason" "back|state loop review build --reason '{reason}'" \
+  "$(nx "o = [x for x in d['ask']['options'] + d['ask'].get('more', {}).get('options', []) if x['id'] == 'back'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
 printf 'budget:\n  per-failure: 1\n' >> .claude/temper.config   # WP10: the budget's key, in the place of loops.max-per-type
 "$TEMPER" state loop review build --reason "first" >/dev/null 2>&1
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
@@ -179,8 +182,8 @@ assert_eq "next: an unattended run's failed Review with no blocking finding on r
 "$TEMPER" park --verdict PARKED-NEEDS-DECISION --reason "a test" >/dev/null 2>&1
 assert_eq "park: the run keeps its mode, is marked parked, and the report says where it waits (WP11)" "autonomous|review|1" \
   "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the gate it parked at' .temper/autonomy-report.md)"
-assert_eq "next: after a park the person gets the gate question" "ask|Loop back to Build (Recommended)" \
-  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
+assert_eq "WP24 next: after a park the person gets the gate question, Repair again first and recommended" "ask|repair-again,True" \
+  "$(nx "d['action'] + '|' + '%s,%s' % (d['ask']['options'][0]['id'], bool(d['ask']['options'][0].get('recommended')))")"
 
 # --- Run Build again ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1

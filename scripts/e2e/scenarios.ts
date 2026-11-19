@@ -1490,9 +1490,10 @@ export const LOW_BYTES = 'import json; document = lambda ledger: json.dumps(ledg
 
 // WP19 test 9: the scripted builder leaves 12 new lines of which 4 run; the base value is 71%. Check fails on the row
 // coverage (a measured drop, class code); the run the person approved takes its one counted repair, whose scripted
-// agent records RED and GREEN as a fix pass does and changes no line that runs; Check fails again and the run stops
-// with one question that names the row. It never passes on to the commit and never takes a second repair by itself.
-// WP24 turns the repair into one in place.
+// agent changes no line that runs; Check fails again and the run stops with one question that names the row. It never
+// passes on to the commit and never takes a second repair by itself.
+// WP24: the repair is one in place, at Check: the CLI's own `repair start --stage check`, a fresh Build agent whose
+// prompt holds the line `Repair in place:`, and no step back (no call `state loop check build`).
 export const coverageDrop = (w: World): void => {
   const fake = `${w.dir}.fakecov`
   fs.mkdirSync(path.join(fake, 'coverage'), { recursive: true })
@@ -1521,20 +1522,24 @@ export const coverageDrop = (w: World): void => {
     if (green.code !== 0) throw new Error(`GREEN failed: ${green.out}`)
   }
   let repairs = 0
+  let inPlace = 0
   const asked: Json[] = []
   let approved = false
   const end = orchestrate(w, script({
     agents: {
       ...AGENTS,
       'temper:temper-build-task': chained(lowOne),
-      // the repair the rule takes: test first, as a fix pass records it, its scripted agent adds only a comment, so the
-      // share of the changed lines that ran stays 4 of 12
-      'temper:temper-build': wd => {
+      // the repair the rule takes: its scripted agent adds only a comment, so the share of the changed lines that ran
+      // stays 4 of 12. A repair in place (WP24) asks no new failing test at Check and commits nothing; a fix pass of
+      // the head records RED and GREEN first, as its brief says
+      'temper:temper-build': (wd, a) => {
         repairs++
+        const here = /Repair in place:/.test(String(a.prompt ?? ''))
+        if (here) inPlace++
         const check = "-- grep -q 'a comment of the repair' src/ci_shape.py"
-        t(wd, `evidence run --stage build --claim 'unit tests' --phase red ${check}`)
+        if (!here) t(wd, `evidence run --stage build --claim 'unit tests' --phase red ${check}`)
         wd.write('src/ci_shape.py', `${wd.read('src/ci_shape.py').replace(/\n*$/, '\n')}# a comment of the repair\n`)
-        t(wd, `evidence run --stage build --claim 'unit tests' --phase green ${check}`)
+        if (!here) t(wd, `evidence run --stage build --claim 'unit tests' --phase green ${check}`)
       },
     },
     person: (ask, wd) => {
@@ -1561,6 +1566,10 @@ export const coverageDrop = (w: World): void => {
   const q = String(asked[0]?.question?.question ?? '')
   expect(/\bcoverage\b/.test(q), `the stop's question names the row coverage (${q.slice(0, 200)})`)
   expect(!/state advance check_complete/.test(flow) && !asked.some(a => a.id === 'commit.confirm'), 'the run never passes on to the commit')
+  // WP24: the one repair is made in place at Check, by the CLI's own call, and never by a step back to Build
+  const started = w.trace.filter(l => /^\s*call temper repair start --stage check\b/.test(l)).length
+  expect(started === 1 && inPlace === 1, `WP24 the repair is one in place: the CLI's own repair start at Check, its agent told Repair in place (${started} repair start calls, ${inPlace} of ${repairs} launches in place)`)
+  expect(!/state loop check build\b/.test(flow), 'WP24 the repair takes no step back: no call state loop check build')
 }
 
 // WP21: a command the plan wrote fails on the base (the scenario plan-command-fails). The scripted planner writes a

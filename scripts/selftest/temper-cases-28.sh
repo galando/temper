@@ -20,12 +20,17 @@ _pol review
 "$TEMPER" evidence add --stage review --claim 'src/a.ts:3 a token leaks into the log' --severity critical --label HEURISTIC >/dev/null 2>&1
 "$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1
 gfail review "no blocking findings" "1 open critical finding"
-assert_eq "WP11 rule: an open finding at a level of review.block-on loops back once, with the finding as the reason" "auto|1|True" \
-  "$(nx "c = d['calls']; d['action'] + '|' + str(sum(' state loop review build --reason ' in x for x in c)) + '|' + str('a token leaks into the log' in c[0])")"
+# WP24: the rule's one loop back to Build for a blocking finding is replaced by the repair in the stage; where the
+# repair may not start (here the run has no reviewed HEAD), the run stops for the person
+assert_eq "WP24 rule: an open finding at a level of review.block-on is never looped back by rule: next is the repair in the stage or a recorded stop" \
+  "repair or stop|no state loop" \
+  "$(nx "c = [x.split('temper ', 1)[-1] for x in d.get('calls') or []]; ('repair or stop' if (d['action'] == 'auto' and any(x.startswith('repair start --stage review') for x in c)) or d['action'] == 'ask' or (d['action'] == 'auto' and c and all(x.startswith('park ') for x in c)) else '%s %s' % (d['action'], c[:1])) + '|' + ('no state loop' if not any(x.startswith('state loop') for x in c) else 'state loop')")"
 _pol review; "$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1; gpass review
 assert_eq "9.8.5 policy: a clean Review goes on to Check by itself" "auto|True" "$(nx "d['action'] + '|' + str(d['calls'][0].endswith('state advance review_complete check'))")"
 _pol check; gfail check "tests pass" "the latest run of a test command failed: unit"
-assert_eq "9.8.5 policy: a failed Check loops back to Build while the budget lasts" "auto|True" "$(nx "d['action'] + '|' + str(' state loop check build ' in d['calls'][0])")"
+assert_eq "WP24 policy: a failed Check is never looped back to Build by rule: next is the repair in the stage or a recorded stop" \
+  "repair or stop|no state loop" \
+  "$(nx "c = [x.split('temper ', 1)[-1] for x in d.get('calls') or []]; ('repair or stop' if (d['action'] == 'auto' and any(x.startswith('repair start --stage check') for x in c)) or d['action'] == 'ask' or (d['action'] == 'auto' and c and all(x.startswith('park ') for x in c)) else '%s %s' % (d['action'], c[:1])) + '|' + ('no state loop' if not any(x.startswith('state loop') for x in c) else 'state loop')")"
 _pol check; gfail check "tests pass" "no passing test-run evidence recorded"
 assert_eq "9.8.5 policy: a missing measurement parks for the person" "auto|True" "$(nx "d['action'] + '|' + str(' park --verdict PARKED-NEEDS-DECISION ' in d['calls'][0])")"
 _pol check; gpass check

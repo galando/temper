@@ -104,7 +104,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('the latest answer at a step replaces the earlier one', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'review', { plan: 'PASS', build: 'PASS', review: 'FAIL' }, [why('Loop back to Build (Recommended)', 'the token bug is real'), why('Override and continue', 'reviewed by hand')])
+    const w = begin(on, 'review', { plan: 'PASS', build: 'PASS', review: 'FAIL' }, [why('Loop back to Build', 'the token bug is real'), why('Override and continue', 'reviewed by hand')])
     await api.session.start(START)
     await ask(api, w)
     await ask(api, w)
@@ -117,7 +117,7 @@ describe('a gate is decided in the Temper gate question, and only there', () => 
 
   test('a step back is let through once: back at the same stage later, it needs a new answer', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'review', { plan: 'PASS', build: 'PASS', review: 'FAIL' }, [why('Loop back to Build (Recommended)', 'a real bug')])
+    const w = begin(on, 'review', { plan: 'PASS', build: 'PASS', review: 'FAIL' }, [why('Loop back to Build', 'a real bug')])
     await api.session.start(START)
     await ask(api, w)
     expect(await sh(api, `${CLI} state loop review build --reason 'a real bug'`)).toBeUndefined()
@@ -154,13 +154,13 @@ describe('every wait point of the flow audit', () => {
 
   test('Check FAIL: Loop back to Build, with the reason asked in a second question', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, ['Loop back to Build (Recommended)', 'the date parser is wrong'])
+    const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, ['Loop back to Build', 'the date parser is wrong'])
     await api.session.start(START)
     await ask(api, w)
     // No reason yet: nothing is let through.
     expect(await sh(api, `${CLI} state loop check build --reason x`)).toBeDefined()
     // The reason question, as the CLI wrote it; a typed answer is the reason.
-    await ask(api, w, { reasonOf: 'Loop back to Build (Recommended)' })
+    await ask(api, w, { reasonOf: 'Loop back to Build' })
     expect(await sh(api, `${CLI} state loop check build --reason 'the date parser is wrong'`)).toBeUndefined()
   })
 
@@ -344,7 +344,7 @@ describe('the system prompt: one flow in every mode', () => {
 
   test('a chosen answer tells Claude to carry it out', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'review', { plan: 'PASS', build: 'PASS', review: 'FAIL' }, [why('Loop back to Build (Recommended)', 'a real bug')])
+    const w = begin(on, 'review', { plan: 'PASS', build: 'PASS', review: 'FAIL' }, [why('Loop back to Build', 'a real bug')])
     await api.session.start(START)
     expect(await system(api)).toContain('ask the `Temper gate` question')
     await ask(api, w)

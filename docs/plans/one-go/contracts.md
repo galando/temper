@@ -105,7 +105,7 @@ Keys of `.temper/build-state.json`:
 | `want_design` | the person asked for Design | WP14 | WP15 |
 | `intent_hash` | the digest of the intent as approved, beside `plan_hash` and `approved_files` | WP12 | WP13, WP17, WP24, WP25 |
 | `from_branch` | the branch the run stands on before its approval, which the commit hook gates too; `state set` refuses it | WP12 | none |
-| `repair`, `repairs` | the open repair window; the closed repairs | WP24 | WP25 |
+| `repair`, `repairs` | the open repair window; the closed repairs. Each entry of `repairs` holds the number `n` of its repair (case file 65 counts the repairs of a stage by it), and a repair that changed nothing records `changed: 0`; the window `adhoc_ops.open_window` opens for it carries the mark `kind: repair` | WP24 | WP25 |
 | `trivial` | the trivial verdict, until the flow closes the run | WP17 | none |
 | `rca_notes` | in a fix run, how many notes typed at the root cause question the root cause agent has taken | WP17 | none |
 | `saved_by` | the Temper version that saved the state (`state init` stamps it); `state set` refuses it; a state saved at Review without it runs Review once more (row D60) | WP11 | WP28 |
@@ -151,7 +151,7 @@ The view stays version 1: a field is added, none is renamed or removed (`D65`).
 | `needs`, `option` on a `work` action | `next`, `go`: steps that are the conversation's one step (`pull-request`), and the id of the option they came from | WP16 | the mod's run driver |
 | `step_kinds` beside `steps`, on a `work` action and on an option | `next`, `go`, the view: the kind of each step, `show-last` (the report step), `note` (the no record note) or `""`; absent when no step has a kind (`scripts/flow_base.py`) | WP16 (the phase 4b fix of its step 4) | the mod's run driver (`stepPlan`) |
 | `state` beside `pass` in `checks`; the entry `mutation` of `check_markers` | the view | WP19 | WP20 (`skipped`), WP23 |
-| `guard.adhoc_kind` | the view | WP24 | the mod |
+| `guard.adhoc_kind` | the view; the mod reads it as `adhocKind` beside `adhocStage` (`core/runview.ts`, `RunFacts`) | WP24 | the mod |
 | `drift_ids` beside the options of `drift`, their ids at their places | the view | WP04 | every test |
 
 ## 5. Question ids and option ids: the closed list
@@ -249,7 +249,7 @@ the rule above, in that package, with one line in this table.
 | `tier recorded` | the plan gate; from WP26 it bounds the simple tier | WP26 |
 | `criteria validated`, `criteria validate` | Build and Check; Intent | WP27 changes what they read |
 | `sensitive paths` | the commit gate; renamed from `park-on-touch paths` | WP31 |
-| `checked tree` | the commit gate, only when it fails: the project is no longer the tree the Check verdict names, and its detail names both trees | WP22 |
+| `checked tree` | the commit gate, only when it fails: the project is no longer the tree the Check verdict names, and its detail names both trees. From WP24 the same row fails when the Review verdict is of another tree than the commit and the difference is not only closed repairs whose recheck completed (case file 65) | WP22, WP24 |
 
 Rows that go: `mutation score >= threshold` (WP19); `preflight` (WP21); `criteria -> scenarios`,
 `cross-repo search recorded`, `blast radius documented` and `target users action chain` (WP26).
@@ -304,6 +304,7 @@ scripted project sets it, so its base is measured whole while its other limits s
 | the saved stop of the run driver | `saved(what)`, a `done` whose text starts `Temper stopped: ` and names `/temper:temper`; `isSavedStop` (`hooks/temper-mod/core/driver.ts`) | WP16 | `hooks/temper-mod/register.tsx`, the mod's tests |
 | the drift rows of the Build ledger | `drift ask <path>` with `Why:` and `Change:` lines (phase `drift`), the answer `drift <path>: <label>: <why>` (phase `feedback`), and `drift decided` (phase `drift`) once the agent got its lines | WP16 | the flow (`Run.drifts`), the scope row of the commit gate |
 | prompt lines the CLI writes | `Drift decision:` (WP16), `Repair in place:` and the brief section `Re-check:` (WP24), `Affected tasks:` (WP27), `Packs:` (WP29) | as named | the briefs |
+| the rows of the recheck | one a finding of the repair: `recheck #<id>: fixed` with exit 0, or `recheck #<id>: not fixed` with exit 1; then one completion row, the claim `review completed` with `--cmd recheck`, `--value <the count of ids checked>` and one `--read` for each changed file (the claim the scripted reviewer of `scripts/e2e/accept.ts` writes) | WP24 | `agents/review.md`, `scripts/repair_ops.py`, case file 65, `scripts/e2e/accept.ts`, `scripts/e2e/replay.ts` |
 | the driver's hand back | the end of the run driver (`DriveEnd`, `hooks/temper-mod/core/driver.ts`): `{kind: 'done', text}`, or `{kind: 'handback', needs, option}` with `needs` one of the seven hand back kinds and `option` the id of the option picked; the note after the command's text ends `step <kind> <option id>`; the trace line of the e2e driver is `driver handback: step <kind> <option id>` | WP16 | `hooks/temper-mod/register.tsx`, `commands/temper.md`, `commands/fix.md`, `scripts/e2e/loop.ts`, `scripts/e2e/scenarios.ts`, `tests/mod/driver.test.ts`, `tests/mod/driver-wiring.test.ts`; WP17 |
 | selftest helpers | `_unattended <stage>` (WP07; WP11 changes its body), `_base_known` (WP20: the baseline is on record as not run, so no case of the base meets the new first step), `ev_red` and `ev_green` (WP30) | as named | the case files |
 | the one CHANGELOG entry | the heading `## v9.8.5: a run that asks twice`, in the place of the heading of the base at `CHANGELOG.md:6`; no other heading starts with `## v9.8.5`, and no package adds a version heading | WP01 | every package writes its lines under it, above the text of the base; WP31 gives the entry its final parts and folds in what stays of pull request #115 (`pr-115-fixes.md` section 4); WP32 adds the measured lines (`D86`) |

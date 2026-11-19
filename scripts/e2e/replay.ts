@@ -202,7 +202,13 @@ const AGENTS: Record<string, Agent> = {
   },
   // Build's fix pass: a review finding is a defect in the code, and the agent mends it; a group check that failed on the
   // environment or on its own command has nothing in the code to mend (as the measured run's fix agents found).
+  // WP24: a repair in place (the prompt's line `Repair in place:`) mends the finding and commits nothing; the finding
+  // has no proof field (the scripted reviewer writes none), so no failing test is asked for and none is written.
   'temper:temper-build': (w, a) => {
+    if (/Repair in place:/.test(String(a.prompt))) {
+      w.write('backend/src/Bytes.java', 'class Bytes { int v() { return 2; } /* fixed order */ }\n')
+      return
+    }
     if (/High|breaks AC-03/.test(String(a.prompt))) {
       // test first: a test for the defect fails, then the fix, then it passes; recorded as this version's brief says
       // (9.8.5: `evidence run`, the CLI runs it; before: `evidence add --exit`, the agent reports it)
@@ -217,9 +223,18 @@ const AGENTS: Record<string, Agent> = {
       record('green')
     }
   },
-  'temper:temper-review': w => {
+  'temper:temper-review': (w, a) => {
+    const fixed = /fixed order/.test(w.exists('backend/src/Bytes.java') ? w.read('backend/src/Bytes.java') : '')
+    // WP24: the narrow recheck of a repair (the brief's section `Re-check:`): one row for each finding it names, and a
+    // completion row that names the changed files and the count of ids checked
+    if (/Re-check:/.test(String(a.prompt))) {
+      const ids = [...new Set([...String(a.prompt).matchAll(/#(\d+)/g)].map(x => x[1]!))]
+      for (const id of ids) t(w, `evidence add --stage review --claim 'recheck #${id}: ${fixed ? 'fixed' : 'not fixed'}' --exit ${fixed ? 0 : 1} --cmd recheck`)
+      t(w, `evidence add --stage review --claim 'review completed' --exit 0 --cmd recheck --value ${ids.length} --read backend/src/Bytes.java`)
+      return
+    }
     // the defect is in the code until the fix pass mends it: the reviewer reports it while it is there
-    if (!/fixed order/.test(w.exists('backend/src/Bytes.java') ? w.read('backend/src/Bytes.java') : ''))
+    if (!fixed)
       t(w, "evidence add --stage review --severity high --claim 'backend/src/Bytes.java:1 the byte order breaks AC-03, a constraint of the intent'")
     reviewDone(w)
   },
@@ -228,6 +243,12 @@ const AGENTS: Record<string, Agent> = {
 }
 
 const ENV_FAULT = /allowed range|Connection refused|environment fault|SETUP|needs JDK/
+
+// WP24: a commit whose subject says `repair N at review` and whose tree holds the mended byte order
+function repairedInStage(w: World): boolean {
+  const subjects = w.run("git log --format='%H %s'").out.split('\n').filter(l => / repair \d+ at review\b/.test(l))
+  return subjects.some(l => /fixed order/.test(w.run(`git show ${l.split(' ')[0]}:backend/src/Bytes.java`).out))
+}
 
 function main(): void {
   const w = new World('plain', `replay-${label}`)
@@ -335,9 +356,25 @@ function main(): void {
     bad_validate_line_in_plan_at_end: (w.exists(`${SPEC}/tasks.md`) ? w.read(`${SPEC}/tasks.md`) : head).includes(BAD_VALIDATE),
     cli_seconds: Math.round(m.cli_ms / 1000),
     jdk_named_at: m.jdk_named_at || 'never', jdk_named_before_intent: m.jdk_named_before_intent,
+    // WP24 (D58): the High defect is repaired in its stage: a commit of the CLI `fix(...): repair N at review` holds
+    // the mended file; and the steps back the run took, by the person's answer or by a rule (the calls `state loop`)
+    repaired_in_stage: repairedInStage(w), loops_taken: w.trace.filter(l => /^\s*call temper state loop\b/.test(l)).length,
     questions_asked: m.question_texts,
   }
   console.log(JSON.stringify(result))
+  // WP24 (D58): the run of this tree (the label `final`, as scripts/verify.sh runs it) holds the promise of the replay:
+  // the High defect repaired in its stage, no loop recommended or taken, Plan launched once. The JSON line stays the
+  // last line of the output; a miss is said on stderr and the exit code is 1.
+  if (label === 'final') {
+    const miss = [
+      result.repaired_in_stage ? '' : 'the High defect was not repaired in its stage (no commit `repair N at review` holds the fix)',
+      result.loops_recommended.length === 0 ? '' : `loops were recommended: ${result.loops_recommended.join('; ')}`,
+      result.loops_taken === 0 ? '' : `the run took ${result.loops_taken} step(s) back (state loop)`,
+      (m.agents['temper:temper-plan'] ?? 0) === 1 ? '' : `Plan was launched ${m.agents['temper:temper-plan'] ?? 0} times, not once`,
+    ].filter(Boolean)
+    for (const x of miss) console.error(`FAIL replay final: ${x}`)
+    if (miss.length > 0) process.exitCode = 1
+  }
   fs.rmSync(tools, { recursive: true, force: true })
   fs.rmSync(db, { recursive: true, force: true })
 }
