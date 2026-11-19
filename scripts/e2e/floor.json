@@ -16,10 +16,10 @@
       "temper:temper-plan": 1
      },
      "launch_total": 2,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 1
+     "suite_runs": 2
     }
    },
    "mod": {
@@ -36,10 +36,10 @@
       "temper:temper-plan": 1
      },
      "launch_total": 2,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 1
+     "suite_runs": 2
     }
    }
   },
@@ -63,10 +63,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 7,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "mod": {
@@ -88,10 +88,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 7,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "driver": {
@@ -116,7 +116,7 @@
      "auto": 20,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    }
   },
@@ -142,10 +142,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -169,10 +169,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -199,7 +199,7 @@
      "auto": 12,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -222,10 +222,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -246,10 +246,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -273,7 +273,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -296,10 +296,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -320,10 +320,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -347,7 +347,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -383,10 +383,10 @@
       "temper:temper-plan": 2
      },
      "launch_total": 7,
-     "auto": 3,
+     "auto": 4,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 2
+     "suite_runs": 3
     }
    },
    "mod": {
@@ -408,10 +408,10 @@
       "temper:temper-plan": 2
      },
      "launch_total": 7,
-     "auto": 3,
+     "auto": 4,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 2
+     "suite_runs": 3
     }
    },
    "driver": {
@@ -437,7 +437,7 @@
      "auto": 11,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 2
+     "suite_runs": 3
     }
    }
   },
@@ -461,10 +461,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -486,10 +486,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -514,7 +514,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -537,10 +537,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -561,10 +561,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -588,7 +588,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -691,10 +691,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -718,10 +718,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -749,7 +749,7 @@
      "auto": 12,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -772,10 +772,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     },
     "final": {
      "dialogs": 2,
@@ -809,10 +809,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     },
     "final": {
      "dialogs": 2,
@@ -849,7 +849,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     },
     "final": {
      "dialogs": 2,
@@ -887,10 +887,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -913,10 +913,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -942,7 +942,7 @@
      "auto": 19,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -966,10 +966,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -994,10 +994,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 8,
+     "auto": 9,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    },
    "mod": {
@@ -1020,10 +1020,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 8,
+     "auto": 9,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    },
    "driver": {
@@ -1049,7 +1049,7 @@
      "auto": 21,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    }
   },
@@ -1074,10 +1074,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -1100,10 +1100,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -1130,7 +1130,7 @@
      "auto": 10,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -1151,10 +1151,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 3,
-     "auto": 4,
+     "auto": 5,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 2
+     "suite_runs": 3
     },
     "final": {
      "dialogs": 2,
@@ -1177,10 +1177,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 3,
-     "auto": 4,
+     "auto": 5,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 2
+     "suite_runs": 3
     },
     "final": {
      "dialogs": 2,
@@ -1206,7 +1206,7 @@
      "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 2
+     "suite_runs": 3
     },
     "final": {
      "dialogs": 2,
@@ -1237,10 +1237,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 9,
-     "auto": 0,
+     "auto": 1,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    },
    "mod": {
@@ -1265,10 +1265,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 9,
-     "auto": 0,
+     "auto": 1,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    },
    "driver": {
@@ -1297,7 +1297,7 @@
      "auto": 10,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    }
   },
@@ -1318,10 +1318,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 3,
-     "auto": 4,
+     "auto": 5,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 2
+     "suite_runs": 3
     }
    },
    "driver": {
@@ -1343,7 +1343,7 @@
      "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 2
+     "suite_runs": 3
     }
    }
   },
@@ -1366,10 +1366,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -1390,10 +1390,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -1417,7 +1417,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -1441,10 +1441,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -1466,10 +1466,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -1494,7 +1494,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -1518,10 +1518,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -1543,10 +1543,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -1572,7 +1572,7 @@
      "auto": 19,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -1596,10 +1596,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -1621,10 +1621,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -1649,7 +1649,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -1673,10 +1673,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 9,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -1698,10 +1698,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 9,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -1726,7 +1726,7 @@
      "auto": 19,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -1752,10 +1752,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 7,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "mod": {
@@ -1779,10 +1779,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 7,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "driver": {
@@ -1809,7 +1809,7 @@
      "auto": 12,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    }
   },
@@ -1833,10 +1833,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 7,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "mod": {
@@ -1858,10 +1858,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 7,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "driver": {
@@ -1886,7 +1886,7 @@
      "auto": 20,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    }
   },
@@ -1910,10 +1910,10 @@
       "temper:temper-plan": 1
      },
      "launch_total": 5,
-     "auto": 2,
+     "auto": 3,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 1
+     "suite_runs": 2
     }
    },
    "mod": {
@@ -1935,10 +1935,10 @@
       "temper:temper-plan": 1
      },
      "launch_total": 5,
-     "auto": 2,
+     "auto": 3,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 1
+     "suite_runs": 2
     }
    },
    "driver": {
@@ -1963,7 +1963,7 @@
      "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 1
+     "suite_runs": 2
     }
    }
   },
@@ -2031,7 +2031,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 5
+     "suite_runs": 6
     }
    }
   },
@@ -2054,7 +2054,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 0
@@ -2078,7 +2078,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 0
@@ -2120,10 +2120,10 @@
       "temper:temper-plan": 1
      },
      "launch_total": 2,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 1
+     "suite_runs": 2
     }
    },
    "mod": {
@@ -2136,10 +2136,10 @@
       "temper:temper-plan": 1
      },
      "launch_total": 2,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 1
+     "suite_runs": 2
     }
    },
    "driver": {
@@ -2155,7 +2155,7 @@
      "auto": 2,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 1
+     "suite_runs": 2
     }
    }
   },
@@ -2179,10 +2179,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 9,
-     "auto": 9,
+     "auto": 10,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    },
    "mod": {
@@ -2204,10 +2204,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 9,
-     "auto": 9,
+     "auto": 10,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    },
    "driver": {
@@ -2232,7 +2232,7 @@
      "auto": 22,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 7
     }
    }
   },
@@ -2260,10 +2260,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -2289,10 +2289,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -2321,7 +2321,7 @@
      "auto": 12,
      "back": 0,
      "handbacks": 2,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -2350,7 +2350,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 10,
-     "auto": 0,
+     "auto": 1,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2380,7 +2380,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 10,
-     "auto": 0,
+     "auto": 1,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2440,7 +2440,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 11,
-     "auto": 8,
+     "auto": 9,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2467,7 +2467,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 11,
-     "auto": 8,
+     "auto": 9,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2529,7 +2529,7 @@
       "temper:temper-review": 3
      },
      "launch_total": 15,
-     "auto": 4,
+     "auto": 6,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2561,7 +2561,7 @@
       "temper:temper-review": 3
      },
      "launch_total": 15,
-     "auto": 4,
+     "auto": 6,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2602,6 +2602,77 @@
     }
    }
   },
+  "red-base-after-approval": {
+   "plain": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "build": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1
+     },
+     "launch_total": 4,
+     "auto": 2,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 1
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "build": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1
+     },
+     "launch_total": 4,
+     "auto": 2,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 1
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "build": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1
+     },
+     "launch_total": 4,
+     "auto": 4,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 1
+    }
+   }
+  },
   "save-and-resume": {
    "plain": {
     "now": {
@@ -2621,10 +2692,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -2645,10 +2716,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -2672,7 +2743,33 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
+    }
+   }
+  },
+  "slow-at55": {
+   "plain": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 5,
+     "auto": 6,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 0
     }
    }
   },
@@ -2712,10 +2809,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 7,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "mod": {
@@ -2739,10 +2836,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 7,
-     "auto": 0,
+     "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "driver": {
@@ -2769,7 +2866,7 @@
      "auto": 15,
      "back": 0,
      "handbacks": 1,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    }
   },
@@ -2793,10 +2890,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 7,
-     "auto": 7,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "mod": {
@@ -2818,10 +2915,10 @@
       "temper:temper-review": 2
      },
      "launch_total": 7,
-     "auto": 7,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "driver": {
@@ -2846,7 +2943,7 @@
      "auto": 19,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    }
   },
@@ -2869,10 +2966,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 7,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "mod": {
@@ -2893,10 +2990,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 7,
-     "auto": 7,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    },
    "driver": {
@@ -2920,7 +3017,7 @@
      "auto": 21,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 5
     }
    }
   },
@@ -2934,10 +3031,10 @@
       "temper:temper-intent": 1
      },
      "launch_total": 1,
-     "auto": 1,
+     "auto": 2,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 0
+     "suite_runs": 1
     }
    },
    "mod": {
@@ -2949,10 +3046,10 @@
       "temper:temper-intent": 1
      },
      "launch_total": 1,
-     "auto": 1,
+     "auto": 2,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 0
+     "suite_runs": 1
     }
    },
    "driver": {
@@ -2967,7 +3064,7 @@
      "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 0
+     "suite_runs": 1
     }
    }
   },
@@ -2990,10 +3087,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -3014,10 +3111,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -3041,7 +3138,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   },
@@ -3066,10 +3163,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -3092,10 +3189,10 @@
       "temper:temper-review": 1
      },
      "launch_total": 6,
-     "auto": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -3121,7 +3218,7 @@
      "auto": 18,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    }
   }

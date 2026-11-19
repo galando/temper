@@ -39,7 +39,7 @@ assert_eq "round 4, 6: a Test command changed after the plan gate stops the firs
 setup; rm -f .temper/build-state.json   # the earlier run is over: its spec is committed, no run is active
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm "the spec of an earlier run" >/dev/null 2>&1
 _b="$(git symbolic-ref -q HEAD)"; git branch -f temper-test-other HEAD >/dev/null 2>&1; git symbolic-ref HEAD refs/heads/temper-test-other   # on another branch than the run's, at the same commit
-"$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
+"$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gpass intent
 assert_eq "round 4, 7: a walked Intent makes no branch and no commit: it accepts the intent and advances (WP12)" "intent accept|0|0|state advance intent_complete plan" \
   "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if ' spec branch' in x)) + '|' + str(sum(1 for x in c if ' spec commit ' in x)) + '|' + c[-1].split('temper ', 1)[1]")"
 git symbolic-ref HEAD "$_b"
@@ -170,7 +170,7 @@ N="$WORKDIR/r4-nested"; rm -rf "$N"; mkdir -p "$N/packages/app/src" "$N/packages
   cd "$N" && git init -q . && echo r > README && echo 'echo base' > packages/app/src/parser.sh
   git add -A && git -c user.email=t@t -c user.name=t commit -qm init && git checkout -q -b feature/pw
   cd packages/app && mkdir -p .claude .temper/specs/pw && cp "$REPO_ROOT/templates/temper.config.default" .claude/temper.config
-  "$TEMPER" init >/dev/null && "$TEMPER" state init pw >/dev/null
+  "$TEMPER" init >/dev/null && "$TEMPER" state init pw >/dev/null; _base_known
   cat > .temper/specs/pw/tasks.md <<'TASKS'
 # Tasks: nested
 
@@ -259,7 +259,7 @@ rm -rf "$P6"
 setup; rm -f .temper/build-state.json
 sed -i 's/^\*\*Status:\*\* accepted$/**Status:** accepted (pending review)/' .temper/specs/demo/intent.md
 git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm "a committed spec" >/dev/null 2>&1
-"$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
+"$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gpass intent
 "$TEMPER" intent accept >/dev/null 2>&1; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 assert_eq "re-audit: a Status that is not exactly accepted is rewritten by the accept, so the approval commits it (WP12: at Plan)" "1" \
   "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if ' spec commit ' in c)")"
@@ -270,7 +270,7 @@ setup; git init -q . 2>/dev/null; git checkout -q -B main 2>/dev/null
 git config user.email t@t; git config user.name t   # the calls run git commit as printed: CI has no global identity
 sed -i 's/^\*\*Status:\*\* accepted$/**Status:** draft/' .temper/specs/demo/intent.md   # a new intent: the accept changes it
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
-rm -f .temper/build-state.json; "$TEMPER" state init demo >/dev/null 2>&1; gpass intent
+rm -f .temper/build-state.json; "$TEMPER" state init demo >/dev/null 2>&1; _base_known; gpass intent
 CALLS="$(nx "'\n'.join(d['calls'])")"
 assert_eq "live run: on main the run leaves Intent by rule: the one advance, no branch and no commit (WP12, WP13)" \
   "state advance intent_complete plan|0|0" \
@@ -454,21 +454,21 @@ git checkout -q -b feature/demo; git add .temper/specs/demo/intent.md; git commi
 printf '# Plan: demo\n\n**Complexity:** medium. Two modules.\n' > .temper/specs/demo/plan.md
 printf 'code\n' > r6-code.txt; git add r6-code.txt .temper/specs/demo/plan.md .temper/specs/demo/tasks.md
 git commit -qm "feat: the code" >/dev/null 2>&1
-"$TEMPER" state init demo --enter review >/dev/null 2>&1
+"$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known
 assert_eq "live run 6: a door takes the tier from plan.md's Complexity line, not from intent.md's first guess" "medium" \
   "$("$TEMPER" state get complexity)"
 gpass intent plan
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: a Review door reads its diff from before the spec's first commit, so committed work is reviewed" "$_r6b|1" \
   "$("$TEMPER" state get base_sha)|$(git diff --name-only "$("$TEMPER" state get base_sha)" | grep -cx r6-code.txt)"
-"$TEMPER" state init demo --enter build >/dev/null 2>&1; gpass intent plan
+"$TEMPER" state init demo --enter build >/dev/null 2>&1; _base_known; gpass intent plan
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: a Build door still reads its diff from HEAD (the work is still to come)" "$(git rev-parse HEAD)" \
   "$("$TEMPER" state get base_sha)"
 git checkout -q main; git checkout -q -b feature/other; printf 'more\n' > r6-more.txt; git add r6-more.txt
 git commit -qm "feat: more" >/dev/null 2>&1
 git checkout -q feature/demo -- .temper/specs/demo; git rm -q --cached -r .temper/specs/demo >/dev/null 2>&1   # the spec, never committed here
-"$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent plan
+"$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gpass intent plan
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "live run 6: with no spec commit, a Check door reads its diff from where the branch left main" "$_r6b" \
   "$("$TEMPER" state get base_sha)"
@@ -488,7 +488,7 @@ git config user.email t@t; git config user.name t; rm -f .temper/build-state.jso
 mkdir -p src; printf 'echo demo\n' > src/demo.sh
 printf '{"gates": {"build": {"verdict": "PASS", "requirements": []}}, "overrides": []}\n' > .temper/specs/demo/gate-ledger.json
 git add src .temper/specs/demo; git commit -qm "the earlier run" >/dev/null 2>&1
-_r6door() { "$TEMPER" state init demo --enter "$1" >/dev/null 2>&1; gpass intent plan
+_r6door() { "$TEMPER" state init demo --enter "$1" >/dev/null 2>&1; _base_known; gpass intent plan
   "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1; }
 _r6door review; "$TEMPER" gate build >/dev/null 2>&1
 assert_eq "live run 6: a Review door's Build passes on the Build PASS the committed ledger records" "PASS|built in an earlier run|1" \
@@ -544,7 +544,7 @@ assert_eq "live run 7: a passed Check offers Loop back to Build beside Commit" "
 setup; rm -rf .git bare; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
 git config user.email t@t; git config user.name t
 mkdir -p src; printf 'echo demo\n' > src/demo.sh; git add src; git commit -qm "the code" >/dev/null 2>&1
-fresh_keep() { "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; }
+fresh_keep() { "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known; }
 fresh_keep; gpass intent plan build; _at build
 "$TEMPER" state advance build_complete review >/dev/null 2>&1
 review_done --label PROVEN
@@ -690,7 +690,7 @@ assert_eq "tier: a value that is no tier is not written into the files" "same" "
 rm -f tier-before.md
 # run 11's case: plan.md names no tier, and the person changes it at the plan gate; a later door takes the changed tier
 fresh; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state clear >/dev/null 2>&1
-"$TEMPER" state init demo --enter review >/dev/null 2>&1
+"$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known
 assert_eq "tier: a door after a tier changed at the plan gate takes the changed tier, not Intent's first guess" "medium" \
   "$("$TEMPER" state get complexity)"
 

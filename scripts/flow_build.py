@@ -482,6 +482,13 @@ class BuildPart:
         reason = " ".join(str(gate.get("reason", "")).split())
         reason = reason if len(reason) <= 300 else reason[:297] + "..."
         fl = self.fail_text(ginfo)
+        fails = int(ginfo.get("fails") or 1)
+        timed = int(gate.get("timeout_s") or 0)
+        if timed and fails < 2 and not int(ginfo.get("fix_empty") or 0) and not decide:
+            # WP20: the first time out of the group's check is no question: the CLI runs it again with twice the limit
+            # (a second time out asks; the limit of a suite the base measured is three times its time already)
+            return {"action": "auto", "stage": "build", "calls": [self.c("group gate %s --timeout-s %d" % (gid, 2 * timed))],
+                    "say": "Group %s's check ran out of time (%d s); the CLI runs it again with twice the limit." % (gid, timed)}
         if self.r.armed() and not decide:
             # WP11: a run that goes on by itself takes the recommended option itself (chosen by field, never by label) when it
             # has calls, needs nothing typed, does not save the run and is no step back (WP08), and the plan declares no
@@ -504,7 +511,6 @@ class BuildPart:
         plan = self.r.plan or {"tasks": []}
         # 9.8.4: how many times the group's check failed, and whether the whole failed while every part passed. A blind
         # rerun of every task was always the recommended answer; a measured run reran a group of 12 tasks five times.
-        fails = int(ginfo.get("fails") or 1)
         all_passed = bool(g.get("tasks")) and all(tasks_md.task_done(t, self.r.groups) for t in plan.get("tasks", []) if t.get("n") in g.get("tasks", []))
         fixable = all_passed and bool(gate.get("ran"))
         # a fix of the merged tree that did not make the group pass is not recommended again: the run converges on the plan
@@ -513,25 +519,19 @@ class BuildPart:
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = []
         empty = int(ginfo.get("fix_empty") or 0)   # 9.8.5 (S8): a fix agent that changed nothing: the code is not the cause
-        timed = int(gate.get("timeout_s") or 0)
-        limit = timed if fails < 2 and not empty else 0   # a second time-out points at the plan's command: offered, not recommended
-        if timed:  # the gate ran out of time, not out of luck: the same checks again with twice the limit
-            opts.append(self.opt("Run the gate again with twice the time" + (" (Recommended)" if limit else ""),
-                                 "Group %s's checks run again, limit %d seconds." % (gid, 2 * timed),
-                                 move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * timed))], oid="twice-the-time"))
-        fix_rec = fixable and not limit and not tried and not empty
+        fix_rec = fixable and not tried and not empty
         fix = self.opt("Fix the group's merged work" + (" (Recommended)" if fix_rec else ""),
                        "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
                        move="redo", calls=[self.c("group fix %s" % gid)], oid="fix-group") if fixable else None
         back = self.r.can_loop("build", "plan")
-        rerun_rec = not limit and not fixable and fails < 2 and not empty
+        rerun_rec = not fixable and fails < 2 and not empty
         rerun = self.opt("Run the group's tasks again" + (" (Recommended)" if rerun_rec else ""), "Each task of %s runs again." % gid, move="redo", calls=reopen, oid="redo")
-        plan_rec = not limit and not fix_rec and not rerun_rec and back
+        plan_rec = not fix_rec and not rerun_rec and back
         loop = self.opt("Loop back to Plan" + (" (Recommended)" if plan_rec else ""), "The plan cannot be built as written.", move="back",
                         calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back") if back else None
-        save_rec = not limit and not fix_rec and not rerun_rec and not plan_rec
+        save_rec = not fix_rec and not rerun_rec and not plan_rec
         save = self.set_rec(self.save(), save_rec)
-        if fix_rec or limit:
+        if fix_rec:
             rest = [fix, rerun, loop]
         elif plan_rec:
             rest = [loop, fix, rerun]
@@ -544,7 +544,7 @@ class BuildPart:
             opts.append(save)
         # 9.8.5 (S6): when the cause is the group's command (a time-out again, or a fix that changed nothing), the person
         # types the command to run instead: one line of tasks.md changes, the passed tasks keep their work, one repeat is spent (WP10)
-        cmd_cause = (timed and not limit) or empty
+        cmd_cause = timed or empty   # WP20: a time out asks only the second time: the command is the likelier cause
         patch = self.opt("Change the group's command" + (" (Recommended)" if cmd_cause else ""),
                          "Type the Validate command group %s should run (now: %s); its check runs again, the tasks keep their work; it counts as one repeat." % (
                              gid, (g.get("validate") or "none")[:120]),

@@ -213,7 +213,7 @@ MD
 ## Approach
 A counter per account.
 MD
-  "$TEMPER" state init login-lockout --feature "lock accounts after too many failed logins" >/dev/null 2>&1
+  "$TEMPER" state init login-lockout --feature "lock accounts after too many failed logins" >/dev/null 2>&1; _base_known
   gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
   # the sample's risk M, as the spec's sample shows it: `temper risk` rates the sensitive path H, and at H the fresh
   # review of the plan runs before the approval is asked
@@ -232,7 +232,7 @@ fresh; _plan56; "$TEMPER" state set want_design true >/dev/null 2>&1; : > .tempe
 _c56_design="$(_x56 "need = ('request', 'criteria', 'files', 'commands')
 r = '%s:%s|%s' % ((d.get('ask') or {}).get('id'), card.get('kind'),
     'order' if inorder(APPROVAL) and all(i in ids() for i in need) else ','.join(map(str, ids())) or 'no sections')")"
-_c56_want="kind=approval|ids=request,assumptions,criteria,out_of_scope,answers,files,commands,context,launches,risk"
+_c56_want="kind=approval|ids=request,assumptions,criteria,out_of_scope,answers,files,commands,context,launches,risk,baseline"
 _c56_want+="|pair=same|design=design.pass:approval|order"
 assert_eq "card: the approval question carries an approval card" "$_c56_want" "$_c56_plan|design=$_c56_design"
 
@@ -321,14 +321,15 @@ _EST56="foot = [str(x) for x in card.get('foot') or []]
 mins = [x for x in foot if re.search(r'\d+\s*min', x)]"
 fresh; _plan56
 _e56_none="$(_x56 "$_EST56
-r = 'card=%s|baseline=%s|minutes=%s' % (card.get('kind'), 'present' if sec('baseline') else 'absent',
+b = ' '.join(str(x.get('text', '')) for x in (sec('baseline') or {}).get('rows') or [])
+r = 'card=%s|baseline=%s|minutes=%s' % (card.get('kind'), 'unknown' if b.startswith('unknown: ') else b or 'absent',
     len(mins) or 'none')")"
 fresh; _runs56; _plan56
 _e56_two="$(_x56 "$_EST56
 one = len(mins) == 1 and 'about' in mins[0] and re.search(r'\b20\s*min', mins[0])
 r = 'card=%s|minutes=%d|%s' % (card.get('kind'), len(mins), 'about 20 min' if one else '; '.join(mins) or 'none')")"
 assert_eq "card: nothing is estimated from nothing" \
-  "none=card=approval|baseline=absent|minutes=none|two=card=approval|minutes=1|about 20 min" \
+  "none=card=approval|baseline=unknown|minutes=none|two=card=approval|minutes=1|about 20 min" \
   "none=$_e56_none|two=$_e56_two"
 
 # --- no card holds dollars; every time is in minutes ---
@@ -534,7 +535,7 @@ setup; rm -rf "${WORKDIR:?}/pw56"; mkdir -p "$WORKDIR/pw56/.temper"; cd "$WORKDI
 git init -q .; git config user.email t@example.com; git config user.name t
 echo x > README.md; git add README.md; git commit -q -m init
 mkdir -p .claude; printf 'review:\n  block-on: [critical]\n' > .claude/temper.config
-_snap56; "$TEMPER" state init pw --feature "Password reset by email" >/dev/null 2>&1; _snap56
+_snap56; "$TEMPER" state init pw --feature "Password reset by email" >/dev/null 2>&1; _base_known; _snap56
 mkdir -p .temper/specs/pw; _pwfile56 intent > .temper/specs/pw/intent.md
 gfail intent "Success criteria" "AC-03 has no Validate line"; _snap56; gpass intent; _snap56
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; _snap56

@@ -406,7 +406,7 @@ _b51x="before clear=$(_b51used)"
 _b51x+="|after clear=$([[ -e .temper/budget.json ]] && echo kept || echo gone)"
 _b51check; _b51fail check; "$TEMPER" state redo check --reason 'the suite again' >/dev/null 2>&1
 _b51x+="|before init=$(_b51used)"
-"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 assert_eq "budget: state clear and state init remove it" \
   "before clear=1|after clear=gone|before init=1|after init=gone" \
   "$_b51x|after init=$([[ -e .temper/budget.json ]] && echo kept || echo gone)"

@@ -3,11 +3,11 @@
 # --- 9.8.5 (S4): the failure text is the build tool's summary, not the first line that says ERROR ---
 _fl() { python3 - "$REPO_ROOT/scripts" "$1" "${2:-}" <<'PYF'
 import sys
-src = open(sys.argv[1] + '/task_ops.py').read()   # task_ops.py runs a mode on import: read fail_lines out of it
-ns = {}
-exec('import re\n' + src[src.index('FAIL_LINE ='):src.index('def red_why')], ns)
+sys.path.insert(0, sys.argv[1])
+# WP20: fail_lines moved from task_ops.py (which runs a mode on import) to run_env.py, shared with the baseline
+import run_env
 rc = int(sys.argv[3]) if sys.argv[3] else None
-print(' | '.join(ns['fail_lines'](sys.argv[2].encode().decode('unicode_escape').encode(), rc=rc)))
+print(' | '.join(run_env.fail_lines(sys.argv[2].encode().decode('unicode_escape').encode(), rc=rc)))
 PYF
 }
 OUT="$(_fl '20:01:44.264 [main] ERROR com.x.MonitoringSummaryService -- Failed to send email: SMTP down\n[INFO] Tests run: 328, Failures: 0, Errors: 0\n[WARNING] Rule violated for bundle demo: lines covered ratio is 0.04, but expected minimum is 0.94\n[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.16:check (coverage-check) on project demo: Coverage checks have not been met.\n')"
@@ -26,8 +26,8 @@ assert_eq "9.8.5 S8: after an empty fix, the command change is recommended and f
   "Change the group's command (Recommended)|True|False" \
   "$(nx "q = d['ask']; o = q['question']['options']; '|'.join([o[0]['label'], str('the cause is not in the group' in q['question']['question']), str(any(x['label'] == 'Run the gate again with twice the time (Recommended)' for x in o))])")"
 _g3 '"fails": 2, "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "ran": true, "timeout_s": 600, "fail_lines": ["x"]}'
-assert_eq "9.8.5 S8: a second time-out still offers twice the time, but does not recommend it" "False|True" \
-  "$(nx "o = d['ask']['question']['options'] + (d['ask'].get('more') or {}).get('question', {}).get('options', []); '|'.join([str(any(x['label'] == 'Run the gate again with twice the time (Recommended)' for x in o)), str(any(x['label'] == 'Run the gate again with twice the time' for x in o))])")"
+assert_eq "9.8.5 S8 (WP20): a second time-out asks, and twice the time is no option any more" "ask|False|False" \
+  "$(nx "o = d['ask']['question']['options'] + (d['ask'].get('more') or {}).get('question', {}).get('options', []); '|'.join([d['action'], str(any(x['label'] == 'Run the gate again with twice the time (Recommended)' for x in o)), str(any(x['label'] == 'Run the gate again with twice the time' for x in o))])")"
 assert_eq "9.8.5: every question has four options at most; the rest go under More options" "True|True" \
   "$(nx "q = d['ask']; str(len(q['question']['options']) <= 4) + '|' + str(q['question']['options'][-1]['label'] == 'More options' if 'more' in q else True)")"
 fresh; mkdir -p gfx; git -C gfx init -q; git -C gfx -c user.name=t -c user.email=t@e commit -q --allow-empty -m base

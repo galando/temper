@@ -112,7 +112,7 @@ assert_eq "9.8.0: a test that only runs the code misses planted bugs: check ahea
   "measured|survivors|0" "$(_planted15)|$(_gc | grep -c 'mutation')"
 
 # --- 3. A fix's regression proof: the new test must fail on the code before the fix ---
-fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --feature "the bug" --command fix >/dev/null 2>&1
+fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --feature "the bug" --command fix >/dev/null 2>&1; _base_known
 python3 - <<'PYEOF'
 p = '.claude/temper.config'; s = open(p).read()
 s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 80\n  commands:\n    test: python3 -m unittest discover -s unit -t .\n', 1)
@@ -573,7 +573,7 @@ gpass review
 assert_eq "9.8.0: More options at Review names exactly the options behind it" "same|1" \
   "$(nx "m = [o for o in d['ask']['options'] if o['label'] == 'More options'][0]; ('same' if m['description'] == ', '.join(o['label'] for o in d['ask']['more']['options']) else m['description'])")|$(nx "str(sum(1 for o in d['ask']['more']['options'] if o['label'] == 'Make a small change'))")"
 # a fix run says Fix where a /temper:temper run says Build, and Save for later names /temper:fix
-setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
 mkdir -p .temper/specs/demo-bug; printf '# Root cause\nx\n' > .temper/specs/demo-bug/rca.md
 _at fix; gpass build fix rca
 assert_eq "9.8.0: a fix run's Fix question: the Fix agent makes a change, and Save for later names /temper:fix" "1|1|0" \
@@ -592,7 +592,7 @@ setup
 setup; [[ "$PWD" == "$WORKDIR" ]] || exit 1   # a fresh repository: no branch or kept ref of an earlier case file counts
 rm -rf .git; git init -q .; git config user.email t@example.com; git config user.name T
 git commit -q --allow-empty -m base
-"$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known
 git branch temper/demo/replan-20200101T000000Z/G1; git branch "temper/demo/replan-$(date -u +%Y%m%dT%H%M%SZ)/G2"
 git branch temper/demo/earlier-20200101T000000Z/T1; git branch temper/demo/G3
 git worktree add -q .claude/worktrees/kept-probe temper/demo/earlier-20200101T000000Z/T1 2>/dev/null
@@ -602,12 +602,12 @@ assert_eq "tidy: earlier attempts' branches leave git branch for refs/temper/kep
 assert_eq "tidy: a branch checked out in a worktree stays, and a branch of the run itself is not touched" "yes|yes" \
   "$(git show-ref --verify --quiet refs/heads/temper/demo/earlier-20200101T000000Z/T1 && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/G3 && echo yes || echo no)"
 git worktree remove --force .claude/worktrees/kept-probe
-"$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known
 out="$("$TEMPER" state clear 2>&1)"
 assert_eq "tidy: a kept attempt older than 30 days is dropped, a recent one stays" "1|no|yes|yes" \
   "$(printf '%s' "$out" | grep -c 'earlier attempt(s) kept more than 30 days dropped')|$(git show-ref --quiet refs/temper/kept/demo/replan-20200101T000000Z/G1 && echo yes || echo no)|$(git for-each-ref --format=x 'refs/temper/kept/demo/replan-*/G2' | grep -q x && echo yes || echo no)|$(git show-ref --quiet refs/temper/kept/demo/earlier-20200101T000000Z/T1 && echo yes || echo no)"
 printf 'build:\n  grouped:\n    keep-days: 0\n' >> .claude/temper.config
 git update-ref refs/temper/kept/demo/replan-20200101T000000Z/G9 HEAD
-"$TEMPER" state init demo >/dev/null 2>&1; "$TEMPER" state clear >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known; "$TEMPER" state clear >/dev/null 2>&1
 assert_eq "tidy: keep-days 0 keeps every kept attempt" "yes" "$(git show-ref --quiet refs/temper/kept/demo/replan-20200101T000000Z/G9 && echo yes || echo no)"
 setup; [[ "$PWD" == "$WORKDIR" ]] || exit 1; rm -rf .git; git init -q .

@@ -239,20 +239,37 @@ def risk_rows(r, nfiles):
 
 
 def baseline():
-    """The baseline WP20 records (.temper/evidence/baseline.json): absent before it, and then no section."""
+    """WP20: the baseline line (.temper/evidence/baseline.json) in one of four forms: passes with its seconds and the
+    coverage floor; running; fails on the current code; unknown with the reason. No file, no section."""
     d = load(os.path.join(TEMPER, "evidence", "baseline.json"), {})
-    if not d:
+    if not d or not d.get("result"):
         return None
-    parts = []
-    if d.get("cmd"):
-        parts.append(str(d["cmd"]))
-    if isinstance(d.get("exit_code"), int):
-        parts.append("passed" if d["exit_code"] == 0 else "failed (exit %d)" % d["exit_code"])
-    if isinstance(d.get("seconds"), (int, float)):
-        parts.append("%d min" % int(round(d["seconds"] / 60.0)))
-    if d.get("coverage") is not None:
-        parts.append("coverage floor %s%%" % d["coverage"])
-    return sec("baseline", "BASELINE", [cell(", ".join(parts))]) if parts else None
+    cmd = str(d.get("run") or d.get("cmd") or "the suite")
+    res = d["result"]
+    if res == "green":
+        secs = "%s s" % d["seconds"] if isinstance(d.get("seconds"), (int, float)) else "time not kept"
+        cov = d.get("coverage")
+        text = "passes on the current code: %s, %s; %s" % (cmd, secs, "coverage %s%% is the floor" % cov if cov is not None
+                                                            else "no coverage total, so no floor")
+        mark = None
+    elif res == "running":
+        text = "running: %s on the current code, in its own process; nothing waits for it but the first group's check" % cmd
+        mark = "open"
+    elif res == "red":
+        env = [x for x in d.get("env") or [] if isinstance(x, dict)]
+        first = (env[0].get("why") if env and d.get("kind") != "red-base" else
+                 next((str(x) for x in d.get("fail_lines") or []), "exit %s" % d.get("exit_code", "?")))
+        text = "fails on the current code (%s): %s" % (d.get("kind") or "red", first)
+        answer = d.get("answered") if isinstance(d.get("answered"), dict) else {}
+        if d.get("answer") == "fix-run":
+            text += "; a fix run: the red suite may be the bug, so nothing was asked"
+        elif answer:
+            text += "; you went on anyway on %s (%s): a recorded skip" % (str(answer.get("ts") or "")[:10], answer.get("reason") or "")
+        mark = "skipped" if d.get("answer") else "open"
+    else:
+        text = "unknown: %s" % (d.get("why") or "no result")
+        mark = "not measured"
+    return sec("baseline", "BASELINE", [cell(text, mark)])
 
 
 def estimate():
@@ -451,7 +468,10 @@ def commit(b, nxt):
         out.append(sec("criteria", "WHAT IS TRUE", rows, "%d of %d met" % (len(met), len(crit)), 8,
                        os.path.join(r.spec, "intent.md")))
     t = last_check("tests")
-    if t is not None:
+    skip = next((x for x in r.rows("check") if x.get("name") == "tests pass" and x.get("state") == "skipped"), None)
+    if skip is not None:   # WP20: the person went on from a red base: the failures before and after, as a skip
+        out.append(sec("suite", "THE SUITE", [cell(str(skip.get("detail") or "skipped"), "skipped")]))
+    elif t is not None:
         code = t.get("exit_code")
         what = "passed" if code == 0 else "failed (exit %s)" % code if isinstance(code, int) else "recorded"
         out.append(sec("suite", "THE SUITE", [cell("%s: %s" % (t.get("cmd") or t.get("claim") or "the tests", what))]))

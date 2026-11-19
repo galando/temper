@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-19 03:40 UTC
+- Watch: one check is scheduled; the next is due 2026-11-19 04:42 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -59,8 +59,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP15 | done | `59c618e` | 2026-11-18 | one card, computed by `scripts/card.py`, on the approval, the commit and a stop: a field of every ask and of the view, rows in `temper go` and `temper card`, drawn above the dialog by the mod; the Plan panel goes; the commit option carries its commit; the Context check folds when the card shows every flagged line; five checks off the list, which holds 56 (43 selftest, 13 scenarios) |
 | WP16 | done | `89f7a0f` | 2026-11-18 | a hand back is one of seven kinds (`NEEDS` in `flow_base.py`), carried by its option with its id; every other end of the driver is a saved stop that shows the CLI's FAIL line; the Context check, the 2,000 character answer and Scope drift as the CLI's question (`temper drift ask`); `spec branch --carry` and `--if-protected`, `group take-out`, `group feedback`; group-fail and group-fail-twice off the list, which holds 53 (43 selftest, 10 scenarios) |
 | WP17 | done | `cde3d90` | 2026-11-19 | a clean bug run asks twice: `rca.approve`, the approval with the card of rca.md (bound by its digest, the branch by `spec branch --if-protected`), then the commit; its checks start beside Review; TRIVIAL is a recorded verdict (`intent trivial --why`, closed by rule with `.temper/trivial.json`, the commit gate's `trivial exit` row of 1 file and 10 lines); D25 and fix-two off the list, which holds 51 (42 selftest, 9 scenarios) |
-| WP19 | doing | | | |
-| WP20 | todo | | | |
+| WP19 | done | `366e909` | 2026-11-19 | coverage is judged by one rule in a fixed order (`check_run.py coverage-verdict`) against the project's own base, and a measurement not taken is a third state in every gate, question, view, card and report; the mutation row, its threshold and stop 21 go, and planted bugs move to `check ahead` as information beside Review; D35b, D35c and D35d off the list, which holds 48 (39 selftest, 9 scenarios) |
+| WP20 | doing | | | |
 | WP21 | todo | | | |
 | WP22 | todo | | | |
 | WP23 | todo | | | |
@@ -191,6 +191,9 @@ None.
 - 2026-11-19 CI: End to end shard 2 of 4 passed every scenario on `ef5488a` and was cancelled at its 20 minute limit, so Gate failed; `3889021` gives each end to end shard 30 minutes and keeps four shards, so the check names stay.
 - 2026-11-19 phase 4b fixes: the regression proof row is read without `executed_by` by the commit gate and the card (older than the phase); left to WP23, which owns the proof of a fix run.
 - 2026-11-19 phase 4b fixes, left open: `evidence $(echo resolve)` passes the mod's guard in an active run (older than the phase; the guard is not a sandbox, `docs/trust.md`, and the CLI still refuses a commit it did not make); `flow_ask.with_more` writes no `accept` on the More question, so the driver takes it from the gate question; for a feature run the commit card's FILES section marks against `plan_files` alone while the gate's scope row also allows test files, the spec folder and Scope drift choices (for WP31 or the final review).
+- 2026-11-19 WP19: the gate judges the latest coverage row again at gate time, with the key and the baseline as they are then, so a row recorded by hand and `TEMPER_CONFIG` count; the row's `value` stays the total and the share of changed lines is `share`. The floor of the total rule is the base minus 1. The `mutation` marker appears only with a result (an empty one would bring view-fixtures.ts to 199,626 bytes). `scripts/e2e/world.ts` waits at most 120 s for the planting process of its own world before counting suite runs (a harness change, no floor moved). slow-first-run's coverage checks are never reached until WP20 to WP23 end its 2 s Validate time out; it stays listed. `bench/compare_models.py` still reads old logs for the old coverage text.
+- 2026-11-19 WP19: caps: cli_bytes 220,309, gate_rows 52 (now under its final 55), config_live_keys 19, config_lines 161, prompt_bytes 306,548; option_labels 73 (final 71) did not move. Floor: coverage-drop new (2 dialogs in every mode). Merged main: quick PASS, selftest 3108 pass, XFAIL 39; CI green on `219c352`.
+- 2026-11-19 WP21 tests: the WP21 test writer removed `/tmp/temper-e2e-slow-first-run-*` folders changed in the last 15 minutes while no end to end process ran; a scenario run of another agent at that moment would have failed and been run again. WP20 picks `cd backend && mvn -q verify` as the owner's command of the slow project while its plan's Validate differs in text, so the WP21 check `the whole suite runs on the base once` needs the builder to settle it.
 
 ## Follow ups of pull request 115
 

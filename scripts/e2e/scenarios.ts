@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -628,6 +629,77 @@ export const armedRun = (w: World): void => {
   expect(!/git push|gh pr/.test(flow), 'an unattended run never pushes')
   expect(!w.exists('.temper/build-state.json') && /VERSION = 1/.test(w.sh('git show HEAD:src/ci_shape.py')),
     'the run ended and the change is committed, the group fix with it')
+}
+
+// WP20: the baseline turns red after the approval (the scenario red-base-after-approval). The config's test command
+// is base.sh, which waits until the first task agent starts and then fails: the baseline, in its own process, is
+// running at the approval and ends red while that agent works. The agent waits for the red result, then builds its
+// task. No new task agent is launched after it, the work in flight is kept (its task passed), and the run stops with a
+// notice (the rule log's stop) and the red base question, where the person stops.
+export const BASE_SH = '#!/usr/bin/env bash\n# the base suite: it waits for the first task agent, then fails\ni=0\n' +
+  'while [ ! -f "${MOCK_BASE_GATE:-/nonexistent}" ] && [ "$i" -lt 600 ]; do sleep 0.1; i=$((i+1)); done\n' +
+  'echo "FAIL: test_base_red expected the final value"\nexit 1\n'
+export const redBaseAfterApproval = (w: World): void => {
+  const gate = `${w.dir}.base-gate`
+  w.env.MOCK_BASE_GATE = gate
+  delete w.env.TEMPER_BASELINE_FOREGROUND   // the baseline must run in its own process here
+  startProject(w, '', wd => {
+    wd.write('base.sh', BASE_SH)
+    const cfg = '.claude/temper.config'
+    wd.write(cfg, wd.read(cfg).replace(/^ {4}test: .*$/m, '    test: bash base.sh').replace(/^ {4}coverage: .*$/m, '    coverage: bash base.sh'))
+    wd.sh('git add -A && git commit -qm "the base suite"')
+  })
+  const result = (wd: World): string => {
+    try {
+      return String(wd.json('.temper/evidence/baseline.json').result ?? '')
+    } catch {
+      return ''
+    }
+  }
+  const tasks: string[] = []   // the baseline's result at each launch of a task agent
+  let atApproval = ''
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-build-task': (wd, a) => {
+      tasks.push(result(wd))
+      if (tasks.length === 1) {
+        fs.writeFileSync(gate, '')
+        // with no baseline on record there is nothing to wait for (a CLI before WP20)
+        for (let i = 0; i < 600 && tasks[0] !== '' && result(wd) !== 'red'; i++) spawnSync('sleep', ['0.1'])
+      }
+      buildTask(wd, a)
+    },
+  }
+  const asked: string[] = []
+  orchestrate(w, script({
+    agents,
+    // a run that went past Build after the first task agent did not stop at the red base: the checks below say why
+    stopAt: (_wd, n) => tasks.length > 0 && ['review', 'check', 'commit'].includes(String(n.stage ?? '')),
+    person: (ask, wd) => {
+      const id = String(ask.id ?? '')
+      asked.push(id)
+      if (id === 'plan.approve') atApproval = result(wd)
+      if (id === 'base.red') return null   // the person stops at the red base question
+      return recommended(ask, wd)
+    },
+  }))
+  expect(atApproval === 'running', `the baseline was still running at the approval, so the approval came first (${atApproval || 'no file'})`)
+  expect(tasks.length === 1, `no new task agent is launched once the base is red (${tasks.length} launches, the base at each: ${tasks.join(', ')})`)
+  expect(result(w) === 'red', `the baseline ended red while the first task agent worked (${result(w) || 'no file'})`)
+  const groups = w.exists('.temper/groups.json') ? w.json('.temper/groups.json') : {}
+  expect(groups?.tasks?.['1']?.status === 'passed', `the work in flight is kept: task 1 passed (${JSON.stringify(groups?.tasks?.['1'] ?? null)})`)
+  const last = asked[asked.length - 1]
+  expect(last === 'base.red' && asked.indexOf('plan.approve') >= 0 && asked.indexOf('plan.approve') < asked.lastIndexOf('base.red'),
+    `the run stops with the red base question after the approval (asked ${asked.join(', ')})`)
+  let log: Json[] = []
+  try {
+    const d = w.json('.temper/rule-log.json')
+    log = (Array.isArray(d) ? d : Array.isArray(d?.rule_log) ? d.rule_log : []) as Json[]
+  } catch {
+    log = []
+  }
+  expect(log.some(e => e?.kind === 'stop' && /base/i.test(String(e?.what ?? ''))),
+    `the stop of the run that went on by itself is recorded with a notice that names the red base (${JSON.stringify(log).slice(0, 200)})`)
 }
 
 // Save for later stops the run; /temper:temper takes it up again at the same question.

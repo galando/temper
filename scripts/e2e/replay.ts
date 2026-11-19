@@ -139,7 +139,10 @@ const AGENT_MIN: Record<string, number> = {   // minutes per launch, from the me
   'temper:temper-check': 5, 'temper:temper-env': 5,
 }
 const m = { questions: 0, question_texts: [] as string[], agents: {} as Record<string, number>, manual_repairs: [] as string[],
-  setup_clicks: 0, overrides: 0, loops: [] as string[], cli_ms: 0 }
+  setup_clicks: 0, overrides: 0, loops: [] as string[], cli_ms: 0,
+  // WP20: the first question that names the JDK fault, and whether the Intent agent had been launched by then (9.8.5
+  // names it in the environment check before any agent; the head names it at the plan gate)
+  jdk_named_at: '', jdk_named_before_intent: false }
 
 const t = (w: World, args: string) => w.run(`${TEMPER} ${args}`)
 const wtOf = (w: World, n: number): string => {
@@ -275,6 +278,10 @@ function main(): void {
     const q = String(ask.question.question)
     m.question_texts.push(q.slice(0, 160))
     const opts = ask.options as Json[]
+    if (m.jdk_named_at === '' && /JDK|allowed range/.test([q, ...opts.map(o => `${o.label} ${o.description ?? ''}`)].join('\n'))) {
+      m.jdk_named_at = String(ask.id ?? `question ${m.questions}`)
+      m.jdk_named_before_intent = (m.agents['temper:temper-intent'] ?? 0) === 0
+    }
     // the `recommended` field when the CLI writes ids (9.8.5); the label's suffix for a plugin folder without them (9.8.4,
     // the base), since the same script drives both through TEMPER_E2E_ROOT
     const fields = opts.some(o => typeof o.id === 'string')
@@ -323,6 +330,7 @@ function main(): void {
     plan_gate_failed_rows: planGateFailed.filter(Boolean),
     bad_validate_line_in_plan_at_end: (w.exists(`${SPEC}/tasks.md`) ? w.read(`${SPEC}/tasks.md`) : head).includes(BAD_VALIDATE),
     cli_seconds: Math.round(m.cli_ms / 1000),
+    jdk_named_at: m.jdk_named_at || 'never', jdk_named_before_intent: m.jdk_named_before_intent,
     questions_asked: m.question_texts,
   }
   console.log(JSON.stringify(result))

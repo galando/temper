@@ -83,12 +83,12 @@ rm -rf "$WORKDIR/.git/d4-bin"
 # state clear and state init both remove build-state.json, and a new run's state holds no regression_test.
 setup
 PRT="$REPO_ROOT/scripts/guards/protect-regression-test.sh"
-"$TEMPER" state init bug1 --command fix >/dev/null 2>&1
+"$TEMPER" state init bug1 --command fix >/dev/null 2>&1; _base_known
 mkdir -p spec && echo "exit 1" > spec/bug1.test.sh   # the CLI records only a test file that exists (A6)
 "$TEMPER" state set regression_test spec/bug1.test.sh >/dev/null 2>&1
 _prt() { echo '{"tool_input": {"file_path": "spec/bug1.test.sh"}}' | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$PRT" >/dev/null 2>&1; echo $?; }
 assert_eq "D6: during the fix run the recorded test is shielded" "2" "$(_prt)"
-"$TEMPER" state init bug2 --command fix >/dev/null 2>&1
+"$TEMPER" state init bug2 --command fix >/dev/null 2>&1; _base_known
 assert_eq "D6: a new fix run does not inherit the shield of the one before" "0|" "$(_prt)|$("$TEMPER" state get regression_test 2>/dev/null)"
 mkdir -p spec && echo "exit 1" > spec/bug1.test.sh   # the CLI records only a test file that exists (A6)
 "$TEMPER" state set regression_test spec/bug1.test.sh >/dev/null 2>&1
@@ -100,7 +100,7 @@ assert_eq "D6: a cleared run is no run: no build-state.json, and the shield is l
 # Check passed is check_complete; the one stage after it, Commit (commit_complete, before Pipeline), is past Check too,
 # so a Pipeline fix round's commit is not refused. A stage before Check still is.
 setup
-"$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known
 _vtr_at() { python3 -c "
 import json, sys
 p = '.temper/build-state.json'; d = json.load(open(p)); d['stage'] = sys.argv[1]; json.dump(d, open(p, 'w'))" "$1"; }

@@ -137,7 +137,7 @@ assert_eq "intent rule: the question stays when the person typed a note at Inten
   "clean=work|note=ask:intent.accept" "clean=$_clean54|note=$(_how54)"
 
 # A door that walks Intent checks it and asks its own question (run.walked), as today.
-fresh; "$TEMPER" state init demo --feature "the demo thing" --enter plan >/dev/null 2>&1; gpass intent
+fresh; "$TEMPER" state init demo --feature "the demo thing" --enter plan >/dev/null 2>&1; _base_known; gpass intent
 assert_eq "intent rule: the question stays when a door walked Intent" \
   "clean=work|door=ask:run.walked" "clean=$_clean54|door=$(_how54)"
 

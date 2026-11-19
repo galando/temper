@@ -30,6 +30,10 @@ ends the stop. `.temper/autonomy-report.md` holds the verdict and the reason, an
 repair by rule. A run taken up with no words asks its stage once (`temper go --taken-up`). The stops are listed in
 `scripts/stops.json`.
 
+**A red base after the approval** (9.8.5, WP20) is a stop: the baseline, still running at the approval, ended red.
+No new task agent is launched, the agents in flight finish and their calls run, the stop is recorded with its notice,
+and the run asks the red base question. "Go on anyway" there is a skip, so the run then asks at every stage.
+
 **What ends it.** A skip, an accepted finding, a step back to Plan or Intent, and "Ask me at every stage from here".
 
 **What it never does.** It never plans again or changes a gate's command, the intent or the approved files; it never

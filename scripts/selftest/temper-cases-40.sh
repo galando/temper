@@ -210,7 +210,7 @@ assert_eq "ids: temper go passes id, kind, move and recommended" "intent.accept|
     "$("$TEMPER" go 2>/dev/null)")"
 
 # The questions the fixture views do not reach, each asked once (a refused id would stop a person's run there)
-setup; "$TEMPER" state init bug --command fix >/dev/null 2>&1; "$TEMPER" state advance rca_complete fix >/dev/null 2>&1
+setup; "$TEMPER" state init bug --command fix >/dev/null 2>&1; _base_known; "$TEMPER" state advance rca_complete fix >/dev/null 2>&1
 mkdir -p .temper/specs/bug
 gfail build "tests pass" "2 tests fail"
 assert_eq "ids: a failed Fix asks fix.fail, with the redo the run takes again" "fix.fail|gate|redo|True" \

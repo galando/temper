@@ -12,12 +12,12 @@
  ],
  "caps": {
   "question_sites": {
-   "now": 53,
+   "now": 52,
    "final": 53,
    "measure": "measure_question_sites: calls of self.question( and self.with_more( in the flow files"
   },
   "option_sites": {
-   "now": 88,
+   "now": 89,
    "final": 89,
    "measure": "measure_option_sites: calls of self.opt( in the flow files"
   },
@@ -27,7 +27,7 @@
    "measure": "measure_option_labels: distinct first arguments (a string) of those calls"
   },
   "question_ids": {
-   "now": 35,
+   "now": 36,
    "final": 35,
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
@@ -67,7 +67,7 @@
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 306548,
+   "now": 306891,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
@@ -77,7 +77,7 @@
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 220309,
+   "now": 221169,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

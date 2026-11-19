@@ -161,7 +161,7 @@ _oldcfg46() { # _oldcfg46 <commit> [sed expression]: a new run at Intent, nothin
   _saved46 "$1" template > .claude/temper.config
   [[ -z "${2:-}" ]] || sed -i "$2" .claude/temper.config
   cp .claude/temper.config .git/old-config-46
-  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 }
 _qid46() { _ev "r = d.get('ask') or {}; r.get('id') if d.get('action') == 'ask' else d.get('action')" "$("$TEMPER" next --json 2>/dev/null)"; }
 _tpl46() { # _tpl46 <function>: what the function prints on a new run whose config is the template of 9.8.4, then of
@@ -701,7 +701,7 @@ _notice46() { # the say of two nexts: told when the first starts with the notice
 _d102=""
 for _c in 7c7a1c1 10e965a; do _restore46 "$_c" plan; _d102+="$([[ $_c == 7c7a1c1 ]] && echo 9.8.4 || echo base)=$(_notice46)|"; done
 _clean46; git init -q . 2>/dev/null; mkdir -p .claude; printf 'review:\n  block-on: [critical, high]\n' > .claude/temper.config
-"$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+"$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 _d102+="new=$(_notice46)"
 assert_eq "D102 a project of 9.8.4 or of the base is told once, in one line that starts Temper 9.8.5 asks twice and never in a dialog; a new one never" \
   "9.8.4=told,quiet,no dialog|base=told,quiet,no dialog|new=quiet,quiet,no dialog" "$_d102"

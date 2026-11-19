@@ -244,12 +244,27 @@ nothing is written, and no block is offered (at Check too: a block is offered th
 the commands that failed). A block that did not fix them is remembered and not offered again.
 
 **The block reaches the config only by your answer.** `temper doctor` reads; `temper doctor --propose --write` adds the
-block, and the mod lets it run only as the call of the option you picked. When the preflight or Check fails on the
-environment and the project has no block, the question offers `Add the proposed setup block` (at the plan question
-after `Check again`, at Check first), and the question shows every line of the block (the run line with its secrets
-masked). A block that fakes a tool passes the CLI's check, so your reading of it is the control. Only a block that fixed the failing commands reaches the config.
+block, and the mod lets it run only as the call of the option you picked. When the environment check or Check fails on
+the environment and the project has no block, the question offers `Add this setup block and run it again` (at the red
+base question `base.red` first, at Check first), and the question shows every line of the block (the run line with its
+secrets masked). A block that fakes a tool passes the CLI's check, so your reading of it is the control. At Check only a
+block that fixed the failing commands reaches the config; at `base.red` the call is
+`temper doctor --propose --write --expect <hash>`, which writes the block the question showed (refused when the
+proposal changed since), and the baseline that runs next is its check.
 What no source can make (a missing licence, a secret, a VPN, a JDK the machine does not have and the project cannot
 fetch) is said in plain words instead.
+
+### `temper baseline` (9.8.5, WP20)
+
+`temper baseline start [--again] [--env-only]` checks the environment (the tools and services the project's files and
+the config name, in under 5 s) and runs the project's suite once on the current code, in the detached worktree
+`.claude/worktrees/temper-baseline`, in its own process; it writes `.temper/evidence/baseline.json` and always exits 0.
+The flow calls it as its own first step of a run; `--again` runs it after a repair, `--env-only` (a door into Review or
+Check) checks the environment and runs no suite. `temper baseline clean` removes the worktree (`state clear` and
+`state init` call it). `temper baseline accept-red --reason '<why>'` is your answer "Go on anyway" at the red base
+question: the base's failures become a recorded skip (an override row `base-suite`); the mod lets it run only as the
+call of that answer. `python3 scripts/check_run.py owner ROOT [SPEC]` prints who owns the suite command, as one JSON
+line `{"test", "run", "source", "why"}`. See `docs/flow.md`, "The environment check and the baseline".
 
 ### `temper plan patch` (9.8.5)
 
