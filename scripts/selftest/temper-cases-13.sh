@@ -127,6 +127,7 @@ gfail check "tests pass" "the latest run of a test command failed: unit/test_cli
 assert_eq "Check: a failing test is a defect in the code: Loop back to Build stays first, and there is no Run Check again" "Loop back to Build (Recommended)|0" \
   "$(nx "d['ask']['options'][0]['label'] + '|' + str(sum(1 for o in d['ask']['options'] if o['label'].startswith('Run Check again')))")"
 gfail check "tests pass" "no passing test-run evidence recorded"
+sed -i 's/^\*\*Integration:\*\* `true`$/**Integration:** `manual`/' .temper/specs/demo/tasks.md   # W23-6: no plan line the CLI can run either
 "$TEMPER" state redo check --reason "the measurement was missing" >/dev/null 2>&1
 assert_eq "Check: after state redo check the verdict is gone and the Check agent runs again" "work|temper:temper-check|none" \
   "$(nx "d['action'] + '|' + d['agents'][0]['type'] + '|' + str(d.get('ask') and 'asked' or 'none')")"
