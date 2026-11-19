@@ -35,7 +35,7 @@ import path from 'node:path'
 import { MVN, POM, recordOf, toolRuns, withRemote } from './faketools'
 import type { ToolRun } from './faketools'
 import { orchestrate } from './loop'
-import { defaultPerson, idOf, withoutSetup, worldCheck } from './persons'
+import { defaultPerson, idOf, pickId, withoutSetup, worldCheck } from './persons'
 import { expect, mavenAgents, mavenScript, planMd, promise, startMaven, stepsBackToPlan, tasksMd, withCheckLines } from './slow'
 import type { World } from './world'
 import type { Json, Person } from './world'
@@ -113,6 +113,18 @@ export const brokenFirstRun = (w: World): void => {
     asked.push(ask)
     cards.push(viewCard(wd))
     const text = shown(ask)
+    // WP20 (these pass from WP20 on; the scenario stays listed until WP21, row D13): the environment check names the
+    // wrong tool version and the service that is down in base.red before the first agent; after the repair of both by
+    // the setup block, the baseline names the one failing test in base.red before the planner; no agent works on
+    // either.
+    if (asked.length === 1) {
+      expect(idOf(ask) === 'base.red', `W20 the first question is base.red, the environment check before any agent (asked ${idOf(ask)}: ${text.slice(0, 160)})`)
+    }
+    if (text.includes(RED) && !redNamed) {
+      expect(idOf(ask) === 'base.red', `W20 the red test ${RED} is first named in base.red, as a red base (asked ${idOf(ask)}: ${text.slice(0, 160)})`)
+      expect(types().every(t => t === 'temper:temper-intent'),
+        `W20 the red base is named before the planner and with no agent launched for it (launched: ${types().join(', ') || 'none'})`)
+    }
     if (asked.length === 1) {
       expect(rec.agents.length === 0, `D13 the first question is asked with no agent launched (launched: ${types().join(', ')}; asked ${idOf(ask)})`)
       expect(/JDK|Java/.test(text) && /\b24\b/.test(text), `D13 the first question names the tool version, JDK 24 (${idOf(ask)}: ${text.slice(0, 160)})`)
@@ -130,6 +142,8 @@ export const brokenFirstRun = (w: World): void => {
     if (redNamed && !types().includes('temper:temper-plan')) redBeforePlan = true
     expect(redNamed || !types().includes('temper:temper-plan'), `D13 the red test ${RED} is named in a question before temper:temper-plan is launched (asked ${asked.map(idOf).join(', ')})`)
     expect(!types().includes('temper:temper-env') && !types().includes('temper:temper-build'), `D13 no environment agent and no fix pass are launched (${types().join(', ')})`)
+    // WP20: the person goes on anyway at the red base (a recorded skip): the run reaches the commit with the red test
+    if (idOf(ask) === 'base.red' && text.includes(RED)) return pickId(wd, ask, 'go-on-anyway')
     return base(ask, wd)
   }
   promise('D13', () => orchestrate(w, mavenScript(agents(), person)))

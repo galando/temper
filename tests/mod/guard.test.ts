@@ -453,3 +453,34 @@ describe('the budget: only the person grants more, and its record is the CLI\'s'
     }
   })
 })
+
+// 9.8.5 (WP20): "Go on anyway" at the red base question (base.red) is a recorded skip of the suite: only the
+// person's answer runs `baseline accept-red`, word for word as the option wrote it. The baseline's own calls (start,
+// clean) are the CLI's and pass.
+describe('the red base: only the person goes on anyway', () => {
+  const ACCEPT = `${CLI} baseline accept-red --reason '{reason}'`
+  const accept = (reason = 'the base was red before this run'): string => `${CLI} baseline accept-red --reason '${reason}'`
+  test('baseline accept-red outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['intent', 'plan', 'build', 'review', 'check'] as const) {
+      expect(bash(ctx(stage), accept()), stage).toEqual({ deny: ONLY_USER })
+    }
+    // the call of another answer does not let it through
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), accept())).toEqual({ deny: ONLY_USER })
+  })
+
+  test('baseline accept-red passes as the call of the answer, word for word, with one reason', () => {
+    const c = ctx('intent', { allowed: [ACCEPT] })
+    expect('allow' in bash(c, accept('I know the base is red'))).toBe(true)
+    for (const cmd of [`${accept()} && ${accept('again')}`, `${accept()}; ${CLI} override check --reason x`]) {
+      expect(isDeny(bash(c, cmd)), cmd).toBe(true)
+    }
+  })
+
+  test('an unquoted glob that could spell accept-red is refused; the baseline\'s own calls are the CLI\'s', () => {
+    expect(isDeny(bash(ctx('intent'), `${CLI} baseline accept-r?d --reason x`))).toBe(true)
+    for (const cmd of [`${CLI} baseline start`, `${CLI} baseline start --again`, `${CLI} baseline clean`]) {
+      expect('allow' in bash(ctx('intent'), cmd), cmd).toBe(true)
+    }
+  })
+})

@@ -26,8 +26,8 @@ assert_eq "9.8.5 S8: after an empty fix, the command change is recommended and f
   "Change the group's command (Recommended)|True|False" \
   "$(nx "q = d['ask']; o = q['question']['options']; '|'.join([o[0]['label'], str('the cause is not in the group' in q['question']['question']), str(any(x['label'] == 'Run the gate again with twice the time (Recommended)' for x in o))])")"
 _g3 '"fails": 2, "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "ran": true, "timeout_s": 600, "fail_lines": ["x"]}'
-assert_eq "9.8.5 S8: a second time-out still offers twice the time, but does not recommend it" "False|True" \
-  "$(nx "o = d['ask']['question']['options'] + (d['ask'].get('more') or {}).get('question', {}).get('options', []); '|'.join([str(any(x['label'] == 'Run the gate again with twice the time (Recommended)' for x in o)), str(any(x['label'] == 'Run the gate again with twice the time' for x in o))])")"
+assert_eq "9.8.5 S8 (WP20): a second time-out asks, and twice the time is no option any more" "ask|False|False" \
+  "$(nx "o = d['ask']['question']['options'] + (d['ask'].get('more') or {}).get('question', {}).get('options', []); '|'.join([d['action'], str(any(x['label'] == 'Run the gate again with twice the time (Recommended)' for x in o)), str(any(x['label'] == 'Run the gate again with twice the time' for x in o))])")"
 assert_eq "9.8.5: every question has four options at most; the rest go under More options" "True|True" \
   "$(nx "q = d['ask']; str(len(q['question']['options']) <= 4) + '|' + str(q['question']['options'][-1]['label'] == 'More options' if 'more' in q else True)")"
 fresh; mkdir -p gfx; git -C gfx init -q; git -C gfx -c user.name=t -c user.email=t@e commit -q --allow-empty -m base

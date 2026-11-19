@@ -19,6 +19,8 @@
 //   slow-first-run (plain, driver), row D11: the default person; the questions asked are plan.approve and commit.confirm
 //     and no other; no line of the tool log has exit 124; at most 3 whole suite runs; Check passed with its coverage row
 //     not measured; no call of the trace steps back to Plan; the config at the end is byte equal to what init wrote.
+//     WP20 adds (W20): the baseline runs in its own process; the approval card's baseline line shows it as it stands
+//     (`running` when the approval comes first); at the end it is green with its seconds, and no group gate timed out.
 //   slow-at55 (plain), row D12: check.commands set; the coverage command prints backend/coverage-total.txt, which holds
 //     `TOTAL 100 45 55%` on the base. Check passes at 55%. A second pass, whose builder writes 50% into that file: Check
 //     fails with a row that names the drop.
@@ -281,11 +283,45 @@ export const verdictOf = (gates: Json | null, stage: string): string => String(g
 
 // ---- the scenarios ------------------------------------------------------------------------------------------------------
 
+// WP20: the baseline's file, and its line on the approval card. The card shows one of four forms: passes (with its
+// seconds and the floor), running, fails on the current code, unknown with the reason. Read when the approval is asked:
+// a baseline still running says `running` there.
+export const BASELINE = '.temper/evidence/baseline.json'
+export function baselineLine(wd: World): void {
+  const b = wd.exists(BASELINE) ? wd.json(BASELINE) : null
+  let card: Json | null = null
+  try {
+    card = wd.exists('.temper/view.json') ? ((wd.json('.temper/view.json').card ?? null) as Json | null) : null
+  } catch {
+    card = null
+  }
+  const sec = ((card?.sections ?? []) as Json[]).find(s => s?.id === 'baseline')
+  const line = ((sec?.rows ?? []) as Json[]).map(r => String(r?.text ?? '')).join(' ')
+  const want: Record<string, RegExp> = { running: /running/i, green: /pass/i, red: /fail/i, unknown: /unknown/i }
+  const result = String(b?.result ?? 'none')
+  expect(want[result] !== undefined && want[result]!.test(line),
+    `W20 the approval card's baseline line shows the baseline as it stands (${result}): ${JSON.stringify(line).slice(0, 160)}`)
+}
+
 export const slowFirstRun = (w: World): void => {
   withRemote(w)
   const p = startMaven(w, SLOW_FILES, { env: { TOOL_JDK: '24', MOCK_SLOW_S: SLOW_S, ...LIMITS } })
+  // WP20: the baseline runs in its own process here, as in a session, so the approval may come before it ends
+  delete w.env.TEMPER_BASELINE_FOREGROUND
   const seen: Seen = { ids: [], gates: null }
-  promise('D11', () => orchestrate(w, mavenScript(mavenAgents(), watching(defaultPerson(['plan.approve', 'commit.confirm']), seen))))
+  const base = defaultPerson(['plan.approve', 'commit.confirm'])
+  const person: Person = (ask, wd) => {
+    if (idOf(ask) === 'plan.approve') baselineLine(wd)
+    return base(ask, wd)
+  }
+  promise('D11', () => orchestrate(w, mavenScript(mavenAgents(), watching(person, seen))))
+  // WP20: the first group gate read the measured result: the base is green with its seconds, and no gate timed out
+  const b = w.exists(BASELINE) ? w.json(BASELINE) : null
+  expect(b?.result === 'green' && typeof b?.seconds === 'number' && b.seconds >= Number(SLOW_S),
+    `W20 the baseline measured the slow suite green, with its seconds (${JSON.stringify(b ?? null).slice(0, 200)})`)
+  const groups = w.exists('.temper/groups.json') ? w.json('.temper/groups.json') : null
+  const gTimed = Object.entries((groups?.groups ?? {}) as Json).filter(([, g]) => Number((g as Json)?.gate?.timeout_s ?? 0) > 0)
+  expect(gTimed.length === 0, `W20 the first group gate read the measured result and timed out nowhere (${gTimed.map(([k]) => k).join(', ')})`)
   const runs = toolRuns(p.log)
   const timedOut = runs.filter(r => r.exit === 124)
   expect(timedOut.length === 0, `D11 no limit is hit, and ${timedOut.length} run(s) of the tool log ended in exit 124: ${timedOut[0]?.line ?? ''}`)
