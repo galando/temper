@@ -454,6 +454,10 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     return { deny: SHIELD_DENY(cli) }
   }
 
+  // 9.8.5 (WP18): a finding is resolved by the CLI itself, for its own repair commit, where no guard sees it; no
+  // answer of the person and no armed run makes the call a tool call, in a /temper run and in a /temper:fix run.
+  if (guardsCommit && c.calls.some(call => { const [a, b] = callWords(call); return a === 'evidence' && b === 'resolve' })) return { deny: RESOLVE_DENY }
+
   if (!active) return ALLOW
   // Every pull request is a draft, and Temper never marks one ready (reference/pr.md).
   if (/\bgh\s+pr\s+ready\b/.test(command) || (/\bgh\s+pr\s+create\b/.test(command) && !/--draft\b/.test(command))) return { deny: DRAFT_DENY }
@@ -477,9 +481,6 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
         if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(key) }
       }
     }
-    // 9.8.5 (WP18): a finding is resolved by the CLI itself, for its own repair commit, where no guard sees it; no
-    // answer of the person and no armed run makes the call a tool call.
-    if (a === 'evidence' && b === 'resolve') return { deny: RESOLVE_DENY }
     if (!personOnly(w, r)) continue
     // The person's answer at this step, or the CLI's own action, maps to this very call.
     if (ctx.allowed.some(written => sameCall(written, w))) continue
