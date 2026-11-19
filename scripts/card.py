@@ -646,7 +646,7 @@ def render(card, width=WIDTH):
             out += wrap("%s: %s" % (s.get("title"), said), width)
             continue
         out += wrap("%s%s" % (s.get("title"), " (%s)" % s["note"] if s.get("note") else ""), width)
-        if s.get("id") == "files":
+        if s.get("id") == "files" and card.get("kind") == "approval":   # the commit's FILES: a row a line
             out += files_lines(rows, width)
         else:
             for x in rows:
