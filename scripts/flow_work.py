@@ -8,6 +8,7 @@ import re
 import shlex
 
 import approval
+import baseline
 import check_run
 import decisions
 import doctor
@@ -130,38 +131,27 @@ class WorkPart:
             return self.repair(stage, why or "the check failed")
         return None
 
-    def setup_offer(self, rows, base=False):
-        """9.8.5: the option that adds temper doctor --propose's setup block, when the preflight failed on the
-        environment and the config has no block; None when that does not hold or nothing is proposed. WP20 (`base`,
-        the red base question): no preflight is read; the block is offered when the config has none and one is
-        proposed, and its calls write the block as the question shows it (--expect its hash: a proposal that changed
-        since is refused), then run the baseline again, which is its check."""
+    def setup_offer(self, base=False):
+        """The option that adds temper doctor --propose's setup block, when the config has none and one is proposed;
+        None else. Its calls write the block as the question shows it (--expect its hash: a proposal that changed since
+        is refused), then run the baseline again, which is its check (WP20; WP21: at Check too, which takes the second
+        call for its own). `base` (the red base question) shows the block line by line, else on one line."""
         cfg = self.r.ctx.get("config_file") or os.path.join(".claude", "temper.config")
         if run_env.load_setup(cfg):
             return None
-        if not base:
-            if not any(x.get("name") == "preflight" and "environment fault" in str(x.get("detail", "")) for x in rows):
-                return None
-            kept = read_json(os.path.join(TEMPER, "preflight.json"), {})
-            if not (isinstance(kept, dict) and kept.get("env_faults")):
-                return None   # nothing to check a block against: a block is written only after it fixed a stored failing command
         block, _ = doctor.propose(os.getcwd())
-        if block and (base or not doctor.tried_and_failed(os.getcwd(), block)):
-            parts = doctor.parts(block)
-            run, env = parts["run"], ", ".join("%s=%s" % kv for kv in parts["env"].items())
-            what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
-            # M13 of WP08: the question shows the block whole, line by line (the run line masked), since the person who
-            # reads it is the check: a block that fakes a tool passes the CLI's own
-            shown = [("  run: " + run_env.mask(l[len("  run: "):])) if l.startswith("  run: ") else l for l in block]
-            self.shown_block = "\n".join(shown) if base else " | ".join(l.strip() for l in shown if l.strip())
-            if base:
-                desc = "%s. Temper writes the block as shown into .claude/temper.config, then checks the environment and runs the suite again." % what
-                calls = [self.c("doctor --propose --write --expect %s" % doctor.block_hash(block)), self.c("baseline start --again")]
-            else:
-                desc = what + ". Temper first reruns the failing commands with it, and adds it only when they no longer fail on the environment."
-                calls = [self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")]
-            return self.opt("Add this setup block and run it again (Recommended)", desc, move="redo", calls=calls, oid="add-setup")
-        return None   # M13 of WP08: the environment agent is no longer offered
+        if not block:
+            return None   # WP21: no rule proposes a block: the question says what is missing, in the fault's words
+        parts = doctor.parts(block)
+        run, env = parts["run"], ", ".join("%s=%s" % kv for kv in parts["env"].items())
+        what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
+        # M13 of WP08: the question shows the block whole, line by line (the run line masked), since the person who
+        # reads it is the check: a block that fakes a tool passes the CLI's own
+        shown = [("  run: " + run_env.mask(l[len("  run: "):])) if l.startswith("  run: ") else l for l in block]
+        self.shown_block = "\n".join(shown) if base else " | ".join(l.strip() for l in shown if l.strip())
+        desc = "%s. Temper writes the block as shown into .claude/temper.config, then checks the environment and runs the suite again." % what
+        calls = [self.c("doctor --propose --write --expect %s" % doctor.block_hash(block)), self.c("baseline start --again")]
+        return self.opt("Add this setup block and run it again (Recommended)", desc, move="redo", calls=calls, oid="add-setup")
 
     # -- WP20: the baseline, before any other step of an active run, and the red base question ----------------------
     def base_step(self):
@@ -184,39 +174,96 @@ class WorkPart:
             return self.stop(r.stage, "the base is red: %s" % (b.get("why") or b.get("kind") or "the suite fails on the current code"))
         return {"action": "ask", "stage": r.stage, "ask": self.base_red(b)}
 
-    def base_red(self, b):
+    def plan_command_step(self, after=False):
+        """WP21: the plan's commands on the base, after the plan gate passed (and at Build, before any task's work is
+        checked): the CLI's own `baseline plan` while one has no result; the question plan.command for the first that
+        failed or timed out and that nobody skipped (a recorded stop in a run that goes on by itself: it may never change
+        a gate's command, and never plans again); None else. A result still running waits for nobody here."""
+        r = self.r
+        b = read_json(os.path.join(TEMPER, "evidence", "baseline.json"), {})
+        if not isinstance(b.get("plan"), dict) or not r.spec:
+            return None   # no baseline of this run started (or a selftest's file of a baseline not run)
+        root, cfg = os.getcwd(), r.ctx.get("config_file") or os.path.join(".claude", "temper.config")
+        fails = baseline.failed(root, cfg, r.spec, b)
+        if after:   # after the approval: only a command whose check has not run in Build yet still asks
+            gs = r.groups.get("groups") or {}
+            fails = [(c, e) for c, e in fails if any((w.startswith("G") and not (gs.get(w.split()[0]) or {}).get("gate"))
+                                                     or (w == "Integration" and not r.groups.get("integration"))
+                                                     for w in e["where"].split(", "))]
+        if fails:
+            c, e = fails[0]
+            if r.armed():
+                return self.stop(r.stage, "a command the plan wrote %s on the current code: %s (%s)" % (
+                    "timed out" if e.get("result") == "timeout" else "fails", c[:200], e.get("why") or ""))
+            return {"action": "ask", "stage": r.stage, "ask": self.base_red(b, (c, e), after)}
+        if (not after or not r.groups.get("groups")) and baseline.pending(root, cfg, r.spec, b):
+            return {"action": "auto", "stage": r.stage, "calls": [self.c("baseline plan")],
+                    "say": "The plan's Validates and its Integration line run once on the current code."}
+        return None
+
+    def base_red(self, b, pc=None, after=False):
         """base.red: one fault, one dialog. The command, the exit, the seconds, the fault or the first fail lines, and
         the exact proposed block when there is one; Add this setup block and run it again (first and recommended,
         when the config has no block and one is proposed), Run it again, Go on anyway (a recorded skip, with a
-        reason), Save for later."""
-        cmd = b.get("run") or b.get("cmd") or "the suite"
-        env = [x for x in b.get("env") or [] if isinstance(x, dict)]
-        if env and b.get("kind") != "red-base":
+        reason), Save for later. WP21, the scope plan-command (`pc`, the command and its result; the id plan.command):
+        a command the plan wrote failed or timed out on the base. Allow it more time first at a time out (else Run it
+        again), Change the command (typed, `plan patch`), Revise the plan (after the approval: Loop back to Plan), Go
+        on anyway (a skip with a reason, the override plan-command), Save for later; no setup block and no agent."""
+        cmd, e = pc or (b.get("run") or b.get("cmd") or "the suite", b)
+        q, more, env = shlex.quote(cmd), e.get("result") == "timeout", [x for x in b.get("env") or [] if isinstance(x, dict)]
+        secs = " after %s s" % e["seconds"] if isinstance(e.get("seconds"), (int, float)) else ""
+        lines = [str(x) for x in e.get("fail_lines") or []][:3]
+        printed = "It printed: %s." % " | ".join(lines) if lines else "It printed no line that names a failing test."
+        change = back = add = None
+        if pc:
+            what = "The plan's command %s (%s) %s on the current code, before any task changed it: exit %s%s. %s" % (
+                cmd, e.get("where") or "the plan", "did not end within its limit" if more else "fails", e.get("exit"), secs, printed)
+            target = e["where"].split(", ")[0]
+            change = self.opt("Change the command", "Type the command to run instead; it runs once on the current code%s." % (
+                "" if after else ", and the plan is checked again"), move="redo",
+                calls=[self.c("plan patch %s --cmd '{answer}'" % ("integration" if target == "Integration" else target.split()[0])),
+                       self.c("baseline plan")] + ([] if after else [self.c("gate plan")]),
+                answer=("Command", "What command should %s run? It must pass on the current code." % e.get("where")), oid="change-command")
+            why = "%s %s on the current code: %s" % (e.get("where"), cmd[:160], e.get("why") or "")
+            back = (self.plan_loop(False, why) if self.r.can_loop("build", "plan") else None) if after else self.revise_opt(
+                "The Plan agent writes another command; then the plan is checked again.", why)
+        elif env and b.get("kind") != "red-base":
             what = "The environment check found %s before any agent: %s." % (
                 "1 fault" if len(env) == 1 else "%d faults" % len(env),
                 "; ".join(str(x.get("why") or "%s needs %s; the shell has %s" % (x.get("file"), x.get("need"), x.get("have")))
                           for x in env))
         else:
-            secs = " after %s s" % b["seconds"] if isinstance(b.get("seconds"), (int, float)) else ""
-            lines = [str(x) for x in b.get("fail_lines") or []][:3]
             what = "The project's suite fails on the current code, before this run changed anything: %s exited %s%s. %s" % (
-                cmd, b.get("exit_code", "with an error"), secs,
-                "It printed: %s." % " | ".join(lines) if lines else "It printed no line that names a failing test.")
-        add = self.setup_offer([], base=True)
-        again = self.opt("Run it again", "The environment check and the suite run once more on the current code, after you "
-                         "repaired it by hand.", move="redo", calls=[self.c("baseline start --again")], oid="check-again")
-        go = self.opt("Go on anyway", "The base's failures become a recorded skip of the suite's row, which the commit shows; "
-                      "one new failing line still fails it.", move="override", calls=[self.c("baseline accept-red --reason '{reason}'")],
-                      reason=["The failure is known and not this change's", "It is fixed in another change"], oid="go-on-anyway")
+                cmd, b.get("exit_code", "with an error"), secs, printed)
+        if not pc:
+            add = self.setup_offer(base=True)
+        again = self.opt("Allow it more time" if more else "Run it again", (
+            "Its limit doubles (%s s now), and it runs once more on the current code." % e.get("limit")) if more else
+            "%s once more on the current code, after you repaired it by hand." % (
+                "It runs" if pc else "The environment check and the suite run"), move="redo",
+            calls=([self.c("baseline timeout %s %s" % (q, e.get("limit") or 600))] if more else [])
+            + [self.c("baseline plan --cmd %s" % q if pc else "baseline start --again")], oid="more-time" if more else "check-again")
+        go = self.opt("Go on anyway", "This check of the command is skipped, with your reason recorded (an override named "
+                      "plan-command); it runs at its gate in Build as written." if pc else "The base's failures become a recorded "
+                      "skip of the suite's row, which the commit shows; one new failing line still fails it.", move="override",
+                      calls=[self.c("baseline skip --cmd %s --reason '{reason}'" % q if pc else "baseline accept-red --reason '{reason}'")],
+                      reason=["The command needs what only Build adds", "It is known to fail and is fixed elsewhere"] if pc else
+                      ["The failure is known and not this change's", "It is fixed in another change"], oid="go-on-anyway")
         save = self.save()
         if add:
             text = "%s The project's own files propose this setup block:\n%s\nAdd it and run the check again?" % (what, self.shown_block)
+        elif pc:
+            # a time out is no fault of the command's text: more time first; a command fault is the command's to change
+            self.set_rec(again if more or e.get("class") == "environment" else change, True)
+            text = "%s %s change the command, %s, or skip this check with a reason?" % (what, "Allow it more time," if more else
+                   "A Validate must pass on the code as it is: run it again after a repair,", "loop back to Plan" if after else "revise the plan")
         else:
             # a fault of the environment is repaired first; a suite red before the change is most often a known
             # failure, which the person may pass as a recorded skip (one new failing line still fails the row)
             self.set_rec(again if b.get("kind") != "red-base" else go, True)
             text = "%s Repair it and run it again, go on anyway with the failures as a recorded skip, or save the run?" % what
-        return self.question(GATE_HEADER, text, [o for o in (add, again, go, save) if o], self.r.stage, qid="base.red")
+        return self.question(GATE_HEADER, text, [o for o in (add, again, change, back, go, save) if o], self.r.stage,
+                             qid="plan.command" if pc else "base.red")
 
     def setup_fault(self):
         """9.8.5 (Q6): the reason Check's latest run hit the environment (a `setup fault:` row after its last suite row), or ""."""
@@ -296,7 +343,8 @@ class WorkPart:
                 c["claim"][:160], c.get("cite"), (c.get("why") or "")[:160]) for c in fr["contests"]]
             lines.append(self.plugin_line())
             a = {"type": "temper:temper-plan-review", "model": model, "prompt": "\n".join(lines),
-                 "after": [self.c("usage add --stage plan --model %s --ms {ms}" % (model or "unknown")), self.c("gate plan")]}
+                 "after": [self.c("usage add --stage plan --model %s --ms {ms}" % (model or "unknown")), self.c("baseline plan"),
+                           self.c("gate plan")]}
             a["gate"] = a["after"][-1]
             if i == 0:   # the CLI's launch mark: only rows recorded from now on count, and only on these files
                 a["before"] = [self.c("plan fresh start")]
@@ -377,6 +425,10 @@ class WorkPart:
             # 9.8.0 (round 5): the CLI draws the stage's panel from the files the agent wrote; the agent draws
             # none. WP15: Plan has none: its approval card shows the plan, and the question follows at once.
             a["after"].append(self.c("panel design"))
+        if stage == "plan":
+            # WP21: the CLI runs the plan's Validates and its Integration line once on the current code (in a process of
+            # its own), after the planner returned and never in its turn; the plan gate itself runs no command
+            a["after"].append(self.c("baseline plan"))
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
         a["gate"] = a["after"][-1]
         return {"action": "work", "stage": stage, "calls": [self.c("brief")] if stage in ("plan", "design") else [], "agents": [a],

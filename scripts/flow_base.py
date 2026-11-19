@@ -113,6 +113,8 @@ QUESTIONS = {
     "run.budget": {"kind": "gate", "decision": "Whether the run is saved, or allowed two more repeats of a failed check."},
     "base.red": {"kind": "gate", "decision": "Whether a fault of the environment or a red base is repaired first, or the run "
                  "goes on with the base's failures as a recorded skip."},
+    "plan.command": {"kind": "gate", "decision": "Whether a command the plan wrote that fails or times out on the base gets "
+                     "more time, another command, a revised plan or a skip with a reason."},
 }
 # A follow up question takes its parent's id and one of these suffixes: a More question asks its parent's decision, an
 # accept question keeps a finding, a reason question asks the reason the report shows, a name question a typed value.
@@ -126,7 +128,7 @@ OPTION_IDS = frozenset((
     "small-change", "confirm", "as-planned", "carry", "cancel", "type", "add-setup", "start-over",
     "choice-1", "choice-2", "choice-3", "choice-4",
     # the rest of the head, by the rule: one id a meaning
-    "grill-me", "teach-me", "html-review", "share-review", "revise-plan", "fresh-review", "fresh-again", "find-setup",
+    "grill-me", "teach-me", "html-review", "share-review", "revise-plan", "fresh-review", "fresh-again",
     "walk-through", "change", "depth-review", "commit-pr", "commit-stacked-prs", "config-suggestions", "restore-tests",
     "correct-test", "end-run", "apply-fix", "new-branch", "merge-groups", "take-out",
     "keep-commits", "accept-done", "fix-group", "change-command", "add-to-plan", "include-left-out",
@@ -138,7 +140,9 @@ OPTION_IDS = frozenset((
     # WP14
     "run-design",
     # WP20
-    "go-on-anyway"))
+    "go-on-anyway",
+    # WP21
+    "more-time"))
 
 
 def question_entry(qid):

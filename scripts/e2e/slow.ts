@@ -7,7 +7,8 @@
 // tests); no coverage tool that Temper can run (the pom binds JaCoCo's check, as the plan gate's Maven rows want, and
 // prints no total) and, but in `slow-at55`, no `check.commands` in the config, which is the file `temper init` writes. The plan is one group of two tasks in a chain, so the three whole suite runs of the
 // promise are the base, the group and Check, whoever owns the suite command; its Validate and Integration lines are
-// `cd backend && mvn -s settings.xml verify -DskipITs`, the form both Maven rows of the plan gate accept.
+// `cd backend && mvn -s settings.xml verify -DskipITs`, the form both Maven rows of the plan gate accept (WP21: in
+// slow-first-run they are `cd backend && mvn -q verify`, the suite the CLI finds and the baseline runs).
 //
 // The faults the fixture plants (scripts/e2e/faketools.ts):
 //   MOCK_SLOW_S=3                  a whole suite run (no -Dtest= filter) takes 3 seconds
@@ -37,6 +38,10 @@ import type { Agent, Json, Person } from './world'
 
 export const SPEC = '.temper/specs/report'
 export const SUITE = 'cd backend && mvn -s settings.xml verify -DskipITs'   // what both Maven rows accept
+// WP21: the suite as the CLI finds it for this project (check_run.suite_owner, the one folder one level down with a pom);
+// both Maven rows accept it too. In slow-first-run the plan's Validate and Integration line are this text, the suite
+// the baseline ran, so `baseline plan` runs nothing more on the base
+export const OWNER = 'cd backend && mvn -q verify'
 export const SLOW_S = '3'
 // WP20: the baseline's own limit is Check's unless TEMPER_BASELINE_TIMEOUT_S is set: set to the default here, so the
 // base is measured whole and every later limit comes from it
@@ -119,13 +124,13 @@ Two new classes and their tests. Nothing else reads them yet.
 |------|--------|-----------|
 ${extra}`
 
-export const tasksMd = (extraFile = '', integration = SUITE): string => `# Tasks: CI report
+export const tasksMd = (extraFile = '', integration = SUITE, validate = SUITE): string => `# Tasks: CI report
 
 **Integration:** \`${integration}\`
 
 ## Group G1: Report
 **Depends:** none
-**Validate:** \`${SUITE}\`
+**Validate:** \`${validate}\`
 **Context:**
 A Maven backend (JDK 24). Each task's test runs its own class through mvn.
 
@@ -208,7 +213,6 @@ export function mavenAgents(plan: { plan?: string; tasks?: string } = {}, after?
       for (const [s, cmd] of [['CI JSON shape is stable across a run', 'bash unit/shape_test.sh'], ['Override rows name the approver', 'bash unit/shape_test.sh'], ['Same ledger gives the same bytes', 'bash unit/bytes_test.sh']])
         t(w, `evidence run --stage check --scenario '${s}' --claim 'scenario: ${s}' -- ${cmd}`)
     },
-    'temper:temper-env': () => undefined,
   }
 }
 
@@ -325,7 +329,7 @@ export const slowFirstRun = (w: World): void => {
     }
     return person(ask, wd)
   }
-  promise('D11', () => orchestrate(w, mavenScript(mavenAgents(), reading)))
+  promise('D11', () => orchestrate(w, mavenScript(mavenAgents({ tasks: tasksMd('', OWNER, OWNER) }), reading)))
   // WP20: the first group gate read the measured result: the base is green with its seconds, and no gate timed out
   const b = w.exists(BASELINE) ? w.json(BASELINE) : atCommit.base
   expect(b?.result === 'green' && typeof b?.seconds === 'number' && b.seconds >= Number(SLOW_S),

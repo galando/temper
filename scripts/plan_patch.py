@@ -1,4 +1,5 @@
-"""plan_patch.py: `temper plan patch`, the person's change of one command line of the approved plan (9.8.5, S6).
+"""plan_patch.py: `temper plan patch`, the person's change of one command line of the plan (9.8.5, S6; WP21: also
+before the approval, as the answer at plan.command, when the plan's line changes and no hash moves).
 
   python3 plan_patch.py SPEC STATE GROUPS LEDGER G<n> --cmd '<command>'        a group's **Validate:** line
   python3 plan_patch.py SPEC STATE GROUPS LEDGER task <N> --cmd '<command>'    a task's **Test:** line
@@ -91,24 +92,23 @@ def main(argv):
     st = load(state)
     if st is None:
         return fail("no active run (temper state init)")
-    if not st.get("plan_hash"):
-        return fail("the plan is not approved yet: change tasks.md at Plan, not with a patch")
+    approved = bool(st.get("plan_hash"))   # WP21: before the approval, the answer at plan.command changes the plan's line
     path = os.path.join(spec, "tasks.md")
     lines = open(path, encoding="utf-8").read().split("\n")
     new, old = patch_lines(lines, target, num, cmd)
     if new is None:
         return fail(old)
-    before = digest(tasks_md.parse(path))
-    if before != st.get("plan_hash"):
+    if approved and digest(tasks_md.parse(path)) != st.get("plan_hash"):
         return fail("tasks.md differs from the approved plan in more than this line; loop back to Plan")
     tmp = path + ".tmp.%d" % os.getpid()
     with open(tmp, "w", encoding="utf-8") as f:
         f.write("\n".join(new))
     os.replace(tmp, path)
     h = digest(tasks_md.parse(path))
-    st["plan_hash"] = h
-    save(state, st)
-    g = load(groups)
+    if approved:
+        st["plan_hash"] = h
+        save(state, st)
+    g = load(groups) if approved else None
     if g is not None:
         if g.get("plan_hash"):
             g["plan_hash"] = h
@@ -124,7 +124,9 @@ def main(argv):
     except (OSError, ValueError):
         rows = []
     rows.append({"claim": "plan patch by the person: %s: `%s` -> `%s`" % (what, old, cmd), "cmd": None, "exit_code": None,
-                 "artifact": None, "sha256": None, "value": None, "severity": None, "phase": "note", "kind": "input",
+                 "artifact": None, "sha256": None, "value": None, "severity": None, "phase": "note",
+                 # before the approval the plan is checked again (an edit); after it, Build takes the note (an input)
+                 "kind": "input" if approved else "edit",
                  "scenario": None, "criterion": None, "label": "PERSON", "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     os.makedirs(os.path.dirname(os.path.abspath(ledger)), exist_ok=True)
     save(ledger, rows)

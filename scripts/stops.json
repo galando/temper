@@ -211,6 +211,24 @@
    "where": "Build, Check",
    "trigger": "the row `intent unchanged since the approval` failed: a rule never changes the intent or the approved plan, so the person approves again or restores the file",
    "check": "bound: an unattended run stops at the failed row: next is the park call, never a loop back"
+  },
+  {
+   "id": "base.red",
+   "where": "any stage",
+   "trigger": "a red base or a fault of the environment that nobody answered (WP20): the run stops with a notice",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "plan.command",
+   "where": "Plan, Build",
+   "trigger": "a command the plan wrote fails or times out on the base (WP21): never changed, skipped or planned again by rule",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "person.baseline",
+   "where": "any stage",
+   "trigger": "temper baseline accept-red or baseline skip: going on from a red base, skipping the check of a command the plan wrote",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   }
  ]
 }

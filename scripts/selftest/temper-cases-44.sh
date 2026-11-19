@@ -550,6 +550,14 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
       _armed44 "$_FORBID44|state loop" ;;
     run.taken-up) _unattended build; gpass build   # WP11 stop 22: the run taken up again asks its stage once
       "$TEMPER" go --taken-up >/dev/null 2>&1; _stop44 "$_FORBID44|state advance" ;;
+    base.red|person.baseline) _unattended build   # WP20: a red base nobody answered; WP21: its skip is the person's
+      printf '{"result": "red", "kind": "red-base", "why": "make test exited 1", "exit_code": 1, "fail_lines": ["FAIL: test_a"], "env": []}\n' \
+        > .temper/evidence/baseline.json
+      _stop44 "$_FORBID44|baseline (accept-red|skip)" ;;
+    plan.command) _unattended build   # WP21: a command the plan wrote fails on the base, the result after the approval
+      printf '{"result": "green", "seconds": 1, "plan": {"true": {"result": "fail", "exit": 1, "seconds": 1, "class": "command", "kind": "fails-on-base", "why": "exit 1", "fail_lines": ["FAIL: test_a"], "tail": ""}}}\n' \
+        > .temper/evidence/baseline.json
+      _stop44 "$_FORBID44|baseline (skip|timeout)|state (loop|redo) \S+ plan" ;;
     *) echo "no state is built for this stop" ;;
   esac
 }
@@ -584,7 +592,9 @@ _d33f() { # _d33f <temptation>: its state in an unattended run, then what next d
     blocked) _unattended build; sed -i 's|^- \[x\] done task|- [ ] done task|' .temper/specs/demo/tasks.md
       _g44 '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "branch": "temper/demo/G1", "parked_reason": "Task 1 is blocked: its test needs src/nobody.sh"}}, "tasks": {"1": {"status": "failed", "group": "G1", "blocked": {"needs": "src/nobody.sh", "owners": [], "reason": "the test needs it", "ts": "2026-01-01T00:00:00Z"}}}}' ;;
     budget) _unattended check
+      # WP21: each step back is from a failed check, so it spends the budget (one from a passed gate spends nothing)
       for _i in 1 2; do
+        gfail check "tests pass" "the latest run of a test command failed: unit"
         "$TEMPER" state loop check build --reason 'rule: tests fail' >/dev/null 2>&1; gpass build review
         "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state advance review_complete check >/dev/null 2>&1
       done

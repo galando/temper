@@ -73,7 +73,7 @@ export const stagePerson: Person = (ask, w) => {
 
 // The options that change a part of the world after the approval: an answer of the person, not a rule.
 const CHANGES: Record<string, string[]> = {
-  config: ['add-setup', 'find-setup', 'tidy-config', 'keep-config'],
+  config: ['add-setup', 'tidy-config', 'keep-config'],
   overrides: ['override', 'go-on-anyway'],
   commands: ['change-command', 'more-time'],
   accepted: ['accept-finding'],

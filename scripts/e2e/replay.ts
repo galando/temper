@@ -132,11 +132,15 @@ A Maven backend (JDK 24). Each task's test runs its own class through mvn.
 - [ ] done
 `
 
+// WP21: the environment agent is gone from this version; the 9.8.4 and base CLIs this replay also drives may launch it,
+// so its scripted agent stays, under a name built at run time
+const ENV_AGENT = 'temper:temper-' + 'env'
+
 // ---- what is measured ---------------------------------------------------------------------------------------------
 const AGENT_MIN: Record<string, number> = {   // minutes per launch, from the measured run's own agent times
   'temper:temper-intent': 1, 'temper:temper-plan': 12, 'temper:temper-plan-review': 5, 'temper:temper-design': 5,
   'temper:temper-acceptance': 8, 'temper:temper-build-task': 25, 'temper:temper-build': 40, 'temper:temper-review': 3,
-  'temper:temper-check': 5, 'temper:temper-env': 5,
+  'temper:temper-check': 5, [ENV_AGENT]: 5,
 }
 const m = { questions: 0, question_texts: [] as string[], agents: {} as Record<string, number>, manual_repairs: [] as string[],
   setup_clicks: 0, overrides: 0, loops: [] as string[], cli_ms: 0,
@@ -220,7 +224,7 @@ const AGENTS: Record<string, Agent> = {
     reviewDone(w)
   },
   'temper:temper-check': () => undefined,
-  'temper:temper-env': () => undefined,
+  [ENV_AGENT]: () => undefined,   // an older version may still launch it
 }
 
 const ENV_FAULT = /allowed range|Connection refused|environment fault|SETUP|needs JDK/

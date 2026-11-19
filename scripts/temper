@@ -564,7 +564,7 @@ cmd_model() {
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
 security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/ runs.jsonl asked.json \
-preflight.json setup-tried.json decisions.json budget.json rule-log.json trivial.json"
+decisions.json budget.json rule-log.json trivial.json"
 
 
 cmd_init() {
@@ -1169,7 +1169,7 @@ cmd_state_clear() {
   [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
   python3 -I "$SCRIPTS_DIR/run_summary.py" append "$TEMPER_DIR" "$(_now)" 2>/dev/null || true   # one line a run, in runs.jsonl
   # Each target is named, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,preflight,setup-tried,decisions,budget,rule-log}.json
+  rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,decisions,budget,rule-log}.json
   _base_clean
   # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
   _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
@@ -1959,6 +1959,7 @@ cmd_group_gate() {
   if [[ -z "$reason" ]]; then
     local rowfile rc
     rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
+    _baseline wait "$validate"   # WP21: the run of this Validate on the base, when it is still running
     [[ -n "$tmo" ]] || tmo="$(_baseline limit "$validate" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}")"   # WP20: from the base's time
     _task_py grouprun "$(_in_wt "$(pwd -P)/$wt")" "$tmo" "$rowfile" "$g" -- "$validate"
     rc=$?
@@ -1966,6 +1967,8 @@ cmd_group_gate() {
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
     flines="$(_task_py faillines "$rowfile")"; rm -f "$rowfile"   # 9.8.4: the check ran; its FAIL lines go with the verdict
     if [[ "$rc" -eq 124 ]]; then timed_out="$tmo"; _baseline timeout "$validate" "$tmo"; reason="group $g Validate timed out after ${tmo}s: $validate"
+    elif [[ "$rc" -ne 0 ]] && _baseline like-base "$validate" "$flines"; then   # WP21: only the base's failures, gone on from
+      echo "NOTE: group $g Validate failed (exit $rc) only as it failed on the base, which you went on from: a recorded skip"
     elif [[ "$rc" -ne 0 ]]; then reason="group $g Validate failed (exit $rc): $validate"; fi
   fi
   if [[ -z "$reason" && -f "$spec_path/intent.md" ]]; then   # F9: the scenario tests the group owes, on the merged group branch
@@ -2723,8 +2726,10 @@ cmd_integrate() {
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
-    rm -f "$rowfile"
-    if [[ "$rc" -ne 0 ]]; then
+    local flines; flines="$(_task_py faillines "$rowfile")"; rm -f "$rowfile"
+    if [[ "$rc" -ne 0 ]] && _baseline like-base "$suite" "$flines"; then   # WP21: only the base's failures, gone on from
+      echo "NOTE: the integration suite failed (exit $rc) only as it failed on the base, which you went on from"
+    elif [[ "$rc" -ne 0 ]]; then
       _integ_record FAIL "integration suite failed (exit $rc): $suite" || true
       echo "FAIL: integration suite failed (exit $rc): $suite" >&2
       return 1
@@ -2909,8 +2914,6 @@ gate_plan() {
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
     done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$STATE_FILE" "$(_cfg_get plan.fresh-review ask)" "$(_cfg_get plan.fresh-review-twice true)" "$(_cfg_get plan.fresh-review-rounds 3)")"
-    g_line="$(python3 -E -s "$SCRIPTS_DIR/preflight.py" row "$spec_path" "$(pwd -P)" "$CONFIG_FILE" "$(_evidence_file plan)")"
-    reqs+=("$g_line"); grep -q '"pass": false' <<<"$g_line" && all_pass=0
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -3506,7 +3509,7 @@ cmd_override() {
   local gates="$STAGES" g ok=0
   [[ -f "$STATE_FILE" && "$(_json_get_path "$STATE_FILE" command temper)" == "fix" ]] && gates="build review check commit"
   for g in $gates; do [[ "$stage" == "$g" ]] && ok=1; done
-  [[ "$stage" =~ ^foreign-commit:G[0-9]+:[0-9a-f]{4,40}$ || "$stage" == base-suite ]] && ok=1
+  [[ "$stage" =~ ^foreign-commit:G[0-9]+:[0-9a-f]{4,40}$ || "$stage" == base-suite || "$stage" == plan-command ]] && ok=1
   # WP11: the person confirms a changed file under a sensitive path at the failed commit question (a file the run changed)
   if [[ "$stage" == sensitive-path:* ]]; then
     grep -qxF -- "${stage#sensitive-path:}" <<<"$(_changed_since_base)" \
@@ -3635,16 +3638,12 @@ cmd_plan() {
   if [[ "${1:-}" == "patch" ]]; then   # the person's change of one command line (scripts/plan_patch.py)
     local rc; _lock_acquire; python3 -E -s "$SCRIPTS_DIR/plan_patch.py" "$(_spec_path "")" "$STATE_FILE" "$GROUPS_FILE" "$(_evidence_file plan)" "${@:2}"; rc=$?; _lock_release; return $rc
   fi
-  if [[ "${1:-}" == "preflight" ]]; then   # runs the plan's commands on HEAD again and stores the result (scripts/preflight.py)
-    local sp; sp="$(_spec_path "")"; [[ -d "$sp" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
-    python3 -E -s "$SCRIPTS_DIR/preflight.py" run "$sp" "$(pwd -P)" "$CONFIG_FILE" "$(_evidence_file plan)"; return
-  fi
   if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
     local rc; _lock_acquire
     python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds 3)" "$(_now)" "$(_evidence_file plan)"; rc=$?
     _lock_release; return $rc
   fi
-  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan preflight" >&2; return 1; }
+  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan patch" >&2; return 1; }
   shift
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }

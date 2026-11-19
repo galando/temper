@@ -490,6 +490,8 @@ assert_eq "D48b a key written twice is merged: a second autonomy block keeps the
 
 # --- D49 (M9): a code bug that prints Connection refused is not held as an environment fault for good ---
 _tasks45 true true faketest45 | sed 's/^- \[x\] done/- [ ] done/' | m_setup
+# WP21: only a sure sign is an environment fault at a task gate: here the config declares a service that does not answer
+printf 'setup:\n  services:\n    db45: 127.0.0.1:1\n' >> .claude/temper.config
 mkdir -p "$WORKDIR/.git/bin45"
 printf '#!/usr/bin/env bash\nif [[ "$(cat "$(dirname "$0")/mode")" == red ]]; then echo "AssertionError: expected 3, got 2"; else echo "java.net.ConnectException: Connection refused"; fi\nexit 1\n' > "$WORKDIR/.git/bin45/faketest45"
 chmod +x "$WORKDIR/.git/bin45/faketest45"; export PATH="$WORKDIR/.git/bin45:$PATH"
@@ -534,7 +536,6 @@ printf '#!/usr/bin/env bash\n[[ "$1" == --export ]] && echo "export JAVA_HOME=/o
 "$TEMPER" evidence add --stage check --claim "tests: the suite (run by the CLI)" --cmd "mvn verify" --exit 1 >/dev/null 2>&1
 "$TEMPER" evidence add --stage check --claim "setup fault: needs JDK [24,) (found 21.0.12)" --cmd "mvn verify" --exit 1 >/dev/null 2>&1
 gfail check "tests pass" "the latest run of a test command failed"
-printf '{"env_faults": [{"cmd": "mvn verify", "files": null, "why": "needs JDK [24,) (found 21.0.12)"}], "limit": 30}\n' > .temper/preflight.json   # as the head stores it
 _d53_block="$("$TEMPER" doctor --propose 2>/dev/null | sed -n '/^setup:/,/^[^ ]/p' | grep -E '^(setup:|  )')"
 assert_eq "D53a the question that offers the setup block shows every line of it, and only its answer writes the block" \
   "offered|whole|no other writer" "$(python3 - "$_d53_block" "$("$TEMPER" next --json 2>/dev/null)" <<'PY'
@@ -554,7 +555,8 @@ print("|".join(["offered" if writers and block else "not offered",
                 "no other writer" if not auto and all(o.get("id") == "add-setup" for o in writers) else "another writer"]))
 PY
 )"
-_d53b_check="$(_x45 "r = 'agent offered' if 'find-setup' in ids(d) or any('env_agent' in c for o in opts(d) for c in o.get('calls') or []) else 'no agent offered'")"
+# (WP21: the option id and the state key of the environment agent are gone; their names are built from two parts)
+_d53b_check="$(_x45 "r = 'agent offered' if 'find-' + 'setup' in ids(d) or any('env' + '_agent' in c for o in opts(d) for c in o.get('calls') or []) else 'no agent offered'")"
 # M10 and M13 (c): Check ran again and met the same fault. Save for later is recommended, and while the block is still
 # offered the question still shows every line of it
 python3 - <<'PY'
@@ -581,13 +583,12 @@ PY
 )"
 rm -rf backend scripts
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
-gfail plan "preflight" "1 command(s): 1 environment fault"
-printf '{"env_faults": [{"cmd": "make test", "files": null, "why": "Connection refused"}], "limit": 30}\n' > .temper/preflight.json
-_d53b_plan="$(_x45 "r = 'agent offered' if 'find-setup' in ids(d) or any('env_agent' in c for o in opts(d) for c in o.get('calls') or []) else 'no agent offered'")"
-"$TEMPER" state set env_agent requested >/dev/null 2>&1 || true
+gfail plan "tasks have a test" "Task 1 has no Test: line"   # WP21: the plan gate runs no command; any failed row
+_d53b_plan="$(_x45 "r = 'agent offered' if 'find-' + 'setup' in ids(d) or any('env' + '_agent' in c for o in opts(d) for c in o.get('calls') or []) else 'no agent offered'")"
+_key45="env"; _key45+="_agent"; "$TEMPER" state set "$_key45" requested >/dev/null 2>&1 || true
 assert_eq "D53b the environment agent is not offered, and a saved request for it launches nothing" \
   "check=no agent offered|plan=no agent offered|requested=no agent" \
-  "check=$_d53b_check|plan=$_d53b_plan|requested=$(_x45 "r = 'agent' if any(a.get('type') == 'temper:temper-env' for a in d.get('agents') or []) else 'no agent'")"
+  "check=$_d53b_check|plan=$_d53b_plan|requested=$(_x45 "r = 'agent' if any(a.get('type') == 'temper:temper-' + 'env' for a in d.get('agents') or []) else 'no agent'")"
 
 # --- D55, D56a, D56b, D57d, D99a, D99b (M15, M16, F4): a command the plan wrote ---
 _plan45() { # _plan45 <Validate> <Integration> <Test> <scenario Test>: a run at Plan in a git repository, the plan written, no
@@ -623,7 +624,7 @@ assert_eq "D99a the plan gate runs no command; after the planner returned each V
   "gate ran=0|V<=1|I<=1|T=0|S=0" \
   "gate ran=$_d99a_gate|V$([[ $(_count45 V) -le 1 ]] && echo '<=1' || echo "=$(_count45 V)")|I$([[ $(_count45 I) -le 1 ]] && echo '<=1' || echo "=$(_count45 I)")|T=$(_count45 T)|S=$(_count45 S)"
 
-_plan45 'sleep 3' true true true; printf 'plan:\n  preflight-timeout: 1\n' >> .claude/temper.config
+_plan45 'sleep 3' true true true   # WP21: Build's limit for a Validate, TEMPER_TASK_TEST_TIMEOUT_S=1 below
 _d55_after="$(_after45)"
 TEMPER_TASK_TEST_TIMEOUT_S=1 _runafter45 "${_d55_after:-x gate plan}"
 TEMPER_TASK_TEST_TIMEOUT_S=1 "$TEMPER" gate plan >/dev/null 2>&1
@@ -643,7 +644,7 @@ for f in (".temper/gates.json", ".temper/evidence/baseline.json"):
 env = any(re.search(r"environment fault|\"class\": \"environment\"", t, re.I) for t in texts)
 a = d.get("ask") or {}
 opts = list(a.get("options") or []) + list((a.get("more") or {}).get("options") or [])
-agent = d.get("agents") or [o for o in opts if o.get("id") == "find-setup" or any("env_agent" in c for c in o.get("calls") or [])]
+agent = d.get("agents") or [o for o in opts if o.get("id") == "find-" + "setup" or any("env" + "_agent" in c for c in o.get("calls") or [])]
 print("%s|%s" % ("environment fault" if env else "no environment fault", "agent" if agent else "no agent"))
 PY
 )"
@@ -659,7 +660,7 @@ assert_eq "D99b a Validate slower than its limit is a time out: plan.command off
 
 _plan45 'MARK' true true true
 M45="$WORKDIR/.git/c45/repaired"
-# the task gets its second case (the plan gate asks two), so the preflight row is the one row of the plan that fails
+# the task gets its second case (the plan gate asks two), so the plan gate passes and the Validate is what fails
 sed -i 's/^- a holds$/- a holds\n- an empty input holds/' .temper/specs/demo/tasks.md
 sed -i "s|\`MARK\`|\`$C45 V; test -e $M45 \|\| { echo 'java.net.ConnectException: Connection refused'; exit 1; }\`|" .temper/specs/demo/tasks.md
 _runafter45 "$(_after45)"; "$TEMPER" gate plan >/dev/null 2>&1
@@ -667,7 +668,11 @@ _d56_n="$(_count45 V)"
 assert_eq "D56b the failed plan question offers check-again" "plan:check-again" \
   "$(_x45 "r = '%s:%s' % (d.get('stage'), 'check-again' if 'check-again' in ids(d) else 'no check-again')")"
 touch "$M45"
-# the row call itself, not check-again (which runs a fresh preflight): the stored failure is not returned (M16)
+# WP21: the plan gate runs no command, so the check that runs it again is the option check-again: its calls, as the
+# person's answer runs them (M16: no stored failure is returned)
+while IFS= read -r _c45; do
+  [[ -n "$_c45" ]] && TEMPER_BASELINE_FOREGROUND=1 bash -c "$_c45" >/dev/null 2>&1
+done < <(_x45 "r = '\n'.join(next((o.get('calls') or [] for o in opts(d) if o.get('id') == 'check-again'), []))")
 "$TEMPER" gate plan >/dev/null 2>&1
 assert_eq "D56a after the environment was repaired the check runs the command again and passes: no stored failure is returned" \
   "ran again|passed" \

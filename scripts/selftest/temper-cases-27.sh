@@ -37,17 +37,12 @@ assert_eq "9.8.5 propose: a project with no such facts gets no proposal" "True" 
 # --- 9.8.5: a fault of the environment offers the proposed block first. WP20: the offer moved from the failed plan
 #     question to the red base question (base.red), which the environment check asks before any agent ---
 _dp; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
-gfail plan "preflight" "1 command(s): 1 environment fault
-environment fault \`mvn verify\`: needs JDK [24,) (found 21.0.12)"
-printf '{"env_faults": [{"cmd": "mvn verify", "files": null, "why": "needs JDK [24,) (found 21.0.12)"}], "limit": 30}\n' > .temper/preflight.json   # as the gate stores it
+gfail plan "tasks have a test" "Task 1 has no Test: line"   # WP21: a failed row of the plan; the gate runs no command
 assert_eq "9.8.5 propose (WP20): the failed plan question offers no setup block any more: the offer is the red base question's" \
   "plan|none" \
   "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; o = (a.get('options') or []) + ((a.get('more') or {}).get('options') or []); str(d.get('stage')) + '|' + ('add-setup' if any(x.get('id') == 'add-setup' for x in o) else 'none')")"
-# WP08 (M16): after the person repaired the environment, one option checks again: the preflight, then the plan gate
-assert_eq "9.8.5 preflight: the failed plan question offers check-again" "plan|check-again|plan preflight|gate plan" \
-  "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; os_ = (a.get('options') or []) + ((a.get('more') or {}).get('options') or []); \
-o = ([x for x in os_ if x.get('id') == 'check-again'] or [{}])[0]; \
-'|'.join([str(d.get('stage')), o.get('id', 'none')] + [c.split('temper ', 1)[-1] for c in o.get('calls') or []])")"
+# WP21: the failed plan question has no check-again any more (the plan gate runs no command); a failed command of the
+# plan is plan.command, whose Run it again runs it again (case file 62, w21 a failed result is not final)
 # WP20: the environment check found the JDK fault; the red base question shows the block and offers it first
 printf '{"result": "red", "kind": "tool-version", "why": "backend/pom.xml needs JDK 24; the shell has 21", "cmd": "cd backend && mvn -q verify", "env": [{"kind": "tool-version", "file": "backend/pom.xml", "need": "24", "have": "21"}]}\n' \
   > .temper/evidence/baseline.json

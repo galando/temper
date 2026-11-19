@@ -2,11 +2,8 @@
 
   python3 doctor.py PROJECT CONFIG                     the report (below)
   python3 doctor.py PROJECT CONFIG --propose           a setup block made from what the project says it needs, printed
-  python3 doctor.py PROJECT CONFIG --propose --write   the same, added to the config only when it fixes the commands the
-                                                       preflight found failing on the environment (never over a block)
   python3 doctor.py PROJECT CONFIG --propose --write --expect HASH   the block the red base question showed (WP20),
                                                        written when its hash is HASH, refused when the proposal changed
-  python3 doctor.py PROJECT CONFIG --candidate FILE [--write]   an agent's draft (agents/env.md), the same check
 
 `needs(project, setup, commands)` (WP20) is the environment check of the baseline: what the project's files and the
 config name (a JDK, a Node version, the config's tools and services), checked against one shell call under the setup
@@ -20,9 +17,9 @@ credential is never shown.
 --propose reads facts, never runs a build: the JDK a Maven, Gradle, .java-version or .tool-versions file asks for; the
 project's CI (GitHub Actions setup-java and setup-node, a job's database services and the variables that point at them,
 .gitlab-ci.yml image tags, .devcontainer features); Docker Compose services when a Docker daemon answers, else a local
-Postgres cluster; a Python .venv; an .nvmrc. It proposes only what it found. --write (and --candidate FILE --write, for
-the environment agent's draft) adds a block only after the CLI reran the commands the preflight found failing on the
-environment with it, and none of them failed on the environment again. Standard library only.
+Postgres cluster; a Python .venv; an .nvmrc. It proposes only what it found. --write adds a block only as the person's
+answer to the question that showed it whole (--expect its hash), and never over a block that is there (WP21: no
+command is run to check a block; the baseline that runs after the answer is its check). Standard library only.
 """
 import os
 import re
@@ -32,7 +29,6 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import preflight  # noqa: E402
 import run_env  # noqa: E402
 
 DEFAULT_TOOLS = ("java", "mvn", "python3", "node", "git")
@@ -540,36 +536,9 @@ def parts(block):
     return out
 
 
-TRIED = os.path.join(".temper", "setup-tried.json")
-
-
 def block_hash(block):
     import hashlib
     return hashlib.sha256("\n".join(block).encode("utf-8")).hexdigest()
-
-
-def record_failed(project, block):
-    """A block whose check failed is not offered again (the question offers the environment agent instead)."""
-    import json
-    path = os.path.join(project, TRIED)
-    try:
-        d = json.load(open(path))
-        d = d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        d = {}
-    d.setdefault("failed", []).append(block_hash(block))
-    try:
-        json.dump(d, open(path, "w"))
-    except OSError:
-        pass
-
-
-def tried_and_failed(project, block):
-    import json
-    try:
-        return block_hash(block) in (json.load(open(os.path.join(project, TRIED))).get("failed") or [])
-    except (OSError, ValueError, AttributeError):
-        return False
 
 
 def setup_of(block):
@@ -585,45 +554,17 @@ def setup_of(block):
 
 
 def write_block(config, block, how):
+    """Adds the block at the end of the config, as shown: nothing but the block and the blank line before it (WP21: the
+    rest of the config stays byte equal), and `how` is said in the output only."""
     if run_env.load_setup(config):
         print("FAIL: %s has a setup block already; nothing was written" % config, file=sys.stderr)
         return 1
     os.makedirs(os.path.dirname(os.path.abspath(config)), exist_ok=True)
     old = read(config)
     with open(config, "a", encoding="utf-8") as f:
-        f.write(("" if not old or old.endswith("\n") else "\n") + "\n# %s, added by the person's choice.\n" % how
-                + "\n".join(block) + "\n")
-    print("OK: the setup block is in %s" % config)
+        f.write(("" if not old or old.endswith("\n") else "\n") + "\n" + "\n".join(block) + "\n")
+    print("OK: the setup block is in %s (%s, by the person's choice)" % (config, how))
     return 0
-
-
-def checked(project, config, block, how, write):
-    """Prints the block and, with write, adds it to the config only when it fixes the environment faults the preflight
-    stored (9.8.5: an unchecked guess never reaches the person). With no stored fault there is nothing to check: it is
-    written, and the output says it was not checked."""
-    if " #" in "\n".join(block):
-        print("FAIL: the run line holds ' #', which the config reader cuts", file=sys.stderr)
-        return 1
-    print("\n".join(block))
-    if not write:
-        return 0
-    setup = setup_of(block)
-    if not setup:
-        print("FAIL: these lines hold no setup block the CLI can read; nothing was written", file=sys.stderr)
-        return 1
-    ok, lines = preflight.verify(project, setup)
-    for l in lines:
-        print("check: " + l)
-    if lines and lines[0].startswith("no environment fault is stored"):
-        print("FAIL: nothing to check the block against, so nothing was written (the config is the person's: only a block "
-              "that fixes a failing command is added). Copy it into .claude/temper.config yourself, or run the plan gate first",
-              file=sys.stderr)
-        return 1
-    if not ok:
-        record_failed(project, block)
-        print("FAIL: the block does not fix the environment faults above; nothing was written", file=sys.stderr)
-        return 1
-    return write_block(config, block, how + " (checked: it fixed the failing commands)")
 
 
 def main(argv):
@@ -646,15 +587,13 @@ def main(argv):
                 return 1
             print("\n".join(block))
             return write_block(config, block, "Proposed by temper doctor --propose, as the red base question showed it")
-        return checked(project, config, block, "Proposed by temper doctor --propose", argv[4:] == ["--write"])
-    if len(argv) >= 5 and argv[3] == "--candidate":
-        # an agent's draft (agents/env.md): the same check, then the same write
-        project, config = argv[1], argv[2]
-        lines = [l.rstrip() for l in read(argv[4]).splitlines() if l.strip() and not l.lstrip().startswith("#")]
-        if not lines or lines[0] != "setup:":
-            print("FAIL: %s holds no setup block (its first line must be setup:)" % argv[4], file=sys.stderr)
+        print("\n".join(block))
+        if argv[4:]:
+            # WP21: a block is written only as the person's answer to the question that showed it (its hash)
+            print("FAIL: --write needs --expect <the hash of the block the question showed>; nothing was written "
+                  "(the config is the person's)", file=sys.stderr)
             return 1
-        return checked(project, config, lines, "Found by the environment agent", argv[5:] == ["--write"])
+        return 0
     if len(argv) != 3:
         print(__doc__, file=sys.stderr)
         return 2

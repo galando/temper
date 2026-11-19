@@ -41,7 +41,6 @@ import tempfile
 import time
 
 import acceptance
-import preflight
 import run_env
 
 SKIP_DIRS = {".git", ".temper", ".claude", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", "target", ".tox"}
@@ -382,14 +381,14 @@ def coverage_row(root, det, cmd, out, rc, cov_exit, base, threshold):
 
 def setup_fault(out, rc, cmd):
     """Why a run failed on its environment, not on the code ("" when it did not): the project's own setup marker
-    (`temper-check: SETUP: ...`), else the preflight's environment rule (a time-out stays the code's)."""
+    (`temper-check: SETUP: ...`), else a sure sign of run_env.env_fault (a time-out stays the code's)."""
     text = out.decode("utf-8", "replace") if isinstance(out, bytes) else str(out or "")
     if rc == 0:
         return ""
     m = re.search(r"^[\w.-]+: SETUP: (.+)$", text, re.M)   # a project script's marker: `temper-check: SETUP: no Postgres ...`
     if m:
         return " ".join(m.group(1).split())[:200]
-    return preflight.env_fault(text, rc, cmd, timeout_is_env=False)
+    return run_env.env_fault(text, rc, cmd)
 
 
 def row(claim, cmd, rc, out, **kw):
