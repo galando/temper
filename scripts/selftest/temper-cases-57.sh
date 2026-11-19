@@ -133,6 +133,29 @@ except ValueError:
 moved = [c for c in g.get('ran') or [] if ' state advance ' in ' %s ' % c]
 print('%s|%s|%d' % (g.get('action'), (g.get('ask') or {}).get('id'), len(moved)))" "$_go57")"
 
+# --- the report step and the no record note are kinds (step 4): `step_kinds` beside `steps`, in next and in go ---
+_kinds57() { # the kind of the report step and of the no record note, in `temper next --json` and in `temper go`
+  python3 -B - "$("$TEMPER" next --json 2>/dev/null)" "$("$TEMPER" go 2>/dev/null | tail -n 1)" <<'PY'
+import json, sys
+out = []
+for text in sys.argv[1:]:
+    try:
+        d = json.loads(text)
+    except ValueError:
+        d = {}
+    steps, kinds = d.get("steps") or [], d.get("step_kinds") or []
+    pairs = [(s, kinds[i] if i < len(kinds) else "") for i, s in enumerate(steps)]
+    out.append(",".join(k for s, k in pairs if k) + ":" + str(sum(1 for s, k in pairs if not k and not s.startswith("/"))))
+print("|".join(out))
+PY
+}
+fresh; gpass intent plan build review check commit
+git add -A >/dev/null 2>&1; git -c user.email=t@example.com -c user.name=T commit -qm "the spec is committed" >/dev/null 2>&1
+_at commit
+assert_eq "w16 step kinds: the report step carries the kind show-last beside the steps of next and go, and no other step is untyped text"   "show-last:0|show-last:0" "$(_kinds57)"
+"$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
+assert_eq "w16 step kinds: the no record note carries the kind note beside the steps of next and go, and no other step is untyped text"   "note:0|note:0" "$(_kinds57)"
+
 # --- the cap: the closed list of hand back kinds is exactly seven, counted from NEEDS ---
 _cap57="$(mktemp -d)"
 mkdir -p "$_cap57/scripts"; find "$REPO_ROOT/scripts" -maxdepth 1 -type f -name '*.py' -exec cp {} "$_cap57/scripts/" \;

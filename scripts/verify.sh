@@ -134,6 +134,7 @@ step "floor: check_floor.py (the shape of scripts/e2e/floor.json, no final raise
 step "xfail: xfail.ts --check (the expected to fail rule, on made up input)" bun scripts/e2e/xfail.ts --check
 step "broken: broken.ts --check (the faults of the broken project and its checks, on made up input)" bun scripts/e2e/broken.ts --check
 step "world: persons.ts --check (the D105 planner clause, on made up input)" bun scripts/e2e/persons.ts --check
+step "loop: loop.ts --check (the bound on the hand backs of the e2e driver, on made up input)" bun scripts/e2e/loop.ts --check
 step "done: check_done.py (every row of done.md names a check that exists)" python3 -I scripts/check_done.py
 
 if [[ "$WORD" == quick ]]; then

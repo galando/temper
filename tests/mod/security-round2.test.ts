@@ -107,6 +107,10 @@ describe('evidence resolve is refused for the session and for every agent', () =
     const r = evaluate(stateAt('review'), { ...ctx, autonomous: true }, { tool: 'Bash', input: { command: written } })
     expect('deny' in r).toBe(true)
   })
+  // A /temper:fix run: the mod holds no run of its own there (run null), and the call is refused all the same.
+  for (const cmd of calls) {
+    test(`in a fix run: ${cmd}`, () => expect('deny' in evaluate(null, { ...ctx, fixRun: true }, { tool: 'Bash', input: { command: cmd } })).toBe(true))
+  }
   test('the control: evidence list and evidence add at Review are allowed', () => {
     expect('deny' in run('scripts/temper evidence list --stage review', 'review')).toBe(false)
     const add = `scripts/temper evidence add --stage review --claim 'review completed' --exit 0`

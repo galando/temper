@@ -281,7 +281,8 @@ With the mod loaded, `/temper:temper <request>` (no run active) and `/temper:tem
 are carried by the mod itself, with no model in the main session (`core/driver.ts`). It runs `temper go`, the
 calls the CLI gives (the action's calls, an agent's `before` and `after` calls, the CLI calls of `steps`), launches
 each agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report
-the CLI prints, asks each question the CLI gives (header, question and option labels as given; Blocking questions
+the CLI prints (the report step and the no record note by their `step_kinds`, never by their words), asks each
+question the CLI gives (header, question and option labels as given; Blocking questions
 with their answer calls), records your answer as the guard does, and runs the calls of the option you picked. The dialog a mod raises
 takes labels alone; the mod's own tool call hook gives each option back its description and its preview (the Context
 check's table) from the CLI's question, so the dialog shows what each choice does. A Build task's panel is the CLI's

@@ -11,7 +11,7 @@ import shlex
 import approval
 import intent_parse
 
-from flow_base import GATE_HEADER, LABEL, RESUME_HEADER, git
+from flow_base import GATE_HEADER, LABEL, NO_RECORD_STEP, REPORT_STEP, RESUME_HEADER, git, with_step_kinds
 
 
 class CommitPart:
@@ -29,8 +29,7 @@ class CommitPart:
                 steps.append(self.c("intent complete"))
             steps.append(self.c("spec deviations"))   # 9.8.0: by the CLI, from build-context.json
         steps.append(self.c("report --end"))
-        steps.append("Copy what temper report printed into your reply, as it printed it, in a code block: the person does not "
-                     "see the output of a Bash call.")
+        steps.append(REPORT_STEP)
         return steps
 
     def feature_message(self):
@@ -108,7 +107,7 @@ class CommitPart:
         files, lessons, message = p["files"], p["lessons"], p["message"]
         if message is None:
             # F27: nothing to stage: no uncommitted code, no lesson file, and a spec folder git ignores. No git add, no git commit.
-            steps.append("There is no record commit: no uncommitted code, no lesson file, and the spec folder is git-ignored or unchanged, so there is nothing to stage.")
+            steps.append(NO_RECORD_STEP)
         else:
             # 9.8.0: one CLI call stages the files and commits (scripts/spec_ops.py): the steps are all temper calls,
             # run in one Bash call. Each name is one shell quoted word: a file name is never shell code. WP16: with no
@@ -139,6 +138,7 @@ class CommitPart:
         prs = self.pr_options([])   # a /temper:temper run only: one pull request, and stacked ones for two groups or more
         for o in prs:
             o["steps"] = steps
+            with_step_kinds(o)
         first += prs[:1] + [self.loop_opt("check", "fix" if r.command == "fix" else "build")]
         rest = prs[1:]
         opens = [f for f in r.findings() if f["state"] == "open"]
@@ -159,8 +159,8 @@ class CommitPart:
         if verdict == "PASS":
             end = r.state.get("end_report")
             if end in ("html", "none"):
-                out = {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.record_steps(),
-                       "say": "The commit carries the run's record."}
+                out = with_step_kinds({"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.record_steps(),
+                                       "say": "The commit carries the run's record."})
                 if any("/reference/pr.md" in x for x in out["steps"]):
                     # WP16: the pull request steps are the conversation's one step (a hand back kind of NEEDS), with the
                     # id of the option the person chose them by
@@ -173,8 +173,8 @@ class CommitPart:
                         "say": "The report page is written (report.html in the spec folder); then the commit."}
             if r.state.get("parked"):
                 return {"action": "ask", "stage": "commit", "ask": self.commit_question()}
-            return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.report_steps(),
-                    "say": "Every gate passed: the report first, then the commit."}
+            return with_step_kinds({"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.report_steps(),
+                                    "say": "Every gate passed: the report first, then the commit."})
         failing = sorted({re.sub(r"\s+gate$", "", str(x.get("name", ""))) for x in r.failed_rows("commit") if str(x.get("name", "")).endswith(" gate")})
         # Only rows of the commit gate's own failed (an armed run's blast radius or park-on-touch): the person's skip is
         # of the commit check itself, recorded with their reason like any other.
