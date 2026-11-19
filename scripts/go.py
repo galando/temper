@@ -76,8 +76,8 @@ def brief(call, cli):
     return call + " --brief" if re.fullmatch(re.escape(cli) + r" gate [a-z]+", call) else call
 
 
-SLIM_KEYS = ("id", "kind", "move", "recommended", "calls", "steps", "do", "needs", "stop", "reason", "reason_question", "reason_ids",
-             "answer_question", "answer_ids")
+SLIM_KEYS = ("id", "kind", "move", "recommended", "calls", "steps", "step_kinds", "do", "needs", "stop", "reason", "reason_question",
+             "reason_ids", "answer_question", "answer_ids")
 
 
 def slim(a):
@@ -106,7 +106,8 @@ def compact(n, ran, cli, verdicts=()):
                          for a in n.get("agents") or []]
         if n.get("steps"):
             out["steps"] = n["steps"]
-        for k in ("needs", "option"):   # WP16: steps that are the conversation's one step, and their option
+        # WP16: the kinds of the steps; steps that are the conversation's one step, and their option
+        for k in ("step_kinds", "needs", "option"):
             if n.get(k):
                 out[k] = n[k]
         if n.get("gate"):

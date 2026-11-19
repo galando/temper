@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-18 19:31 UTC
+- Watch: one check is scheduled; the next is due 2026-11-19 00:37 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -57,8 +57,8 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP12 | done | `90d25cc` | 2026-11-18 | the approving calls carry `--shown` digests of intent.md and tasks.md (`approval.py`) and a stale one is refused; the row `intent unchanged since the approval` fails the Build, Check and commit gates; leaving Intent makes no branch and no commit, the approval makes the branch and one commit; the classic hook `hold_before_approval.py`; the D105 world check is armed; seven checks off the list, which holds 64 (48 selftest, 16 scenarios) |
 | WP13 | done | `cbb89de` | 2026-11-18 | the run leaves Intent by rule (six conditions; a `work` action with the one advance), the approval accepts a draft intent (`intent accept --digest`) in the one spec commit, a skip never accepts, `back` joins the plan More list; the Context check folds into the approval when it fits; three checks off the list, which holds 61 (47 selftest, 14 scenarios) |
 | WP15 | done | `59c618e` | 2026-11-18 | one card, computed by `scripts/card.py`, on the approval, the commit and a stop: a field of every ask and of the view, rows in `temper go` and `temper card`, drawn above the dialog by the mod; the Plan panel goes; the commit option carries its commit; the Context check folds when the card shows every flagged line; five checks off the list, which holds 56 (43 selftest, 13 scenarios) |
-| WP16 | doing | | | |
-| WP17 | todo | | | |
+| WP16 | done | `89f7a0f` | 2026-11-18 | a hand back is one of seven kinds (`NEEDS` in `flow_base.py`), carried by its option with its id; every other end of the driver is a saved stop that shows the CLI's FAIL line; the Context check, the 2,000 character answer and Scope drift as the CLI's question (`temper drift ask`); `spec branch --carry` and `--if-protected`, `group take-out`, `group feedback`; group-fail and group-fail-twice off the list, which holds 53 (43 selftest, 10 scenarios) |
+| WP17 | done | `cde3d90` | 2026-11-19 | a clean bug run asks twice: `rca.approve`, the approval with the card of rca.md (bound by its digest, the branch by `spec branch --if-protected`), then the commit; its checks start beside Review; TRIVIAL is a recorded verdict (`intent trivial --why`, closed by rule with `.temper/trivial.json`, the commit gate's `trivial exit` row of 1 file and 10 lines); D25 and fix-two off the list, which holds 51 (42 selftest, 9 scenarios) |
 | WP19 | todo | | | |
 | WP20 | todo | | | |
 | WP21 | todo | | | |
@@ -181,6 +181,10 @@ None.
 - 2026-11-18 WP15: D22b could not reach a card as written (a run that asks at every stage has no commit verdict at that point, so the CLI runs the commit gate with no question); its setup now reaches `commit.confirm`, the assertion unchanged. The `commit` option now carries `spec commit '<msg>' -- <code>` when code is uncommitted, so the card's message row is the commit the click makes. Case 56's sample and D22a set risk M or fresh review off, since `**/auth/**` paths rate H and a fresh review comes first at H. Rows in changed-tests.md.
 - 2026-11-18 WP15: caps: cli_bytes 222,060 (final 222,144), prompt_bytes 306,976 (final 307,712). Floor: flagged-map new (2 dialogs). `review-fail` moved to the second fixture module (the first was over case 32's 200,000 bytes). The golden cards in `scripts/selftest/cards/` match the spec sample in the sections their fixture has a source for. Merged main: quick PASS, selftest 3041 pass, XFAIL 43; CI green on `74c9218`.
 - 2026-11-16 WP00: the clone was shallow; `git fetch --unshallow origin` made `7c7a1c1` reachable for the replay.
+- 2026-11-18 WP16: D39e was ours: `group continue` taken by rule wrote no rule log row (5 entries for 7 actions); one `_rule_log advance` line in `cmd_group_continue`. Drift rows of a Fix run go to the Build ledger, which the commit gate's scope row reads. The raw `git checkout -q -b fix/...` of the driver's `fixSteps` stayed for WP17, whose tests replace the base test that expected it. A saved stop before any run state exists lets the typed command go on. `armed-check-fail` moved to the second fixture module (the first is 195,322 bytes). The `discuss` row left `docs/commands.md`.
+- 2026-11-18 WP16: caps: question_sites 53 and option_sites 89 are now at their finals; prompt_bytes 305,275 (final 307,712), cli_bytes 221,953 (final 222,144), handback_kinds 7 (new, final 7). Floor: failed-checks new; group-fail and group-fail-twice entries; pr-and-pipeline driver hand backs 1 to 2; small-change driver auto 10 to 15; covered-and-manual driver dialogs 11 to 9, hand backs 1 to 0. U22 is fixed (`MAX_ANSWER` 2,000). Merged main: quick PASS, selftest 3056 pass, XFAIL 43; CI green on `89acfd1`.
+- 2026-11-19 WP17: a typed note at the RCA question runs the root cause agent again (`rca_work`, key `rca_notes`) in the place of a fourth option. The binding of rca.md lives in `approval.py bind-rca` (case 32 refuses `sys.path` in the moved modules). `intent trivial --close` calls `temper state clear` through the CLI; `state init` spends any open record. Small change leaves only the fix `commit.confirm`. Case 58's fixture folder is `unit/`, since validate-directory refuses a `tests` folder name in a script. A container restart lost the builder's last selftest, which it ran again.
+- 2026-11-19 WP17: caps: gate_rows 56 to 57 (final 55) by the new required row `trivial exit`, so later packages must take two rows out; option_sites 88, option_labels 73 (final 71), prompt_bytes 304,939, cli_bytes 222,088 (final 222,144). Floor: fix 2 dialogs in every mode; fix-two and trivial new; pyjokes-full asks 2 fewer dialogs in its fix part (13 to 11 plain and mod, 14 to 12 driver). Merged main: quick PASS, selftest 3075 pass, XFAIL 42.
 
 ## Follow ups of pull request 115
 
@@ -205,7 +209,7 @@ None.
 - [x] U19 (WP08): three run files are not in the exclude list and outlive the run.
 - [ ] U20 (WP08 its own lines, done; WP18 `agents/review.md:27`; WP31 the rest): documents that disagree with the code.
 - [ ] U21 (WP08 the policy run, done; WP07 the scripted promises, done; WP30 the fixture): no end to end test ran the policy, a failing preflight, a setup block or a plan patch; the shared selftest fixture counts claimed runs.
-- [ ] U22 (WP16): the mod counts a typed answer of at most 100 characters; the CLI takes 2,000.
+- [x] U22 (WP16): the mod counts a typed answer of at most 100 characters; the CLI takes 2,000.
 - [ ] U23 kept as shipped (WP32 names it in the pull request text, for the owner): the Interfaces check matches any `send(msg)`.
 - [ ] U24 (WP25): the plan digest has three copies that must agree.
 - [x] U25 (WP08): the policy's tests ran without `park-on-touch`; the merging reader of M8 keeps it.

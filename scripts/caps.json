@@ -17,12 +17,12 @@
    "measure": "measure_question_sites: calls of self.question( and self.with_more( in the flow files"
   },
   "option_sites": {
-   "now": 89,
+   "now": 88,
    "final": 89,
    "measure": "measure_option_sites: calls of self.opt( in the flow files"
   },
   "option_labels": {
-   "now": 74,
+   "now": 73,
    "final": 71,
    "measure": "measure_option_labels: distinct first arguments (a string) of those calls"
   },
@@ -32,7 +32,7 @@
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
   "gate_rows": {
-   "now": 56,
+   "now": 57,
    "final": 55,
    "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row( names of the Python scripts, name lines of gate_rows.py"
   },
@@ -67,7 +67,7 @@
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 305275,
+   "now": 304939,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
@@ -77,7 +77,7 @@
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 221953,
+   "now": 222085,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

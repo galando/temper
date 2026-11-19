@@ -16,7 +16,7 @@ import { stageToast } from '../../hooks/temper-mod/core/view'
 import { FEATURE_DENY } from '../../hooks/temper-mod/core/session'
 import { register } from '../../hooks/temper-mod/register'
 import { SPEC, deriveView, questionOf, runFiles } from './run-files'
-import { cliTo, world } from './world'
+import { NO_RUN_VIEW, cliTo, world } from './world'
 
 const CLI = '/home/u/.claude/plugins/temper/scripts/temper'
 // The test runs where timers are (the lib of the type check has none).
@@ -341,13 +341,16 @@ describe('C11: the request kept at /temper:temper is used up by the state init t
   const init = (slug: string, feature: string) => `${CLI} state init ${slug} --feature '${feature}'`
   test('after that run, another state init is not held to the old request', async ($, on) => {
     const api = $ as unknown as Api
-    world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    const w = world(on, {}, { fakeCli: true, projectRoot: '/repo' })
     await api.session.start(START)
     await api.command.run({ command: 'temper:temper', args: REQ, origin: { kind: 'composer' } })
     expect(await sh(api, init('pp', 'Partial refunds'))).toBe(FEATURE_DENY)
     expect(await sh(api, init('pp', REQ))).toBeUndefined()
-    // The run never left Intent: the TRIVIAL exit clears it, and the next run starts from other words.
-    expect(await sh(api, `${CLI} state clear`)).toBeUndefined()
+    // WP17: the run never left Intent and is closed by the CLI (a trivial request, `intent trivial --close`, which no
+    // guard sees: the mod lets no state clear through at Intent), and the next run starts from other words.
+    expect(await sh(api, `${CLI} state clear`)).toMatch(/do not clear or archive/)
+    w.files.delete('.temper/build-state.json')
+    w.files.set('.temper/view.json', NO_RUN_VIEW)
     expect(await sh(api, init('other', 'Export invoices as CSV'))).toBeUndefined()
   })
 })

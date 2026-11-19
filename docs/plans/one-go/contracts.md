@@ -105,6 +105,7 @@ Keys of `.temper/build-state.json`:
 | `from_branch` | the branch the run stands on before its approval, which the commit hook gates too; `state set` refuses it | WP12 | none |
 | `repair`, `repairs` | the open repair window; the closed repairs | WP24 | WP25 |
 | `trivial` | the trivial verdict, until the flow closes the run | WP17 | none |
+| `rca_notes` | in a fix run, how many notes typed at the root cause question the root cause agent has taken | WP17 | none |
 | `saved_by` | the Temper version that saved the state (`state init` stamps it); `state set` refuses it; a state saved at Review without it runs Review once more (row D60) | WP11 | WP28 |
 
 Keys that go: `intent_asked` (WP14), `env_agent` (WP21), `record_pass` (WP27), `enter` and `built_before` (WP28; the
@@ -146,6 +147,7 @@ The view stays version 1: a field is added, none is renamed or removed (`D65`).
 | `card` | `next`, the view; in `go` the text rows | WP15 | WP17, WP19, WP20 |
 | `typed`, `needs` | a gate question; an option | WP16 | WP17 |
 | `needs`, `option` on a `work` action | `next`, `go`: steps that are the conversation's one step (`pull-request`), and the id of the option they came from | WP16 | the mod's run driver |
+| `step_kinds` beside `steps`, on a `work` action and on an option | `next`, `go`, the view: the kind of each step, `show-last` (the report step), `note` (the no record note) or `""`; absent when no step has a kind (`scripts/flow_base.py`) | WP16 (the phase 4b fix of its step 4) | the mod's run driver (`stepPlan`) |
 | `state` beside `pass` in `checks`; the entry `mutation` of `check_markers` | the view | WP19 | WP20 (`skipped`), WP23 |
 | `guard.adhoc_kind` | the view | WP24 | the mod |
 | `drift_ids` beside the options of `drift`, their ids at their places | the view | WP04 | every test |

@@ -28,7 +28,7 @@ carries over except the bug description in your launch prompt.
    results. Fall back to grep-based tracing if unavailable — `[HEURISTIC]`.
 4. The CLI has no RCA gate. The RCA gate is human judgment on your findings.
    Do NOT show an `AskUserQuestion` gate — you run headless. Write the RCA file and
-   return; the orchestrator prints the panel the CLI draws from it and asks the person the RCA question.
+   return; the person approves the fix on the card the CLI draws from it, at the root cause question.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - Read `.temper/lessons.md` first when it exists, and skip silently when it does not.
@@ -39,9 +39,9 @@ carries over except the bug description in your launch prompt.
   pack rule often has that rule as its root cause.
 
 **Write your findings to the RCA file** your launch prompt names (its `RCA file:` line), as plain lines in this
-shape; the CLI draws the panel from it (`temper panel rca`, 9.8.0) and the orchestrator prints it, and the Fix stage
-reads the file. Draw no panel and no box, and write no script to draw one. Write every field whole: a word cut off is
-lost to Fix.
+shape; the CLI draws the card (`temper card`) of the root cause question from it, where the person approves the
+fix, and the Fix stage reads the file. Draw no panel and no box, and write no script to draw one. Write every field whole: a
+word cut off is lost to Fix.
 
 ```markdown
 # RCA: {Bug Title}

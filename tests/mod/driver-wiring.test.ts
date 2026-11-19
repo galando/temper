@@ -141,17 +141,20 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
   // `step <kind> <option id>`, and the conversation does that one step, then the person types /temper:temper.
   test('a hand back note carries step, the kind and the option id (WP16)', async ($, on) => {
     const api = $ as unknown as Api
-    const files = { ...runFiles({ gates: { plan: 'PASS' } }), '/repo/.git/HEAD': 'ref: refs/heads/feature/pw\n' }
-    const w = world(on, files, { projectRoot: '/repo', answers: ['Open HTML review'] })
-    const mq = questionOf(viewText(w) ?? '', { more: true })
-    const goes = [{ action: 'ask', stage: 'plan', ask: { id: 'plan.approve.more', kind: 'gate', question: { ...mq, multiSelect: false }, options: mq.options.map(o => (o.label === 'Open HTML review'
-      ? { label: o.label, id: 'html-review', needs: 'html-review', do: 'Follow the plan review page (Open HTML review), then ask this question again.' }
+    // The passed Review question and its Teach Me option: its kind (talk) and its id (teach-me) differ, so the note
+    // shows their order
+    const files = { ...runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'PASS', review: 'PASS' } }), '/repo/.git/HEAD': 'ref: refs/heads/feature/pw\n' }
+    const w = world(on, files, { projectRoot: '/repo', answers: ['Teach Me'] })
+    const mq = questionOf(viewText(w) ?? '')
+    expect(mq.options.map(o => o.label)).toContain('Teach Me')
+    const goes = [{ action: 'ask', stage: 'review', ask: { id: 'review.pass', kind: 'gate', question: { ...mq, multiSelect: false }, options: mq.options.map(o => (o.label === 'Teach Me'
+      ? { label: o.label, id: 'teach-me', needs: 'talk', do: 'Use the teach-me skill on this stage\'s work, then ask this question again.' }
       : { label: o.label, calls: [] })) } }]
     engine(on, w, goes)
     await api.session.start(START)
     const r = (await api.command.run({ command: 'temper', args: '', origin: { kind: 'composer' } })) as { context?: string[] }
     expect(w.asked).toEqual([mq.question])
-    expect(r.context?.at(-1)).toMatch(/: step html-review html-review$/)
+    expect(r.context?.at(-1)).toMatch(/: step talk teach-me$/)
   })
 
   // WP16: /temper:fix typed with no words while a fix run is active is taken up by the driver, as /temper:temper is.

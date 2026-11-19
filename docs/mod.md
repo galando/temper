@@ -258,9 +258,11 @@ A decision comes from the result of the question dialog, after you chose. Its au
 Claude Code. Claude writes the question and its options, so read the option you pick.
 
 If a run's `view.json` is hidden or removed, the run stays enforced from the last known state.
-This continues until you turn enforcement off. The exception is the TRIVIAL exit (`state clear` at
-Intent before the run ever moved and before Claude wrote an intent), which ends the run. Claude
-decides that a change is trivial; it tells you so in one line, and you are not asked.
+This continues until you turn enforcement off. A trivial request is a verdict the CLI records
+(`temper intent trivial`, at Intent before the run ever moved and before an intent was written): the
+Intent agent then makes its one change, the flow closes the run, and you are not asked. The change is
+left for you to commit, and the commit hook holds it to one production file and 10 lines. No `state
+clear` is let through at Intent.
 
 The rules hold through the Commit stage too, until the Commit steps clear the run. A `/temper:fix`
 run is not judged move by move (its own page asks every gate), but the native hook stays on there
@@ -279,7 +281,8 @@ With the mod loaded, `/temper:temper <request>` (no run active) and `/temper:tem
 are carried by the mod itself, with no model in the main session (`core/driver.ts`). It runs `temper go`, the
 calls the CLI gives (the action's calls, an agent's `before` and `after` calls, the CLI calls of `steps`), launches
 each agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report
-the CLI prints, asks each question the CLI gives (header, question and option labels as given; Blocking questions
+the CLI prints (the report step and the no record note by their `step_kinds`, never by their words), asks each
+question the CLI gives (header, question and option labels as given; Blocking questions
 with their answer calls), records your answer as the guard does, and runs the calls of the option you picked. The dialog a mod raises
 takes labels alone; the mod's own tool call hook gives each option back its description and its preview (the Context
 check's table) from the CLI's question, so the dialog shows what each choice does. A Build task's panel is the CLI's

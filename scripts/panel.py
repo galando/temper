@@ -130,27 +130,34 @@ def design(spec):
 RCA_FIELDS = ("CAUSE", "AT", "CONFIDENCE", "SINCE", "CHAIN", "FIX", "TEST")
 
 
-def rca(path):
-    text = read(path)
-    if not text.strip():
-        return ["(no rca.md at %s)" % path]
+def rca_fields(text):
+    """The one reader of rca.md: each field of RCA_FIELDS ('' when absent), its title, and the items of its Blast radius
+    and Read first sections. The RCA panel and the approval card of a fix run (scripts/card.py, WP17) both read it."""
     vals = {}
     for k in RCA_FIELDS:
         m = re.search(r"^\**%s:?\**:?\s*(.+)$" % k, text, re.M | re.I)
         vals[k] = plain(m.group(1)) if m else ""
+
+    def items(name):
+        return [plain(re.sub(r"^\s*[-*]\s+", "", l)) for l in section(text, name) if re.match(r"^\s*[-*]\s+\S", l)]
+    vals.update({"title": h1(text, "RCA"), "blast": items("Blast radius"), "read": items("Read first")})
+    return vals
+
+
+def rca(path):
+    text = read(path)
+    if not text.strip():
+        return ["(no rca.md at %s)" % path]
+    vals = rca_fields(text)
     # A file still in the panel format of 9.8.0's first release prints as it is.
-    if not any(vals.values()) and text.lstrip().startswith("+"):
+    if not any(vals[k] for k in RCA_FIELDS) and text.lstrip().startswith("+"):
         return text.rstrip("\n").splitlines()
     facts = ["CAUSE: %s" % (vals["CAUSE"] or "?"),
              "AT: %s   CONFIDENCE: %s   SINCE: %s" % (vals["AT"] or "?", vals["CONFIDENCE"] or "?", vals["SINCE"] or "unknown")]
     if vals["CHAIN"]:
         facts.append("CHAIN: %s" % vals["CHAIN"])
     facts += ["FIX: %s" % (vals["FIX"] or "?"), "TEST: %s" % (vals["TEST"] or "?")]
-
-    def items(name):
-        return [plain(re.sub(r"^\s*[-*]\s+", "", l)) for l in section(text, name) if re.match(r"^\s*[-*]\s+\S", l)]
-    title = h1(text, "RCA") or "the bug"
-    return box("RCA: %s" % title, facts, [("BLAST RADIUS", items("Blast radius")), ("READ FIRST", items("Read first"))])
+    return box("RCA: %s" % (vals["title"] or "the bug"), facts, [("BLAST RADIUS", vals["blast"]), ("READ FIRST", vals["read"])])
 
 
 def load_json(path, default):

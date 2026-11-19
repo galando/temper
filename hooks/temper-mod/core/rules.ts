@@ -32,7 +32,8 @@ export type RunFacts = {
   planFiles: readonly string[]
   // A grouped Build run is active, and the CLI (not an agent) ticks the run's tasks.md.
   groupedActive: boolean
-  // The run never left Intent and holds no spec file: a `state clear` loses nothing (the TRIVIAL exit).
+  // WP17: the run state holds the trivial verdict (`temper intent trivial`, view.json's trivial_exit): the window of
+  // the Intent agent's one write outside the spec folder, until the flow closes the run.
   trivialExit: boolean
   // The project's folder from the top of its git repository (`packages/app/`); "" or absent at the top. A group or task
   // worktree is a checkout of the whole repository, so the project's files are under this prefix in it.
@@ -45,8 +46,9 @@ export type RunFacts = {
 // (ADHOC_STAGES). The one rule: the stage write rule here and the main session's rule (core/session.ts) both ask it.
 export const adhocOpen = (r: RunFacts): boolean => r.adhocStage != null && r.adhocStage === r.stage && ADHOC_STAGES.includes(r.stage)
 
-// The TRIVIAL exit: a `state clear` of a run that never left Intent loses nothing (view.json's trivial_exit, at Intent,
-// before any step). The guard lets that clear through, and register.tsx stops holding the run it cleared: both ask this.
+// The trivial window (WP17): the CLI recorded the trivial verdict at Intent, before any step (view.json's
+// trivial_exit). The Intent agent may then make the one change outside the spec folder; the commit hook holds it to
+// the bound.
 export const trivialExit = (r: RunFacts | null): boolean => r !== null && r.trivialExit && r.stage === 'intent' && r.step <= 0
 
 export type RuleContext = {
@@ -108,8 +110,9 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   // The run state, the grouped Build record, the usage record and the view the mod draws: the CLI writes them. 9.8.5
   // (M14): so are the preflight's stored rows, the Design answers, the setup blocks already tried and the rows of the
   // Check run made ahead (Check adopts them), which turn rows. 9.8.5 (WP10): so is the record of the run's repeats; and
-  // (WP11) the record of what a rule decided, which the commit question shows.
-  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view|preflight|decisions|setup-tried|budget|rule-log|check\/ahead)\.json$/i],
+  // (WP11) the record of what a rule decided, which the commit question shows; and (WP17) the record of a trivial
+  // request, which turns the commit gate's row with no run.
+  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view|preflight|decisions|setup-tried|budget|rule-log|trivial|check\/ahead)\.json$/i],
   // The store of reused passes, in the git folder and shared by every worktree: a row in it passes a check unrun.
   ['gates', /(^|\/)\.git\/temper-results\.json$/i],
   ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
@@ -126,7 +129,7 @@ const GUARDED_SAMPLES = [
   '.temper/build-state.json', '.temper/groups.json', '.temper/usage.json', '.temper/view.json', '.temper/feedback-loops.json',
   '.temper/evidence/review.json', '.claude/temper.config', '.git/config', '.git/hooks', '.git/hooks/pre-commit', '.git/temper-gate',
   '.git/temper-results.json', '.temper/preflight.json', '.temper/decisions.json', '.temper/setup-tried.json',
-  '.temper/check/ahead.json', '.temper/budget.json', '.temper/rule-log.json',
+  '.temper/check/ahead.json', '.temper/budget.json', '.temper/rule-log.json', '.temper/trivial.json',
 ]
 // A glob as bash reads it, one segment at a time: `*` and `?` stay inside a segment, and a segment that starts with one
 // does not match a name that starts with a dot (bash's default: `rm -rf *` leaves `.temper` alone).
@@ -265,7 +268,7 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
 
   switch (r.stage) {
     case 'intent':
-      if (specFile('intent.md') || specFile('intent-context.json')) return ALLOW
+      if (specFile('intent.md') || specFile('intent-context.json') || trivialExit(r)) return ALLOW
       return {
         deny:
           `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the intent with the plan. ` +
@@ -345,7 +348,8 @@ const AUTONOMY_DENY =
   `Next: ${ASK} at the plan gate (or the Design gate, when Design runs), exactly as \`temper next --json\` gives it.`
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'intent_hash', 'from_branch', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason'])
+// trivial (WP17) is the verdict of `temper intent trivial`, a path below it too: set by hand it would open the window.
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'intent_hash', 'from_branch', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason', 'trivial'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +
@@ -451,6 +455,10 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     return { deny: SHIELD_DENY(cli) }
   }
 
+  // 9.8.5 (WP18): a finding is resolved by the CLI itself, for its own repair commit, where no guard sees it; no
+  // answer of the person and no armed run makes the call a tool call, in a /temper run and in a /temper:fix run.
+  if (guardsCommit && c.calls.some(call => { const [a, b] = callWords(call); return a === 'evidence' && b === 'resolve' })) return { deny: RESOLVE_DENY }
+
   if (!active) return ALLOW
   // Every pull request is a draft, and Temper never marks one ready (reference/pr.md).
   if (/\bgh\s+pr\s+ready\b/.test(command) || (/\bgh\s+pr\s+create\b/.test(command) && !/--draft\b/.test(command))) return { deny: DRAFT_DENY }
@@ -464,7 +472,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     const w = callWords(call)
     const [a, b, key, value] = w
     if (a === 'state' && b === 'set' && key !== undefined) {
-      if (GUARD_KEYS.has(key) && !(key === 'branch' && ctx.allowed.some(written => sameCall(written, w)))) return { deny: KEY_DENY(key) }
+      if ((GUARD_KEYS.has(key) || key.startsWith('trivial.')) && !(key === 'branch' && ctx.allowed.some(written => sameCall(written, w)))) return { deny: KEY_DENY(key) }
       // The keys the orchestrator sets itself, only in the form and the stage it sets them: the complexity while the
       // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build.
       if (key === 'complexity' && !((r.stage === 'intent' || r.stage === 'plan') && /^(?:trivial|simple|medium|complex)$/.test(value ?? ''))) return { deny: KEY_DENY(key) }
@@ -474,15 +482,10 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
         if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(key) }
       }
     }
-    // 9.8.5 (WP18): a finding is resolved by the CLI itself, for its own repair commit, where no guard sees it; no
-    // answer of the person and no armed run makes the call a tool call.
-    if (a === 'evidence' && b === 'resolve') return { deny: RESOLVE_DENY }
     if (!personOnly(w, r)) continue
     // The person's answer at this step, or the CLI's own action, maps to this very call.
     if (ctx.allowed.some(written => sameCall(written, w))) continue
     const resets = a === 'state' && (b === 'clear' || b === 'archive' || b === 'init')
-    // The TRIVIAL exit of the orchestrator: a clear of a run that never left Intent loses nothing.
-    if (a === 'state' && b === 'clear' && trivialExit(r)) continue
     // Start over: the saved run state goes, and a run of the same command begins (never a fix run, which the mod stands
     // aside for).
     if (resets && ctx.restart && !w.some((x, i) => (x === '--command' && w[i + 1] === 'fix') || x === '--command=fix')) continue

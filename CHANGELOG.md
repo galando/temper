@@ -106,6 +106,19 @@ All notable changes to Temper are documented here. The plugin version lives in
   typed in its own question). The record commit with no file list is `temper spec commit` too. A typed Context check
   answer counts with the mod (its view held the question as an object), up to 2,000 characters. A group that continues
   by rule is in the record of the commit card. The hand back words `next`, `discuss` and `chose` are gone.
+- WP17: `/temper:fix` asks twice. The root cause question is the approval: its card shows the bug as typed, the cause,
+  the fix, the regression test, the files, the test command and the risk from `rca.md`, and `Approve and fix` binds
+  `rca.md` as shown (`--shown rca.md=<H>`), makes the fix branch off main or master only (`spec branch --if-protected`)
+  and lets the run go on by itself; `Ask me at every stage` keeps the four questions, and `run.default` orders the two
+  as at the plan question. A passed Fix, Review and Check then move on by rule, Check's run starts beside Review, and
+  the commit question offers Commit, Loop back to Fix and Save for later, never a pull request. A change typed at the
+  root cause question runs the root cause agent again with it. The fix run starts with `--feature`; neither the page
+  nor the driver prints the RCA panel or makes a branch. A trivial request is a verdict the CLI records: the Intent
+  agent calls `temper intent trivial --why TEXT` (`scripts/trivial.py`), makes its one change and returns; the flow
+  closes the run with `intent trivial --close`, which writes `.temper/trivial.json` and a run summary line of kind
+  `trivial`. The change is yours to commit, and with no run the commit hook holds it to one production file and 10
+  lines (the row `trivial exit`) until HEAD moves or a run starts. The mod lets no `state clear` through at Intent,
+  and writes the one change only while the verdict is recorded; the return word `TRIVIAL` is gone.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

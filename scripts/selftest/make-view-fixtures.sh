@@ -290,9 +290,12 @@ cli(ia, "evidence", "add", "--stage", "intent", "--phase", "note", "--claim", "k
 verdict(ia, "intent", True)
 snap(ia, "intent-ask", "run-ia")
 
-# A /temper:fix run: the mod stands aside for it.
+# A /temper:fix run: the mod stands aside for it. WP17: started with the bug as typed, at its root cause question (the
+# approval), with rca.md as the root cause agent writes it.
 f = project("fix")
-cli(f, "state", "init", "bug", "--command", "fix")
+cli(f, "state", "init", "bug", "--command", "fix", "--feature", "Totals drop a cent on export")
+write(f, ".temper/specs/bug/rca.md", "# RCA: Totals drop a cent\n\nCAUSE: total_of rounds each line before the sum\n"
+      "AT: src/totals.py:2\nCONFIDENCE: HIGH\nFIX: round once after the sum\nTEST: three lines of 0.005 total 0.02\n")
 snap(f, "fix-rca", "run-fix")
 
 # ---- the states 9.7.5 added (printed by `make-view-fixtures.sh extra`, view-fixtures-2.ts) ----

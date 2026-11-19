@@ -21,6 +21,10 @@ test is a RED then GREEN pair), then Review and Check are the ordinary stages.
 **Stages:** `/temper:fix` runs RCA, Fix, Review and Check, each as a stage agent that starts
 clean and returns a summary (no `AskUserQuestion`); the CLI judges each stage and gives the
 question the orchestrator asks. Apply the context-engineering skill for hierarchical loading.
+A clean bug run asks twice: the root cause question is the approval (its card shows `rca.md`;
+Approve and fix makes the fix branch off main or master and lets the run go on by itself), and
+the commit question. Between them a passed Fix, Review and Check move on by rule, and Check's run
+starts beside Review.
 
 ## Stage 1 — RCA: understand WHY, not just WHERE
 
@@ -114,9 +118,10 @@ noted (confirm with `git stash` → test → `git stash pop`), not blamed on the
 ## Commit + record
 
 The commit gate is the standard one (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`; fix checks build/review/check,
-no plan stage). The person's **Commit** at the Check question commits (a typed change is never
-approval: make the edit and ask again), with a conventional `fix({scope}): {desc}` message naming
-the root cause, the regression test, and the closed ticket.
+no plan stage). The person's **Commit** at the commit question (or at the Check question of a run
+that asks at every stage) commits (a typed change is never approval), with the message its card
+shows: `fix({scope}): {desc}`, drafted by the CLI from `rca.md`, naming the root cause and the
+regression test. The commit question offers no pull request.
 
 Before that commit, the commit steps of `temper next` add one record, committed with the fix:
 

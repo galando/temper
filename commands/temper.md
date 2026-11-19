@@ -170,10 +170,6 @@ exit code, so the action goes on: run the calls after it, then `temper go`.
 
 ## Agents
 
-- **Intent returns TRIVIAL** (a typo or a one line change with no product problem): say "trivial,
-  handling directly, no pipeline" in one line, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`
-  at once (no run is active after it), then make the change, run the project's tests, and commit normally. If it turns out not to be
-  trivial, stop and start `/temper:temper` again.
 - **An agent that fails or blocks**: show what it returned and ask the current question again.
 
 ## Entering at a stage (the stage commands)

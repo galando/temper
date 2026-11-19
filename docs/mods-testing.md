@@ -213,8 +213,8 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   with Add to plan / Revert / Allow once.
 - [ ] **A fix run.** `/temper:fix "first() fails on an empty list"`. With the mod, in every mode:
   no bar for the fix run, `/temper:temper status` says the mod stands aside, nothing is refused,
-  and every gate is a dialog (Proceed to Fix, Continue to Review, the review FAIL options,
-  Commit). Without the mod: the same dialogs.
+  and a clean bug run asks two dialogs: the root cause with its card (Approve and fix), then the
+  commit. Without the mod: the same dialogs.
 - [ ] **A stage command.** After a commit cleared the run, run `/temper:build` on a spec with an
   approved plan. Expect it to start `/temper` at Build: the same gates as above, and with the
   mod nothing else is refused.

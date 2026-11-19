@@ -6,9 +6,10 @@ tasks.md=<H2>`), and the CLI refuses them when a file changed since. The advance
 `plan_hash`; a later change to either file fails the row `intent unchanged since the approval` of the Build, Check and
 commit gates until the person approves again.
 
-  python3 approval.py digest FILE              the digest of intent.md (or another spec text) or of tasks.md
+  python3 approval.py digest FILE              the digest of intent.md (or another spec text: rca.md) or of tasks.md
   python3 approval.py bound FILE               what the approval records of intent.md: its digest, or absent
   python3 approval.py row STATE SPEC           the row, one JSON line as the CLI's _req prints it
+  python3 approval.py bind-rca STATE           a fix run's approval: the digest of rca.md recorded as intent_hash
   python3 approval.py check STATE SPEC NAME=DIGEST...
                                                exit 1 with the reason when a named file of SPEC has another digest now
   python3 approval.py plan-digest PARSED_JSON  the digest of a parsed tasks.md (the CLI's _plan_digest)
@@ -116,20 +117,39 @@ def binding_row(state, spec):
     st = read_state(state)
     if "intent_hash" not in st:
         return row(ROW, True, "no digest was recorded at the approval (a run saved before 9.8.5)")
-    want = {"intent.md": st.get("intent_hash"), "tasks.md": st.get("plan_hash")}
+    # WP17: a fix run's approval binds rca.md, in the place of intent.md
+    text = "rca.md" if st.get("command") == "fix" else "intent.md"
+    want = {text: st.get("intent_hash"), "tasks.md": st.get("plan_hash")}
     changed = []
-    if want["intent.md"] == ABSENT:
-        if os.path.isfile(os.path.join(spec, "intent.md")):
-            changed.append("intent.md")
-    elif digest(os.path.join(spec, "intent.md")) != want["intent.md"]:
-        changed.append("intent.md")
+    if want[text] == ABSENT:
+        if os.path.isfile(os.path.join(spec, text)):
+            changed.append(text)
+    elif digest(os.path.join(spec, text)) != want[text]:
+        changed.append(text)
     if want["tasks.md"] and digest(os.path.join(spec, "tasks.md")) != want["tasks.md"]:
         changed.append("tasks.md")
     if not changed:
-        return row(ROW, True, "the intent and the plan are as the person approved them")
+        return row(ROW, True, "rca.md is as the person approved it" if text == "rca.md" else
+                   "the intent and the plan are as the person approved them")
     return row("intent unchanged since the approval", False,
-               "%s changed since the approval; step back to Plan and approve again, or restore %s"
-               % (" and ".join(changed), "them" if len(changed) > 1 else "it"))
+               "%s changed since the approval; %s, or restore %s"
+               % (" and ".join(changed), "start the fix again" if text == "rca.md" else "step back to Plan and approve again",
+                  "them" if len(changed) > 1 else "it"))
+
+
+def bind_rca(state):
+    """WP17: the approval of a fix run (`state advance rca_complete fix`) records the digest of rca.md as the person
+    approved it, as intent_hash: the row then names rca.md in the place of intent.md."""
+    st = read_state(state)
+    if st.get("command") != "fix":
+        return 0
+    st["intent_hash"] = bound(os.path.join(str(st.get("spec_path") or ""), "rca.md"))
+    tmp = "%s.tmp.%d" % (state, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(st, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, state)
+    return 0
 
 
 def check(spec, pairs):
@@ -160,6 +180,8 @@ def main(argv):
         if d:
             print(d)
         return 0 if d else 1
+    if word == "bind-rca" and len(argv) == 3:
+        return bind_rca(argv[2])
     if word == "row" and len(argv) == 4:
         print(json.dumps(binding_row(argv[2], argv[3])))
         return 0
@@ -170,7 +192,7 @@ def main(argv):
             return 1
         return 0
     print("usage: approval.py digest FILE | bound FILE | row STATE SPEC | check STATE SPEC NAME=DIGEST... "
-          "| plan-digest JSON", file=sys.stderr)
+          "| plan-digest JSON | bind-rca STATE", file=sys.stderr)
     return 2
 
 

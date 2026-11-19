@@ -5,6 +5,7 @@ import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driv
 import type { AgentEnd, DriveEnd, GoAgent, GoAsk, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 import { deriveView, runFiles } from './run-files'
 import { world } from './world'
+import { VIEWS } from '../../scripts/selftest/view-fixtures'
 
 // WP09: recordedVerdict(call, out) is the rule of `recorded` in scripts/go.py: the verdict when the call is one of
 // `gate <stage>`, `task gate <N>`, `group gate <G>` or `integrate` and the last line of its output that is a marker
@@ -281,11 +282,31 @@ describe('the driver carries a run from the request to the end', () => {
 
   test('the report steps: CLI calls run and the report is shown as printed', async () => {
     const { p, log } = port({
-      goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Copy what temper report printed into your reply, as it printed it.'] }, { action: 'none', say: 'end' }],
+      goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Copy what temper report printed into your reply, as it printed it.'], step_kinds: ['', 'show-last'] },
+        { action: 'none', say: 'end' }],
       out: call => (call.endsWith('report --end') ? 'REPORT TEXT' : ''),
     })
     expect((await drive(p, CLI, null)).kind).toBe('done')
     expect(log.shown).toContain('REPORT TEXT')
+  })
+
+  // WP16: the report step and the no record note are kinds (`step_kinds` beside `steps`): the driver selects them by
+  // kind, never by their words, so a step reworded keeps its kind.
+  test('a step of kind show-last shows the report, one of kind note is shown; their words decide nothing (WP16)', async () => {
+    const report = port({
+      goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Paste the report as printed.'], step_kinds: ['', 'show-last'] }, { action: 'none', say: 'end' }],
+      out: call => (call.endsWith('report --end') ? 'REPORT TEXT' : ''),
+    })
+    expect(await drive(report.p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(report.log.shown).toContain('REPORT TEXT')
+    const note = port({ goes: [{ action: 'work', steps: [`${CLI} state archive`, 'Nothing is left to stage.', `${CLI} state clear`],
+      step_kinds: ['', 'note', ''] }, { action: 'none', say: 'end' }] })
+    expect(await drive(note.p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(note.log.shown).toContain('Nothing is left to stage.')
+    expect(note.log.ran).toContain(`${CLI} state clear`)
+    const bare = port({ goes: [{ action: 'work', steps: ['There is no record commit: nothing to stage.', `${CLI} state clear`] }] })
+    expect(savedStop(await drive(bare.p, CLI, null))).toEqual(SAVED)
+    expect(bare.log.ran).not.toContain(`${CLI} state clear`)
   })
 
   test('steps where one needs the conversation (a pull request): none runs here, so none is left half done', async () => {
@@ -322,6 +343,19 @@ describe('the driver carries a run from the request to the end', () => {
     expect((await drive(p, CLI, null)).kind).toBe('done')
     expect(log.ran).toContain(`${CLI} usage add --stage build --ms none --task 2`)
     expect(log.ran).toContain(`${CLI} task gate 2`)
+  })
+
+  test('a failed after call of a waiting task ends as saved with the CLI\'s FAIL line; one that recorded its verdict goes on (WP16)', async () => {
+    const line = 'FAIL: task 2 has no worktree; run task start 2 first'
+    const failed = port({ goes: [{ action: 'wait', tasks: [{ after: [`${CLI} usage add --stage build --ms {ms} --task 2`, `${CLI} task gate 2`] }] },
+      { action: 'none', say: 'end' }], fail: c => c === `${CLI} usage add --stage build --ms none --task 2`, out: () => `${line}\n` })
+    const end = await drive(failed.p, CLI, null)
+    expect(savedStop(end)).toEqual(SAVED)
+    expect(textOf(end)).toContain(`an after call of a waiting task failed: ${line}`)
+    expect(failed.log.ran).not.toContain(`${CLI} task gate 2`)
+    const verdict = port({ goes: [{ action: 'wait', tasks: [{ after: [`${CLI} task gate 2`] }] }, { action: 'none', say: 'end' }],
+      fail: c => c === `${CLI} task gate 2`, out: () => 'VERDICT: task:2 FAIL\n' })
+    expect(await drive(verdict.p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
   })
 
   test('nobody answers (a session with no one to ask): the run stops saved, and no conversation takes it on (WP16)', async () => {
@@ -434,6 +468,30 @@ describe('a run leaves the driver only for a hand back kind (WP16)', () => {
     expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
     expect(log.asked.map(x => x.question)).toEqual([ask.question.question, 'Which open finding is kept as it is?', ask.question.question])
     expect(log.ran).toContain(`${CLI} state advance review_complete check`)
+    expect(log.ran.some(c => c.includes('evidence accept'))).toBe(false)
+  })
+
+  // The passed Review question of the CLI (the fixture review-pass): Accept a finding sits in the More question, and
+  // the accept question is on the gate question. Picked from More, it runs the accept step, never a saved stop.
+  const reviewPass = (): GoAsk => loose<{ ask: GoAsk }>(VIEWS['review-pass']).ask
+  test('Accept a finding from the More question asks the accept question and runs its calls', async () => {
+    const ask = reviewPass()
+    expect([ask.more?.options.some(o => o.id === 'accept-finding'), ask.more?.accept === undefined, ask.accept !== undefined]).toEqual([true, true, true])
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'review', ask }, { action: 'none', say: 'end' }],
+      answers: ['More options', 'Accept a finding', 'Accept finding 2', 'I accept the risk'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.asked.map(x => x.question)).toEqual([ask.question.question, ask.more!.question.question, ask.accept!.question.question,
+      'Accept finding 2. What is the reason?'])
+    expect(log.ran).toContain(`/plugin/scripts/temper evidence accept --stage review --id 2 --reason 'I accept the risk'`)
+  })
+  test('Cancel at the accept question of the More question asks the gate question again', async () => {
+    const ask = reviewPass()
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'review', ask }, { action: 'none', say: 'end' }],
+      answers: ['More options', 'Accept a finding', 'Cancel', 'Continue to Check'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.asked.map(x => x.question)).toEqual([ask.question.question, ask.more!.question.question, ask.accept!.question.question,
+      ask.question.question])
+    expect(log.ran).toContain('/plugin/scripts/temper state advance review_complete check')
     expect(log.ran.some(c => c.includes('evidence accept'))).toBe(false)
   })
 
@@ -551,27 +609,35 @@ describe('a run leaves the driver only for a hand back kind (WP16)', () => {
 })
 
 describe('the driver carries a /temper:fix run', () => {
-  test('setup, the root cause agent with fix.md\'s prompt, the panel from rca.md, the run\'s state, the branch, then the loop', async () => {
+  // WP17: the run starts with the bug as typed (the card's request), draws no RCA panel (the card shows the fields),
+  // and runs no shell line: the branch is made by the approval's own call, spec branch --if-protected
+  test('fixSteps runs no shell line and passes --feature: setup, the root cause agent, the run\'s state, then the loop', async () => {
+    const approve = [`${CLI} state set run_mode autonomous`, `${CLI} spec branch --if-protected`, `${CLI} state advance rca_complete fix`]
     const { p, log } = port({
       goes: [
         { action: 'none', setup: [`bash /p/scripts/guards/install.sh`] },
-        { action: 'ask', stage: 'rca', ask: { question: q('RCA: the root cause is in .temper/specs/totals/rca.md. Proceed to Fix?', ['Proceed to Fix (Recommended)', 'Save for later']),
-          options: [{ label: 'Proceed to Fix (Recommended)', calls: [`${CLI} state advance rca_complete fix`] }, { label: 'Save for later', stop: true }] } },
+        { action: 'ask', stage: 'rca', ask: { question: q('RCA: the root cause and the proposed fix are on the card. Approve the fix?', ['Approve and fix (Recommended)', 'Save for later']),
+          options: [{ label: 'Approve and fix (Recommended)', calls: approve }, { label: 'Save for later', stop: true }] } },
         { action: 'none', say: 'The fix is committed.' },
       ],
-      answers: ['Proceed to Fix (Recommended)'],
-      out: call => (call.endsWith('model rca') ? 'claude-opus-5-5\n' : call.includes('panel rca') ? '| RCA: totals |' : ''),
+      answers: ['Approve and fix (Recommended)'],
+      out: call => (call.endsWith('model rca') ? 'claude-opus-5-5\n' : ''),
     })
     const end = await driveFix(p, CLI, 'Totals drop a cent', 'totals')
     expect(end).toEqual({ kind: 'done', text: 'The fix is committed.' })
     expect(log.spawned.map(a => [a.type, a.model, a.prompt])).toEqual([['temper:temper-rca', 'claude-opus-5-5', rcaPrompt('/p', 'Totals drop a cent', 'totals')]])
     const at = (c: string) => log.ran.indexOf(c)
     expect(at(`bash /p/scripts/guards/install.sh`) < at(`${CLI} model rca`)).toBe(true)
-    expect(at(`${CLI} panel rca .temper/specs/totals/rca.md`) < at(`${CLI} state init totals --command fix`)).toBe(true)
+    const init = log.ran.filter(c => c.startsWith(`${CLI} state init totals `))
+    expect(init.length, `the state init calls: ${init.join(' | ')}`).toBe(1)
+    expect(init[0]).toContain('--command fix')
+    expect(init[0]).toContain("--feature 'Totals drop a cent'")
     expect(log.ran).toContain(`${CLI} usage add --stage rca --model claude-opus-5-5 --ms 1234`)
-    expect(log.ran.some(c => c.includes("git checkout -q -b 'fix/totals'"))).toBe(true)
-    expect(log.shown).toContain('| RCA: totals |')
-    expect(log.ran).toContain(`${CLI} state advance rca_complete fix`)
+    // no shell line: every call but the CLI's own setup call is a call of the CLI
+    const foreign = log.ran.filter(c => c !== `bash /p/scripts/guards/install.sh` && !c.startsWith(`${CLI} `))
+    expect(foreign, `calls that are not the CLI's: ${foreign.join(' | ')}`).toEqual([])
+    expect(log.ran.some(c => c.includes('panel rca'))).toBe(false)
+    for (const c of approve) expect(log.ran).toContain(c)
   })
   test('a run already active: the fix command with a bug hands nothing back and starts no root cause agent (WP16)', async () => {
     const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [] } }] })
@@ -747,6 +813,9 @@ describe('the driver\'s small parts', () => {
     expect(stepPlan(`${CLI} spec commit 'x'`, CLI)).toEqual({ kind: 'run', call: `${CLI} spec commit 'x'` })
     expect(stepPlan(`${CLI} spec commit '{message}'`, CLI).kind).toBe('handback')
     expect(stepPlan('git push', CLI).kind).toBe('handback')
+    expect([stepPlan('Paste the report.', CLI, 'show-last'), stepPlan('Nothing to stage.', CLI, 'note')]).toEqual([{ kind: 'show-last' },
+      { kind: 'note', text: 'Nothing to stage.' }])
+    expect(stepPlan('Copy what temper report printed into your reply.', CLI).kind).toBe('handback')
   })
 })
 

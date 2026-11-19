@@ -72,6 +72,24 @@ assert_eq "w16 spec branch --carry: a refused switch puts the spec files back, f
   "failed|master|same|plan|FAIL|named" \
   "$([[ $_rc57 -ne 0 ]] && echo failed || echo passed)|$(git branch --show-current)|$(_spec57)|$(grep -o 'FAIL' <<<"$_out57" | head -n 1)|$([[ -n "$_dir57" ]] && echo named || echo none)"
 
+# --- spec branch --carry takes only the run's branch: a path as NAME is refused, its edits stay (phase 4b review) ---
+_clash57
+echo 'echo a local edit' > src/demo.sh
+_out57="$("$TEMPER" spec branch --carry src/demo.sh 2>&1)"; _rc57=$?
+assert_eq "w16 spec branch --carry: a NAME that is not the run's branch is refused, and a path's edits stay" \
+  "1|FAIL|master|echo a local edit|same|plan" \
+  "$_rc57|$(grep -o '^FAIL' <<<"$_out57" | head -n 1)|$(git branch --show-current)|$(cat src/demo.sh)|$(_spec57)"
+
+# --- spec commit -- FILE...: the commit holds the files named and nothing staged before it (phase 4b review) ---
+fresh; _repo57
+echo 'echo other' > src/old.sh; git add src/old.sh; git commit -q -m old
+echo 'echo changed' > src/demo.sh; rm src/old.sh
+echo staged > unrelated.txt; git add unrelated.txt
+_rc57="$("$TEMPER" spec commit 'feat(demo): demo' -- src/demo.sh src/old.sh >/dev/null 2>&1; echo $?)"
+assert_eq "w15 spec commit -- FILE...: the commit holds the files named, and a file staged before stays staged" \
+  "0|src/demo.sh,src/old.sh|A  unrelated.txt" \
+  "$_rc57|$(git show --name-only --format= HEAD | sort | paste -sd, -)|$(git status --porcelain -- unrelated.txt)"
+
 # --- group take-out: only the newest commits of the group's branch it is given ---
 f9_tasks | m_setup
 _wt57="$(python3 -B -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('worktree') or '')" 2>/dev/null)"
@@ -132,6 +150,29 @@ except ValueError:
     g = {}
 moved = [c for c in g.get('ran') or [] if ' state advance ' in ' %s ' % c]
 print('%s|%s|%d' % (g.get('action'), (g.get('ask') or {}).get('id'), len(moved)))" "$_go57")"
+
+# --- the report step and the no record note are kinds (step 4): `step_kinds` beside `steps`, in next and in go ---
+_kinds57() { # the kind of the report step and of the no record note, in `temper next --json` and in `temper go`
+  python3 -B - "$("$TEMPER" next --json 2>/dev/null)" "$("$TEMPER" go 2>/dev/null | tail -n 1)" <<'PY'
+import json, sys
+out = []
+for text in sys.argv[1:]:
+    try:
+        d = json.loads(text)
+    except ValueError:
+        d = {}
+    steps, kinds = d.get("steps") or [], d.get("step_kinds") or []
+    pairs = [(s, kinds[i] if i < len(kinds) else "") for i, s in enumerate(steps)]
+    out.append(",".join(k for s, k in pairs if k) + ":" + str(sum(1 for s, k in pairs if not k and not s.startswith("/"))))
+print("|".join(out))
+PY
+}
+fresh; gpass intent plan build review check commit
+git add -A >/dev/null 2>&1; git -c user.email=t@example.com -c user.name=T commit -qm "the spec is committed" >/dev/null 2>&1
+_at commit
+assert_eq "w16 step kinds: the report step carries the kind show-last beside the steps of next and go, and no other step is untyped text"   "show-last:0|show-last:0" "$(_kinds57)"
+"$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
+assert_eq "w16 step kinds: the no record note carries the kind note beside the steps of next and go, and no other step is untyped text"   "note:0|note:0" "$(_kinds57)"
 
 # --- the cap: the closed list of hand back kinds is exactly seven, counted from NEEDS ---
 _cap57="$(mktemp -d)"

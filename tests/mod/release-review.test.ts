@@ -80,7 +80,10 @@ describe('release review 23: every deny text names the CLI by full path when it 
   })
 })
 
-describe('release review 24: the TRIVIAL exit clears a run that has nothing to lose', () => {
+// WP17: the TRIVIAL exit was a `state clear` the mod let through at Intent. A trivial request is now the CLI's verdict
+// (`temper intent trivial`), which opens the Intent agent's one write and which the flow closes by its own call
+// (`intent trivial --close`): no state clear is let through at Intent, for an agent or the session.
+describe('release review 24: no state clear at Intent; a trivial request is the CLI\'s verdict (WP17)', () => {
   const START = { cwd: '/repo', surface: null, isInteractive: false } as const
   type Api = { session: { start: (a: unknown) => Promise<unknown> }; tool: { call: (a: unknown) => Promise<{ deny?: string }> } }
   const CLEAR = '/home/u/.claude/plugins/temper/scripts/temper state clear'
@@ -107,29 +110,34 @@ describe('release review 24: the TRIVIAL exit clears a run that has nothing to l
   }
   const sh = async (api: Api, command: string) => (await api.tool.call({ tool: 'Bash', command })).deny
 
-  test('at Intent with no intent.md, state clear passes (by full path and by the plain path)', async ($, on) => {
-    const { api } = await begin($, on)
-    expect(await sh(api, CLEAR)).toBeUndefined()
-    expect(await sh(api, 'scripts/temper state clear')).toBeUndefined()
-  })
+  const VERDICT = { trivial: { why: 'a typo in the help text', head: 'abc123', at: LATER, dirty_before: [] } }
+  const recorded = { extra: { '.temper/build-state.json': JSON.stringify({ ...FRESH, ...VERDICT }) } }
 
-  test('after the TRIVIAL exit the cleared run is not held: the work that follows is not judged against it', async ($, on) => {
+  test('at Intent with no intent.md, state clear is refused (by full path and by the plain path)', async ($, on) => {
     const { w, api } = await begin($, on)
-    const write = async () => (await api.tool.call({ tool: 'Write', file_path: 'app.py', content: 'x' })).deny
-    // With the run at Intent, a write outside the spec folder waits for the intent (control).
-    expect(await write()).toMatch(/Intent stage/)
-    expect(await sh(api, CLEAR)).toBeUndefined()
-    expect(w.files.has('.temper/build-state.json')).toBe(false)
-    expect(await write()).toBeUndefined()
-  })
-
-  test('a clear the CLI did not carry out leaves the run as it was', async ($, on) => {
-    const { w, api } = await begin($, on)
-    // The command is let through, but the CLI refuses it: the state file stays.
-    w.cliFailures = 1
-    expect(await sh(api, CLEAR)).toBeUndefined()
+    expect(await sh(api, CLEAR)).toMatch(/do not clear or archive/)
+    expect(await sh(api, 'scripts/temper state clear')).toMatch(/do not clear or archive/)
     expect(w.files.has('.temper/build-state.json')).toBe(true)
-    expect((await api.tool.call({ tool: 'Write', file_path: 'app.py', content: 'x' })).deny).toMatch(/Intent stage/)
+  })
+
+  test('with the trivial verdict recorded, state clear is refused too: the flow closes the run by its own call', async ($, on) => {
+    const { w, api } = await begin($, on, recorded)
+    expect(await sh(api, CLEAR)).toMatch(/do not clear or archive/)
+    expect(w.files.has('.temper/build-state.json')).toBe(true)
+  })
+
+  const agentWrite = async (api: Api) =>
+    (await api.tool.call({ tool: 'Write', file_path: 'app.py', content: 'x', agentId: 'intent' } as never)).deny
+
+  test('with no verdict recorded, the Intent agent\'s write outside the spec folder waits for the intent', async ($, on) => {
+    const { api } = await begin($, on)
+    expect(await agentWrite(api)).toMatch(/Intent stage/)
+  })
+
+  test('with the verdict recorded, the Intent agent writes the one change; the session writes none', async ($, on) => {
+    const { api } = await begin($, on, recorded)
+    expect(await agentWrite(api)).toBeUndefined()
+    expect((await api.tool.call({ tool: 'Write', file_path: 'app.py', content: 'x' })).deny).toMatch(/does not write files/)
   })
 
   test('at Intent with an intent.md, state clear is refused', async ($, on) => {
@@ -158,7 +166,8 @@ describe('release review 24: the TRIVIAL exit clears a run that has nothing to l
   test('state archive and state init stay refused at Intent', async ($, on) => {
     const { api } = await begin($, on)
     expect(await sh(api, 'scripts/temper state archive')).toMatch(/do not clear or archive/)
-    expect(await sh(api, 'scripts/temper state clear; scripts/temper state init other')).toMatch(/restart or move the run/)
+    expect(await sh(api, 'scripts/temper state clear; scripts/temper state init other')).toMatch(/do not clear or archive/)
+    expect(await sh(api, 'scripts/temper state init other')).toMatch(/restart or move the run/)
   })
 
   test('a clear past Intent stays refused, also with no intent.md', async ($, on) => {
@@ -166,24 +175,25 @@ describe('release review 24: the TRIVIAL exit clears a run that has nothing to l
     expect(await sh(api, CLEAR)).toMatch(/do not clear or archive/)
   })
 
-  test('the rule: only at Intent, only when the run is known to have nothing to lose', () => {
+  test('the rule: a state clear is the person\'s at every stage, the trivial window open or not', () => {
     const ctx: RuleContext = { specDir: SPEC, planFiles: [] }
     // A run the orchestrator just started is at step 0.
     const run = (phase: (typeof PHASES)[number], extra: Partial<RuleContext>, command = 'scripts/temper state clear') =>
       evaluate(stateAt(phase, { step: 0 }), { ...ctx, ...extra }, { tool: 'Bash', input: { command } })
-    expect('allow' in run('intent', { nothingToLose: true })).toBe(true)
+    for (const open of [true, false]) {
+      expect('deny' in run('intent', { nothingToLose: open }), `intent ${open}`).toBe(true)
+      expect('deny' in run('intent', { nothingToLose: open }, 'scripts/temper state archive'), `archive ${open}`).toBe(true)
+    }
     expect('deny' in run('intent', {})).toBe(true)
-    expect('deny' in run('intent', { nothingToLose: false })).toBe(true)
-    expect('deny' in run('intent', { nothingToLose: true }, 'scripts/temper state archive')).toBe(true)
     for (const phase of ['plan', 'design', 'build', 'review', 'check'] as const) expect('deny' in run(phase, { nothingToLose: true }), phase).toBe(true)
   })
 
-  test('the rule: a run that took a step is not cleared, even back at Intent', () => {
+  test('the rule: a run that took a step is not cleared at Intent, and neither is one at step 0', () => {
     const ctx: RuleContext = { specDir: SPEC, planFiles: [], nothingToLose: true }
     const clear = { tool: 'Bash', input: { command: 'scripts/temper state clear' } }
     // The CLI counts every move of the run (ADR 0012): back at Intent after a loop, the step is past 0.
     expect('deny' in evaluate(stateAt('intent', { step: 2 }), ctx, clear)).toBe(true)
-    expect('allow' in evaluate(stateAt('intent', { step: 0 }), ctx, clear)).toBe(true)
+    expect('deny' in evaluate(stateAt('intent', { step: 0 }), ctx, clear)).toBe(true)
   })
 
   // Final review: deleting intent.md no longer opens the clear. A run that left Intent and came back to it (a loop back)
@@ -224,10 +234,10 @@ describe('release review 24: the TRIVIAL exit clears a run that has nothing to l
     })
   }
 
-  test('a gates.json and overrides.json that are missing count as empty', async ($, on) => {
+  test('a gates.json and overrides.json that are missing open no clear either', async ($, on) => {
     const { w, api } = await begin($, on, { extra: { '.temper/gates.json': null, '.temper/overrides.json': null } })
-    expect(await sh(api, CLEAR)).toBeUndefined()
-    expect(w.files.has('.temper/build-state.json')).toBe(false)
+    expect(await sh(api, CLEAR)).toMatch(/do not clear or archive/)
+    expect(w.files.has('.temper/build-state.json')).toBe(true)
   })
 
   test('a run whose CLI counted a step is kept, also when its files look fresh', async ($, on) => {

@@ -232,7 +232,10 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
   } else {
     throw new Error(`step ${end.needs} ${end.option}: no such option or step at ${n.action}`)
   }
-  return driven(w, script, limit)
+  // Each hand back takes the run up again with a fresh drive: the limit bounds how many, so a person who keeps picking
+  // a hand back option fails here, never by the depth of the stack.
+  if (limit <= 1) throw new Error(`step ${end.needs} ${end.option}: more hand backs than the limit`)
+  return driven(w, script, limit - 1)
 }
 
 function loop(w: World, script: Script, limit = 400): Json {
@@ -308,3 +311,48 @@ function loop(w: World, script: Script, limit = 400): Json {
 }
 
 export { Denied }
+
+// ---- the check of this file, on made up input ---------------------------------------------------------------------
+//
+//   bun scripts/e2e/loop.ts --check   asserts that a driven run whose person picks a hand back option at every question
+//                                     fails at the limit; a made up world answers, with no run of the CLI; exit 0 or 1
+
+function check(): number {
+  let fails = 0
+  const eq = (name: string, got: unknown, want: unknown): void => {
+    const ok = JSON.stringify(got) === JSON.stringify(want)
+    if (!ok) fails++
+    const why = ok ? '' : ` (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`
+    console.log(`${ok ? 'PASS' : 'FAIL'}: loop ${name}${why}`)
+  }
+  const teach = { label: 'Teach Me', id: 'teach-me', needs: 'talk', do: 'Use the teach-me skill, then ask this question again.', calls: [] }
+  const ask = { id: 'review.pass', kind: 'gate', question: { header: 'Temper gate', question: 'Review: continue?', multiSelect: false,
+    options: [{ label: 'Teach Me', description: '' }] }, options: [teach] }
+  const n = { action: 'ask', stage: 'review', ask }
+  const counts = { auto: 0, back: 0, handbacks: 0 }
+  const w = {
+    mode: 'driver', trace: [] as string[], counts,
+    next: () => n,
+    run: (call: string) => ({ code: 0, out: / go( --taken-up)?$/.test(call) ? JSON.stringify(n) : '' }),
+    fill: (c: string) => c,
+    guardAsk: () => undefined, guardAgent: () => undefined, guardBash: () => undefined,
+    answer: () => teach,
+  } as unknown as World
+  const script: Script = { agents: {}, person: () => 'Teach Me', instruction: () => true }
+  let thrown = ''
+  try {
+    orchestrate(w, script, 5)
+  } catch (e) {
+    thrown = (e as Error).message
+  }
+  eq('a person who keeps picking a hand back option fails at the limit, not at the depth of the stack',
+    [thrown, counts.handbacks], ['step talk teach-me: more hand backs than the limit', 5])
+  console.log(`loop --check: ${fails === 0 ? 'PASS' : `FAIL (${fails})`}`)
+  return fails === 0 ? 0 : 1
+}
+
+if (import.meta.main) {
+  if (process.argv[2] === '--check') process.exit(check())
+  console.log('usage: bun scripts/e2e/loop.ts --check')
+  process.exit(2)
+}

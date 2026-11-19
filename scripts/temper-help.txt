@@ -36,6 +36,7 @@ Usage:
   temper intent accept|complete   (the Status header of the run's intent.md)
   temper intent carry '<question>' (the person's Carry forward: a Blocking open question becomes Deferred)
   temper intent answer '<question>' '<answer>' [...]  (the person's answers: into Decisions, out of Open Questions)
+  temper intent trivial --why TEXT | --close  (a trivial request: the verdict at Intent; the flow's close of the run)
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)

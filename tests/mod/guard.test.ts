@@ -213,12 +213,15 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect('allow' in bash(ctx('commit', { allowed: override }), `${CLI} override review --reason x && ${CLI} gate commit`)).toBe(true)
   })
 
-  test('clearing the run during a run needs the person\'s Start over, or the TRIVIAL exit, or the commit steps', () => {
+  test('clearing the run during a run needs the person\'s Start over or the commit steps; at Intent too (WP17)', () => {
     expect(isDeny(bash(ctx('build'), `${CLI} state archive`))).toBe(true)
     expect('allow' in bash(ctx('build', { restart: true }), `${CLI} state archive`)).toBe(true)
     expect('allow' in bash(ctx('build', { restart: true }), `${CLI} state init next`)).toBe(true)
     expect(isDeny(bash(ctx('build', { restart: true }), `${CLI} state init next --command fix`))).toBe(true)
-    expect('allow' in bash(ctx('intent', { facts: { step: 0, trivialExit: true } }), `${CLI} state clear`)).toBe(true)
+    // WP17: a trivial request is the CLI's verdict (`temper intent trivial`), closed by the flow; no state clear is let
+    // through at Intent, for an agent or the session, with the trivial window open or not
+    expect(isDeny(bash(ctx('intent', { facts: { step: 0, trivialExit: true } }), `${CLI} state clear`))).toBe(true)
+    expect(isDeny(bash(ctx('intent', { facts: { step: 0 } }), `${CLI} state clear`))).toBe(true)
     expect(isDeny(bash(ctx('intent', { facts: { step: 2 } }), `${CLI} state clear`))).toBe(true)
     const steps = nextCalls('commit-record')
     expect('allow' in bash(ctx('commit', { allowed: steps }), `${CLI} state archive`)).toBe(true)
@@ -330,6 +333,46 @@ describe('the store of the person\'s decisions', () => {
     const store = '/root/.claude/plugins/data/temper-inline/store.json'
     expect(isDeny(write(ctx('plan'), store))).toBe(true)
     expect('allow' in write({ ...ctx('plan'), run: null }, store)).toBe(true)
+  })
+})
+
+// WP17: the trivial window. After `temper intent trivial` the run state holds the verdict and the view says
+// guard.trivial_exit: the Intent agent may then make the one change outside the spec folder. The window is Intent's
+// only; the record .temper/trivial.json, which holds the commit to the bound, is the CLI's to write, the window open or
+// not.
+describe('the trivial window: the Intent agent writes the one change while the verdict is recorded', () => {
+  const open = (stage: Stage = 'intent') => ctx(stage, { facts: { step: 0, trivialExit: true } })
+  test('while the trivial window is open the Intent agent may write a project file; with it closed it is refused', () => {
+    for (const tool of ['Write', 'Edit']) {
+      expect('allow' in write(open(), 'src/app.ts', tool), tool).toBe(true)
+      expect('allow' in write(open(), 'README.md', tool), tool).toBe(true)
+      expect(isDeny(write(ctx('intent', { facts: { step: 0, trivialExit: false } }), 'src/app.ts', tool)), tool).toBe(true)
+    }
+    // the window is Intent's: the flag at a later stage opens nothing
+    for (const stage of ['plan', 'design', 'review', 'check'] as const) {
+      expect(isDeny(write(open(stage), 'src/app.ts')), stage).toBe(true)
+    }
+  })
+  test('the record of the verdict, .temper/trivial.json, is refused to a tool and to a shell write, the window open or not', () => {
+    const f = '.temper/trivial.json'
+    const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ') && r.deny.includes('by hand')
+    for (const c of [open(), ctx('intent'), ctx('plan'), ctx('build'), ctx('check')]) {
+      for (const tool of ['Write', 'Edit']) expect(guarded(write(c, f, tool)), `${c.run?.stage} ${tool}`).toBe(true)
+      expect(guarded(write(c, `/repo/${f}`)), `${c.run?.stage} absolute`).toBe(true)
+      for (const cmd of [`echo '{}' > ${f}`, `printf x >> ${f}`, `rm ${f}`, `rm -f ${f}`, `cp /tmp/t.json ${f}`]) {
+        expect(guarded(bash(c, cmd)), `${c.run?.stage}: ${cmd}`).toBe(true)
+      }
+    }
+    for (const cmd of ['rm .temper/triv*.json', 'rm -f .temper/t?ivial.json']) {
+      expect(isDeny(bash(open(), cmd)), cmd).toBe(true)
+    }
+  })
+  test('the verdict is the CLI\'s: state set trivial, or a path below it, is refused, the window open or not', () => {
+    for (const c of [ctx('intent', { facts: { step: 0 } }), open(), ctx('build')]) {
+      for (const key of ['trivial', 'trivial.why', 'trivial.dirty_before']) {
+        expect(isDeny(bash(c, `${CLI} state set ${key} x`)), `${c.run?.stage}: ${key}`).toBe(true)
+      }
+    }
   })
 })
 
