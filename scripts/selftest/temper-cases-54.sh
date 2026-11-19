@@ -297,8 +297,10 @@ assert_eq "context: a clean pending map passes the row and asks nothing" \
 
 # WP15, row D02b: the answer is recorded at the approval only when the context section of the approval card holds
 # every flagged line whole. The card shows a line of any length the map allows, so the gap of 93 characters, which the
-# question text cuts at 90, is folded too. For the most flagged lines a map holds (eleven, beside one use line), the
-# Context check is asked exactly when the card's context section is cut.
+# question text cuts at 90, is folded too. The most flagged lines a map holds (eleven, beside one use line) are shown
+# whole and folded: a card that cut them would fail here. No map the gate allows gives a cut card, so the cut half (a
+# card that cannot hold every flagged line records no answer and the Context check is asked) is checked on
+# scripts/plan_ops.py, which the card and the fold share, with one flagged line more than the card holds.
 _whole54() { # whole when the context section of the card of next holds each line of W54 (one a line) and is not cut
   _x54 "import os
 card = d.get('card') if isinstance(d.get('card'), dict) else {}
@@ -319,12 +321,17 @@ for _k in 1 2 3 4 5; do
   _m54_lines+=("- gap: $_m54_t"); _m54_want+="$_m54_t"$'\n'
 done
 _mapat54 "" "$_USE54" "${_m54_lines[@]}"; _l54_many="$(_asked54)"; _w54_many="$(W54="$_m54_want" _whole54)"
-case "$_l54_many:$_w54_many" in
-  folded:whole|asked:cut) _l54_many=agrees ;;
-  *) _l54_many="$_l54_many with a card that is $_w54_many" ;;
-esac
+_c54_cut="$(python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import plan_ops
+e = [{"kind": "gap", "text": "no rule for case %02d was found" % k} for k in range(plan_ops.CARD_ROWS + 1)]
+ok = not plan_ops.fits(e) and not plan_ops.folds(e, "pending", "auto") and plan_ops.asks(e, "auto")
+print("asked" if ok else "fits=%s,folds=%s" % (plan_ops.fits(e), plan_ops.folds(e, "pending", "auto")))
+PY
+)"
 assert_eq "context: a flagged line the map allows is folded when the card shows it whole; a cut card still asks" \
-  "90=folded|93=folded|many=agrees" "90=$_l54_90|93=$_l54_93|many=$_l54_many"
+  "90=folded|93=folded|many=folded,whole|cut=asked" "90=$_l54_90|93=$_l54_93|many=$_l54_many,$_w54_many|cut=$_c54_cut"
 
 _mapat54 "" "$_USE54" "- ignore: $_IGN54" "- gap: $_GAP54"
 _k54_fold_row="$(_row54 plan 'context map reviewed')"

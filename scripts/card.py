@@ -40,8 +40,8 @@ MARKS = ("proposed", "create", "modify", "sensitive", "left out", "not found", "
 APPROVAL = ("request", "assumptions", "criteria", "out_of_scope", "answers", "files", "commands", "context", "launches",
             "risk", "baseline")
 FIX_APPROVAL = ("request", "cause", "fix", "test", "files", "commands", "risk")   # WP17: the approval of a fix run
-COMMIT = ("criteria", "suite", "coverage", "planted_bugs", "review", "files", "rule_log", "skips", "tree", "run",
-          "message")
+COMMIT = ("regression", "criteria", "suite", "coverage", "planted_bugs", "review", "files", "rule_log", "skips", "tree",
+          "run", "message")   # regression: a fix run only (WP17)
 STOP = ("what_fails", "tried", "reading", "still_green", "spent")
 # a short section is one row that starts with its title (render)
 SHORT = ("request", "out_of_scope", "launches", "risk", "baseline", "suite", "coverage", "planted_bugs", "tree", "run",
@@ -276,13 +276,25 @@ def request_section(r):
     return sec("request", "You asked", [cell('"%s"' % said)])
 
 
+def fix_files(r):
+    """WP17: the files rca.md names for the fix (the file of AT, the Blast radius and the Read first items), the fields
+    of rca.md as panel.py reads them, and its path."""
+    path = os.path.join(r.spec, "rca.md") if r.spec else ""
+    f = rca_fields(read(path) if path else "")
+    names = []
+    for x in [f["AT"].split(":")[0].strip()] + f["blast"] + f["read"]:
+        x = x.split()[0].strip("`") if x.strip() else ""
+        if x and x not in names:
+            names.append(x)
+    return names, f, path
+
+
 def fix_approval(b, nxt):
     """WP17: the approval of a fix run, the root cause question: the bug as typed, the cause, the fix, the regression
     test, the files the fix may change, the test command the CLI found, and the risk, from rca.md as panel.py reads it.
     The foot names the branch the click makes."""
     r = b.r
-    path = os.path.join(r.spec, "rca.md") if r.spec else ""
-    f = rca_fields(read(path) if path else "")
+    names, f, path = fix_files(r)
     out = [request_section(r)]
     cause = [cell(f["CAUSE"])] if f["CAUSE"] else []
     cause += [cell("%s: %s" % (k.capitalize(), f[k])) for k in ("AT", "CONFIDENCE", "SINCE", "CHAIN") if f[k]]
@@ -290,11 +302,6 @@ def fix_approval(b, nxt):
     out.append(sec("fix", "THE FIX", [cell(f["FIX"])]) if f["FIX"] else None)
     out.append(sec("test", "THE REGRESSION TEST", [cell(f["TEST"])], "written first; it must fail before the fix")
                if f["TEST"] else None)
-    names = []
-    for x in [f["AT"].split(":")[0].strip()] + f["blast"] + f["read"]:
-        x = x.split()[0].strip("`") if x.strip() else ""
-        if x and x not in names:
-            names.append(x)
     hot = dict(sensitive.declared(names, r.cfg("autonomy.park-on-touch", "")))
     rows = [cell(x, "sensitive" if x in hot else "modify" if os.path.exists(x) else "create") for x in names]
     out.append(sec("files", "WHAT WILL CHANGE", rows, "the fix may change these %d and its test; any other file asks you first"
@@ -356,7 +363,7 @@ def approval(b, nxt):
         tail = [cell("%s %s" % (SENSITIVE_ROW, ", ".join(paths)))] if paths else []
         s = sec("files", "WHAT WILL CHANGE", cut + tail, "%d file%s; any other file asks you first"
                 % (nfiles, "" if nfiles == 1 else "s"), None, tasks)
-        s["total"] = len(frows) + len(tail)
+        s["total"] = len(cut) + len(tail) + nfiles - sum(1 for x in cut if x["mark"])   # `and N more` counts files
         out.append(s)
     cmds = command_rows(r)
     if cmds:
@@ -394,9 +401,33 @@ def last_check(name):
     return hits[-1] if hits else None
 
 
+def regression():
+    """WP17: a fix run's regression test as the CLI ran it: the last RED run of the Fix ledger and the last GREEN run
+    after it (test runs the CLI executed, none void; those whose claim names the regression test when there are any),
+    and the regression proof row of Check; None with none recorded."""
+    runs = [x for x in load(os.path.join(TEMPER, "evidence", "build.json"), []) if isinstance(x, dict)
+            and x.get("executed_by") == "cli" and not x.get("voided") and isinstance(x.get("exit_code"), int)
+            and re.search("test", str(x.get("claim") or ""), re.I)]
+    runs = [x for x in runs if re.search("regression", str(x.get("claim"))[:200], re.I)] or runs   # its own claim first
+    reds = [i for i, x in enumerate(runs) if x.get("phase") == "red" and x["exit_code"] != 0]
+    greens = [i for i, x in enumerate(runs) if x.get("phase") == "green" and x["exit_code"] == 0
+              and (not reds or i > reds[-1])]
+    rows = [cell("RED: %s: failed (exit %d)" % (runs[reds[-1]].get("cmd") or "the test", runs[reds[-1]]["exit_code"]))
+            ] if reds else []
+    rows += [cell("GREEN: %s: passed" % (runs[greens[-1]].get("cmd") or "the test"))] if greens else []
+    proof = [x for x in load(os.path.join(TEMPER, "evidence", "check.json"), [])
+             if isinstance(x, dict) and x.get("claim") == "regression proof"]
+    if proof:
+        p = proof[-1]
+        rows.append(cell("proof: %s" % (" ".join(str(p.get("output") or "").split()) or "exit %s" % p.get("exit_code")),
+                         None if p.get("exit_code") == 0 else "open"))
+    return sec("regression", "THE REGRESSION TEST", rows, None, None, os.path.join(TEMPER, "evidence", "build.json")) \
+        if rows else None
+
+
 def commit(b, nxt):
     r = b.r
-    out = []
+    out = [regression()] if r.command == "fix" else []
     crit = [c for c in criteria(r) if isinstance(c, dict)]
     if crit:
         met = [c for c in crit if c.get("status") == "passed"]
@@ -430,11 +461,19 @@ def commit(b, nxt):
             n[f["severity"]] = n.get(f["severity"], 0) + 1
         levels = ", ".join("%d %s" % (n[k], k) for k in sorted(n, key=lambda k: order.index(k) if k in order else 9))
         rows = [cell("[%s] %s" % (f["severity"], f["claim"]), "open") for f in opens]
-        out.append(sec("review", "REVIEW", rows, "open: %s" % levels if levels else "no open finding", 6,
-                       os.path.join(TEMPER, "evidence", "review.json")))
+        s = sec("review", "REVIEW", rows, "open: %s" % levels if levels else "no open finding", 6,
+                os.path.join(TEMPER, "evidence", "review.json"))
+        done = [x for x in r.rows("review") if isinstance(x, dict) and x.get("name") == "review completed"]
+        if done:   # the row review completed of the Review verdict (WP18): N of N files read
+            s["rows"] = s["rows"] + [cell(done[-1].get("detail") or "", None if done[-1].get("pass") else "open")]
+            s["total"] += 1
+        out.append(s)
     changed = r.ctx.get("changed") or []
     if changed:
         allowed = set(plan_files(r.spec) if r.spec else [])
+        if r.command == "fix":   # WP17: the files rca.md names, the regression test, a file the person allowed
+            allowed.update(fix_files(r)[0] + [str(r.state.get("regression_test") or "")]
+                           + [x["path"] for x in r.drifts() if x["choice"] in ("Add to plan", "Allow once")])
         hot = dict(sensitive.declared(changed, r.cfg("autonomy.park-on-touch", "")))
         outside = [f for f in changed if f not in allowed]
         rows = [cell("%s (outside the plan)" % f, "sensitive" if f in hot else None) for f in outside]
@@ -459,7 +498,7 @@ def commit(b, nxt):
     if head:
         dirty = [l for l in git("status", "--porcelain", "--untracked-files=all").splitlines()
                  if l[3:] and not l[3:].strip('"').startswith((".temper/", ".claude/"))]
-        out.append(sec("tree", "TREE", [cell("every verdict is of commit %s and %d file%s not committed yet"
+        out.append(sec("tree", "TREE", [cell("HEAD is commit %s; %d file%s not committed yet"
                                             % (head, len(dirty), "" if len(dirty) == 1 else "s"))]))
     out.append(sec("run", "RUN", [cell(run_line(r))]))
     msg = b.commit_message()

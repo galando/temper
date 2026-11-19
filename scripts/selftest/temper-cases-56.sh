@@ -400,6 +400,35 @@ r = 'ask=%s|kind=%s|order=%s|skip=%s|finding=%s|message=%s' % ((d.get('ask') or 
     \"the click's\" if msg and any(str(x.get('text')) == msg for x in rows('message'))
     else 'option message: %s' % (msg or 'none'))")"
 
+# --- the commit card's review section says how many changed files Review read: the row review completed of WP18 ---
+_commit56
+_READ56="r = ','.join('%s:%s' % (x.get('text'), x.get('mark'))
+         for x in rows('review') if 'files' in str(x.get('text')))"
+"$TEMPER" evidence add --stage review --claim 'review completed' --exit 0 --label PROVEN --read src/demo.sh \
+  >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1; _r56_read="$(_x56 "$_READ56")"
+"$TEMPER" evidence add --stage review --claim 'review completed' --exit 0 --label PROVEN >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1; _r56_unread="$(_x56 "$_READ56")"
+assert_eq "card: the commit card's review section says how many changed files Review read" \
+  "read=read 1 of 1 changed files:None|unread=read 0 of 1 changed files; not read: src/demo.sh:open" \
+  "read=$_r56_read|unread=$_r56_unread"
+
+# --- the tree row states what git reads (HEAD and the files not committed), never a claim about the verdicts ---
+_commit56
+assert_eq "card: the tree row states HEAD and the count of files not committed, and nothing of the verdicts" \
+  "HEAD is commit $(git rev-parse --short HEAD); 1 file not committed yet" \
+  "$(_x56 "r = ' '.join(str(x.get('text')) for x in rows('tree'))")"
+
+# --- a cut files section counts the files it leaves out, not its rows ---
+fresh
+_tasks56 "$(_group56 G1 true 1 "$(printf '`src/f%d.sh`, ' 1 2 3 4 5 6 7)\`src/f8.sh\`" true)" \
+  "$(_group56 G2 true 2 '`src/g1.sh`, `src/g2.sh`' true)"
+_plan56; _f56_text="$("$TEMPER" card 2>/dev/null)"
+assert_eq "card: a cut files section counts the files it leaves out" "note=10 files|shown=8|more=2|text=and 2 more" \
+  "$(X56="$_f56_text" _x56 "s = sec('files') or {}; fs = [x for x in rows('files') if x.get('mark')]
+r = 'note=%s|shown=%d|more=%s|text=%s' % (str(s.get('note') or '').split(';')[0], len(fs),
+    (s.get('total') or 0) - len(rows('files')), 'and 2 more' if 'and 2 more:' in X else X[-80:])")"
+
 # --- a failed check asks with a stop card ---
 _stop56
 assert_eq "card: a failed check asks with a stop card" \
