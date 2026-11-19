@@ -542,7 +542,8 @@ def as_owner(wt, cmd, root=None):
     """WP23 mechanism 2, one owner: a command whose text is the owner's test text (check_run.det_for of the project
     folder `root`, as integrate reads it) runs in the owner's run text, its coverage measured as integrate measures it,
     so a group's Validate on the merged tree and integrate share one key. (command, info) for run_cached; the command as
-    given, with no info, when it is not the owner's test text or the owner has no other run text."""
+    given, with no info, when it is not the owner's test text or the owner has no other run text. The folder the run
+    text writes its coverage into (.temper/check, as check_run.run makes it in the project folder) is made in wt."""
     import json
     root = root or os.getcwd()
     text = ' '.join(cmd).strip()
@@ -559,6 +560,7 @@ def as_owner(wt, cmd, root=None):
         except (OSError, ValueError, AttributeError):
             base = ''
         base = base or _git(root, 'rev-parse', 'HEAD')   # as `check build-checks` takes it
+        os.makedirs(os.path.join(wt, '.temper', 'check'), exist_ok=True)   # go test -coverprofile makes no folder
         return [run], {'measure': check_run.measure_of(wt, det, base), 'need_extra': True}
     except Exception:   # the owner unknown: the command runs as the plan wrote it
         return cmd, {}
@@ -583,10 +585,11 @@ def kept(wt, cmd, setup=None, root=None):
 
 
 def kept_again(wt, rows, since=''):
-    """WP22 step 8: True when the store already knows that a check of `rows` (a ledger) failed again on the same key since
-    `since`: the newest row of that check, written then, came back from the kept failure (nothing ran, so the tree, the
-    command and the setup did not change), or the store ran an environment or not measured failure again there and it
-    failed. The questions read this before they compare failure texts and before the count fix_empty."""
+    """WP22 step 8: whether the store already knows that a check of `rows` (a ledger) failed again on the same key since
+    `since`: 'reused' when the newest row of that check, written then, came back from the kept failure (nothing ran, so
+    the tree, the command and the setup did not change), 'again' when the store ran an environment or not measured
+    failure again there and it failed; else False. The questions read this before they compare failure texts and before
+    the count fix_empty."""
     last = {}
     for x in rows or []:
         if isinstance(x, dict) and str(x.get('ts') or '') >= since:
@@ -597,7 +600,7 @@ def kept_again(wt, rows, since=''):
         e = store.get(x['key'])
         f = e.get('fail') if isinstance(e, dict) else None
         if isinstance(f, dict) and e.get('last', 'fail') == 'fail' and (x.get('reused') or int(f.get('again') or 0) >= 1):
-            return True
+            return 'reused' if x.get('reused') else 'again'
     return False
 
 
@@ -702,6 +705,8 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
                 e['last'] = 'fail'
             if info.get('flaky'):
                 e['flaky'] = info['flaky']
+            elif rc == 0:   # the stamp is of the pass it describes: a pass made cleanly on the key ends it
+                e.pop('flaky', None)
             if fresh:
                 e['forced'] = ts
             d[key] = e

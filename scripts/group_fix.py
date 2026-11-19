@@ -22,6 +22,18 @@ EXCLUDE = [":(exclude,glob)**/.temper/**", ":(exclude,glob).temper/**",
            ":(exclude,glob)**/.claude/worktrees/**", ":(exclude,glob).claude/worktrees/**"]
 
 
+def byproducts(wt):
+    """WP22: what a run of the reuse store left in the worktree (coverage data, caches; never a tracked, declared, source or
+    test file, run_env.byproducts_of), as exclude paths: a check's byproduct is no part of a fix; none when unknown."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import run_env
+        return [":(exclude,top,literal)%s" % x.rstrip("/")
+                for x in run_env.byproducts_of(wt, run_env.store_read(run_env._store(wt)), os.getcwd())]
+    except Exception:
+        return []
+
+
 def git(wt, *args):
     r = subprocess.run(["git", "-C", wt] + list(args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     return r.returncode, r.stdout.decode("utf-8", "replace").strip()
@@ -72,7 +84,7 @@ def main(argv):
         return 0
     if not os.path.isdir(wt):
         return fail("group %s's worktree %s is gone" % (gid, wt))
-    rc, out = git(wt, "add", "-A", "--", ".", *EXCLUDE)
+    rc, out = git(wt, "add", "-A", "--", ".", *(EXCLUDE + byproducts(wt)))
     if rc != 0:
         return fail("git add in %s failed: %s" % (wt, out.splitlines()[-1] if out else "no output"))
     # the group is checked again by the next action, as an ordinary call of the CLI: its gate goes (the count stays)

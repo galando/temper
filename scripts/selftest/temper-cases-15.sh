@@ -482,7 +482,7 @@ PYEOF
 printf 'pwd -P >> "%s"\necho x > .coverage\necho ok\n' "$WORKDIR/.git/count15" > .git/cov15.sh
 sed -i "s|^    test: \"true\"$|    test: \"bash $WORKDIR/.git/cov15.sh\"|" .claude/temper.config
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
-assert_eq "9.8.0: the Review agent's launch first starts Check's run in the background" "yes" \
+assert_eq "9.8.0: the Review agent's launch first starts check ahead in the background (in a feature run the planted bugs only)" "yes" \
   "$(nx "'yes' if any(c.endswith('temper check ahead') for c in d['agents'][0].get('before', [])) else 'no'")"
 _ahead15() { # check ahead, then a wait for its end: the planted bug score it writes last, no longer running
   local i

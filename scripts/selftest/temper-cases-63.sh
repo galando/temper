@@ -404,6 +404,19 @@ PY
 )"
 assert_eq "w22 flaky: a reused flaky pass keeps flaky on its row, and an owed scenario test's flaky pass is a Build row the card lists" \
   "reused=reused,flaky|owed=flaky" "$_g63"
+# One flaky event is one line of the commit card, however many rows reuse its pass (p5fixf); a pass the CLI made cleanly
+# on the same key (Run it anyway) ends the stamp, so the reused rows after it are not flaky
+_cardflaky63() { # the flaky lines of the commit card, at the question after a passed Check
+  gpass check
+  nx "sum(1 for s in (d.get('card') or {}).get('sections') or [] if s.get('id') == 'suite' for x in s.get('rows') or [] if str(x.get('text', '')).startswith('flaky: '))"
+}
+_flaky63; _check63; _check63; _check63
+_k63="card=$(_cardflaky63)"
+_check63 --fresh; _check63
+_k63+="|after a clean pass=$(_row63 .temper/evidence/check.json tests "'%s,%s' % ('reused' if x.get('reused') else 'ran', 'flaky' if x.get('flaky') else 'not flaky')")"
+_k63+=",store $(_store63 "'flaky' if any(e.get('flaky') for e in entries) else 'not flaky'")"
+assert_eq "w22 flaky: one flaky event is one line of the commit card however many check runs reuse its pass, and a clean pass of the same key ends its stamp" \
+  "card=1|after a clean pass=reused,not flaky,store not flaky" "$_k63"
 # The base itself fails one test (a red base the person went on with, as in the scenario broken-flaky): a failure known
 # at the base counts as the base's pass. The change meets a flaky test once; the second run fails like the base.
 _suite63 "bash flaky63.sh"; rm -f .git/flaky63.done
