@@ -46,20 +46,25 @@ def branch(name):
     return 0
 
 
-def carry(spec, name):
+def carry(spec, name, run_branch=""):
     """The spec folder to a temp folder, the folder back to HEAD, the switch, the files back. A refused switch puts the
-    files back too, fails, and names the temp folder, which keeps a copy."""
+    files back too, fails, and names the temp folder, which keeps a copy. NAME is the run's own branch, an existing
+    one: never a path, whose edits a checkout would discard."""
     import os
     import shutil
     import tempfile
     if not spec or not name or not os.path.isdir(spec):
         print("FAIL: usage: temper spec branch --carry NAME (with an active run)", file=sys.stderr)
         return 1
+    if name != run_branch or git("show-ref", "--verify", "--quiet", "refs/heads/%s" % name).returncode != 0:
+        print("FAIL: spec branch --carry switches only to the run's branch, a branch that exists (the run's: %s); "
+              "got '%s'" % (run_branch or "none", name), file=sys.stderr)
+        return 1
     t = tempfile.mkdtemp(prefix="temper-spec-")
     shutil.copytree(spec, t, dirs_exist_ok=True)
     git("restore", "--source=HEAD", "--worktree", "--", spec)
     git("clean", "-fdq", "--", spec)
-    r = git("checkout", name)
+    r = git("checkout", name, "--")
     os.makedirs(spec, exist_ok=True)
     shutil.copytree(t, spec, dirs_exist_ok=True)
     if r.returncode != 0:
@@ -162,7 +167,7 @@ def main(argv):
     rest = list(argv[3:])
     if word == "branch":
         if rest[:1] == ["--carry"] and len(rest) == 2:
-            return carry(spec, rest[1])
+            return carry(spec, rest[1], name)
         if rest == ["--if-protected"]:
             return if_protected(name, spec)
         if not rest:

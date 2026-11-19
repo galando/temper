@@ -72,6 +72,14 @@ assert_eq "w16 spec branch --carry: a refused switch puts the spec files back, f
   "failed|master|same|plan|FAIL|named" \
   "$([[ $_rc57 -ne 0 ]] && echo failed || echo passed)|$(git branch --show-current)|$(_spec57)|$(grep -o 'FAIL' <<<"$_out57" | head -n 1)|$([[ -n "$_dir57" ]] && echo named || echo none)"
 
+# --- spec branch --carry takes only the run's branch: a path as NAME is refused, its edits stay (phase 4b review) ---
+_clash57
+echo 'echo a local edit' > src/demo.sh
+_out57="$("$TEMPER" spec branch --carry src/demo.sh 2>&1)"; _rc57=$?
+assert_eq "w16 spec branch --carry: a NAME that is not the run's branch is refused, and a path's edits stay" \
+  "1|FAIL|master|echo a local edit|same|plan" \
+  "$_rc57|$(grep -o '^FAIL' <<<"$_out57" | head -n 1)|$(git branch --show-current)|$(cat src/demo.sh)|$(_spec57)"
+
 # --- spec commit -- FILE...: the commit holds the files named and nothing staged before it (phase 4b review) ---
 fresh; _repo57
 echo 'echo other' > src/old.sh; git add src/old.sh; git commit -q -m old
