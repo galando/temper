@@ -64,6 +64,13 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   judged against the project's own base value, not a fixed number, unless your config sets `check.coverage-threshold`.
   The planted bug score (`temper check ahead`, beside Review, into `.temper/evidence/mutation.json`) is information
   only: it gates nothing and moves the run nowhere.
+- **The baseline (9.8.5).** Before any agent and before any approval, a run checks the tools and services your
+  project's files and config name, then runs your project's own test command once on the current code, in a detached
+  worktree under `.claude/worktrees/` (no branch, no commit, no project file changes). The command is the one your
+  config names, or the one Temper detects; it runs with the credential variables left out, as every command the CLI
+  runs. "Go on anyway" at a red base is a recorded skip of the base's failures; only the mod ties it to your click
+  (with the mod off nothing checks who ran `temper baseline accept-red`, and the skip row says it was the person). A
+  green base that Temper reuses from its store is as old as the date the store shows for it.
 - **Its own commits.** In a grouped Build the CLI commits each task's declared files in its worktree and merges
   them, as plain `git commit` and `git merge` calls that use git's own identity and settings (signing too, when
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none

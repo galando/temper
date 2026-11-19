@@ -542,7 +542,7 @@ assert_eq "F18: task test runs with the task worktree first on PYTHONPATH, so th
 rm -rf f18inst f18probe
 setup
 # F14 in a fix run: the Fix stage question is asked, and it does not offer the small change (its change is the fix itself)
-setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
 mkdir -p .temper/specs/demo-bug; printf '# Root cause\nx\n' > .temper/specs/demo-bug/rca.md
 _at fix; gpass build fix rca
 assert_eq "F14: a fix run's Fix stage question does not offer Make a small change" "ask|fix|0" \

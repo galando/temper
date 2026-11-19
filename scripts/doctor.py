@@ -4,7 +4,13 @@
   python3 doctor.py PROJECT CONFIG --propose           a setup block made from what the project says it needs, printed
   python3 doctor.py PROJECT CONFIG --propose --write   the same, added to the config only when it fixes the commands the
                                                        preflight found failing on the environment (never over a block)
+  python3 doctor.py PROJECT CONFIG --propose --write --expect HASH   the block the red base question showed (WP20),
+                                                       written when its hash is HASH, refused when the proposal changed
   python3 doctor.py PROJECT CONFIG --candidate FILE [--write]   an agent's draft (agents/env.md), the same check
+
+`needs(project, setup, commands)` (WP20) is the environment check of the baseline: what the project's files and the
+config name (a JDK, a Node version, the config's tools and services), checked against one shell call under the setup
+block (limit 5 s) and a connect to each service; it never calls propose (no docker, no walk of the files).
 
 The report prints three parts: the toolchain (the first line of each tool's version, or "not on PATH"), the setup block of
 .claude/temper.config (its run line is shown, never run: it may start a service), and whether each service the block
@@ -232,6 +238,143 @@ def compose_services(text):
 def java_major(text):
     m = re.search(r'version "(\d+)', text)
     return int(m.group(1)) if m else 0
+
+
+# ---- the environment check (WP20): what the project's files and the config name, against the shell, in under 5 s -----
+NEEDS_LIMIT_S = 5
+BUILTINS = {"cd", "echo", "true", "false", "export", "test", "[", "exit", "set", "source", ".", "eval", "unset", "printf",
+            "exec", "env", "time", "command", "builtin", ":", "if", "then", "fi", "do", "done", "for", "while", "(", "{"}
+
+
+def _major(text):
+    m = re.search(r"(\d+)", str(text or ""))
+    return int(m.group(1)) if m else 0
+
+
+def stated(project, setup):
+    """What the project's own files and the config state it needs: {"java": (N, file) or None, "node": (N, file) or
+    None, "tools": [(program, file)], "services": [(name, address, file)]}. Read as propose() reads them; nothing
+    runs."""
+    out = {"java": None, "node": None, "tools": [], "services": []}
+
+    def need(key, n, f):
+        if n and (out[key] is None or n > out[key][0]):
+            out[key] = (n, f)
+    for d in [""] + listed(project):
+        for name in ("pom.xml", "build.gradle", "build.gradle.kts"):
+            p = os.path.join(project, d, name)
+            if d.startswith(".") or not os.path.isfile(p):
+                continue
+            t = read(p)
+            m = (re.search(r"<requireJavaVersion>\s*<version>\s*\[?(\d+)", t) or re.search(r"<(?:java\.version|maven\.compiler\.release)>(\d+)<", t)
+                 or re.search(r"JavaLanguageVersion\.of\(\s*(\d+)", t)
+                 or re.search(r"(?:source|target)Compatibility\s*=\s*(?:JavaVersion\.VERSION_|['\"])(\d+)", t))
+            if m:
+                need("java", int(m.group(1)), os.path.relpath(p, project))
+    for vf, pat in ((".java-version", r"^\s*(?:\D*?)(\d+)"), (".tool-versions", r"(?m)^\s*java\s+\D*?(\d+)")):
+        m = re.search(pat, read(os.path.join(project, vf)))
+        if m:
+            need("java", int(m.group(1)), vf)
+    m = re.search(r"(?m)^\s*nodejs\s+\D*?(\d+)", read(os.path.join(project, ".tool-versions")))
+    if m:
+        need("node", int(m.group(1)), ".tool-versions")
+    ci = ci_facts(project)
+    for key in ("java", "node"):
+        if ci[key]:
+            need(key, ci[key][0], ci[key][1])
+    pkg = read(os.path.join(project, "package.json"))
+    m = re.search(r'"engines"\s*:\s*\{[^}]*"node"\s*:\s*"[^"\d]*(\d+)', pkg)
+    if m:
+        need("node", int(m.group(1)), "package.json")
+    cfg = os.path.join(".claude", "temper.config")
+    out["tools"] = [(t, cfg) for t in (setup or {}).get("tools") or [] if t]
+    out["services"] = [(n, a, cfg) for n, a in ((setup or {}).get("services") or {}).items()]
+    return out
+
+
+def needs(project, setup, commands=()):
+    """The environment check: (faults, notes, tools). It only reads, and makes one shell call under the setup block
+    (limit 5 s) that resolves each program the commands start and the config's tools, and prints the version line of
+    java and node when a file names one; then it connects to each service of the setup block, all at once, 2 s each.
+    A fault is {"kind", "file", "need", "have", "why"}: kind program-missing, tool-version, service-down or
+    setup-line. A shell call over 5 s gives no fault and the note `not checked in 5 s`. `tools` are the version
+    lines, part of the baseline's key."""
+    import threading
+    st = stated(project, setup)
+    faults, notes, tools = [], [], {}
+    progs = []   # (program, folder it runs in, the file that names it)
+    for c in commands:
+        folder = ""
+        for seg in re.split(r"&&|\|\||;|\|", c or ""):
+            toks = [t for t in seg.split() if not re.match(r"^\w+=", t)]
+            if not toks:
+                continue
+            if toks[0] == "cd" and len(toks) > 1:
+                folder = os.path.join(folder, toks[1])
+                continue
+            if toks[0] not in BUILTINS and not any((toks[0], folder) == (x[0], x[1]) for x in progs):
+                progs.append((toks[0], folder, "the suite command"))
+    for t, f in st["tools"]:
+        if not any(p == t for p, _, _ in progs):
+            progs.append((t, "", f))
+    if st["java"] and not any(p == "java" for p, _, _ in progs):
+        progs.append(("java", "", st["java"][1]))
+    if st["node"] and not any(p == "node" for p, _, _ in progs):
+        progs.append(("node", "", st["node"][1]))
+    import shlex
+    lines = ['__w() { if command -v "$1" >/dev/null 2>&1; then echo "which $2 yes"; else echo "which $2 no"; fi; }']
+    for i, (p, folder, _) in enumerate(progs):
+        lines.append(("(cd %s 2>/dev/null && __w %s %d)" % (shlex.quote(folder), shlex.quote(p), i)) if "/" in p and folder
+                     else "__w %s %d" % (shlex.quote(p), i))
+    if st["java"]:
+        lines.append('echo "version java $(java -version 2>&1 | head -n 1)"')
+    if st["node"]:
+        lines.append('echo "version node $(node --version 2>&1 | head -n 1)"')
+    out, rc = run_env.run_cmd(project, NEEDS_LIMIT_S, ["\n".join(lines)], setup)
+    text = out.decode("utf-8", "replace")
+    if rc == 124:
+        notes.append("not checked in 5 s")
+        return faults, notes, tools
+    if rc == 125:
+        m = re.search(r"temper-setup: FAIL \(exit (\d+)\)", text)
+        faults.append({"kind": "setup-line", "file": os.path.join(".claude", "temper.config"), "need": "the setup line runs",
+                       "have": "exit %s" % (m.group(1) if m else "?"),
+                       "why": "the setup line of .claude/temper.config failed (%s)" % (m.group(0) if m else "temper-setup: FAIL")})
+        return faults, notes, tools
+    for line in text.splitlines():
+        m = re.match(r"^which (\d+) no$", line.strip())
+        if m and int(m.group(1)) < len(progs):
+            p, folder, f = progs[int(m.group(1))]
+            faults.append({"kind": "program-missing", "file": f, "need": p, "have": "not on the PATH",
+                           "why": "%s is not on the PATH of the shell (%s needs it)" % (p, f)})
+        m = re.match(r"^version (java|node) (.*)$", line.strip())
+        if m:
+            tools[m.group(1)] = m.group(2).strip()[:120]
+    missing = {x["need"] for x in faults}
+    for key, label in (("java", "JDK"), ("node", "Node")):
+        if not st[key] or key in missing:
+            continue
+        n, f = st[key]
+        have = java_major(tools.get(key, "")) if key == "java" else _major(tools.get(key, ""))
+        if have and have < n:
+            faults.append({"kind": "tool-version", "file": f, "need": str(n), "have": str(have),
+                           "why": "%s needs %s %d; the shell has %s %d" % (f, label, n, label, have)})
+    res = {}
+
+    def probe(name, addr):
+        res[name] = answers(addr)
+    threads = [threading.Thread(target=probe, args=(n, a)) for n, a, _ in st["services"]]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(SERVICE_LIMIT_S + 1)
+    for n, a, f in st["services"]:
+        if not res.get(n):
+            faults.append({"kind": "service-down", "file": f, "need": "%s at %s" % (n, a), "have": "no answer",
+                           "why": "the service %s at %s does not answer (%s names it)" % (n, a, f)})
+    if not (st["java"] or st["node"] or st["tools"] or st["services"]):
+        notes.append("the project's files name no tool version and the config names no service")
+    return faults, notes, tools
 
 
 def propose(project):
@@ -492,6 +635,17 @@ def main(argv):
         if not block:
             print("Nothing to propose: no need of the project was found that a setup block meets.")
             return 0
+        if argv[4:6] == ["--write", "--expect"] and len(argv) == 7:
+            # WP20: the block the red base question showed, written as shown: refused when the proposal changed since
+            if block_hash(block) != argv[6]:
+                print("FAIL: the proposed block changed since the question showed it; nothing was written (ask again)",
+                      file=sys.stderr)
+                return 1
+            if " #" in "\n".join(block):
+                print("FAIL: the run line holds ' #', which the config reader cuts", file=sys.stderr)
+                return 1
+            print("\n".join(block))
+            return write_block(config, block, "Proposed by temper doctor --propose, as the red base question showed it")
         return checked(project, config, block, "Proposed by temper doctor --propose", argv[4:] == ["--write"])
     if len(argv) >= 5 and argv[3] == "--candidate":
         # an agent's draft (agents/env.md): the same check, then the same write

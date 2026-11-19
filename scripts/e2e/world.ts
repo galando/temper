@@ -64,6 +64,9 @@ export class World {
     this.dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `temper-e2e-${name}-`)))
     this.env = { ...process.env, GIT_AUTHOR_NAME: 'e2e', GIT_AUTHOR_EMAIL: 'e2e@example.com', GIT_COMMITTER_NAME: 'e2e', GIT_COMMITTER_EMAIL: 'e2e@example.com' } as Record<string, string>
     for (const k of Object.keys(this.env)) if (!k.startsWith('GIT_CONFIG') && /(^|_)(KEY|TOKEN|SECRET|PASSWORD)(_|$)/i.test(k)) delete this.env[k]
+    // WP20: the baseline runs the suite in the foreground in a scripted run, so no step races its process (a scenario
+    // that needs its own process deletes this)
+    this.env.TEMPER_BASELINE_FOREGROUND = '1'
     this.countFile = `${this.dir}.suite-runs`
     fs.writeFileSync(this.countFile, '')
     this.env.TEMPER_E2E_COUNT = this.countFile

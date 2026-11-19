@@ -136,6 +136,23 @@ All notable changes to Temper are documented here. The plugin version lives in
   `coverage-threshold: 80`, the default 80 in code, the key `check.mutation-threshold`, the row
   `mutation score >= threshold`, the ledger row of a missing coverage tool and stop 21 (`check.mutation-only`, ADR
   0019 decision 3) are gone.
+- WP20: the environment check, the baseline and the limits. A run's first step is the CLI's own `temper baseline
+  start` (`scripts/baseline.py`), which always exits 0: the tools and services the project's files and the config name,
+  checked in under 5 s with no suite (`doctor.needs`), then the project's own suite once on the current code, in the
+  detached worktree `.claude/worktrees/temper-baseline`, in its own process. Who owns the suite command is one rule
+  (`python3 scripts/check_run.py owner`): the config, the root, the one folder one level down (`cd <folder> && `), the
+  plan's Integration line; Maven's detected command is `mvn -q verify`. `.temper/evidence/baseline.json` says green
+  (its seconds and coverage, WP19's floor), red (its kind and fail lines) or unknown (the reason); the approval card
+  shows it in one of four forms. A fault or a red base is the one question `base.red` before any agent, and after the
+  approval Build launches no new task agent on it (a run that goes on by itself stops there): Add this setup block and
+  run it again (`temper doctor --propose --write --expect <hash>` writes the block shown), Run it again, Go on anyway
+  (`temper baseline accept-red`, the person's: a recorded skip, the override `base-suite`; at Check only the base's
+  fail lines are skipped, one new line fails `tests pass`; a later run on the same key asks nothing) and Save for
+  later. A fix run records a red base and asks nothing. Every limit is the larger of its default and three times the
+  base's time of the same suite (`baseline.limit_for`); a first time out of a group's check runs again with twice the
+  limit as the CLI's own call. Gone: the option "Run the gate again with twice the time", and the setup block's offer
+  at a failed plan gate (it is the red base question's now). `temper baseline clean` removes the worktree; `state
+  clear` and `state init` call it.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

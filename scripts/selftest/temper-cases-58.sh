@@ -89,7 +89,7 @@ _fix58() { # _fix58 [config lines]: a fix run at its root cause question in a re
   [[ -z "${1:-}" ]] || printf '%s\n' "$1" >> .claude/temper.config
   rm -f .temper/groups.json .temper/view.json .temper/build-state.json
   _repo58
-  "$TEMPER" state init bug --command fix --feature "$_BUG58" >/dev/null 2>&1
+  "$TEMPER" state init bug --command fix --feature "$_BUG58" >/dev/null 2>&1; _base_known
   _rca58
 }
 # _dg58 <file>: its digest, or nothing
@@ -184,7 +184,7 @@ assert_eq "fix: the approval is of what was shown" \
 # --- no branch and no commit before the approval ---
 setup; sed -i '/^  enabled: false$/d' .claude/temper.config; rm -f .temper/build-state.json .temper/view.json; _repo58
 _b58="$(git branch --show-current),$(git rev-parse HEAD),$(git branch --list | wc -l | tr -d ' ')"
-"$TEMPER" state init bug --command fix --feature "$_BUG58" >/dev/null 2>&1; _rca58
+"$TEMPER" state init bug --command fix --feature "$_BUG58" >/dev/null 2>&1; _base_known; _rca58
 "$TEMPER" usage add --stage rca --model opus --ms 1 >/dev/null 2>&1 || true
 "$TEMPER" next --json >/dev/null 2>&1; "$TEMPER" go >/dev/null 2>&1 || true
 assert_eq "fix: no branch and no commit before the approval" "same|feature=$_BUG58" \
@@ -208,7 +208,7 @@ assert_eq "fix: a passed Fix, Review and Check move on by rule" \
 # --- the checks start beside Review in a fix run, as in a feature run of the same project (the control) ---
 _ahead58() { _x58 "a = (d.get('agents') or [{}])[0]
 r = '%s|%s' % (a.get('type'), 'check ahead' if any(short(x) == 'check ahead' for x in a.get('before') or []) else a.get('before'))"; }
-_fix58; "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; gpass intent plan build
+_fix58; "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known; gpass intent plan build
 for _a58 in intent_complete:plan plan_complete:build build_complete:review; do
   "$TEMPER" state advance "${_a58%%:*}" "${_a58##*:}" >/dev/null 2>&1
 done
@@ -286,7 +286,7 @@ r = '%s|outside=%s' % (s.get('note'), ','.join(str(x.get('text')).replace(' (out
 _triv58() { # a /temper:temper run at Intent, step 0, with no spec file, in a repository on main
   setup; rm -f .temper/specs/demo/*.md .temper/groups.json .temper/view.json .temper/build-state.json
   _repo58
-  "$TEMPER" state init demo --feature "fix the typo in the help text" >/dev/null 2>&1; rm -f .temper/runs.jsonl
+  "$TEMPER" state init demo --feature "fix the typo in the help text" >/dev/null 2>&1; _base_known; rm -f .temper/runs.jsonl
 }
 _tr58() { # what the run state holds under trivial: its keys, and whether head is HEAD
   python3 -B - "$(git rev-parse HEAD)" <<'PY'
@@ -325,7 +325,7 @@ _triv58; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2
 _tv58+="|plan=$(_refused58 --why x)"
 _triv58; printf '# Intent: x\n' > .temper/specs/demo/intent.md; _tv58+="|intent.md=$(_refused58 --why x)"
 _triv58; printf '# Tasks: x\n' > .temper/specs/demo/tasks.md; _tv58+="|tasks.md=$(_refused58 --why x)"
-_triv58; "$TEMPER" state init demo --command fix >/dev/null 2>&1; _tv58+="|fix=$(_refused58 --why x)"
+_triv58; "$TEMPER" state init demo --command fix >/dev/null 2>&1; _base_known; _tv58+="|fix=$(_refused58 --why x)"
 assert_eq "trivial: the verdict is recorded" \
   "rc=0|lines=1|why=a typo in the help text|head=HEAD|at=set|dirty_before=list|plan=refused|intent.md=refused|tasks.md=refused|fix=refused" \
   "$_tv58"
@@ -374,7 +374,7 @@ assert_eq "trivial: the commit hook holds the bound" \
 _closed58; _sp58="record=$([[ -f .temper/trivial.json ]] && echo written || echo none)"
 _add58 src/a.sh 1; git add src/a.sh; git commit -q -m "the trivial change" >/dev/null 2>&1
 _add58 src/a.sh 20; _add58 src/b.sh 20; git add src/a.sh src/b.sh; _gc58; _sp58+="|after commit=$_gc58_rc"; git reset -q --hard
-_closed58; "$TEMPER" state init other --feature "another request" >/dev/null 2>&1; "$TEMPER" state clear >/dev/null 2>&1
+_closed58; "$TEMPER" state init other --feature "another request" >/dev/null 2>&1; _base_known; "$TEMPER" state clear >/dev/null 2>&1
 _add58 src/a.sh 20; _add58 src/b.sh 20; git add src/a.sh src/b.sh; _gc58; _sp58+="|after state init=$_gc58_rc"; git reset -q --hard
 assert_eq "trivial: the record is spent" "record=written|after commit=0|after state init=0" "$_sp58"
 

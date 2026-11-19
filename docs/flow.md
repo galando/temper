@@ -182,6 +182,55 @@ To read a failure, the session runs `temper output G<n>` (the group's last Valid
 FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed
 run). It is read only; with the mod on, the session may run the CLI but not `printenv` or a test runner.
 
+### The environment check and the baseline (9.8.5, WP20)
+
+A fault of the environment or of the base is named before any agent is paid for. Before any other step of an active
+run, while `.temper/evidence/baseline.json` is absent, `next` is the CLI's own action `auto` with the one call
+`temper baseline start` (`--env-only` at a door into Review or Check). `state init` empties `.temper/evidence`, so every
+new run starts one; a step back does not. The call always exits 0 and returns in seconds (`scripts/baseline.py`):
+
+- **The owner of the suite command** (`python3 scripts/check_run.py owner ROOT [SPEC]`): the config's
+  `check.commands.test` (with `check.commands.coverage`); else what `detect` reads in the root; else the one folder one
+  level down that `detect` reads, with `cd <folder> && ` in front (none when two do); else the plan's `**Integration:**`
+  line; else none, with the reason. For Maven, `detect` gives `mvn -q verify`.
+- **The environment check** (`doctor.needs`, under 5 s, no suite): the JDK a `pom.xml`, a Gradle file, `.java-version`,
+  `.tool-versions` or the CI names, the Node version of `package.json` or the CI, the config's `setup.tools` and
+  `setup.services`, against one shell call under the setup block (each program the suite command starts must resolve,
+  and the version lines of `java` and `node`) and a connect to each service. A fault (`program-missing`,
+  `tool-version`, `service-down`, `setup-line`) names the file that states the need, the need and what the shell has.
+- **The baseline**: the suite once on the current code, in the detached worktree `.claude/worktrees/temper-baseline`
+  at HEAD (the place Build uses: no branch, no commit, no project file), in its own process
+  (`TEMPER_BASELINE_FOREGROUND=1` keeps it in the call). `green` on exit 0, with `seconds` and `coverage` (the floor of
+  WP19); `red` on any other exit, with its `kind` and the `fail_lines`; `unknown` with the reason (no commit, no
+  command, a run over its limit with `seconds_over`). `temper baseline clean` removes the worktree; `state clear` and
+  `state init` call it.
+
+Nothing waits for it: the approval card shows the baseline line in one of four forms (passes with its seconds and the
+floor, running, fails on the current code, unknown with the reason). A red result with no answer is the question
+`base.red`, before any other step: an environment fault before the first agent, a red suite known before the approval
+before it, one that ends while an agent works when that agent returns. Its text holds the command, the exit, the
+seconds, the fault or the first fail lines, and the exact proposed setup block when there is one. Options:
+`add-setup` (Add this setup block and run it again, first and recommended, when the config has no block and
+`temper doctor --propose` gives one: `doctor --propose --write --expect <hash>` writes the block as shown, refused when
+the proposal changed, then `baseline start --again`), `check-again` (Run it again), `go-on-anyway` (Go on anyway, with
+a reason: `baseline accept-red`, the person's only) and `save`. After the approval, Build launches no new task agent on
+a red base; a run that goes on by itself records a stop with its notice, then asks `base.red`.
+
+"Go on anyway" is a recorded skip: a row `base-suite` in `.temper/overrides.json` (by the person), the answer in the
+file and in the reuse store under the baseline's key (the base tree, the command, the setup block, the tool versions).
+At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is
+`pass: null, state: skipped`; one new fail line fails it. A later run with the same key asks nothing and records its own
+skip row; a changed key asks again. A fix run records a red base of kind `red-base` with the answer `fix-run` and asks
+nothing: there the red suite may be the bug.
+
+**Limits from measured time.** `baseline.limit_for(cmd, default)` is the larger of the site's default and three times
+the seconds the same suite took on the base (the same text, or the same steps with other flags; `seconds_over` counts
+as measured). It sets the limit of the group gate (600 s), a task's test and its scenario tests (600 s), `integrate`
+(3,600 s) and Check (1,800 s); the environment variables stay the defaults, and a gate waits for a baseline still
+running that measures its suite. The first time out of a group's check is no question: the CLI runs `group gate G
+--timeout-s <twice the limit>` itself (no repeat of the budget when the base measured that suite) and keeps the doubled
+limit in `limits`; a second time out asks `group.fail`.
+
 ### The preflight, the setup block and an environment fault (9.8.5)
 
 **The preflight.** `temper gate plan` has a `preflight` row (`scripts/preflight.py`). It runs each distinct group
@@ -210,10 +259,11 @@ them again, then `temper gate plan`. `plan.preflight-skip: "<reason>"`, which on
 and scenario checks, integrate, Check, the preflight), prints `temper-setup: OK`, and adds the variables; a failing
 line prints `temper-setup: FAIL (exit N)` and exits 125. A variable whose name says it holds a credential is never set
 or shown. Every agent prompt ends with an `Environment setup` line that carries the run line and the variables. No
-block: every command and prompt is as before. The person rarely writes the block: when the preflight or Check fails on
-the environment and there is none, the question offers `Add the proposed setup block (Recommended)`, made by
-`temper doctor --propose` from the project's own files and its CI, and the question shows every line of the block.
-It is written only as the call of that answer, and only after the CLI reran the failing commands with it and they no
+block: every command and prompt is as before. The person rarely writes the block: when the environment check or
+Check fails on the environment and there is none, the question (`base.red`, or Check's) offers `Add this setup block and
+run it again (Recommended)`, made by `temper doctor --propose` from the project's own files and its CI, and the question
+shows every line of the block. It is written only as the call of that answer: at `base.red` as shown (its hash), and the
+baseline that runs next is its check; at Check only after the CLI reran the failing commands with it and they no
 longer fail on the environment (`docs/commands.md`). No agent drafts a block (WP08).
 
 **An environment fault at a task gate.** When the last run of a task's attempt is a failing GREEN, a RED came before
@@ -290,8 +340,9 @@ CLI runs `integrate` and `gate build` again, and a failure there names the fault
 
 **A fix that changed nothing.** `temper group fix G<n> --commit` with no change keeps the group's check failed (the same
 tree would fail the same way, so it does not run again) and counts `fix_empty`. The next question recommends the loop
-back to Plan (or Save for later), and says the cause is the plan's command or the environment. "Run the gate again with
-twice the time" is recommended only at the first time-out; later it is offered, not recommended.
+back to Plan (or Save for later), and says the cause is the plan's command or the environment. A first time-out is
+no question: the CLI runs the check again with twice the limit (WP20, above); a second one asks, with the command change
+first.
 
 **SETUP at Check.** When the suite or the acceptance run of Check fails on its environment (a project marker
 `<script>: SETUP: <reason>`, or the preflight's environment rule: a JDK out of range, `Connection refused`, a failed

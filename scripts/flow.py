@@ -267,6 +267,10 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
         if r.stage not in r.seq() or (r.stage not in ("intent", "rca") and r.spec and not os.path.isdir(r.spec)):
             out.update({"action": "broken", "say": "The run state does not fit its spec folder (%s at %s)." % (r.spec, r.stage)})
             return out
+        base = self.base_step()   # WP20: the environment check and the baseline come before any other step
+        if base is not None:
+            out.update(base)
+            return out
         if isinstance(r.state.get("trivial"), dict) and r.stage == "intent" and r.verdict("intent") is not None:
             # WP17: the Intent agent took the trivial verdict and made the one change; the flow closes the run, no
             # question

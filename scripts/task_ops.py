@@ -13,7 +13,8 @@ Standard library only.
 """
 import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
-from run_env import run_cached, run_cmd, test_env  # noqa: F401
+from run_env import FAIL_LINE, LOG_LINE, SUMMARY, fail_lines, run_cached, run_cmd, test_env  # noqa: F401
+import baseline
 import scenario_ops
 import maven_loop
 import preflight
@@ -120,27 +121,7 @@ def show(out, rc, keep=12):
     sys.stdout.write(''.join(lines))
     sys.stdout.flush()
 
-FAIL_LINE = re.compile(r'\bFAIL(?:ED|URE|S)?\b|\bERROR\b|^not ok\b|^E\s+\S|Error:')
-# 9.8.5 (S4): a log line a passing test printed (`20:01:44.264 [main] ERROR com.x.Y -- ...`) says nothing about the run
-LOG_LINE = re.compile(r'^\d{1,2}:\d{2}:\d{2}(?:[.,]\d+)?\s+\[[^\]]*\]\s+(?:ERROR|WARN)\b')
-# the build tool's own summary of what failed, before any other line: Maven's goal, a JaCoCo rule, a failed test's name
-SUMMARY = (re.compile(r'temper-setup: FAIL'), re.compile(r'Failed to execute goal'), re.compile(r'Rule violated'),
-           re.compile(r'^\[ERROR\]\s+(?:Tests run:.*FAILURE|[\w.$]+\.\w+:\d+\b)'), re.compile(r'<<< (?:FAILURE|ERROR)!'))
-
-def fail_lines(out, keep=8, rc=None):
-    """What a failing run says failed, most telling first: a time-out (exit 124); the build tool's summary (the last Maven
-    `Failed to execute goal` line, `Rule violated` lines, the names of failed tests); then the lines that say FAIL, FAILED,
-    ERROR, not ok or an exception, first ones first, without the log lines a passing test printed. With none of these, the
-    LAST three lines of the output, never the first (9.8.4, 9.8.5)."""
-    lines = [' '.join(l.split()) for l in out.decode('utf-8', 'replace').splitlines()]
-    lines = [l[:240] for l in lines if l]
-    head = ['the command did not finish within its time limit (exit 124)'] if rc == 124 else []
-    for pat in SUMMARY:
-        found = [l for l in lines if pat.search(l)]
-        head += found[-1:] if pat.pattern == 'Failed to execute goal' else found[:4]
-    hits = [l for l in lines if FAIL_LINE.search(l) and not LOG_LINE.search(l)]
-    picked = list(dict.fromkeys(head + hits))
-    return picked[:keep] if picked else lines[-3:]
+# FAIL_LINE, LOG_LINE, SUMMARY and fail_lines live in run_env.py (WP20: the baseline picks the same lines)
 
 def _shape(text):
     """A signature as code reads it: qualifiers taken off names (`MonitoringSummary.AgencyHealth` and an imported
@@ -425,6 +406,7 @@ elif mode == 'codehash':
 elif mode == 'testrun':
     wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
     cmd = sys.argv[10:]   # argv[9] is the '--' separator
+    timeout = baseline.limit_for(' '.join(cmd), timeout)   # WP20: three times the base's time of the same suite, at least
     before = untracked(wt)
     if len(cmd) == 1 and maven_loop.is_maven(cmd[0]):   # F22: a Maven test runs the declared test classes only, offline
         slug = load_run(os.environ.get('TEMPER_GROUPS_FILE', '')).get('slug', '')
@@ -485,7 +467,7 @@ elif mode == 'integrun':
     # out of the task RED/GREEN counts
     wt, timeout, rowfile = sys.argv[2:5]
     cmd = sys.argv[6:]    # argv[5] is the '--' separator
-    out, rc, reused = run_cached(wt, timeout, cmd)
+    out, rc, reused = run_cached(wt, baseline.limit_for(' '.join(cmd), timeout), cmd)   # WP20: the limit from the base
     show(out, rc)
     row = {'claim': 'Integration suite', 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'integration', 'scenario': None,

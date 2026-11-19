@@ -123,8 +123,9 @@ def failure(name, cmd, rc, out=b""):
 
 def run_owed(items, cwd, timeout):
     """Run (name, cmd) pairs; returns the first failure message, or ''. Records nothing."""
+    import baseline
     for name, cmd in items:
-        out, rc = run_env.run_cmd(cwd, timeout, [cmd])
+        out, rc = run_env.run_cmd(cwd, baseline.limit_for(cmd, timeout), [cmd])   # WP20: the limit from the base
         if rc != 0:
             return failure(name, cmd, rc, out)
     return ""
@@ -142,7 +143,8 @@ def integrate(intent_path, cwd, timeout, ledger):
         if not b["cmd"].strip():
             continue
         t0 = time.time()
-        out, rc = run_env.run_cmd(cwd, timeout, [b["cmd"]])
+        import baseline
+        out, rc = run_env.run_cmd(cwd, baseline.limit_for(b["cmd"], timeout), [b["cmd"]])   # WP20: the limit from the base
         secs = time.time() - t0
         rows.append({"claim": "scenario test at integration", "cmd": b["cmd"], "exit_code": rc, "artifact": None, "sha256": None,
                      "value": None, "severity": None, "phase": "scenario", "scenario": b["name"], "criterion": None,

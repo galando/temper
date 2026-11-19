@@ -63,7 +63,10 @@ def sh(*args, cwd):
 
 
 def cli(cwd, *args):
-    return subprocess.run([temper] + list(args), cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    r = subprocess.run([temper] + list(args), cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if list(args[:2]) == ["state", "init"]:   # WP20: the baseline on record as not run (the selftest's _base_known)
+        write(cwd, ".temper/evidence/baseline.json", '{"result": "unknown", "why": "not run in the selftest"}\n')
+    return r
 
 
 def write(cwd, rel, text):
@@ -425,6 +428,16 @@ for _ in range(2):
     cli(bu, "state", "redo", "check", "--reason", "the suite again")
 verdict(bu, "check", False, "tests pass", "exit 1: 2 failed")
 snap2(bu, "check-budget", "run-budget")
+
+# ---- 9.8.5 (WP20): the baseline as the first step of a run, and the red base question before any agent ----
+bs = project("baseline")
+cli(bs, "state", "init", "pw", "--feature", "Password reset by email")
+os.remove(os.path.join(bs, ".temper", "evidence", "baseline.json"))
+snap2(bs, "base-start", "run-baseline")
+write(bs, ".temper/evidence/baseline.json", json.dumps({
+    "result": "red", "kind": "red-base", "cmd": "npm test", "run": "npm test", "source": "configured", "exit_code": 1,
+    "seconds": 4.2, "fail_lines": ["FAIL test/totals.test.js > rounds a cent"], "env": [], "limits": {}, "plan": {}}))
+snap2(bs, "base-red", "run-baseline")
 
 # A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
 for name in ("armed-review-pass", "review-fail", "armed-check-fail"):   # WP15: the cards made it grow; WP16: typed calls

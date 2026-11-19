@@ -130,28 +130,93 @@ class WorkPart:
             return self.repair(stage, why or "the check failed")
         return None
 
-    def setup_offer(self, rows):
-        """9.8.5: the option that adds temper doctor --propose's setup block, when the preflight failed on the environment and
-        the config has no block; None when that does not hold or nothing is proposed."""
+    def setup_offer(self, rows, base=False):
+        """9.8.5: the option that adds temper doctor --propose's setup block, when the preflight failed on the
+        environment and the config has no block; None when that does not hold or nothing is proposed. WP20 (`base`,
+        the red base question): no preflight is read; the block is offered when the config has none and one is
+        proposed, and its calls write the block as the question shows it (--expect its hash: a proposal that changed
+        since is refused), then run the baseline again, which is its check."""
         cfg = self.r.ctx.get("config_file") or os.path.join(".claude", "temper.config")
-        if not any(x.get("name") == "preflight" and "environment fault" in str(x.get("detail", "")) for x in rows) or run_env.load_setup(cfg):
+        if run_env.load_setup(cfg):
             return None
-        kept = read_json(os.path.join(TEMPER, "preflight.json"), {})
-        if not (isinstance(kept, dict) and kept.get("env_faults")):
-            return None   # nothing to check a block against: a block is written only after it fixed a stored failing command
+        if not base:
+            if not any(x.get("name") == "preflight" and "environment fault" in str(x.get("detail", "")) for x in rows):
+                return None
+            kept = read_json(os.path.join(TEMPER, "preflight.json"), {})
+            if not (isinstance(kept, dict) and kept.get("env_faults")):
+                return None   # nothing to check a block against: a block is written only after it fixed a stored failing command
         block, _ = doctor.propose(os.getcwd())
-        if block and not doctor.tried_and_failed(os.getcwd(), block):
+        if block and (base or not doctor.tried_and_failed(os.getcwd(), block)):
             parts = doctor.parts(block)
             run, env = parts["run"], ", ".join("%s=%s" % kv for kv in parts["env"].items())
             what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
             # M13 of WP08: the question shows the block whole, line by line (the run line masked), since the person who
             # reads it is the check: a block that fakes a tool passes the CLI's own
-            self.shown_block = " | ".join(("run: " + run_env.mask(l.strip()[len("run: "):])) if l.strip().startswith("run: ")
-                                          else l.strip() for l in block if l.strip())
-            return self.opt("Add the proposed setup block (Recommended)", what + ". Temper first reruns the failing commands with it, "
-                            "and adds it only when they no longer fail on the environment.", move="redo",
-                            calls=[self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")], oid="add-setup")
+            shown = [("  run: " + run_env.mask(l[len("  run: "):])) if l.startswith("  run: ") else l for l in block]
+            self.shown_block = "\n".join(shown) if base else " | ".join(l.strip() for l in shown if l.strip())
+            if base:
+                desc = "%s. Temper writes the block as shown into .claude/temper.config, then checks the environment and runs the suite again." % what
+                calls = [self.c("doctor --propose --write --expect %s" % doctor.block_hash(block)), self.c("baseline start --again")]
+            else:
+                desc = what + ". Temper first reruns the failing commands with it, and adds it only when they no longer fail on the environment."
+                calls = [self.c("doctor --propose --write"), self.c("plan preflight"), self.c("gate plan")]
+            return self.opt("Add this setup block and run it again (Recommended)", desc, move="redo", calls=calls, oid="add-setup")
         return None   # M13 of WP08: the environment agent is no longer offered
+
+    # -- WP20: the baseline, before any other step of an active run, and the red base question ----------------------
+    def base_step(self):
+        """The CLI's own `baseline start` when the run has no baseline file (`--env-only` at a door into Review or
+        Check); the red base question while the base is red and nobody answered; None else. A run that goes on by
+        itself stops first (a recorded stop with its notice); agents in flight have finished when next is asked."""
+        r = self.r
+        f = os.path.join(TEMPER, "evidence", "baseline.json")
+        if not os.path.exists(f):
+            door = (r.state.get("enter") or "") in ("review", "check")
+            if not door and r.state.get("base_sha"):
+                return None   # a run approved before it had a baseline (an earlier version saved it): its code is no base
+            return {"action": "auto", "stage": r.stage, "calls": [self.c("baseline start" + (" --env-only" if door else ""))],
+                    "say": "The environment is checked%s, before any agent." % (
+                        "" if door else ", and the project's suite runs once on the current code")}
+        b = read_json(f, {})
+        if b.get("result") != "red" or b.get("answer") or b.get("env_only"):
+            return None
+        if r.armed():
+            return self.stop(r.stage, "the base is red: %s" % (b.get("why") or b.get("kind") or "the suite fails on the current code"))
+        return {"action": "ask", "stage": r.stage, "ask": self.base_red(b)}
+
+    def base_red(self, b):
+        """base.red: one fault, one dialog. The command, the exit, the seconds, the fault or the first fail lines, and
+        the exact proposed block when there is one; Add this setup block and run it again (first and recommended,
+        when the config has no block and one is proposed), Run it again, Go on anyway (a recorded skip, with a
+        reason), Save for later."""
+        cmd = b.get("run") or b.get("cmd") or "the suite"
+        env = [x for x in b.get("env") or [] if isinstance(x, dict)]
+        if env and b.get("kind") != "red-base":
+            what = "The environment check found %s before any agent: %s." % (
+                "1 fault" if len(env) == 1 else "%d faults" % len(env),
+                "; ".join(str(x.get("why") or "%s needs %s; the shell has %s" % (x.get("file"), x.get("need"), x.get("have")))
+                          for x in env))
+        else:
+            secs = " after %s s" % b["seconds"] if isinstance(b.get("seconds"), (int, float)) else ""
+            lines = [str(x) for x in b.get("fail_lines") or []][:3]
+            what = "The project's suite fails on the current code, before this run changed anything: %s exited %s%s. %s" % (
+                cmd, b.get("exit_code", "with an error"), secs,
+                "It printed: %s." % " | ".join(lines) if lines else "It printed no line that names a failing test.")
+        add = self.setup_offer([], base=True)
+        again = self.opt("Run it again", "The environment check and the suite run once more on the current code, after you "
+                         "repaired it by hand.", move="redo", calls=[self.c("baseline start --again")], oid="check-again")
+        go = self.opt("Go on anyway", "The base's failures become a recorded skip of the suite's row, which the commit shows; "
+                      "one new failing line still fails it.", move="override", calls=[self.c("baseline accept-red --reason '{reason}'")],
+                      reason=["The failure is known and not this change's", "It is fixed in another change"], oid="go-on-anyway")
+        save = self.save()
+        if add:
+            text = "%s The project's own files propose this setup block:\n%s\nAdd it and run the check again?" % (what, self.shown_block)
+        else:
+            # a fault of the environment is repaired first; a suite red before the change is most often a known
+            # failure, which the person may pass as a recorded skip (one new failing line still fails the row)
+            self.set_rec(again if b.get("kind") != "red-base" else go, True)
+            text = "%s Repair it and run it again, go on anyway with the failures as a recorded skip, or save the run?" % what
+        return self.question(GATE_HEADER, text, [o for o in (add, again, go, save) if o], self.r.stage, qid="base.red")
 
     def setup_fault(self):
         """9.8.5 (Q6): the reason Check's latest run hit the environment (a `setup fault:` row after its last suite row), or ""."""

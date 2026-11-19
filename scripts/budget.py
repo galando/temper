@@ -35,7 +35,8 @@ SPENDS = (
                                      "when a CI fix round paid for that failure (one round is one entry)"),
     (("group", "fix"), "group fix", "with no flag: group:<G>"),
     (("group", "reopen"), "tasks again", "the group's gate is FAIL or the group is parked: group:<G>"),
-    (("group", "gate"), "more time", "with --timeout-s, at a group gate that is FAIL already: group:<G>"),
+    (("group", "gate"), "more time", "with --timeout-s, at a group gate that is FAIL already, when the base did not measure "
+                                     "the group's suite (WP20): group:<G>"),
     (("plan", "patch"), "plan patch", "always: group:<G>, task:<N>, or gate:build for the Integration line"),
     (("task", "retry"), "task again", "always: task:<N>"),
     (("task", "test"), "check again", "--phase green of a task that holds env_fault: task:<N>"),
@@ -164,7 +165,12 @@ def key_of(words, facts):
         return ("group:" + c, "tasks again") if failed else None
     if a == "group" and b == "gate":
         more = "--timeout-s" in words or any(str(x).startswith("--timeout-s=") for x in words)
-        return ("group:" + c, "more time") if more and (group.get("gate") or {}).get("verdict") == "FAIL" else None
+        if not (more and (group.get("gate") or {}).get("verdict") == "FAIL"):
+            return None
+        # WP20: a time out of a suite the base measured is no repeat (its limit came from the base); else one is spent
+        import baseline
+        val = next((g.get("validate") or "" for g in (facts.run().plan or {}).get("groups") or [] if g.get("id") == c), "")
+        return None if val and baseline.measured(val) else ("group:" + c, "more time")
     if a == "plan" and b == "patch":
         key = "task:" + e if c == "task" and e.isdigit() else "gate:build" if c == "integration" else (
             "group:" + c if re.fullmatch(r"G\d+", c) else None)

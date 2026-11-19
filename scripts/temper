@@ -656,7 +656,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   fi
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
   rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json .temper/budget.json .temper/rule-log.json
-  rm -rf .temper/evidence
+  _base_clean
   _ensure_dirs
   # Re-scaffold the ledger files empty (same as `temper init`): a cleared run has
   # no overrides/verdicts/loops, not missing files.
@@ -1170,7 +1170,7 @@ cmd_state_clear() {
   python3 -I "$SCRIPTS_DIR/run_summary.py" append "$TEMPER_DIR" "$(_now)" 2>/dev/null || true   # one line a run, in runs.jsonl
   # Each target is named, relative to the project (REPO_ROOT is the cwd).
   rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,preflight,setup-tried,decisions,budget,rule-log}.json
-  rm -rf .temper/evidence
+  _base_clean
   # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
   _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
@@ -1909,7 +1909,7 @@ cmd_group_start() {
 # temper group gate G: PASS when every task of G passed and the group's own Validate command, run by the
 # CLI in the group worktree, exits 0. Recorded as a build row tagged with the group (phase 'group').
 cmd_group_gate() {
-  local g="${1:-}" tmo="${TEMPER_TASK_TEST_TIMEOUT_S:-600}" timed_out="" flines=""; shift || true
+  local g="${1:-}" tmo="" timed_out="" flines=""; shift || true
   while [[ $# -gt 0 ]]; do   # --timeout-s N: the limit of the group's own runs (a rerun after a timeout doubles it)
     case "$1" in
       --timeout-s) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "FAIL: --timeout-s takes a whole number of seconds" >&2; return 1; }; tmo="$2"; shift 2 ;;
@@ -1959,16 +1959,17 @@ cmd_group_gate() {
   if [[ -z "$reason" ]]; then
     local rowfile rc
     rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
+    [[ -n "$tmo" ]] || tmo="$(_baseline limit "$validate" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}")"   # WP20: from the base's time
     _task_py grouprun "$(_in_wt "$(pwd -P)/$wt")" "$tmo" "$rowfile" "$g" -- "$validate"
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
     flines="$(_task_py faillines "$rowfile")"; rm -f "$rowfile"   # 9.8.4: the check ran; its FAIL lines go with the verdict
-    if [[ "$rc" -eq 124 ]]; then timed_out="$tmo"; reason="group $g Validate timed out after ${tmo}s: $validate"
+    if [[ "$rc" -eq 124 ]]; then timed_out="$tmo"; _baseline timeout "$validate" "$tmo"; reason="group $g Validate timed out after ${tmo}s: $validate"
     elif [[ "$rc" -ne 0 ]]; then reason="group $g Validate failed (exit $rc): $validate"; fi
   fi
   if [[ -z "$reason" && -f "$spec_path/intent.md" ]]; then   # F9: the scenario tests the group owes, on the merged group branch
-    reason="$(python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" group-run "$spec_path/intent.md" "$spec_path/tasks.md" "$g" "$(_in_wt "$(pwd -P)/$wt")" "$tmo")"
+    reason="$(python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" group-run "$spec_path/intent.md" "$spec_path/tasks.md" "$g" "$(_in_wt "$(pwd -P)/$wt")" "${tmo:-${TEMPER_TASK_TEST_TIMEOUT_S:-600}}")"
     [[ "$reason" == *"exit 124"* ]] && timed_out="$tmo"
     [[ -n "$reason" ]] && reason="group $g: $reason"
   fi
@@ -1979,6 +1980,12 @@ cmd_group_gate() {
   fi
   _group_gate_record "$g" PASS "" "" || return 1
   echo "PASS: group $g"
+}
+
+_baseline() { python3 -E -s "$SCRIPTS_DIR/baseline.py" "$REPO_ROOT" "$CONFIG_FILE" "" "$@" 2>/dev/null; }   # WP20
+_base_clean() { # state init and clear: the baseline's worktree and a suite still running go before its file
+  { [[ -e .claude/worktrees/temper-baseline ]] || grep -qs '"running"' .temper/evidence/baseline.json; } && _baseline clean >/dev/null
+  rm -rf .temper/evidence
 }
 
 # 9.8.5 (WP09): the verdict marker, printed once a verdict is recorded; temper go and the driver read it alone.
@@ -3078,7 +3085,10 @@ gate_check() {
   # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
   local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$(_cfg_get evidence.claimed-runs ignore)" 2>/dev/null || echo 0)"
   tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
-  if [[ -n "$tests_red" ]]; then
+  local skip=""; [[ -n "$tests_red" ]] && skip="$(_baseline skip-row "$(_evidence_file check)")"   # WP20: a red base gone on from
+  if [[ -n "$skip" ]]; then
+    reqs+=("$skip")
+  elif [[ -n "$tests_red" ]]; then
     reqs+=("$(_req "tests pass" 0 "the latest run of a test command failed: $tests_red")")
     all_pass=0
   elif [[ "$tests_n" -gt 0 ]]; then
@@ -3496,7 +3506,7 @@ cmd_override() {
   local gates="$STAGES" g ok=0
   [[ -f "$STATE_FILE" && "$(_json_get_path "$STATE_FILE" command temper)" == "fix" ]] && gates="build review check commit"
   for g in $gates; do [[ "$stage" == "$g" ]] && ok=1; done
-  [[ "$stage" =~ ^foreign-commit:G[0-9]+:[0-9a-f]{4,40}$ ]] && ok=1
+  [[ "$stage" =~ ^foreign-commit:G[0-9]+:[0-9a-f]{4,40}$ || "$stage" == base-suite ]] && ok=1
   # WP11: the person confirms a changed file under a sensitive path at the failed commit question (a file the run changed)
   if [[ "$stage" == sensitive-path:* ]]; then
     grep -qxF -- "${stage#sensitive-path:}" <<<"$(_changed_since_base)" \
@@ -4034,6 +4044,7 @@ main() {
     review) if [[ "$*" == files ]]; then python3 -I "$SCRIPTS_DIR/findings.py" review-files "$STATE_FILE"
             else echo "FAIL: usage: temper review files" >&2; false; fi ;;
     plan) cmd_plan "$@" ;;
+    baseline) python3 -E -s "$SCRIPTS_DIR/baseline.py" "$REPO_ROOT" "$CONFIG_FILE" "$(_spec_path "")" "$@" ;;   # WP20
     doctor) python3 -E -s "$SCRIPTS_DIR/doctor.py" "$(pwd -P)" "$CONFIG_FILE" "$@" ;; # reads; --propose --write adds setup:, as the person's answer
     guards) case "${1:-}" in
               uninstall) python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall ;;

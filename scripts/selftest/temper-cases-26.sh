@@ -3,11 +3,11 @@
 # --- 9.8.5 (S4): the failure text is the build tool's summary, not the first line that says ERROR ---
 _fl() { python3 - "$REPO_ROOT/scripts" "$1" "${2:-}" <<'PYF'
 import sys
-src = open(sys.argv[1] + '/task_ops.py').read()   # task_ops.py runs a mode on import: read fail_lines out of it
-ns = {}
-exec('import re\n' + src[src.index('FAIL_LINE ='):src.index('def red_why')], ns)
+sys.path.insert(0, sys.argv[1])
+# WP20: fail_lines moved from task_ops.py (which runs a mode on import) to run_env.py, shared with the baseline
+import run_env
 rc = int(sys.argv[3]) if sys.argv[3] else None
-print(' | '.join(ns['fail_lines'](sys.argv[2].encode().decode('unicode_escape').encode(), rc=rc)))
+print(' | '.join(run_env.fail_lines(sys.argv[2].encode().decode('unicode_escape').encode(), rc=rc)))
 PYF
 }
 OUT="$(_fl '20:01:44.264 [main] ERROR com.x.MonitoringSummaryService -- Failed to send email: SMTP down\n[INFO] Tests run: 328, Failures: 0, Errors: 0\n[WARNING] Rule violated for bundle demo: lines covered ratio is 0.04, but expected minimum is 0.94\n[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.16:check (coverage-check) on project demo: Coverage checks have not been met.\n')"

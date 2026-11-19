@@ -31,14 +31,16 @@ import path from 'node:path'
 import { POM, installTools, toolRuns, withRemote } from './faketools'
 import { orchestrate } from './loop'
 import type { Script } from './loop'
-import { defaultPerson, idOf, worldCheck } from './persons'
+import { defaultPerson, idOf, pickId, worldCheck } from './persons'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
 export const SPEC = '.temper/specs/report'
 export const SUITE = 'cd backend && mvn -s settings.xml verify -DskipITs'   // what both Maven rows accept
 export const SLOW_S = '3'
-export const LIMITS = { TEMPER_TASK_TEST_TIMEOUT_S: '1', TEMPER_CHECK_TIMEOUT_S: '1', TEMPER_MUTATION_BUDGET_S: '1' }
+// WP20: the baseline's own limit is Check's unless TEMPER_BASELINE_TIMEOUT_S is set: set to the default here, so the
+// base is measured whole and every later limit comes from it
+export const LIMITS = { TEMPER_TASK_TEST_TIMEOUT_S: '1', TEMPER_CHECK_TIMEOUT_S: '1', TEMPER_MUTATION_BUDGET_S: '1', TEMPER_BASELINE_TIMEOUT_S: '1800' }
 
 // ---- what the scripted agents write ---------------------------------------------------------------------------------
 
@@ -312,18 +314,23 @@ export const slowFirstRun = (w: World): void => {
   const seen: Seen = { ids: [], gates: null }
   // WP19: the text of the commit card, as `temper card` renders it, at the commit question
   let card = ''
+  // WP20: the run's files as they stand at the commit question; the end of the run (state clear) removes them
+  let atCommit: { base: Json | null; groups: Json | null } = { base: null, groups: null }
   const person = watching(defaultPerson(['plan.approve', 'commit.confirm']), seen)
   const reading: Person = (ask, wd) => {
     if (idOf(ask) === 'plan.approve') baselineLine(wd)
-    if (idOf(ask) === 'commit.confirm') card = wd.run(`python3 -B ${path.join(ROOT, 'scripts/card.py')} text .temper/view.json`).out
+    if (idOf(ask) === 'commit.confirm') {
+      card = wd.run(`python3 -B ${path.join(ROOT, 'scripts/card.py')} text .temper/view.json`).out
+      atCommit = { base: wd.exists(BASELINE) ? wd.json(BASELINE) : null, groups: wd.exists('.temper/groups.json') ? wd.json('.temper/groups.json') : null }
+    }
     return person(ask, wd)
   }
   promise('D11', () => orchestrate(w, mavenScript(mavenAgents(), reading)))
   // WP20: the first group gate read the measured result: the base is green with its seconds, and no gate timed out
-  const b = w.exists(BASELINE) ? w.json(BASELINE) : null
+  const b = w.exists(BASELINE) ? w.json(BASELINE) : atCommit.base
   expect(b?.result === 'green' && typeof b?.seconds === 'number' && b.seconds >= Number(SLOW_S),
     `W20 the baseline measured the slow suite green, with its seconds (${JSON.stringify(b ?? null).slice(0, 200)})`)
-  const groups = w.exists('.temper/groups.json') ? w.json('.temper/groups.json') : null
+  const groups = w.exists('.temper/groups.json') ? w.json('.temper/groups.json') : atCommit.groups
   const gTimed = Object.entries((groups?.groups ?? {}) as Json).filter(([, g]) => Number((g as Json)?.gate?.timeout_s ?? 0) > 0)
   expect(gTimed.length === 0, `W20 the first group gate read the measured result and timed out nowhere (${gTimed.map(([k]) => k).join(', ')})`)
   const runs = toolRuns(p.log)
@@ -367,6 +374,9 @@ function at55Pass(w: World, drop: boolean): Seen {
   const person: Person = (ask, wd) => {
     const id = idOf(ask)
     if (id === 'check.fail' && drop) return null   // the second pass ends at the failed Check
+    // WP20: the second pass asks at every stage: a run that goes on by itself would take the one repair of the measured
+    // drop (WP19) and loop back to Build, where this scripted builder has nothing to fix
+    if (id === 'plan.approve' && drop) return pickId(wd, ask, 'ask-every-stage')
     if (/\.fail$|^group\.parked$|^task\.env$|^base\.red$|^plan\.command$|^run\.budget$/.test(id))
       throw new Error(`the run failed before Check passed: ${id}: ${String(ask.question?.question ?? '').split('\n')[0]!.slice(0, 200)}`)
     return base(ask, wd)
