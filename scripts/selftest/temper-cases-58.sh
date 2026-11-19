@@ -239,6 +239,44 @@ assert_eq "fix: no pull request option at the commit" \
 r = '%s|%s|rec=%s|back=%s' % (a.get('id'), ','.join(str(o.get('id')) for o in opts(d) if o.get('kind') != 'more'),
     ','.join(str(o.get('id')) for o in opts(d) if o.get('recommended')), short(b[0]).split(' --reason')[0])")"
 
+# --- the commit card of a fix run: the regression test as the CLI ran it ---
+_fixed58() { # an approved fix run at its commit question: the regression test, the fix at AT, a line of the Blast
+             # radius file and one of a file rca.md does not name; RED and GREEN of the test run by the CLI, each
+             # followed by an agent's claim of the same, and Check's regression proof row
+  _approved58
+  printf 'import unittest\nclass T(unittest.TestCase):\n    def test_cent(self): pass\n' > unit/test_totals.py
+  printf 'def total_of(lines):\n    return round(sum(lines), 2)\n' > src/auth/totals.py
+  echo 'echo a4' >> src/a.sh; echo 'echo b4' >> src/b.sh
+  "$TEMPER" state set regression_test unit/test_totals.py >/dev/null 2>&1
+  "$TEMPER" evidence run --stage build --claim "regression test" --phase red -- sh -c 'exit 3' >/dev/null 2>&1
+  "$TEMPER" evidence add --stage build --claim "regression test" --phase red --exit 1 >/dev/null 2>&1
+  "$TEMPER" evidence run --stage build --claim "regression test" --phase green -- true >/dev/null 2>&1
+  "$TEMPER" evidence add --stage build --claim "regression test" --phase green --exit 0 >/dev/null 2>&1
+  python3 -B - <<'PY2'
+import json
+p = ".temper/evidence/check.json"
+try:
+    rows = json.load(open(p))
+except (OSError, ValueError):
+    rows = []
+rows.append({"claim": "regression proof", "cmd": "bash suite.sh", "exit_code": 0, "phase": "check",
+             "executed_by": "cli", "output": "the new or changed tests (unit/test_totals.py) fail on the code before "
+             "the fix and pass with it"})
+json.dump(rows, open(p, "w"))
+PY2
+  gpass build; _auto58 >/dev/null; gpass review; _auto58 >/dev/null; gpass check; _auto58 >/dev/null
+  gpass commit; _auto58 >/dev/null
+}
+_fixed58
+assert_eq "fix: the commit card starts with the regression test as the CLI ran it" \
+  "commit.confirm|first=regression|RED: sh -c exit 3: failed (exit 3)|GREEN: true: passed|proof=fails before, passes" \
+  "$(_x58 "k = d.get('card') or {}; ids = [s.get('id') for s in k.get('sections') or []]
+t = [str(x.get('text')) for x in (sec(d, 'regression') or {}).get('rows') or []]
+r = '%s|first=%s|%s|proof=%s' % ((d.get('ask') or {}).get('id'), ids[0] if ids else 'none',
+    '|'.join(x for x in t if not x.startswith('proof: ')) or 'no RED or GREEN row',
+    'fails before, passes' if any(x.startswith('proof: ') and 'fail on the code before the fix' in x for x in t)
+    else 'no proof row')")"
+
 # --- TRIVIAL: the verdict, the close, the bound ---
 _triv58() { # a /temper:temper run at Intent, step 0, with no spec file, in a repository on main
   setup; rm -f .temper/specs/demo/*.md .temper/groups.json .temper/view.json .temper/build-state.json

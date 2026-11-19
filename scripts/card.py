@@ -40,8 +40,8 @@ MARKS = ("proposed", "create", "modify", "sensitive", "left out", "not found", "
 APPROVAL = ("request", "assumptions", "criteria", "out_of_scope", "answers", "files", "commands", "context", "launches",
             "risk", "baseline")
 FIX_APPROVAL = ("request", "cause", "fix", "test", "files", "commands", "risk")   # WP17: the approval of a fix run
-COMMIT = ("criteria", "suite", "coverage", "planted_bugs", "review", "files", "rule_log", "skips", "tree", "run",
-          "message")
+COMMIT = ("regression", "criteria", "suite", "coverage", "planted_bugs", "review", "files", "rule_log", "skips", "tree",
+          "run", "message")   # regression: a fix run only (WP17)
 STOP = ("what_fails", "tried", "reading", "still_green", "spent")
 # a short section is one row that starts with its title (render)
 SHORT = ("request", "out_of_scope", "launches", "risk", "baseline", "suite", "coverage", "planted_bugs", "tree", "run",
@@ -394,9 +394,33 @@ def last_check(name):
     return hits[-1] if hits else None
 
 
+def regression():
+    """WP17: a fix run's regression test as the CLI ran it: the last RED run of the Fix ledger and the last GREEN run
+    after it (test runs the CLI executed, none void; those whose claim names the regression test when there are any),
+    and the regression proof row of Check; None with none recorded."""
+    runs = [x for x in load(os.path.join(TEMPER, "evidence", "build.json"), []) if isinstance(x, dict)
+            and x.get("executed_by") == "cli" and not x.get("voided") and isinstance(x.get("exit_code"), int)
+            and re.search("test", str(x.get("claim") or ""), re.I)]
+    runs = [x for x in runs if re.search("regression", str(x.get("claim"))[:200], re.I)] or runs   # its own claim first
+    reds = [i for i, x in enumerate(runs) if x.get("phase") == "red" and x["exit_code"] != 0]
+    greens = [i for i, x in enumerate(runs) if x.get("phase") == "green" and x["exit_code"] == 0
+              and (not reds or i > reds[-1])]
+    rows = [cell("RED: %s: failed (exit %d)" % (runs[reds[-1]].get("cmd") or "the test", runs[reds[-1]]["exit_code"]))
+            ] if reds else []
+    rows += [cell("GREEN: %s: passed" % (runs[greens[-1]].get("cmd") or "the test"))] if greens else []
+    proof = [x for x in load(os.path.join(TEMPER, "evidence", "check.json"), [])
+             if isinstance(x, dict) and x.get("claim") == "regression proof"]
+    if proof:
+        p = proof[-1]
+        rows.append(cell("proof: %s" % (" ".join(str(p.get("output") or "").split()) or "exit %s" % p.get("exit_code")),
+                         None if p.get("exit_code") == 0 else "open"))
+    return sec("regression", "THE REGRESSION TEST", rows, None, None, os.path.join(TEMPER, "evidence", "build.json")) \
+        if rows else None
+
+
 def commit(b, nxt):
     r = b.r
-    out = []
+    out = [regression()] if r.command == "fix" else []
     crit = [c for c in criteria(r) if isinstance(c, dict)]
     if crit:
         met = [c for c in crit if c.get("status") == "passed"]
