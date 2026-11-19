@@ -356,7 +356,7 @@ def approval(b, nxt):
         tail = [cell("%s %s" % (SENSITIVE_ROW, ", ".join(paths)))] if paths else []
         s = sec("files", "WHAT WILL CHANGE", cut + tail, "%d file%s; any other file asks you first"
                 % (nfiles, "" if nfiles == 1 else "s"), None, tasks)
-        s["total"] = len(frows) + len(tail)
+        s["total"] = len(cut) + len(tail) + nfiles - sum(1 for x in cut if x["mark"])   # `and N more` counts files
         out.append(s)
     cmds = command_rows(r)
     if cmds:

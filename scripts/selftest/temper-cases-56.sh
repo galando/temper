@@ -413,6 +413,16 @@ assert_eq "card: the commit card's review section says how many changed files Re
   "read=read 1 of 1 changed files:None|unread=read 0 of 1 changed files; not read: src/demo.sh:open" \
   "read=$_r56_read|unread=$_r56_unread"
 
+# --- a cut files section counts the files it leaves out, not its rows ---
+fresh
+_tasks56 "$(_group56 G1 true 1 "$(printf '`src/f%d.sh`, ' 1 2 3 4 5 6 7)\`src/f8.sh\`" true)" \
+  "$(_group56 G2 true 2 '`src/g1.sh`, `src/g2.sh`' true)"
+_plan56; _f56_text="$("$TEMPER" card 2>/dev/null)"
+assert_eq "card: a cut files section counts the files it leaves out" "note=10 files|shown=8|more=2|text=and 2 more" \
+  "$(X56="$_f56_text" _x56 "s = sec('files') or {}; fs = [x for x in rows('files') if x.get('mark')]
+r = 'note=%s|shown=%d|more=%s|text=%s' % (str(s.get('note') or '').split(';')[0], len(fs),
+    (s.get('total') or 0) - len(rows('files')), 'and 2 more' if 'and 2 more:' in X else X[-80:])")"
+
 # --- a failed check asks with a stop card ---
 _stop56
 assert_eq "card: a failed check asks with a stop card" \
