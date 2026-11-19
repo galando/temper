@@ -348,7 +348,6 @@ print("src/b.sh" if "src/b.sh" in (t.get("dirty_before") or []) else "not listed
 _add58 src/a.sh 1; git add src/a.sh src/b.sh; _gc58; _db58+="|before=$_gc58_rc"; git reset -q --hard
 _closed58; _add58 src/a.sh 1; _add58 src/b.sh 30; git add src/a.sh src/b.sh; _gc58; _db58+="|after=$_gc58_rc"; git reset -q --hard
 assert_eq "trivial: work that was there before is not counted" "dirty_before=src/b.sh|before=0|after=1" "$_db58"
-
 # --- the verdict is the CLI's: state set trivial, or a path below it, is refused (phase 4b review) ---
 _triv58; printf '# Intent: x\n' > .temper/specs/demo/intent.md
 _o58="$("$TEMPER" state set trivial.why x 2>&1)"; _ss58="trivial.why=$?,$(grep -o '^FAIL' <<<"$_o58" | head -n 1)"
@@ -366,4 +365,21 @@ _bn58+=",$([[ "$_gc58_out" == *src/one.bin* && "$_gc58_out" == *binary* ]] && ec
 git reset -q --hard; rm -f src/one.bin
 assert_eq "trivial: a staged binary production file fails the bound, and the row names it as binary" \
   "binary=1,named" "$_bn58"
+
+# --- a staged rename: dirty_before holds its two paths, never a path cut from the old one (phase 4b review) ---
+_triv58; printf 'echo x\n' > xx_suite.sh; git add xx_suite.sh; git commit -q -m xx; git mv xx_suite.sh renamed.sh
+"$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true
+"$TEMPER" gate intent >/dev/null 2>&1; _auto58 >/dev/null
+_rn58="$(python3 -B -c '
+import json
+try:
+    b = json.load(open(".temper/trivial.json")).get("dirty_before") or []
+except (OSError, ValueError):
+    b = []
+print(",".join(sorted(x for x in b if not x.startswith("."))))')"
+_add58 src/a.sh 1; git add src/a.sh; _gc58; _rn58+="|one line=$_gc58_rc"
+git reset -q src/a.sh; git checkout -q -- src/a.sh
+_add58 suite.sh 30; git add suite.sh; _gc58; _rn58+="|suite.sh=$_gc58_rc"; git reset -q --hard
+assert_eq "trivial: a rename staged before the verdict is its two paths, and the file its old name ends in is counted" \
+  "renamed.sh,xx_suite.sh|one line=0|suite.sh=1" "$_rn58"
 setup

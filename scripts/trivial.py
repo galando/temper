@@ -77,11 +77,20 @@ def own(path):
 
 
 def dirty():
-    """The paths with uncommitted changes now (staged, unstaged or untracked), from the top of the repository."""
+    """The paths with uncommitted changes now (staged, unstaged or untracked), from the top of the repository. A rename
+    or a copy is two fields under -z: the new path with the status, then the old path alone; both paths are dirty."""
     out = []
-    for e in git("status", "--porcelain", "-z", "--untracked-files=all").split("\0"):
-        if len(e) > 3 and not own(e[3:]):
-            out.append(e[3:])
+    fields = git("status", "--porcelain", "-z", "--untracked-files=all").split("\0")
+    i = 0
+    while i < len(fields):
+        e, i = fields[i], i + 1
+        if len(e) <= 3:
+            continue
+        paths = [e[3:]]
+        if "R" in e[:2] or "C" in e[:2]:
+            paths.append(fields[i] if i < len(fields) else "")
+            i += 1
+        out += [p for p in paths if p and not own(p)]
     return sorted(set(out))
 
 
