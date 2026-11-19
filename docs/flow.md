@@ -229,7 +229,9 @@ as measured). It sets the limit of the group gate (600 s), a task's test and its
 (3,600 s) and Check (1,800 s); the environment variables stay the defaults, and a gate waits for a baseline still
 running that measures its suite. The first time out of a group's check is no question: the CLI runs `group gate G
 --timeout-s <twice the limit>` itself (no repeat of the budget when the base measured that suite) and keeps the doubled
-limit in `limits`; a second time out asks `group.fail`.
+limit in `limits`; a second time out asks `group.fail`. A time out of Check's suite, of `integrate`'s suite or of a
+task's test keeps its doubled limit in `limits` too, so its next run gets it and runs again rather than reuse the time
+out. The locked acceptance tests take their limit from `limit_for` with Check's default.
 
 ### A command the plan wrote, the setup block and an environment fault (9.8.5)
 
@@ -589,9 +591,12 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   and GREEN do not. A row the runner made carries `tree`, `key`, `seconds` and `reused` (the date of the kept result).
   A failure is kept beside the pass and is not run again on the same key (an environment or not measured failure runs
   again at most twice, a time out under a larger limit runs). A failure whose command passed on the base, that names no
-  declared file, runs once more at once: fail then pass is `flaky`, the pass counts and the commit card lists it.
+  declared file, runs once more at once: fail then pass is `flaky`, the pass counts and the commit card lists it
+  (a reused pass of it stays `flaky`; an owed scenario test of a task or group gate that passed so adds a row to the
+  Build ledger).
   `--fresh` (`check run`, `group gate`, `integrate`; the person's Run it anyway) runs whatever the store holds, spends
-  one repeat and marks the row `forced`. Each verdict of `.temper/gates.json` names its `tree`; the commit gate fails
+  one repeat and marks the row `forced`. Each verdict of `.temper/gates.json` names its `tree` (Check's, the tree its
+  latest CLI run ran on); the commit gate fails
   (`checked tree`) when the project is no longer the tree the Check verdict names.
 - **The lock.** A write waits for a live holder of `.temper/.lock` up to `TEMPER_LOCK_MAX_S` (120 s) and breaks a gone
   holder's old lock. Past that it fails with exit 75 and writes nothing; it never writes past the lock.
@@ -633,7 +638,7 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 | `build` | `{groups: [{id, title, status, verdict, tasks: [{n, title, files, state, model, attempts}]}], integration}`; a task's `state` is `waiting`, `running`, `red`, `green`, `pass`, `fail` or `parked` |
 | `findings` | `[{id, severity, confidence, claim, file, line, state, label}]`; `confidence` is the reviewer's 0 to 1 (`temper evidence add --confidence`) or `null`; `file` and `line` come from a claim that starts `file:line`; `state` is `open`, `resolved` or `accepted` |
 | `checks` | the rows of the Check gate: `[{name, pass, detail, state?}]`; 9.8.5 (WP19): `pass` is `null` and `state` is `not measured` for a measurement that was not taken (the row `coverage` with no coverage tool or no base value), which fails nothing and passes nothing |
-| `check_markers` | `[{name, state, detail, value?, lines}]` for compile, tests, coverage, lint and security, and `mutation` (WP19) when `.temper/evidence/mutation.json` measured the tree as it is: the planted bug score beside Review, always `info`; `state` is `pass`, `fail`, `info` or `none`; the coverage marker follows the gate's row `coverage`, `info` with the detail `not measured: <why>` for the third state |
+| `check_markers` | `[{name, state, detail, value?, lines}]` for compile, tests, coverage, lint and security, and `mutation` (WP19) when `.temper/evidence/mutation.json` measured the tree as it is: the planted bug score beside Review, always `info`; `state` is `pass`, `fail`, `info` or `none`; the coverage marker follows the gate's row `coverage` (before the gate, the CLI row's own `state`), `info` with the detail `not measured: <why>` for the third state |
 | `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |

@@ -218,6 +218,8 @@ def suite_owner(root, cfg=None, spec=""):
         for k in ("file", "lcov"):   # trap 7: the report is written under that folder
             if c.get(k):
                 c[k] = os.path.join(name, c[k])
+        if c:   # and the paths inside the report are that folder's (_line_hits)
+            c["dir"] = name
         det = dict(d, test=pre + d["test"], coverage=c or None)
         return {"test": det["test"], "run": c.get("run") or det["test"], "source": "detected",
                 "why": "the %s files in %s/, the one folder one level down that has them" % (d.get("stack"), name), "det": det}
@@ -314,9 +316,17 @@ def coverage_verdict(measure, base, changed, threshold, base_why=""):
 
 
 def base_value(path):
-    """(the base total, why there is none) from the baseline (.temper/evidence/baseline.json, written by WP20)."""
+    """(the base total, why there is none) from the baseline (.temper/evidence/baseline.json, written by WP20), only when
+    it ran on the code of the run's base commit (base_sha of the run state beside it; .temper/ and .claude/ aside): one
+    taken again later, past `integrate`, measured the change."""
     d = acc_read(path)
     c = _num(d.get("coverage"))
+    temper = os.path.dirname(os.path.dirname(os.path.abspath(path)))
+    sha = acc_read(os.path.join(temper, "build-state.json")).get("base_sha")
+    if c is not None and d.get("head") and sha and d["head"] != sha and subprocess.run(
+            ["git", "diff", "--quiet", d["head"], sha, "--", ".", ":(exclude).temper", ":(exclude).claude"],
+            cwd=os.path.dirname(temper), capture_output=True).returncode == 1:
+        return None, "the baseline ran on %s, not on the run's base %s" % (str(d["head"])[:12], str(sha)[:12])
     if c is not None:
         return c, ""
     if not d:
@@ -330,10 +340,10 @@ def _line_hits(root, det):
     """{path: (lines that ran, lines that did not)} from the coverage report's line data: coverage.py's JSON, Go's
     profile, lcov.info of jest, vitest and c8. {} when the tool gives none."""
     cov = det.get("coverage") or {}
-    kind, hits = cov.get("kind"), {}
+    kind, hits, sub = cov.get("kind"), {}, cov.get("dir") or ""
 
     def add(p, line, n):
-        r, m = hits.setdefault(p, (set(), set()))
+        r, m = hits.setdefault(os.path.normpath(os.path.join(sub, p)), (set(), set()))
         (r if n else m).add(line)
     if kind == "coverage.py":
         for p, f in (json.load(open(os.path.join(root, cov["file"]))).get("files") or {}).items():
@@ -342,7 +352,7 @@ def _line_hits(root, det):
             for line in f.get("missing_lines") or []:
                 add(os.path.normpath(p), line, 0)
     elif kind == "go":
-        mod = re.search(r"^module\s+(\S+)", _read(os.path.join(root, "go.mod")), re.M)
+        mod = re.search(r"^module\s+(\S+)", _read(os.path.join(root, sub, "go.mod")), re.M)
         for line in _read(os.path.join(root, cov["file"])).splitlines():
             m = re.match(r"^(.+?):(\d+)\.\d+,(\d+)\.\d+ \d+ (\d+)$", line)
             if m:
@@ -355,7 +365,7 @@ def _line_hits(root, det):
         p = None
         for line in _read(os.path.join(root, cov["lcov"])).splitlines():
             if line.startswith("SF:"):
-                p = os.path.relpath(os.path.join(root, line[3:].strip()), root)
+                p = os.path.relpath(os.path.join(root, sub, line[3:].strip()), os.path.join(root, sub))
             elif line.startswith("DA:") and p:
                 n, c = (line[3:].split(",") + ["0"])[:2]
                 add(p, int(n), int(float(c or 0)))
@@ -908,8 +918,9 @@ def acc_run(root, spec, lockfile):
         return [row("acceptance (written before Build)", d["cmd"], 1,
                     "changed after they were locked: %s" % ", ".join(changed)[:300])]
     info = {}   # WP22: its tests live under .temper/, outside the digest, so the lock's file digests are in its key
-    out, rc, _ = run_env.run_cached(root, SUITE_TIMEOUT_S, [d["cmd"]], info=info, extra={"lock": d.get("files") or {}},
-                                    root=root)
+    import baseline   # WP20: the limit from the base's time of the same suite and from a kept limit, at least Check's
+    out, rc, _ = run_env.run_cached(root, baseline.limit_for(d["cmd"], SUITE_TIMEOUT_S, root), [d["cmd"]], info=info,
+                                    extra={"lock": d.get("files") or {}}, root=root)
     fixed = [c.get("reason", "") for c in d.get("corrections") or [] if isinstance(c, dict)]
     name = "acceptance (written before Build)" + (", corrected after the lock: %s" % "; ".join(fixed)[:200] if fixed else "")
     return [row(name, d["cmd"], rc, out, **run_env.row_fields(info))]
@@ -945,7 +956,7 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
     record. Returns the suite's exit code at Build (0 when the person's skip of a red base covers it), else 0; 3 at Check
     with no test command."""
     det = det_for(root, test_cmd, cov_cmd)
-    line = plan_line(spec) if stage == "build" else ""
+    line = plan_line(spec)   # WP23 mechanism 2: at Build and at Check, so a run never ends at Check for want of a command
     if not det and line:   # the plan's line owns the suite only when the config and detect name none
         det = detect(root, line)
     if not det and stage != "build":
@@ -974,6 +985,8 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
         # content, integrate's run on the tree Check judges) is used, with what it measured
         sinfo = {"measure": measure_of(root, det, base), "need_extra": True} if cov else {}
         out, rc, _ = run_env.run_cached(root, limit, [cmd], info=sinfo, root=root)
+        if rc == 124:   # WP20 mechanism 14: twice the limit is kept, the next run's limit, so the kept time out runs again
+            baseline.timed_out(cmd, limit, root)
         cov_exit = rc if cov else None
         if cov and rc == 127 and cmd != det["test"]:   # the coverage program could not start: the suite runs without it
             sinfo = {}

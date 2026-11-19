@@ -43,6 +43,7 @@ _at_check() { # a run at Check, with the earlier gates passed
   for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 }
 _at_check; _clear_root
+sed -i 's/^\*\*Integration:\*\* `true`$/**Integration:** `manual`/' .temper/specs/demo/tasks.md   # WP23: no plan line either
 assert_eq "9.8.0: with no test command the CLI can find, Check is the agent as before" "work|1|0" \
   "$(nx "'|'.join([d['action'], str(len(d['agents'])), str(sum(1 for c in d['calls'] if 'check run' in c))])")"
 python3 - <<'PYEOF'

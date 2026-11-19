@@ -535,6 +535,8 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
         info.update(reused=str(rec.get('ts') or ''), seconds=rec.get('seconds'), extra=rec.get('extra'),
                     fail_lines=rec.get('fail_lines'))
         if k[0] == 'pass':
+            if isinstance(e.get('flaky'), dict):   # step 9: a reused flaky pass is still flaky, for the commit card
+                info['flaky'] = e['flaky']
             note = '[temper: the same command passed on this same tree at %s; reused, not run again]\n' % rec.get('ts', '?')
             return (note + str(rec.get('tail', ''))).encode('utf-8'), 0, str(rec.get('ts', ''))
         note = ('[temper: the same command failed on this same tree at %s (exit %s); not run again: change the code, the '
