@@ -194,6 +194,13 @@ All notable changes to Temper are documented here. The plugin version lives in
   proof the CLI ran counts. Every failure is one typed record in `.temper/evidence/failures.json`
   (`scripts/failure.py`), of one of five classes; a class picks the next step and never a verdict; a step back keeps
   it, and `state archive` copies it into `gate-ledger.json`.
+- Phase 5, the parts WP22 and WP23 left out. The questions read the reuse store before they compare failure texts: a
+  failure the store kept and gave back on the same tree is the same failure (after a fix pass by rule too), and a
+  group's check asked again on the same tree counts as a fix that changed nothing. A fix run's regression proof that
+  fails twice with the same text offers `Correct the regression test` (`correct-test`), whose reason the Fix agent
+  gets as your note. `check ahead` of a feature run plants bugs only, timed by the store's entry of the tree, and says
+  why when there is none; a fix run's stays the warm run. A group's Validate in the owner's test text runs in the
+  owner's run text, so `integrate` reuses the last group's run on the merged tree.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

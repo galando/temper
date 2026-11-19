@@ -499,10 +499,12 @@ _reused15() { python3 -c "
 import json
 rows = [r for r in json.load(open('.temper/evidence/check.json')) if 'tests: the suite' in r.get('claim', '')]
 print('yes' if rows and rows[-1].get('reused') else 'no')" 2>/dev/null || echo 'no row'; }
-: > .git/count15; _ahead15
+# WP23 (mechanism 10): a feature run's store is warm from integrate (its checks, check build-checks), and check ahead
+# beside Review plants bugs only
+: > .git/count15; "$TEMPER" check build-checks >/dev/null 2>&1
 echo '[]' > .temper/evidence/check.json
 "$TEMPER" check run >/dev/null 2>&1
-assert_eq "WP22: with a suite that leaves .coverage, Check uses the run made beside Review: one suite run in all, and the suite row of check run says reused" \
+assert_eq "WP23: with a suite that leaves .coverage, Check uses the run integrate made: one suite run in all, and the suite row of check run says reused" \
   "runs=1|reused=yes" "runs=$(_runs15)|reused=$(_reused15)"
 _ahead15; _ah15="$(_runs15)"
 mkdir -p src; echo "changed after" > src/later.sh

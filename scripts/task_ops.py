@@ -13,7 +13,7 @@ Standard library only.
 """
 import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
-from run_env import FAIL_LINE, LOG_LINE, SUMMARY, env_fault, fail_lines, row_fields, run_cached, run_cmd, test_env  # noqa: F401
+from run_env import FAIL_LINE, LOG_LINE, SUMMARY, as_owner, env_fault, fail_lines, row_fields, run_cached, run_cmd, test_env  # noqa: F401
 import baseline
 import scenario_ops
 import maven_loop
@@ -444,7 +444,8 @@ elif mode == 'grouprun':
     # group and carries phase 'group', so it never counts as a task RED or GREEN run
     wt, timeout, rowfile, group = sys.argv[2:6]
     cmd = sys.argv[7:]    # argv[6] is the '--' separator
-    info = {}
+    # WP23 mechanism 2: the owner's test text runs in the owner's run text, so integrate reuses it on the merged tree
+    cmd, info = as_owner(wt, cmd)
     out, rc, reused = run_cached(wt, timeout, cmd, info=info)
     show(out, rc)
     row = dict({'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,

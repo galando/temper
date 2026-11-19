@@ -362,7 +362,12 @@ class WorkPart:
     def feedback_lines(self):
         fb = self.r.latest_feedback()
         lines = []
-        if fb:
+        redo = self.r.state.get("redo") if isinstance(self.r.state.get("redo"), dict) else {}
+        if fb and str(self.r.state.get("wrong_test")) == str(redo.get("reason")) == fb:   # WP23 mechanism 9: correct-test
+            lines.append("Note from the person: the regression test is wrong: %s. Write the regression test again so it fails on "
+                         "the code before the fix and passes with it (a test the shield of regression_test keeps stays as it "
+                         "is: add the new one beside it), keep the fix as rca.md says, then continue." % fb)
+        elif fb:
             lines.append("Feedback re-entry: %s. Fix this, then continue." % fb)
         found = self.r.latest_findings()
         loop = self.r.latest_loop() or {}
@@ -702,9 +707,23 @@ class WorkPart:
             rec = t["verdict"] == "test" or not r.can_loop("check", "build")
         else:
             rec = r.loop_count("check", "build") >= 1 or not r.can_loop("check", "build")
-        return [self.opt("Correct the acceptance test" + (" (Recommended)" if rec else ""),
-                         "The test is wrong, not the code: the writer corrects it against the intent and locks it again; the report shows your reason.",
-                         move="redo", calls=[self.c("acceptance reopen --reason '{reason}'")], reason=self.ACC_REASONS, oid="correct-test")]
+        return [self.correct_test(rec)]
+
+    REG_REASONS = ["The test does not fail on the code before the fix", "The test checks another fault than the root cause"]
+
+    def correct_test(self, rec, what="acceptance"):
+        """The person's answer that a test is wrong, not the code (correct-test, one label for both). A locked acceptance
+        test: the writer corrects it against the intent and locks it again. A fix run's regression test (WP23 mechanism 9,
+        after its proof failed twice the same way; the head has no lock on it): the Fix agent gets the person's reason as
+        a note (feedback_lines), and Fix is checked again."""
+        if what == "regression":
+            desc = "The regression test is wrong, not the fix: the Fix agent gets your reason as a note and writes the test again; Fix is checked again."
+            calls, reasons = [self.c("state redo fix --reason '{reason}'"), self.c("state set wrong_test '{reason}'")], self.REG_REASONS
+        else:
+            desc = "The test is wrong, not the code: the writer corrects it against the intent and locks it again; the report shows your reason."
+            calls, reasons = [self.c("acceptance reopen --reason '{reason}'")], self.ACC_REASONS
+        return self.opt("Correct the %s test" % what + (" (Recommended)" if rec else ""), desc, move="redo", calls=calls, reason=reasons,
+                        oid="correct-test")
 
     def acceptance_fix_work(self):
         """The person reopened the locked acceptance tests at the question of the stage (Build or Check): the writer

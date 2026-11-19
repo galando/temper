@@ -1091,12 +1091,13 @@ def show(out, rc, keep=12):
     sys.stdout.flush()
 
 
-# ---- ahead: Check's run made while Review reads the change ------------------------------------------------------------
-# Review writes no code, so the CLI runs Check's commands through the reuse store in the background while the Review
-# agent works, into a throwaway ledger: the store is warm, and `check run` finds each entry by its key (a call while
-# that run goes on waits on the key's lock, then reads the entry). Then, and only here, the planted bugs run (WP19):
-# when three runs of the suite fit MUTATION_BUDGET_S, into .temper/evidence/mutation.json. `check run` never waits for
-# them.
+# ---- ahead: beside Review, the planted bugs (and in a fix run Check's run) -----------------------------------------------
+# Review writes no code, so the CLI works in the background while the Review agent reads the change. In a fix run (no
+# integrate) it runs Check's commands through the reuse store into a throwaway ledger: the store is warm, and `check run`
+# finds each entry by its key (a call while that run goes on waits on the key's lock, then reads the entry). A feature
+# run's store is warm from integrate (WP23 mechanism 10): no check runs, and the suite's time is the one the store keeps
+# for the tree as it is (trap 9). Then, and only here, the planted bugs run (WP19): when three runs of the suite fit
+# MUTATION_BUDGET_S, into .temper/evidence/mutation.json. `check run` never waits for them.
 def mutation_path(root):
     return os.path.join(root, ".temper", "evidence", "mutation.json")
 
@@ -1138,11 +1139,35 @@ def plant(root, base, info, before):
     return planted_write(root, before, "measured", "", ran=ran, caught=caught, survivors=surv)
 
 
+def plant_kept(root, spec, base, test_cmd, cov_cmd, before):
+    """A feature run's planted bugs (WP23 mechanism 10, trap 9): the suite's time and result are the store's entry of the
+    tree as it is (the run integrate made, or Check's), read and never run; with no entry nothing runs, and the file says
+    why."""
+    det = det_for(root, test_cmd, cov_cmd)
+    line = plan_line(spec)
+    if not det and line:
+        det = detect(root, line)
+    if not det:
+        return planted_write(root, before, "not run", "no test command for this project")
+    got = None
+    for cmd in dict.fromkeys(x for x in ((det.get("coverage") or {}).get("run"), det.get("test")) if x):
+        got = run_env.kept(root, [cmd], root=root)
+        if got:
+            break
+    if not got:
+        return planted_write(root, before, "not run", "no run of the suite on this tree is kept (integrate and Check made "
+                             "none on it), so its time is not known")
+    plant(root, base, {"det": det, "suite_s": got[1].get("seconds"), "rc": 0 if got[0] == "pass" else got[1].get("rc")}, before)
+    return 0
+
+
 def ahead(root, spec, base, command, test_cmd="", cov_cmd="", threshold=""):
     for f in (os.path.join(root, ".temper", "check", "mutation.stop"), mutation_path(root)):
         if os.path.exists(f):
             os.remove(f)
     before = run_env.tree_key(root, root=root)
+    if command != "fix":
+        return plant_kept(root, spec, base, test_cmd, cov_cmd, before)
     fd, tmp = tempfile.mkstemp(prefix="temper-ahead-", suffix=".json")
     os.close(fd)
     open(tmp, "w").write("[]")
