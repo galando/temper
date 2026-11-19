@@ -471,7 +471,7 @@ const WAIT_MS = 90 * 60_000
 // One call of the CLI in the project: the plugin's own scripts/temper, run by its path with the call's words as its
 // arguments, never through a shell (core/argv.ts). A call that is not one (another program, or a line that needs a
 // shell) is not run here: it fails with exit 126, and the run goes on in the conversation. Streamed, so a long call
-// (Check's suite and mutation score inside `temper go`) has no time cap; leaving the loop at the person's interrupt ends
+// (Check's suite inside `temper go`) has no time cap; leaving the loop at the person's interrupt ends
 // the child.
 // At the person's interrupt the engine aborts a running child, and reading it throws ("aborted", seen in an interactive
 // terminal): that is the interrupt, answered as one (exit 130), never as a failed call the conversation should take up.

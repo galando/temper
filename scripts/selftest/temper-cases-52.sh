@@ -229,10 +229,6 @@ r = '%s,%s' % (a.get('id'), 'names 1 high' if re.search(r'\b1 high\b', t) else t
 assert_eq "run: a finding below review.block-on starts no loop and is named at the commit question" \
   "review=auto,no loop|commit=commit.confirm,names 1 high" "$_bb52"
 
-_nogit52; _unattended check
-gfail check "mutation score >= threshold" "40% of planted bugs caught < 60%: no test notices these changes"
-assert_eq "run: a failed Check whose only failed row is the mutation row stops" "stop" "$(_stop52)"
-
 _nogit52; _unattended build; _auth52; _g52 "$(printf "$_GROUPS52" running "$_G1FAIL52")"
 _sp52="group=$(_stop52)"
 _nogit52; _unattended review; _auth52; _finding52 critical 'src/auth/login.sh:4 the lockout is never reset'

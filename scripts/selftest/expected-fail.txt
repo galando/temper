@@ -50,7 +50,4 @@ selftest:D34a                  WP30           D34
 selftest:D34b                  WP22           D34
 selftest:D34c                  WP22           D34
 selftest:D35a                  WP23           D35
-selftest:D35b                  WP19           D35
-selftest:D35c                  WP19           D35
-selftest:D35d                  WP19           D35
 selftest:D35e                  WP20           D35

@@ -199,7 +199,12 @@ class Run:
         return g.get("requirements", []) if isinstance(g, dict) else []
 
     def failed_rows(self, stage):
-        return [r for r in self.rows(stage) if isinstance(r, dict) and not r.get("pass")]
+        # WP19: a row not measured (pass null, state "not measured") is no failure; a row with no pass at all still is
+        return [r for r in self.rows(stage) if isinstance(r, dict) and r.get("pass") is not True and r not in self.unmeasured(stage)]
+
+    def unmeasured(self, stage):
+        """WP19: the rows of the third state, a measurement that was not taken: they fail nothing and pass nothing."""
+        return [r for r in self.rows(stage) if isinstance(r, dict) and r.get("pass") is None and r.get("state") == "not measured"]
 
     def skip(self, stage):
         # the CLI's rule (_override_covers): a skip covers the verdict the person saw, recorded at or before it (or no

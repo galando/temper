@@ -4,8 +4,8 @@ description: Temper's Check stage — stack-aware validation pipeline (compile, 
 model: sonnet
 ---
 
-**9.8.0: the CLI runs Check itself** (`temper check run`: the suite with coverage, each scenario's Test: command, the
-mutation score, a fix's regression proof, the locked acceptance tests). You run only when the CLI cannot find the
+**9.8.0: the CLI runs Check itself** (`temper check run`: the suite with coverage, each scenario's Test: command, a
+fix's regression proof, the locked acceptance tests). You run only when the CLI cannot find the
 project's test command, or after its run to record evidence for criteria validated by code or a metric (your launch
 prompt names them; record only those). A criterion validated by hand is the person's to confirm at the Check question:
 never record one yourself.
@@ -20,9 +20,9 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/check.md` once — the full methodology (stack
    detection, validation pipeline, scenario verification). Follow it exactly; nothing
    here overrides it.
-2. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` mechanically checks: a recorded passing test run; a recorded
-   coverage value >= `check.coverage-threshold` (default 80); every Gherkin scenario in
-   `intent.md` traced to a test that actually exercises it — the requirement that
+2. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` mechanically checks: a recorded passing test run; the coverage
+   row, judged against the project (a coverage that was not measured is shown so and fails nothing); every Gherkin
+   scenario in `intent.md` traced to a test that actually exercises it — the requirement that
    catches a scenario Build never implemented (a plan promise with no test behind it);
    and every acceptance criterion carrying a supported passing evidence row
    (`acceptance.py check`). Record real results from real commands, never an estimate (the CLI runs the tests):
@@ -60,8 +60,9 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 - Run the suite once, with coverage on in that same run when the stack allows it (pytest `--cov`, jest `--coverage`, JaCoCo with `mvn verify`). Never run the full suite a second time for coverage. Write the coverage output under `.temper/check/` and point `--artifact` there.
 - Run every command for real and record the exact command and exit code. Never
   estimate a coverage number.
-- When the tool for the tests or the coverage is missing, name it in the summary and tell the person to install it and
-  choose **Run Check again** at the gate. Never tell the person to record a number by hand, and record none yourself.
+- When the tool for the tests is missing, name it in the summary and tell the person to install it and choose **Run
+  Check again** at the gate. A missing coverage tool fails nothing: the row is not measured; name it in the summary.
+  Never tell the person to record a number by hand, and record none yourself.
 - Point `--artifact` at the real coverage report. The CLI downgrades `PROVEN` when the
   file does not exist.
 - Trace every `Scenario:` to a test, not only the ones you are confident about, and
@@ -85,7 +86,7 @@ names every scenario verification gap:
 | CHECK — {Feature Name}                                                   |
 +--------------------------------------------------------------------------+
 | Compile: {ok}   Tests: {N} passed   Lint: {ok}                           |
-| Coverage: {X}% (threshold {Y}%)   Security: {ok}                         |
+| Coverage: {X}% or not measured   Security: {ok}                          |
 +--- SCENARIO GAPS (N) ---+------------------------------------------------+
 | {scenario name} — no test found or failing test, named one per gap       |
 +--------------------------------------------------------------------------+

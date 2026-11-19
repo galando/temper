@@ -1024,7 +1024,7 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
   # The dispatcher spent the step back's repeat before this ran (budget.py): a step back is never refused here.
   local result held; held="$(_json_get_path "$STATE_FILE" parked "")"
-  result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE" "$(_cfg_get check.mutation-threshold 70)")
+  result=$(python3 -I "$SCRIPTS_DIR/loop_step.py" "$LOOPS_FILE" "$from" "$to" "$reason" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE")
   local rc=$?
   echo "$result"
   [[ $rc -eq 0 ]] || return $rc
@@ -3072,7 +3072,6 @@ gate_review() {
 
 gate_check() {
   local spec_path="$1"
-  local threshold; threshold="$(_cfg_get check.coverage-threshold 80)"
   local reqs=() all_pass=1
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
@@ -3112,34 +3111,9 @@ gate_check() {
       all_pass=0
     fi
   fi
-  local cov_val; cov_val=$(_ev_last_value check 'coverage(?! tool missing)')
-  # Both values cross as argv, never as Python source: the threshold comes from the
-  # project config and the value from the ledger. A value that is not a number FAILs.
-  if [[ -n "$cov_val" ]] && python3 -I -c "import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)" "$cov_val" "$threshold" 2>/dev/null; then
-    reqs+=("$(_req "coverage >= threshold" 1 "$cov_val% >= $threshold% threshold")")
-  else
-    # 9.8.0: when the CLI ran Check and found no coverage tool, the row says what to install.
-    local cov_hint; cov_hint="$(_ev_last_claim check '^coverage tool missing: ')"
-    reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%${cov_hint:+ (${cov_hint#coverage tool missing: })}")")
-    all_pass=0
-  fi
-  # 9.8.0: the mutation score of the tests on the lines this run changed (scripts/check_run.py, when the CLI ran Check;
-  # Python by syntax tree, the C-style languages by text).
-  # Coverage says a line ran; this says a test would notice it break. No row when Check did not measure it.
-  local mut_val mut_note mthr; mthr="$(_cfg_get check.mutation-threshold 70)"
-  mut_val=$(_ev_last_value check '^mutation score$'); mut_note="$(_ev_last_claim check '^mutation: not measured')"
-  if [[ -n "$mut_val" ]]; then
-    if python3 -I -c "import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)" "$mut_val" "$mthr" 2>/dev/null; then
-      reqs+=("$(_req "mutation score >= threshold" 1 "$mut_val% of planted bugs caught >= $mthr%")")
-    else
-      # The surviving mutants are named here (the row a step back carries to Build), so the fix pass knows which lines to test.
-      local mut_row; mut_row="$(_ev_last_row check '^mutation score$')"
-      reqs+=("$(_req "mutation score >= threshold" 0 "$mut_val% of planted bugs caught < $mthr%: no test notices these changes to the new code: ${mut_row#*|}")")
-      all_pass=0
-    fi
-  elif [[ -n "$mut_note" ]]; then
-    reqs+=("$(_req "mutation score >= threshold" 1 "${mut_note#mutation: }")")
-  fi
+  # WP19: the row coverage, judged against the project (scripts/gate_rows.py check-rows); not measured fails nothing
+  local cov; cov="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" check-rows "$(_evidence_file check)" "$TEMPER_DIR/evidence/baseline.json" "$(_cfg_get check.coverage-threshold)")"
+  reqs+=("$cov"); grep -q '"pass": false' <<<"$cov" && all_pass=0
   # 9.8.0: the acceptance tests written from the intent before Build (agents/acceptance.md), run as they were locked.
   local acc; acc="$(_ev_last_row check '^acceptance \(written before Build\)')"
   if [[ -n "$acc" ]]; then
@@ -3961,12 +3935,12 @@ cmd_bands() {
 # ---
 
 # check run | check detect (9.8.0): Check, run by the CLI (scripts/check_run.py). `run` runs the suite with coverage, each
-# scenario's Test: command, the mutation score of the changed lines and, for a fix, the regression proof, and records a
-# row for each in the Check ledger (executed_by: cli). Exit 3: the CLI found no test command for this project (set
-# check.commands.test); the Check agent then runs Check as before.
+# scenario's Test: command and, for a fix, the regression proof, and records a row for each in the Check ledger
+# (executed_by: cli). Exit 3: the CLI found no test command for this project (set check.commands.test); the Check agent
+# then runs Check as before. WP19: `ahead` alone plants bugs, beside Review (.temper/evidence/mutation.json).
 cmd_check() {
   local sub="${1:-}"
-  local tcmd ccmd; tcmd="$(_cfg_get check.commands.test "")"; ccmd="$(_cfg_get check.commands.coverage "")"
+  local tcmd ccmd key; tcmd="$(_cfg_get check.commands.test)"; ccmd="$(_cfg_get check.commands.coverage)"; key="$(_cfg_get check.coverage-threshold)"
   case "$sub" in
     detect) python3 -E -s "$SCRIPTS_DIR/check_run.py" detect "$REPO_ROOT" "$tcmd" "$ccmd" ;;
     run)
@@ -3975,7 +3949,7 @@ cmd_check() {
       [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
       mkdir -p "$TEMPER_DIR/evidence"
       local ledger; ledger="$(_evidence_file check)"; [[ -f "$ledger" ]] || echo '[]' > "$ledger"
-      python3 -E -s "$SCRIPTS_DIR/check_run.py" run "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$REPO_ROOT/$ledger" "$base" "$cmd" "$tcmd" "$ccmd" ;;
+      python3 -E -s "$SCRIPTS_DIR/check_run.py" run "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$REPO_ROOT/$ledger" "$base" "$cmd" "$tcmd" "$ccmd" "$key" ;;
     ahead)
       # 9.8.0: Check's run, started in the background while the Review agent reads the change (Review writes no code).
       # `check run` adopts it when the tree is unchanged, else runs again; it fails open (no run, nothing adopted).
@@ -3983,7 +3957,7 @@ cmd_check() {
       base="$(cmd_state_get base_sha "")"
       [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
       mkdir -p "$TEMPER_DIR/check"
-      nohup python3 -E -s "$SCRIPTS_DIR/check_run.py" ahead "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$base" "$cmd" "$tcmd" "$ccmd" >/dev/null 2>&1 &
+      nohup python3 -E -s "$SCRIPTS_DIR/check_run.py" ahead "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$base" "$cmd" "$tcmd" "$ccmd" "$key" >/dev/null 2>&1 &
       echo "OK: Check's run started in the background; check run adopts it if the tree is unchanged" ;;
     *) echo "FAIL: usage: temper check run|ahead|detect" >&2; return 1 ;;
   esac

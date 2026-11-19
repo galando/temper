@@ -5,6 +5,9 @@
   python3 gate_rows.py plan-rows SPEC_DIR PROJECT  the rows added to the plan gate (scenario test commands, the request's
                                                    routes kept, tasks agree with decisions)
   python3 gate_rows.py build-rows SPEC_DIR EVIDENCE.json  the rows added to the build gate (criteria validated)
+  python3 gate_rows.py check-rows LEDGER BASELINE [KEY]  the row coverage of the check gate (WP19): the coverage rule of
+                                                   check_run.py on the ledger's latest coverage row, the baseline and
+                                                   check.coverage-threshold when the project's config holds it
 
 They live here so scripts/temper stays under the directory's 256 KiB limit. Standard library only.
 """
@@ -22,7 +25,28 @@ import plan_ops
 
 
 def row(name, ok, detail):
+    """A gate row; ok None is the third state (WP19): not measured, which fails nothing and is never read as passed."""
+    if ok is None:
+        return {"name": name, "pass": None, "state": "not measured", "detail": "not measured: %s" % detail}
     return {"name": name, "pass": ok, "detail": detail}
+
+
+def check_rows(ledger, baseline, key):
+    """The row coverage, judged again here with the config and the baseline as they are now: the ledger's latest coverage
+    row (the CLI's, with what it measured, or a recorded value) is the measure."""
+    import check_run
+    try:
+        rows = [x for x in json.load(open(ledger, encoding="utf-8")) if isinstance(x, dict)]
+    except (OSError, ValueError, TypeError):
+        rows = []
+    hits = [x for x in rows if not x.get("scenario") and re.search("coverage", str(x.get("claim") or ""), re.I)
+            and (x.get("value") is not None or x.get("state"))]
+    last = hits[-1] if hits else {}
+    measure = {"total": last.get("value"), "command": last.get("command", True), "exit": last.get("cov_exit"),
+               "hint": last.get("hint") or "", "note": last.get("note") or ("" if last else "no coverage was recorded")}
+    base, why = check_run.base_value(baseline)
+    v = check_run.coverage_verdict(measure, base, last.get("changed"), key or None, why)
+    return row("coverage", {"pass": True, "fail": False}.get(v["state"]), v["why"])
 
 
 def intent_blocking(path):
@@ -239,7 +263,7 @@ def pipeline_gate(spec):
                         "every job passed" if status == "green" else "%d job(s) failed: %s" % (len(failed), ", ".join(failed[:5]) or "see pipeline-context.json")))
         if status == "red":
             rows.append(fix_paths_row(ctx.get("fix")))
-    return "%s %d" % (json.dumps(rows), 1 if all(r["pass"] for r in rows) else 0)
+    return "%s %d" % (json.dumps(rows), 0 if any(r["pass"] is False for r in rows) else 1)
 
 
 def fix_paths_row(fix):
@@ -337,6 +361,9 @@ def main(argv):
     if len(argv) == 4 and argv[1] == "build-rows":
         if os.path.isfile(os.path.join(argv[2], "intent.md")):
             print(json.dumps(build_criteria(argv[2], argv[3])))
+        return 0
+    if len(argv) in (4, 5) and argv[1] == "check-rows":
+        print(json.dumps(check_rows(argv[2], argv[3], argv[4] if len(argv) == 5 else "")))
         return 0
     if len(argv) == 3 and argv[1] == "intent-rules":
         print(json.dumps(intent_rules(argv[2])))

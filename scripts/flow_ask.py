@@ -524,7 +524,7 @@ class AskPart:
                 # F1 of WP08: an open finding goes on to Check, so the question where the person commits lists it
                 return self.with_more(GATE_HEADER, "Check: %s%s. Commit?" % (state_of, self.open_listed()), stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.",
                                       qid="check.pass")
-            # A measurement nobody took (no coverage run, no test run recorded: a tool is missing) is not a fault of the code:
+            # A run nobody made (no test run recorded: a tool is missing) is not a fault of the code:
             # Check runs again once the tool is there, and going back to Build would redo work for nothing.
             # 9.8.0: a criterion validated by hand is confirmed by the person here (the agent used to claim it).
             details = " ".join(str(x.get("detail", "")) for x in r.failed_rows("check"))
@@ -590,11 +590,11 @@ class AskPart:
 
     @staticmethod
     def measurement_gap(rows):
-        """True when every failed row of Check is a measurement nobody took (no passing test run recorded, no coverage value):
-        a missing tool, not a defect in the code."""
+        """True when every failed row of Check is a run nobody made (no passing test run recorded). WP19: a coverage that
+        was not measured is no failed row at all, and a failed coverage row is a measured drop, a defect in the code."""
         if not rows:
             return False
-        return all(re.search(r"no passing test-run evidence recorded|recorded coverage 'none'", str(x.get("detail", ""))) for x in rows)
+        return all(re.search(r"no passing test-run evidence recorded", str(x.get("detail", ""))) for x in rows)
 
     def pr_options(self, go):
         """At a passed Check of an unarmed /temper:temper run: Commit and open PR (and, with two or more Build groups, stacked PRs).

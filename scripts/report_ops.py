@@ -42,7 +42,7 @@ def report_table(argv):
         tag = g['verdict'] + (' (overridden)' if stage in overridden and g['verdict'] == 'FAIL' else '')
         print(f"{stage:<8} {tag}")
         for r in g.get('requirements', []):
-            mark = 'v' if r['pass'] else 'x'
+            mark = 'v' if r.get('pass') is True else '?' if r.get('pass') is None else 'x'   # ? not measured (WP19)
             print(f"           [{mark}] {r['name']} — {r['detail']}")
     if overridden:
         print()

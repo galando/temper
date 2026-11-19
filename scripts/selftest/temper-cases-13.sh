@@ -114,10 +114,11 @@ PYEOF
 assert_eq "F1: with Task 2 independent, the prompt of Task 1 carries its own note and not the note of Task 2" "1|0" \
   "$(nx "a = [x for x in d['agents'] if x['tasks'] == [1]][0]['prompt']; str(a.count(\"Person's note: Task 1: use the retry helper\")) + '|' + str(a.count('leave this alone'))")"
 
-# --- Run Check again: a measurement nobody took (a missing coverage tool) is not a defect in the code ---
+# --- Run Check again: a measurement nobody took (no test run recorded) is not a defect in the code. WP19: a coverage
+# not measured is no failed row at all, so the gap that stays is the run with no test evidence ---
 fresh; gpass intent plan build review; _at check
-gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80%"
-assert_eq "Check: a missing coverage value offers Run Check again first (recommended), then Loop back to Build, and the small change under More options" \
+gfail check "tests pass" "no passing test-run evidence recorded"
+assert_eq "Check: a run with no test evidence offers Run Check again first (recommended), then Loop back to Build, and the small change under More options" \
   "Run Check again (Recommended)|Loop back to Build|Override and continue|More options" "$(labels)"
 assert_eq "Check: Run Check again runs state redo check with the reason, and moves nothing else" "state redo check|redo|1" \
   "$(nx "o = d['ask']['options'][0]; ' '.join(o['calls'][0].split('temper ', 1)[1].split()[:3]) + '|' + o['move'] + '|' + str(len(o['calls']))")"
@@ -125,7 +126,7 @@ assert_eq "Check: the question asks Run Check again, not Loop back" "1" "$(nx "i
 gfail check "tests pass" "the latest run of a test command failed: unit/test_cli.py"
 assert_eq "Check: a failing test is a defect in the code: Loop back to Build stays first, and there is no Run Check again" "Loop back to Build (Recommended)|0" \
   "$(nx "d['ask']['options'][0]['label'] + '|' + str(sum(1 for o in d['ask']['options'] if o['label'].startswith('Run Check again')))")"
-gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80%"
+gfail check "tests pass" "no passing test-run evidence recorded"
 "$TEMPER" state redo check --reason "the measurement was missing" >/dev/null 2>&1
 assert_eq "Check: after state redo check the verdict is gone and the Check agent runs again" "work|temper:temper-check|none" \
   "$(nx "d['action'] + '|' + d['agents'][0]['type'] + '|' + str(d.get('ask') and 'asked' or 'none')")"

@@ -96,9 +96,10 @@ class WorkPart:
     def rule_move(self, stage, verdict):
         """WP11 (ADR 0019 decision 3): Review and Check of a run that goes on by itself, by the closed list. Review: an open
         finding at a level of review.block-on takes the repair; a PASS moves on (a finding below the level is carried to
-        the commit question); anything else stops. Check: a PASS moves on; a setup fault, a missing measurement, the
-        acceptance rows, a criterion only the person can confirm and a failed mutation row alone stop; anything else takes
-        the repair. Nothing is skipped or accepted by rule."""
+        the commit question); anything else stops. Check: a PASS moves on (a coverage not measured fails nothing: the
+        commit question lists it, and no rule repairs it); a setup fault, a missing measurement, the acceptance rows and
+        a criterion only the person can confirm stop; anything else, a measured coverage drop with it, takes the repair.
+        Nothing is skipped or accepted by rule. The planted bug score is no row: it moves nothing (WP19)."""
         r = self.r
         rows = r.failed_rows(stage)
         why = "; ".join("%s: %s" % (x.get("name"), " ".join(str(x.get("detail", "")).split())) for x in rows)[:300]
@@ -126,8 +127,6 @@ class WorkPart:
             manual = [c["id"] for c in self.criteria("manual") if re.search(r"\b%s has no supported passing evidence row" % re.escape(c["id"]), details)]
             if manual:
                 return self.stop(stage, "%s: only you can confirm %s" % (why, ", ".join(manual)))
-            if rows and all(x.get("name") == "mutation score >= threshold" for x in rows):
-                return self.stop(stage, why)   # stop 21: the score is information only from WP19 on
             return self.repair(stage, why or "the check failed")
         return None
 
@@ -286,28 +285,28 @@ class WorkPart:
                 extra.append("What %s left open: %s." % (LABEL.get(back.get("from_stage"), back.get("from_stage")),
                                                           "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(back["findings"]))))
         # 9.8.0: Check is run by the CLI (scripts/check_run.py) whenever it can find the project's test command: the suite
-        # with coverage, each scenario's Test: command, the mutation score and a fix's regression proof, all recorded as
-        # real runs. No agent and no model; the Check agent stays for a stack the CLI cannot read (and for a step back
+        # with coverage, each scenario's Test: command and a fix's regression proof, all recorded as real runs. No agent and no model; the Check agent stays for a stack the CLI cannot read (and for a step back
         # that brings a person's note to it).
         if stage == "check" and not back and self.cli_check():
             gate = self.c("gate %s" % (r.gate_of(stage) or stage))
             rec = self.criteria("code", "metric")
             if not rec:
                 return {"action": "work", "stage": stage, "calls": [self.c("check run"), gate], "agents": [], "gate": gate,
-                        "say": "Check: the CLI runs the suite, coverage, the scenario tests and the mutation score (no agent)."}
+                        "say": "Check: the CLI runs the suite, coverage and the scenario tests (no agent)."}
             # A criterion validated by code or by a metric needs its own evidence: the Check agent records only those, after
             # the CLI's run (a manual one is the person's to confirm at the Check question).
-            a = self.agent("check", extra + ["The CLI has run the suite, coverage, the scenario tests and the mutation score (temper check run). "
+            a = self.agent("check", extra + ["The CLI has run the suite, coverage and the scenario tests (temper check run). "
                                             "Record evidence only for these criteria, each with --criterion: %s." % "; ".join(
                                                 "%s (%s: %s)" % (c["id"], c["vtype"], c["vdetails"][:120]) for c in rec)])
             a["after"].append(gate)
             a["gate"] = gate
             return {"action": "work", "stage": stage, "calls": [self.c("check run")], "agents": [a],
-                    "say": "Check: the CLI runs the suite, coverage, the scenario tests and the mutation score; the Check agent records %d criteria%s." % (len(rec), on_model([a]))}
+                    "say": "Check: the CLI runs the suite, coverage and the scenario tests; the Check agent records %d criteria%s." % (len(rec), on_model([a]))}
         a = self.agent(stage, extra)
         if stage == "review" and self.cli_check():
-            # 9.8.0: the CLI runs Check's suite, coverage and mutation score while Review reads the change (Review writes
-            # no code); Check adopts that run when the tree is unchanged. WP17: in a fix run too (its regression proof).
+            # 9.8.0: the CLI runs Check's suite and coverage while Review reads the change (Review writes no code); Check
+            # adopts that run when the tree is unchanged. WP17: in a fix run too (its regression proof). WP19: then the
+            # planted bugs, the one place they run, as information beside Review.
             a["before"] = (a.get("before") or []) + [self.c("check ahead")]
         if stage == "design":
             # 9.8.0 (round 5): the CLI draws the stage's panel from the files the agent wrote; the agent draws

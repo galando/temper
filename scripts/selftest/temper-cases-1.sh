@@ -119,7 +119,7 @@ assert_exit "check gate FAILs on a quote-bearing coverage threshold" 1 "$TEMPER"
 assert_eq "a quote-bearing coverage threshold writes no file" "no" "$([[ -e threshold-injected ]] && echo yes || echo no)"
 OUT=$("$TEMPER" gate check 2>&1; true)
 assert_eq "the FAIL names the coverage row" "yes" \
-  "$(echo "$OUT" | grep -q '\[x\] coverage >= threshold' && echo yes || echo no)"
+  "$(echo "$OUT" | grep -q '\[x\] coverage — ' && echo yes || echo no)"
 assert_eq "still no file after the gate runs again" "no" "$([[ -e threshold-injected ]] && echo yes || echo no)"
 rm -f threshold-injected
 

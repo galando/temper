@@ -16,7 +16,7 @@ printf 'check:\n  coverage-threshold: 1\n' > r4-low.cfg
 "$TEMPER" evidence add --stage check --claim "coverage" --value 50 --exit 0 >/dev/null 2>&1
 OUT="$(TEMPER_CONFIG=r4-low.cfg "$TEMPER" gate check 2>&1)"
 assert_eq "round 4, 1: TEMPER_CONFIG is not followed by a gate while a run is active" "1|1" \
-  "$(grep -c 'TEMPER_CONFIG is not followed' <<<"$OUT")|$(grep -c "recorded coverage '50.0' vs threshold 80" <<<"$OUT")"
+  "$(grep -c 'TEMPER_CONFIG is not followed' <<<"$OUT")|$(grep -E '^ *\[x\] coverage — ' <<<"$OUT" | grep -F 'check.coverage-threshold' | grep -cw 80)"
 assert_eq "round 4, 1: config get still reads the file TEMPER_CONFIG names (the guard scripts use it)" "1" \
   "$(TEMPER_CONFIG=r4-low.cfg "$TEMPER" config get check.coverage-threshold)"
 rm -f r4-low.cfg

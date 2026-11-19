@@ -23,17 +23,25 @@ def check_markers(run):
     for name, rx in kinds:
         # A scenario's trace row names its test; it is no run of a check (as in `temper gate check`).
         hits = [r for r in rows if isinstance(r, dict) and not r.get("scenario") and re.search(rx, str(r.get("claim", "")), re.I)]
-        if not hits:
+        gate = next((x for x in run.rows("check") if isinstance(x, dict) and x.get("name") == "coverage"), None) if name == "coverage" else None
+        if not hits and gate is None:
             out.append({"name": name, "state": "none", "detail": "", "lines": []})
             continue
-        last = hits[-1]
+        last = hits[-1] if hits else {}
         code = last.get("exit_code")
         state = "pass" if code == 0 else ("fail" if isinstance(code, int) else "info")
         if name == "coverage" and last.get("value") is not None:
             state = "pass" if code in (0, None) else state
         lines = [str(r.get("claim", ""))[:200] for r in hits if isinstance(r.get("exit_code"), int) and r.get("exit_code") != 0][-5:]
-        out.append({"name": name, "state": state, "detail": str(last.get("claim", ""))[:200],
-                    "value": last.get("value"), "lines": lines})
+        detail = str(last.get("claim", ""))[:200]
+        if gate is not None:   # WP19: the gate's own verdict of the row coverage, the third state with it
+            state = {True: "pass", False: "fail"}.get(gate.get("pass"), "info")
+            detail, lines = str(gate.get("detail") or "")[:200], [] if gate.get("pass") is not False else lines
+        out.append({"name": name, "state": state, "detail": detail, "value": last.get("value"), "lines": lines})
+    import check_run
+    p = check_run.planted(os.getcwd())   # WP19: the planted bug score, information beside Review, of this tree only
+    if p:
+        out.append({"name": "mutation", "state": "info", "detail": p["text"], "value": None, "lines": []})
     return out
 
 
@@ -248,7 +256,8 @@ def view(run, nxt):
         "fresh": fresh_view(r),
         "build": build_view(r),
         "findings": [{k: v for k, v in f.items() if k not in ("answer", "cite", "quote")} for f in r.findings()],   # the view's schema stays as it was
-        "checks": [{"name": x.get("name"), "pass": bool(x.get("pass")), "detail": x.get("detail")} for x in r.rows("check")],
+        "checks": [dict({"name": x.get("name"), "pass": None if x.get("pass") is None else bool(x.get("pass")), "detail": x.get("detail")},
+                        **({"state": x["state"]} if x.get("state") else {})) for x in r.rows("check")],   # WP19: state beside pass
         "check_markers": check_markers(r),
         "criteria": criteria(r),
         "loops": loops(r),

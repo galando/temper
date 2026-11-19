@@ -26,7 +26,7 @@ _pol review; "$TEMPER" evidence add --stage review --claim 'review completed' --
 assert_eq "9.8.5 policy: a clean Review goes on to Check by itself" "auto|True" "$(nx "d['action'] + '|' + str(d['calls'][0].endswith('state advance review_complete check'))")"
 _pol check; gfail check "tests pass" "the latest run of a test command failed: unit"
 assert_eq "9.8.5 policy: a failed Check loops back to Build while the budget lasts" "auto|True" "$(nx "d['action'] + '|' + str(' state loop check build ' in d['calls'][0])")"
-_pol check; gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"
+_pol check; gfail check "tests pass" "no passing test-run evidence recorded"
 assert_eq "9.8.5 policy: a missing measurement parks for the person" "auto|True" "$(nx "d['action'] + '|' + str(' park --verdict PARKED-NEEDS-DECISION ' in d['calls'][0])")"
 _pol check; gpass check
 assert_eq "9.8.5 policy: a passed Check goes on to the commit, which still parks for the person" "True" \

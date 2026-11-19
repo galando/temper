@@ -93,6 +93,9 @@ def same_file(argv):
 
 def req(argv):
     import json, sys
+    if argv[2] == 'na':   # WP19: the third state, not measured: it fails nothing and is never read as passed
+        print(json.dumps({'name': argv[1], 'pass': None, 'state': 'not measured', 'detail': 'not measured: ' + argv[3]}))
+        return
     print(json.dumps({'name': argv[1], 'pass': argv[2] == '1', 'detail': argv[3]}))
 
 

@@ -217,9 +217,9 @@ def latest_claim_exit(argv):
 def print_rows(argv):
     import json, sys
     for r in json.loads(argv[1]):
-        if r['pass'] and argv[2] == '1':
+        if r['pass'] is True and argv[2] == '1':
             continue
-        mark = 'v' if r['pass'] else 'x'
+        mark = 'v' if r['pass'] is True else '?' if r['pass'] is None else 'x'   # ? not measured (WP19)
         print(f"  [{mark}] {r['name']} — {r['detail']}")
 
 

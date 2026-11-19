@@ -401,6 +401,21 @@ def last_check(name):
     return hits[-1] if hits else None
 
 
+def coverage_section(r):
+    """WP19: the row coverage of the Check verdict: its value, rule and floor, or `COVERAGE: not measured: <why>`."""
+    g = next((x for x in r.rows("check") if isinstance(x, dict) and x.get("name") == "coverage"), None)
+    c = last_check("coverage") or {}
+    if g is None or g.get("pass") is None:
+        return sec("coverage", "COVERAGE", [cell(str((g or {}).get("detail") or "not measured: no coverage was recorded"))])
+    rule, floor = c.get("rule"), c.get("floor")
+    said = "%s%%" % c.get("value") if c.get("value") is not None else ""
+    if rule == "changed lines" and c.get("share") is not None:
+        said = "%s%% of the changed lines ran" % c["share"]
+    if rule:
+        said += " (rule %s%s)" % (rule, ", floor %s%%" % floor if floor is not None else "")
+    return sec("coverage", "COVERAGE", [cell(said or str(g.get("detail") or ""), None if g.get("pass") else "open")])
+
+
 def regression():
     """WP17: a fix run's regression test as the CLI ran it: the last RED run of the Fix ledger and the last GREEN run
     after it (test runs the CLI executed, none void; those whose claim names the regression test when there are any),
@@ -442,16 +457,10 @@ def commit(b, nxt):
         out.append(sec("suite", "THE SUITE", [cell("%s: %s" % (t.get("cmd") or t.get("claim") or "the tests", what))]))
     else:
         out.append(sec("suite", "THE SUITE", [cell("no run is recorded", "not measured")]))
-    c = last_check("coverage")
-    floor = r.cfg("check.coverage-threshold", "")
-    if c is not None and c.get("value") is not None:
-        against = " against a floor of %s%%" % floor if floor else ""
-        out.append(sec("coverage", "COVERAGE", [cell("%s%%%s" % (c["value"], against))]))
-    else:
-        out.append(sec("coverage", "COVERAGE", [cell("no value is recorded", "not measured")]))
-    m = last_check("mutation")
-    if m is not None and m.get("value") is not None:
-        out.append(sec("planted_bugs", "PLANTED BUGS", [cell("%s caught, as information" % m["value"])]))
+    out.append(coverage_section(r))
+    m = check_run.planted(os.getcwd())   # WP19: information beside Review, of this tree only
+    if m is not None:
+        out.append(sec("planted_bugs", "PLANTED BUGS", [cell("%s, as information" % m["text"])]))
     found = r.findings()
     opens = [f for f in found if f["state"] == "open"]
     if found or r.verdict("review"):

@@ -176,7 +176,8 @@ function startPyjokes(w: World): void {
   w.sh('git add -A && git commit -qm base')
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
   const cfg = path.join(w.dir, '.claude/temper.config')
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('  coverage-threshold: 80', `  coverage-threshold: 80\n  mutation-threshold: 0\n  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'`))
+  // WP19: the commands go at the top of the check block, whatever the template holds there
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace(/^check:\n/m, `check:\n  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'\n`))
   fs.appendFileSync(cfg, '\nplan:\n  fresh-review: auto\n')
   w.sh('git add -A && git commit -qm config')
   w.sh(`${TEMPER} init`)

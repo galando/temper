@@ -6,8 +6,8 @@
 // The project: backend/pom.xml wants JDK 24 (the enforcer rule [24,)) and binds a JaCoCo check; the shell has 21;
 // scripts/ensure-jdk24.sh --export prints what fixes it; the integration tests read IT_POSTGRES_PORT and need Postgres,
 // which is down (fake pg_lsclusters, pg_isready, pg_ctlcluster); its existing tests are LegacyTest, ClockTest and
-// RetryTest. The config is the replay's: check.commands run the whole suite with the integration tests, and the
-// mutation gate is off.
+// RetryTest. The config is the replay's: check.commands run the whole suite with the integration tests (the planted
+// bug score gates nothing).
 //
 // The faults the fixture plants (scripts/e2e/faketools.ts):
 //   TOOL_JDK unset             the wrong tool version: every mvn call fails the enforcer rule until a setup block exports it
@@ -55,9 +55,10 @@ export const BROKEN_FILES: Record<string, string> = {
   [`backend/src/test/java/${FLAKY_LATER}.java`]: testClass(FLAKY_LATER),
   'scripts/ensure-jdk24.sh': '#!/usr/bin/env bash\n[ "$1" = --export ] && echo "export TOOL_JDK=24"\n',
 }
-// The config of the replay: the whole suite with the integration tests, a total it prints, and no mutation gate.
+// The config of the replay: the whole suite with the integration tests and a total it prints (WP19: the planted bug
+// score gates nothing, so no key turns it off).
 export const brokenConfig = (text: string): string =>
-  withCheckLines(text, `  mutation-threshold: 0\n  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'\n`)
+  withCheckLines(text, `  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'\n`)
 
 // The base tree of the late flaky test: the tree of the code (the pom's folder) at HEAD, the key the fake mvn compares.
 export const CODE_TREE = 'git rev-parse HEAD:backend'

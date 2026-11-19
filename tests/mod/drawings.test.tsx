@@ -228,3 +228,38 @@ describe('the question line: the card above the dialog', () => {
     expect(drawnOrder(draw(KIT, v, ENGINE, null))).toEqual([`dim:${questionHeader(v)}`, 'ENGINE'])
   })
 })
+
+// WP19: a measurement that was not taken is a third state, drawn with a mark of its own (the CLI prints `[?]`); never
+// as a pass and never as a failure. The planted bug score is a Check marker of its own, information only.
+describe('the pane: a check that was not measured, and the planted bugs as information', () => {
+  test('a checks entry with state not measured is carried by the view and drawn with its own mark', async ($, on) => {
+    const v = richView()
+    v.check_markers = (v.check_markers as J[]).map(m => ({ ...m, state: 'none', detail: '', lines: [] }))
+    v.checks = [
+      { name: 'tests pass', pass: true, detail: '1 green test run(s) recorded' },
+      { name: 'coverage', pass: null, state: 'not measured', detail: 'not measured: no coverage tool for this stack' },
+    ]
+    const parsed = parseRunView(JSON.stringify(v))
+    const row = (parsed?.checks ?? []).find(c => c.name === 'coverage') as Record<string, unknown> | undefined
+    expect(row?.state, 'the view carries the state beside pass').toBe('not measured')
+    expect(row?.pass, 'a row not measured is never read as passed').not.toBe(true)
+    runWith(on, v)
+    await $.session.start(START)
+    const text = JSON.stringify(await (await mount($, 'Pane', PANE(), 'temper')).drawn())
+    expect(text).toContain('? coverage')
+    expect(text).not.toContain('✓ coverage')
+    expect(text).not.toContain('✗ coverage')
+  })
+
+  test('a check_markers entry mutation with state info is drawn as information, never as a failure', async ($, on) => {
+    const v = richView()
+    v.check_markers = [...(v.check_markers as J[]),
+      { name: 'mutation', state: 'info', detail: '7 of 9 planted bugs caught', value: null, lines: [] }]
+    runWith(on, v)
+    await $.session.start(START)
+    const text = JSON.stringify(await (await mount($, 'Pane', PANE(), 'temper')).drawn())
+    expect(text).toContain('• mutation: 7 of 9 planted bugs caught')
+    expect(text).not.toContain('✗ mutation')
+    expect(text).not.toContain('✓ mutation')
+  })
+})
