@@ -211,6 +211,22 @@ assert_eq "w21 where and how long: a second baseline plan while the first runs w
   "G1=fail|G2=pass|worktree=gone" \
   "G1=$(_b62 "res('sleep 1; exit 1').get('result')")|G2=$(_b62 "res('sleep 4; test -f src/demo.sh').get('result')")|worktree=$([[ -d .claude/worktrees/temper-baseline ]] && echo there || echo gone)"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
+# the wait of the later call lasts as long as the older call's commands may run, not only the baseline's own limit
+# (TEMPER_BASELINE_TIMEOUT_S, here 1 s against a Validate that runs 4 s under its limit of 600 s)
+fresh; _repo62; _progs62; _known62
+_tasks62 "$P62/ok I" "$P62/ok T" "sleep 1; exit 1" "sleep 4; test -f src/demo.sh"; _scen62 "$P62/ok S" "$P62/ok S"
+_at62
+env -u TEMPER_BASELINE_FOREGROUND "$TEMPER" baseline plan >/dev/null 2>&1
+for _i62 in 1 2 3 4 5 6 7 8 9 10; do [[ "$(_b62 "res('sleep 1; exit 1').get('result')")" == fail ]] && break; sleep 0.5; done
+env -u TEMPER_BASELINE_FOREGROUND TEMPER_BASELINE_TIMEOUT_S=1 "$TEMPER" baseline plan --cmd 'sleep 1; exit 1' >/dev/null 2>&1
+for _i62 in $(seq 1 80); do
+  [[ "$(_b62 "any(isinstance(e, dict) and e.get('result') == 'running' for e in (d.get('plan') or {}).values())")" == False ]] && break
+  sleep 0.5
+done
+assert_eq "w21 where and how long: the later baseline plan waits as long as the older call's commands may run, past the baseline's own limit, so the command that passes on the base is pass" \
+  "G1=fail|G2=pass|worktree=gone" \
+  "G1=$(_b62 "res('sleep 1; exit 1').get('result')")|G2=$(_b62 "res('sleep 4; test -f src/demo.sh').get('result')")|worktree=$([[ -d .claude/worktrees/temper-baseline ]] && echo there || echo gone)"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true
 
 # --- w21 binary rule: the exit code alone decides; a connection error in the output changes nothing ---
 fresh; _repo62; _progs62; _cmd62 "$P62/ok O"; git add -A >/dev/null 2>&1; git commit -q -m config

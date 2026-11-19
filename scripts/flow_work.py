@@ -272,26 +272,36 @@ class WorkPart:
 
     def env_records(self, stage=None):
         """WP23: the open failure records of class environment of the stage's gate (scripts/failure.py) that still stand: a
-        record whose command passed later in the stage's ledger (a repair on the same key, which leaves it open), or whose
-        row a step back took off the ledger while the gate is not failed, is no fault of the run now."""
+        record stands only while its own failure is the latest of its check at that stage. Its row is still on the stage's
+        ledger with its key (a step back takes it off), no later record of its check names another failure, and its
+        command did not pass later in the ledger (a repair on the same key, which leaves it open)."""
         st = stage or self.check_stage()
         rows = read_json(os.path.join(TEMPER, "evidence", "%s.json" % st), [])
         rows = rows if isinstance(rows, list) else []
-        failed = (self.r.gates.get(st) or {}).get("verdict") == "FAIL"
+        recs = failure.read()
+
+        def same(a, b):
+            return (a.get("class"), a.get("kind"), a.get("cmd")) == (b.get("class"), b.get("kind"), b.get("cmd"))
 
         def stands(x):
+            last = [y for y in recs if (y.get("scope"), y.get("check")) == (x.get("scope"), x.get("check"))]
+            if last and not same(last[-1], x):
+                return False
+            if not x.get("row"):
+                return True
             m = re.match(r"^%s#(\d+)$" % st, str(x.get("row") or ""))
             i = int(m.group(1)) if m else len(rows)
             r = rows[i] if i < len(rows) and isinstance(rows[i], dict) else {}
             if not r or (r.get("key") or "") != (x.get("key") or ""):
-                return failed or not x.get("row")
+                return False
             return not any(isinstance(y, dict) and y.get("cmd") == r.get("cmd") and y.get("exit_code") == 0 for y in rows[i + 1:])
         return [x for x in failure.open_records(scope="gate:%s" % st) if x.get("class") == "environment" and stands(x)]
 
     def setup_fault(self, stage=None):
         """9.8.5 (Q6): the reason the latest run of the stage's checks hit the environment (a `setup fault:` row after its last
         suite row), or "". WP23: the stage the run is at (integrate's checks at Build, Check's at Check), and else an open
-        record of class environment at a failed suite row of that gate."""
+        record of class environment at a failed suite row of that gate, or of the locked acceptance tests at their failed
+        row (an exit 125 with no SETUP marker writes no `setup fault:` row)."""
         st = stage or self.check_stage()
         rows = [x for x in read_json(os.path.join(TEMPER, "evidence", "%s.json" % st), []) if isinstance(x, dict)]
         suite = "Integration suite" if st == "build" else "tests: the suite"
@@ -299,9 +309,11 @@ class WorkPart:
         hits = [x for x in rows[last + 1:] if str(x.get("claim", "")).startswith("setup fault: ")]
         if hits:
             return " ".join(hits[-1]["claim"][len("setup fault: "):].split())[:300]
-        env = self.env_records(st)
-        failed = {x.get("name") for x in self.r.failed_rows(st)}
-        return " ".join(str(env[-1].get("why") or "").split())[:300] if env and failed & {"integration", "tests pass"} else ""
+        failed = {str(x.get("name") or "") for x in self.r.failed_rows(st)}
+        suite = bool(failed & {"integration", "tests pass"})
+        acc = any(x.startswith("acceptance tests written before Build") for x in failed)
+        env = [x for x in self.env_records(st) if suite or (acc and x.get("check") == "acceptance")]
+        return " ".join(str(env[-1].get("why") or "").split())[:300] if env else ""
 
     def setup_question(self, stage, setup, rest):
         """9.8.5 (Q6), WP23: the environment was not ready (no database, the wrong JDK, a failed setup line) when the checks

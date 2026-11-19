@@ -246,6 +246,78 @@ assert_eq "w22 what ends a pass: an edit of a tracked file, a new untracked file
   "tracked=1,1,2,2|untracked=1,1,2,2|removed=1,1,2,2|command=1,1,2,2|setup=1,1,2,2|folder=1,1,2,2|version=1,1,2,2|lock=1,1,2,2" "$_e63"
 rm -rf .git/bin63; rm -f .git/ver63 .git/acc63; _clean63
 
+# --- w22 a racily clean edit: a tracked file edited to the same size in the second its index entry was written ---
+# git reads such an entry again when the index is no older than the entry (racy git); the digest's copy of the index
+# keeps that time. The times are set back so the second is the same on every runner (ctime, which touch cannot set, is
+# left out with core.trustctime false); then a loop of real edits in the same second as the commit.
+fresh; _clean63; _scripts63; _files63; _repo63
+git config core.trustctime false
+_t63=$(( $(date +%s) - 100 ))
+touch -d "@$_t63" src/a63.sh; git add src/a63.sh; touch -d "@$_t63" .git/index
+_r63="first=$(_rc63 "bash pass63.sh")"
+echo 'echo b' > src/a63.sh; touch -d "@$_t63" src/a63.sh
+_r63+="|edited=$(_rc63 "bash pass63.sh")|git=$(git diff --name-only -- src/a63.sh)"
+_r63+="|loop=$(python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import os, shutil, subprocess, sys, tempfile
+sys.path.insert(0, sys.argv[1])
+import run_env
+miss, n = 0, 60
+for _ in range(n):
+    d = tempfile.mkdtemp(prefix="temper-race63-")
+    try:
+        os.makedirs(os.path.join(d, "src"))
+        open(os.path.join(d, "src", "a.sh"), "w").write("echo a\n")
+        for a in (["init", "-q"], ["config", "user.email", "t@example.com"], ["config", "user.name", "T"], ["add", "-A"],
+                  ["commit", "-q", "-m", "base"]):
+            subprocess.run(["git", "-C", d] + a, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        k1 = run_env.tree_key(d, [])
+        open(os.path.join(d, "src", "a.sh"), "w").write("echo b\n")
+        miss += k1 == run_env.tree_key(d, [])
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+print("missed %d of %d" % (miss, n))
+PY
+)"
+assert_eq "w22 a racily clean edit: a tracked file edited to the same size in the second of its index entry runs the command again, as git sees it; sixty such edits right after a commit each change the digest" \
+  "first=0:ran|edited=0:ran|git=src/a63.sh|loop=missed 0 of 60" "$_r63"
+_clean63
+
+# --- w22 one run in flight per key: a key's lock file taken away between its open and its lock is opened again ---
+# the store's clean up (_drop_locks) unlinks the lock file of a key it no longer holds when no run holds its lock; a
+# call that opened that file just before must not lock the unlinked one, or a third call locks a new file beside it
+_l63="$(python3 -B - "$REPO_ROOT/scripts" "$WORKDIR/.git/locks63" <<'PY'
+import fcntl, os, sys
+sys.path.insert(0, sys.argv[1])
+import run_env
+p = os.path.join(sys.argv[2], "k.lock")
+real, n = fcntl.flock, [0]
+def flock(fd, op):
+    if n[0] == 0 and op == fcntl.LOCK_EX:   # the clean up runs between this call's open and its lock
+        n[0] += 1
+        os.unlink(p)
+    return real(fd, op)
+fcntl.flock = flock
+with run_env._Flock(p) as a:
+    fcntl.flock = real
+    try:
+        st, now = os.fstat(a.fd), os.stat(p)
+        same = (st.st_ino, st.st_dev) == (now.st_ino, now.st_dev)
+    except (OSError, TypeError):
+        same = False
+    fd = os.open(p, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        third = "a third call locks too"
+    except OSError:
+        third = "a third call waits"
+    os.close(fd)
+print("%s|%s" % ("the file at the path" if same else "an unlinked file", third))
+PY
+)"
+rm -rf .git/locks63
+assert_eq "w22 one run in flight per key: a lock file unlinked between a call's open and its lock is opened again, so the call holds the file at the path and a third call waits" \
+  "the file at the path|a third call waits" "$_l63"
+
 # --- w22 a byproduct is never a tracked file: entries edited into the list by hand are ignored ---
 fresh; _clean63; _scripts63; _files63; mkdir -p unit; echo 'echo n' > src/new63.sh; echo 'pass' > unit/test_new63.py
 _repo63

@@ -92,10 +92,10 @@ if "intent_hash" in d:
 PY
 }
 _acc64() { # the locked acceptance test: it logs its run, and fails while $P64/acc says fail (meets a setup line that
-           # fails, exit 125, while it says env)
+           # fails, exit 125, while it says env; exits 125 with no SETUP marker while it says bare)
   mkdir -p .temper/specs/demo/acceptance
-  printf 'echo acceptance >> "%s/log"\nif [ "$(cat "%s/acc" 2>/dev/null)" = env ]; then echo "temper-setup: FAIL (exit 1)"; exit 125; fi\nif [ "$(cat "%s/acc" 2>/dev/null)" = fail ]; then echo "FAIL: test_ac01 expected the field stage"; exit 1; fi\necho ok\n' \
-    "$P64" "$P64" "$P64" > .temper/specs/demo/acceptance/test_acc64.sh
+  printf 'echo acceptance >> "%s/log"\nif [ "$(cat "%s/acc" 2>/dev/null)" = env ]; then echo "temper-setup: FAIL (exit 1)"; exit 125; fi\nif [ "$(cat "%s/acc" 2>/dev/null)" = bare ]; then echo "the database did not start"; exit 125; fi\nif [ "$(cat "%s/acc" 2>/dev/null)" = fail ]; then echo "FAIL: test_ac01 expected the field stage"; exit 1; fi\necho ok\n' \
+    "$P64" "$P64" "$P64" "$P64" > .temper/specs/demo/acceptance/test_acc64.sh
   "$TEMPER" acceptance lock --cmd "bash .temper/specs/demo/acceptance/test_acc64.sh" >/dev/null 2>&1
 }
 _passed64() { # group G1 passed and continued, every task passed (as the group gate and the person leave them)
@@ -489,10 +489,19 @@ rm -f "$P64/suite.mode"; _opt64 check-again
 "$TEMPER" state advance build_complete review >/dev/null 2>&1; gfail review findings 'a finding: the total is one short'
 "$TEMPER" state loop review build --reason 'a finding: the total is one short' >/dev/null 2>&1
 _w11+="|a step back from Review=$(_stepq64)"
+echo fixed >> README; git add README; git commit -q -m 'the fix pass'; echo fail > "$P64/suite.mode"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+_w11b="after the step back=$(_rec64 "'%s %s' % (f[0].get('class'), 'open' if f[0].get('resolved') is None else 'resolved')"),last $(_rec64 "[x for x in f if x.get('check') == 'suite'][-1].get('class')")"
+_w11b+="|a code failure=$(_stepq64):$(_x64 "r = 'it-is-the-code' if opt(d, 'it-is-the-code') else 'no it-is-the-code'")"
 _run64; echo env > "$P64/acc"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
 _w11+="|acceptance=$(_rec64 "f[-1].get('class') if f else 'no record'"):$(_stepq64)"
 assert_eq "w23 a repaired environment: after the person repairs it and the checks pass on the same key, a later failure of the code is no setup question, and a step back from Review launches the fix agent; a locked acceptance test that meets the environment gets the setup question, not the triage" \
   "repaired=PASS|a code failure=ask:no SETUP:no agent:no it-is-the-code|a step back from Review=work:no SETUP:temper:temper-build|acceptance=environment:ask:SETUP:no agent" "$_w11"
+assert_eq "w23 a record stands only while its failure is the latest of its check: after the repair and a step back from Review, a failure of the code in the fix pass is no setup question, though the repaired record stays open" \
+  "after the step back=environment open,last code|a code failure=ask:no SETUP:no agent:no it-is-the-code" "$_w11b"
+_run64; echo bare > "$P64/acc"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+_w11c="record=$(_rec64 "'%s/%s' % (f[-1].get('class'), f[-1].get('kind')) if f else 'no record'")|step=$(_stepq64)"
+assert_eq "w23 a locked acceptance test that exits 125 with no SETUP marker is a record of class environment, and gets the setup question, not the triage" \
+  "record=environment/setup-line|step=ask:SETUP:no agent" "$_w11c"
 
 # --- w23 a pass resolves: a group gate, a task gate and a gate row that pass resolve the records of their own ---
 _tasks64 "$P64/suite" | m_setup; _progs64; echo fail > "$P64/suite.mode"

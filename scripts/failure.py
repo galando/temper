@@ -121,12 +121,13 @@ def _setup_digest(root=None):
 
 def record(stage, scope, check, kind, why, cmd="", exit=None, ran_by="cli", tree="", key="", limit_s=None,
            fail_lines=(), row="", class_by="exit", step="", root=None):
-    """Append one record and return it; a record of the same ledger row is not written twice (None)."""
+    """Append one record and return it; a record of the same ledger row is not written twice (None). A step back empties
+    the stage's ledger, so a row of the same place with another key is another run, and gets its own record."""
     if kind not in KINDS:
         kind = "finding" if kind else "test-failed"
 
     def add(recs):
-        if row and any(x.get("row") == row for x in recs):
+        if row and any(x.get("row") == row and (x.get("key") or "") == (key or "") for x in recs):
             return None
         rec = {"id": "F%d" % (1 + max([int(x["id"][1:]) for x in recs if re.match(r"^F\d+$", str(x.get("id")))] or [0])),
                "ts": _now(), "stage": stage, "scope": scope, "check": check, "cmd": cmd or "", "exit": exit,

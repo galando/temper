@@ -344,6 +344,33 @@ printf '[{"claim": "full test suite", "cmd": "tool61 && bash fail61.sh", "exit_c
 assert_eq "w20 go on is a recorded skip: going on from a fault of the environment check, where no suite ran on the base, skips no failure of the suite" \
   "row=none" "row=$(_r61="$(python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" .claude/temper.config "" skip-row "$PWD/.git/ledger61.json" 2>&1 | head -c 200)"; echo "${_r61:-none}")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true; rm -f .git/ledger61.json; rm -rf .git/bin61
+# every fail line of the ledger counts, the ninth too; a base where no test ran (exit 127 or 125) skips no failure
+_sk61() { # _sk61 <kind> <exit> <the base's fail lines, | between> <the suite's output now, | between>: the state of the
+          # skip row of a base the person went on from, or none
+  python3 -B - "$@" <<'PY'
+import json, sys
+kind, rc, base, now = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+json.dump({"result": "red", "kind": kind, "exit_code": rc, "answer": "go-on-anyway", "cmd": "bash fail61.sh",
+           "run": "bash fail61.sh", "fail_lines": [x for x in base.split("|") if x], "answered": {"reason": "known"}},
+          open(".temper/evidence/baseline.json", "w"))
+json.dump([{"stage": "base-suite", "reason": "the base was red before this run", "by": "the person"}],
+          open(".temper/overrides.json", "w"))
+json.dump([{"claim": "full test suite", "cmd": "bash fail61.sh", "exit_code": 1, "executed_by": "cli",
+            "output": "\n".join(now.split("|"))}], open(".temper/evidence/ledger61.json", "w"))
+PY
+  local r; r="$(python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" .claude/temper.config "" skip-row "$PWD/.temper/evidence/ledger61.json" 2>/dev/null)"
+  python3 -B -c "import json, sys; print(json.loads(sys.argv[1]).get('state') if sys.argv[1].strip() else 'none')" "$r"
+}
+fresh; mkdir -p .temper/evidence
+_eight61="FAIL: test_alpha|FAIL: test_beta|FAIL: test_gamma|FAIL: test_delta|FAIL: test_eps|FAIL: test_zeta|FAIL: test_eta|FAIL: test_theta"
+_c61="eight=$(_sk61 red-base 1 "$_eight61" "$_eight61")"
+_c61+="|a ninth=$(_sk61 red-base 1 "$_eight61" "$_eight61|FAILED test_b.py::test_new_bug")"
+_c61+="|exit 127=$(_sk61 program-missing 127 "" "FAILED test_b.py::test_new_bug")"
+_c61+="|exit 125=$(_sk61 setup-line 125 "" "FAILED test_b.py::test_new_bug")"
+_c61+="|exit 1, no line=$(_sk61 red-base 1 "" "FAILED test_b.py::test_new_bug")"
+assert_eq "w20 go on is a recorded skip: a new fail line after the eighth fails tests pass; a base whose suite could not start (exit 127, exit 125) skips no failure of the suite, a red base with no line that names a test skips them all" \
+  "eight=skipped|a ninth=none|exit 127=none|exit 125=none|exit 1, no line=skipped" "$_c61"
+rm -f .temper/evidence/ledger61.json .temper/overrides.json
 
 # --- w20 limits: three times the measured seconds, never below the default; a time out doubles once, then asks ---
 fresh; _clean61; mkdir -p .temper/evidence

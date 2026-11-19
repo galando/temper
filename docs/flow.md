@@ -219,8 +219,9 @@ a red base; a run that goes on by itself records a stop with its notice, then as
 "Go on anyway" is a recorded skip: a row `base-suite` in `.temper/overrides.json` (by the person), the answer in the
 file and in the reuse store under the baseline's key (the base tree, the command, the setup block, the tool versions).
 At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is `pass:
-null, state: skipped`; one new fail line fails it. A base where no suite ran (a fault of the environment check) skips
-nothing of the suite. A later run with the same key and the same kind of red asks nothing and records its own skip row;
+null, state: skipped`; one new fail line fails it, after the eighth too (the ledger keeps the whole output). A base
+where no test ran (a fault of the environment check, a setup line that failed with exit 125, a program not found with
+exit 127) skips nothing of the suite. A later run with the same key and the same kind of red asks nothing and records its own skip row;
 a changed key or another kind asks again. A fix run records a red base of kind `red-base` with the answer `fix-run` and
 asks nothing: there the red suite may be the bug.
 
@@ -245,7 +246,8 @@ after the suite ended, each under the limit Build gives it: a Validate under the
 Maven command runs as written. Left out: a text equal to the suite the baseline ran (or the owner's test text), a
 command that names a file a task declares and the base lacks, and every task Test and scenario `Test:` (they fail on the
 base by design). Only a command with no result runs, so a second call is cheap; a call made while an earlier one still
-runs waits for it, and the last one removes the worktree. Each result is kept in `plan` of
+runs waits for it (as long as the earlier call's commands may run, each under its own limit), and the last one
+removes the worktree. Each result is kept in `plan` of
 `.temper/evidence/baseline.json` under the command's text, judged by its exit code alone: 0 is `pass` (three times its
 seconds is the least limit `limit_for` gives that command); 124 is `timeout`, never a fault of the environment; 125 (the
 setup line failed) and 127 or a first word that does not resolve are class `environment`; any other exit is `fails like
@@ -437,8 +439,10 @@ rule; in a run the person drives it asks (row `D41`). Any other failure asks as 
 stops). A class never changes a verdict: a record is resolved only by a pass of the same
 check and scope on another key (a record with no key, of a task or a gate row, by any pass of it), or by the person's
 skip with its reason (`base-suite` resolves the record of a red base, `plan-command` that of a plan command, a stage's
-skip the records of that stage). A record of class `environment` whose command passed later in the stage's ledger (the
-person repaired it, on the same key) stays open, but it no longer picks the step. The fix pass prompts take `why` and the
+skip the records of that stage). A record of class `environment` picks the step only while its own failure is the latest
+of its check at that stage: once its command passed later in the stage's ledger (the person repaired it, on the same
+key), a later record of its check names another failure, or a step back took its row off the ledger, it stays open,
+but it no longer picks the step. The fix pass prompts take `why` and the
 failing lines from the records; a step back names the record ids it carries (`records` of the loop); `temper output
 <stage>`, the view (`failures`: the open records, with what a rule did), the end of run report and the run summary
 (`failures`, counts by class) show them.

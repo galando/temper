@@ -238,10 +238,23 @@ class _Flock:
         try:
             import fcntl
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
-            fcntl.flock(self.fd, fcntl.LOCK_EX)
         except (ImportError, OSError):
-            self.fd = None
+            return self
+        for _ in range(20):
+            try:
+                fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+            except OSError:
+                return self
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                a, b = os.fstat(fd), os.stat(self.path)
+                if (a.st_ino, a.st_dev) == (b.st_ino, b.st_dev):
+                    self.fd = fd
+                    return self
+            except OSError:
+                pass
+            # the file was unlinked (_drop_locks) between the open and the lock: lock the one at the path now
+            os.close(fd)
         return self
 
     def __exit__(self, *exc):
@@ -394,7 +407,9 @@ def tree_key(wt, byproducts=None, root=None):
     try:
         os.makedirs(os.path.join(tmp, 'objects'))
         if os.path.isfile(index):
-            shutil.copyfile(index, os.path.join(tmp, 'index'))
+            # with its time: git reads an entry again when the index is no older than it (racy git), so a same size
+            # edit in the second the entry was written is seen; a copy dated now would let the stat data call it clean
+            shutil.copy2(index, os.path.join(tmp, 'index'))
         env = dict(os.environ, GIT_INDEX_FILE=os.path.join(tmp, 'index'), GIT_OBJECT_DIRECTORY=os.path.join(tmp, 'objects'),
                    GIT_ALTERNATE_OBJECT_DIRECTORIES=objects)
         # the run's own folders count as HEAD holds them: a spec file staged for the commit changes no digest
