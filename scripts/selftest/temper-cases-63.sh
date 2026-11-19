@@ -382,6 +382,66 @@ assert_eq "w22 run it anyway: the failed Check question and the passed Check que
   "check.fail:fresh|check.pass:fresh" "$_y63"
 _clean63
 
+# --- w22 run it anyway is the person's: a run that goes on by itself never takes it; at a stop the answer runs it ---
+_suite63 "bash pass63.sh"; _check63
+_armed63() { # _armed63 <stop>: the run goes on by itself from Build (WP11), parked at <stop> when given
+  python3 -B - "${1:-}" <<'PY'
+import json, sys
+p = ".temper/build-state.json"
+d = json.load(open(p))
+d.update(run_mode="autonomous", unattended_from="build")
+d.pop("parked", None)
+if sys.argv[1]:
+    d["parked"] = sys.argv[1]
+json.dump(d, open(p, "w"), indent=2)
+PY
+}
+_armed63
+_r0=$(_runs63); _n0="$(_used63)"
+_out63="$("$TEMPER" check run --fresh 2>&1)"; _rc=$?
+_p63="armed=$_rc:$(head -1 <<<"$_out63" | cut -d: -f1):$(( $(_runs63) - _r0 )) runs:$(( $(_used63) - _n0 )) spent"
+_out63="$("$TEMPER" integrate --fresh 2>&1)"
+_p63+="|integrate=$(head -1 <<<"$_out63" | cut -d: -f1):$(( $(_used63) - _n0 )) spent"
+_armed63 check; _r0=$(_runs63)
+_check63 --fresh; _rc=$?
+_p63+="|parked=$_rc:$(( $(_runs63) - _r0 )) run:$(( $(_used63) - _n0 )) spent"
+assert_eq "w22 run it anyway is the person's: in a run that goes on by itself check run --fresh and integrate --fresh are refused, run nothing and spend nothing; at a stop the person's answer runs it" \
+  "armed=1:BLOCKED:0 runs:0 spent|integrate=BLOCKED:0 spent|parked=0:1 run:1 spent" "$_p63"
+_clean63
+
+# --- w22 the store does not grow without bound: a lock file goes with its entry, a byproduct that is gone leaves the list ---
+fresh; _clean63; _scripts63; _repo63
+_s63="$(python3 -B - "$REPO_ROOT/scripts" "$WORKDIR" <<'PY'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import run_env
+wt = sys.argv[2]
+locks = os.path.join(wt, ".git", "temper-locks")
+def lists():
+    s = json.load(open(os.path.join(wt, ".git", "temper-results.json")))
+    keys = {k for k, v in s.items() if isinstance(v, dict)}
+    files = {f[:-5] for f in os.listdir(locks) if f.endswith(".lock")}
+    return keys, files, s.get("byproducts") or []
+run_env.KEEP = 1
+run_env.run_cached(wt, 60, ["bash pass63.sh one"])
+run_env.run_cached(wt, 60, ["bash pass63.sh two"])
+keys, files, _ = lists()
+out = ["locks=%s" % ("one each entry" if files == keys else "%d for %d entries" % (len(files), len(keys)))]
+run_env.KEEP = 200
+run_env.run_cached(wt, 60, ["bash by63.sh"])
+run_env.run_cached(wt, 60, ["bash pass63.sh three"])
+out.append("present=%d" % len(lists()[2]))
+os.remove(os.path.join(wt, "__pycache__", "by63.cpython-313.pyc")); os.rmdir(os.path.join(wt, "__pycache__"))
+os.remove(os.path.join(wt, ".coverage"))
+run_env.run_cached(wt, 60, ["bash pass63.sh four"])
+out.append("gone=%d" % len(lists()[2]))
+print("|".join(out))
+PY
+)"
+assert_eq "w22 the store does not grow without bound: past the store's limit a dropped entry takes its lock file along, and a byproduct no worktree holds leaves the list" \
+  "locks=one each entry|present=2|gone=0" "$_s63"
+_clean63
+
 # --- w22 every verdict names its tree: the digest of the project folder when the verdict was computed ---
 fresh; _clean63; _scripts63; _files63; _repo63; gpass intent plan build review; _at check
 "$TEMPER" gate build >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
