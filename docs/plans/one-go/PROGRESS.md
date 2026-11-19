@@ -3,7 +3,7 @@
 - Branch: `claude/fervent-shannon-gtbnuf`
 - Pull request: 117, a draft
 - Made of: `7c7a1c1` (main, 9.8.4), `10e965a` (pull request 115, the base), `e88f105` (tip of ccr-88156f39-u643ta, plan and kit)
-- Watch: one check is scheduled; the next is due 2026-11-19 00:37 UTC
+- Watch: one check is scheduled; the next is due 2026-11-19 03:40 UTC
 - Bench: allowed by the owner's first message, on this session's own model access; the live smoke too
 
 ## Baseline
@@ -59,7 +59,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | WP15 | done | `59c618e` | 2026-11-18 | one card, computed by `scripts/card.py`, on the approval, the commit and a stop: a field of every ask and of the view, rows in `temper go` and `temper card`, drawn above the dialog by the mod; the Plan panel goes; the commit option carries its commit; the Context check folds when the card shows every flagged line; five checks off the list, which holds 56 (43 selftest, 13 scenarios) |
 | WP16 | done | `89f7a0f` | 2026-11-18 | a hand back is one of seven kinds (`NEEDS` in `flow_base.py`), carried by its option with its id; every other end of the driver is a saved stop that shows the CLI's FAIL line; the Context check, the 2,000 character answer and Scope drift as the CLI's question (`temper drift ask`); `spec branch --carry` and `--if-protected`, `group take-out`, `group feedback`; group-fail and group-fail-twice off the list, which holds 53 (43 selftest, 10 scenarios) |
 | WP17 | done | `cde3d90` | 2026-11-19 | a clean bug run asks twice: `rca.approve`, the approval with the card of rca.md (bound by its digest, the branch by `spec branch --if-protected`), then the commit; its checks start beside Review; TRIVIAL is a recorded verdict (`intent trivial --why`, closed by rule with `.temper/trivial.json`, the commit gate's `trivial exit` row of 1 file and 10 lines); D25 and fix-two off the list, which holds 51 (42 selftest, 9 scenarios) |
-| WP19 | todo | | | |
+| WP19 | doing | | | |
 | WP20 | todo | | | |
 | WP21 | todo | | | |
 | WP22 | todo | | | |
@@ -82,6 +82,7 @@ Tools: bun 1.4.4, node 22.23.4, Python 3.13.18, tsc 6.0.2, Claude Code 2.1.325 (
 | 2 | `7f2dade` | 2026-11-17 | PASS (selftest 835 s, end to end shards 1376, 1258, 1405 and 1628 s, while the WP08 lanes ran beside it); review: 21 plus 3 findings fixed | 2655 | 113 (93 selftest, 20 e2e) |
 | 3 | `8afc67a` | 2026-11-17 | PASS (selftest 2822 pass, XFAIL 72); review: 8 findings fixed in the merge `0f83802` | 2449 | 92 (72 selftest, 20 e2e) |
 | 4a | `ac746e0` | 2026-11-18 | PASS (selftest 1269 s, end to end shards 1718, 1753, 1436 and 1772 s); review: 17 findings confirmed and 3 refuted, all fixed in the merges of `p4fixa` to `p4fixd` and in `ffd3e2b`; after the fixes quick, the whole selftest (3020 pass) and the e2e list in eight groups with the floor pass on `ffd3e2b`, CI green | 3258 | 61 (47 selftest, 14 e2e) |
+| 4b | `ef5488a` | 2026-11-19 | PASS (selftest 977 s, end to end shards 1611, 1648, 1188 and 1661 s); review of WP15 to WP18 in five areas: 20 findings confirmed (18 distinct) and 2 refuted, all fixed in the merges of `p4bfixa` to `p4bfixc`; the fresh checks of those fixes found 6 leftovers, fixed in the merge of `p4bfixd`; after the fixes `verify.sh full` passes on `41b19ec` (2662 s, selftest 3092 pass, XFAIL 42, every shard agrees with the floor), CI green | 2810 | 51 (42 selftest, 9 e2e) |
 
 ## Blockers
 
@@ -185,6 +186,11 @@ None.
 - 2026-11-18 WP16: caps: question_sites 53 and option_sites 89 are now at their finals; prompt_bytes 305,275 (final 307,712), cli_bytes 221,953 (final 222,144), handback_kinds 7 (new, final 7). Floor: failed-checks new; group-fail and group-fail-twice entries; pr-and-pipeline driver hand backs 1 to 2; small-change driver auto 10 to 15; covered-and-manual driver dialogs 11 to 9, hand backs 1 to 0. U22 is fixed (`MAX_ANSWER` 2,000). Merged main: quick PASS, selftest 3056 pass, XFAIL 43; CI green on `89acfd1`.
 - 2026-11-19 WP17: a typed note at the RCA question runs the root cause agent again (`rca_work`, key `rca_notes`) in the place of a fourth option. The binding of rca.md lives in `approval.py bind-rca` (case 32 refuses `sys.path` in the moved modules). `intent trivial --close` calls `temper state clear` through the CLI; `state init` spends any open record. Small change leaves only the fix `commit.confirm`. Case 58's fixture folder is `unit/`, since validate-directory refuses a `tests` folder name in a script. A container restart lost the builder's last selftest, which it ran again.
 - 2026-11-19 WP17: caps: gate_rows 56 to 57 (final 55) by the new required row `trivial exit`, so later packages must take two rows out; option_sites 88, option_labels 73 (final 71), prompt_bytes 304,939, cli_bytes 222,088 (final 222,144). Floor: fix 2 dialogs in every mode; fix-two and trivial new; pyjokes-full asks 2 fewer dialogs in its fix part (13 to 11 plain and mod, 14 to 12 driver). Merged main: quick PASS, selftest 3075 pass, XFAIL 42.
+- 2026-11-19 phase 4b review: the high one was `state set trivial.*`, which opened the trivial window with no verdict (now refused by the CLI and the mod); others: the commit option committed the whole index (now only the named files, and the bare form only the spec folder); Accept a finding from More ended a driven run; a typed Context check answer had no calls; `spec branch --carry` took any name; a binary file or a staged rename slipped past the trivial bound; the commit card lacked the files read row and a fix run's regression section, miscounted a cut files section and claimed a fact of the verdicts it never read; `evidence resolve` was let through in a fix run; the driver ignored a failed after call of a waiting task, matched English step text, and loop.ts could recurse without bound; two tests could not fail (D31e, the eleven line Context map). Each fix has a check seen failing before it.
+- 2026-11-19 decision: a new `step_kinds` field beside `steps` (contracts.md) types the report step and the no record note, so the driver no longer matches English text (WP16 step 4); `bun scripts/e2e/loop.ts --check` is a new step of verify.sh.
+- 2026-11-19 CI: End to end shard 2 of 4 passed every scenario on `ef5488a` and was cancelled at its 20 minute limit, so Gate failed; `3889021` gives each end to end shard 30 minutes and keeps four shards, so the check names stay.
+- 2026-11-19 phase 4b fixes: the regression proof row is read without `executed_by` by the commit gate and the card (older than the phase); left to WP23, which owns the proof of a fix run.
+- 2026-11-19 phase 4b fixes, left open: `evidence $(echo resolve)` passes the mod's guard in an active run (older than the phase; the guard is not a sandbox, `docs/trust.md`, and the CLI still refuses a commit it did not make); `flow_ask.with_more` writes no `accept` on the More question, so the driver takes it from the gate question; for a feature run the commit card's FILES section marks against `plan_files` alone while the gate's scope row also allows test files, the spec folder and Scope drift choices (for WP31 or the final review).
 
 ## Follow ups of pull request 115
 
