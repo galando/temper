@@ -185,7 +185,12 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
       const pick = script.person(full, w)
       if (pick === null) return null
       note = typeof pick === 'string' ? '' : pick.note ?? ''
-      return typeof pick === 'string' ? pick : pick.label
+      const label = typeof pick === 'string' ? pick : pick.label
+      // WP21: as in plain mode, the person's note on an option that needs a reason is that reason (the driver then asks
+      // no reason question, as the guard counts it)
+      const wanted = ((full.options ?? []) as Json[]).find(o => o.label === label)
+      if (wanted?.reason && note === '') note = 'e2e reason'
+      return note !== '' ? { label, note } : label
     },
     // The Blocking questions of a step, four to a dialog: the person answers each as asked one at a time.
     askAll: (qs: GoQuestion[]) => {

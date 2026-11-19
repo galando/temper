@@ -171,7 +171,8 @@ All notable changes to Temper are documented here. The plugin version lives in
   gate row of that name, `temper plan` of that name, `.temper/` files of that name and `setup-tried.json`, the keys
   `plan.preflight-timeout` and `plan.preflight-skip`, the environment agent (`agents/env.md`, its type and model name)
   and `temper doctor` with an agent's draft file. The stops `base.red`, `plan.command` and `person.baseline` join
-  `scripts/stops.json`.
+  `scripts/stops.json`. The mod's run driver takes the person's note on an option that needs a reason as that reason
+  (as its guard already did) and asks no second dialog for it.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

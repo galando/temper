@@ -3,7 +3,6 @@
 # every mode, e2e:<scenario>:<mode> in one. A line leaves in the commit that makes its check pass, and never comes back.
 # suite:name                   passes after   promise
 e2e:slow-first-run             WP23           D11
-e2e:broken-first-run:driver    WP22           D13
 e2e:broken-flaky               WP22           D14
 selftest:D36b                  WP23           D36
 selftest:D37b                  WP24           D37

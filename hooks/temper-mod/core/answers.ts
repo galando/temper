@@ -33,6 +33,15 @@ export function answeredResult(result: unknown): Result | null {
   return r
 }
 
+// WP21: the person's note on the answer of one question of an answered dialog (its annotation), trimmed; '' for none.
+export function noteOf(result: unknown, question: string): string {
+  const r = answeredResult(result)
+  const notes = r?.annotations && typeof r.annotations === 'object' ? (r.annotations as Record<string, unknown>) : {}
+  const row = notes[question]
+  const noted = row && typeof row === 'object' ? (row as { notes?: unknown }).notes : undefined
+  return typeof noted === 'string' ? noted.trim() : ''
+}
+
 const same = (a: { header: string; question: string }, header: unknown, text: unknown): boolean => a.header === header && a.question === text
 
 // Every question the view asks at this step: the gate question, its More options and Accept a finding questions, and the
@@ -61,16 +70,13 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
   const r = answeredResult(result)
   if (r === null) return []
   const answers = r.answers as Record<string, unknown>
-  const notes = r.annotations && typeof r.annotations === 'object' ? (r.annotations as Record<string, unknown>) : {}
   const out: Answer[] = []
   for (const raw of r.questions as unknown[]) {
     const q = (raw && typeof raw === 'object' ? raw : {}) as { header?: unknown; question?: unknown; multiSelect?: unknown }
     if (typeof q.question !== 'string' || typeof q.header !== 'string' || q.multiSelect === true) continue
     const answer = answers[q.question]
     if (typeof answer !== 'string' || answer === '') continue
-    const noteRow = notes[q.question]
-    const noted = noteRow && typeof noteRow === 'object' ? (noteRow as { notes?: unknown }).notes : undefined
-    const note = typeof noted === 'string' ? noted.trim() : ''
+    const note = noteOf(result, q.question)
 
     // The gate question, More options, Accept a finding: the chosen option, exactly. One that needs a reason counts with
     // the person's note; without one, it counts once the reason question is answered.

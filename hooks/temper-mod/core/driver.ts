@@ -65,12 +65,15 @@ export type GoOut = {
 }
 
 export type Ran = { code: number; out: string }
+// WP21: an answer with the person's note on the picked option (empty when there is none)
+export type Picked = { label: string; note: string }
 export type AgentEnd = { text: string; ms: number | null }
 export type Port = {
   run(call: string): Promise<Ran>
   spawn(agent: GoAgent): Promise<string | null>
   wait(ids: string[]): Promise<Record<string, AgentEnd>>
-  ask(q: GoQuestion): Promise<string | null>
+  // The picked label, or (WP21) the label with the person's note on it, the annotation of the AskUserQuestion result
+  ask(q: GoQuestion): Promise<string | Picked | null>
   // Several questions in one dialog (up to four, as AskUserQuestion takes them); absent: asked one at a time.
   askAll?(qs: GoQuestion[]): Promise<Array<string | null>>
   record(q: GoQuestion, answer: string): Promise<void>
@@ -319,8 +322,19 @@ type Steps<R> = Generator<Effect, R, unknown>
 function* run(call: string): Steps<Ran> {
   return (yield { k: 'run', call }) as Ran
 }
+// An answer as the port gives it: a label, or a label with the person's note on it
+function pickedOf(a: unknown): Picked | null {
+  if (typeof a === 'string') return { label: a, note: '' }
+  if (!a || typeof a !== 'object' || typeof (a as { label?: unknown }).label !== 'string') return null
+  const note = (a as { note?: unknown }).note
+  return { label: (a as Picked).label, note: typeof note === 'string' ? note.trim() : '' }
+}
+const labelOf = (a: unknown): string | null => pickedOf(a)?.label ?? null
 function* ask(q: GoQuestion): Steps<string | null> {
-  return (yield { k: 'ask', q }) as string | null
+  return labelOf(yield { k: 'ask', q })
+}
+function* askNoted(q: GoQuestion): Steps<Picked | null> {
+  return pickedOf(yield { k: 'ask', q })
 }
 function* show(text: string): Steps<void> {
   yield { k: 'show', text }
@@ -362,8 +376,9 @@ const NAME_ASKS = 20
 // or how the drive ends. `back` is the gate question a More or accept question came from: a Cancel asks that one again.
 function* answer(cli: string, q: GoAsk, depth = 0, back: GoAsk | null = null): Steps<DriveEnd | null> {
   if (depth > 6) return saved('the question went round more than six times')
-  const picked = yield* ask(q.question)
-  if (picked === null) return saved('nobody answered the question')
+  const got = yield* askNoted(q.question)
+  if (got === null) return saved('nobody answered the question')
+  const picked = got.label
   const opt = optionOf(q, picked)
   if (opt === undefined) {
     // A typed answer is a change request by rule: the question's typed calls carry it (a note for the next agent, and
@@ -386,7 +401,11 @@ function* answer(cli: string, q: GoAsk, depth = 0, back: GoAsk | null = null): S
   const step = plansOf(opt, cli).some(p => p.kind === 'handback')
   if (opt.needs !== undefined || opt.do !== undefined || step) return leave(opt.needs, opt.id ?? opt.label, `the option ${opt.label}`)
   const fills: Record<string, string> = {}
-  if (opt.reason_question && (opt.calls ?? []).some(c => c.includes('{reason}'))) {
+  // WP21: the person's note on the option is its reason, as the guard reads it (answersIn): no second dialog
+  if (opt.reason_question && got.note !== '' && (opt.calls ?? []).some(c => c.includes('{reason}'))) {
+    yield { k: 'record', q: opt.reason_question, answer: got.note }
+    fills.reason = got.note
+  } else if (opt.reason_question && (opt.calls ?? []).some(c => c.includes('{reason}'))) {
     const r = yield* ask(opt.reason_question)
     if (r === null) return saved('nobody answered the reason question')
     if (kindOf(opt.reason_question, opt.reason_ids, r) === 'cancel') return yield* answer(cli, q, depth + 1, back)
@@ -656,7 +675,7 @@ async function perform(port: Port, e: Effect): Promise<unknown> {
 async function askEach(port: Port, qs: GoQuestion[]): Promise<Array<string | null>> {
   const out: Array<string | null> = []
   for (const q of qs) {
-    const a = await port.ask(q)
+    const a = labelOf(await port.ask(q))
     out.push(a)
     if (a === null) break
   }
@@ -688,7 +707,7 @@ export type SyncPort = {
   run(call: string): Ran
   spawn(agent: GoAgent): string | null
   wait(ids: string[]): Record<string, AgentEnd>
-  ask(q: GoQuestion): string | null
+  ask(q: GoQuestion): string | Picked | null
   askAll?(qs: GoQuestion[]): Array<string | null>
   record(q: GoQuestion, answer: string): void
   show(text: string): void
@@ -707,7 +726,7 @@ function runSync(port: SyncPort, steps: Steps<DriveEnd>): DriveEnd {
     if (next.done === true) return next.value
     const e = next.value
     input = e.k === 'run' ? port.run(e.call) : e.k === 'spawn' ? port.spawn(e.agent) : e.k === 'wait' ? port.wait(e.ids)
-      : e.k === 'ask' ? port.ask(e.q) : e.k === 'askAll' ? (port.askAll ? port.askAll(e.qs) : e.qs.map(q => port.ask(q)))
+      : e.k === 'ask' ? port.ask(e.q) : e.k === 'askAll' ? (port.askAll ? port.askAll(e.qs) : e.qs.map(q => labelOf(port.ask(q))))
       : e.k === 'record' ? port.record(e.q, e.answer) : e.k === 'show' ? port.show(e.text)
       : e.k === 'card' ? port.card?.(e.rows) : false
   }
