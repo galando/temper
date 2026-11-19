@@ -218,10 +218,11 @@ a red base; a run that goes on by itself records a stop with its notice, then as
 
 "Go on anyway" is a recorded skip: a row `base-suite` in `.temper/overrides.json` (by the person), the answer in the
 file and in the reuse store under the baseline's key (the base tree, the command, the setup block, the tool versions).
-At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is
-`pass: null, state: skipped`; one new fail line fails it. A later run with the same key asks nothing and records its own
-skip row; a changed key asks again. A fix run records a red base of kind `red-base` with the answer `fix-run` and asks
-nothing: there the red suite may be the bug.
+At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is `pass:
+null, state: skipped`; one new fail line fails it. A base where no suite ran (a fault of the environment check) skips
+nothing of the suite. A later run with the same key and the same kind of red asks nothing and records its own skip row;
+a changed key or another kind asks again. A fix run records a red base of kind `red-base` with the answer `fix-run` and
+asks nothing: there the red suite may be the bug.
 
 **Limits from measured time.** `baseline.limit_for(cmd, default)` is the larger of the site's default and three times
 the seconds the same suite took on the base (the same text, or the same steps with other flags; `seconds_over` counts
@@ -240,22 +241,23 @@ current code, one after another in a process of its own, in the baseline's workt
 after the suite ended, each under the limit Build gives it: a Validate under the group gate's (`limit_for` of 600 s,
 `TEMPER_TASK_TEST_TIMEOUT_S`), the Integration line under `integrate`'s (3,600 s, `TEMPER_INTEGRATION_TIMEOUT_S`). A
 Maven command runs as written. Left out: a text equal to the suite the baseline ran (or the owner's test text), a
-command that names a file a task declares and the base lacks, and every task Test and scenario `Test:` (they fail on
-the base by design). Only a command with no result runs, so a second call is cheap; then the worktree goes. Each result
-is kept in `plan` of `.temper/evidence/baseline.json` under the command's text, judged by its exit code alone: 0 is
-`pass` (its seconds feed `limit_for`); 124 is `timeout`, never a fault of the environment; 125 (the setup line failed)
-and 127 or a first word that does not resolve are class `environment`; any other exit is `fails like the base` when the
-base is red, else `fail` (class `command`). No output text takes part. The same process resolves the first word of each
-step of every command of the plan, the task and scenario Tests too, in one shell call under the setup block; a program
-that does not resolve turns the base red, so `base.red` names it before any agent. A `fail` or a `timeout` is the
-question `plan.command` (the scope of `base.red`'s function): the command, where the plan wrote it, the exit, the
-seconds and the first fail lines; `Allow it more time` first at a time out (a longer limit kept in `limits`), else `Run
-it again`; `Change the command` (typed, `temper plan patch`, then the plan is checked again); `Revise the plan`;
-`Go on anyway` (a skip with a reason, the override `plan-command`); `Save for later`. No setup block and no agent are
-offered. A result that comes after the approval asks the same before the next task agent, with `Loop back to Plan` in
-place of `Revise the plan`; a result still running is `running` on the approval card, and only the first group gate of
-the group whose Validate it is waits for it. A run that goes on by itself stops there: it never changes a gate's
-command and never plans again.
+command that names a file a task declares and the base lacks, and every task Test and scenario `Test:` (they fail on the
+base by design). Only a command with no result runs, so a second call is cheap; a call made while an earlier one still
+runs waits for it, and the last one removes the worktree. Each result is kept in `plan` of
+`.temper/evidence/baseline.json` under the command's text, judged by its exit code alone: 0 is `pass` (three times its
+seconds is the least limit `limit_for` gives that command); 124 is `timeout`, never a fault of the environment; 125 (the
+setup line failed) and 127 or a first word that does not resolve are class `environment`; any other exit is `fails like
+the base` when the base is red, else `fail` (class `command`). No output text takes part. The same process resolves the
+first word of each step of every command of the plan, the task and scenario Tests too, in one shell call under the setup
+block (also when no command is left to run); a program that does not resolve turns the base red, so `base.red` names it
+before any agent. Once the plan gate passed, a `fail` or a `timeout` is the question `plan.command` (the scope of
+`base.red`'s function): the command, where the plan wrote it, the exit, the seconds and the first fail lines; `Allow it
+more time` first at a time out (a longer limit kept in `limits`), else `Run it again`; `Change the command` (typed,
+`temper plan patch`, then the plan is checked again); `Revise the plan`; `Go on anyway` (a skip with a reason, the
+override `plan-command`); `Save for later`. No setup block and no agent are offered. A result that comes after the
+approval asks the same before the next task agent, with `Loop back to Plan` in place of `Revise the plan`; a result
+still running is `running` on the approval card, and only the first group gate of the group whose Validate it is waits
+for it. A run that goes on by itself stops there: it never changes a gate's command and never plans again.
 
 **The setup block.** `setup:` in `.claude/temper.config` holds `run:` (one shell line), `env:`, `services:` and
 `tools:`. `scripts/run_env.py` runs the line in the same shell before every command the CLI runs (task tests, group
