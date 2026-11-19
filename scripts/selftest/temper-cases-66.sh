@@ -112,4 +112,55 @@ _s4+="|integrate=$(_ledger64 build "(lambda g, s: '%s,%s' % ('reused' if s.get('
 _s4+="|coverage=$(_gate64 build "'%s %s' % (row('coverage').get('pass'), row('coverage').get('detail', '')[:9])")"
 assert_eq "p5gap one owner: a group's Validate whose text is the owner's test text runs in the owner's run text, so integrate reuses it on the same tree: one suite run, one key, coverage measured" \
   "runs=1|group=owner|integrate=reused,one key|coverage=True total 90%" "$_s4"
+
+# --- p5fixf the owner's run text in a group worktree runs there as integrate runs it in the project folder ---
+_cov66() { sed -i "s|^    coverage: .*|    coverage: \"$1\"|" .claude/temper.config; }   # the config's coverage command
+_gv66() { python3 -B -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('gate', {}).get('verdict'))" 2>/dev/null; }
+_group66() { # _group66 <coverage command>: a one group run whose Validate is the owner's test text, with that coverage
+             # command in the config. $P64/covw is a coverage run that writes its profile under .temper/check (as Go's
+             # does) and leaves .coverage where it runs (as coverage.py does)
+  rm -rf src unit
+  _tasks64 "$P64/suite" | m_setup; _progs64; _cmds64; _tasks1_66; _cov66 "$1"
+  printf '#!/bin/sh\necho data > .coverage\necho x > .temper/check/cover66.out || exit 1\nexec "%s/suite" cov\n' "$P64" > "$P64/covw"
+  chmod +x "$P64/covw"
+}
+# the folder the owner's coverage run writes into is there in the group worktree, as check run makes it in the project
+_group66 "$P64/covw"; "$TEMPER" group gate G1 >/dev/null 2>&1
+_s5="folder=$(_gv66):runs $(_n64 suite)"
+# and in the baseline's worktree at HEAD, which holds no .temper either (a new repository: nothing is kept)
+_group66 "$P64/covw"; rm -f .temper/evidence/baseline.json; TEMPER_BASELINE_FOREGROUND=1 "$TEMPER" baseline start >/dev/null 2>&1
+TEMPER_BASELINE_FOREGROUND=1 "$TEMPER" baseline clean >/dev/null 2>&1 || true
+_s5+="|base=$(python3 -B -c "import json; d = json.load(open('.temper/evidence/baseline.json')); print('%s %s' % (d.get('result'), d.get('why') or ''))" 2>/dev/null | cut -c1-80)"
+# the coverage data a group check left is no part of a group fix: a fix agent that changed nothing commits nothing
+_group66 "$P64/covw"; echo fail > "$P64/suite.mode"; "$TEMPER" group gate G1 >/dev/null 2>&1
+_wt66="$(python3 -B -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1']['worktree'])")"
+_c66="$(git -C "$_wt66" rev-list --count HEAD)"
+"$TEMPER" group fix G1 >/dev/null 2>&1; "$TEMPER" group fix G1 --commit >/dev/null 2>&1
+_s5+="|fix=empty $(python3 -B -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('fix_empty'))"),commits $(( $(git -C "$_wt66" rev-list --count HEAD) - _c66 ))"
+# a check that failed of the environment and ran again on the same tree: the question does not say nothing ran
+rm -rf src unit
+_tasks64 "nosuchprog66" | m_setup; _progs64; _tasks1_66
+"$TEMPER" group gate G1 >/dev/null 2>&1; "$TEMPER" group gate G1 >/dev/null 2>&1
+_s5+="|again=$(_x64 "r = 'says nothing ran' if 'nothing ran' in text(d) else 'ran again' if 'ran it again' in text(d) else text(d)[:160]")"
+assert_eq "p5fixf a group's Validate in the owner's run text: the coverage folder is made in its worktree, the coverage data it leaves is no part of a group fix, and a failure the store ran again is not called a run that did not happen" \
+  "folder=PASS:runs 1|base=green |fix=empty 1,commits 0|again=ran again" "$_s5"
+
+# --- p5fixf a coverage program that cannot start (exit 127): the group check, integrate and the planted bugs use the suite ---
+_group66 "nosuchcov66 $P64/suite cov"; "$TEMPER" group gate G1 >/dev/null 2>&1
+_s6="group=$(_gv66),$(_ledger64 build "next(('the test text' if __import__('shlex').split(str(x.get('cmd'))) == ['$P64/suite'] else str(x.get('cmd')) for x in rows if x.get('claim') == 'Group G1 validate'), 'no row')")"
+_passed64; _integ64
+_s6+="|runs $(_n64 suite)"
+python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import run_env
+def slow(d):   # the suite took 200 s on this tree, as the store says
+    for v in d.values():
+        if isinstance(v, dict) and isinstance(v.get("pass"), dict):
+            v["pass"]["seconds"] = 200
+run_env.store_change(run_env._store("."), slow)
+PY
+_s6+="|ahead=$(_ahead66 | sed 's/ s, not under.*//')"
+assert_eq "p5fixf a coverage program that cannot start: the group's check runs the test text as check run does, integrate reuses it, and the planted bugs read the kept pass of the suite, not the kept exit 127" \
+  "group=PASS,the test text|runs 1|ahead=not run (three runs of the suite take 600.0" "$_s6"
 rm -rf "$P64" src unit

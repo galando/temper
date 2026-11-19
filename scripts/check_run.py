@@ -1149,11 +1149,10 @@ def plant_kept(root, spec, base, test_cmd, cov_cmd, before):
         det = detect(root, line)
     if not det:
         return planted_write(root, before, "not run", "no test command for this project")
-    got = None
-    for cmd in dict.fromkeys(x for x in ((det.get("coverage") or {}).get("run"), det.get("test")) if x):
-        got = run_env.kept(root, [cmd], root=root)
-        if got:
-            break
+    # a kept pass first: the coverage run that could not start (exit 127) is followed by the suite's own text, as at run
+    kept = [run_env.kept(root, [c], root=root) for c in dict.fromkeys(x for x in ((det.get("coverage") or {}).get("run"),
+                                                                                 det.get("test")) if x)]
+    got = next((k for k in kept if k and k[0] == "pass"), None) or next((k for k in kept if k), None)
     if not got:
         return planted_write(root, before, "not run", "no run of the suite on this tree is kept (integrate and Check made "
                              "none on it), so its time is not known")

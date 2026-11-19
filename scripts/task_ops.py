@@ -445,8 +445,12 @@ elif mode == 'grouprun':
     wt, timeout, rowfile, group = sys.argv[2:6]
     cmd = sys.argv[7:]    # argv[6] is the '--' separator
     # WP23 mechanism 2: the owner's test text runs in the owner's run text, so integrate reuses it on the merged tree
+    given = cmd
     cmd, info = as_owner(wt, cmd)
     out, rc, reused = run_cached(wt, timeout, cmd, info=info)
+    if rc == 127 and cmd != given:   # the coverage program could not start: the test text runs without it, as at check run
+        cmd, info = given, {}
+        out, rc, reused = run_cached(wt, timeout, cmd, info=info)
     show(out, rc)
     row = dict({'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
                 'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'group', 'scenario': None,

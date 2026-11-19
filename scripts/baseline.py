@@ -476,6 +476,7 @@ def _run(root, config, spec, started, doc):
         doc.update(result="unknown", why=why)
         return finish(root, doc, started)
     det = own.get("det") or {}
+    os.makedirs(os.path.join(folder, ".temper", "check"), exist_ok=True)   # where the run text writes its coverage
 
     def measure(out):
         c = det.get("coverage") or {}

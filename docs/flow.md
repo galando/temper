@@ -356,14 +356,16 @@ commit card; a row written with `evidence add` fails the row. A program of the r
 never started with `--version` to read its version for the key. A group's Validate whose text is the owner's test text
 runs in the owner's run text, with its coverage measured as `integrate` measures it (`run_env.as_owner`, used by
 `grouprun` of `scripts/task_ops.py`), so the last group's gate and `integrate` share one key on the merged tree and the
-suite runs once. A regression proof that fails twice with the same text (a run again changed nothing) asks `fix.fail`
+suite runs once. As `check run` does in the project folder, the folder `.temper/check` the coverage run writes into is
+made in the group's worktree, and a coverage program that cannot start (exit 127) leaves the group's check to the test
+text alone. A byproduct of a check (coverage data, a cache) is no part of the commit of `temper group fix G<n> --commit`. A regression proof that fails twice with the same text (a run again changed nothing) asks `fix.fail`
 with `Correct the regression test` (`correct-test`, the label `Correct the %s test` the acceptance tests use): its calls
 are `state redo fix --reason '{reason}'` and `state set wrong_test '{reason}'`, and the Fix agent gets the reason as the
 person's note that the regression test is wrong, and writes it again (beside the old one when the shield of
 `regression_test` keeps that file; lifting the shield stays the person's, in a terminal). `Save for later` stays
 recommended. `check ahead` beside Review runs
 no check in a feature run, whose store is warm from `integrate`: it plants bugs only, timed by the store's entry of the
-suite on the tree as it is, and with no entry it writes `not run` with the reason. In a fix run it runs Check's
+suite on the tree as it is (a kept pass first, of the coverage run or of the test text), and with no entry it writes `not run` with the reason. In a fix run it runs Check's
 commands through the store first, as WP22 made it.
 
 ### Failure text, the SETUP verdict and recommendations that follow the evidence (9.8.5)
@@ -379,12 +381,13 @@ its prompt. When nothing names a fault (no feedback, no failed row, no note of t
 CLI runs `integrate` and `gate build` again, and a failure there names the fault.
 
 **A fix that changed nothing.** `temper group fix G<n> --commit` with no change keeps the group's check failed (the same
-tree would fail the same way, so it does not run again) and counts `fix_empty`. The next question recommends the loop
+tree would fail the same way, so it does not run again) and counts `fix_empty`; what a check left behind is no
+change. The next question recommends the loop
 back to Plan (or Save for later), and says the cause is the plan's command or the environment. The questions read the
 reuse store first (WP22 step 8, `run_env.kept_again`): a check whose newest row came back from the kept failure (nothing
 ran, the tree had not changed) or whose environment fault the store ran again and saw fail is the same failure,
 whatever the text. A group's check asked again on the same tree counts as `fix_empty` does, and the question says it
-failed again on the same tree; after a run again of Build, Fix or Check (a fix pass by rule names its reason `rule:
+failed again on the same tree (that nothing ran, or that the store ran it again and it failed the same way); after a run again of Build, Fix or Check (a fix pass by rule names its reason `rule:
 ...`, which no text compare matches), `Save for later` is recommended. The text compares stay for a failure the store
 holds no key of. A first time-out is
 no question: the CLI runs the check again with twice the limit (WP20, above); a second one asks, with the command change
@@ -614,8 +617,9 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   A failure is kept beside the pass and is not run again on the same key (an environment or not measured failure runs
   again at most twice, a time out under a larger limit runs). A failure whose command passed on the base, that names no
   declared file, runs once more at once: fail then pass is `flaky`, the pass counts and the commit card lists it
-  (a reused pass of it stays `flaky`; an owed scenario test of a task or group gate that passed so adds a row to the
-  Build ledger).
+  once (a reused pass of it stays `flaky`, and the rows that reused it are one line of the card; a run of the same key
+  that passes at once ends it; an owed scenario test of a task or group gate that passed so adds a row to the Build
+  ledger).
   `--fresh` (`check run`, `group gate`, `integrate`; the person's Run it anyway) runs whatever the store holds, spends
   one repeat and marks the row `forced`. Each verdict of `.temper/gates.json` names its `tree` (Check's, the tree its
   latest CLI run ran on); the commit gate fails

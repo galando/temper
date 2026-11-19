@@ -488,9 +488,15 @@ def commit(b, nxt):
         out.append(sec("suite", "THE SUITE", [cell("%s: %s" % (t.get("cmd") or t.get("claim") or "the tests", what))]))
     else:
         out.append(sec("suite", "THE SUITE", [cell("no run is recorded", "not measured")]))
-    # WP22: a check that failed once and passed when the CLI ran it again at once (its fixed rule, step 9) is listed
-    flaky = [x for f in ("build", "check") for x in load(os.path.join(TEMPER, "evidence", f + ".json"), [])
-             if isinstance(x, dict) and isinstance(x.get("flaky"), dict)]
+    # WP22: a check that failed once and passed when the CLI ran it again at once (its fixed rule, step 9) is listed,
+    # once: the rows that reused that pass carry the same stamp (its key and time)
+    flaky, seen = [], set()
+    for x in (x for f in ("build", "check") for x in load(os.path.join(TEMPER, "evidence", f + ".json"), [])
+              if isinstance(x, dict) and isinstance(x.get("flaky"), dict)):
+        k = (x.get("key"), x["flaky"].get("ts")) if x.get("key") and x["flaky"].get("ts") else id(x)
+        if k not in seen:
+            seen.add(k)
+            flaky.append(x)
     for x in flaky:
         out[-1]["rows"].append(cell("flaky: %s (%s): %s" % (x.get("claim") or "a check", x.get("cmd") or "",
                                                            x["flaky"].get("text") or "failed once"), "by rule"))

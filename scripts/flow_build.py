@@ -530,7 +530,7 @@ class BuildPart:
         # WP22 step 8: the store first. Its check asked again on the same tree got the kept failure back: what ran in between
         # (a rerun of its tasks, a fix) changed nothing, which is what the count fix_empty says of a fix
         kept = not empty and self.kept_again("build", claim="Group %s validate" % gid)
-        empty = empty or int(kept)
+        empty = empty or int(bool(kept))
         fix_rec = fixable and not tried and not empty
         fix = self.opt("Fix the group's merged work" + (" (Recommended)" if fix_rec else ""),
                        "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
@@ -575,9 +575,10 @@ class BuildPart:
         if fl:
             text += " What failed: %s." % fl
         if kept:
-            text += (" It failed again on the same tree (Temper kept that failure and gave it back, nothing ran), so what ran "
-                     "in between changed nothing: the plan's command or the environment is the likelier cause (temper doctor "
-                     "shows the environment).")
+            text += (" It failed again on the same tree (%s), so what ran in between changed nothing: the plan's command or "
+                     "the environment is the likelier cause (temper doctor shows the environment)." % (
+                         "Temper kept that failure and gave it back, nothing ran" if kept == "reused" else
+                         "Temper ran it again, as it does for a fault of the environment, and it failed the same way"))
         elif empty:
             text += (" A fix agent changed nothing, so the cause is not in the group's code: the plan's command or the "
                      "environment is (temper doctor shows the environment).")
