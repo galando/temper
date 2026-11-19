@@ -280,10 +280,13 @@ assert_eq "D38e the old loop keys are read by nothing: set high they change no r
   "third=1:BLOCKED|readers=none" "third=$_d38e_rc:$(head -1 <<<"$_d38e_out" | cut -d: -f1)|readers=${_d38e_readers:-none}"
 
 # --- D39c, D39d: rule 10, every stop is a question or a recorded stop, and the commit card lists what a rule decided ---
-_unattended build
+# WP25: the amendment needs the plan it amends approved and its group started, so the run is a git repository at Build
+# with this plan approved (m_setup), started at the approval as approve-run starts it (_ran_unattended). Each task has
+# two cases, so the plan passes every static row the amendment runs on its result.
 printf '%s\n' '# Tasks: demo' '' '**Integration:** `true`' '' '## Group G1: Core' '**Depends:** none' '**Validate:** `true`' '**Context:**' 'x' '' \
-  '### Task 1: first' '**File:** `src/demo.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- a' '- [x] done' '' \
-  '### Task 2: second' '**File:** `src/other.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- b' '- [x] done' > .temper/specs/demo/tasks.md
+  '### Task 1: first' '**File:** `src/demo.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- a' '- a bad input is refused' '- [ ] done' '' \
+  '### Task 2: second' '**File:** `src/other.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- b' '- a bad input is refused' '- [ ] done' | m_setup
+_ran_unattended
 "$TEMPER" plan amend task 1 --add-file src/other.sh >/dev/null 2>&1 || true
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 "$TEMPER" evidence add --stage review --claim 'src/demo.sh:3 a missing null check' --severity medium --label HEURISTIC >/dev/null 2>&1
@@ -297,10 +300,12 @@ import json
 p = ".temper/gates.json"
 d = json.load(open(p))
 d["check"] = {"verdict": "PASS", "requirements": [{"name": "tests pass", "pass": True, "detail": "the suite passed"},
-              {"name": "coverage", "pass": None, "state": "not measured", "detail": "no coverage tool for this stack"}]}
+              {"name": "coverage", "pass": None, "state": "not measured", "detail": "not measured: no coverage tool for this stack"}]}
 json.dump(d, open(p, "w"))
 PY
 "$TEMPER" state advance check_complete commit >/dev/null 2>&1
+# WP25: the commit card is the card of the commit question; the run gets there by the commit gate and its own stop
+"$TEMPER" gate commit >/dev/null 2>&1; _park45 >/dev/null
 _d39c_card="$("$TEMPER" card 2>/dev/null)"
 assert_eq "D39c the commit card lists an amendment by rule, a carried Medium finding, a check not measured, a stop with its answer and the budget used" \
   "amend|medium|not measured|stop|answer|budget" "$(python3 - "$_d39c_card" <<'PY'
