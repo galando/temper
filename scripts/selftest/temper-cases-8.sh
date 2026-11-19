@@ -311,7 +311,11 @@ assert_eq "view: a finding keeps its file and line, and is open" "src/demo.sh|12
 assert_eq "view: the intent's criteria, with their status" "AC-01:open|AC-02:open" "$(vw "'|'.join(c['id'] + ':' + c['status'] for c in d['criteria'])")"
 assert_eq "view: a run that never left Intent with no spec file written is the TRIVIAL exit's case" "False" "$(vw "d['guard']['trivial_exit']")"
 setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1
-assert_eq "view: a new run with an empty spec folder may take the TRIVIAL exit" "True" "$(vw "d['guard']['trivial_exit']")"
+# WP17: trivial_exit says the run state holds the trivial verdict (`temper intent trivial`), the window of its one write
+_tv8="before=$(vw "d['guard']['trivial_exit']")"
+"$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true
+assert_eq "view: a new run with an empty spec folder opens the trivial window once the verdict is recorded (WP17)" \
+  "before=False|after=True" "$_tv8|after=$(vw "d['guard']['trivial_exit']")"
 
 # --- the independent review of 9.7.0 (step 9): each finding, reproduced ---
 # 1. No advance from a stage the run is not at: `started` is the state before Intent, never a stage to leave.
@@ -333,9 +337,12 @@ assert_eq "review 2: Run Build again runs no text of the failed row" "0|0" "$([[
 # 4. The files the person approved are the CLI's: no state set changes them.
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 assert_exit "review 4: state set approved_files is refused" 1 "$TEMPER" state set approved_files none
-# 9. The TRIVIAL exit still holds after the Intent agent's after calls ran its gate.
-setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1; "$TEMPER" gate intent >/dev/null 2>&1
-assert_eq "review 9: a run that never left Intent, with no spec file, may take the TRIVIAL exit after its gate ran" "True" "$(vw "d['guard']['trivial_exit']")"
+# 9. The trivial window still holds after the Intent agent's after calls ran its gate (WP17: once the verdict is
+#    recorded).
+setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true; "$TEMPER" gate intent >/dev/null 2>&1
+assert_eq "review 9: the trivial window still holds after the Intent agent's gate ran (WP17: the verdict recorded)" "True" \
+  "$(vw "d['guard']['trivial_exit']")"
 # 10. A door's walked stage that fails its check names the failed rows in its question.
 fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1; gfail intent "problem stated" "no Problem section"
 assert_eq "review 10: the walked stage's question names what failed" "1" "$(nx "int('problem stated: no Problem section' in d['ask']['question']['question'])")"
@@ -454,8 +461,11 @@ assert_eq "the run files of pull request 115 are listed and cleared" "yes yes ye
 
 # --- a /temper:fix run ---
 setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
-assert_eq "next: a fix run starts at the RCA question" "Proceed to Fix (Recommended)|state advance rca_complete fix" \
-  "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+assert_eq "next: a fix run starts at the RCA question, read by its id and the advance of its options (WP17)" \
+  "rca.approve|state advance rca_complete fix" \
+  "$(nx "import re; a = d['ask']; cs = [re.sub(r' --shown \\S+', '', c.split('temper ', 1)[1])
+  for o in a['options'] for c in o.get('calls') or []]; adv = 'state advance rca_complete fix'; a['id'] + '|' + (
+  adv if adv in cs else ','.join(cs))")"
 mkdir -p .temper/specs/demo-bug; "$TEMPER" state advance rca_complete fix >/dev/null 2>&1
 assert_eq "next: Fix runs its brief and is judged by the build gate" "temper:temper-fix|gate build" \
   "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"

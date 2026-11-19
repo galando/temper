@@ -578,7 +578,8 @@ export function rcaPrompt(plugin: string, bug: string, slug: string): string {
 }
 
 // /temper:fix <bug> with no run active: the steps of commands/fix.md before the run exists (the CLI's setup, the root
-// cause agent, the panel the CLI draws from rca.md, the run's state and the fix branch), then the same loop as /temper.
+// cause agent, the run's state with the bug as typed), then the same loop as /temper. WP17: no shell line and no panel:
+// the approval card shows rca.md, and the approving option makes the fix branch (`spec branch --if-protected`).
 // With a run active it starts nothing: a saved stop that says so (the person's command with no words takes it up).
 export function* fixSteps(cli: string, bug: string, slug: string | null = null): Steps<DriveEnd> {
   const plugin = cli.replace(/\/scripts\/temper$/, '')
@@ -597,13 +598,9 @@ export function* fixSteps(cli: string, bug: string, slug: string | null = null):
   if (id === null) return saved('the temper:temper-rca agent could not start')
   const ends = (yield { k: 'wait', ids: [id] }) as Record<string, AgentEnd>
   const ms = ends[id]?.ms ?? null
-  const panel = yield* run(`${cli} panel rca .temper/specs/${s}/rca.md`)
-  if (panel.code === 0) yield* show(compactPanel(panel.out).join('\n'))
-  const init = yield* run(`${cli} state init ${s} --command fix`)
+  const init = yield* run(`${cli} state init ${s} --command fix --feature ${shq(bug)}`)
   if (init.code !== 0) return saved(`the fix run could not start: ${failLine(init)}`)
   yield* run(`${cli} usage add --stage rca --model ${model || 'unknown'} --ms ${ms === null ? 'none' : String(Math.round(ms))}`)
-  // The fix branch, as commands/fix.md says: with the git pack on, off main or master.
-  yield* run(`if grep -Eq '^packs:.*\\bgit\\b' .claude/temper.config 2>/dev/null; then case "$(git branch --show-current)" in main|master) git checkout -q -b ${shq(`fix/${s}`)} ;; esac; fi; true`)
   return yield* driveSteps(cli, null)
 }
 

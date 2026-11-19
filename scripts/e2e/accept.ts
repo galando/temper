@@ -317,8 +317,10 @@ export const fixTwo = (w: World): void => {
     wd.write('src/ci_shape.py', 'def stage_object(stage, verdict, requirements):\n    return {"stage": stage}\n')
     wd.sh('git add -A && git commit -qm "a shape with a bug"')
   })
-  t(w, 'state clear')
-  if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix`)
+  // WP17: the harness clears the run startProject began as the person would, outside the run (the mod lets no state
+  // clear through at Intent), and starts the fix run with the bug as typed, as commands/fix.md does
+  w.sh(`${TEMPER} state clear`)
+  if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix --feature 'the shape drops the verdict'`)
   const bug = '.temper/specs/bug'
   const agents: Record<string, Agent> = {
     'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),

@@ -1060,15 +1060,13 @@
   "fix": {
    "plain": {
     "now": {
-     "dialogs": 4,
+     "dialogs": 2,
      "by_stage": {
-      "check": 1,
-      "fix": 1,
-      "rca": 1,
-      "review": 1
+      "commit": 1,
+      "rca": 1
      },
      "by_kind": {
-      "gate": 4
+      "gate": 2
      },
      "launches": {
       "temper:temper-fix": 1,
@@ -1076,7 +1074,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 3,
-     "auto": 0,
+     "auto": 4,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 2
@@ -1088,15 +1086,13 @@
    },
    "mod": {
     "now": {
-     "dialogs": 4,
+     "dialogs": 2,
      "by_stage": {
-      "check": 1,
-      "fix": 1,
-      "rca": 1,
-      "review": 1
+      "commit": 1,
+      "rca": 1
      },
      "by_kind": {
-      "gate": 4
+      "gate": 2
      },
      "launches": {
       "temper:temper-fix": 1,
@@ -1104,7 +1100,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 3,
-     "auto": 0,
+     "auto": 4,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 2
@@ -1116,15 +1112,13 @@
    },
    "driver": {
     "now": {
-     "dialogs": 4,
+     "dialogs": 2,
      "by_stage": {
-      "check": 1,
-      "fix": 1,
-      "rca": 1,
-      "review": 1
+      "commit": 1,
+      "rca": 1
      },
      "by_kind": {
-      "gate": 4
+      "gate": 2
      },
      "launches": {
       "temper:temper-fix": 1,
@@ -1132,7 +1126,7 @@
       "temper:temper-review": 1
      },
      "launch_total": 3,
-     "auto": 4,
+     "auto": 8,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 2
@@ -1227,6 +1221,52 @@
      "back": 1,
      "handbacks": 0,
      "suite_runs": 6
+    }
+   }
+  },
+  "fix-two": {
+   "plain": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "rca": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-fix": 1,
+      "temper:temper-rca": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 3,
+     "auto": 4,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "rca": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-fix": 1,
+      "temper:temper-rca": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 3,
+     "auto": 8,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
     }
    }
   },
@@ -2388,17 +2428,17 @@
   "pyjokes-full": {
    "plain": {
     "now": {
-     "dialogs": 13,
+     "dialogs": 11,
      "by_stage": {
       "build": 4,
-      "check": 2,
-      "fix": 1,
+      "check": 1,
+      "commit": 1,
       "plan": 2,
       "rca": 1,
-      "review": 3
+      "review": 2
      },
      "by_kind": {
-      "gate": 11,
+      "gate": 9,
       "group": 2
      },
      "launches": {
@@ -2412,7 +2452,7 @@
       "temper:temper-review": 3
      },
      "launch_total": 15,
-     "auto": 0,
+     "auto": 4,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2420,17 +2460,17 @@
    },
    "mod": {
     "now": {
-     "dialogs": 13,
+     "dialogs": 11,
      "by_stage": {
       "build": 4,
-      "check": 2,
-      "fix": 1,
+      "check": 1,
+      "commit": 1,
       "plan": 2,
       "rca": 1,
-      "review": 3
+      "review": 2
      },
      "by_kind": {
-      "gate": 11,
+      "gate": 9,
       "group": 2
      },
      "launches": {
@@ -2444,7 +2484,7 @@
       "temper:temper-review": 3
      },
      "launch_total": 15,
-     "auto": 0,
+     "auto": 4,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2452,17 +2492,17 @@
    },
    "driver": {
     "now": {
-     "dialogs": 14,
+     "dialogs": 12,
      "by_stage": {
       "build": 4,
-      "check": 2,
-      "fix": 1,
+      "check": 1,
+      "commit": 1,
       "plan": 2,
       "rca": 1,
-      "review": 4
+      "review": 3
      },
      "by_kind": {
-      "gate": 11,
+      "gate": 9,
       "group": 2,
       "reason": 1
      },
@@ -2478,7 +2518,7 @@
       "temper:temper-review": 3
      },
      "launch_total": 16,
-     "auto": 17,
+     "auto": 21,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2804,6 +2844,53 @@
      "back": 0,
      "handbacks": 0,
      "suite_runs": 4
+    }
+   }
+  },
+  "trivial": {
+   "plain": {
+    "now": {
+     "dialogs": 0,
+     "by_stage": {},
+     "by_kind": {},
+     "launches": {
+      "temper:temper-intent": 1
+     },
+     "launch_total": 1,
+     "auto": 1,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 0
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 0,
+     "by_stage": {},
+     "by_kind": {},
+     "launches": {
+      "temper:temper-intent": 1
+     },
+     "launch_total": 1,
+     "auto": 1,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 0
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 0,
+     "by_stage": {},
+     "by_kind": {},
+     "launches": {
+      "temper:temper-intent": 1
+     },
+     "launch_total": 1,
+     "auto": 1,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 0
     }
    }
   },

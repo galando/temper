@@ -14,7 +14,7 @@ import doctor
 import findings
 import run_env
 
-from flow_base import LABEL, TEMPER, goes_on, loop_at, on_model, read_json
+from flow_base import GATE_HEADER, LABEL, TEMPER, goes_on, loop_at, on_model, read_json
 
 
 class WorkPart:
@@ -40,8 +40,34 @@ class WorkPart:
                 "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
 
     def armed_text(self):
-        return ("Approve the plan; the run goes on by itself: a passed check moves on, a failed check gets one repair and then "
-                "asks you, the commit asks you, and nothing is pushed.")
+        return ("Approve the %s; the run goes on by itself: a passed check moves on, a failed check gets one repair and then "
+                "asks you, the commit asks you, and nothing is pushed." % ("fix" if self.r.command == "fix" else "plan"))
+
+    def rca_approval(self):
+        """WP17: the root cause question of a fix run is its approval. Approve and fix (arm) and Ask me at every stage
+        each bind the run's mode to rca.md as the card shows it (bind), make the fix branch off main or master only
+        (`spec branch --if-protected`) and leave RCA with the digest on the advance; run.default orders them as at the
+        plan question (approval). A typed answer is the note the root cause agent runs again with (rca_work)."""
+        go = lambda m: [self.bind(m), self.c("spec branch --if-protected"), self.c("state advance rca_complete fix" + self.shown())]
+        return self.question(GATE_HEADER, "RCA: the root cause and the proposed fix are on the card. Approve the fix?", stage="rca",
+                             qid="rca.approve", options=self.approval(go, "rca") + [self.save()])
+
+    def rca_work(self):
+        """WP17: the person typed a change at the root cause question (a note at stage rca): the root cause agent runs
+        again with it, with the prompt commands/fix.md and the run driver give it (the bug as typed), before the question
+        is asked again. The run state counts the notes taken (rca_notes), as record_pass marks its round. None when every
+        note was taken."""
+        r = self.r
+        notes = r.notes("rca", "input")
+        if len(notes) <= int(r.state.get("rca_notes") or 0):
+            return None
+        model = (r.ctx.get("models") or {}).get("rca", "")
+        prompt = "\n".join(["Follow %s/agents/rca.md exactly. Bug: %s." % (self.plugin, r.state.get("feature") or r.slug),
+                            "RCA file: %s/rca.md" % r.spec] + ["Person's note: %s" % x["claim"] for x in notes] + [self.plugin_line()])
+        a = {"type": "temper:temper-rca", "model": model, "prompt": prompt,
+             "after": [self.c("usage add --stage rca --model %s --ms {ms}" % (model or "unknown")), self.c("state set rca_notes %d" % len(notes))]}
+        return {"action": "work", "stage": "rca", "calls": [], "agents": [a],
+                "say": "RCA: the root cause agent takes up your note%s. %s" % (on_model([a]), goes_on(False))}
 
     def stop(self, stage, reason):
         """WP11: a recorded stop of a run that goes on by itself: the park call (the stage then asks its own question, and
@@ -279,9 +305,9 @@ class WorkPart:
             return {"action": "work", "stage": stage, "calls": [self.c("check run")], "agents": [a],
                     "say": "Check: the CLI runs the suite, coverage, the scenario tests and the mutation score; the Check agent records %d criteria%s." % (len(rec), on_model([a]))}
         a = self.agent(stage, extra)
-        if stage == "review" and r.command == "temper" and self.cli_check():
+        if stage == "review" and self.cli_check():
             # 9.8.0: the CLI runs Check's suite, coverage and mutation score while Review reads the change (Review writes
-            # no code); Check adopts that run when the tree is unchanged.
+            # no code); Check adopts that run when the tree is unchanged. WP17: in a fix run too (its regression proof).
             a["before"] = (a.get("before") or []) + [self.c("check ahead")]
         if stage == "design":
             # 9.8.0 (round 5): the CLI draws the stage's panel from the files the agent wrote; the agent draws

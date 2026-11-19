@@ -406,7 +406,7 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 
 - **The rule.** At Intent `next` gives `work` (never `auto`) for the stage `intent`, no agents and the one call `state
   advance intent_complete plan`, when all of these hold (`Builder.intent_by_rule`): a `/temper:temper` run; the Intent
-  check passed and was not skipped; `intent.md` exists (the TRIVIAL path has none); no Blocking question is open (an
+  check passed and was not skipped; `intent.md` exists (a trivial request has none); no Blocking question is open (an
   answer is no note: once the gate passes again the rule moves on); the run did not come back to Intent; the person
   typed no note at Intent; no door walked Intent. Otherwise `intent.accept` (or `intent.fail`, or `run.walked`) is
   asked as before. `temper go` runs that work by itself. The intent stays a draft.
@@ -430,6 +430,37 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   a third dialog), so the Context check is asked first as its own question, and the approval after it.
 - **The draft beside its plan.** The Intent row `no scenarios in draft` passes once `tasks.md` is beside the intent:
   Plan wrote those scenarios.
+
+### A fix run asks twice; a trivial request is a verdict (9.8.5, WP17)
+
+- **The root cause question is the approval.** `rca.approve` asks `RCA: the root cause and the proposed fix are on the
+  card. Approve the fix?`. Its first options are those of the plan question, ordered by `run.default` as there:
+  `approve-run` (`Approve and fix`, move `arm`) and `ask-every-stage` (move `approve`), each with the calls `state set
+  run_mode autonomous|interactive --shown rca.md=<H>`, `spec branch --if-protected` (the fix branch, off main or
+  master only) and `state advance rca_complete fix --shown rca.md=<H>`; then `save`. `rca.md` is bound by the
+  mechanism of WP12: the CLI refuses a stale call, and the advance records its digest as `intent_hash`, so the row
+  `intent unchanged since the approval` names `rca.md` in a fix run. `state set run_mode autonomous` is taken at RCA in
+  a fix run (RCA has no gate). A typed answer is the note at stage `rca`: while the run state's `rca_notes` counts
+  fewer notes than the RCA ledger holds, `next` gives `work` with the root cause agent (the bug from `feature`, the
+  notes, the after calls `usage add` and `state set rca_notes N`), then asks again. The question's card (kind
+  `approval`, `scripts/card.py`) has the sections `request` (the bug as typed: `state init S --command fix --feature
+  BUG`), `cause`, `fix`, `test`, `files`, `commands` and `risk`, read from `rca.md` by `panel.rca_fields`; its foot
+  names the branch the click makes and ends `Nothing is pushed.`
+- **In between.** Approved with `approve-run`, a passed Fix, Review and Check move on as the CLI's own action, a failed
+  check takes the one repair (`state loop <stage> fix`), and Review starts Check's run (`check ahead`), as in a feature
+  run. The commit question of a fix run offers `commit`, `back` (`state loop check fix`) and `save`: no pull request
+  and no small change; its card's `message` is the message the CLI drafts from `rca.md`.
+- **TRIVIAL.** The Intent agent of a `/temper:temper` run at Intent, at step 0, with no spec file, calls `temper
+  intent trivial --why TEXT` (`scripts/trivial.py`): the run state takes `trivial: {why, head, at, dirty_before}` and
+  `guard.trivial_exit` turns true, the window in which the Intent agent makes its one change (with the mod, and with
+  the classic hook of the mod off). Once the Intent verdict is recorded, `next` gives `auto` with the one call `intent
+  trivial --close`: it writes `.temper/trivial.json` (`{request, why, head, at, dirty_before, bound: {files: 1,
+  lines: 10}}`), the kept run summary takes a line of kind `trivial`, and the run is cleared as `state clear` does.
+  With no run active and that record's `head` at HEAD, `next` says so in one line: the change is not committed, the
+  commit is the person's, and the commit hook holds it to one file and 10 lines. The commit gate with no run then
+  counts the staged production files outside `.temper/` and outside `dirty_before` and their lines: the row `trivial
+  exit` passes within the bound and fails above it, naming the two ways on. A record whose `head` is not HEAD is
+  spent; `state init` and the view writer remove it. No state clear is let through at Intent.
 
 ### Evidence, the lock and a note (9.8.5)
 
@@ -471,7 +502,7 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 | `blocking_asks` | 9.8.0: the same questions as the session asks them (see `temper next`); the mod lets the session ask these |
 | `restart` | the `Temper resume` question |
 | `drift` | the `Scope drift` question's header, the first line prefix (`Outside the plan:`) and its three options; 9.8.5: id `scope.drift`, kind `drift`, and `drift_ids`, the ids of the three options at their places |
-| `guard` | what the guard needs: `{stage, spec, slug, fix_run, grouped, armed, autonomy_enabled, plan_files, step, run_id, trivial_exit, prefix}`; `plan_files` are the files the person approved at the plan gate (before it, the plan's files as they are); `prefix` is the project's folder from the top of its git repository (`packages/app/`, or empty) |
+| `guard` | what the guard needs: `{stage, spec, slug, fix_run, grouped, armed, autonomy_enabled, plan_files, step, run_id, trivial_exit, prefix}`; `trivial_exit` is true while the run state holds the trivial verdict (WP17); `plan_files` are the files the person approved at the plan gate (before it, the plan's files as they are); `prefix` is the project's folder from the top of its git repository (`packages/app/`, or empty) |
 | `plan` | `{approved, files, groups: [{id, title, files}]}` |
 | `fresh` | 9.7.6: the fresh review of the plan, `null` when it does not apply: `{paraphrase, missing, stale, findings: [{id, severity, lens, claim, state, cite}]}`; `missing` names each lens and reviewer with no completion row (`readiness A`); `state` is `open`, `resolved`, `accepted`, `contested` or `escalated`; `cite` is a contest's checked citation |
 | `build` | `{groups: [{id, title, status, verdict, tasks: [{n, title, files, state, model, attempts}]}], integration}`; a task's `state` is `waiting`, `running`, `red`, `green`, `pass`, `fail` or `parked` |
@@ -513,7 +544,8 @@ A finished run leaves one line in the project. `temper state clear` appends it t
  "seconds": 1200, "agent_seconds": 900, "skips": 0}
 ```
 
-`ended` is `committed` when the commit gate's verdict is PASS, else `cleared`. The steps back come from
+`ended` is `committed` when the commit gate's verdict is PASS, else `cleared`; the line of a trivial request (WP17) has
+`"kind": "trivial"` and `ended` `trivial`. The steps back come from
 `feedback-loops.json`, which keeps one record a pair of stages: its iteration is the steps back it made. The launches
 and the agent seconds come from `usage.json` (the agents recorded with their stage and time); a row of a task gate is
 no launch, except the gate of a task an earlier conversation left running, which records that launch with its time.

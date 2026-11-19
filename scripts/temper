@@ -564,7 +564,7 @@ cmd_model() {
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
 security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/ runs.jsonl asked.json \
-preflight.json setup-tried.json decisions.json budget.json rule-log.json"
+preflight.json setup-tried.json decisions.json budget.json rule-log.json trivial.json"
 
 
 cmd_init() {
@@ -982,6 +982,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     fi
   fi
   [[ "$stage" == intent_complete ]] && _from_branch
+  [[ "$stage" == rca_complete ]] && python3 -I "$SCRIPTS_DIR/approval.py" bind-rca "$STATE_FILE"   # WP17
   local held; held="$(_json_get_path "$STATE_FILE" parked "")"   # WP11: an answer to a stop is the person's, no rule's
   # WP11: the unattended run ends at the commit; a run that opened a pull request reaches Pipeline asking at every stage
   [[ "$stage" == commit_complete ]] && _unattended_end "the commit" >/dev/null
@@ -3237,12 +3238,8 @@ gate_commit() {
   # it, and the pre-commit hook runs this gate on EVERY commit — demanding stage
   # verdicts from a repo that simply has a .temper/ directory blocked every
   # out-of-run commit.
-  if [[ ! -f "$STATE_FILE" ]]; then
-    reqs+=("$(_req "active run" 1 "no active run — nothing to gate")")
-    local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
-    echo "$reqs_json" 1
-    return
-  fi
+  # WP17: with an open trivial record, the bound of the trivial request (scripts/trivial.py)
+  [[ -f "$STATE_FILE" ]] || { python3 -I "$SCRIPTS_DIR/trivial.py" gate 2>/dev/null || echo '[] 1'; return; }
 
   # Build-checkpoint carve-out (docs/decisions/0009): a per-task checkpoint
   # commit lands while next_stage is still build, when the full commit gate
@@ -3580,6 +3577,7 @@ _unattended_end() { # _unattended_end <what>: the run asks at every stage from h
 
 cmd_intent() {
   local sub="${1:-}"
+  [[ "$sub" == trivial ]] && { python3 -I "$SCRIPTS_DIR/trivial.py" "${@:2}"; return; }   # WP17: the trivial verdict
   case "$sub" in accept|complete|carry|answer) ;; *) echo "FAIL: usage: temper intent accept|complete|carry '<question>'|answer '<question>' '<answer>'" >&2; return 1 ;; esac
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -f "$spec/intent.md" ]] || { echo "FAIL: no intent.md for the active run" >&2; return 1; }

@@ -13,6 +13,7 @@ DEGRADATION CONTRACT:
   - a tool that is not Write, Edit, MultiEdit or NotebookEdit                     => no output, exit 0
   - the folder is not in a Temper project (no `.temper` folder in it or above)    => no output, exit 0
   - no run, a fix run, a run from Build on, a state file it cannot read           => no output, exit 0
+  - a run at Intent whose state holds the trivial verdict (WP17: its one write)    => no output, exit 0
   - a path under `.temper/` (the run's spec folder is there), a worktree of the run, a path outside the project, or
     a decision record at Plan or Design                                           => no output, exit 0
   - a project file written at Intent, Plan or Design of a feature run             => the deny answer on stdout, exit 0
@@ -65,6 +66,8 @@ def main():
     stage = st.get("next_stage") if isinstance(st, dict) else None
     if st.get("command", "temper") != "temper" or stage not in BEFORE:
         return
+    if stage == "intent" and isinstance(st.get("trivial"), dict):
+        return   # WP17: the one write of a trivial request, while the run state holds its verdict (as the mod's rule)
     path = os.path.normpath(os.path.join(cwd, raw))
     if path != root and not path.startswith(root + os.sep):
         return   # not a file of this project

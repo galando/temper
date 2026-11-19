@@ -853,14 +853,17 @@ export const failedChecks = (w: World): void => {
 }
 
 // A /temper:fix run: RCA, Fix (a regression test first), Review, Check and the commit; the mod stands aside for it.
+// WP17: a clean bug run asks twice: the root cause with the fix it proposes (rca.approve, the approval: Approve and fix
+// makes the fix branch off main and starts the run to the commit), then the commit (commit.confirm); its commit is on
+// fix/bug, in driver mode too. The harness clears the run startProject began as the person would, outside the run.
 export const fixRun = (w: World): void => {
   startProject(w, '', wd => {
     wd.write('src/ci_shape.py', 'def stage_object(stage, verdict, requirements):\n    return {"stage": stage}\n')
     wd.sh('git add -A && git commit -qm "a shape with a bug"')
   })
-  t(w, 'state clear')
-  // 9.8.0: with the mod's run driver, the driver starts the fix itself (the root cause agent, the panel, the state).
-  if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix`)
+  w.sh(`${TEMPER} state clear`)
+  // commands/fix.md starts the run with the bug as typed; with the mod's run driver, the driver starts it itself
+  if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix --feature 'the shape drops the verdict'`)
   const bug = '.temper/specs/bug'
   const agents: Record<string, Agent> = {
     'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
@@ -880,9 +883,14 @@ export const fixRun = (w: World): void => {
     },
   }
   const asked: string[] = []
+  const ids: string[] = []
   const fixScript = script({
     agents,
-    person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) },
+    person: (ask, wd) => {
+      asked.push(String(ask.question.question))
+      ids.push(String(ask.id))
+      return recommended(ask, wd)
+    },
     instruction: (wd, text) => {
       if (text.startsWith('Append one entry for this fix')) {
         wd.write('.temper/lessons.md', '# Lessons\n\n- the shape must keep its verdict: a regression test names it\n')
@@ -894,14 +902,41 @@ export const fixRun = (w: World): void => {
   if (w.mode === 'driver') {
     orchestrateFix(w, fixScript, 'the shape drops the verdict', 'bug')
   } else {
-    // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question
+    // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question, whose card
+    // shows the root cause and the fix (no RCA panel is printed)
     launchByHand(w, agents, 'temper:temper-rca')
-    // 9.8.0 (round 5): the CLI draws the RCA panel from the file the agent wrote; commands/fix.md prints it
-    expect(w.sh(`${TEMPER} panel rca ${bug}/rca.md`).includes('| RCA: the shape drops the verdict'), 'the CLI drew the RCA panel from rca.md')
     orchestrate(w, fixScript)
   }
-  expect(asked.some(q => q.startsWith('RCA: the root cause is in')), 'the RCA question was asked')
+  expect(asked[0] === 'RCA: the root cause and the proposed fix are on the card. Approve the fix?', `the RCA question is the approval (${asked[0] ?? 'not asked'})`)
+  expect(ids.join(',') === 'rca.approve,commit.confirm' && w.counts.dialogs === 2,
+    `the bug run asks the root cause with the fix, then the commit, and nothing else (${ids.join(', ')}; ${w.counts.dialogs} dialogs)`)
   expect(w.sh('git log --format=%s -n 1').length > 0 && !w.exists('.temper/build-state.json'), 'the fix run ended with its commit')
+  const branch = w.sh('git branch --show-current').trim()
+  const own = Number(w.run('git rev-list --count main..HEAD').out.trim() || '0')
+  expect(branch === 'fix/bug' && own > 0 && w.sh('git log --format=%s -n 1').startsWith('fix(bug):'),
+    `the fix is committed on fix/bug, off main (on ${branch}, ${own} commits beyond main: ${w.sh('git log --format=%s -n 1').trim()})`)
+}
+
+// WP17: a trivial request is a verdict the CLI records. The Intent agent calls `temper intent trivial --why TEXT`,
+// changes one line of one file and returns; the flow closes the run by its own call (`intent trivial --close`), with no
+// question. The change is not committed: the commit is the person's, and the commit hook holds it to the bound.
+export const trivialRun = (w: World): void => {
+  startProject(w)
+  const agents: Record<string, Agent> = {
+    'temper:temper-intent': wd => {
+      const v = t(wd, "intent trivial --why 'the README title is one word to capitalize'")
+      expect(v.code === 0, `the CLI recorded the trivial verdict (${v.out.trim().slice(0, 200)})`)
+      wd.write('README.md', '# Scratch\n')
+    },
+  }
+  const asked: string[] = []
+  orchestrate(w, script({ agents, person: ask => { asked.push(String(ask.id)); return null } }))
+  expect(asked.length === 0 && w.counts.dialogs === 0, `a trivial request asks nothing (${asked.join(', ')}; ${w.counts.dialogs} dialogs)`)
+  expect(!w.exists('.temper/build-state.json'), 'no run is active after the flow closed the trivial request')
+  expect(w.exists('.temper/trivial.json'), 'the trivial record is kept for the commit hook')
+  const head = w.sh('git log --format=%s -n 1').trim()
+  const diff = w.sh('git diff --numstat').trim()
+  expect(head === 'config' && diff === '1\t1\tREADME.md', `the one line change is left uncommitted (last commit: ${head}; diff: ${diff})`)
 }
 
 // The run's branch exists from an earlier run: the approval continues on it, and its switch carries the new spec files

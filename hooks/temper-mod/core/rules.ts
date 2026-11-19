@@ -32,7 +32,8 @@ export type RunFacts = {
   planFiles: readonly string[]
   // A grouped Build run is active, and the CLI (not an agent) ticks the run's tasks.md.
   groupedActive: boolean
-  // The run never left Intent and holds no spec file: a `state clear` loses nothing (the TRIVIAL exit).
+  // WP17: the run state holds the trivial verdict (`temper intent trivial`, view.json's trivial_exit): the window of
+  // the Intent agent's one write outside the spec folder, until the flow closes the run.
   trivialExit: boolean
   // The project's folder from the top of its git repository (`packages/app/`); "" or absent at the top. A group or task
   // worktree is a checkout of the whole repository, so the project's files are under this prefix in it.
@@ -45,8 +46,9 @@ export type RunFacts = {
 // (ADHOC_STAGES). The one rule: the stage write rule here and the main session's rule (core/session.ts) both ask it.
 export const adhocOpen = (r: RunFacts): boolean => r.adhocStage != null && r.adhocStage === r.stage && ADHOC_STAGES.includes(r.stage)
 
-// The TRIVIAL exit: a `state clear` of a run that never left Intent loses nothing (view.json's trivial_exit, at Intent,
-// before any step). The guard lets that clear through, and register.tsx stops holding the run it cleared: both ask this.
+// The trivial window (WP17): the CLI recorded the trivial verdict at Intent, before any step (view.json's
+// trivial_exit). The Intent agent may then make the one change outside the spec folder; the commit hook holds it to
+// the bound.
 export const trivialExit = (r: RunFacts | null): boolean => r !== null && r.trivialExit && r.stage === 'intent' && r.step <= 0
 
 export type RuleContext = {
@@ -108,8 +110,9 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   // The run state, the grouped Build record, the usage record and the view the mod draws: the CLI writes them. 9.8.5
   // (M14): so are the preflight's stored rows, the Design answers, the setup blocks already tried and the rows of the
   // Check run made ahead (Check adopts them), which turn rows. 9.8.5 (WP10): so is the record of the run's repeats; and
-  // (WP11) the record of what a rule decided, which the commit question shows.
-  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view|preflight|decisions|setup-tried|budget|rule-log|check\/ahead)\.json$/i],
+  // (WP11) the record of what a rule decided, which the commit question shows; and (WP17) the record of a trivial
+  // request, which turns the commit gate's row with no run.
+  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view|preflight|decisions|setup-tried|budget|rule-log|trivial|check\/ahead)\.json$/i],
   // The store of reused passes, in the git folder and shared by every worktree: a row in it passes a check unrun.
   ['gates', /(^|\/)\.git\/temper-results\.json$/i],
   ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
@@ -126,7 +129,7 @@ const GUARDED_SAMPLES = [
   '.temper/build-state.json', '.temper/groups.json', '.temper/usage.json', '.temper/view.json', '.temper/feedback-loops.json',
   '.temper/evidence/review.json', '.claude/temper.config', '.git/config', '.git/hooks', '.git/hooks/pre-commit', '.git/temper-gate',
   '.git/temper-results.json', '.temper/preflight.json', '.temper/decisions.json', '.temper/setup-tried.json',
-  '.temper/check/ahead.json', '.temper/budget.json', '.temper/rule-log.json',
+  '.temper/check/ahead.json', '.temper/budget.json', '.temper/rule-log.json', '.temper/trivial.json',
 ]
 // A glob as bash reads it, one segment at a time: `*` and `?` stay inside a segment, and a segment that starts with one
 // does not match a name that starts with a dot (bash's default: `rm -rf *` leaves `.temper` alone).
@@ -265,7 +268,7 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
 
   switch (r.stage) {
     case 'intent':
-      if (specFile('intent.md') || specFile('intent-context.json')) return ALLOW
+      if (specFile('intent.md') || specFile('intent-context.json') || trivialExit(r)) return ALLOW
       return {
         deny:
           `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the intent with the plan. ` +
@@ -481,8 +484,6 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     // The person's answer at this step, or the CLI's own action, maps to this very call.
     if (ctx.allowed.some(written => sameCall(written, w))) continue
     const resets = a === 'state' && (b === 'clear' || b === 'archive' || b === 'init')
-    // The TRIVIAL exit of the orchestrator: a clear of a run that never left Intent loses nothing.
-    if (a === 'state' && b === 'clear' && trivialExit(r)) continue
     // Start over: the saved run state goes, and a run of the same command begins (never a fix run, which the mod stands
     // aside for).
     if (resets && ctx.restart && !w.some((x, i) => (x === '--command' && w[i + 1] === 'fix') || x === '--command=fix')) continue

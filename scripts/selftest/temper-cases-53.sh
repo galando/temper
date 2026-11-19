@@ -399,3 +399,11 @@ fresh; rm -f .temper/build-state.json
 _w53+="|no run=$(_hw53 "$WORKDIR" Write "$WORKDIR/src/demo.sh")"
 assert_eq "bound: with the mod off a project file cannot be written before the approval: the classic hook refuses it" \
   "plan=deny|spec=none|bash=none|unreadable=none|no project=none|build=none|fix=none|no run=none" "$_w53"
+# WP17: the one write of a trivial request. While the run state holds the trivial verdict (temper intent trivial) the
+# classic hook lets the project file write through at Intent, as the mod's intent rule does; without it, refused.
+fresh; rm -f .temper/specs/demo/*.md
+_tw53="closed=$(_hw53 "$WORKDIR" Write "$WORKDIR/src/demo.sh")"
+"$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true
+_tw53+="|open=$(_hw53 "$WORKDIR" Write "$WORKDIR/src/demo.sh")"
+assert_eq "bound: with the mod off the one write of a trivial request passes the classic hook while the verdict is recorded" \
+  "closed=deny|open=none" "$_tw53"
