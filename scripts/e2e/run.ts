@@ -4,7 +4,7 @@ import { pyjokesBlocked, pyjokesFull, pyjokesRun } from './pyjokes'
 import { ACCEPT_SCENARIOS } from './accept'
 import { BROKEN_SCENARIOS } from './broken'
 import { SLOW_SCENARIOS } from './slow'
-import { planCommandFails } from './scenarios'   // WP21, registered below with the scenarios of the base
+import { planCommandFails, setupAtBuild } from './scenarios'   // WP21 and WP23, registered below with the scenarios of the base
 import { listed, loadList, skipsCompare, stale, verdict } from './xfail'
 import { Denied, World } from './world'
 import type { Json, Mode } from './world'
@@ -24,6 +24,8 @@ for (const [name, s] of Object.entries({ ...SLOW_SCENARIOS, ...BROKEN_SCENARIOS,
 }
 // WP21: a command the plan wrote fails on the base; every mode
 SCENARIOS['plan-command-fails'] = planCommandFails
+// WP23: a fault of the environment at integrate in an unattended run; every mode
+SCENARIOS['setup-at-build'] = setupAtBuild
 // The expected to fail list (scripts/selftest/expected-fail.txt), read once: a line it cannot read, or an e2e line that
 // names no scenario or a mode its scenario never runs in, fails the run at once (scripts/e2e/xfail.ts).
 let LISTED: ReturnType<typeof loadList> = []

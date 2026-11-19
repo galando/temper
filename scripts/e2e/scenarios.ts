@@ -6,7 +6,7 @@ import path from 'node:path'
 import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
 import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
-import { stagePerson } from './persons'
+import { pickId, stagePerson } from './persons'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
@@ -955,6 +955,7 @@ export const fixRun = (w: World): void => {
   // commands/fix.md starts the run with the bug as typed; with the mod's run driver, the driver starts it itself
   if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix --feature 'the shape drops the verdict'`)
   const bug = '.temper/specs/bug'
+  let atReview = ''
   const agents: Record<string, Agent> = {
     'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
     // 9.8.5 (Q3): the CLI runs the regression test (evidence run), as agents/fix.md says; a claimed run counts nowhere
@@ -966,7 +967,16 @@ export const fixRun = (w: World): void => {
       const green = t(wd, `evidence run --stage build --phase green --claim 'regression test: the shape keeps its verdict' -- python3 -m unittest unit.test_ci_shape`)
       expect(/exit 0\b/.test(green.out), `the fix passes the regression test (${green.out.slice(0, 200)})`)
     },
-    'temper:temper-review': wd => reviewDone(wd),
+    // WP23: the first Review launch reads what the Fix agent's after calls left in the Build ledger: the suite the CLI
+    // ran (check build-checks), before any Review is paid for
+    'temper:temper-review': wd => {
+      if (atReview === '') {
+        const rows = (wd.exists('.temper/evidence/build.json') ? wd.json('.temper/evidence/build.json') : []) as unknown as Json[]
+        const suite = (Array.isArray(rows) ? rows : []).filter(r => r?.claim === 'Integration suite' && r?.executed_by === 'cli')
+        atReview = suite.length > 0 ? `suite exit ${suite[suite.length - 1]!.exit_code}` : 'no suite row the CLI ran'
+      }
+      reviewDone(wd)
+    },
     'temper:temper-check': wd => {
       t(wd, `evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
       t(wd, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
@@ -997,6 +1007,7 @@ export const fixRun = (w: World): void => {
     launchByHand(w, agents, 'temper:temper-rca')
     orchestrate(w, fixScript)
   }
+  expect(atReview === 'suite exit 0', `W23 the suite ran before the Review agent was launched: the Fix agent's after calls left the CLI's suite row in the Build ledger (${atReview || 'no Review launch'})`)
   expect(asked[0] === 'RCA: the root cause and the proposed fix are on the card. Approve the fix?', `the RCA question is the approval (${asked[0] ?? 'not asked'})`)
   expect(ids.join(',') === 'rca.approve,commit.confirm' && w.counts.dialogs === 2,
     `the bug run asks the root cause with the fix, then the commit, and nothing else (${ids.join(', ')}; ${w.counts.dialogs} dialogs)`)
@@ -1005,6 +1016,57 @@ export const fixRun = (w: World): void => {
   const own = Number(w.run('git rev-list --count main..HEAD').out.trim() || '0')
   expect(branch === 'fix/bug' && own > 0 && w.sh('git log --format=%s -n 1').startsWith('fix(bug):'),
     `the fix is committed on fix/bug, off main (on ${branch}, ${own} commits beyond main: ${w.sh('git log --format=%s -n 1').trim()})`)
+}
+
+// WP23: a fault of the environment met when Build ends, in a run that goes on by itself (the person approved with
+// the recommended approve-run). The suite passes on the base and at every group; once the last task agent returned,
+// its setup line fails (`temper-setup: FAIL`, exit 125), so `integrate` meets the fault. The run makes a recorded
+// stop at Build and asks the setup question; no fix agent is launched for it. The person repairs the environment (the
+// flag goes) and answers check-again: integrate and the Build gate run again, pass, and the run goes on to the commit.
+export const setupAtBuild = (w: World): void => {
+  const down = `${w.dir}.env-down`
+  startProject(w, '', wd => {
+    wd.write('suite.sh', `[ -f '${down}' ] && { echo 'temper-setup: FAIL (exit 1)'; exit 125; }\n${wd.read('suite.sh')}`)
+    wd.sh('git add suite.sh && git commit -qm "the suite meets the setup line"')
+  })
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-build-task': (wd, a) => {
+      buildTask(wd, a)
+      if (tasksOf(a).includes(2)) fs.writeFileSync(down, '')
+    },
+  }
+  const met: string[] = []
+  let stopped = ''
+  let mode = ''
+  let ids: string[] = []
+  let said = ''
+  const end = orchestrate(w, script({
+    agents,
+    stopAt: (_wd, n) => n.stage === 'commit',
+    person: (ask, wd) => {
+      const id = String(ask.id ?? '')
+      met.push(id)
+      if (!id.startsWith('build.')) return recommended(ask, wd)
+      if (ids.length === 0) {
+        ids = ((ask.options ?? []) as Json[]).concat(((ask.more?.options ?? []) as Json[])).map(o => String(o.id ?? ''))
+        said = String(ask.question?.question ?? '')
+        const log = (wd.exists('.temper/rule-log.json') ? wd.json('.temper/rule-log.json') : []) as unknown as Json[]
+        stopped = (Array.isArray(log) ? log : []).some(e => e?.kind === 'stop' && e?.stage === 'build') ? 'recorded' : 'not recorded'
+        mode = String(wd.json('.temper/build-state.json').run_mode ?? '')
+      }
+      if (fs.existsSync(down)) fs.unlinkSync(down)   // the person repairs the environment
+      // with no check-again to pick the person stops here, and the checks below say what the question was
+      return ids.includes('check-again') ? pickId(wd, ask, 'check-again') : null
+    },
+  }))
+  const builds = met.filter(i => i.startsWith('build.'))
+  expect(builds.length === 1, `W23 the fault at integrate asks one question at Build (${met.join(', ')})`)
+  expect(['check-again', 'it-is-the-code', 'save'].every(i => ids.includes(i)) && /SETUP/.test(said),
+    `W23 it is the setup question: SETUP, with check-again, it-is-the-code and save (${ids.join(', ')}: ${said.slice(0, 160)})`)
+  expect(stopped === 'recorded' && mode === 'autonomous', `W23 the unattended run made a recorded stop there (${stopped}, run_mode ${mode || 'unset'})`)
+  expect((w.counts.launches['temper:temper-build'] ?? 0) === 0, `W23 no fix agent is launched for a fault of the environment (${w.counts.launches['temper:temper-build'] ?? 0})`)
+  expect(end.stage === 'commit', `W23 after the repair and check-again the run goes on to the commit (${end.action} ${end.stage ?? ''})`)
 }
 
 // WP17: a trivial request is a verdict the CLI records. The Intent agent calls `temper intent trivial --why TEXT`,

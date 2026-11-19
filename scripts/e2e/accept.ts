@@ -793,6 +793,7 @@ export const acceptanceWrongTest = (w: World): void => {
   const writer = launchesOf(w, 'temper:temper-acceptance', p => /^Correction:/m.test(p))
   const reviewAt = launchesOf(w, 'temper:temper-review')[0]?.at ?? -1
   expect(writer.length === 1 && reviewAt > writer[0]!.at, `D21 one writer launch corrects the test, then Review (${writer.length} writer launches; Review at ${reviewAt})`)
+  expect(triage.length === 1 && reviewAt > triage[0]!.at, `D21 the wrong locked test is met at integrate: its triage comes before the first Review launch (triage at ${triage[0]?.at ?? 'none'}; Review at ${reviewAt})`)
   expect(launchesOf(w, 'temper:temper-build-task').length === 2 && launchesOf(w, 'temper:temper-build').length === 0,
     'D21 no builder is launched for the wrong test')
   expect(seen.ids.filter(i => !asked.includes(i)).join(',') === 'plan.approve,commit.confirm' && ended(w), `D21 the run asks the approval, the one question and the commit (${seen.ids.join(', ')})`)
