@@ -573,7 +573,8 @@ bash -c "$STAMP" >/dev/null 2>&1
 assert_eq "WP23: the triage says the code is wrong: no question; the CLI's own fix pass comes next" "fix pass" \
   "$(nx "'fix pass' if d['action'] in ('auto', 'work') and (any(a['type'] == 'temper:temper-build' for a in d.get('agents') or []) or any('state redo build' in c for c in d.get('calls') or [])) else d['action']")"
 gfail build "acceptance tests written before Build" "FAIL: test_ac01 AssertionError: another failure"
-assert_eq "9.8.0: a new failure gets a new triage" "work" "$(nx "d['action']")"
+assert_eq "9.8.0: a new failure gets a new triage" "work|temper:temper-acceptance|triage" \
+  "$(nx "a = (d.get('agents') or [{}])[0]; '|'.join([d['action'], str(a.get('type')), 'triage' if 'Triage: a locked acceptance test fails at Build' in a.get('prompt', '') else 'no triage'])")"
 
 # every state the intent lists is named in an acceptance test
 f9_tasks | m_setup

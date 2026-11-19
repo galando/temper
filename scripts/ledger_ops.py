@@ -170,7 +170,7 @@ def write_verdict(argv):
     with open(tmp, 'w') as fh:
         json.dump(d, fh, indent=2)
     os.replace(tmp, f)
-    if verdict == 'FAIL':   # WP23: one failure record per failed row that no run recorded yet
+    if verdict:   # WP23: one failure record per failed row that no run recorded yet; a row that passes resolves its own
         try:
             import importlib.util   # by its full path, no folder on the import path (this module runs isolated)
             spec = importlib.util.spec_from_file_location('failure', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'failure.py'))
