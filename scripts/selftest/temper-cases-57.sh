@@ -90,6 +90,15 @@ assert_eq "w15 spec commit -- FILE...: the commit holds the files named, and a f
   "0|src/demo.sh,src/old.sh|A  unrelated.txt" \
   "$_rc57|$(git show --name-only --format= HEAD | sort | paste -sd, -)|$(git status --porcelain -- unrelated.txt)"
 
+# --- spec commit 'msg' with no files: the commit holds the spec folder and nothing staged before it (phase 4b) ---
+fresh; rm -f unrelated.txt; _repo57
+printf '# Plan: demo\n' > .temper/specs/demo/plan.md
+echo staged > unrelated.txt; git add unrelated.txt
+_rc57="$("$TEMPER" spec commit 'docs(spec): demo' >/dev/null 2>&1; echo $?)"
+assert_eq "w15 spec commit with no files: the commit holds the spec folder, and a file staged before stays staged" \
+  "0|spec|A  unrelated.txt" \
+  "$_rc57|$(git show --name-only --format= HEAD | sed 's|^\.temper/specs/demo/.*|spec|' | sort -u | paste -sd, -)|$(git status --porcelain -- unrelated.txt)"
+
 # --- group take-out: only the newest commits of the group's branch it is given ---
 f9_tasks | m_setup
 _wt57="$(python3 -B -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('worktree') or '')" 2>/dev/null)"
@@ -171,6 +180,19 @@ fresh; gpass intent plan build review check commit
 git add -A >/dev/null 2>&1; git -c user.email=t@example.com -c user.name=T commit -qm "the spec is committed" >/dev/null 2>&1
 _at commit
 assert_eq "w16 step kinds: the report step carries the kind show-last beside the steps of next and go, and no other step is untyped text"   "show-last:0|show-last:0" "$(_kinds57)"
+_vkinds57() { # the view's work action: its steps and its step_kinds, as `temper next --json` gives them
+  python3 -B - "$("$TEMPER" next --json 2>/dev/null)" <<'PY'
+import json, sys
+try:
+    d, v = json.loads(sys.argv[1]), json.load(open(".temper/view.json")).get("next") or {}
+except (OSError, ValueError):
+    d, v = {}, {}
+print("%s|%s|%s" % (v.get("action"), ",".join(k for k in v.get("step_kinds") or [] if k) or "none",
+                    "same" if (v.get("steps"), v.get("step_kinds")) == (d.get("steps"), d.get("step_kinds")) else "differ"))
+PY
+}
+assert_eq "w16 step kinds: the view's work action carries step_kinds beside its steps, as next gives them" \
+  "work|show-last|same" "$(_vkinds57)"
 "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
 assert_eq "w16 step kinds: the no record note carries the kind note beside the steps of next and go, and no other step is untyped text"   "note:0|note:0" "$(_kinds57)"
 

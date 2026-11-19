@@ -258,6 +258,8 @@ def view(run, nxt):
         "rule_log": [x for x in read_json(os.path.join(TEMPER, "rule-log.json"), []) if isinstance(x, dict)],
         "time": {"started": r.state.get("started") or r.state.get("created"), "updated": r.state.get("updated")},
     }
+    if nxt.get("action") == "work" and nxt.get("step_kinds"):
+        out["next"]["step_kinds"] = nxt["step_kinds"]   # the kind of each step beside `steps` (flow_base.step_kinds)
     return out
 
 

@@ -8,6 +8,8 @@
 // `typed` calls; a failed call, a question nobody answered or a bound ends as a saved stop that says what stopped. The
 // CLI holds the run, the driver holds nothing. Pure: the engine is reached through `Port`.
 
+import { typedText } from './answers'
+
 // 9.8.5: the CLI's ids. A question of `temper go` has its `id` and `kind` beside `question`; each option its `id`, and a
 // `kind` when the driver acts on it (more, accept, cancel, carry, type). A question goes to the dialog exactly as given,
 // so it holds no id: a reason, name or Blocking question has its ids beside it (`reason_ids`, `answer_ids`,
@@ -367,8 +369,9 @@ function* answer(cli: string, q: GoAsk, depth = 0, back: GoAsk | null = null): S
     // A typed answer is a change request by rule: the question's typed calls carry it (a note for the next agent, and
     // at a stage that writes the work, the stage run again with it), then the CLI says what comes next.
     const typed = q.typed?.calls ?? []
-    if (typed.length === 0 || picked.trim() === '') return saved('a typed answer, at a question that takes none')
-    const failed = yield* runAll(typed, { text: picked.trim() })
+    const text = typedText(picked)
+    if (typed.length === 0 || text === '') return saved('a typed answer, at a question that takes none')
+    const failed = yield* runAll(typed, { text })
     return failed === null ? null : saved(`a call of your typed answer failed: ${failed}`)
   }
   yield { k: 'record', q: q.question, answer: picked }

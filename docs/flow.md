@@ -257,7 +257,9 @@ resolved only when four things hold: COMMIT is a commit; it is an ancestor of HE
 HEAD (the `head` of `review_snapshot`, written as the run enters Review; with no snapshot the call is refused); and
 it is in `cli_commits` of `.temper/groups.json`. The mark stores the full id. Each refusal is one `FAIL:` line that
 names the check and the short ids. No commit of the CLI meets the last two yet, so a finding ends by the person's
-accept, or by a loop back to Build and a second Review. With the mod, the call is never a tool call.
+accept, or by a loop back to Build and a second Review. With the mod, the call is refused as a tool call in a
+`/temper` or `/temper:fix` run; with no run, the mod lets it through and the CLI refuses it, as no commit of the CLI
+is recorded.
 
 **Review names the files it read (WP18).** `temper review files` prints the changed files of the run, one a line: the
 commit gate's set (since `base_sha`, plus uncommitted and untracked files) less `.temper/` and `.claude/` and less

@@ -419,6 +419,27 @@ assert_eq "card: the tree row states HEAD and the count of files not committed, 
   "HEAD is commit $(git rev-parse --short HEAD); 1 file not committed yet" \
   "$(_x56 "r = ' '.join(str(x.get('text')) for x in rows('tree'))")"
 
+# --- the commit card's FILES section draws one row a line with its mark, never the approval's group layout ---
+_commit56
+mkdir -p src/auth; echo 'echo b' > src/b.sh; echo 'total = 1' > src/auth/totals.py
+_cf56_text="$("$TEMPER" card 2>/dev/null)"
+assert_eq "card: the commit card's FILES rows are one a line, a file outside the plan and a sensitive file each its own" \
+  "lines=2|b=whole|auth=whole, sensitive" \
+  "$(X56="$_cf56_text" python3 -B -c "import os
+lines = os.environ['X56'].split('\n')
+at = next((i for i, l in enumerate(lines) if l.startswith('FILES')), None)
+body = []
+for l in lines[at + 1:] if at is not None else []:
+    if not l.strip():
+        break
+    body.append(l)
+b = [l for l in body if 'src/b.sh' in l]
+a = [l for l in body if 'src/auth/totals.py' in l]
+print('lines=%d|b=%s|auth=%s' % (len(body),
+    'whole' if b == [' src/b.sh (outside the plan)'] else repr(b),
+    'whole, sensitive' if len(a) == 1 and a[0].startswith(' src/auth/totals.py (outside the plan) ')
+    and a[0].endswith('[sensitive]') and 'src/b.sh' not in a[0] else repr(a)))")"
+
 # --- a cut files section counts the files it leaves out, not its rows ---
 fresh
 _tasks56 "$(_group56 G1 true 1 "$(printf '`src/f%d.sh`, ' 1 2 3 4 5 6 7)\`src/f8.sh\`" true)" \

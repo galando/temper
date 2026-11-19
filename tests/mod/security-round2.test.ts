@@ -111,6 +111,15 @@ describe('evidence resolve is refused for the session and for every agent', () =
   for (const cmd of calls) {
     test(`in a fix run: ${cmd}`, () => expect('deny' in evaluate(null, { ...ctx, fixRun: true }, { tool: 'Bash', input: { command: cmd } })).toBe(true))
   }
+  // An unquoted glob that bash may expand to `resolve` (or `evidence`) once a file of that name exists is refused in a
+  // fix run too, as it is in a /temper run.
+  for (const cmd of [
+    'scripts/temper evidence res?lve --stage review --id 1 --fixed-by HEAD',
+    'scripts/temper evidence res[o]lve --stage review --id 1 --fixed-by HEAD',
+    'scripts/temper evid?nce resolve --stage review --id 1 --fixed-by HEAD',
+  ]) {
+    test(`in a fix run, a glob: ${cmd}`, () => expect('deny' in evaluate(null, { ...ctx, fixRun: true }, { tool: 'Bash', input: { command: cmd } })).toBe(true))
+  }
   test('the control: evidence list and evidence add at Review are allowed', () => {
     expect('deny' in run('scripts/temper evidence list --stage review', 'review')).toBe(false)
     const add = `scripts/temper evidence add --stage review --claim 'review completed' --exit 0`

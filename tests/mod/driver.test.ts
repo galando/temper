@@ -3,7 +3,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driverThrew, logRows, recordedVerdict, driveFix, fill, fixSlug, parseGo, rcaPrompt, shq, slugOf, stepPlan } from '../../hooks/temper-mod/core/driver'
 import type { AgentEnd, DriveEnd, GoAgent, GoAsk, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
-import { deriveView, runFiles } from './run-files'
+import { answersIn } from '../../hooks/temper-mod/core/answers'
+import { parseRunView } from '../../hooks/temper-mod/core/runview'
+import { deriveView, runFiles, view } from './run-files'
 import { world } from './world'
 import { VIEWS } from '../../scripts/selftest/view-fixtures'
 
@@ -443,6 +445,28 @@ describe('a run leaves the driver only for a hand back kind (WP16)', () => {
     expect(end).toEqual({ kind: 'done', text: 'end' })
     expect(log.ran).toEqual([`${CLI} go --taken-up`,
       `${CLI} evidence add --stage build --phase note --kind input --claim ${QUOTED}`, `${CLI} state redo build --reason ${QUOTED}`, `${CLI} go`])
+  })
+
+  // A typed answer with spaces in a row and new lines: the driver fills {text} as the guard reads the answer (one space
+  // for each run of white space), so the call it runs is the call the guard allows.
+  const SPACED = '  only   admins\n  may reset\t a password  '
+  test('a typed answer with spaces in a row and new lines fills {text} with one space for each run of them', async () => {
+    const ask = gateAsk('build', { calls: [note('build')], again: false })
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'build', ask }, { action: 'none', say: 'end' }], answers: [SPACED] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.ran).toContain(`${CLI} evidence add --stage build --phase note --kind input --claim 'only admins may reset a password'`)
+  })
+  test('the same typed answer at the Context check runs the very call the guard allows for it', async () => {
+    const raw = loose<{ ask: GoAsk }>(view('context-check'))
+    const rv = parseRunView(JSON.stringify(view('context-check')))
+    if (rv === null) throw new Error('no view context-check')
+    const q = raw.ask.question
+    const allowed = answersIn({ result: { questions: [{ header: q.header, question: q.question }], answers: { [q.question]: SPACED } } }, rv)
+    const call = allowed[0]?.kind === 'gate' ? allowed[0].option.calls[0] : undefined
+    expect(call).toBe("/plugin/scripts/temper plan review --answer 'only admins may reset a password' --redo")
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'plan', ask: raw.ask }, { action: 'none', say: 'end' }], answers: [SPACED] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.ran).toContain(call as string)
   })
 
   test('a typed answer where the same question comes again (again): the note runs, and the question is asked again', async () => {
