@@ -271,9 +271,22 @@ class WorkPart:
         return "build" if self.r.stage in ("build", "fix") else "check"
 
     def env_records(self, stage=None):
-        """WP23: the open failure records of class environment of the stage's gate (scripts/failure.py)."""
+        """WP23: the open failure records of class environment of the stage's gate (scripts/failure.py) that still stand: a
+        record whose command passed later in the stage's ledger (a repair on the same key, which leaves it open), or whose
+        row a step back took off the ledger while the gate is not failed, is no fault of the run now."""
         st = stage or self.check_stage()
-        return [x for x in failure.open_records(scope="gate:%s" % st) if x.get("class") == "environment"]
+        rows = read_json(os.path.join(TEMPER, "evidence", "%s.json" % st), [])
+        rows = rows if isinstance(rows, list) else []
+        failed = (self.r.gates.get(st) or {}).get("verdict") == "FAIL"
+
+        def stands(x):
+            m = re.match(r"^%s#(\d+)$" % st, str(x.get("row") or ""))
+            i = int(m.group(1)) if m else len(rows)
+            r = rows[i] if i < len(rows) and isinstance(rows[i], dict) else {}
+            if not r or (r.get("key") or "") != (x.get("key") or ""):
+                return failed or not x.get("row")
+            return not any(isinstance(y, dict) and y.get("cmd") == r.get("cmd") and y.get("exit_code") == 0 for y in rows[i + 1:])
+        return [x for x in failure.open_records(scope="gate:%s" % st) if x.get("class") == "environment" and stands(x)]
 
     def setup_fault(self, stage=None):
         """9.8.5 (Q6): the reason the latest run of the stage's checks hit the environment (a `setup fault:` row after its last
@@ -584,11 +597,11 @@ class WorkPart:
     def acc_failure(self):
         """(detail, digest) when the gate of the stage the run is at (Build, where integrate ran them, or Check) failed on
         the locked acceptance tests and on nothing else, they were not changed after the lock and are not reopened: a test
-        or the code is wrong. Else None."""
+        or the code is wrong. Else None; also when the environment failed them (WP23: the setup question comes first)."""
         d = self.acceptance()
         rows = self.r.failed_rows(self.check_stage())
         acc = [x for x in rows if str(x.get("name", "")).startswith("acceptance tests written before Build")]
-        if not d.get("cmd") or d.get("reopened") or not acc or len(acc) != len(rows):
+        if not d.get("cmd") or d.get("reopened") or not acc or len(acc) != len(rows) or self.setup_fault():
             return None
         detail = str(acc[0].get("detail", ""))
         if detail.startswith(("changed after they were locked", "reopened")):

@@ -160,11 +160,13 @@ def of_row(stage, scope, check, r, index=None, setup=None, root=None, kind=None)
 
 
 def resolve_pass(scope, check, key, root=None):
-    """A pass of the same check and scope on another key resolves the open records of that check (WP23, rule 6)."""
+    """A pass of the same check and scope on another key resolves the open records of that check (WP23, rule 6); a record
+    with no key (a task's, a gate row's) is resolved by any pass."""
     def fix(recs):
         n = 0
         for x in recs:
-            if x.get("resolved") is None and x.get("scope") == scope and x.get("check") == check and (x.get("key") or "") != (key or ""):
+            if x.get("resolved") is None and x.get("scope") == scope and x.get("check") == check and (
+                    not x.get("key") or x.get("key") != (key or "")):
                 x["resolved"] = {"by": "pass", "key": key or "", "ts": _now()}
                 n += 1
         return n
@@ -173,12 +175,21 @@ def resolve_pass(scope, check, key, root=None):
     return _change(fix, root)
 
 
+SKIP_SCOPE = {"base-suite": "base", "plan-command": "plan-command"}
+
+
 def resolve_skip(stage, reason, root=None):
-    """The person's skip of a stage's check, with the reason: it resolves the open records of that stage."""
+    """The person's skip of a stage's check, with the reason: it resolves the open records of that stage; the skip of a
+    red base (base-suite) or of a plan command (plan-command) resolves the records of that scope, and no stage's skip does."""
+    def hit(x):
+        if stage in SKIP_SCOPE:
+            return x.get("scope") == SKIP_SCOPE[stage]
+        return x.get("scope") not in SKIP_SCOPE.values() and (x.get("stage") == stage or x.get("scope") == "gate:%s" % stage)
+
     def fix(recs):
         n = 0
         for x in recs:
-            if x.get("resolved") is None and (x.get("stage") == stage or x.get("scope") == "gate:%s" % stage):
+            if x.get("resolved") is None and hit(x):
                 x["resolved"] = {"by": "person", "reason": reason, "ts": _now()}
                 n += 1
         return n
@@ -208,11 +219,14 @@ ROW_CHECK = {"integration": "suite", "tests pass": "suite", "acceptance tests wr
 
 def of_gate(stage, reqs, root=None):
     """A failed gate: one record per failed row that no run recorded yet (an open record of the stage's gate with the
-    row's check)."""
+    row's check). A row that passes resolves the records of its own (row:<name>)."""
+    scope = "gate:%s" % stage
+    passed = {"row:%s" % x.get("name") for x in reqs if isinstance(x, dict) and x.get("pass") is True}
+    for check in {x.get("check") for x in open_records(scope=scope, root=root)} & passed:
+        resolve_pass(scope, check, "", root)
     rows = [x for x in reqs if isinstance(x, dict) and x.get("pass") is False]
     if not rows:
         return
-    scope = "gate:%s" % stage
     have = {(x.get("scope"), x.get("check")) for x in open_records(root=root)}
     for x in rows:
         name = str(x.get("name") or "")
@@ -264,6 +278,26 @@ def of_group(gid, reason, timeout="", root=None):
         "no-run" if "not every task has passed" in reason or "is parked" in reason else "test-failed"
     return record("build", "group:%s" % gid, "scenario" if "scenario" in reason else "validate", kind, reason,
                   class_by="structure", root=root)
+
+
+def pass_group(gid, root=None):
+    """A passed group gate: its Validate and scenario passed on the key of its latest row (resolve_pass)."""
+    rows = _ledger("build", root)
+    r = next((x for x in reversed(rows) if isinstance(x, dict) and x.get("phase") == "group" and x.get("group") == gid), {})
+    for check in ("validate", "scenario"):
+        resolve_pass("group:%s" % gid, check, r.get("key") or "", root)
+
+
+def triaged_test(stage, root=None):
+    """The triage calls the failing locked test wrong: the open acceptance records of the stage's gate that the code was
+    blamed for are a locked test the triage calls wrong (class plan, kind test-wrong)."""
+    def fix(recs):
+        for x in recs:
+            if x.get("resolved") is None and x.get("scope") == "gate:%s" % stage and x.get("check") == "acceptance" \
+                    and x.get("class") == "code":
+                x.update({"class": KINDS["test-wrong"], "kind": "test-wrong", "class_by": "triage"})
+    if os.path.exists(path(root)):
+        _change(fix, root)
 
 
 def counts(root=None):

@@ -414,7 +414,10 @@ own action (`state redo build`, one repeat of `gate:build`), and then the run as
 failed suite or a measured coverage drop (`code`, when they are the only failed rows) gets the same one fix pass by
 rule; in a run the person drives it asks (row `D41`). Any other failure asks as before (a run that goes on by itself
 stops). A class never changes a verdict: a record is resolved only by a pass of the same
-check and scope on another key, or by the person's skip with its reason. The fix pass prompts take `why` and the
+check and scope on another key (a record with no key, of a task or a gate row, by any pass of it), or by the person's
+skip with its reason (`base-suite` resolves the record of a red base, `plan-command` that of a plan command, a stage's
+skip the records of that stage). A record of class `environment` whose command passed later in the stage's ledger (the
+person repaired it, on the same key) stays open, but it no longer picks the step. The fix pass prompts take `why` and the
 failing lines from the records; a step back names the record ids it carries (`records` of the loop); `temper output
 <stage>`, the view (`failures`: the open records, with what a rule did), the end of run report and the run summary
 (`failures`, counts by class) show them.

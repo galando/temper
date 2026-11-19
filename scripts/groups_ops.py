@@ -198,6 +198,8 @@ def group_gate(d, a, task_status):
     g = d.setdefault('groups', {}).setdefault(a[0], {})
     if a[1] != 'PASS':
         record('of_group', a[0], a[2], a[3])
+    else:   # WP23: a pass resolves the group's records
+        record('pass_group', a[0])
     g['gate'] = {'verdict': a[1], 'ts': a[4]}
     if a[1] == 'PASS':
         g['status'] = 'passed'
@@ -318,6 +320,7 @@ def task_pass(d, a, task_status):
         'ms': num(a[3]), 'ts': a[4]})
     task_status(t, 'passed')
     t['passed_at'] = a[4]
+    record('resolve_pass', 'task:%s' % a[0], 'task-test', '')   # WP23: a pass resolves the task's records
     t['commit'] = a[7] or None
     for x in (a[5], a[6]):
         if x:

@@ -804,6 +804,12 @@ def acc_triage(spec, lockfile, text):
     d["triage"] = {"verdict": m.group(1).lower(), "reason": " ".join(m.group(2).split())[:300],
                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     acc_write(lockfile, d)
+    if d["triage"]["verdict"] == "test":   # WP23: a locked test the triage calls wrong is a record of class plan
+        try:
+            root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(lockfile))))
+            _failures().triaged_test(stage_label(root).lower(), root)
+        except Exception:
+            pass
     print("OK: triage recorded: the %s looks wrong" % d["triage"]["verdict"])
     return 0
 
