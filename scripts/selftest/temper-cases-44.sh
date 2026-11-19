@@ -368,17 +368,28 @@ assert_eq "D31d no call a rule makes approves an edit: plan amend refuses, repai
   "amend=$_d31d_amend|repair=$_d31d_repair|loop=$_d31d_loop|integrate=$_d31d_integ|set=$_d31d_set"
 _digests44() { _x44 "o = opt(d, 'approve-run') or opt(d, 'ask-every-stage') or {}; r = ' '.join(re.findall(r'--shown \S+', ' '.join(o.get('calls') or []))) or 'none'"; }
 _d31e=""
+_e44_task='- [x] done task\n\n### Task 2: more\n**File:** `src/demo.sh`\n**Test:** `true`'
+_e44_said='- How long does the demo wait? -> two seconds (the person, 2026-01-01)'
+_e44_said+='\n\n### Assumptions\n- The demo runs on one machine (because no rule was given)'
+# every section of the card built from intent.md or tasks.md is shown: the demo intent gets an assumption and an answer
+# of the person, as the Intent agent and scripts/answer_ops.py write them; launches counts the tasks of tasks.md
 for _e in 'criteria:intent.md:s/demo criterion one/demo criterion one and more/' \
   'out_of_scope:intent.md:s/Out of scope: production behavior/Out of scope: production and staging/' \
-  'files:tasks.md:s|`src/demo.sh`|`src/demo2.sh`|' 'commands:tasks.md:s|^\*\*Validate:\*\* `true`|**Validate:** `true; true`|'; do
-  fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+  'assumptions:intent.md:s/runs on one machine/runs on two machines/' \
+  'answers:intent.md:s/-> two seconds (the person/-> three seconds (the person/' \
+  'files:tasks.md:s|`src/demo.sh`|`src/demo2.sh`|' \
+  'commands:tasks.md:s|^\*\*Validate:\*\* `true`|**Validate:** `true; true`|' \
+  "launches:tasks.md:s|^- \\[x\\] done task\$|$_e44_task|"; do
+  fresh; sed -i "s/^### Decisions\$/### Decisions\n$_e44_said/" .temper/specs/demo/intent.md
+  gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
   _s="${_e%%:*}"; _f="${_e#*:}"; _f="${_f%%:*}"
   _shown="$(_x44 "r = 'shown' if section(d.get('card'), '$_s') else 'no section'")"
   _before="$(_digests44)"; sed -i "${_e#*:*:}" ".temper/specs/demo/$_f"; _after="$(_digests44)"
   _d31e+="$_s=$_shown,$([[ "$_before" != none && "$_before" != "$_after" ]] && echo changed || echo "$_after")|"
 done
 assert_eq "D31e an edit of the source line of a row of the approval card changes the digest the approving call carries" \
-  "criteria=shown,changed|out_of_scope=shown,changed|files=shown,changed|commands=shown,changed|" "$_d31e"
+  "criteria=shown,changed|out_of_scope=shown,changed|assumptions=shown,changed|answers=shown,changed|$(
+  )files=shown,changed|commands=shown,changed|launches=shown,changed|" "$_d31e"
 fresh; sed -i 's/^\*\*Status:\*\* accepted/**Status:** draft/' .temper/specs/demo/intent.md
 gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gfail plan "tasks agree with decisions" "a task names no decision"
 _d31f_skip="$(_calls44 override)"
