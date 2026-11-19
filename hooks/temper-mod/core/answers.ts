@@ -45,6 +45,10 @@ function asks(a: Ask | null, check: Ask | null = null): Ask[] {
 // A word for a shell, in single quotes: a typed answer is data, so no character of it is code.
 const quote = (text: string): string => `'${text.replace(/'/g, `'\\''`)}'`
 
+// A typed answer as a call carries it: one space for each run of white space, none at either end. The guard reads the
+// answer so (answersIn) and the driver fills {text} so, so the call the driver runs is the call the guard allows.
+export const typedText = (answer: string): string => answer.replace(/\s+/g, ' ').trim()
+
 const DRIFT_CHOICE: Record<string, DriftChoice> = { 'Add to plan': 'add', Revert: 'revert', 'Allow once': 'allow-once' }
 
 // The value of a `Label: value` line of a question.
@@ -81,7 +85,7 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
     // The Context check, answered by typing: the call the CLI wrote for a typed answer, filled with the text, quoted.
     const check = view.contextCheck
     if (check !== null && same(check.ask.question, q.header, q.question) && !check.ask.options.some(o => o.label === answer)) {
-      const text = answer.replace(/\s+/g, ' ').trim()
+      const text = typedText(answer)
       if (text !== '' && text.length <= MAX_ANSWER && answer !== CANCEL && check.answer !== '') {
         const option: Option = {
           id: null, kind: null, recommended: false, label: text, description: '', move: 'answer', steps: [], reasonQuestion: null, answerQuestion: null, skill: null,
