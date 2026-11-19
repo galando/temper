@@ -446,9 +446,10 @@ def worktree(root):
     return os.path.join(wt, pre).rstrip("/"), ""
 
 
-def picked(out, rc):
-    """The lines that say what failed, picked by pattern (task_ops.fail_lines without its fallback to the last lines)."""
-    lines = run_env.fail_lines(out if isinstance(out, bytes) else str(out).encode(), 8, rc)
+def picked(out, rc, keep=8):
+    """The lines that say what failed, picked by pattern (task_ops.fail_lines without its fallback to the last lines); at
+    most `keep` of them, every one with keep None."""
+    lines = run_env.fail_lines(out if isinstance(out, bytes) else str(out).encode(), keep, rc)
     pats = (run_env.FAIL_LINE,) + tuple(run_env.SUMMARY)
     return [x for x in lines if x.startswith("the command did not finish") or any(p.search(x) for p in pats)]
 
@@ -759,8 +760,20 @@ def plan_run(root, config, spec, started):
         return [c for c, e in p.items() if isinstance(e, dict) and e.get("result") == "running" and entry_alive(e)
                 and e.get("started") != started and (not older or str(e.get("started") or "") < started)]
     d = update(root, own)
-    t0 = time.time()
-    while ((d.get("result") == "running" and alive(d)) or (mine(d) and others(d))) and time.time() - t0 < LIMIT_S:
+    t0, until = time.time(), None
+    while (d.get("result") == "running" and alive(d)) or (mine(d) and others(d)):
+        if d.get("result") == "running" and alive(d):   # the suite, up to the baseline's own limit
+            if time.time() - t0 >= LIMIT_S:
+                break
+        else:   # the older call runs its commands one after another, each up to its own limit (integrate's is an hour)
+            if until is None:
+                try:
+                    lims = {c: lim for c, _, lim in plan_of(root, spec)[0]}
+                except Exception:
+                    lims = {}
+                until = time.time() + sum(limit_for(c, lims.get(c, GROUP_LIMIT_S), root) + 30 for c in others(d))
+            if time.time() >= until:
+                break
         time.sleep(0.5)
         d = read(root)
     try:
@@ -879,8 +892,9 @@ def skip_row(root, ledger, config=""):
     the ledger runs the base's suite and shows only the base's fail lines (all of them, when the base showed none); else
     nothing: the row fails as before. Only after the person went on anyway, in this run."""
     d = read(root)
-    if d.get("answer") != "go-on-anyway" or not (d.get("kind") == "red-base" or isinstance(d.get("exit_code"), int)):
-        return ""   # a fault of the environment check ran no suite on the base: nothing of the suite is known there
+    if d.get("answer") != "go-on-anyway" or not (d.get("kind") == "red-base" or (
+            isinstance(d.get("exit_code"), int) and d.get("exit_code") not in (125, 127))):
+        return ""   # a fault of the environment check, a setup line or a program that did not start ran no test on the base
     try:
         ov = json.load(open(os.path.join(root, ".temper", "overrides.json")))
     except (OSError, ValueError):
@@ -910,7 +924,8 @@ def skip_row(root, ledger, config=""):
     for r in red:
         if not same_suite(r.get("cmd") or "", ref):
             return ""
-        got = picked(str(r.get("output") or "").encode(), r.get("exit_code"))
+        # the ledger holds the whole output: every fail line counts, so a new one after the eighth is no skip
+        got = picked(str(r.get("output") or "").encode(), r.get("exit_code"), None)
         if base and (not got or any(mask(x) not in base for x in got)):
             return ""
         now_lines += got
