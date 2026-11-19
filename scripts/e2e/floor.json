@@ -592,6 +592,83 @@
     }
    }
   },
+  "coverage-drop": {
+   "plain": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "check": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 2
+     },
+     "launch_total": 8,
+     "auto": 8,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "check": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 2
+     },
+     "launch_total": 8,
+     "auto": 8,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   },
+   "driver": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "check": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 2
+     },
+     "launch_total": 8,
+     "auto": 20,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   }
+  },
   "covered-and-manual": {
    "plain": {
     "now": {

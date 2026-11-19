@@ -79,7 +79,7 @@ def main(argv):
     if gate:
         print("%s gate: %s" % (what.capitalize(), gate.get("verdict")))
         for q in gate.get("requirements") or []:
-            if isinstance(q, dict) and not q.get("pass"):
+            if isinstance(q, dict) and q.get("pass") is False:   # a row not measured (pass null) is no failure (WP19)
                 print("  %s: %s" % (q.get("name"), q.get("detail")))
         shown = True
     pick, failed = last_run(tdir, what)

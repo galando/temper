@@ -41,6 +41,10 @@ export function renderPane(kit: Kit, view: View, inline = false): RenderElement 
   const more = (key: string, all: number, n: number) => (inline && all > n ? [<Text key={key} color={MUTED}>{`and ${all - n} more`}</Text>] : [])
   const criteria = cut(view.criteria, 4)
   const decisions = inline ? view.decisions.slice(-3) : view.decisions.slice(-8)
+  // WP19: a check that was not measured, the third state: its own mark, as the CLI's [?]; never a pass, never a failure.
+  const unmeasuredRow = (q: { name: string; detail: string }) => (
+    <Text key={`unmeasured-${q.name}`} color={MUTED}>{`? ${q.name}${q.detail ? `: ${q.detail}` : ''}`}</Text>
+  )
   const section = (key: string, title: string, rows: RenderElement[]) => (
     <Box key={key} flexDirection="column">
       <Text color={MUTED}>{title}</Text>
@@ -151,20 +155,26 @@ export function renderPane(kit: Kit, view: View, inline = false): RenderElement 
         ? section(
             'check',
             'Check',
-            view.markers.map(m => (
-              <Box key={`marker-${m.name}`} flexDirection="column">
-                <Text color={MARKER[m.state][1]}>{`${MARKER[m.state][0]} ${m.name}${m.detail ? `: ${m.detail}` : ''}`}</Text>
-                {cut(m.lines, 2).map((l, i) => (
-                  <Text key={`marker-${m.name}-${i}`} color={ORANGE}>{`    ${l}`}</Text>
-                ))}
-              </Box>
-            )),
+            [
+              ...view.markers.map(m => (
+                <Box key={`marker-${m.name}`} flexDirection="column">
+                  <Text color={MARKER[m.state][1]}>{`${MARKER[m.state][0]} ${m.name}${m.detail ? `: ${m.detail}` : ''}`}</Text>
+                  {cut(m.lines, 2).map((l, i) => (
+                    <Text key={`marker-${m.name}-${i}`} color={ORANGE}>{`    ${l}`}</Text>
+                  ))}
+                </Box>
+              )),
+              ...view.unmeasured.filter(q => !view.markers.some(m => m.name === q.name && m.state !== 'none')).map(unmeasuredRow),
+            ],
           )
-        : view.failedChecks.length > 0
+        : view.failedChecks.length + view.unmeasured.length > 0
           ? section(
               'checks',
-              'Failed checks',
-              view.failedChecks.map((q, i) => <Text key={`check-${i}`} color={ORANGE}>{`✗ ${q.name}${q.detail ? `: ${q.detail}` : ''}`}</Text>),
+              view.failedChecks.length > 0 ? 'Failed checks' : 'Checks not measured',
+              [
+                ...view.failedChecks.map((q, i) => <Text key={`check-${i}`} color={ORANGE}>{`✗ ${q.name}${q.detail ? `: ${q.detail}` : ''}`}</Text>),
+                ...view.unmeasured.map(unmeasuredRow),
+              ],
             )
           : null}
 

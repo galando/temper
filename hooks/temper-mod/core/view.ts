@@ -57,6 +57,8 @@ export type View = {
   detail: string[]
   // The failed checks of the current stage's gate, for the pane.
   failedChecks: Array<{ name: string; detail: string }>
+  // WP19: the checks of Check that were not measured (the third state): neither passed nor failed, drawn `?`.
+  unmeasured: Array<{ name: string; detail: string }>
   groups: GroupRow[] | null
   findings: Array<{ id: string; severity: string; claim: string }>
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string; evidence: string[] }>
@@ -73,7 +75,7 @@ export type View = {
   findingRows: FindingRow[]
   // The fresh review of the plan; null when it does not apply to the run.
   fresh: FreshView | null
-  // The five Check markers: compile, tests, coverage, lint, security.
+  // The Check markers: compile, tests, coverage, lint, security, and the planted bugs as information (WP19).
   markers: Marker[]
   // The person's decisions in this run, as sentences, oldest first.
   decisions: string[]
@@ -179,6 +181,7 @@ export function buildView(input: ViewInput): View {
     status: statusOf(input, stage, wait),
     detail: detailOf(rv, stage, groups, failed),
     failedChecks: failed.map(q => ({ name: q.name, detail: q.detail })),
+    unmeasured: rv.checks.filter(c => c.state === 'not measured').map(c => ({ name: c.name, detail: c.detail })),
     groups,
     findings: rv.findings.filter(f => f.state === 'open').map(f => ({ id: String(f.id), severity: f.severity, claim: f.claim })),
     criteria,

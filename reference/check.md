@@ -44,7 +44,7 @@ missing *optional* tool.
 | 1 | Compile/build | STOP, show error, suggest fix | — |
 | 2 | Unit tests | STOP, show failing names | — |
 | 3 | Integration tests | STOP, show failing tests | none configured |
-| 4 | Coverage vs. `check.coverage-threshold` (default 80) | the gate FAILs without a recorded value | never skipped: with no coverage tool the gate fails until it is installed |
+| 4 | Coverage, judged against the project (below) | the gate FAILs on a measured drop | never skipped: with no coverage tool the row is `not measured`, which fails nothing |
 | 4.5 | **Scenario verification** — see below | BLOCK on FAIL, WARN on MISSING | no intent.md |
 | 4.75 | Heuristic test-gap analysis | WARN | level 2 or 4.5 failed |
 | 4.85 | API diff / contract check | WARN (BLOCK if breaking + consumer not updated) | no API files changed |
@@ -176,10 +176,31 @@ Build while the budget allows, a skip with a reason, and Save for later). This s
   one fixes it, else note it as an accepted risk with a workaround if one exists.
 - **Missing tool:** skip that level, name the missing tool and point to its own install
   page (never print an install command), and never fail the whole pipeline for an
-  optional tool. The two measurements the gate needs are the exception: a test run and a coverage value. When the
-  tool for one is missing, say so in the summary, record nothing and estimate nothing: the gate fails on that row only,
-  and its question offers **Run Check again**. The person installs the tool and picks it; the person never records a
-  number by hand.
+  optional tool. The one measurement the gate needs is the exception: a test run. When its tool is missing, say so
+  in the summary, record nothing and estimate nothing: the gate fails on that row only, and its question offers **Run
+  Check again**. The person installs the tool and picks it; the person never records a number by hand. A coverage
+  that was not measured (no coverage tool, a coverage program that could not start, no base value) is the third
+  state of its row, `not measured`: it fails nothing, passes nothing, and the commit card names it.
+
+### The coverage rule (9.8.5)
+
+`scripts/check_run.py` (`coverage_verdict`) judges coverage by one rule, in this order, decided by the CLI's own probe
+and exit codes, never by output text:
+
+1. The project's config holds `check.coverage-threshold`: the total must reach its value (rule `threshold`). The key
+   counts only when the project's own config holds it; remove the line and coverage is judged against the project.
+2. No coverage command for the stack, or the coverage program could not start (exit 127): `not measured`, with the
+   hint of what to set.
+3. No base value (the baseline's `coverage`, `.temper/evidence/baseline.json`): `not measured`.
+4. Line data and at least 10 changed executable lines: their share that ran must reach the base total, never more
+   than 80 (rule `changed lines`). Line data comes from coverage.py's JSON, Go's profile and `lcov.info` of jest,
+   vitest and c8.
+5. Else the total may be at most 1 point below the base total (rule `total`).
+6. Else `not measured`.
+
+The planted bug score is no row of the gate: `temper check ahead`, beside Review, plants one small bug at a time in
+the changed lines when three runs of the suite fit the budget, and writes `.temper/evidence/mutation.json`. The commit
+card and the Check markers show it as information; it gates nothing and moves nothing.
 
 ## Maven
 

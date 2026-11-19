@@ -31,7 +31,6 @@ review:
   block-on: [critical, high]  # severities that fail the review gate (9.8.5); a finding below them goes on to Check
 
 check:
-  coverage-threshold: 80      # the check gate requires recorded coverage >= this
   # The environment Check runs in. Check stops at once when it is production. With it
   # unset, Check stops when the project holds a .env.production or .env.prod file; it
   # decides from the file name only and never opens a .env file. Set it to development

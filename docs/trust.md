@@ -57,6 +57,13 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   Build runs each task's declared test command in its worktree, the way your shell would, but without the
   environment variables whose names say they hold a credential (a key, a token, a secret, a password,
   credentials, an auth socket): no command the CLI runs is handed your keys.
+- **What Check measures (9.8.5).** A gate row is passed, failed, or `not measured`: a measurement that was not taken,
+  such as coverage with no coverage tool for the stack, a coverage program that could not start, or no base value to
+  judge it against. A row not measured fails nothing and passes nothing; the gate output marks it `[?]`, the mod
+  draws it `?`, and the commit card names it, so a number nobody measured is never shown as passed. Coverage is
+  judged against the project's own base value, not a fixed number, unless your config sets `check.coverage-threshold`.
+  The planted bug score (`temper check ahead`, beside Review, into `.temper/evidence/mutation.json`) is information
+  only: it gates nothing and moves the run nowhere.
 - **Its own commits.** In a grouped Build the CLI commits each task's declared files in its worktree and merges
   them, as plain `git commit` and `git merge` calls that use git's own identity and settings (signing too, when
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none

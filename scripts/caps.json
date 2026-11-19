@@ -32,7 +32,7 @@
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
   "gate_rows": {
-   "now": 57,
+   "now": 52,
    "final": 55,
    "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row( names of the Python scripts, name lines of gate_rows.py"
   },
@@ -52,7 +52,7 @@
    "measure": "measure_listed_skills: skills of .claude-plugin/plugin.json"
   },
   "config_live_keys": {
-   "now": 20,
+   "now": 19,
    "final": 12,
    "measure": "measure_config_live_keys: key lines of the config template that are not comments"
   },
@@ -62,12 +62,12 @@
    "measure": "measure_config_comment_keys: commented key lines of the config template"
   },
   "config_lines": {
-   "now": 162,
+   "now": 161,
    "final": 60,
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 304939,
+   "now": 306548,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
@@ -77,7 +77,7 @@
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 222085,
+   "now": 220309,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

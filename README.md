@@ -32,8 +32,8 @@ You approve the intent and the plan in one question before any code is written, 
 - **Intent:** the rules your request left out (who, when, how much, exceptions) come back as questions with ready answers.
 - **Plan:** tasks a builder can follow without guessing; files outside the plan need your OK.
 - **Build:** tests first; acceptance tests written from your intent before any code, and locked.
-- **Review and Check:** the CLI runs the suite, coverage, a mutation score and the acceptance tests. A red gate blocks
-  `git commit`.
+- **Review and Check:** the CLI runs the suite, coverage judged against your project and the acceptance tests; a
+  planted bug score beside Review is information. A red gate blocks `git commit`.
 
 ## What you get and what it costs
 

@@ -1,4 +1,4 @@
-"""loop_step.py LOOPS_FILE FROM TO REASON TS [LEDGER STATE MUTATION_THRESHOLD]: one step back of `temper state loop`.
+"""loop_step.py LOOPS_FILE FROM TO REASON TS [LEDGER STATE]: one step back of `temper state loop`.
 
 It keeps what the stage left open (Review's findings, Check's failed runs with their output). It counts nothing and
 refuses nothing: a step back from a failed gate spent its repeat of the run's budget in the CLI's dispatcher before this
@@ -44,7 +44,7 @@ def group_failures(loops_file):
     return out
 
 
-def step(f, frm, to, reason, ts, ledger="", state="", mutation_threshold="70"):
+def step(f, frm, to, reason, ts, ledger="", state=""):
     """One step back; returns (exit code, the line to print)."""
     max_per_type = limit(frm)
     d = json.load(open(f))
@@ -87,20 +87,14 @@ def step(f, frm, to, reason, ts, ledger="", state="", mutation_threshold="70"):
 
     def out_of(e):
         # 9.8.0: a failed Check run goes back with the tail of its output (the failing test and its assertion), so the fix pass
-        # sees what failed, not only the name of the run. The mutation score row goes with its surviving mutants.
+        # sees what failed, not only the name of the run. A failed coverage row goes with its verdict (WP19).
         if frm != 'check':
             return ''
         out = ' '.join(str(e.get('output') or '').split())
         return (': ' + out[-600:]) if out else ''
-
-    def low_mutation(e):
-        try:
-            return frm == 'check' and str(e.get('claim')) == 'mutation score' and float(e.get('value')) < float(mutation_threshold)
-        except (TypeError, ValueError):
-            return False
     left = group_failures(f) if frm == 'build' else []
     left += [('[%s] ' % e['severity'] if e.get('severity') else '') + str(e.get('claim', ''))[:300] + out_of(e) for e in rows
-             if open_row(e) or low_mutation(e)]
+             if open_row(e)]
     if left:
         loop['findings'] = left[:20]
     else:
@@ -111,7 +105,7 @@ def step(f, frm, to, reason, ts, ledger="", state="", mutation_threshold="70"):
 
 
 def main(argv):
-    rc, line = step(*argv[1:6], *argv[6:9])
+    rc, line = step(*argv[1:6], *argv[6:8])
     print(line)
     return rc
 

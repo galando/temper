@@ -77,9 +77,10 @@ by none.
      check, accept a finding, answer a scope drift, write the config, push, open a pull request, make the final
      commit, or repair anything in a plan that declares a sensitive path (`autonomy.park-on-touch`, risk H).
    - **The stops.** Every other case is a stop: the park call, then the stage's own question. The rows of
-     `scripts/stops.json` are the list; 20 to 22 join here: a failed check in a plan with a sensitive path, a Check
-     whose only failed row is the mutation row (until WP19 makes the score information), and a run taken up again
-     (`temper go --taken-up`). A stop keeps the mode; its question says the run goes on by itself after the answer,
+     `scripts/stops.json` are the list; 20 and 22 join here: a failed check in a plan with a sensitive path, and a run
+     taken up again (`temper go --taken-up`). Stop 21, `check.mutation-only` (a Check whose only failed row is the
+     mutation row), left with WP19: the planted bug score is information beside Review and no row of Check, so the
+     stop can no longer happen. A stop keeps the mode; its question says the run goes on by itself after the answer,
      and each option ends the stop with `park --end --answer <id>`. Removing a stop needs a decision record.
    - **What ends it.** A skip, an accepted finding, a step back to Intent, Plan or Design (each writes
      `run_mode interactive` in the CLI) and "Ask me at every stage from here". A step back to Build keeps it.

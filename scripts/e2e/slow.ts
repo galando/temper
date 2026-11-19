@@ -18,7 +18,8 @@
 //
 //   slow-first-run (plain, driver), row D11: the default person; the questions asked are plan.approve and commit.confirm
 //     and no other; no line of the tool log has exit 124; at most 3 whole suite runs; Check passed with its coverage row
-//     not measured; no call of the trace steps back to Plan; the config at the end is byte equal to what init wrote.
+//     not measured, which the commit card names so (WP19); no call of the trace steps back to Plan; the config at the
+//     end is byte equal to what init wrote.
 //     WP20 adds (W20): the baseline runs in its own process; the approval card's baseline line shows it as it stands
 //     (`running` when the approval comes first); at the end it is green with its seconds, and no group gate timed out.
 //   slow-at55 (plain), row D12: check.commands set; the coverage command prints backend/coverage-total.txt, which holds
@@ -309,12 +310,15 @@ export const slowFirstRun = (w: World): void => {
   // WP20: the baseline runs in its own process here, as in a session, so the approval may come before it ends
   delete w.env.TEMPER_BASELINE_FOREGROUND
   const seen: Seen = { ids: [], gates: null }
-  const base = defaultPerson(['plan.approve', 'commit.confirm'])
-  const person: Person = (ask, wd) => {
+  // WP19: the text of the commit card, as `temper card` renders it, at the commit question
+  let card = ''
+  const person = watching(defaultPerson(['plan.approve', 'commit.confirm']), seen)
+  const reading: Person = (ask, wd) => {
     if (idOf(ask) === 'plan.approve') baselineLine(wd)
-    return base(ask, wd)
+    if (idOf(ask) === 'commit.confirm') card = wd.run(`python3 -B ${path.join(ROOT, 'scripts/card.py')} text .temper/view.json`).out
+    return person(ask, wd)
   }
-  promise('D11', () => orchestrate(w, mavenScript(mavenAgents(), watching(person, seen))))
+  promise('D11', () => orchestrate(w, mavenScript(mavenAgents(), reading)))
   // WP20: the first group gate read the measured result: the base is green with its seconds, and no gate timed out
   const b = w.exists(BASELINE) ? w.json(BASELINE) : null
   expect(b?.result === 'green' && typeof b?.seconds === 'number' && b.seconds >= Number(SLOW_S),
@@ -332,6 +336,8 @@ export const slowFirstRun = (w: World): void => {
   expect(verdictOf(seen.gates, 'check') === 'PASS', `D11 Check passed on correct code (its verdict: ${verdictOf(seen.gates, 'check') || 'none'})`)
   const cov = rowsOf(seen.gates, 'check').find(r => /^coverage\b/.test(String(r.name)))
   expect(cov !== undefined && cov.pass === null && cov.state === 'not measured', `D11 Check shows its coverage row as not measured (${JSON.stringify(cov ?? null)})`)
+  expect(!seen.ids.some(id => id.startsWith('check.')), `D11 the run never stops at Check (${seen.ids.join(', ')})`)
+  expect(/coverage: not measured/i.test(card), `D11 the commit card text holds coverage: not measured (${card.split('\n').filter(l => /coverage/i.test(l)).join(' / ').slice(0, 200) || 'no coverage line'})`)
   const back = stepsBackToPlan(w)
   expect(back.length === 0, `D11 no call of the trace steps back to Plan (${back[0] ?? ''})`)
   const cfg = w.exists('.claude/temper.config') ? w.read('.claude/temper.config') : ''

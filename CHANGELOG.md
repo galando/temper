@@ -121,6 +121,22 @@ All notable changes to Temper are documented here. The plugin version lives in
   lines (the row `trivial exit`) until HEAD moves or a run starts. The mod lets no `state clear` through at Intent,
   and writes the one change only while the verdict is recorded; the return word `TRIVIAL` is gone.
 
+- WP19: checks judged against the project. A gate row is passed, failed or not measured: `pass` null with `state:
+  not measured`, printed `[?]`, drawn `?` by the mod, named on the commit card, and never read as passed or failed.
+  Coverage is one row, `coverage`, judged by one rule (`scripts/check_run.py coverage-verdict`): the key
+  `check.coverage-threshold` only when the project's config holds it (its failed row names the key and how to remove
+  it); no coverage command or a coverage program that could not start (exit 127) is not measured, as is no base
+  value; with line data and ten or more changed executable lines, their share that ran reaches the base total (at
+  most 80); else the total may be at most 1 point below the base total. Line data comes from coverage.py's JSON, Go's
+  profile and `lcov.info` (jest, vitest and c8 now write it). A coverage not measured fails nothing, and the run moves
+  on; a measured drop takes the one repair, then asks. The planted bug score is no row of Check: `temper check ahead`
+  plants bugs beside Review only when three runs of the suite fit the budget, writes `.temper/evidence/mutation.json`,
+  and stops 60 s after `check run` starts (`.temper/check/mutation.stop`); `check run` plants none and never waits.
+  The commit card and the Check marker `mutation` show the score as information. The template's
+  `coverage-threshold: 80`, the default 80 in code, the key `check.mutation-threshold`, the row
+  `mutation score >= threshold`, the ledger row of a missing coverage tool and stop 21 (`check.mutation-only`, ADR
+  0019 decision 3) are gone.
+
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the
 CLI took by itself, the steps back, the hand backs of the run driver and the runs of the whole suite.
