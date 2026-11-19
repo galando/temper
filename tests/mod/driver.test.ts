@@ -5,6 +5,7 @@ import { STOPPED, compactPanel, dialogQuestions, dialogQuestionsAll, drive, driv
 import type { AgentEnd, DriveEnd, GoAgent, GoAsk, GoIds, GoOut, GoQuestion, Port } from '../../hooks/temper-mod/core/driver'
 import { deriveView, runFiles } from './run-files'
 import { world } from './world'
+import { VIEWS } from '../../scripts/selftest/view-fixtures'
 
 // WP09: recordedVerdict(call, out) is the rule of `recorded` in scripts/go.py: the verdict when the call is one of
 // `gate <stage>`, `task gate <N>`, `group gate <G>` or `integrate` and the last line of its output that is a marker
@@ -434,6 +435,30 @@ describe('a run leaves the driver only for a hand back kind (WP16)', () => {
     expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
     expect(log.asked.map(x => x.question)).toEqual([ask.question.question, 'Which open finding is kept as it is?', ask.question.question])
     expect(log.ran).toContain(`${CLI} state advance review_complete check`)
+    expect(log.ran.some(c => c.includes('evidence accept'))).toBe(false)
+  })
+
+  // The passed Review question of the CLI (the fixture review-pass): Accept a finding sits in the More question, and the
+  // accept question is on the gate question. Picked from More, it runs the accept step, never a saved stop.
+  const reviewPass = (): GoAsk => loose<{ ask: GoAsk }>(VIEWS['review-pass']).ask
+  test('Accept a finding from the More question asks the accept question and runs its calls', async () => {
+    const ask = reviewPass()
+    expect([ask.more?.options.some(o => o.id === 'accept-finding'), ask.more?.accept === undefined, ask.accept !== undefined]).toEqual([true, true, true])
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'review', ask }, { action: 'none', say: 'end' }],
+      answers: ['More options', 'Accept a finding', 'Accept finding 2', 'I accept the risk'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.asked.map(x => x.question)).toEqual([ask.question.question, ask.more!.question.question, ask.accept!.question.question,
+      'Accept finding 2. What is the reason?'])
+    expect(log.ran).toContain(`/plugin/scripts/temper evidence accept --stage review --id 2 --reason 'I accept the risk'`)
+  })
+  test('Cancel at the accept question of the More question asks the gate question again', async () => {
+    const ask = reviewPass()
+    const { p, log } = port({ goes: [{ action: 'ask', stage: 'review', ask }, { action: 'none', say: 'end' }],
+      answers: ['More options', 'Accept a finding', 'Cancel', 'Continue to Check'] })
+    expect(await drive(p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(log.asked.map(x => x.question)).toEqual([ask.question.question, ask.more!.question.question, ask.accept!.question.question,
+      ask.question.question])
+    expect(log.ran).toContain('/plugin/scripts/temper state advance review_complete check')
     expect(log.ran.some(c => c.includes('evidence accept'))).toBe(false)
   })
 

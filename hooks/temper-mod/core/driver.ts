@@ -351,7 +351,7 @@ function leave(needs: string | undefined, option: string, what: string): DriveEn
 const NAME_ASKS = 20
 
 // One question of the CLI, asked as given; the option's calls run with the person's answer. Returns null when it went on,
-// or how the drive ends. `back` is the question an accept question came from: its Cancel asks that one again.
+// or how the drive ends. `back` is the gate question a More or accept question came from: a Cancel asks that one again.
 function* answer(cli: string, q: GoAsk, depth = 0, back: GoAsk | null = null): Steps<DriveEnd | null> {
   if (depth > 6) return saved('the question went round more than six times')
   const picked = yield* ask(q.question)
@@ -367,8 +367,10 @@ function* answer(cli: string, q: GoAsk, depth = 0, back: GoAsk | null = null): S
   }
   yield { k: 'record', q: q.question, answer: picked }
   const nav = opt.kind ?? opt.needs
-  if (nav === 'more' && q.more) return yield* answer(cli, q.more, depth + 1, back)
-  if (nav === 'accept' && q.accept) return yield* answer(cli, q.accept, depth + 1, q)
+  // The More question holds the options past the fourth (the review's Accept a finding among them); the accept question
+  // the CLI writes on the gate question is its too, and its Cancel asks the gate question again.
+  if (nav === 'more' && q.more) return yield* answer(cli, { ...q.more, accept: q.more.accept ?? q.accept }, depth + 1, back ?? q)
+  if (nav === 'accept' && q.accept) return yield* answer(cli, q.accept, depth + 1, back ?? q)
   if (nav === 'cancel' && back !== null) return yield* answer(cli, back, depth + 1)
   // What the conversation carries out (a skill, the HTML review, a small change, a pull request, a CI fix): nothing of
   // it runs here; the conversation runs it whole, as the answer the person already gave.
