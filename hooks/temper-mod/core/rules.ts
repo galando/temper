@@ -458,6 +458,8 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   // 9.8.5 (WP18): a finding is resolved by the CLI itself, for its own repair commit, where no guard sees it; no
   // answer of the person and no armed run makes the call a tool call, in a /temper run and in a /temper:fix run.
   if (guardsCommit && c.calls.some(call => { const [a, b] = callWords(call); return a === 'evidence' && b === 'resolve' })) return { deny: RESOLVE_DENY }
+  // An unquoted glob that bash may expand to one of its two words is refused in a /temper:fix run too.
+  if (guardsCommit && c.globWords.some(ws => ws.some(w => globCould(w, 'evidence') || globCould(w, 'resolve')))) return { deny: GLOB_DENY }
 
   if (!active) return ALLOW
   // Every pull request is a draft, and Temper never marks one ready (reference/pr.md).
