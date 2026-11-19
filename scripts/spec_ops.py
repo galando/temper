@@ -107,10 +107,12 @@ def commit(spec, message, files=()):
     if r.returncode != 0:
         print("FAIL: git add -- %s: %s" % (" ".join(paths), (r.stderr or r.stdout).strip()[-300:]), file=sys.stderr)
         return 1
-    if git("diff", "--cached", "--quiet").returncode == 0:
+    # named files: the commit holds those and nothing else staged before (the card lists what the commit holds)
+    only = ["--"] + paths if files else []
+    if git("diff", "--cached", "--quiet", *only).returncode == 0:
         print("OK: nothing to commit in %s" % spec)
         return 0
-    r = git("commit", "-q", "-m", message)
+    r = git("commit", "-q", "-m", message, *only)
     out = (r.stdout + r.stderr).strip()
     if r.returncode != 0:
         print("FAIL: git commit: %s" % out[-600:], file=sys.stderr)
