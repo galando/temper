@@ -487,6 +487,13 @@ def commit(b, nxt):
         out.append(sec("suite", "THE SUITE", [cell("%s: %s" % (t.get("cmd") or t.get("claim") or "the tests", what))]))
     else:
         out.append(sec("suite", "THE SUITE", [cell("no run is recorded", "not measured")]))
+    # WP22: a check that failed once and passed when the CLI ran it again at once (its fixed rule, step 9) is listed
+    flaky = [x for f in ("build", "check") for x in load(os.path.join(TEMPER, "evidence", f + ".json"), [])
+             if isinstance(x, dict) and isinstance(x.get("flaky"), dict)]
+    for x in flaky:
+        out[-1]["rows"].append(cell("flaky: %s (%s): %s" % (x.get("claim") or "a check", x.get("cmd") or "",
+                                                           x["flaky"].get("text") or "failed once"), "by rule"))
+        out[-1]["total"] += 1
     out.append(coverage_section(r))
     m = check_run.planted(os.getcwd())   # WP19: information beside Review, of this tree only
     if m is not None:

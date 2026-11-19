@@ -557,6 +557,8 @@ class BuildPart:
         else:
             opts.insert(len(opts) - 1, patch)
         opts.sort(key=lambda o: 0 if o.get("recommended") else 1)   # the recommended option first
+        opts.insert(len(opts) - 1 if opts and opts[-1].get("id") == "save" else len(opts),
+                    self.run_anyway(["group gate %s --fresh" % gid]))   # WP22 (trap 8)
         text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
         if fl:
             text += " What failed: %s." % fl

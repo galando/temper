@@ -417,9 +417,9 @@ class WorkPart:
                     "say": "Check: the CLI runs the suite, coverage and the scenario tests; the Check agent records %d criteria%s." % (len(rec), on_model([a]))}
         a = self.agent(stage, extra)
         if stage == "review" and self.cli_check():
-            # 9.8.0: the CLI runs Check's suite and coverage while Review reads the change (Review writes no code); Check
-            # adopts that run when the tree is unchanged. WP17: in a fix run too (its regression proof). WP19: then the
-            # planted bugs, the one place they run, as information beside Review.
+            # 9.8.0: the CLI runs Check's suite and coverage while Review reads the change (Review writes no code), into
+            # the reuse store, where Check finds the run by its key (WP22). WP17: in a fix run too (its regression
+            # proof). WP19: then the planted bugs, the one place they run, as information beside Review.
             a["before"] = (a.get("before") or []) + [self.c("check ahead")]
         if stage == "design":
             # 9.8.0 (round 5): the CLI draws the stage's panel from the files the agent wrote; the agent draws
@@ -620,6 +620,6 @@ class WorkPart:
     def cli_check(self):
         """True when the CLI can run Check itself: a configured test command, or one it detects for the stack."""
         try:
-            return bool(check_run.detect(os.getcwd(), self.r.cfg("check.commands.test", ""), self.r.cfg("check.commands.coverage", "")))
+            return bool(check_run.det_for(os.getcwd(), self.r.cfg("check.commands.test", ""), self.r.cfg("check.commands.coverage", "")))
         except Exception:
             return False

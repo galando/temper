@@ -180,77 +180,447 @@ def setup_args(cmd, setup):
     return ['bash', '-c', pre + 'exec "$@"', 'temper-setup'] + list(cmd), extra
 
 
-# 9.8.5 (S5): a passing run of a command on a clean tree is kept by the tree's hash, the command and the setup block; the
-# same command on the same tree passes again without running (a measured run ran the same 11,600 tests about eight times).
-# Only a pass is kept; a failure always runs again. A tree with uncommitted changes is never reused.
+# ---- the reuse store (9.8.5, S5; WP22) -------------------------------------------------------------------------------
+# The same command on the same tree runs once. One digest says what "the same tree" is (tree_key: the work tree as it
+# is, without .temper/, .claude/ and the byproducts of a run); the key adds the command text, the setup block, the folder
+# inside the repository, the first version line of each program the command starts and what the caller adds. The store
+# is temper-results.json in the git common folder (one file for every worktree of the clone), changed under a lock file
+# beside it. An entry: {"pass": {"ts", "tail", "seconds", "extra"}, "fail": {"ts", "rc", "tail", "fail_lines", "answer",
+# "class", "limit", "again"}, "flaky", "forced", "last"}. A failure is kept beside the pass and is never a pass; the same
+# failed check on the same key returns the kept failure with its date, but for an environment or a not measured failure
+# (run again at most twice), a time out under a larger limit, and --fresh (TEMPER_FRESH=1, the person's, counted).
+# The byproduct list sits under the reserved key "byproducts"; only the runner writes it.
 RESULTS = 'temper-results.json'
 KEEP = 200
+BYPRODUCTS = 'byproducts'
+OWN = ('.temper', '.claude')
+BUILTINS = {'cd', 'echo', 'true', 'false', 'export', 'test', '[', 'exit', 'set', 'source', '.', 'eval', 'unset', 'printf',
+            'exec', 'env', 'time', 'command', ':', 'trap', 'wait', 'sleep', 'read', 'shift', 'local', 'return'}
+NO_TESTS = re.compile(r'NO TESTS RAN|no tests ran|collected 0 items|^Ran 0 tests', re.M)
+SOURCE_EXT = ('.py', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.go', '.java', '.kt', '.rb', '.rs', '.cs', '.php',
+              '.swift', '.scala', '.sh')
+TEST_DIR_NAMES = ('tests', 'test', 'unit', 'spec', 'acceptance')
+_VERSIONS = {}   # program: its first version line, read once per CLI call (trap 4)
 
 
-def _git(wt, *args):
-    p = subprocess.run(['git', '-C', wt] + list(args), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+def is_test_path(p):
+    """A test source file: a test file name (test_x.py, x_test.go, x.test.ts, x.spec.js, XTest.java), or a source file in a
+    tests folder. Never a compiled or cached file."""
+    if '__pycache__' in p or not p.endswith(SOURCE_EXT):
+        return False
+    b = os.path.basename(p)
+    return bool(re.match(r'^test_.*\.py$|^.*_test\.(py|go)$|^conftest\.py$|^.*\.(test|spec)\.[cm]?[jt]sx?$|^.*Tests?\.(java|kt|cs)$|'
+                         r'^.*_spec\.rb$', b)) or any(part in TEST_DIR_NAMES for part in p.split('/')[:-1])
+
+
+def _git(wt, *args, **kw):
+    p = subprocess.run(['git', '-C', wt] + list(args), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.DEVNULL, env=kw.get('env'))
     return p.stdout.decode('utf-8', 'replace').strip() if p.returncode == 0 else ''
 
 
-def result_key(wt, cmd, setup):
-    tree = _git(wt, 'rev-parse', 'HEAD^{tree}')
-    dirty = [l for l in _git(wt, 'status', '--porcelain', '--untracked-files=all').splitlines()
-             if l[3:] and not l[3:].startswith(('.temper/', '.claude/worktrees/'))]
-    if not tree or dirty:
-        return None
-    import hashlib
-    import json
-    return hashlib.sha256(json.dumps([tree, list(cmd), setup or {}], sort_keys=True).encode('utf-8')).hexdigest()
+def _abs(wt, p):
+    return p if not p or os.path.isabs(p) else os.path.join(wt, p)
 
 
 def _store(wt):
     d = _git(wt, 'rev-parse', '--git-common-dir')
-    return os.path.join(d if os.path.isabs(d) else os.path.join(wt, d), RESULTS) if d else ''
+    return os.path.join(_abs(wt, d), RESULTS) if d else ''
 
 
-def run_cached(wt, timeout, cmd, setup=None, info=None):
-    """(output, exit, reused ts or '') : run_cmd, or the kept pass of the same command on the same clean tree. With a
-    dict `info` (WP20, the baseline): its `seconds` and `coverage` are set, from the run or from the kept pass, and a
-    pass is kept with both; `info["measure"]`, when given, is called with the output of a pass and gives the
-    coverage."""
-    import json
-    import time
-    if setup is None:
-        setup = load_setup()
-    key, path = result_key(wt, cmd, setup), _store(wt)
-    kept = {}
-    if key and path:
+class _Flock:
+    """An exclusive lock of a file, held for a with block (no lock where fcntl is missing)."""
+
+    def __init__(self, path):
+        self.path, self.fd = path, None
+
+    def __enter__(self):
         try:
-            kept = json.load(open(path))
-            kept = kept if isinstance(kept, dict) else {}
-        except (OSError, ValueError):
-            kept = {}
-        hit = kept.get(key)
-        if isinstance(hit, dict) and hit.get('rc') == 0:
-            if isinstance(info, dict):
-                info.update(seconds=hit.get('seconds'), coverage=hit.get('coverage'), reused=str(hit.get('ts', '')))
-            note = '[temper: the same command passed on this same tree at %s; reused, not run again]\n' % hit.get('ts', '?')
-            return (note + str(hit.get('tail', ''))).encode('utf-8'), 0, str(hit.get('ts', ''))
-    t0 = time.time()
-    out, rc = run_cmd(wt, timeout, cmd, setup)
-    extra = {}
-    if isinstance(info, dict):
-        info['seconds'] = round(time.time() - t0, 1)
-        info['coverage'] = info['measure'](out) if rc == 0 and callable(info.get('measure')) else None
-        extra = {'seconds': info['seconds'], 'coverage': info['coverage']}
-    if rc == 0 and key and path:
-        kept[key] = dict({'rc': 0, 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                          'tail': out[-2048:].decode('utf-8', 'replace')}, **extra)
-        if len(kept) > KEEP:
-            for k in sorted(kept, key=lambda k: kept[k].get('ts', ''))[:len(kept) - KEEP]:
-                kept.pop(k, None)
+            import fcntl
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+            fcntl.flock(self.fd, fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            self.fd = None
+        return self
+
+    def __exit__(self, *exc):
+        if self.fd is not None:
+            os.close(self.fd)
+
+
+def store_read(path):
+    import json
+    try:
+        d = json.load(open(path))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _newest(e):
+    if not isinstance(e, dict):
+        return ''
+    return max([str(e.get('ts') or '')] + [str((e.get(k) or {}).get('ts') or '') for k in ('pass', 'fail')
+                                           if isinstance(e.get(k), dict)])
+
+
+def store_change(path, fn):
+    """Read, change (fn changes the dict in place) and replace the store under its lock; the oldest entries past KEEP
+    go."""
+    import json
+    if not path:
+        return {}
+    with _Flock(path + '.lock'):
+        d = store_read(path)
+        fn(d)
+        keys = [k for k, v in d.items() if isinstance(v, dict)]
+        if len(keys) > KEEP:
+            for k in sorted(keys, key=lambda k: _newest(d[k]))[:len(keys) - KEEP]:
+                d.pop(k, None)
         try:
             tmp = '%s.tmp.%d' % (path, os.getpid())
-            json.dump(kept, open(tmp, 'w'))
+            with open(tmp, 'w') as f:
+                json.dump(d, f)
             os.replace(tmp, path)
         except OSError:
             pass
+        return d
+
+
+def untracked(wt):
+    """The untracked paths git does not ignore, from the top of the repository (a folder wholly untracked as `dir/`)."""
+    p = subprocess.run(['git', '-C', wt, 'ls-files', '-o', '--exclude-standard', '--directory', '--full-name', '-z', '--',
+                        ':(top)'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return {x for x in p.stdout.decode('utf-8', 'surrogateescape').split('\0') if x} if p.returncode == 0 else set()
+
+
+def declared(root):
+    """The files the person approved (approved_files of the run state) and the files tasks.md declares, from the
+    project folder `root`, as written there."""
+    import json
+    out = set()
+    try:
+        st = json.load(open(os.path.join(root, '.temper', 'build-state.json')))
+        st = st if isinstance(st, dict) else {}
+    except (OSError, ValueError):
+        st = {}
+    out |= {str(x) for x in st.get('approved_files') or [] if x}
+    sp = str(st.get('spec_path') or '')
+    tasks = os.path.join(root, sp, 'tasks.md') if sp else ''
+    if tasks and os.path.isfile(tasks):
+        try:
+            import tasks_md
+            out |= {f for t in tasks_md.parse(tasks)['tasks'] for f in t.get('files') or []}
+        except Exception:
+            pass
+    return out
+
+
+def _bad_byproduct(p, prefix, tracked, decl):
+    """Never a byproduct (trap 1): a tracked file or one under a listed folder, a declared file, a source or test file,
+    the run's own folders."""
+    d = p if p.endswith('/') else None
+    rel = p[len(prefix):] if prefix and p.startswith(prefix) else p
+    if rel.split('/')[0] in OWN or p.split('/')[0] in OWN:
+        return True
+    if p.rstrip('/').endswith(SOURCE_EXT) or is_test_path(p):
+        return True
+    if d:
+        return any(t.startswith(d) for t in tracked) or any((prefix + f).startswith(d) for f in decl)
+    return p in tracked or rel in decl or p in {prefix + f for f in decl}
+
+
+def byproducts_of(wt, store=None, root=None, extra=()):
+    """The byproduct list as it applies to the work tree wt: an entry git tracks, one a task declares, a source or test
+    file is dropped at each use, whatever the store holds."""
+    lst = (store or {}).get(BYPRODUCTS)
+    lst = [str(x) for x in lst if isinstance(x, str) and x] if isinstance(lst, list) else []
+    lst = list(dict.fromkeys(lst + [x for x in extra if x]))
+    if not lst:
+        return []
+    prefix = _git(wt, 'rev-parse', '--show-prefix')
+    p = subprocess.run(['git', '-C', wt, 'ls-files', '--full-name', '-z', '--'] + [':(top,literal)%s' % x for x in lst],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    tracked = {x for x in p.stdout.decode('utf-8', 'surrogateescape').split('\0') if x}
+    decl = declared(root or os.getcwd()) | declared(wt)
+    return [x for x in lst if not _bad_byproduct(x, prefix, tracked, decl)]
+
+
+def tree_key(wt, byproducts=None, root=None):
+    """The digest of the work tree as it is: the git tree of its tracked files with their content now and of every
+    untracked file git does not ignore, without .temper/, .claude/ and the byproducts (.temper/ and .claude/ count as
+    HEAD holds them, so a clean tree gives HEAD^{tree}). A copied index and a scratch object folder, so neither the real index nor the project's object
+    store is touched (trap 2). '' outside a git repository."""
+    import shutil
+    import tempfile
+    top = _git(wt, 'rev-parse', '--show-toplevel')
+    if not top:
+        return ''
+    prefix = _git(wt, 'rev-parse', '--show-prefix')
+    index = _abs(wt, _git(wt, 'rev-parse', '--git-path', 'index'))
+    objects = _abs(wt, _git(wt, 'rev-parse', '--git-path', 'objects'))
+    if byproducts is None:
+        byproducts = byproducts_of(wt, store_read(_store(wt)), root)
+    tmp = tempfile.mkdtemp(prefix='temper-tree-')
+    try:
+        os.makedirs(os.path.join(tmp, 'objects'))
+        if os.path.isfile(index):
+            shutil.copyfile(index, os.path.join(tmp, 'index'))
+        env = dict(os.environ, GIT_INDEX_FILE=os.path.join(tmp, 'index'), GIT_OBJECT_DIRECTORY=os.path.join(tmp, 'objects'),
+                   GIT_ALTERNATE_OBJECT_DIRECTORIES=objects)
+        # the run's own folders count as HEAD holds them: a spec file staged for the commit changes no digest
+        subprocess.run(['git', '-C', wt, 'reset', '-q', 'HEAD', '--'] + [':(top,literal)%s%s' % (prefix, o) for o in OWN],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        spec = [':(top)'] + [':(exclude,top,literal)%s%s' % (prefix, o) for o in OWN] + \
+               [':(exclude,top,literal)%s' % b.rstrip('/') for b in byproducts]
+        # exit 1 when an excluded folder is one git ignores (".temper is ignored"); the other paths are added all the same
+        subprocess.run(['git', '-C', wt, 'add', '-A', '--'] + spec, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, env=env)
+        return _git(wt, 'write-tree', env=env)
+    except OSError:
+        return ''
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def versions(cmd, setup=None):
+    """{program: its first version line} of each program the command starts (a path into the tree is part of the
+    digest) and of each tool of the setup block: one shell call for those not read yet in this process."""
+    text = cmd[0] if len(cmd) == 1 else (cmd[0] if cmd else '')
+    progs = sorted({p for p in programs(text) if p not in BUILTINS and ('/' not in p or p.startswith('/'))}
+                   | set((setup or {}).get('tools') or []))
+    todo = [p for p in progs if p not in _VERSIONS]
+    if todo:
+        import shlex
+        lines = ['echo "@@temper %d"; %s %s 2>&1 </dev/null' % (i, shlex.quote(p), '-version' if os.path.basename(p) == 'java'
+                                                                   else '--version') for i, p in enumerate(todo)]
+        env = test_env()
+        env.update((setup or {}).get('env') or {})
+        try:
+            r = subprocess.run(['bash', '-c', '\n'.join(lines)], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, env=env, timeout=20)
+            out = r.stdout.decode('utf-8', 'replace')
+        except (OSError, subprocess.TimeoutExpired):
+            out = ''
+        for i, p in enumerate(todo):
+            part = out.split('@@temper %d\n' % i, 1)[1] if ('@@temper %d\n' % i) in out else ''
+            part = part.split('@@temper ', 1)[0]
+            first = [l.strip() for l in strip_banner(part).splitlines() if l.strip()]
+            _VERSIONS[p] = first[0][:200] if first else ''
+    return {p: _VERSIONS.get(p, '') for p in progs}
+
+
+def result_key(wt, cmd, setup, extra=None, tree=None):
+    """(key, tree) of a command run in wt: the digest, the command, the setup block, the folder inside the repository,
+    the version lines and what the caller adds (the acceptance command: the lock's file digests). The time limit is no
+    part of it. (None, '') outside a git repository."""
+    import hashlib
+    import json
+    tree = tree if tree is not None else tree_key(wt)
+    if not tree:
+        return None, ''
+    folder = _git(wt, 'rev-parse', '--show-prefix')
+    raw = json.dumps([tree, list(cmd), setup or {}, folder, versions(cmd, setup), extra], sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest(), tree
+
+
+def _now():
+    import time
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
+
+def fail_class(out, rc, cmd, setup):
+    """`environment` (the setup line, a program not found, a service down, a project's SETUP marker), `not measured`
+    (the runner found no test), else `command`."""
+    text = out.decode('utf-8', 'replace') if isinstance(out, bytes) else str(out or '')
+    if rc in (125, 127) or re.search(r'^[\w.-]+: SETUP: ', text, re.M) or env_fault(text, rc, ' '.join(cmd), setup):
+        return 'environment'
+    if rc in (4, 5) and NO_TESTS.search(text):
+        return 'not measured'
+    return 'command'
+
+
+def _kept(e, timeout):
+    """What a kept entry gives this call: ('pass' | 'fail', its record), ('again', n) for a failure run once more, or
+    None to run."""
+    if not isinstance(e, dict):
+        return None
+    p, f = e.get('pass') if isinstance(e.get('pass'), dict) else None, e.get('fail') if isinstance(e.get('fail'), dict) else None
+    last = e.get('last') or ('fail' if f and (not p or str(f.get('ts')) > str(p.get('ts'))) else 'pass')
+    if f and (last == 'fail' or not p):
+        try:
+            more = f.get('rc') == 124 and float(timeout) > float(f.get('limit') or 0)
+        except (TypeError, ValueError):
+            more = False
+        if more:
+            return None
+        if f.get('class') in ('environment', 'not measured') and int(f.get('again') or 0) < 2:
+            return 'again', int(f.get('again') or 0) + 1
+        return 'fail', f
+    return ('pass', p) if p else None
+
+
+def _named(line, decl):
+    for f in decl:
+        st = os.path.splitext(os.path.basename(f))[0]
+        if f in line or (len(st) >= 4 and re.search(r'\b%s\b' % re.escape(st), line)):
+            return True
+    return False
+
+
+def _recheck_base(root, cmd, out, rc, setup):
+    """The base of a failed run worth one more run at once (step 9): the same command passed on the base tree (the
+    baseline, or a plan command), or failed there and this run shows a fail line the base did not, and no fail line names
+    a declared file. ('pass' | 'red', masked base lines), or None."""
+    if rc in (0, 124, 125, 126, 127) or fail_class(out, rc, cmd, setup) != 'command':
+        return None
+    try:
+        import baseline
+        base = baseline.base_result(root, ' '.join(cmd) if len(cmd) == 1 else cmd[0])
+        lines = baseline.picked(out, rc)
+    except Exception:
+        return None
+    if base is None:
+        return None
+    if base[0] == 'red' and (not base[1] or all(baseline.mask(x) in base[1] for x in lines)):
+        return None
+    if any(_named(x, declared(root)) for x in lines):
+        return None
+    return base[0], base[1], [x for x in lines if baseline.mask(x) not in base[1]]
+
+
+def row_fields(info):
+    """The fields a row of a runner call carries: tree, key, seconds and reused (the date, or null); flaky and forced
+    when they hold."""
+    i = info if isinstance(info, dict) else {}
+    out = {'tree': i.get('tree') or None, 'key': i.get('key'), 'seconds': i.get('seconds'), 'reused': i.get('reused') or None}
+    if i.get('flaky'):
+        out['flaky'] = i['flaky']
+    if i.get('forced'):
+        out['forced'] = True
+    return out
+
+
+def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, root=None):
+    """(output, exit, the date of a kept result or '') of cmd in wt (trap 6: three values). A kept pass of the same key
+    is returned and not run; so is a kept failure (but its exceptions). One run in flight per key: a second caller waits
+    on the key's lock file and reads the entry. A failed run whose command has a pass on the base runs once more at once
+    (_recheck_base): fail then pass is flaky, the pass counts. A dict `info` gets tree, key, seconds, reused, flaky,
+    forced and extra; its `measure`, when given, is called with the output of a pass and gives `extra`, kept with the
+    pass (with `need_extra`, a kept pass without one runs again)."""
+    import time
+    if setup is None:
+        setup = load_setup()
+    if fresh is None:
+        fresh = os.environ.get('TEMPER_FRESH') == '1'
+    info = info if isinstance(info, dict) else {}
+    root = root or os.getcwd()
+    path = _store(wt)
+    store = store_read(path) if path else {}
+    key, tree = result_key(wt, cmd, setup, extra, tree_key(wt, byproducts_of(wt, store, root), root) if path else '')
+    info.update(tree=tree or None, key=key, reused=None, flaky=None, forced=bool(fresh) or None, extra=None, fail_lines=None)
+    again = 0
+
+    def hit(e):
+        k = _kept(e, timeout)
+        if k is None or k[0] == 'again' or (k[0] == 'pass' and info.get('need_extra') and k[1].get('extra') is None):
+            return k[1] if k and k[0] == 'again' else None
+        rec = k[1]
+        info.update(reused=str(rec.get('ts') or ''), seconds=rec.get('seconds'), extra=rec.get('extra'),
+                    fail_lines=rec.get('fail_lines'))
+        if k[0] == 'pass':
+            note = '[temper: the same command passed on this same tree at %s; reused, not run again]\n' % rec.get('ts', '?')
+            return (note + str(rec.get('tail', ''))).encode('utf-8'), 0, str(rec.get('ts', ''))
+        note = ('[temper: the same command failed on this same tree at %s (exit %s); not run again: change the code, the '
+                'command or the environment, or run it anyway]\n' % (rec.get('ts', '?'), rec.get('rc')))
+        return (note + str(rec.get('tail', ''))).encode('utf-8'), int(rec.get('rc') or 1), str(rec.get('ts', ''))
+    if key and not fresh:
+        got = hit(store.get(key))
+        if isinstance(got, tuple):
+            return got
+    lock = os.path.join(os.path.dirname(path), 'temper-locks', '%s.lock' % key) if key else ''
+    import contextlib
+    with _Flock(lock) if lock else contextlib.nullcontext():
+        if key and not fresh:
+            got = hit(store_read(path).get(key))
+            if isinstance(got, tuple):
+                return got
+            again = got if isinstance(got, int) else 0
+        before = untracked(wt) if key else set()
+        t0 = time.time()
+        out, rc = run_cmd(wt, timeout, cmd, setup)
+        base = _recheck_base(root, cmd, out, rc, setup) if rc != 0 else None
+        if base is not None:   # once more at once, on the same tree and limit; no agent comes between
+            first = (base[2] or fail_lines(out, rc=rc))[:8]
+            out2, rc2 = run_cmd(wt, timeout, cmd, setup)
+            try:
+                import baseline
+                gone = rc2 == 0 or (base[0] == 'red' and baseline.picked(out2, rc2) and
+                                    all(baseline.mask(x) in base[1] for x in baseline.picked(out2, rc2)))
+            except Exception:
+                gone = rc2 == 0
+            if gone:
+                info['flaky'] = {'ts': _now(), 'rc': rc, 'lines': first,
+                                 'text': 'failed once (%s) and passed when run again at once' % '; '.join(first)[:300]}
+            out, rc = out2, rc2
+        info['seconds'] = round(time.time() - t0, 1)
+        if rc == 0 and callable(info.get('measure')):
+            info['extra'] = info['measure'](out)
+        if rc != 0:
+            info['fail_lines'] = fail_lines(out, rc=rc)
+        if not key:
+            return out, rc, ''
+        new = sorted(untracked(wt) - before)
+        if new:
+            new = byproducts_of(wt, None, root, new)
+        ts = _now()
+
+        def put(d):
+            e = d.get(key) if isinstance(d.get(key), dict) else {}
+            tail = out[-2048:].decode('utf-8', 'replace')
+            if rc == 0:
+                e['pass'] = {'ts': ts, 'tail': tail, 'seconds': info['seconds'], 'extra': info.get('extra')}
+                e['last'] = 'pass'
+            else:
+                e['fail'] = {'ts': ts, 'rc': rc, 'tail': tail, 'fail_lines': info['fail_lines'], 'answer': None,
+                             'class': fail_class(out, rc, cmd, setup), 'limit': timeout, 'again': again}
+                e['last'] = 'fail'
+            if info.get('flaky'):
+                e['flaky'] = info['flaky']
+            if fresh:
+                e['forced'] = ts
+            d[key] = e
+            if new:
+                d[BYPRODUCTS] = sorted(set(x for x in d.get(BYPRODUCTS) or [] if isinstance(x, str)) | set(new))
+        store_change(path, put)
     return out, rc, ''
+
+
+def main(argv):
+    """python3 run_env.py tree DIR: the digest of DIR as it is (a verdict's tree); python3 run_env.py checked GATES DIR:
+    `FAIL <why>` when the project changed after the Check verdict was computed (the two trees), else nothing."""
+    import json
+    if len(argv) == 3 and argv[1] == 'tree':
+        print(tree_key(argv[2], root=argv[2]))
+        return 0
+    if len(argv) == 4 and argv[1] == 'checked':
+        try:
+            g = json.load(open(argv[2])).get('check') or {}
+        except (OSError, ValueError, AttributeError):
+            g = {}
+        was = str(g.get('tree') or '') if isinstance(g, dict) else ''
+        try:   # only before the change is committed: a CI fix of the Pipeline stage is a change after Check by design
+            stage = json.load(open(os.path.join(argv[3], '.temper', 'build-state.json'))).get('next_stage')
+        except (OSError, ValueError, AttributeError):
+            stage = None
+        was = was if stage in ('check', 'commit') else ''
+        now = tree_key(argv[3], root=argv[3]) if was else ''
+        if was and now and now != was:
+            print('FAIL the project changed after the Check verdict: Check judged the tree %s, the project is now the tree '
+                  '%s; run Check again' % (was[:12], now[:12]))
+        return 0
+    return 2
 
 
 def run_cmd(wt, timeout, cmd, setup=None):
@@ -276,3 +646,7 @@ def run_cmd(wt, timeout, cmd, setup=None):
     except OSError as e:
         out, rc = ('%s\n' % e).encode(), 127
     return out, rc
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

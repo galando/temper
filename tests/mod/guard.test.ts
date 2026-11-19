@@ -485,6 +485,34 @@ describe('the red base: only the person goes on anyway', () => {
   })
 })
 
+// 9.8.5 (WP22): the reuse store decides gate rows: a pass kept there is a check that is not run again, a failure kept
+// there is a check that is not run again either. It is one file in the git common folder, shared by every worktree of
+// the clone, and only the CLI's runner writes it, the byproduct list in it included.
+describe('the reuse store: a write to temper-results.json in the git folder is refused', () => {
+  const STORE = '.git/temper-results.json'
+  const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ')
+  // the store as a session in the project folder, in a group worktree under .claude/worktrees/ and by an absolute path
+  // names it
+  const PATHS = [STORE, `/repo/${STORE}`, `../../../${STORE}`, `/repo/.claude/worktrees/temper-pw-G1/../../../${STORE}`]
+  test('an editing tool is refused at every stage of a run, from the project folder and from a group worktree', () => {
+    for (const stage of ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit'] as const) {
+      for (const p of PATHS) {
+        for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), p, tool)), `${stage} ${tool} ${p}`).toBe(true)
+      }
+    }
+  })
+  test('a shell write is refused: a redirect, tee, cp, mv, sed -i, truncate and rm', () => {
+    for (const stage of ['build', 'check', 'commit'] as const) {
+      for (const p of PATHS) {
+        for (const cmd of [`echo '{}' > ${p}`, `printf x >> ${p}`, `: > ${p}`, `echo '{}' | tee ${p}`, `cp /tmp/kept.json ${p}`,
+          `mv /tmp/kept.json ${p}`, `sed -i 's/fail/pass/' ${p}`, `truncate -s 0 ${p}`, `rm -f ${p}`]) {
+          expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+        }
+      }
+    }
+  })
+})
+
 // 9.8.5 (WP21): "Go on anyway" at plan.command skips the check of one command the plan wrote, with a reason: only the
 // person's answer runs `baseline skip`. The run of the plan's commands (`baseline plan`) is the CLI's and passes.
 describe('a command the plan wrote: only the person skips its check', () => {

@@ -144,7 +144,8 @@ class CommitPart:
         opens = [f for f in r.findings() if f["state"] == "open"]
         text = "Commit: every gate passed%s, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?" % (
             self.finding_counts(opens))
-        return self.with_more(GATE_HEADER, text, "commit", first, rest + [self.save()], "Commit: more options.", qid="commit.confirm")
+        anyway = self.run_anyway(["check run --fresh", "gate check", "gate commit"])   # WP22
+        return self.with_more(GATE_HEADER, text, "commit", first, rest + [anyway, self.save()], "Commit: more options.", qid="commit.confirm")
 
     def commit(self):
         r = self.r
@@ -212,6 +213,8 @@ class CommitPart:
                                  "again." % touched[0], move="commitOverride", reason=["The change belongs to this feature"],
                                  calls=[self.c("override %s --reason '{reason}'" % shlex.quote("sensitive-path:" + touched[0])), self.c("gate commit")],
                                  oid="confirm"))
+        if any(x.get("name") == "checked tree" for x in r.failed_rows("commit")):   # WP22: Check judged another tree
+            opts.insert(0, self.run_anyway(["check run --fresh", "gate check", "gate commit"]))
         if not own:
             opts.append(self.opt("Override and commit", "Skip the failed gates with your reason and commit.", move="commitOverride",
                                  calls=[self.c("override %s --reason '{reason}'" % s) for s in failing] + [self.c("gate commit")],

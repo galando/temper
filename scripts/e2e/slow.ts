@@ -23,6 +23,9 @@
 //     end is byte equal to what init wrote.
 //     WP20 adds (W20): the baseline runs in its own process; the approval card's baseline line shows it as it stands
 //     (`running` when the approval comes first); at the end it is green with its seconds, and no group gate timed out.
+//     WP22 adds (W22): the whole suite runs at most once for the one group and once on the base, and the floor's
+//     `suite_runs` counts those runs of the tool log; each scenario test runs at most twice (they run through
+//     unit/scenario.sh, which counts them apart from the task tests of the same script).
 //   slow-at55 (plain), row D12: check.commands set; the coverage command prints backend/coverage-total.txt, which holds
 //     `TOTAL 100 45 55%` on the base. Check passes at 55%. A second pass, whose builder writes 50% into that file: Check
 //     fails with a row that names the drop.
@@ -310,9 +313,16 @@ export function baselineLine(wd: World): void {
     `W20 the approval card's baseline line shows the baseline as it stands (${result}): ${JSON.stringify(line).slice(0, 160)}`)
 }
 
+// WP22: the scenario tests of slow-first-run run through unit/scenario.sh, which writes the scenario's name to a count
+// file outside the project before it runs the test, so their runs are told apart from the task tests of the same script
+const scenarioRunner = (log: string): string => `#!/usr/bin/env bash\necho "$1" >> '${log}'\nexec bash "unit/$1_test.sh"\n`
+const viaRunner = (intent: string): string => intent.replace(/Test: bash unit\/(shape|bytes)_test\.sh\n/g, 'Test: bash unit/scenario.sh $1\n')
+
 export const slowFirstRun = (w: World): void => {
   withRemote(w)
-  const p = startMaven(w, SLOW_FILES, { env: { TOOL_JDK: '24', MOCK_SLOW_S: SLOW_S, ...LIMITS } })
+  const scenLog = `${w.dir}.scenario-runs`
+  fs.writeFileSync(scenLog, '')
+  const p = startMaven(w, { ...SLOW_FILES, 'unit/scenario.sh': scenarioRunner(scenLog) }, { env: { TOOL_JDK: '24', MOCK_SLOW_S: SLOW_S, ...LIMITS } })
   // WP20: the baseline runs in its own process here, as in a session, so the approval may come before it ends
   delete w.env.TEMPER_BASELINE_FOREGROUND
   const seen: Seen = { ids: [], gates: null }
@@ -329,7 +339,14 @@ export const slowFirstRun = (w: World): void => {
     }
     return person(ask, wd)
   }
-  promise('D11', () => orchestrate(w, mavenScript(mavenAgents({ tasks: tasksMd('', OWNER, OWNER) }), reading)))
+  const agents = mavenAgents({ tasks: tasksMd('', OWNER, OWNER) })
+  const plan0 = agents['temper:temper-plan']!
+  agents['temper:temper-plan'] = (wd, a) => {
+    plan0(wd, a)
+    wd.write(`${SPEC}/intent.md`, viaRunner(wd.read(`${SPEC}/intent.md`)))
+    t(wd, 'gate plan')
+  }
+  promise('D11', () => orchestrate(w, mavenScript(agents, reading)))
   // WP20: the first group gate read the measured result: the base is green with its seconds, and no gate timed out
   const b = w.exists(BASELINE) ? w.json(BASELINE) : atCommit.base
   expect(b?.result === 'green' && typeof b?.seconds === 'number' && b.seconds >= Number(SLOW_S),
@@ -338,6 +355,16 @@ export const slowFirstRun = (w: World): void => {
   const gTimed = Object.entries((groups?.groups ?? {}) as Json).filter(([, g]) => Number((g as Json)?.gate?.timeout_s ?? 0) > 0)
   expect(gTimed.length === 0, `W20 the first group gate read the measured result and timed out nowhere (${gTimed.map(([k]) => k).join(', ')})`)
   const runs = toolRuns(p.log)
+  // WP22: the floor's suite_runs of this scenario are the whole suite runs of the tool log (the fake mvn writes nothing
+  // to the count file of the World). The suite runs at most once for the one group and once on the base, and each
+  // scenario test at most twice
+  const whole = runs.filter(r => r.suite).length
+  fs.appendFileSync(w.countFile, 'suite\n'.repeat(whole))
+  expect(whole <= 1 + 1, `W22 the whole suite runs at most once per group plus once on the base (${whole} runs for 1 group: ${runs.filter(r => r.suite).map(r => r.args).join(' / ').slice(0, 200)})`)
+  const scen = fs.readFileSync(scenLog, 'utf8').split('\n').filter(Boolean)
+  const byName = Object.fromEntries(['shape', 'bytes'].map(n => [n, scen.filter(x => x === n).length]))
+  expect(scen.length > 0, 'W22 the scenario tests ran through unit/scenario.sh (none ran: the intent kept its own Test: lines)')
+  expect(Object.values(byName).every(n => n >= 1 && n <= 2), `W22 each scenario test runs at most twice (${JSON.stringify(byName)})`)
   const timedOut = runs.filter(r => r.exit === 124)
   expect(timedOut.length === 0, `D11 no limit is hit, and ${timedOut.length} run(s) of the tool log ended in exit 124: ${timedOut[0]?.line ?? ''}`)
   const suites = runs.filter(r => r.suite).length

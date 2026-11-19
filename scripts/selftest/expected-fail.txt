@@ -2,8 +2,6 @@
 # selftest:<token> lists every assertion whose name starts with the token and a space; e2e:<scenario> lists a scenario in
 # every mode, e2e:<scenario>:<mode> in one. A line leaves in the commit that makes its check pass, and never comes back.
 # suite:name                   passes after   promise
-e2e:slow-first-run             WP23           D11
-e2e:broken-flaky               WP22           D14
 selftest:D36b                  WP23           D36
 selftest:D37b                  WP24           D37
 selftest:D37c                  WP24           D37
@@ -39,9 +37,5 @@ e2e:repair-worse               WP24           D37e
 e2e:criteria-by-cli            WP27           D10
 e2e:acceptance-wrong-test      WP23           D21
 e2e:revise-narrow              WP27           D24
-selftest:D15                   WP22           D15
-selftest:D15b                  WP22           D15
 selftest:D34a                  WP30           D34
-selftest:D34b                  WP22           D34
-selftest:D34c                  WP22           D34
 selftest:D35a                  WP23           D35

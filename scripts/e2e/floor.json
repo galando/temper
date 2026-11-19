@@ -409,6 +409,33 @@
     }
    }
   },
+  "broken-flaky": {
+   "plain": {
+    "now": {
+     "dialogs": 4,
+     "by_stage": {
+      "commit": 1,
+      "intent": 2,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 4
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 5,
+     "auto": 6,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 0
+    }
+   }
+  },
   "budget-stop": {
    "plain": {
     "now": {
@@ -1284,7 +1311,7 @@
      "auto": 1,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -1312,7 +1339,7 @@
      "auto": 1,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 4
     }
    },
    "driver": {
@@ -1340,7 +1367,7 @@
      "auto": 10,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 4
     }
    }
   },
@@ -1797,7 +1824,7 @@
      "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    },
    "mod": {
@@ -1824,7 +1851,7 @@
      "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    },
    "driver": {
@@ -1851,7 +1878,7 @@
      "auto": 12,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    }
   },
@@ -2892,12 +2919,56 @@
     "final": {
      "dialogs": 2,
      "suite_runs": 3
+    },
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 5,
+     "auto": 6,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
     }
    },
    "driver": {
     "final": {
      "dialogs": 2,
      "suite_runs": 3
+    },
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 5,
+     "auto": 15,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
     }
    }
   },
@@ -3007,7 +3078,7 @@
      "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    },
    "mod": {
@@ -3032,7 +3103,7 @@
      "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    },
    "driver": {
@@ -3057,7 +3128,7 @@
      "auto": 19,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    }
   },

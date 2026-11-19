@@ -1465,7 +1465,8 @@ _gate_write_verdict() { # _gate_write_verdict <stage> <verdict> <requirements-js
   local stage="$1" verdict="$2" reqs="$3" rc
   _lock_acquire
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
-  python3 -I "$SCRIPTS_DIR/ledger_ops.py" write-verdict "$GATES_FILE" "$stage" "$verdict" "$reqs" "$(_now)"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" write-verdict "$GATES_FILE" "$stage" "$verdict" "$reqs" "$(_now)" \
+    "$(python3 -E -s "$SCRIPTS_DIR/run_env.py" tree "$REPO_ROOT" 2>/dev/null)"   # WP22: the tree it judged
   rc=$?
   _lock_release
   return $rc
@@ -1913,11 +1914,12 @@ cmd_group_gate() {
   while [[ $# -gt 0 ]]; do   # --timeout-s N: the limit of the group's own runs (a rerun after a timeout doubles it)
     case "$1" in
       --timeout-s) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "FAIL: --timeout-s takes a whole number of seconds" >&2; return 1; }; tmo="$2"; shift 2 ;;
+      --fresh) export TEMPER_FRESH=1; shift ;;   # WP22: runs whatever the reuse store holds
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
   if [[ ! "$g" =~ ^G[0-9]+$ ]]; then
-    echo "FAIL: usage: temper group gate G<n> [--timeout-s N]" >&2
+    echo "FAIL: usage: temper group gate G<n> [--timeout-s N] [--fresh]" >&2
     return 1
   fi
   local spec_path plan chk validate notpassed wt
@@ -2625,6 +2627,7 @@ _integ_record() { # _integ_record <verdict> <reason> [group] [files-csv] [foreig
 }
 
 cmd_integrate() {
+  [[ "${1:-}" == --fresh ]] && export TEMPER_FRESH=1   # WP22
   local spec_path slug feature cur
   spec_path="$(_spec_path "")"
   slug="$(_spec_slug "$spec_path")"
@@ -3342,6 +3345,8 @@ gate_commit() {
       all_pass=0
     fi
   fi
+  local ct; ct="$(python3 -E -s "$SCRIPTS_DIR/run_env.py" checked "$GATES_FILE" "$REPO_ROOT" 2>/dev/null)"   # WP22 (D34c)
+  [[ "$ct" == FAIL* ]] && { reqs+=("$(_req "checked tree" 0 "${ct#FAIL }")"); all_pass=0; }
   _approval_row "$(_spec_path "")" || all_pass=0   # WP12 (ADR 0019 decision 4)
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -3946,7 +3951,8 @@ cmd_bands() {
 # check run | check detect (9.8.0): Check, run by the CLI (scripts/check_run.py). `run` runs the suite with coverage, each
 # scenario's Test: command and, for a fix, the regression proof, and records a row for each in the Check ledger
 # (executed_by: cli). Exit 3: the CLI found no test command for this project (set check.commands.test); the Check agent
-# then runs Check as before. WP19: `ahead` alone plants bugs, beside Review (.temper/evidence/mutation.json).
+# then runs Check as before. WP19: `ahead` alone plants bugs, beside Review (.temper/evidence/mutation.json). WP22:
+# every run goes through the reuse store; `run --fresh` runs whatever it holds.
 cmd_check() {
   local sub="${1:-}"
   local tcmd ccmd key; tcmd="$(_cfg_get check.commands.test)"; ccmd="$(_cfg_get check.commands.coverage)"; key="$(_cfg_get check.coverage-threshold)"
@@ -3956,19 +3962,19 @@ cmd_check() {
       local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
       base="$(cmd_state_get base_sha "")"
       [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
-      mkdir -p "$TEMPER_DIR/evidence"
+      mkdir -p "$TEMPER_DIR/evidence"; [[ "${2:-}" == --fresh ]] && export TEMPER_FRESH=1
       local ledger; ledger="$(_evidence_file check)"; [[ -f "$ledger" ]] || echo '[]' > "$ledger"
       python3 -E -s "$SCRIPTS_DIR/check_run.py" run "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$REPO_ROOT/$ledger" "$base" "$cmd" "$tcmd" "$ccmd" "$key" ;;
     ahead)
-      # 9.8.0: Check's run, started in the background while the Review agent reads the change (Review writes no code).
-      # `check run` adopts it when the tree is unchanged, else runs again; it fails open (no run, nothing adopted).
+      # 9.8.0: Check's run, in the background while the Review agent reads the change (Review writes no code), into
+      # the reuse store, where `check run` finds it by key (WP22); it fails open.
       local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
       base="$(cmd_state_get base_sha "")"
       [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
       mkdir -p "$TEMPER_DIR/check"
       nohup python3 -E -s "$SCRIPTS_DIR/check_run.py" ahead "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$base" "$cmd" "$tcmd" "$ccmd" "$key" >/dev/null 2>&1 &
-      echo "OK: Check's run started in the background; check run adopts it if the tree is unchanged" ;;
-    *) echo "FAIL: usage: temper check run|ahead|detect" >&2; return 1 ;;
+      echo "OK: Check's run started in the background; check run reuses what it ran" ;;
+    *) echo "FAIL: usage: temper check run [--fresh]|ahead|detect" >&2; return 1 ;;
   esac
 }
 
@@ -4017,7 +4023,7 @@ main() {
   esac
   case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
     "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"plan patch "*|"task retry "*|"task test "*|\
-"acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
+"acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*|"check run "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
   esac
   case "$sub" in
     init) cmd_init "$@" ;;

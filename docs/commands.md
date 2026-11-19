@@ -873,6 +873,7 @@ which is what lets the loop begin and end without a person starting it.
 | `temper task accept N --reason '<why>'` / `temper task retry N` | The person's answer for a task whose tests pass before any change. |
 | `temper task gate N --model M --no-env` | 9.8.5: the person's answer "It is the code" at a task held on an environment fault: the gate reads the failed GREEN run it has and gives no ENV verdict, so the task fails and its attempt is spent. |
 | `temper group gate G<n> --timeout-s N` | A limit for the group's own runs; a timed out gate offers a rerun at double. |
+| `temper check run --fresh`, `temper group gate G<n> --fresh`, `temper integrate --fresh` | 9.8.5: the person's Run it anyway: the check runs whatever the reuse store keeps for this tree, its row is marked `forced`, and it spends one repeat of the budget. |
 | `temper evidence add --phase note --kind input\|edit --claim '<text>'` | A note the next stage agent reads (`Task N:` and `Group G<n>:` prefixes scope it to Build tasks). |
 | `temper evidence contest --stage S --id N --cite <file>[:<line>\|:<symbol>] --quote '<text>' --reason '<why>'` | 9.7.6: the author answers a finding with evidence the reviewer could read; the CLI checks the file, the line or symbol, and that the quote is there. A comprehension finding is never contested. The finding stays open for the person. |
 | `temper evidence escalate --stage S --id N --reason '<why>'` | 9.7.6: the evidence is outside every file; the person decides. |

@@ -821,7 +821,8 @@ assert_eq "group gate: Validate exit 1 -> FAIL naming the exit (exit 1)" "1|1" "
 assert_eq "group gate: a failing Validate leaves the group running with a FAIL verdict" "running|FAIL" "$(gg_g G1 status)|$(gg_g G1 gate.verdict)"
 assert_eq "group gate: the failing run is recorded as a row" "1" \
   "$(python3 -c "import json; print(len([x for x in json.load(open('.temper/evidence/build.json')) if x.get('group')=='G1' and not x.get('task') and x.get('exit_code')==1]))")"
-out="$("$TEMPER" group gate G1 2>&1)"; rc=$?
+# WP22: the same Validate on the same tree returns the kept failure; the person's Run it anyway (--fresh) runs it again
+out="$("$TEMPER" group gate G1 --fresh 2>&1)"; rc=$?
 assert_eq "group gate: a later run with Validate green flips the verdict to PASS" "0|PASS" "$rc|$(gg_g G1 gate.verdict)"
 assert_exit "group gate: an unknown group exits 1" 1 "$TEMPER" group gate G9
 assert_exit "group gate: a malformed group id exits 1" 1 "$TEMPER" group gate foo
@@ -937,7 +938,7 @@ out="$(GI_EXIT=1 "$TEMPER" integrate 2>&1)"; rc=$?
 assert_eq "integrate: a failing suite -> exit 1 naming the exit" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*exit 1')"
 assert_eq "integrate: verdict FAIL is stored and the group branches are kept" "FAIL|2" "$(gi_int verdict)|$(git branch --list 'temper/demo/*' | wc -l | tr -d ' ')"
 assert_eq "integrate: gate build is FAIL on the integration row" "1" "$("$TEMPER" gate build 2>&1 | grep -c 'FAIL.*integration\|integration.*FAIL')"
-assert_eq "integrate: a rerun after the suite is fixed flips the verdict to PASS" "0|PASS" "$("$TEMPER" integrate >/dev/null 2>&1; echo $?)|$(gi_int verdict)"
+assert_eq "integrate: a rerun after the suite is fixed flips the verdict to PASS" "0|PASS" "$("$TEMPER" integrate --fresh >/dev/null 2>&1; echo $?)|$(gi_int verdict)"
 
 # live run 11: a passing Validate or suite prints only its last 12 lines into the main conversation; a failing one all
 gi_setup
@@ -947,13 +948,13 @@ gi_pass 1 G1 src/a.sh 'a_main() { :; }'; gi_pass 2 G1 src/b.sh 'b_main() { :; }'
 nums() { printf '%s\n' "$1" | grep -x '[0-9][0-9]*' | sed -n '1p;$p' | paste -sd'-' -; printf '%s\n' "$1" | grep -cx '[0-9][0-9]*'; }
 out="$(GV_EXIT=1 "$TEMPER" group gate G1 2>&1)"
 assert_eq "group gate: a failing Validate prints all of its output" "1-40|40|0" "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c 'not shown')"
-out="$("$TEMPER" group gate G1 2>&1)"
+out="$("$TEMPER" group gate G1 --fresh 2>&1)"   # WP22: run again after the kept failure, by the person's --fresh
 assert_eq "group gate: a passing Validate prints its last 12 lines and says how many it left out" "29-40|12|1|1" \
   "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -cx '\[the first 28 lines of the passing output are not shown\]')|$(printf '%s\n' "$out" | grep -c '^PASS: group G1')"
 "$TEMPER" group gate G2 >/dev/null 2>&1
 out="$(GI_EXIT=1 "$TEMPER" integrate 2>&1)"
 assert_eq "integrate: a failing suite prints all of its output" "101-140|40|0" "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c 'not shown')"
-out="$("$TEMPER" integrate 2>&1)"
+out="$("$TEMPER" integrate --fresh 2>&1)"   # WP22: as above
 assert_eq "integrate: a passing suite prints its last 12 lines, and its row keeps the output" "129-140|12|1|1" \
   "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c '^PASS: integrated')|$(python3 -c "import json; r=[x for x in json.load(open('.temper/evidence/build.json')) if x.get('phase')=='integration'][-1]; print(int(r['output'].startswith('101')))")"
 unset -f nums

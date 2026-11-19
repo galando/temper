@@ -476,20 +476,40 @@ p = '.claude/temper.config'; s = open(p).read()
 s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 80\n  commands:\n    test: "true"\n', 1)
 open(p, 'w').write(s)
 PYEOF
+# WP22: the suite leaves a .coverage file the project does not ignore, and counts its runs in the project folder (the
+# planted bugs of check ahead run it in folders of their own, which this count leaves out)
+printf 'pwd -P >> "%s"\necho x > .coverage\necho ok\n' "$WORKDIR/.git/count15" > .git/cov15.sh
+sed -i "s|^    test: \"true\"$|    test: \"bash $WORKDIR/.git/cov15.sh\"|" .claude/temper.config
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 assert_eq "9.8.0: the Review agent's launch first starts Check's run in the background" "yes" \
   "$(nx "'yes' if any(c.endswith('temper check ahead') for c in d['agents'][0].get('before', [])) else 'no'")"
-_ahead_done() { for _ in $(seq 1 100); do [[ -f .temper/check/ahead.pid ]] || { [[ -f .temper/check/ahead.json ]] && return 0; }; sleep 0.2; done; return 1; }
-"$TEMPER" check ahead >/dev/null 2>&1; _ahead_done
+_ahead15() { # check ahead, then a wait for its end: the planted bug score it writes last, no longer running
+  local i
+  rm -f .temper/evidence/mutation.json
+  "$TEMPER" check ahead >/dev/null 2>&1
+  for i in $(seq 1 300); do
+    [[ -f .temper/evidence/mutation.json ]] && ! grep -q '"state": *"running"' .temper/evidence/mutation.json && return 0
+    sleep 0.2
+  done
+  return 1
+}
+_runs15() { if [[ -f .git/count15 ]]; then grep -cx "$WORKDIR" .git/count15 | tr -d ' '; else echo 0; fi; }
+_reused15() { python3 -c "
+import json
+rows = [r for r in json.load(open('.temper/evidence/check.json')) if 'tests: the suite' in r.get('claim', '')]
+print('yes' if rows and rows[-1].get('reused') else 'no')" 2>/dev/null || echo 'no row'; }
+: > .git/count15; _ahead15
 echo '[]' > .temper/evidence/check.json
-assert_eq "9.8.0: Check adopts the run made during Review when the tree is unchanged" "yes|yes" \
-  "$("$TEMPER" check run 2>&1 | grep -q 'adopted the run made while Review read the change' && echo yes || echo no)|$(python3 -c "import json; print('yes' if any('tests: the suite' in r.get('claim', '') for r in json.load(open('.temper/evidence/check.json'))) else 'no')")"
-"$TEMPER" check ahead >/dev/null 2>&1; _ahead_done
+"$TEMPER" check run >/dev/null 2>&1
+assert_eq "WP22: with a suite that leaves .coverage, Check uses the run made beside Review: one suite run in all, and the suite row of check run says reused" \
+  "runs=1|reused=yes" "runs=$(_runs15)|reused=$(_reused15)"
+_ahead15; _ah15="$(_runs15)"
 mkdir -p src; echo "changed after" > src/later.sh
 echo '[]' > .temper/evidence/check.json
-assert_eq "9.8.0: a tree changed since that run is measured again, never adopted" "no" \
-  "$("$TEMPER" check run 2>&1 | grep -q 'adopted' && echo yes || echo no)"
-rm -f src/later.sh
+"$TEMPER" check run >/dev/null 2>&1
+assert_eq "WP22: check ahead on the same tree runs nothing; a tree changed since that run is measured again by check run, and its row is not reused" \
+  "ahead again=1|changed=2|reused=no" "ahead again=$_ah15|changed=$(_runs15)|reused=$(_reused15)"
+rm -f src/later.sh .coverage .git/cov15.sh .git/count15
 
 # Design (WP14): a complex plan goes on to Build whatever Intent asked and whatever its risk; the person's ask adds it
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1

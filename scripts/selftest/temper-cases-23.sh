@@ -64,17 +64,19 @@ _rk() { # _rk <command> <setup json>: one run_cached call in rs; prints the exit
 _rn() { cat "rs/.git/$1" 2>/dev/null | wc -l | tr -d ' '; }
 assert_eq "reuse: a pass on a clean tree is kept and the second call does not run" "0|ran|0|reused|1" \
   "$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f1-2)|$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f1-2)|$(_rn cnt)"
-assert_eq "reuse: a failure is never kept" "1|ran|1|ran|2" \
+# WP22: a failure is kept beside the pass and not run again on the same key; a tree with an uncommitted change is a
+# tree of its own (the one digest, run_env.tree_key)
+assert_eq "reuse: a failure is kept and not run again on the same tree" "1|ran|1|reused|1" \
   "$(_rk 'echo f >> .git/cntf; exit 1' '{}' | cut -d'|' -f1-2)|$(_rk 'echo f >> .git/cntf; exit 1' '{}' | cut -d'|' -f1-2)|$(_rn cntf)"
 echo changed > rs/a.txt
-assert_eq "reuse: a tree with an uncommitted change runs again" "ran|ran|3" \
+assert_eq "reuse: a tree with an uncommitted change runs once, and its second call is reused" "ran|reused|2" \
   "$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)|$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)|$(_rn cnt)"
 git -C rs checkout -q -- a.txt
 _other="$(_rk 'echo r >> .git/cnt; true' '{}' | cut -d'|' -f2)"
 echo b > rs/b.txt; git -C rs add b.txt; git -C rs -c user.name=t -c user.email=t@e commit -q -m more
 _tree="$(_rk 'echo r >> .git/cnt' '{}' | cut -d'|' -f2)"
 _setup="$(_rk 'echo r >> .git/cnt' '{"run": "true"}' | cut -d'|' -f2)"
-assert_eq "reuse: another command, another tree and another setup block each run again" "ran|ran|ran|6" "$_other|$_tree|$_setup|$(_rn cnt)"
+assert_eq "reuse: another command, another tree and another setup block each run again" "ran|ran|ran|5" "$_other|$_tree|$_setup|$(_rn cnt)"
 assert_eq "reuse: the output of a reused pass says so" "0|reused|True" \
   "$(_rk 'echo r >> .git/cnt' '{}' | python3 -c "import sys; rc, how, line = sys.stdin.read().rstrip('\n').split('|', 2); print('%s|%s|%s' % (rc, how, line.startswith('[temper: the same command passed on this same tree at') and 'reused, not run again' in line))")"
 rm -rf rs

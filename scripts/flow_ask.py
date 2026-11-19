@@ -112,6 +112,15 @@ class AskPart:
         """The option's label without the suffix (a question's text names the recommended option in plain words)."""
         return self.set_rec(dict(o), False)["label"]
 
+    def accept_opt(self):
+        return self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.", oid="accept-finding", kind="accept")
+
+    def run_anyway(self, calls):
+        """WP22: the person's Run it anyway (never recommended, never taken by rule): the check runs whatever the reuse store
+        holds (`--fresh`, the first call), its row is marked forced, and it spends one repeat of the budget."""
+        return self.opt("Run it anyway", "The check runs once more whatever Temper kept of this tree (a service started by hand, a "
+                        "flaky test); it counts as one repeat.", move="redo", calls=[self.c(x) for x in calls], oid="run-anyway")
+
     def save(self):
         return self.opt("Save for later", "Stop here. The run is saved; /temper:%s takes it up again." % ("fix" if self.r.command == "fix" else "temper"),
                         move="pause", stop=True, oid="save")
@@ -451,6 +460,8 @@ class AskPart:
                                                        if same else "Run %s again?" % label)
             opts = ([self.set_rec(self.save(), True), again] + back_opt() + [override_opt(go)] if same else
                     [again] + back_opt() + [override_opt(go), self.save()])
+            if stage == "build" and (r.groups.get("integration") or {}).get("verdict") == "FAIL":   # WP22
+                opts.insert(len(opts) - (0 if same else 1), self.run_anyway(["integrate --fresh", "gate build"]))
             return self.question(GATE_HEADER, text, stage=stage, options=opts, qid="%s.fail" % stage)
 
         if stage == "review":
@@ -465,7 +476,7 @@ class AskPart:
                 # Findings below the blocking severity are still open: Build can fix them (a loop back), or the person
                 # keeps one. A typed change is no fix here, since Review writes no code.
                 grill = self.skill("grill-me", "Grill Me", "Stress test the change.")
-                keep = [self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.", oid="accept-finding", kind="accept")] if opens else []
+                keep = [self.accept_opt()] if opens else []
                 # 9.8.5 (Q2, F1 of WP08): an open finding at high or above is repaired by default: the loop back to Build is
                 # recommended. A Medium one goes on to Check, listed in the Check question where the person commits.
                 repair = back_opt(rec=True) if any(f["severity"] in ("critical", "high") for f in opens) else []
@@ -489,7 +500,7 @@ class AskPart:
                                          calls=[self.c("state redo review --reason 'the review did not finish'")], oid="redo"))
             if opens:
                 accept = self.accept_question(opens, qid="review.fail.accept")
-                first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.", oid="accept-finding", kind="accept"))
+                first.append(self.accept_opt())
             first.append(override_opt(go))
             text = "Review: the check failed (%s)%s. Loop back to %s?" % (why, self.finding_counts([f for f in r.findings() if f["state"] == "open"]),
                                                                          LABEL.get(back or "build", "Build"))
@@ -511,7 +522,8 @@ class AskPart:
                                          do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again.",
                                          oid="config-suggestions", needs="config-suggestions"))
                 # F1 of WP08: an open finding goes on to Check, so the question where the person commits lists it
-                return self.with_more(GATE_HEADER, "Check: %s%s. Commit?" % (state_of, self.open_listed()), stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.",
+                anyway = self.run_anyway(["check run --fresh", "gate check"])   # WP22
+                return self.with_more(GATE_HEADER, "Check: %s%s. Commit?" % (state_of, self.open_listed()), stage, opts[:3], opts[3:] + [anyway, self.save()], "Check: more options.",
                                       qid="check.pass")
             # A run nobody made (no test run recorded: a tool is missing) is not a fault of the code:
             # Check runs again once the tool is there, and going back to Build would redo work for nothing.
@@ -528,6 +540,7 @@ class AskPart:
                 return self.question(GATE_HEADER, text, stage=stage, qid="check.fail", options=[
                     self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls, oid="confirm")]
                     + back_opt() + [self.save()])
+            anyway = self.run_anyway(["check run --fresh", "gate check"])   # WP22 (trap 8): every failed check offers it
             setup = self.setup_fault()
             if setup:
                 # 9.8.5 (Q6): the environment was not ready (no database, the wrong JDK, a failed setup line). Nothing in the
@@ -549,7 +562,7 @@ class AskPart:
                     # M13 (c): while the block is offered, the question still shows it whole
                     text = "Check: SETUP: the environment was not ready (%s). It failed the same way after Check ran again: repair it%s, or save the run for later?" % (
                         setup, ", add the proposed setup block (%s)" % self.shown_block if add else "")
-                return self.question(GATE_HEADER, text, stage=stage, options=opts + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
+                return self.question(GATE_HEADER, text, stage=stage, options=opts + back_opt(rec=False) + [override_opt(go), anyway], qid="check.fail")
             gap = self.measurement_gap(r.failed_rows("check"))
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times
@@ -560,7 +573,7 @@ class AskPart:
             if same:
                 save = self.set_rec(self.save(), True)
                 return self.question(GATE_HEADER, "Check: the check failed (%s). It failed the same way after it ran again: install what it names, or save the run for later?" % why,
-                                     stage=stage, options=[save] + again + back_opt(rec=False) + [override_opt(go)], qid="check.fail")
+                                     stage=stage, options=[save] + again + back_opt(rec=False) + [override_opt(go), anyway], qid="check.fail")
             acc = self.acceptance_options(r.failed_rows("check"))
             if acc:
                 first = acc[0]
@@ -570,9 +583,9 @@ class AskPart:
                 t = self.acc_triage()
                 said = (" The triage says the %s looks wrong: %s." % (t["verdict"], t.get("reason", ""))) if t.get("verdict") in ("code", "test") else ""
                 return self.question(GATE_HEADER, "Check: the check failed (%s).%s %s?" % (why, said, self.bare(lead)), stage=stage,
-                                     options=opts + [override_opt(go), self.save()], qid="check.fail")
+                                     options=opts + [override_opt(go), anyway, self.save()], qid="check.fail")
             return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, "Run Check again" if gap else "Loop back to %s" % LABEL[back or "build"]), stage=stage,
-                                 options=again + back_opt(rec=not gap) + [override_opt(go), self.save()], qid="check.fail")
+                                 options=again + back_opt(rec=not gap) + [override_opt(go), anyway, self.save()], qid="check.fail")
 
         return None
 
@@ -775,7 +788,7 @@ class AskPart:
                                   move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
                                       ("fresh review: " + "; ".join(fresh_review.describe(f) for f in opens))[:300]))], oid="revise-plan"))
         if opens:
-            first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.", oid="accept-finding", kind="accept"))
+            first.append(self.accept_opt())
         limit = " The fresh review ran %d of %d rounds (plan.fresh-review-rounds): accept, skip or step back." % (fr["rounds"], fr["cap"]) if fr["capped"] else ""
         text = "Plan: the check failed (%s).%s%s %s?" % (why, said, limit, "Revise the plan" if opens and not fr["capped"] else
                                                        "Run the fresh review again" if first and not opens else "Accept a finding, or skip the check" if opens else "Fix the plan, or skip the check")
