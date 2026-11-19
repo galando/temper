@@ -526,10 +526,20 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 
 ### Evidence, the lock and a note (9.8.5)
 
-- **A reused pass.** A group check or the Integration suite that passed with the same command and setup on the same
-  clean tree (`git rev-parse HEAD^{tree}`, no change outside `.temper/`) passes again without running; its row says
-  `reused` and when it ran. Kept in the git folder (`temper-results.json`), shared by every worktree. A failure always
-  runs again.
+- **One digest, the reuse store (9.8.5, WP22).** The same command on the same tree runs once. The digest
+  (`run_env.tree_key`) is the git tree of the work tree as it is: tracked files with their content now and every
+  untracked file git does not ignore, without `.temper/`, `.claude/` and the byproducts of a run (a path a run made that
+  is no tracked, declared, source or test file). The key adds the command text, the setup block, the folder inside the
+  repository, the first version line of each program and what the caller adds (the acceptance command: the lock's
+  digests). The store is `temper-results.json` in the git folder, shared by every worktree, changed under a lock. Every
+  command of a group check, `integrate`, Check, a task's scenario tests and the baseline goes through it; a task's RED
+  and GREEN do not. A row the runner made carries `tree`, `key`, `seconds` and `reused` (the date of the kept result).
+  A failure is kept beside the pass and is not run again on the same key (an environment or not measured failure runs
+  again at most twice, a time out under a larger limit runs). A failure whose command passed on the base, that names no
+  declared file, runs once more at once: fail then pass is `flaky`, the pass counts and the commit card lists it.
+  `--fresh` (`check run`, `group gate`, `integrate`; the person's Run it anyway) runs whatever the store holds, spends
+  one repeat and marks the row `forced`. Each verdict of `.temper/gates.json` names its `tree`; the commit gate fails
+  (`checked tree`) when the project is no longer the tree the Check verdict names.
 - **The lock.** A write waits for a live holder of `.temper/.lock` up to `TEMPER_LOCK_MAX_S` (120 s) and breaks a gone
   holder's old lock. Past that it fails with exit 75 and writes nothing; it never writes past the lock.
 - **The failing-first proof.** `task start` records each declared code file (not its tests) as the attempt finds it, and a

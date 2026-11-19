@@ -43,6 +43,9 @@ import path from 'node:path'
 import type { World } from './world'
 
 export const MVN = `#!/usr/bin/env bash
+# WP22: the reuse store reads the first version line of each program a command starts; as a real mvn does, the fake
+# answers --version without a build, and writes no line to the tool log
+case "\${1:-}" in --version|-v|-version) echo "Apache Maven 3.9.9 (the fake of the end to end suite)"; exit 0 ;; esac
 args="$*"
 pre="mvn $args jdk=\${TOOL_JDK:-21} db=$([ -f "$MOCK_DB/up" ] && echo up || echo down) tree=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo none)"
 post="port=\${IT_POSTGRES_PORT:-}"

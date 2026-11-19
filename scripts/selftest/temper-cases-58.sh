@@ -234,7 +234,7 @@ assert_eq "fix: the run asks at every stage when the person picked that" \
 # --- question two: the commit, with no pull request ---
 _atcommit58
 assert_eq "fix: no pull request option at the commit" \
-  "commit.confirm|commit,back,save|rec=commit|back=state loop check fix" \
+  "commit.confirm|commit,back,run-anyway,save|rec=commit|back=state loop check fix" \
   "$(_x58 "a = d.get('ask') or {}; b = (opt(d, 'back') or {}).get('calls') or ['']
 r = '%s|%s|rec=%s|back=%s' % (a.get('id'), ','.join(str(o.get('id')) for o in opts(d) if o.get('kind') != 'more'),
     ','.join(str(o.get('id')) for o in opts(d) if o.get('recommended')), short(b[0]).split(' --reason')[0])")"

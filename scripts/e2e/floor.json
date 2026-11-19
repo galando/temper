@@ -383,6 +383,56 @@
    "driver": {
     "final": {
      "dialogs": 4
+    },
+    "now": {
+     "dialogs": 4,
+     "by_stage": {
+      "commit": 1,
+      "intent": 2,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 4
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 5,
+     "auto": 15,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 0
+    }
+   }
+  },
+  "broken-flaky": {
+   "plain": {
+    "now": {
+     "dialogs": 4,
+     "by_stage": {
+      "commit": 1,
+      "intent": 2,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 4
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 5,
+     "auto": 6,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 0
     }
    }
   },
@@ -439,15 +489,14 @@
    },
    "driver": {
     "now": {
-     "dialogs": 5,
+     "dialogs": 4,
      "by_stage": {
-      "build": 3,
+      "build": 2,
       "plan": 2
      },
      "by_kind": {
       "gate": 3,
-      "group": 1,
-      "reason": 1
+      "group": 1
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -1131,16 +1180,15 @@
    },
    "driver": {
     "now": {
-     "dialogs": 6,
+     "dialogs": 5,
      "by_stage": {
-      "build": 4,
+      "build": 3,
       "plan": 1,
       "review": 1
      },
      "by_kind": {
       "gate": 3,
-      "group": 2,
-      "reason": 1
+      "group": 2
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -1263,7 +1311,7 @@
      "auto": 1,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 4
     }
    },
    "mod": {
@@ -1291,22 +1339,21 @@
      "auto": 1,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 4
     }
    },
    "driver": {
     "now": {
-     "dialogs": 10,
+     "dialogs": 9,
      "by_stage": {
       "build": 5,
       "check": 1,
       "plan": 1,
-      "review": 3
+      "review": 2
      },
      "by_kind": {
       "gate": 7,
-      "group": 2,
-      "reason": 1
+      "group": 2
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -1320,7 +1367,7 @@
      "auto": 10,
      "back": 1,
      "handbacks": 0,
-     "suite_runs": 6
+     "suite_runs": 4
     }
    }
   },
@@ -1574,14 +1621,13 @@
    },
    "driver": {
     "now": {
-     "dialogs": 6,
+     "dialogs": 5,
      "by_stage": {
       "commit": 1,
-      "plan": 5
+      "plan": 4
      },
      "by_kind": {
-      "gate": 5,
-      "reason": 1
+      "gate": 5
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -1778,7 +1824,7 @@
      "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    },
    "mod": {
@@ -1805,7 +1851,7 @@
      "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    },
    "driver": {
@@ -1832,7 +1878,7 @@
      "auto": 12,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    }
   },
@@ -2486,18 +2532,17 @@
    },
    "driver": {
     "now": {
-     "dialogs": 10,
+     "dialogs": 9,
      "by_stage": {
       "build": 4,
       "check": 1,
       "intent": 1,
-      "plan": 3,
+      "plan": 2,
       "review": 1
      },
      "by_kind": {
       "gate": 6,
-      "group": 3,
-      "reason": 1
+      "group": 3
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -2573,16 +2618,15 @@
    },
    "driver": {
     "now": {
-     "dialogs": 5,
+     "dialogs": 4,
      "by_stage": {
-      "build": 2,
+      "build": 1,
       "commit": 1,
       "plan": 2
      },
      "by_kind": {
       "gate": 3,
-      "group": 1,
-      "reason": 1
+      "group": 1
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -2667,19 +2711,18 @@
    },
    "driver": {
     "now": {
-     "dialogs": 12,
+     "dialogs": 11,
      "by_stage": {
       "build": 4,
       "check": 1,
       "commit": 1,
       "plan": 2,
       "rca": 1,
-      "review": 3
+      "review": 2
      },
      "by_kind": {
       "gate": 9,
-      "group": 2,
-      "reason": 1
+      "group": 2
      },
      "launches": {
       "temper:temper-acceptance": 1,
@@ -2876,12 +2919,56 @@
     "final": {
      "dialogs": 2,
      "suite_runs": 3
+    },
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 5,
+     "auto": 6,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
     }
    },
    "driver": {
     "final": {
      "dialogs": 2,
      "suite_runs": 3
+    },
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 1,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 5,
+     "auto": 15,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
     }
    }
   },
@@ -2991,7 +3078,7 @@
      "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    },
    "mod": {
@@ -3016,7 +3103,7 @@
      "auto": 8,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    },
    "driver": {
@@ -3041,7 +3128,7 @@
      "auto": 19,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 4
+     "suite_runs": 3
     }
    }
   },

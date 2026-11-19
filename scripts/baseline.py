@@ -247,24 +247,39 @@ def store_get(root, key):
 
 
 def store_put(root, key, **fields):
-    p = store_path(root)
-    if not p or not key:
+    """The baseline's own fields under "baseline:<key>", written under the store's lock (WP22)."""
+    if not key:
         return
-    try:
-        d = json.load(open(p))
-        d = d if isinstance(d, dict) else {}
-    except (OSError, ValueError):
-        d = {}
-    e = d.get("baseline:" + key) if isinstance(d.get("baseline:" + key), dict) else {}
-    e.update(fields)
-    e["ts"] = now()
-    d["baseline:" + key] = e
-    try:
-        tmp = "%s.tmp.%d" % (p, os.getpid())
-        json.dump(d, open(tmp, "w"))
-        os.replace(tmp, p)
-    except OSError:
-        pass
+
+    def put(d):
+        e = d.get("baseline:" + key) if isinstance(d.get("baseline:" + key), dict) else {}
+        e.update(fields)
+        e["ts"] = now()
+        d["baseline:" + key] = e
+    run_env.store_change(store_path(root), put)
+
+
+def base_result(root, cmd):
+    """What the base gave for cmd (WP22, the flaky recheck): ("pass", set()) when it passed there (the plan's command of
+    that text, or the suite the baseline ran); ("red", the masked fail lines) when it failed there as the base does (a
+    failure known at the base counts as the base's pass); None when the base did not run it or says nothing."""
+    d = read(root)
+    if not d:
+        return None
+    e = (d.get("plan") or {}).get(cmd) if isinstance(d.get("plan"), dict) else None
+    if isinstance(e, dict):
+        if e.get("result") == "pass":
+            return "pass", set()
+        if e.get("result") == "fails like the base":
+            return "red", {mask(x) for x in list(e.get("fail_lines") or []) + list(d.get("fail_lines") or [])}
+        return None
+    if not same_suite(cmd, d):
+        return None
+    if d.get("result") == "green":
+        return "pass", set()
+    if d.get("result") == "red" and d.get("kind") == "red-base" and d.get("fail_lines"):
+        return "red", {mask(x) for x in d.get("fail_lines") or []}
+    return None
 
 
 # ---- start ------------------------------------------------------------------------------------------------------------
@@ -333,6 +348,8 @@ def start(root, config, spec, again=False, env_only=False):
     started = now(fine=True)
     doc = {"started": started, "result": "unknown", "why": "the environment check is running", "env": [], "limits": {},
            "plan": {}}
+    if again:
+        doc["again"] = True   # WP22: the person's Run it again is a fresh run, whatever the store holds
     write(doc, root)   # this start owns the file from now on: an older run of the suite that ends later writes nothing
     rc, head, _ = git(root, "rev-parse", "--verify", "-q", "HEAD")
     if rc != 0 or not head:
@@ -443,9 +460,10 @@ def _run(root, config, spec, started, doc):
         extra = b""
         if c.get("report"):
             extra, _ = run_env.run_cmd(folder, 300, [c["report"]], setup)
-        return check_run.coverage_value(folder, det, (out + b"\n" + extra).decode("utf-8", "replace"))
+        return {"coverage": check_run.coverage_value(folder, det, (out + b"\n" + extra).decode("utf-8", "replace"))}
     info = {"measure": measure}
-    out, rc, reused = run_env.run_cached(folder, LIMIT_S, [own["run"]], setup, info)
+    out, rc, reused = run_env.run_cached(folder, LIMIT_S, [own["run"]], setup, info, fresh=bool(doc.get("again")), root=root)
+    info["coverage"] = (info.get("extra") or {}).get("coverage") if isinstance(info.get("extra"), dict) else None
     doc["tail"] = check_run.strip_banner(out[-2048:].decode("utf-8", "replace"))
     if reused:
         doc["reused"] = reused
@@ -683,6 +701,8 @@ def plan_start(root, config, spec, again=""):
         d["plan"] = p
         for c, where, lim in pending(root, config, spec, d):
             p[c] = {"result": "running", "where": where, "started": started}
+            if c == again:
+                p[c]["fresh"] = True   # WP22: the person's Run it again runs whatever the store holds
     d = update(root, mark)
     todo = [c for c, e in d["plan"].items() if isinstance(e, dict) and e.get("started") == started]
     if not todo:
@@ -743,9 +763,11 @@ def _plan_run(root, config, spec, started, d, todo):
     for c in todo:
         w, lim = where.get(c, ("", GROUP_LIMIT_S))
         limit = limit_for(c, lim, root)
-        t0 = time.monotonic()
-        out, rc = run_env.run_cmd(folder, limit, [c], setup)
-        e = dict(judge(c, out, rc, time.monotonic() - t0, limit, red, missing), where=w, ended=now())
+        info = {}
+        fresh = bool(((d.get("plan") or {}).get(c) or {}).get("fresh"))
+        out, rc, _ = run_env.run_cached(folder, limit, [c], setup, info, fresh=fresh, root=root)   # WP22: the store
+        e = dict(judge(c, out, rc, float(info.get("seconds") or 0), limit, red, missing), where=w, ended=now(),
+                 **{k: v for k, v in run_env.row_fields(info).items() if k in ("tree", "reused")})
 
         def put(d, c=c, e=e):
             d.setdefault("plan", {})[c] = e

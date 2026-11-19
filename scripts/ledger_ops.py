@@ -164,6 +164,8 @@ def write_verdict(argv):
     f, stage, verdict, reqs, ts = argv[1:6]
     d = json.load(open(f))
     d[stage] = {'verdict': verdict, 'requirements': json.loads(reqs), 'ts': ts}
+    if len(argv) > 6:   # WP22: the digest of the project folder the verdict judged (run_env.tree_key), or null
+        d[stage]['tree'] = argv[6] or None
     tmp = '%s.tmp.%d' % (f, os.getpid())
     with open(tmp, 'w') as fh:
         json.dump(d, fh, indent=2)
