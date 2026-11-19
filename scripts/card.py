@@ -276,13 +276,25 @@ def request_section(r):
     return sec("request", "You asked", [cell('"%s"' % said)])
 
 
+def fix_files(r):
+    """WP17: the files rca.md names for the fix (the file of AT, the Blast radius and the Read first items), the fields
+    of rca.md as panel.py reads them, and its path."""
+    path = os.path.join(r.spec, "rca.md") if r.spec else ""
+    f = rca_fields(read(path) if path else "")
+    names = []
+    for x in [f["AT"].split(":")[0].strip()] + f["blast"] + f["read"]:
+        x = x.split()[0].strip("`") if x.strip() else ""
+        if x and x not in names:
+            names.append(x)
+    return names, f, path
+
+
 def fix_approval(b, nxt):
     """WP17: the approval of a fix run, the root cause question: the bug as typed, the cause, the fix, the regression
     test, the files the fix may change, the test command the CLI found, and the risk, from rca.md as panel.py reads it.
     The foot names the branch the click makes."""
     r = b.r
-    path = os.path.join(r.spec, "rca.md") if r.spec else ""
-    f = rca_fields(read(path) if path else "")
+    names, f, path = fix_files(r)
     out = [request_section(r)]
     cause = [cell(f["CAUSE"])] if f["CAUSE"] else []
     cause += [cell("%s: %s" % (k.capitalize(), f[k])) for k in ("AT", "CONFIDENCE", "SINCE", "CHAIN") if f[k]]
@@ -290,11 +302,6 @@ def fix_approval(b, nxt):
     out.append(sec("fix", "THE FIX", [cell(f["FIX"])]) if f["FIX"] else None)
     out.append(sec("test", "THE REGRESSION TEST", [cell(f["TEST"])], "written first; it must fail before the fix")
                if f["TEST"] else None)
-    names = []
-    for x in [f["AT"].split(":")[0].strip()] + f["blast"] + f["read"]:
-        x = x.split()[0].strip("`") if x.strip() else ""
-        if x and x not in names:
-            names.append(x)
     hot = dict(sensitive.declared(names, r.cfg("autonomy.park-on-touch", "")))
     rows = [cell(x, "sensitive" if x in hot else "modify" if os.path.exists(x) else "create") for x in names]
     out.append(sec("files", "WHAT WILL CHANGE", rows, "the fix may change these %d and its test; any other file asks you first"
@@ -464,6 +471,9 @@ def commit(b, nxt):
     changed = r.ctx.get("changed") or []
     if changed:
         allowed = set(plan_files(r.spec) if r.spec else [])
+        if r.command == "fix":   # WP17: the files rca.md names, the regression test, a file the person allowed
+            allowed.update(fix_files(r)[0] + [str(r.state.get("regression_test") or "")]
+                           + [x["path"] for x in r.drifts() if x["choice"] in ("Add to plan", "Allow once")])
         hot = dict(sensitive.declared(changed, r.cfg("autonomy.park-on-touch", "")))
         outside = [f for f in changed if f not in allowed]
         rows = [cell("%s (outside the plan)" % f, "sensitive" if f in hot else None) for f in outside]

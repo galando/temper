@@ -239,7 +239,7 @@ assert_eq "fix: no pull request option at the commit" \
 r = '%s|%s|rec=%s|back=%s' % (a.get('id'), ','.join(str(o.get('id')) for o in opts(d) if o.get('kind') != 'more'),
     ','.join(str(o.get('id')) for o in opts(d) if o.get('recommended')), short(b[0]).split(' --reason')[0])")"
 
-# --- the commit card of a fix run: the regression test as the CLI ran it ---
+# --- the commit card of a fix run: the regression test as the CLI ran it, and the fix's own files in its plan ---
 _fixed58() { # an approved fix run at its commit question: the regression test, the fix at AT, a line of the Blast
              # radius file and one of a file rca.md does not name; RED and GREEN of the test run by the CLI, each
              # followed by an agent's claim of the same, and Check's regression proof row
@@ -276,6 +276,11 @@ r = '%s|first=%s|%s|proof=%s' % ((d.get('ask') or {}).get('id'), ids[0] if ids e
     '|'.join(x for x in t if not x.startswith('proof: ')) or 'no RED or GREEN row',
     'fails before, passes' if any(x.startswith('proof: ') and 'fail on the code before the fix' in x for x in t)
     else 'no proof row')")"
+assert_eq "fix: the commit card marks outside the fix only a file rca.md does not name" \
+  "4 changed, 1 outside the plan|outside=src/b.sh" \
+  "$(_x58 "s = sec(d, 'files') or {}
+r = '%s|outside=%s' % (s.get('note'), ','.join(str(x.get('text')).replace(' (outside the plan)', '')
+    for x in s.get('rows') or [] if '(outside the plan)' in str(x.get('text'))))")"
 
 # --- TRIVIAL: the verdict, the close, the bound ---
 _triv58() { # a /temper:temper run at Intent, step 0, with no spec file, in a repository on main
