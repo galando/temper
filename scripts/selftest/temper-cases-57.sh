@@ -72,6 +72,24 @@ assert_eq "w16 spec branch --carry: a refused switch puts the spec files back, f
   "failed|master|same|plan|FAIL|named" \
   "$([[ $_rc57 -ne 0 ]] && echo failed || echo passed)|$(git branch --show-current)|$(_spec57)|$(grep -o 'FAIL' <<<"$_out57" | head -n 1)|$([[ -n "$_dir57" ]] && echo named || echo none)"
 
+# --- spec branch --carry takes only the run's branch: a path as NAME is refused, its edits stay (phase 4b review) ---
+_clash57
+echo 'echo a local edit' > src/demo.sh
+_out57="$("$TEMPER" spec branch --carry src/demo.sh 2>&1)"; _rc57=$?
+assert_eq "w16 spec branch --carry: a NAME that is not the run's branch is refused, and a path's edits stay" \
+  "1|FAIL|master|echo a local edit|same|plan" \
+  "$_rc57|$(grep -o '^FAIL' <<<"$_out57" | head -n 1)|$(git branch --show-current)|$(cat src/demo.sh)|$(_spec57)"
+
+# --- spec commit -- FILE...: the commit holds the files named and nothing staged before it (phase 4b review) ---
+fresh; _repo57
+echo 'echo other' > src/old.sh; git add src/old.sh; git commit -q -m old
+echo 'echo changed' > src/demo.sh; rm src/old.sh
+echo staged > unrelated.txt; git add unrelated.txt
+_rc57="$("$TEMPER" spec commit 'feat(demo): demo' -- src/demo.sh src/old.sh >/dev/null 2>&1; echo $?)"
+assert_eq "w15 spec commit -- FILE...: the commit holds the files named, and a file staged before stays staged" \
+  "0|src/demo.sh,src/old.sh|A  unrelated.txt" \
+  "$_rc57|$(git show --name-only --format= HEAD | sort | paste -sd, -)|$(git status --porcelain -- unrelated.txt)"
+
 # --- group take-out: only the newest commits of the group's branch it is given ---
 f9_tasks | m_setup
 _wt57="$(python3 -B -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('worktree') or '')" 2>/dev/null)"

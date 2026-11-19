@@ -705,7 +705,7 @@ cmd_state_set() {
     echo "FAIL: spec_path must be .temper/specs/<slug> (slug: letters of either case, digits, '.', '_' or '-', no '/' or '..'); got '$2'" >&2
     return 1
   fi
-  # ADR 0012: the run id and the step count are the CLI's own; only state init and a move of next_stage write them.
+  # ADR 0012: the run id and the step count are the CLI's (state init, a move of next_stage).
   if [[ "$1" == "run_id" || "$1" == "step" ]]; then
     echo "FAIL: $1 is kept by the CLI (state init writes run_id; every change of next_stage counts a step)" >&2
     return 1
@@ -734,8 +734,7 @@ cmd_state_set() {
     echo "FAIL: $1 is kept by the CLI (temper report --end, then the person's answer; the record of a run that went on by itself)" >&2
     return 1
   fi
-  # The run's lifecycle records each have the one command that moves them; a dotted path below one of them is the
-  # record too (state set stage.x would turn the stage into an object).
+  # Each lifecycle record has its one command; a dotted path below one is the record too (stage.x).
   local top="${1%%.*}"
   case "$top" in
     stage) echo "FAIL: stage is kept by the CLI (state advance records the stage the run left; a step back rewrites it)" >&2; return 1 ;;
@@ -743,6 +742,7 @@ cmd_state_set() {
     parked) echo "FAIL: parked is kept by the CLI (temper park parks an armed run; the run's next move ends the park)" >&2; return 1 ;;
     adhoc|adhoc_done) echo "FAIL: $top is kept by the CLI (temper adhoc open|close; the gates mark the steps a small change owes)" >&2; return 1 ;;
     redo) echo "FAIL: redo is kept by the CLI (temper state redo <stage> --reason R)" >&2; return 1 ;;
+    trivial) echo "FAIL: trivial is kept by the CLI (temper intent trivial --why TEXT)" >&2; return 1 ;;
     run_mode|pipeline_round|regression_test)
       [[ "$1" == "$top" ]] || { echo "FAIL: $top takes a value, not a path below it; got '$1'" >&2; return 1; } ;;
   esac

@@ -77,11 +77,20 @@ def own(path):
 
 
 def dirty():
-    """The paths with uncommitted changes now (staged, unstaged or untracked), from the top of the repository."""
+    """The paths with uncommitted changes now (staged, unstaged or untracked), from the top of the repository. A rename
+    or a copy is two fields under -z: the new path with the status, then the old path alone; both paths are dirty."""
     out = []
-    for e in git("status", "--porcelain", "-z", "--untracked-files=all").split("\0"):
-        if len(e) > 3 and not own(e[3:]):
-            out.append(e[3:])
+    fields = git("status", "--porcelain", "-z", "--untracked-files=all").split("\0")
+    i = 0
+    while i < len(fields):
+        e, i = fields[i], i + 1
+        if len(e) <= 3:
+            continue
+        paths = [e[3:]]
+        if "R" in e[:2] or "C" in e[:2]:
+            paths.append(fields[i] if i < len(fields) else "")
+            i += 1
+        out += [p for p in paths if p and not own(p)]
     return sorted(set(out))
 
 
@@ -166,8 +175,13 @@ def gate():
         if TEST.search(parts[2]):
             tests += 1
             continue
+        if not (parts[0].isdigit() and parts[1].isdigit()):
+            # a binary file (numstat counts `-`): its lines are not counted, so it is over the bound whatever its size
+            files.append("%s (binary)" % parts[2])
+            lines += BOUND["lines"] + 1
+            continue
         files.append(parts[2])
-        lines += sum(int(x) for x in parts[:2] if x.isdigit())
+        lines += sum(int(x) for x in parts[:2])
     what = "%d production file%s (%s), %d line%s%s" % (len(files), "" if len(files) == 1 else "s", ", ".join(files[:5]) or "none",
                                                       lines, "" if lines == 1 else "s", ", and %d test file(s)" % tests if tests else "")
     if len(files) <= BOUND["files"] and lines <= BOUND["lines"]:

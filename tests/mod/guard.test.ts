@@ -367,6 +367,13 @@ describe('the trivial window: the Intent agent writes the one change while the v
       expect(isDeny(bash(open(), cmd)), cmd).toBe(true)
     }
   })
+  test('the verdict is the CLI\'s: state set trivial, or a path below it, is refused, the window open or not', () => {
+    for (const c of [ctx('intent', { facts: { step: 0 } }), open(), ctx('build')]) {
+      for (const key of ['trivial', 'trivial.why', 'trivial.dirty_before']) {
+        expect(isDeny(bash(c, `${CLI} state set ${key} x`)), `${c.run?.stage}: ${key}`).toBe(true)
+      }
+    }
+  })
 })
 
 // 9.8.5 (WP08, M14): the files of the CLI that can turn a gate row are guarded like the gate verdicts: the store of

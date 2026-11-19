@@ -106,6 +106,10 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
         Fix while the budget has room, the stage run again with it (`again` false: its agent runs). Elsewhere, and at
         the budget's limit, the note only, and the same question is asked again (`again` true)."""
         q = out.get("ask") if out.get("action") == "ask" else None
+        if isinstance(q, dict) and q.get("id") == "plan.context" and q.get("answer"):
+            # the Context check: a typed answer is its own `answer` call, which sends Plan back with the text
+            q["typed"] = {"calls": [q["answer"]], "again": False}
+            return
         if not isinstance(q, dict) or q.get("kind") != "gate":
             return
         r = self.r

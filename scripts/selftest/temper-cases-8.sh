@@ -611,6 +611,17 @@ cat > .temper/specs/demo/plan.md <<'PEOF'
 PEOF
 assert_eq "9.8.4 7a: the Include call carries the whole text, the second left out source and its last word included" "yes" \
   "$(nx "c = d['context_check']['options'][1]['calls'][0]; 'yes' if 'reads the same rows' in c and c.endswith('--redo') else c")"
+# phase 4b review: a typed answer at the Context check runs the question's own answer call, as at a gate
+gfail plan "context map reviewed" "the Context check is pending: the person's answer is not recorded yet"
+assert_eq "WP16: the Context check carries typed: its own answer call, which sends Plan back (again false)" \
+  "plan.context|plan review --answer '{text}' --redo|False" \
+  "$(nx "a = d.get('ask') or {}; t = a.get('typed') or {}; cs = [c.split('temper ', 1)[1] for c in t.get('calls') or []]; \
+'%s|%s|%s' % (a.get('id'), '|'.join(cs), t.get('again'))")"
+assert_eq "view fixtures: the Context check carries typed, its own answer call (WP16)" \
+  "plan review --answer '{text}' --redo|False" \
+  "$(_fx8 "a = views['context-check'].get('ask') or {}
+t = a.get('typed') or {}
+r = '%s|%s' % ('|'.join(c.split('temper ', 1)[1] for c in t.get('calls') or []), t.get('again'))")"
 
 # --- 9.8.4 fault 2: a failed group check names what failed, and stops recommending a blind retry ---
 _g2() { # _g2 <gate JSON>: a run at Build with group G1 (Task 1 passed) whose gate is the JSON given
