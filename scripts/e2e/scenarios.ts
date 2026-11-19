@@ -748,8 +748,16 @@ export const designRun = (w: World): void => {
 }
 
 // Three groups: only max-groups (two) start at once; the third waits for a place.
+// WP22: the same command on the same tree runs once. The scenario tests run through scen.sh, which writes the
+// scenario's name to a count file outside the project before it runs the test, so their runs are told apart from the
+// task tests that run the same module (a task's RED and GREEN are not stored, on purpose).
 export const threeGroups = (w: World): void => {
-  startProject(w)
+  const scenLog = `${w.dir}.scenario-runs`
+  fs.writeFileSync(scenLog, '')
+  startProject(w, '', wd => {
+    wd.write('scen.sh', `echo "$1" >> '${scenLog}'\nexec python3 -m unittest "unit.test_ci_$1"\n`)
+    wd.sh('git add scen.sh && git commit -qm "the scenario test runner"')
+  })
   const tasks = TASKS_MD.trimEnd() + `
 
 ## Group G3: Extra
@@ -775,6 +783,7 @@ Plain python, standard library only.
       AGENTS['temper:temper-plan']!(wd, a)
       wd.write(`${SPEC}/tasks.md`, tasks)
       wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('## Files to Modify', '| src/ci_extra.py | an extra module | Infrastructure: a third group for the e2e |\n| unit/test_ci_extra.py | its test | Infrastructure: a third group for the e2e |\n\n## Files to Modify'))
+      wd.write(`${SPEC}/intent.md`, wd.read(`${SPEC}/intent.md`).replace(/Test: python3 -m unittest unit\.test_ci_(shape|bytes)\n/g, 'Test: bash scen.sh $1\n'))
     },
     'temper:temper-build-task': chained((wd, n) => {
       if (n !== 3) return buildOne(wd, n)
@@ -792,6 +801,14 @@ Plain python, standard library only.
   const firstWork = w.trace.findIndex(l => l.includes('group start'))
   const batch = w.trace.slice(firstWork).findIndex((l, i) => i > 0 && !l.includes('group start'))
   expect(batch === 2, `the first batch started two groups (max-groups 2), not ${batch}`)
+  // WP22: the whole suite runs at most once per group plus once on the base (the floor's suite_runs), and each scenario
+  // test at most twice: once where its task or group first meets it, once on the merged project; Check reuses that
+  const suites = w.finalCounts().suite_runs
+  expect(suites <= 3 + 1, `W22 the whole suite runs at most once per group plus once on the base (${suites} runs for 3 groups)`)
+  const scen = fs.readFileSync(scenLog, 'utf8').split('\n').filter(Boolean)
+  const byName = Object.fromEntries(['shape', 'bytes'].map(n => [n, scen.filter(x => x === n).length]))
+  expect(scen.length > 0, 'W22 the scenario tests ran through scen.sh (none ran: the intent kept its own Test: lines)')
+  expect(Object.values(byName).every(n => n >= 1 && n <= 2), `W22 each scenario test runs at most twice (${JSON.stringify(byName)})`)
 }
 
 // Maven (a fake mvn): the declared test classes only, offline, a new surefire report per class; the group verifies with JaCoCo.
