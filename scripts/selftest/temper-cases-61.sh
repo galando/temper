@@ -287,6 +287,17 @@ assert_eq "w20 red base question: a second red result asks again, without the ad
   "$(PATH="$WORKDIR/.git/bin61:$PATH" _x61 "r = '%s|%s' % ((d.get('ask') or {}).get('id'), 'add-setup' if opt(d, 'add-setup') else 'no add-setup')")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true; _clean61
 
+# U13: the block add-setup proposes for a project's ignored .venv activates it in the baseline's worktree too, where
+# the ignored folder is absent
+fresh; _clean61; _scripts61; printf 'test "$VENV61" = 1 || { echo "FAIL: test_venv the venv is not active"; exit 1; }\n' > venv61.sh
+_cmd61 "bash venv61.sh"; _repo61; mkdir -p .venv/bin; printf 'export VENV61=1\n' > .venv/bin/activate
+printf '/.venv/\n' >> .git/info/exclude; rm -f .temper/evidence/baseline.json; _start61
+_v61="first=$(_b61 "'%s:%s' % (d.get('result'), d.get('kind'))")|offer=$(_x61 "r = 'add-setup' if opt(d, 'add-setup') else 'no add-setup'")"
+_run61 add-setup
+assert_eq "w20 red base question: the block add-setup writes for a project's ignored .venv activates it in the baseline's worktree too (U13)" \
+  "first=red:red-base|offer=add-setup|then=green" "$_v61|then=$(_b61 "'%s:%s' % (d.get('result'), str(d.get('tail'))[-160:]) if d.get('result') != 'green' else 'green'")"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true; rm -rf .venv venv61.sh
+
 # --- w20 go on is a recorded skip: the base's fail lines are skipped in tests pass, a new fail line fails it ---
 _suite61 "bash fail61.sh"; _start61
 "$TEMPER" baseline accept-red --reason 'the base was red before this run' >/dev/null 2>&1 || true
@@ -317,6 +328,22 @@ printf 'setup:\n  env:\n    X61: "1"\n' >> .claude/temper.config
 _new61
 assert_eq "w20 the answer is kept: a changed setup block asks again" "base.red" "$(_x61 "r = (d.get('ask') or {}).get('id')")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
+
+# an answer given at a red suite is kept for that red suite only: an environment fault of a later run on the same key is
+# asked, and going on from it (no suite ran on the base) skips no later failure of the suite
+fresh; _clean61; _scripts61; _cmd61 "tool61 && bash fail61.sh"; _repo61; rm -f .temper/evidence/baseline.json
+mkdir -p .git/bin61; printf '#!/bin/sh\nexit 0\n' > .git/bin61/tool61; chmod +x .git/bin61/tool61
+PATH="$WORKDIR/.git/bin61:$PATH" _start61
+_e61="first=$(_b61 "'%s:%s' % (d.get('result'), d.get('kind'))")"
+"$TEMPER" baseline accept-red --reason 'the base was red before this run' >/dev/null 2>&1 || true
+_new61; _e61+="|then=$(_b61 "'%s:%s:%s' % (d.get('result'), d.get('kind'), d.get('answer'))"):$(_x61 "r = (d.get('ask') or {}).get('id')")"
+assert_eq "w20 the answer is kept: an answer given at a red suite is not kept for an environment fault of a later run on the same key, which asks again" \
+  "first=red:red-base|then=red:program-missing:None:base.red" "$_e61"
+"$TEMPER" baseline accept-red --reason 'the tool comes later' >/dev/null 2>&1 || true
+printf '[{"claim": "full test suite", "cmd": "tool61 && bash fail61.sh", "exit_code": 1, "executed_by": "cli", "output": "FAIL: test_new_bug"}]\n' > .git/ledger61.json
+assert_eq "w20 go on is a recorded skip: going on from a fault of the environment check, where no suite ran on the base, skips no failure of the suite" \
+  "row=none" "row=$(_r61="$(python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" .claude/temper.config "" skip-row "$PWD/.git/ledger61.json" 2>&1 | head -c 200)"; echo "${_r61:-none}")"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true; rm -f .git/ledger61.json; rm -rf .git/bin61
 
 # --- w20 limits: three times the measured seconds, never below the default; a time out doubles once, then asks ---
 fresh; _clean61; mkdir -p .temper/evidence
@@ -395,5 +422,12 @@ while IFS= read -r _c61; do
 done < <(_x61 "r = '\n'.join(d.get('calls') or []) if d.get('action') == 'auto' else ''")
 assert_eq "w20 fix run and door: a door into Review runs the environment check and no suite on the base" \
   "auto:env-only|runs=0|file" "$_d61|runs=$(_runs61)|$([[ -f .temper/evidence/baseline.json ]] && echo file || echo 'no file')"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true
+fresh; _clean61; _scripts61; _cmd61 "bash pass61.sh"; printf 'setup:\n  services:\n    db61: 127.0.0.1:1\n' >> .claude/temper.config
+_repo61; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1
+rm -f .temper/evidence/baseline.json; _settle61
+assert_eq "w20 fix run and door: a door into Review whose environment check finds a fault asks no red base question" \
+  "red:service-down:door|runs=0|asked=no" \
+  "$(_b61 "'%s:%s:%s' % (d.get('result'), d.get('kind'), 'door' if d.get('env_only') else 'no door')")|runs=$(_runs61)|asked=$(_x61 "r = 'base.red' if (d.get('ask') or {}).get('id') == 'base.red' else 'no'")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
 _clean61; rm -f .git/count61 .git/where61; rm -rf .git/bin61

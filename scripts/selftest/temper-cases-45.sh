@@ -625,6 +625,7 @@ assert_eq "D99a the plan gate runs no command; after the planner returned each V
   "gate ran=$_d99a_gate|V$([[ $(_count45 V) -le 1 ]] && echo '<=1' || echo "=$(_count45 V)")|I$([[ $(_count45 I) -le 1 ]] && echo '<=1' || echo "=$(_count45 I)")|T=$(_count45 T)|S=$(_count45 S)"
 
 _plan45 'sleep 3' true true true   # WP21: Build's limit for a Validate, TEMPER_TASK_TEST_TIMEOUT_S=1 below
+sed -i 's/^- a holds$/- a holds\n- an empty input holds/' .temper/specs/demo/tasks.md   # the plan gate passes: plan.command is asked
 _d55_after="$(_after45)"
 TEMPER_TASK_TEST_TIMEOUT_S=1 _runafter45 "${_d55_after:-x gate plan}"
 TEMPER_TASK_TEST_TIMEOUT_S=1 "$TEMPER" gate plan >/dev/null 2>&1

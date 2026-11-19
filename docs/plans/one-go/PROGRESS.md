@@ -227,7 +227,7 @@ None.
 - [ ] U10 (WP21): the preflight runs under the temp folder, Build inside the project.
 - [ ] U11 (WP21): any failure no pattern names passes as "needs new code".
 - [ ] U12 (WP21): a gate call that is ended leaves its worktree and its running command.
-- [ ] U13 (WP20): the proposed setup line `. .venv/bin/activate` fails in every worktree.
+- [x] U13 (WP20): the proposed setup line `. .venv/bin/activate` fails in every worktree. The line finds the folder from the main checkout; case 61 `w20 red base question: the block add-setup writes for a project's ignored .venv activates it in the baseline's worktree too (U13)` proves it.
 - [x] U14 (WP08): the environment agent's normal "no draft" result is a failed call; gone with the agent (M13).
 - [ ] U15 (WP21): a failed preflight row goes whole into the question.
 - [ ] U16 (WP21): the wrong reason on a red Maven base.
