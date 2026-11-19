@@ -400,6 +400,19 @@ r = 'ask=%s|kind=%s|order=%s|skip=%s|finding=%s|message=%s' % ((d.get('ask') or 
     \"the click's\" if msg and any(str(x.get('text')) == msg for x in rows('message'))
     else 'option message: %s' % (msg or 'none'))")"
 
+# --- the commit card's review section says how many changed files Review read: the row review completed of WP18 ---
+_commit56
+_READ56="r = ','.join('%s:%s' % (x.get('text'), x.get('mark'))
+         for x in rows('review') if 'files' in str(x.get('text')))"
+"$TEMPER" evidence add --stage review --claim 'review completed' --exit 0 --label PROVEN --read src/demo.sh \
+  >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1; _r56_read="$(_x56 "$_READ56")"
+"$TEMPER" evidence add --stage review --claim 'review completed' --exit 0 --label PROVEN >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1; _r56_unread="$(_x56 "$_READ56")"
+assert_eq "card: the commit card's review section says how many changed files Review read" \
+  "read=read 1 of 1 changed files:None|unread=read 0 of 1 changed files; not read: src/demo.sh:open" \
+  "read=$_r56_read|unread=$_r56_unread"
+
 # --- a failed check asks with a stop card ---
 _stop56
 assert_eq "card: a failed check asks with a stop card" \

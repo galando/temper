@@ -430,8 +430,13 @@ def commit(b, nxt):
             n[f["severity"]] = n.get(f["severity"], 0) + 1
         levels = ", ".join("%d %s" % (n[k], k) for k in sorted(n, key=lambda k: order.index(k) if k in order else 9))
         rows = [cell("[%s] %s" % (f["severity"], f["claim"]), "open") for f in opens]
-        out.append(sec("review", "REVIEW", rows, "open: %s" % levels if levels else "no open finding", 6,
-                       os.path.join(TEMPER, "evidence", "review.json")))
+        s = sec("review", "REVIEW", rows, "open: %s" % levels if levels else "no open finding", 6,
+                os.path.join(TEMPER, "evidence", "review.json"))
+        done = [x for x in r.rows("review") if isinstance(x, dict) and x.get("name") == "review completed"]
+        if done:   # the row review completed of the Review verdict (WP18): N of N files read
+            s["rows"] = s["rows"] + [cell(done[-1].get("detail") or "", None if done[-1].get("pass") else "open")]
+            s["total"] += 1
+        out.append(s)
     changed = r.ctx.get("changed") or []
     if changed:
         allowed = set(plan_files(r.spec) if r.spec else [])
