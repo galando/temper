@@ -43,6 +43,29 @@ MOVES = {"advance", "approve", "arm", "override", "back", "redo", "accept", "cov
 # does for the person, then it stops. opt() refuses any other, and a `do` text with no needs.
 NEEDS = {"more", "accept", "cancel", "talk", "html-review", "depth-review", "config-suggestions", "small-change", "pull-request",
          "pipeline-fix"}
+# WP16: the two steps of the flow that are no CLI call and that the run driver does itself, by kind: the report shown as
+# temper report printed it (`show-last`) and the note of a run with nothing to stage (`note`). Beside an action's or an
+# option's `steps`, `step_kinds` gives each step its kind ("" for any other), so a reader selects by kind, never by text.
+REPORT_STEP = ("Copy what temper report printed into your reply, as it printed it, in a code block: the person does not "
+               "see the output of a Bash call.")
+NO_RECORD_STEP = ("There is no record commit: no uncommitted code, no lesson file, and the spec folder is git-ignored or "
+                  "unchanged, so there is nothing to stage.")
+STEP_KINDS = {REPORT_STEP: "show-last", NO_RECORD_STEP: "note"}
+
+
+def step_kinds(steps):
+    """The kind of each step ("" for a CLI call or a step of the conversation), or None when no step has one."""
+    kinds = [STEP_KINDS.get(s, "") for s in steps or []]
+    return kinds if any(kinds) else None
+
+
+def with_step_kinds(d):
+    """`d` (an action or an option) with `step_kinds` beside its `steps`, when a step has a kind."""
+    kinds = step_kinds(d.get("steps"))
+    if kinds:
+        d["step_kinds"] = kinds
+    return d
+
 
 # 9.8.5 (WP04): the ids of the protocol. Every question of `next`, `go` and view.json has an `id` of QUESTIONS and its
 # `kind`; every option an `id` of OPTION_IDS, a `kind` when a reader acts on it, and `recommended: true` when it is the

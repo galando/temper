@@ -282,11 +282,31 @@ describe('the driver carries a run from the request to the end', () => {
 
   test('the report steps: CLI calls run and the report is shown as printed', async () => {
     const { p, log } = port({
-      goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Copy what temper report printed into your reply, as it printed it.'] }, { action: 'none', say: 'end' }],
+      goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Copy what temper report printed into your reply, as it printed it.'], step_kinds: ['', 'show-last'] },
+        { action: 'none', say: 'end' }],
       out: call => (call.endsWith('report --end') ? 'REPORT TEXT' : ''),
     })
     expect((await drive(p, CLI, null)).kind).toBe('done')
     expect(log.shown).toContain('REPORT TEXT')
+  })
+
+  // WP16: the report step and the no record note are kinds (`step_kinds` beside `steps`): the driver selects them by
+  // kind, never by their words, so a step reworded keeps its kind.
+  test('a step of kind show-last shows the report, one of kind note is shown; their words decide nothing (WP16)', async () => {
+    const report = port({
+      goes: [{ action: 'work', steps: [`${CLI} report --end`, 'Paste the report as printed.'], step_kinds: ['', 'show-last'] }, { action: 'none', say: 'end' }],
+      out: call => (call.endsWith('report --end') ? 'REPORT TEXT' : ''),
+    })
+    expect(await drive(report.p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(report.log.shown).toContain('REPORT TEXT')
+    const note = port({ goes: [{ action: 'work', steps: [`${CLI} state archive`, 'Nothing is left to stage.', `${CLI} state clear`],
+      step_kinds: ['', 'note', ''] }, { action: 'none', say: 'end' }] })
+    expect(await drive(note.p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+    expect(note.log.shown).toContain('Nothing is left to stage.')
+    expect(note.log.ran).toContain(`${CLI} state clear`)
+    const bare = port({ goes: [{ action: 'work', steps: ['There is no record commit: nothing to stage.', `${CLI} state clear`] }] })
+    expect(savedStop(await drive(bare.p, CLI, null))).toEqual(SAVED)
+    expect(bare.log.ran).not.toContain(`${CLI} state clear`)
   })
 
   test('steps where one needs the conversation (a pull request): none runs here, so none is left half done', async () => {
@@ -451,8 +471,8 @@ describe('a run leaves the driver only for a hand back kind (WP16)', () => {
     expect(log.ran.some(c => c.includes('evidence accept'))).toBe(false)
   })
 
-  // The passed Review question of the CLI (the fixture review-pass): Accept a finding sits in the More question, and the
-  // accept question is on the gate question. Picked from More, it runs the accept step, never a saved stop.
+  // The passed Review question of the CLI (the fixture review-pass): Accept a finding sits in the More question, and
+  // the accept question is on the gate question. Picked from More, it runs the accept step, never a saved stop.
   const reviewPass = (): GoAsk => loose<{ ask: GoAsk }>(VIEWS['review-pass']).ask
   test('Accept a finding from the More question asks the accept question and runs its calls', async () => {
     const ask = reviewPass()
@@ -793,6 +813,9 @@ describe('the driver\'s small parts', () => {
     expect(stepPlan(`${CLI} spec commit 'x'`, CLI)).toEqual({ kind: 'run', call: `${CLI} spec commit 'x'` })
     expect(stepPlan(`${CLI} spec commit '{message}'`, CLI).kind).toBe('handback')
     expect(stepPlan('git push', CLI).kind).toBe('handback')
+    expect([stepPlan('Paste the report.', CLI, 'show-last'), stepPlan('Nothing to stage.', CLI, 'note')]).toEqual([{ kind: 'show-last' },
+      { kind: 'note', text: 'Nothing to stage.' }])
+    expect(stepPlan('Copy what temper report printed into your reply.', CLI).kind).toBe('handback')
   })
 })
 

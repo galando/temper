@@ -15,7 +15,7 @@ import fresh_review
 import run_env
 
 from flow_base import (BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, NEEDS, OPTION_IDS, OPTION_KINDS, choice_id, goes_on, on_model,
-                       question_entry, read_json, same_failure)
+                       question_entry, read_json, same_failure, with_step_kinds)
 
 RECOMMENDED = " (Recommended)"   # the label's suffix: only opt() and set_rec() read or write it
 
@@ -73,6 +73,7 @@ class AskPart:
             o["answer_ids"] = {"options": [{"id": "type", "kind": "type"}, {"id": "cancel", "kind": "cancel"}]}
         if steps:
             o["steps"] = steps
+            with_step_kinds(o)
         if do:
             o["do"] = do
         if needs:

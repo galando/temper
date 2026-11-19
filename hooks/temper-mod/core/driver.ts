@@ -25,6 +25,8 @@ export type GoOption = {
   answer_ids?: GoIds
   calls?: string[]
   steps?: string[]
+  // WP16: the kind of each step beside `steps` (show-last, note, or "" for any other), as scripts/flow_base.py writes it
+  step_kinds?: string[]
   do?: string
   stop?: boolean
   reason?: boolean
@@ -46,6 +48,7 @@ export type GoOut = {
   say?: string
   agents?: GoAgent[]
   steps?: string[]
+  step_kinds?: string[]
   ask?: GoAsk
   blocking?: GoBlocking[]
   gate?: string
@@ -268,15 +271,18 @@ export function fill(call: string, fills: Record<string, string>): string {
 
 export type StepPlan = { kind: 'run'; call: string } | { kind: 'show-last' } | { kind: 'note'; text: string } | { kind: 'handback'; why: string }
 
-// What the driver does with one `steps` entry: a CLI call it runs; the report it shows; anything else is the
-// conversation's, and the action's `needs` says which kind of step it is (WP16).
-export function stepPlan(step: string, cli: string): StepPlan {
+// What the driver does with one `steps` entry: a CLI call it runs; by the step's kind (`step_kinds`, WP16), the report
+// it shows or a note; anything else is the conversation's, and the action's `needs` says which kind of step it is.
+export function stepPlan(step: string, cli: string, kind = ''): StepPlan {
   const s = step.trim()
   if (s.startsWith(cli + ' ') && !/\{[a-z_]+\}/.test(s)) return { kind: 'run', call: s }
-  if (/^Copy what temper report printed/.test(s)) return { kind: 'show-last' }
-  if (/^There is no record commit/.test(s)) return { kind: 'note', text: s }
+  if (kind === 'show-last') return { kind: 'show-last' }
+  if (kind === 'note') return { kind: 'note', text: s }
   return { kind: 'handback', why: s.slice(0, 160) }
 }
+// The plan of each step of an action or an option, with its kind.
+const plansOf = (x: { steps?: string[]; step_kinds?: string[] }, cli: string): StepPlan[] =>
+  (x.steps ?? []).map((st, i) => stepPlan(st, cli, x.step_kinds?.[i] ?? ''))
 
 // A question the driver asks with the labels the CLI gave: at most four (the CLI puts the rest under More options).
 export const labelsOf = (q: GoQuestion): string[] => q.options.map(o => o.label).slice(0, 4)
@@ -374,7 +380,7 @@ function* answer(cli: string, q: GoAsk, depth = 0, back: GoAsk | null = null): S
   if (nav === 'cancel' && back !== null) return yield* answer(cli, back, depth + 1)
   // What the conversation carries out (a skill, the HTML review, a small change, a pull request, a CI fix): nothing of
   // it runs here; the conversation runs it whole, as the answer the person already gave.
-  const step = (opt.steps ?? []).some(st => stepPlan(st, cli).kind === 'handback')
+  const step = plansOf(opt, cli).some(p => p.kind === 'handback')
   if (opt.needs !== undefined || opt.do !== undefined || step) return leave(opt.needs, opt.id ?? opt.label, `the option ${opt.label}`)
   const fills: Record<string, string> = {}
   if (opt.reason_question && (opt.calls ?? []).some(c => c.includes('{reason}'))) {
@@ -400,8 +406,7 @@ function* answer(cli: string, q: GoAsk, depth = 0, back: GoAsk | null = null): S
   if ((opt.calls ?? []).some(c => [...c.matchAll(/\{([a-z_]+)\}/g)].some(m => !((m[1] as string) in fills)))) return saved(`the option ${opt.label} needs a value no question asked`)
   const failed = yield* runAll(opt.calls ?? [], fills)
   if (failed !== null) return saved(`a call of your answer failed: ${failed}`)
-  for (const s of opt.steps ?? []) {
-    const p = stepPlan(s, cli)
+  for (const p of plansOf(opt, cli)) {
     if (p.kind === 'run') {
       const r = yield* run(p.call)
       if (r.code !== 0) return saved(`a step of your answer failed: ${failLine(r)}`)
@@ -468,7 +473,7 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
         const key = after.join('\n')
         if (key === lastAfter) return saved('the after calls of the waiting tasks changed nothing')
         lastAfter = key
-        // A failed after call stops the run saved with the CLI's FAIL line, as one of an agent the driver launched does.
+        // A failed after call stops the run saved with the CLI's FAIL line, as an agent's after call does.
         for (const c of after) {
           const r = yield* run(fill(c, { ms: 'none' }))
           if (r.code !== 0 && recordedVerdict(c, r.out) === null) return saved(`an after call of a waiting task failed: ${failLine(r)}`)
@@ -547,11 +552,10 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
       }
       // Steps only the conversation can do (a pull request): the conversation runs them all, before any of them runs
       // here, so none is left half done; the action's `needs` names the kind of that one step.
-      if ((g.steps ?? []).some(st => stepPlan(st, cli).kind === 'handback')) return leave(g.needs, g.option ?? '', 'the next step')
+      if (plansOf(g, cli).some(p => p.kind === 'handback')) return leave(g.needs, g.option ?? '', 'the next step')
       let last = ''
-      for (const s of g.steps ?? []) {
+      for (const p of plansOf(g, cli)) {
         if (yield* stopped()) return { kind: 'done', text: STOPPED }
-        const p = stepPlan(s, cli)
         if (p.kind === 'run') {
           const r = yield* run(p.call)
           if (r.code !== 0) return saved(`a step failed: ${failLine(r)}`)
