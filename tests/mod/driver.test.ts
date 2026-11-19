@@ -325,6 +325,19 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.ran).toContain(`${CLI} task gate 2`)
   })
 
+  test('a failed after call of a waiting task ends as saved with the CLI\'s FAIL line; one that recorded its verdict goes on (WP16)', async () => {
+    const line = 'FAIL: task 2 has no worktree; run task start 2 first'
+    const failed = port({ goes: [{ action: 'wait', tasks: [{ after: [`${CLI} usage add --stage build --ms {ms} --task 2`, `${CLI} task gate 2`] }] },
+      { action: 'none', say: 'end' }], fail: c => c === `${CLI} usage add --stage build --ms none --task 2`, out: () => `${line}\n` })
+    const end = await drive(failed.p, CLI, null)
+    expect(savedStop(end)).toEqual(SAVED)
+    expect(textOf(end)).toContain(`an after call of a waiting task failed: ${line}`)
+    expect(failed.log.ran).not.toContain(`${CLI} task gate 2`)
+    const verdict = port({ goes: [{ action: 'wait', tasks: [{ after: [`${CLI} task gate 2`] }] }, { action: 'none', say: 'end' }],
+      fail: c => c === `${CLI} task gate 2`, out: () => 'VERDICT: task:2 FAIL\n' })
+    expect(await drive(verdict.p, CLI, null)).toEqual({ kind: 'done', text: 'end' })
+  })
+
   test('nobody answers (a session with no one to ask): the run stops saved, and no conversation takes it on (WP16)', async () => {
     const { p } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'No']), options: [{ label: 'Approve' }, { label: 'No' }] } }], answers: [] })
     expect(savedStop(await drive(p, CLI, null))).toEqual(SAVED)

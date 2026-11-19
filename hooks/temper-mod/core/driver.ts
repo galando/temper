@@ -468,7 +468,11 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
         const key = after.join('\n')
         if (key === lastAfter) return saved('the after calls of the waiting tasks changed nothing')
         lastAfter = key
-        for (const c of after) yield* run(fill(c, { ms: 'none' }))
+        // A failed after call stops the run saved with the CLI's FAIL line, as one of an agent the driver launched does.
+        for (const c of after) {
+          const r = yield* run(fill(c, { ms: 'none' }))
+          if (r.code !== 0 && recordedVerdict(c, r.out) === null) return saved(`an after call of a waiting task failed: ${failLine(r)}`)
+        }
         continue
       }
       yield { k: 'wait', ids: [] }
