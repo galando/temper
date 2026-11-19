@@ -325,11 +325,31 @@ completed'`). The row `review completed` passes when the latest completion row h
 recommended, and the second launch names the files not read. The repeat spends the budget.
 
 **Integrate after new commits.** `temper integrate` records the HEAD it passed on, and that the groups are merged.
-Called again once they are merged, it runs the whole Integration command again when HEAD moved since (a fix pass
-committed) or the last verdict was FAIL, records the new verdict and, when it passed, runs the scenario tests, as
-before. It never merges the group branches a pass deleted. A rerun that fails records FAIL, prints its `FAIL:` line and exits 0: `gate build`
-fails the row `integration`, and the Build question holds it. The fix pass that follows gets the findings of the loop
-and what failed since in one prompt.
+Called again once they are merged, it runs the checks when Build ends again when HEAD moved since (a fix pass
+committed) or the last verdict was FAIL, records the new verdict and, at the same HEAD after a pass, runs them without
+the suite (the scenario and acceptance tests, through the reuse store). It never merges the group branches a pass
+deleted. A rerun that fails records FAIL, prints its `FAIL:` line and exits 0: `gate build` fails the row
+`integration`, and the Build question holds it. The fix pass that follows gets the findings of the loop and what
+failed since in one prompt.
+
+**The checks when Build ends (WP23).** After the merges, `integrate` makes one call, `temper check build-checks`
+(`scripts/check_run.py build-checks`), which records into the Build ledger, in this order: the suite in the owner's run
+text (WP20: `check.commands.coverage` or `check.commands.test`, else what `detect` finds, else the plan's
+`**Integration:**` line), with its coverage report, as the row `Integration suite` (phase `integration`; the plan's
+text in `plan_cmd` when it differs); the row `coverage` (WP19); one row per scenario test; the locked acceptance tests.
+A suite that fails on its environment adds the row `setup fault: <why>`, as Check does. A failing suite fails the
+integration; a failing scenario test, acceptance test or coverage row leaves it PASS, and the Build gate fails on that
+row: `acceptance tests written before Build` and `coverage`, the names Check uses, from `scripts/gate_rows.py
+build-rows`. A suite failure the person's skip of a red base covers is the third state of the row (`skipped`). Every
+run goes through the reuse store, so Check on the tree `integrate` left runs no command: its suite, coverage, scenario
+and acceptance rows are marked `reused` with their key and tree. Check still runs, always, a fix's regression proof,
+the criteria validated by `code` or `metric`, a criterion the person confirms, and the row `acceptance evidence`; on a
+tree that changed after `integrate` (a repair at Review) every command runs again. A `/temper:fix` run has no
+`integrate`: the Fix agent's after calls run `temper check build-checks` before `gate build`, so the suite and the
+regression proof are on the Build ledger before Review is paid for, and the Build gate of a fix run has the rows `tests
+pass` and `regression proof`. Only a regression proof the CLI ran counts, at the Build gate, the Check gate and on the
+commit card; a row written with `evidence add` fails the row. A program of the repository named by its full path is
+never started with `--version` to read its version for the key.
 
 ### Failure text, the SETUP verdict and recommendations that follow the evidence (9.8.5)
 
@@ -349,13 +369,18 @@ back to Plan (or Save for later), and says the cause is the plan's command or th
 no question: the CLI runs the check again with twice the limit (WP20, above); a second one asks, with the command change
 first.
 
-**SETUP at Check.** When the suite or the acceptance run of Check fails on its environment (a project marker `<script>:
-SETUP: <reason>`, or one of the three sure signs of an environment fault: a failed setup line, a missing program, a
-declared service that does not answer), Check records a `setup fault: <reason>` row beside the red suite row, so the
-gate still fails. The question says `SETUP`, offers `Repair the environment and run again (Recommended)` first, and
-never recommends a loop back. The same fault after Check ran again recommends `Save for later`, first, and the repair
-loses its mark. Rows no longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe`
-warnings).
+**SETUP at Build and at Check.** When the suite or the acceptance run fails on its environment (a project marker
+`<script>: SETUP: <reason>`, or one of the three sure signs of an environment fault: a failed setup line, a missing
+program, a declared service that does not answer), the checks record a `setup fault: <reason>` row beside the red suite
+row, so the gate still fails, and the failure record has the class `environment`. One function asks the question, at
+the failed Build gate first (the checks run when Build ends) and at Check second: it says `SETUP`, launches no fix
+agent and recommends nothing that mends the code. Its options: `Add this setup block and run it again` (`add-setup`)
+when the config has none and `temper doctor --propose` gives one, the block shown whole; `Run it again`
+(`check-again`; at Build `integrate` then `gate build`, the kept failure running again since its class is
+`environment`; at Check `state redo check`); `It is the code` (`it-is-the-code`; at Build the fix pass, at Check a
+step back to Build); `Save for later`, recommended when the same fault came back after the checks ran again (M10 of
+WP08). A run that goes on by itself makes a recorded stop here; it repairs no environment. Rows no longer carry the
+JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe` warnings).
 
 **Overrides at the commit gate.** `Override and commit` clears a failed stage gate the commit gate names. It never
 cleared the commit gate's own rows (blast radius, scope, park-on-touch), so it is no longer offered for them; the question
@@ -365,6 +390,34 @@ first option is `Check again` (with no mark), which runs the commit gate again o
 **Questions.** A question has four options at most; the CLI puts the rest under `More options`. The Context check
 accepts an answer of up to 2000 characters (the `Include what is left out` option carries the whole list); plan.md
 shows its first 100.
+
+### The failure record (9.8.5, WP23)
+
+Every failure is one typed record in `.temper/evidence/failures.json`, a list written only by `scripts/failure.py`:
+`{"id", "ts", "stage", "scope", "check", "cmd", "exit", "ran_by", "tree", "setup", "limit_s", "key", "class", "kind",
+"class_by", "why", "fail_lines", "row", "n", "step", "resolved"}`. A failed task gate, group gate, `integrate`, a
+blocked task, a red base, a plan command that fails on the base, a group fix that changed nothing, each failed run of
+the checks when Build ends and of Check, and each failed gate row that no run recorded write one. `scope` is the
+budget key wherever the failure has one (a failed `integrate` spends its repeat under `gate:build`, and that is its
+scope; `check` says which of its checks failed), else `base` or `plan-command`; `n` is the count the budget holds for
+that key. A step back leaves the file, and `temper state archive` copies it into the spec folder's `gate-ledger.json`.
+
+The class is read from the structure of the failure only, never from a model, from a closed list of kinds:
+`environment` (exit 125, exit 127 for a program of the command, a declared service down, a project's SETUP marker, a
+red base), `command` (exit 124, a plan command that fails on a green base, a fix that changed nothing, a runner that
+found no test), `plan` (a blocked task, an undeclared change, a merge conflict, a group with no Validate, a missing
+interface, a locked test the triage calls wrong), `not measured` (a value nobody took) and `code` (every other failed
+run on a tree that differs from the base, a measured coverage drop, a finding). A class picks the next step at a
+failed Build gate, in this order: `environment` is the setup question and no fix pass; a failing locked acceptance
+test and nothing else is the triage, in every mode; a test the triage blames on the code is one fix pass as the CLI's
+own action (`state redo build`, one repeat of `gate:build`), and then the run asks. In a run that goes on by itself, a
+failed suite or a measured coverage drop (`code`, when they are the only failed rows) gets the same one fix pass by
+rule; in a run the person drives it asks (row `D41`). Any other failure asks as before (a run that goes on by itself
+stops). A class never changes a verdict: a record is resolved only by a pass of the same
+check and scope on another key, or by the person's skip with its reason. The fix pass prompts take `why` and the
+failing lines from the records; a step back names the record ids it carries (`records` of the loop); `temper output
+<stage>`, the view (`failures`: the open records, with what a rule did), the end of run report and the run summary
+(`failures`, counts by class) show them.
 
 ### A plan patch (9.8.5)
 

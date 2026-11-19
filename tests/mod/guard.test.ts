@@ -513,6 +513,32 @@ describe('the reuse store: a write to temper-results.json in the git folder is r
   })
 })
 
+// 9.8.5 (WP23): the failure record decides the next step at a failed Build gate (its class) and counts toward what
+// a rule does; one file of the evidence folder, written only by scripts/failure.py through the CLI. A step back
+// leaves it.
+describe('the failure record: a write to .temper/evidence/failures.json is refused', () => {
+  const FILE = '.temper/evidence/failures.json'
+  const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ')
+  const PATHS = [FILE, `/repo/${FILE}`, `/repo/.claude/worktrees/temper-pw-G1/../../../${FILE}`]
+  test('an editing tool is refused at every stage of a run', () => {
+    for (const stage of ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit'] as const) {
+      for (const p of PATHS) {
+        for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), p, tool)), `${stage} ${tool} ${p}`).toBe(true)
+      }
+    }
+  })
+  test('a shell write is refused: a redirect, tee, cp, mv, sed -i, truncate and rm', () => {
+    for (const stage of ['build', 'check', 'commit'] as const) {
+      for (const p of PATHS) {
+        for (const cmd of [`echo '[]' > ${p}`, `printf x >> ${p}`, `: > ${p}`, `echo '[]' | tee ${p}`, `cp /tmp/none.json ${p}`,
+          `mv /tmp/none.json ${p}`, `sed -i 's/environment/code/' ${p}`, `truncate -s 0 ${p}`, `rm -f ${p}`]) {
+          expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+        }
+      }
+    }
+  })
+})
+
 // 9.8.5 (WP21): "Go on anyway" at plan.command skips the check of one command the plan wrote, with a reason: only the
 // person's answer runs `baseline skip`. The run of the plan's commands (`baseline plan`) is the CLI's and passes.
 describe('a command the plan wrote: only the person skips its check', () => {

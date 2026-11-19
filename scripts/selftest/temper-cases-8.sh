@@ -720,3 +720,27 @@ printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "wo
 assert_eq "9.8.4 blocked: Loop back to Plan is recommended at once, and the question names the file, its task and why" "Loop back to Plan (Recommended)|Run the task again|1" \
   "$(nx "o = d['ask']['options']; q = d['ask']['question']['question']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('Task 1 needs src/b.sh, which Task 2 declares' in q and 'the test needs the b event' in q))")"
 setup
+
+# --- WP23: at a failed Build gate the next step is read from the open failure records. A record of class environment
+#     is the setup question, with no fix agent, in a run the person drives; a run that goes on by itself stops there.
+#     The record is written as scripts/failure.py writes it (docs/plans/one-go/wp/phase-5-checks.md, mechanism 11) ---
+_env8() { # a run at Build whose integrate failed on a setup line that failed, with its one open record
+  fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "FAIL", "reason": "integration suite failed (exit 125): bash suite.sh", "merged": true}}\n' > .temper/groups.json
+  gfail build "integration" "integration suite failed (exit 125): bash suite.sh"
+  python3 - <<'PY'
+import json
+json.dump([{"id": "F1", "ts": "2026-11-19T00:00:00Z", "stage": "build", "scope": "gate:build", "check": "suite",
+            "cmd": "bash suite.sh", "exit": 125, "ran_by": "cli", "tree": "t8", "setup": "s8", "limit_s": 600, "key": "k8",
+            "class": "environment", "kind": "setup-line", "class_by": "exit",
+            "why": "the setup block failed (temper-setup: FAIL (exit 1))", "fail_lines": ["temper-setup: FAIL (exit 1)"],
+            "row": "build#1", "n": 1, "step": "", "resolved": None}], open(".temper/evidence/failures.json", "w"), indent=2)
+PY
+}
+_env8
+_r8="driven=$(nx "o = d['ask'].get('options', []) + (d['ask'].get('more') or {}).get('options', []) if d.get('ask') else []; ids = [x.get('id') for x in o]; '%s:%s:%s' % (d.get('action'), ','.join(i for i in ('check-again', 'it-is-the-code', 'save') if i in ids) or 'no setup options', 'no agent' if not d.get('agents') else 'agents')")"
+_env8; _ran_unattended
+_r8+="|by itself=$(nx "c = ' '.join(d.get('calls') or []); 'stop' if d.get('action') == 'auto' and ' park ' in c and not d.get('agents') else '%s %s' % (d.get('action'), [a.get('type') for a in d.get('agents') or []])")"
+assert_eq "WP23: an open record of class environment at the failed Build gate is the setup question with no fix agent; a run that goes on by itself stops there" \
+  "driven=ask:check-again,it-is-the-code,save:no agent|by itself=stop" "$_r8"
+setup

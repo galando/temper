@@ -35,7 +35,7 @@ import { recordOf, withRemote } from './faketools'
 import { orchestrate, orchestrateFix } from './loop'
 import { APPROVALS, defaultPerson, idOf, pickId, stagePerson, worldCheck, worldFindings } from './persons'
 import { BYTES_STUB, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE } from './project'
-import { AGENTS, SPEC, buildOne, chained, freshReviewer, launchByHand, script, startProject, t, worktreeOf } from './scenarios'
+import { AGENTS, SPEC, buildOne, chained, flagsLastTask, freshReviewer, launchByHand, script, startProject, t, versionFlag, wantsVersion, worktreeOf } from './scenarios'
 import type { FreshFinding } from './scenarios'
 import { expect, promise } from './slow'
 import { TEMPER, World, reviewDone } from './world'
@@ -577,7 +577,7 @@ const integrationFailed = (w: World): boolean => {
 export const integrateFail = (w: World): void => {
   withRemote(w)
   watch(w)
-  startProject(w)
+  startProject(w, '', wantsVersion(versionFlag(w)))   // WP23: the suite meets what the Integration command wants
   // the Build fix pass after the failed integrate: it adds the line the Integration command wants
   let fixedAfterFail = false
   const fixer: Agent = wd => {
@@ -585,7 +585,7 @@ export const integrateFail = (w: World): void => {
     if (integrationFailed(wd)) fixedAfterFail = true
     wd.write('src/ci_bytes.py', `${wd.read('src/ci_bytes.py').replace(/\n*$/, '\n')}VERSION = 1\n`)
   }
-  const agents: Record<string, Agent> = { ...AGENTS, 'temper:temper-plan': planner({ tasks: integrationCheck }), 'temper:temper-build': fixer }
+  const agents: Record<string, Agent> = flagsLastTask(versionFlag(w), { ...AGENTS, 'temper:temper-plan': planner({ tasks: integrationCheck }), 'temper:temper-build': fixer })
   let reached = ''
   const base = defaultPerson()
   const atQuestion = (wd: World): boolean =>
@@ -793,6 +793,7 @@ export const acceptanceWrongTest = (w: World): void => {
   const writer = launchesOf(w, 'temper:temper-acceptance', p => /^Correction:/m.test(p))
   const reviewAt = launchesOf(w, 'temper:temper-review')[0]?.at ?? -1
   expect(writer.length === 1 && reviewAt > writer[0]!.at, `D21 one writer launch corrects the test, then Review (${writer.length} writer launches; Review at ${reviewAt})`)
+  expect(triage.length === 1 && reviewAt > triage[0]!.at, `D21 the wrong locked test is met at integrate: its triage comes before the first Review launch (triage at ${triage[0]?.at ?? 'none'}; Review at ${reviewAt})`)
   expect(launchesOf(w, 'temper:temper-build-task').length === 2 && launchesOf(w, 'temper:temper-build').length === 0,
     'D21 no builder is launched for the wrong test')
   expect(seen.ids.filter(i => !asked.includes(i)).join(',') === 'plan.approve,commit.confirm' && ended(w), `D21 the run asks the approval, the one question and the commit (${seen.ids.join(', ')})`)

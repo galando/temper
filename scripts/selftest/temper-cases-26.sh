@@ -55,25 +55,36 @@ printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "wo
 assert_eq "9.8.5 S7: with no fault named anywhere, the CLI checks Build again and launches no agent" "auto|True|0" \
   "$(nx "d['action'] + '|' + str(d['calls'][-1].endswith('gate build')) + '|' + str(len(d.get('agents') or []))")"
 
-# --- 9.8.5 (Q6): a Check that hit the environment says SETUP and never recommends a loop back ---
-fresh; gpass intent plan build review
-for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
-"$TEMPER" evidence add --stage check --claim "tests: the suite (run by the CLI)" --cmd "bash scripts/temper-check.sh" --exit 4 >/dev/null 2>&1
-"$TEMPER" evidence add --stage check --claim "setup fault: no Postgres answering on 127.0.0.1:5432" --cmd "bash scripts/temper-check.sh" --exit 1 >/dev/null 2>&1
-gfail check "tests pass" "the latest run of a test command failed"
-assert_eq "9.8.5 Q6: the Check question says SETUP; repairing the environment is first and recommended; no loop back is recommended" \
-  "True|Repair the environment and run again (Recommended)|0" \
-  "$(nx "q = d['ask']['question']; '|'.join([str('SETUP: the environment was not ready (no Postgres answering on 127.0.0.1:5432)' in q['question']), q['options'][0]['label'], str(sum(1 for o in q['options'] if o['label'].startswith('Loop back') and o['label'].endswith('(Recommended)')))])")"
-# M10 of WP08: Check ran again after the repair (the redo the CLI keeps) and met the same fault: the same repair is not
-# recommended again, Save for later is
-python3 - <<'PY'
-import json
-p = ".temper/build-state.json"
-d = json.load(open(p)); d["redo"] = {"stage": "check", "reason": "SETUP: no Postgres answering on 127.0.0.1:5432", "ts": "2026-01-01T00:00:00Z"}
-json.dump(d, open(p, "w"), indent=2)
+# --- 9.8.5 (Q6), WP23: a suite that hit the environment when Build ends says SETUP at the Build question, launches
+#     no fix agent and never recommends a repair of the code ---
+printf '%s\n' '# Tasks: demo' '' '**Integration:** `true`' '' '## Group G1: Core' '**Depends:** none' '**Validate:** `true`' \
+  '**Context:**' 'The demo group.' '' '### Task 1: first task' '**File:** `src/a.sh`' '**Depends:** none' '**Test:** `true`' \
+  '**Cases:**' '- a holds' '- [ ] done' | m_setup
+mkdir -p .git/s26
+printf '#!/bin/sh\necho "temper-check: SETUP: no Postgres answering on 127.0.0.1:5432"\nexit 4\n' > .git/s26/suite; chmod +x .git/s26/suite
+python3 - "$WORKDIR/.git/s26/suite" <<'PY'
+import json, sys
+p = ".claude/temper.config"; s = open(p).read()
+s = s.replace("  coverage-threshold: 80\n", '  coverage-threshold: 80\n  commands:\n    test: "%s"\n' % sys.argv[1], 1)
+open(p, "w").write(s)
+d = json.load(open(".temper/groups.json"))
+for g in d.get("groups", {}).values():
+    g.update({"status": "passed", "confirmed": True, "gate": {"verdict": "PASS"}})
+d["tasks"] = {"1": {"status": "passed", "group": "G1"}}
+json.dump(d, open(".temper/groups.json", "w"))
 PY
+"$TEMPER" evidence add --stage build --phase red --claim 'unit tests' --cmd 'true' --exit 1 >/dev/null 2>&1
+"$TEMPER" evidence add --stage build --phase green --claim 'unit tests' --cmd 'true' --exit 0 >/dev/null 2>&1
+"$TEMPER" integrate >/dev/null 2>&1 || true; "$TEMPER" gate build >/dev/null 2>&1
+assert_eq "WP23 Q6: the Build question after integrate says SETUP; I repaired it, run the checks again is first and recommended; no fix agent, and nothing that mends the code is recommended" \
+  "True|check-again|0|no agent" \
+  "$(nx "q = d['ask']['question']; o = d['ask']['options'] + (d['ask'].get('more') or {}).get('options', []); '|'.join([str('SETUP: the environment was not ready (no Postgres answering on 127.0.0.1:5432)' in q['question']), str(next((x.get('id') for x in o if x.get('recommended')), None)) if o[0].get('recommended') else 'first not recommended', str(sum(1 for x in o if x.get('id') in ('redo', 'it-is-the-code', 'back') and x.get('recommended'))), 'no agent' if not d.get('agents') else 'agents'])")"
+# M10 of WP08: the person ran the checks again (the option's calls) and met the same fault: the same repair is not
+# recommended again, Save for later is
+while IFS= read -r _c26; do [[ -n "$_c26" ]] && bash -c "$_c26" >/dev/null 2>&1; done < <(nx "o = d['ask']['options'] + (d['ask'].get('more') or {}).get('options', []); '\n'.join(next((x.get('calls') or [] for x in o if x.get('id') == 'check-again'), []))")
 assert_eq "9.8.5 M10: SETUP: the same fault after a run again recommends Save for later" "Save for later (Recommended)|0" \
   "$(nx "o = d['ask']['question']['options'] + (d['ask'].get('more') or {}).get('question', {}).get('options', []); o[0]['label'] + '|' + str(sum(1 for x in o[1:] if x['label'].endswith('(Recommended)')))")"
+rm -rf .git/s26
 assert_eq "9.8.5 Q6: check_run reads a project's SETUP marker, and the JVM's start text leaves a row" "no Postgres answering on 127.0.0.1:5432|ok" \
   "$(python3 -I -c "
 import sys; sys.path.insert(0, sys.argv[1]); import check_run

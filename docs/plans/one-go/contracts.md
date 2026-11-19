@@ -84,6 +84,7 @@ Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command f
 | `--fresh` on `temper check run`, `temper group gate` and `temper integrate` | WP22 | WP24 |
 | `python3 scripts/run_env.py tree DIR` (the digest of a folder, the tree a verdict names) and `checked GATES DIR` (`FAIL <why>` when the project is no longer the tree of the Check verdict); the variable `TEMPER_FRESH=1`, which `--fresh` sets for the runner | WP22 | WP23, WP24 |
 | `temper check build-checks` | WP23 | WP24 |
+| `python3 scripts/check_run.py build-checks ROOT SPEC LEDGER BASE COMMAND [TEST COV KEY [nosuite]]` (exits with the suite's exit code; `temper check build-checks` exits 0 unless `integrate` calls it); `python3 scripts/gate_rows.py build-rows SPEC LEDGER [KEY]`; `python3 scripts/failure.py record`, `skip STAGE REASON` and `open [STAGE]` (`temper override` calls `skip`) | WP23 | WP24, WP25 |
 | `temper repair start`, `test`, `commit`, `close`, `revert`, `status`; `temper evidence add --detail --fix --proof` | WP24 | none |
 | `temper plan amend task N --add-file F [--failure ID]`; `temper plan patch task N --add-file F`; `temper group keep` | WP25 | WP27 |
 | `temper model --all --source` | WP27 | WP29 |
@@ -127,6 +128,7 @@ Run files:
 | `.claude/worktrees/temper-baseline` | the one detached worktree of the baseline | WP20 | WP21 |
 | `temper-results.json` in the git common folder | the reuse store; exists at the head | the head | WP08 (guarded, tested), WP20, WP22 (the key) |
 | `.temper/evidence/failures.json` | the failure record | WP23 | written only through `scripts/failure.py` |
+| `failures` of `.temper/specs/<slug>/gate-ledger.json`; `records` of a loop of `.temper/feedback-loops.json`; `failures` of a line of `.temper/runs.jsonl` | the archived failure records; the ids of the open records of the stage a step back leaves; the count of records by class | WP23 | WP24, WP25 |
 | `.temper/evidence/amendments.json` | amendments and patches, appended | WP25 | the commit card |
 | `.temper/notice.json` | the one time notice was said | WP31 | none |
 | `.claude/temper.config.before-9.8.5` | the copy the config question keeps, of a config of 9.8.4 or of the base | WP29 | none |
@@ -151,6 +153,7 @@ The view stays version 1: a field is added, none is renamed or removed (`D65`).
 | `needs`, `option` on a `work` action | `next`, `go`: steps that are the conversation's one step (`pull-request`), and the id of the option they came from | WP16 | the mod's run driver |
 | `step_kinds` beside `steps`, on a `work` action and on an option | `next`, `go`, the view: the kind of each step, `show-last` (the report step), `note` (the no record note) or `""`; absent when no step has a kind (`scripts/flow_base.py`) | WP16 (the phase 4b fix of its step 4) | the mod's run driver (`stepPlan`) |
 | `state` beside `pass` in `checks`; the entry `mutation` of `check_markers` | the view | WP19 | WP20 (`skipped`), WP23 |
+| `failures` (only when a record is open): `{id, class, why, step}` of each open failure record | the view | WP23 | the end of run report; WP24 |
 | `guard.adhoc_kind` | the view | WP24 | the mod |
 | `drift_ids` beside the options of `drift`, their ids at their places | the view | WP04 | every test |
 
@@ -293,6 +296,7 @@ scripted project sets it, so its base is measured whole while its other limits s
 | budget keys | `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance`, `pipeline` (WP10); `plan-revise:<reason>` (WP27) | WP10 | a failure record's `scope` is its budget key (WP23); a failed `integrate` spends its repeat under `gate:build`, and that is the `scope` of its record |
 | rule log kinds | `advance`, `repair`, `group fix`, `covered`, `stop`, `answer`, `ended` (WP11); `amend` (WP25) | WP11 | the card section `rule_log` |
 | failure classes | `environment`, `command`, `plan`, `code`, `not measured`; the kinds are a closed list in `scripts/failure.py` | WP23 | WP24 (`code`), WP25 (`blocked-task`, `no-validate`) |
+| the lines of `build-checks` | `REASON: integration suite failed (exit <n>): <command>` when the suite failed (the reason `integrate` records); the row `Integration suite` holds `plan_cmd` (the plan's Integration text when it differs from the owner's) and `state: skipped` when the person's skip of a red base covers its failure; the coverage row holds `tree`, `key` and `reused` of the suite's run | WP23 | the CLI, WP24 |
 | the results of the plan's commands | in `plan` of `.temper/evidence/baseline.json`, one entry for each command `temper baseline plan` ran, keyed by the command's text: `{"result", "exit", "seconds", "class", "kind", "why", "fail_lines", "tail"}`; `result` is `pass`, `fail`, `timeout` or `fails like the base` (`running` while it runs); `class` is `command` or `environment`, as in the failure classes; a skip with a reason is an override row named `plan-command` | WP21 | the flow (`plan.command`), the approval card, case file 62, case 45 `D99`; WP23, WP25 |
 | the plan's commands, more fields | each entry of `plan` also holds `where` (`G1 Validate`, `Integration`), `limit`, `started`, `pid` and `ended`; a skip adds `skipped` `{"by", "reason", "ts"}`, with `result` `not run` when the command never ran; a program of the plan that does not resolve adds a fault of kind `program-missing` to `env`, file `the plan` | WP21 | the flow (`plan.command`), the approval card |
 | the reuse store | `temper-results.json` in the git common folder, changed under the lock file `temper-results.json.lock` beside it; one entry a key (`run_env.result_key`: the digest `run_env.tree_key`, the command, the setup block, the folder inside the repository, the first version line of each program, what the caller adds): `{"pass": {"ts", "tail", "seconds", "extra"}, "fail": {"ts", "rc", "tail", "fail_lines", "answer", "class", "limit", "again"}, "flaky", "forced", "last"}`; the byproduct list under the reserved key `byproducts`; the baseline's `baseline:<key>` entries; one lock file a key in `temper-locks/` | WP22 | `scripts/baseline.py`, WP23, WP24 |

@@ -6,7 +6,7 @@ import path from 'node:path'
 import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
 import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
-import { stagePerson } from './persons'
+import { pickId, stagePerson } from './persons'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
@@ -875,7 +875,7 @@ case "$*" in *verify*) exit 0 ;; esac
 const G1_CHECK = 'python3 -m unittest unit.test_ci_shape'
 const FAILED_CHECKS_ASKED = new Map<string, string>()
 export const failedChecks = (w: World): void => {
-  startProject(w)
+  startProject(w, '', wantsVersion(versionFlag(w)))   // WP23: the suite meets what the Integration command wants
   // every verdict a call recorded: the markers of the calls the world ran, and those `temper go` read
   const verdicts: string[] = []
   const run = w.run.bind(w)
@@ -893,7 +893,7 @@ export const failedChecks = (w: World): void => {
     return r
   }
   const fixes = { group: 0, integrate: 0 }
-  const agents: Record<string, Agent> = {
+  const agents: Record<string, Agent> = flagsLastTask(versionFlag(w), {
     ...AGENTS,
     // the plan: G1's check also wants a line no task writes, and so does the Integration command
     'temper:temper-plan': (wd, a) => {
@@ -916,7 +916,7 @@ export const failedChecks = (w: World): void => {
         fixes.integrate++
       }
     },
-  }
+  })
   const asked: string[] = []
   const end = orchestrate(w, script({
     agents,
@@ -955,6 +955,7 @@ export const fixRun = (w: World): void => {
   // commands/fix.md starts the run with the bug as typed; with the mod's run driver, the driver starts it itself
   if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix --feature 'the shape drops the verdict'`)
   const bug = '.temper/specs/bug'
+  let atReview = ''
   const agents: Record<string, Agent> = {
     'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
     // 9.8.5 (Q3): the CLI runs the regression test (evidence run), as agents/fix.md says; a claimed run counts nowhere
@@ -966,7 +967,16 @@ export const fixRun = (w: World): void => {
       const green = t(wd, `evidence run --stage build --phase green --claim 'regression test: the shape keeps its verdict' -- python3 -m unittest unit.test_ci_shape`)
       expect(/exit 0\b/.test(green.out), `the fix passes the regression test (${green.out.slice(0, 200)})`)
     },
-    'temper:temper-review': wd => reviewDone(wd),
+    // WP23: the first Review launch reads what the Fix agent's after calls left in the Build ledger: the suite the CLI
+    // ran (check build-checks), before any Review is paid for
+    'temper:temper-review': wd => {
+      if (atReview === '') {
+        const rows = (wd.exists('.temper/evidence/build.json') ? wd.json('.temper/evidence/build.json') : []) as unknown as Json[]
+        const suite = (Array.isArray(rows) ? rows : []).filter(r => r?.claim === 'Integration suite' && r?.executed_by === 'cli')
+        atReview = suite.length > 0 ? `suite exit ${suite[suite.length - 1]!.exit_code}` : 'no suite row the CLI ran'
+      }
+      reviewDone(wd)
+    },
     'temper:temper-check': wd => {
       t(wd, `evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
       t(wd, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
@@ -997,6 +1007,7 @@ export const fixRun = (w: World): void => {
     launchByHand(w, agents, 'temper:temper-rca')
     orchestrate(w, fixScript)
   }
+  expect(atReview === 'suite exit 0', `W23 the suite ran before the Review agent was launched: the Fix agent's after calls left the CLI's suite row in the Build ledger (${atReview || 'no Review launch'})`)
   expect(asked[0] === 'RCA: the root cause and the proposed fix are on the card. Approve the fix?', `the RCA question is the approval (${asked[0] ?? 'not asked'})`)
   expect(ids.join(',') === 'rca.approve,commit.confirm' && w.counts.dialogs === 2,
     `the bug run asks the root cause with the fix, then the commit, and nothing else (${ids.join(', ')}; ${w.counts.dialogs} dialogs)`)
@@ -1005,6 +1016,74 @@ export const fixRun = (w: World): void => {
   const own = Number(w.run('git rev-list --count main..HEAD').out.trim() || '0')
   expect(branch === 'fix/bug' && own > 0 && w.sh('git log --format=%s -n 1').startsWith('fix(bug):'),
     `the fix is committed on fix/bug, off main (on ${branch}, ${own} commits beyond main: ${w.sh('git log --format=%s -n 1').trim()})`)
+}
+
+// WP23: integrate runs the owner's suite (the config's test command), not the plan's Integration line, which runs once
+// on the base (WP21). A failure met only when Build ends is the suite's own: once the agent of Task 2 (the last task)
+// returned, suite.sh wants the line the plan's Integration command wants. `wantsVersion` changes the project at its
+// start; `flagsLastTask` marks the end of the last task agent.
+export const versionFlag = (w: World): string => `${w.dir}.version-wanted`
+export const wantsVersion = (flag: string) => (wd: World): void => {
+  wd.write('suite.sh', `[ -f '${flag}' ] && ! grep -q VERSION src/ci_bytes.py && { echo 'FAIL: test_version: src/ci_bytes.py has no VERSION'; exit 1; }\n${wd.read('suite.sh')}`)
+  wd.sh('git add suite.sh && git commit -qm "the suite wants a VERSION once Build ends"')
+}
+export const flagsLastTask = (flag: string, agents: Record<string, Agent>): Record<string, Agent> => ({
+  ...agents,
+  'temper:temper-build-task': (wd, a) => {
+    (agents['temper:temper-build-task'] ?? buildTask)(wd, a)
+    if (tasksOf(a).includes(2)) fs.writeFileSync(flag, '')
+  },
+})
+
+// WP23: a fault of the environment met when Build ends, in a run that goes on by itself (the person approved with
+// the recommended approve-run). The suite passes on the base and at every group; once the last task agent returned,
+// its setup line fails (`temper-setup: FAIL`, exit 125), so `integrate` meets the fault. The run makes a recorded
+// stop at Build and asks the setup question; no fix agent is launched for it. The person repairs the environment (the
+// flag goes) and answers check-again: integrate and the Build gate run again, pass, and the run goes on to the commit.
+export const setupAtBuild = (w: World): void => {
+  const down = `${w.dir}.env-down`
+  startProject(w, '', wd => {
+    wd.write('suite.sh', `[ -f '${down}' ] && { echo 'temper-setup: FAIL (exit 1)'; exit 125; }\n${wd.read('suite.sh')}`)
+    wd.sh('git add suite.sh && git commit -qm "the suite meets the setup line"')
+  })
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-build-task': (wd, a) => {
+      buildTask(wd, a)
+      if (tasksOf(a).includes(2)) fs.writeFileSync(down, '')
+    },
+  }
+  const met: string[] = []
+  let stopped = ''
+  let mode = ''
+  let ids: string[] = []
+  let said = ''
+  const end = orchestrate(w, script({
+    agents,
+    stopAt: (_wd, n) => n.stage === 'commit',
+    person: (ask, wd) => {
+      const id = String(ask.id ?? '')
+      met.push(id)
+      if (!id.startsWith('build.')) return recommended(ask, wd)
+      if (ids.length === 0) {
+        ids = ((ask.options ?? []) as Json[]).concat(((ask.more?.options ?? []) as Json[])).map(o => String(o.id ?? ''))
+        said = String(ask.question?.question ?? '')
+        const log = (wd.exists('.temper/rule-log.json') ? wd.json('.temper/rule-log.json') : []) as unknown as Json[]
+        stopped = (Array.isArray(log) ? log : []).some(e => e?.kind === 'stop' && e?.stage === 'build') ? 'recorded' : 'not recorded'
+        mode = String(wd.json('.temper/build-state.json').run_mode ?? '')
+      }
+      if (fs.existsSync(down)) fs.unlinkSync(down)   // the person repairs the environment
+      // with no check-again to pick the person stops here, and the checks below say what the question was
+      return ids.includes('check-again') ? pickId(wd, ask, 'check-again') : null
+    },
+  }))
+  const builds = met.filter(i => i.startsWith('build.'))
+  expect(builds.length === 1, `W23 the fault at integrate asks one question at Build (${met.join(', ')})`)
+  expect(['check-again', 'it-is-the-code', 'save'].every(i => ids.includes(i)) && /SETUP/.test(said),
+    `W23 it is the setup question: SETUP, with check-again, it-is-the-code and save (${ids.join(', ')}: ${said.slice(0, 160)})`)
+  expect(stopped === 'recorded' && mode === 'autonomous', `W23 the unattended run made a recorded stop there (${stopped}, run_mode ${mode || 'unset'})`)
+  expect((w.counts.launches['temper:temper-build'] ?? 0) === 0, `W23 no fix agent is launched for a fault of the environment (${w.counts.launches['temper:temper-build'] ?? 0})`)
+  expect(end.stage === 'commit', `W23 after the repair and check-again the run goes on to the commit (${end.action} ${end.stage ?? ''})`)
 }
 
 // WP17: a trivial request is a verdict the CLI records. The Intent agent calls `temper intent trivial --why TEXT`,
@@ -1426,11 +1505,11 @@ def stage_summary(stages):
 `
 export const LOW_BYTES = 'import json; document = lambda ledger: json.dumps(ledger, sort_keys=True, separators=(",", ":"))\n'
 
-// WP19 test 9: the scripted builder leaves 12 new lines of which 4 run; the base value is 71%. Check fails on the row
-// coverage (a measured drop, class code); the run the person approved takes its one counted repair, whose scripted
-// agent records RED and GREEN as a fix pass does and changes no line that runs; Check fails again and the run stops
-// with one question that names the row. It never passes on to the commit and never takes a second repair by itself.
-// WP24 turns the repair into one in place.
+// WP19 test 9: the scripted builder leaves 12 new lines of which 4 run; the base value is 71%. The Build gate (WP23:
+// integrate measures coverage) fails on the row coverage (a measured drop, class code); the run the person approved
+// takes its one counted repair, Build's fix pass, whose scripted agent records RED and GREEN as a fix pass does and
+// changes no line that runs; the Build gate fails again and the run stops with one question that names the row. It
+// never passes on to the commit and never takes a second repair by itself. WP24 turns the repair into one in place.
 export const coverageDrop = (w: World): void => {
   const fake = `${w.dir}.fakecov`
   fs.mkdirSync(path.join(fake, 'coverage'), { recursive: true })
@@ -1487,14 +1566,15 @@ export const coverageDrop = (w: World): void => {
     afterFailStops: true,
   }))
   const flow = w.trace.join('\n')
-  const rows = ((w.json('.temper/gates.json').check?.requirements ?? []) as Json[])
+  // WP23: integrate measures coverage when Build ends, so the measured drop fails the Build gate on the row coverage
+  const rows = ((w.json('.temper/gates.json').build?.requirements ?? []) as Json[])
   const cov = rows.find(r => r.name === 'coverage')
-  expect(cov !== undefined && cov.pass === false && String(w.json('.temper/gates.json').check?.verdict) === 'FAIL',
-    `Check fails on the row coverage, a measured drop (${JSON.stringify(rows.filter(r => r.pass !== true)).slice(0, 300)})`)
-  expect(!rows.some(r => /mutation/i.test(String(r.name))), 'no row of Check names the planted bugs')
+  expect(cov !== undefined && cov.pass === false && String(w.json('.temper/gates.json').build?.verdict) === 'FAIL',
+    `the Build gate fails on the row coverage, a measured drop (${JSON.stringify(rows.filter(r => r.pass !== true)).slice(0, 300)})`)
+  expect(!rows.some(r => /mutation/i.test(String(r.name))), 'no row of the Build gate names the planted bugs')
   const log = (w.exists('.temper/rule-log.json') ? w.json('.temper/rule-log.json') : []) as unknown as Json[]
-  const ruled = log.filter(x => x.kind === 'repair' && x.stage === 'check').length
-  expect(repairs === 1 && ruled === 1, `the run takes its one counted repair and no second (${repairs} launches of the repair agent, ${ruled} repairs by rule at Check)`)
+  const ruled = log.filter(x => x.kind === 'repair' && x.stage === 'build').length
+  expect(repairs === 1 && ruled === 1, `the run takes its one counted repair and no second (${repairs} launches of the repair agent, ${ruled} repairs by rule at Build)`)
   expect(asked.length === 1 && end.action === 'ask', `after the approval the run asks one question, at the stop (${asked.map(a => a.id).join(', ')})`)
   const q = String(asked[0]?.question?.question ?? '')
   expect(/\bcoverage\b/.test(q), `the stop's question names the row coverage (${q.slice(0, 200)})`)

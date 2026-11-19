@@ -210,9 +210,14 @@ each class (`scripts/maven_loop.py`). Check never runs a second full Maven pass 
 
 ## One suite run, with coverage
 
-Check runs the project's suite once. When the stack allows it, coverage is on in that same run; a second full run
-for coverage is never made. The run goes through the reuse store (9.8.5): the run `temper check ahead` made beside
-Review, or a group's check of the same text on the same content, is used with what it measured, so a tree is
-measured by one suite run. The coverage output goes under `.temper/check/` (`.temper/check/coverage.xml`,
+The suite runs once, in its coverage form, when Build ends: `temper integrate` (and, in a fix run, the Fix agent's
+`temper check build-checks`) runs the owner's command, each scenario test and the locked acceptance tests into the
+Build ledger (9.8.5, WP23). When the stack allows it, coverage is on in that same run; a second full run for coverage
+is never made. Every run goes through the reuse store: on the tree `integrate` left, Check runs no command and records
+the suite, coverage, scenario and acceptance rows as reused, with their key and tree. What Check still runs: a fix's
+regression proof, the criteria validated by `code` or `metric`, a criterion the person confirms, and every command
+again on a tree that changed after `integrate` (a repair at Review). A group's check of the same text as the owner's
+test command is the same key on the same content. On jest the coverage command is `npx jest`, not the project's `npm
+test` script: a project whose test script does more than run jest sets `check.commands.test`. The coverage output goes under `.temper/check/` (`.temper/check/coverage.xml`,
 `.temper/check/htmlcov/`), which the blast radius skips along with `.coverage`, `htmlcov/`, `.pytest_cache/` and
 the other test caches. Task agents and the fix pass run scoped tests, never the full suite.

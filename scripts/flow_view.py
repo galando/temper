@@ -267,6 +267,10 @@ def view(run, nxt):
         "rule_log": [x for x in read_json(os.path.join(TEMPER, "rule-log.json"), []) if isinstance(x, dict)],
         "time": {"started": r.state.get("started") or r.state.get("created"), "updated": r.state.get("updated")},
     }
+    import failure
+    recs = failure.open_records()
+    if recs:   # WP23: the open failure records: class, why and what a rule did (only when there are any)
+        out["failures"] = [{"id": x.get("id"), "class": x.get("class"), "why": x.get("why"), "step": x.get("step")} for x in recs]
     if nxt.get("action") == "work" and nxt.get("step_kinds"):
         out["next"]["step_kinds"] = nxt["step_kinds"]   # the kind of each step beside `steps` (flow_base.step_kinds)
     return out

@@ -13,6 +13,7 @@ assert_eq "9.8.0: and writes to it, never to docs/decisions/.temper" "medium|no"
 
 # --- 2. Check is run by the CLI when it finds a test command; the agent stays for a stack it cannot read ---
 _gc() { "$TEMPER" gate check 2>&1 || true; }   # the gate's rows; its exit (FAIL is 1) is not the pipe's under pipefail
+_gb() { "$TEMPER" gate build 2>&1 || true; }   # WP23: the Build gate's rows, where the locked acceptance tests are read
 _planted15() { # WP19: the planted bug score of the tree as it stands, which check ahead measures beside Review (Check plants
                # no bug): the state of .temper/evidence/mutation.json, then "all caught" or "survivors"
   rm -f .temper/evidence/mutation.json
@@ -162,13 +163,13 @@ p = '.claude/temper.config'; s = open(p).read()
 s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 80\n  commands:\n    test: "true"\n', 1)
 open(p, 'w').write(s)
 PYEOF
-echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
-assert_eq "9.8.0: Check runs the locked acceptance tests, and they pass" "yes" \
-  "$(_gc | grep -q '\[v\] acceptance tests written before Build — they pass, unchanged since they were locked' && echo yes || echo no)"
+echo '[]' > .temper/evidence/build.json; "$TEMPER" check build-checks >/dev/null 2>&1
+assert_eq "WP23: the checks when Build ends run the locked acceptance tests, and the Build gate reads that they pass" "yes" \
+  "$(_gb | grep -q '\[v\] acceptance tests written before Build — they pass, unchanged since they were locked' && echo yes || echo no)"
 printf '\n# a builder edits it\n' >> .temper/specs/demo/acceptance/test_ac.py
-echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
-assert_eq "9.8.0: an acceptance test changed after the lock fails the gate, naming the file" "yes" \
-  "$(_gc | grep -q '\[x\] acceptance tests written before Build — changed after they were locked: .temper/specs/demo/acceptance/test_ac.py' && echo yes || echo no)"
+echo '[]' > .temper/evidence/build.json; "$TEMPER" check build-checks >/dev/null 2>&1
+assert_eq "WP23: an acceptance test changed after the lock fails the Build gate, naming the file" "yes" \
+  "$(_gb | grep -q '\[x\] acceptance tests written before Build — changed after they were locked: .temper/specs/demo/acceptance/test_ac.py' && echo yes || echo no)"
 
 # --- 5. The scope row in every run with a plan; park-on-touch parks only for a file outside the plan ---
 f9_tasks | m_setup
@@ -383,40 +384,39 @@ echo 'x' > .temper/specs/demo/acceptance/test_extra.py
 assert_exit "9.8.0: acceptance restore puts the locked files back" 0 "$TEMPER" acceptance restore
 assert_eq "9.8.0: restored as locked: the edit is gone, the file added after the lock too" "no|no" \
   "$(grep -q 'a builder edits it' .temper/specs/demo/acceptance/test_ac.py && echo yes || echo no)|$([[ -f .temper/specs/demo/acceptance/test_extra.py ]] && echo yes || echo no)"
-gpass build review; "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state advance review_complete check >/dev/null 2>&1
-gfail check "acceptance tests written before Build" "changed after they were locked: .temper/specs/demo/acceptance/test_ac.py"
-assert_eq "9.8.0: a changed locked test: the first option puts it back and checks again" "Restore the locked tests (Recommended)|acceptance restore|state redo check" \
-  "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['calls'][0].split('temper ', 1)[1], ' '.join(o['calls'][1].split('temper ', 1)[1].split()[:3])])")"
-gfail check "acceptance tests written before Build" "FAIL: test_ac01 (T.test_ac01) AssertionError: 404 != 403"
+# WP23: the locked tests run when Build ends, so a failing one is met at the Build gate and asked there
+gfail build "acceptance tests written before Build" "changed after they were locked: .temper/specs/demo/acceptance/test_ac.py"
+assert_eq "WP23: a changed locked test at the Build gate: the first option puts it back, and Build is checked again" "restore-tests|recommended|acceptance restore|gate build" \
+  "$(nx "o = d['ask']['options'][0]; '|'.join([o.get('id'), 'recommended' if o.get('recommended') else 'not recommended', o['calls'][0].split('temper ', 1)[1], o['calls'][-1].split('temper ', 1)[1]])")"
+gfail build "acceptance tests written before Build" "FAIL: test_ac01 (T.test_ac01) AssertionError: 404 != 403"
 bash -c "$(nx "d['agents'][0]['after'][-1]")" >/dev/null 2>&1   # the triage agent gave no verdict
-assert_eq "9.8.0: a failing locked test: Build mends the code first, or the person says the test is wrong" "Loop back to Build (Recommended)|Correct the acceptance test" \
-  "$(labels | cut -d'|' -f1-2)"
-python3 - <<'PYEOF'
-import json
-json.dump({"version": 1, "history": [], "active_loops": [{"id": "loop-1", "from_stage": "check", "to_stage": "build", "reason": "x",
-           "iteration": 1, "max_iterations": 2, "started": "2026-01-01T00:00:00Z", "at": "2026-01-01T00:00:00Z"}]}, open('.temper/feedback-loops.json', 'w'))
-PYEOF
-assert_eq "9.8.0: after a step back to Build left it failing, correcting the test is the recommended way" "Correct the acceptance test (Recommended)|Loop back to Build" \
-  "$(labels | cut -d'|' -f1-2)"
-assert_eq "9.8.0: correcting a test asks for the person's reason and reopens the lock with it" "yes|acceptance reopen --reason '{reason}'" \
-  "$(nx "o = d['ask']['options'][0]; ('yes' if o.get('reason') else 'no') + '|' + o['calls'][0].split('temper ', 1)[1]")"
+_ids15() { nx "o = d['ask']['options'] + (d['ask'].get('more') or {}).get('options', []); ','.join(sorted('%s%s' % (x.get('id'), '*' if x.get('recommended') else '') for x in o if x.get('id') in ('redo', 'correct-test')))"; }
+assert_eq "WP23: a failing locked test at the Build gate with no triage verdict: Build mends the code first, or the person says the test is wrong" "correct-test,redo*" \
+  "$(_ids15)"
+"$TEMPER" state redo build --reason "acceptance tests written before Build: FAIL: test_ac01 (T.test_ac01) AssertionError: 404 != 403" >/dev/null 2>&1
+gfail build "acceptance tests written before Build" "FAIL: test_ac01 (T.test_ac01) AssertionError: 404 != 403"
+assert_eq "WP23: after a fix pass left the locked test failing, correcting the test is the recommended way" "correct-test*,redo" \
+  "$(_ids15)"
+assert_eq "WP23: correcting a test at the Build gate asks for the person's reason and reopens the lock with it" "yes|acceptance reopen --reason '{reason}'" \
+  "$(nx "o = next((x for x in (d.get('ask') or {}).get('options', []) + ((d.get('ask') or {}).get('more') or {}).get('options', []) if x.get('id') == 'correct-test'), {}); ('yes' if o.get('reason') else 'no') + '|' + ' '.join(c.split('temper ', 1)[-1] for c in o.get('calls') or [])")"
 "$TEMPER" acceptance reopen --reason "The test asks for what the intent does not say" >/dev/null 2>&1
-assert_eq "9.8.0: reopened, the writer corrects the test the failure names, and Check runs again" "work|temper:temper-acceptance|yes|yes|state redo check" \
-  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], 'yes' if 'Correction: the person says a locked test is wrong (The test asks for what the intent does not say)' in a['prompt'] else 'no', 'yes' if '404 != 403' in a['prompt'] else 'no', ' '.join(a['after'][-1].split('temper ', 1)[1].split()[:3])])")"
+assert_eq "WP23: reopened at Build, the writer corrects the test the failure names, then integrate and the Build gate run" "work|temper:temper-acceptance|yes|yes|integrate|gate build" \
+  "$(nx "a = (d.get('agents') or [{}])[0]; af = [c.split('temper ', 1)[-1] for c in a.get('after') or ['', '']]; '|'.join([d['action'], str(a.get('type')), 'yes' if 'Correction: the person says a locked test is wrong (The test asks for what the intent does not say)' in a.get('prompt', '') else 'no', 'yes' if '404 != 403' in a.get('prompt', '') else 'no', af[-2], af[-1]])")"
 python3 - <<'PYEOF'
 p = '.claude/temper.config'; s = open(p).read()
 s = s.replace('  coverage-threshold: 80\n', '  coverage-threshold: 80\n  commands:\n    test: "true"\n', 1)
 open(p, 'w').write(s)
 PYEOF
-echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
-assert_eq "9.8.0: reopened and not locked again, Check fails the acceptance row" "yes" \
-  "$(_gc | grep -q '\[x\] acceptance tests written before Build — reopened to correct a test' && echo yes || echo no)"
+echo '[]' > .temper/evidence/build.json; "$TEMPER" check build-checks >/dev/null 2>&1
+assert_eq "WP23: reopened and not locked again, the Build gate fails the acceptance row" "yes" \
+  "$(_gb | grep -q '\[x\] acceptance tests written before Build — reopened to correct a test' && echo yes || echo no)"
 printf '\n# corrected against the intent\n' >> .temper/specs/demo/acceptance/test_ac.py
 assert_exit "9.8.0: a reopened lock is locked again" 0 "$TEMPER" acceptance lock --cmd "$ACMD"
-echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
-assert_eq "9.8.0: the corrected tests pass, and the row names the person's reason" "yes" \
-  "$(_gc | grep -q '\[v\] acceptance tests written before Build — they pass, as the person corrected them after the lock (The test asks for what the intent does not say)' && echo yes || echo no)"
+echo '[]' > .temper/evidence/build.json; "$TEMPER" check build-checks >/dev/null 2>&1
+assert_eq "WP23: the corrected tests pass at the Build gate, and the row names the person's reason" "yes" \
+  "$(_gb | grep -q '\[v\] acceptance tests written before Build — they pass, as the person corrected them after the lock (The test asks for what the intent does not say)' && echo yes || echo no)"
 assert_exit "9.8.0: and it is locked once more" 1 "$TEMPER" acceptance lock --cmd "$ACMD"
+gpass build review; "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state advance review_complete check >/dev/null 2>&1
 # The corrected tests fail again (a measured run: a second wrong test): the acceptance row alone fails. The tests row reads
 # the suite's runs only, so the person still gets the triage and the way to correct a test, not a step back to Build
 # that cannot make right code pass a wrong test.
@@ -559,10 +559,10 @@ mkdir -p .temper/specs/demo/acceptance
 printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ac01(self):\n        self.assertEqual(1 + 1, 2)\n' > .temper/specs/demo/acceptance/test_ac.py
 ACMD="python3 -m unittest discover -s .temper/specs/demo/acceptance -t .temper/specs/demo/acceptance"
 "$TEMPER" acceptance lock --cmd "$ACMD" >/dev/null 2>&1
-gpass build review; "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state advance review_complete check >/dev/null 2>&1
-gfail check "acceptance tests written before Build" "FAIL: test_ac01 AssertionError: 1 != 2"
-assert_eq "9.8.0: a failing locked test is first triaged by an agent that changes nothing" "work|temper:temper-acceptance|yes|acceptance triaged --reason" \
-  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], 'yes' if 'Triage: a locked acceptance test fails at Check' in a['prompt'] else 'no', ' '.join(a['after'][-1].split('temper ', 1)[1].split()[:3])])")"
+# WP23: at the Build gate, where integrate ran the locked tests
+gfail build "acceptance tests written before Build" "FAIL: test_ac01 AssertionError: 1 != 2"
+assert_eq "WP23: a failing locked test at the Build gate is first triaged by an agent that changes nothing" "work|temper:temper-acceptance|yes|acceptance triaged --reason" \
+  "$(nx "a = (d.get('agents') or [{}])[0]; '|'.join([d['action'], str(a.get('type')), 'yes' if 'Triage: a locked acceptance test fails at Build' in a.get('prompt', '') else 'no', ' '.join((a.get('after') or ['temper none'])[-1].split('temper ', 1)[-1].split()[:3])])")"
 STAMP="$(nx "d['agents'][0]['after'][-1]")"
 "$TEMPER" acceptance triage --reason "test: its helper reads the list answer in the wrong shape" >/dev/null 2>&1
 bash -c "$STAMP" >/dev/null 2>&1
@@ -570,8 +570,9 @@ assert_eq "9.8.0: the triage says the test is wrong: correcting it is recommende
   "$(nx "d['ask']['options'][0]['label'] + '|' + ('yes' if 'The triage says the test looks wrong: its helper reads the list answer in the wrong shape' in d['ask']['question']['question'] else 'no')")"
 "$TEMPER" acceptance triage --reason "code: the route answers 200 where AC-01 says 403" >/dev/null 2>&1
 bash -c "$STAMP" >/dev/null 2>&1
-assert_eq "9.8.0: the triage says the code is wrong: the step back to Build is recommended" "Loop back to Build (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
-gfail check "acceptance tests written before Build" "FAIL: test_ac01 AssertionError: another failure"
+assert_eq "WP23: the triage says the code is wrong: no question; the CLI's own fix pass comes next" "fix pass" \
+  "$(nx "'fix pass' if d['action'] in ('auto', 'work') and (any(a['type'] == 'temper:temper-build' for a in d.get('agents') or []) or any('state redo build' in c for c in d.get('calls') or [])) else d['action']")"
+gfail build "acceptance tests written before Build" "FAIL: test_ac01 AssertionError: another failure"
 assert_eq "9.8.0: a new failure gets a new triage" "work" "$(nx "d['action']")"
 
 # every state the intent lists is named in an acceptance test

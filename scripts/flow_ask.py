@@ -450,17 +450,31 @@ class AskPart:
                         self.skill("teach-me", "Teach Me", "Walk through the changes.")]
                 return self.question(GATE_HEADER, "%s: %s. Continue to %s?" % (label, state_of, LABEL[nxt]), stage=stage,
                                      options=opts + back_opt() + [self.save()], qid="%s.pass" % stage)
+            integ_failed = stage == "build" and (r.groups.get("integration") or {}).get("verdict") == "FAIL"
+            setup = self.setup_fault("build")
+            if setup:   # WP23: a fault of the environment when Build ended: the setup question, and no fix agent
+                return self.setup_question(stage, setup, back_opt(rec=False) + [override_opt(go)] + (
+                    [self.run_anyway(["integrate --fresh", "gate build"])] if integ_failed else []))
             # 9.8.4: the same failure after a Run again is not run again by the recommendation: the run converges on the
             # person (an e2e run that followed it relaunched Build's fix pass forty times on one failure)
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
             same = redo.get("stage") == stage and same_failure(str(redo.get("reason") or ""), why[:300])
-            again = self.opt("Run %s again" % label + ("" if same else " (Recommended)"), "Mend what the failed rows name, then check %s again." % label,
+            acc = self.acceptance_options(rows) if stage == "build" else []
+            same = same and not acc
+            again = self.opt("Run %s again" % label + ("" if same or (acc and acc[0].get("recommended")) else " (Recommended)"),
+                             "Mend what the failed rows name, then check %s again." % label,
                              move="redo", calls=[self.c('state redo %s --reason %s' % (stage, shlex.quote(why[:300])))], oid="redo")
             text = "%s: the check failed (%s). %s" % (label, why, "It failed the same way after it ran again. Save the run for later?"
                                                        if same else "Run %s again?" % label)
             opts = ([self.set_rec(self.save(), True), again] + back_opt() + [override_opt(go)] if same else
                     [again] + back_opt() + [override_opt(go), self.save()])
-            if stage == "build" and (r.groups.get("integration") or {}).get("verdict") == "FAIL":   # WP22
+            if acc:   # WP23: the locked acceptance tests failed when Build ended, and nothing else did
+                t = self.acc_triage()
+                said = (" The triage says the %s looks wrong: %s." % (t["verdict"], t.get("reason", ""))) if t.get("verdict") in ("code", "test") else ""
+                first = [acc[0], again] if acc[0].get("recommended") else [again, acc[0]]
+                text = "%s: the check failed (%s).%s %s?" % (label, why, said, self.bare(first[0]))
+                opts = first + back_opt() + [override_opt(go), self.save()]
+            if integ_failed:   # WP22
                 opts.insert(len(opts) - (0 if same else 1), self.run_anyway(["integrate --fresh", "gate build"]))
             return self.question(GATE_HEADER, text, stage=stage, options=opts, qid="%s.fail" % stage)
 
@@ -541,28 +555,9 @@ class AskPart:
                     self.opt("Confirmed (Recommended)", "I checked it by hand; record my confirmation and check again.", move="confirm", calls=calls, oid="confirm")]
                     + back_opt() + [self.save()])
             anyway = self.run_anyway(["check run --fresh", "gate check"])   # WP22 (trap 8): every failed check offers it
-            setup = self.setup_fault()
+            setup = self.setup_fault("check")
             if setup:
-                # 9.8.5 (Q6): the environment was not ready (no database, the wrong JDK, a failed setup line). Nothing in the
-                # code is wrong, so a loop back is never recommended: repair the environment, then Check runs again.
-                fix = self.opt("Repair the environment and run again (Recommended)",
-                               "temper doctor shows what is missing; the setup: block of .claude/temper.config makes it ready. Then Check runs again.",
-                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))], oid="redo")
-                add = self.setup_offer()   # no block, and one proposed: written as shown, bound by its hash (WP21)
-                if add:
-                    self.set_rec(fix, False)
-                    add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
-                # M10 of WP08: the same fault after Check ran again is not repaired again by the recommendation
-                redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
-                opts = ([add] if add else []) + [fix, self.save()]
-                text = "Check: SETUP: the environment was not ready (%s), so the result is no verdict on the code. %s run Check again?" % (
-                    setup, "Add the proposed setup block (%s) and" % self.shown_block if add else "Repair it and")
-                if redo.get("stage") == "check" and same_failure(str(redo.get("reason") or ""), ("SETUP: " + setup)[:300]):
-                    opts = [self.set_rec(self.save(), True)] + [self.set_rec(o, False) for o in opts[:-1]]
-                    # M13 (c): while the block is offered, the question still shows it whole
-                    text = "Check: SETUP: the environment was not ready (%s). It failed the same way after Check ran again: repair it%s, or save the run for later?" % (
-                        setup, ", add the proposed setup block (%s)" % self.shown_block if add else "")
-                return self.question(GATE_HEADER, text, stage=stage, options=opts + back_opt(rec=False) + [override_opt(go), anyway], qid="check.fail")
+                return self.setup_question(stage, setup, back_opt(rec=False) + [override_opt(go), anyway])
             gap = self.measurement_gap(r.failed_rows("check"))
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times

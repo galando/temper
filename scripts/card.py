@@ -446,7 +446,7 @@ def coverage_section(r):
 def regression():
     """WP17: a fix run's regression test as the CLI ran it: the last RED run of the Fix ledger and the last GREEN run
     after it (test runs the CLI executed, none void; those whose claim names the regression test when there are any),
-    and the regression proof row of Check; None with none recorded."""
+    and the latest regression proof the CLI ran; None with none recorded."""
     runs = [x for x in load(os.path.join(TEMPER, "evidence", "build.json"), []) if isinstance(x, dict)
             and x.get("executed_by") == "cli" and not x.get("voided") and isinstance(x.get("exit_code"), int)
             and re.search("test", str(x.get("claim") or ""), re.I)]
@@ -457,8 +457,9 @@ def regression():
     rows = [cell("RED: %s: failed (exit %d)" % (runs[reds[-1]].get("cmd") or "the test", runs[reds[-1]]["exit_code"]))
             ] if reds else []
     rows += [cell("GREEN: %s: passed" % (runs[greens[-1]].get("cmd") or "the test"))] if greens else []
-    proof = [x for x in load(os.path.join(TEMPER, "evidence", "check.json"), [])
-             if isinstance(x, dict) and x.get("claim") == "regression proof"]
+    # WP23: the proof the CLI ran, at Check or when the Fix agent returned (build-checks); a row an agent wrote is none
+    proof = [x for f in ("build.json", "check.json") for x in load(os.path.join(TEMPER, "evidence", f), [])
+             if isinstance(x, dict) and x.get("claim") == "regression proof" and x.get("executed_by") == "cli"]
     if proof:
         p = proof[-1]
         rows.append(cell("proof: %s" % (" ".join(str(p.get("output") or "").split()) or "exit %s" % p.get("exit_code")),
