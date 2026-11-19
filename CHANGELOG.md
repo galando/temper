@@ -31,8 +31,9 @@ All notable changes to Temper are documented here. The plugin version lives in
   accept, or by a loop back and a second Review. Review's completion row names the files it read
   (`evidence add --read FILE`), and the row `review completed` fails while a file of `temper review files` is not
   named; `Run Review again` is recommended, and its launch names the unread files. A run saved before 9.8.5 after its
-  Review has a completion row with no read list: it fails once, and Review runs again. `evidence resolve` is never a
-  tool call with the mod.
+  Review has a completion row with no read list: it fails once, and Review runs again. With the mod, `evidence
+  resolve` is refused as a tool call in a /temper or /temper:fix run; with no run, the CLI refuses it, as it has no
+  commits of its own to resolve a finding with.
 - WP14: Design runs only when you ask for it (ADR 0019 decision 2). A default run launches no Design agent at any
   tier or risk; the plan approval offers `Run Design first` in its More list, in the place of Teach Me, and
   `/temper:design` asks for it too. What Design asked is now a Blocking question Plan writes, its first choice the
