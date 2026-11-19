@@ -413,6 +413,12 @@ assert_eq "card: the commit card's review section says how many changed files Re
   "read=read 1 of 1 changed files:None|unread=read 0 of 1 changed files; not read: src/demo.sh:open" \
   "read=$_r56_read|unread=$_r56_unread"
 
+# --- the tree row states what git reads (HEAD and the files not committed), never a claim about the verdicts ---
+_commit56
+assert_eq "card: the tree row states HEAD and the count of files not committed, and nothing of the verdicts" \
+  "HEAD is commit $(git rev-parse --short HEAD); 1 file not committed yet" \
+  "$(_x56 "r = ' '.join(str(x.get('text')) for x in rows('tree'))")"
+
 # --- a cut files section counts the files it leaves out, not its rows ---
 fresh
 _tasks56 "$(_group56 G1 true 1 "$(printf '`src/f%d.sh`, ' 1 2 3 4 5 6 7)\`src/f8.sh\`" true)" \

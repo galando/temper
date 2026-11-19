@@ -464,7 +464,7 @@ def commit(b, nxt):
     if head:
         dirty = [l for l in git("status", "--porcelain", "--untracked-files=all").splitlines()
                  if l[3:] and not l[3:].strip('"').startswith((".temper/", ".claude/"))]
-        out.append(sec("tree", "TREE", [cell("every verdict is of commit %s and %d file%s not committed yet"
+        out.append(sec("tree", "TREE", [cell("HEAD is commit %s; %d file%s not committed yet"
                                             % (head, len(dirty), "" if len(dirty) == 1 else "s"))]))
     out.append(sec("run", "RUN", [cell(run_line(r))]))
     msg = b.commit_message()
