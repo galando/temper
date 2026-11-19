@@ -47,12 +47,12 @@ PY
 }
 _repo58() { # a git repository under the run on main: two source files, a test file and the suite in one commit, the
             # run's files left out
-  rm -rf .git src tests suite.sh; git init -q . 2>/dev/null; git checkout -q -B main 2>/dev/null
+  rm -rf .git src unit suite.sh; git init -q . 2>/dev/null; git checkout -q -B main 2>/dev/null
   git config user.email t@example.com; git config user.name T
-  mkdir -p src/auth tests
+  mkdir -p src/auth unit
   printf 'def total_of(lines):\n    return sum(round(x, 2) for x in lines)\n' > src/auth/totals.py
   printf 'echo a1\necho a2\necho a3\n' > src/a.sh; printf 'echo b1\necho b2\necho b3\n' > src/b.sh
-  printf 'import unittest\n' > tests/test_a.py; printf 'echo ok\n' > suite.sh
+  printf 'import unittest\n' > unit/test_a.py; printf 'echo ok\n' > suite.sh
   git add -A -- . ':(exclude).temper' ':(exclude).claude'; git commit -q -m base
 }
 _rca58() { # rca.md as the root cause agent writes it (agents/rca.md): AT under a sensitive path, a LOW confidence
@@ -323,7 +323,7 @@ _gc58; _bd58="ten=$_gc58_rc"; _bd58+=",$([[ "$_gc58_out" == *"trivial exit"* && 
 git reset -q --hard; _add58 src/a.sh 11; git add src/a.sh; _gc58; _bd58+="|eleven=$_gc58_rc"
 git reset -q --hard; _add58 src/a.sh 1; _add58 src/b.sh 1; git add src/a.sh src/b.sh; _gc58; _bd58+="|two=$_gc58_rc"
 _bd58+=",$([[ "$_gc58_out" == *"/temper:temper"* ]] && echo "/temper:temper" || echo "no way on")"
-git reset -q --hard; _add58 src/a.sh 10; _add58 tests/test_a.py 20; git add src/a.sh tests/test_a.py
+git reset -q --hard; _add58 src/a.sh 10; _add58 unit/test_a.py 20; git add src/a.sh unit/test_a.py
 _gc58; _bd58+="|test beside=$_gc58_rc"; git reset -q --hard
 assert_eq "trivial: the commit hook holds the bound" \
   "ten=0,named|eleven=1|two=1,/temper:temper|test beside=0" "$_bd58"

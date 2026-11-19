@@ -68,8 +68,8 @@ def migrate_legacy(argv):
 
 def may_start(argv):
     """WP11 (ADR 0019 decision 3): whether `state set run_mode autonomous` may start the unattended run. Only at the
-    approval: the run is at Plan or Design, that stage's gate is PASS and not skipped, and run.default allows it. Prints
-    the reason and exits 1 when it may not."""
+    approval: the run is at Plan or Design, that stage's gate is PASS and not skipped (or at RCA in a fix run, WP17),
+    and run.default allows it. Prints the reason and exits 1 when it may not."""
     import json, sys
     def load(p, default):
         try:
@@ -81,9 +81,11 @@ def may_start(argv):
     default, enabled = argv[4].strip().lower(), argv[5].strip().lower()
     stage = state.get("next_stage") or ""
     g = gates.get(stage) if isinstance(gates.get(stage), dict) else {}
+    if state.get("command") == "fix" and stage == "rca":
+        g = {"verdict": "PASS"}   # WP17: the root cause question is a fix run's approval; RCA has no gate
     if default == "never-unattended":
         why = "run.default is never-unattended: this project's runs ask at every stage"
-    elif stage not in ("plan", "design"):
+    elif stage not in ("plan", "design", "rca"):
         why = "the run goes on by itself only from the approval (the person's option at Plan or Design); the run is at %s" % (
             stage or "no stage")
     elif g.get("verdict") != "PASS" or any(isinstance(o, dict) and o.get("stage") == stage for o in over):
@@ -318,6 +320,11 @@ def state_init(argv):
                 d['complexity'] = m.group(1).lower()
                 break
     json.dump(d, open(argv[5], 'w'), indent=2)
+    # WP17: a new run spends the record of a trivial request (scripts/trivial.py): the commit hook no longer holds it
+    try:
+        os.remove(os.path.join(os.path.dirname(argv[5]), 'trivial.json'))
+    except OSError:
+        pass
 
 
 def approve_plan(argv):

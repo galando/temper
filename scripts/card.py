@@ -31,19 +31,21 @@ import run_summary  # noqa: E402
 import sensitive  # noqa: E402
 from flow_base import criteria, plan_files  # noqa: E402
 from flow_view import PERSON_ROWS  # noqa: E402
-from panel import plain, section  # noqa: E402
+from panel import plain, rca_fields, section  # noqa: E402
+import check_run  # noqa: E402
 
 KINDS = ("approval", "commit", "stop")
 MARKS = ("proposed", "create", "modify", "sensitive", "left out", "not found", "not measured", "open", "skipped",
          "by rule")
 APPROVAL = ("request", "assumptions", "criteria", "out_of_scope", "answers", "files", "commands", "context", "launches",
             "risk", "baseline")
+FIX_APPROVAL = ("request", "cause", "fix", "test", "files", "commands", "risk")   # WP17: the approval of a fix run
 COMMIT = ("criteria", "suite", "coverage", "planted_bugs", "review", "files", "rule_log", "skips", "tree", "run",
           "message")
 STOP = ("what_fails", "tried", "reading", "still_green", "spent")
 # a short section is one row that starts with its title (render)
 SHORT = ("request", "out_of_scope", "launches", "risk", "baseline", "suite", "coverage", "planted_bugs", "tree", "run",
-         "reading", "still_green", "spent")
+         "reading", "still_green", "spent", "fix")
 JOINS = ("out_of_scope",)   # a short section that goes on from the section before it, with no blank row
 WIDTH = 76
 SENSITIVE_ROW = "SENSITIVE PATH IN THE PLAN:"
@@ -266,16 +268,65 @@ def first_option(nxt):
     return ((nxt.get("ask") or {}).get("options") or [{}])[0]
 
 
+def request_section(r):
+    feature = str(r.state.get("feature") or "").strip()
+    if not feature:
+        return None
+    said = feature if len(feature) <= 140 else feature[:137] + "..."
+    return sec("request", "You asked", [cell('"%s"' % said)])
+
+
+def fix_approval(b, nxt):
+    """WP17: the approval of a fix run, the root cause question: the bug as typed, the cause, the fix, the regression
+    test, the files the fix may change, the test command the CLI found, and the risk, from rca.md as panel.py reads it.
+    The foot names the branch the click makes."""
+    r = b.r
+    path = os.path.join(r.spec, "rca.md") if r.spec else ""
+    f = rca_fields(read(path) if path else "")
+    out = [request_section(r)]
+    cause = [cell(f["CAUSE"])] if f["CAUSE"] else []
+    cause += [cell("%s: %s" % (k.capitalize(), f[k])) for k in ("AT", "CONFIDENCE", "SINCE", "CHAIN") if f[k]]
+    out.append(sec("cause", "THE CAUSE", cause, None, None, path) if cause else None)
+    out.append(sec("fix", "THE FIX", [cell(f["FIX"])]) if f["FIX"] else None)
+    out.append(sec("test", "THE REGRESSION TEST", [cell(f["TEST"])], "written first; it must fail before the fix")
+               if f["TEST"] else None)
+    names = []
+    for x in [f["AT"].split(":")[0].strip()] + f["blast"] + f["read"]:
+        x = x.split()[0].strip("`") if x.strip() else ""
+        if x and x not in names:
+            names.append(x)
+    hot = dict(sensitive.declared(names, r.cfg("autonomy.park-on-touch", "")))
+    rows = [cell(x, "sensitive" if x in hot else "modify" if os.path.exists(x) else "create") for x in names]
+    out.append(sec("files", "WHAT WILL CHANGE", rows, "the fix may change these %d and its test; any other file asks you first"
+                   % len(rows), None, path) if rows else None)
+    try:
+        test = check_run.detect(os.getcwd(), r.cfg("check.commands.test", ""), r.cfg("check.commands.coverage", "")).get("test")
+    except Exception:
+        test = None
+    out.append(sec("commands", "THE CHECKS RUN", [cell(test)]) if test else None)
+    risk = [cell("a sensitive path: %s" % x, "sensitive") for x in names if x in hot]
+    if f["CONFIDENCE"].upper().startswith("LOW"):
+        risk.append(cell("the root cause agent's confidence is LOW"))
+    out.append(sec("risk", "RISK", risk) if risk else None)
+    cur = git("branch", "--show-current")
+    default = git("symbolic-ref", "--short", "refs/remotes/origin/HEAD").split("/", 1)[-1]
+    branch = r.state.get("branch") or "fix/%s" % r.slug
+    foot = ["Your approval makes the branch %s off %s." % (branch, cur) if cur in ("main", "master") or (cur and cur == default)
+            else "The fix goes on %s, the branch you are on." % (cur or "the branch you are on")]
+    foot.append("You are asked again only if a check still fails after one repair, and at the commit."
+                if first_option(nxt).get("id") == "approve-run" else "You are asked after every stage, and at the commit.")
+    foot.append("Nothing is pushed.")
+    return "APPROVE THE FIX BEFORE ANY CODE IS WRITTEN", out, foot
+
+
 def approval(b, nxt):
     r = b.r
+    if r.command == "fix":
+        return fix_approval(b, nxt)
     ipath = os.path.join(r.spec, "intent.md") if r.spec else ""
     text = read(ipath) if ipath else ""
     lines = text.splitlines()
-    out = []
-    feature = str(r.state.get("feature") or "").strip()
-    if feature:
-        said = feature if len(feature) <= 140 else feature[:137] + "..."
-        out.append(sec("request", "You asked", [cell('"%s"' % said)]))
+    out = [request_section(r)]
     assumed = [cell(x) for x in bullets(section(text, "Assumptions"))]
     if assumed:
         out.append(sec("assumptions", "ASSUMED", assumed, "%d; nobody was asked" % len(assumed), 4, ipath))

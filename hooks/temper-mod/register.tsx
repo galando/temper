@@ -9,7 +9,7 @@ import type { Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
 import { answeredResult, answersIn } from './core/answers'
-import { evaluate, trivialExit } from './core/rules'
+import { evaluate } from './core/rules'
 import { callWords, readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
 import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, isSavedStop, logRows, lookAtAgents, slugOf } from './core/driver'
@@ -405,9 +405,7 @@ function failedGuard(tool: string): Guarded {
 // The one place this module denies.
 // `use`: a decision the call spends (an Allow once answer). It is spent once the call ran (the tool.call hook): a call
 // that is refused further on, or fails, leaves it for the next.
-// `trivialExit`: the call is a `state clear` of a run that never left Intent (view.json's trivial_exit). Once it ran, the
-// run it cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
-type Guarded = { deny: string | null; use?: string; trivialExit?: boolean }
+type Guarded = { deny: string | null; use?: string }
 
 // 9.8.0: the run and step at which the person chose a skill option (Grill Me, Teach Me): until the run moves on, the
 // session asks the skill's own questions (core/session.ts). One entry per project (`skill:<root>`), in the plugin
@@ -444,8 +442,6 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
   // Fail open: when the mod cannot tell where the run is, it never blocks Temper.
   if (!enforces(snap)) return { deny: null }
   const command = typeof input.command === 'string' ? input.command : ''
-  // A `state clear` at Intent (the TRIVIAL exit), as view.json says now.
-  const clearable = tool === 'Bash' && trivialExit(snap.run) && readShell(command).calls.some(w => w[0] === 'state' && w[1] === 'clear')
   const rootDir = await rootOf($)
   const rc = ruleContext(snap, rootDir)
   const r = evaluate(rc, { tool, input })
@@ -463,7 +459,7 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
       if (why !== null) return { deny: why }
     }
   }
-  return { deny: null, ...(r.use !== undefined ? { use: r.use } : {}), ...(clearable ? { trivialExit: true } : {}) }
+  return { deny: null, ...(r.use !== undefined ? { use: r.use } : {}) }
 }
 
 // ---- The run driver (9.8.0, round 5) ------------------------------------------------------------
@@ -810,17 +806,7 @@ export const register: Register = (on, opts) => {
     const many = e.tool === 'AskUserQuestion' && askingAll !== null ? dialogQuestionsAll(raised, askingAll) : null
     const filled = many ?? (e.tool === 'AskUserQuestion' && asking !== null ? dialogQuestions(raised, asking) : null)
     const driverDialog = filled !== null
-    let result
-    try {
-      result = await next(filled === null ? e : ({ ...e, questions: filled } as typeof e))
-    } finally {
-      // After the TRIVIAL exit ran (or failed): the cleared run is no longer held, and the run is read again. When the
-      // clear did not take effect, build-state.json is still there and the run reads back as it was.
-      if (g.trivialExit) {
-        lastRun = null
-        await refresh($).catch(() => undefined)
-      }
-    }
+    const result = await next(filled === null ? e : ({ ...e, questions: filled } as typeof e))
     const errored = (result as { isError?: boolean }).isError === true
     const refused = typeof (result as { deny?: unknown }).deny === 'string'
     // The call ran: the Allow once answer it was let through on is spent (one that failed, or was refused further on, is

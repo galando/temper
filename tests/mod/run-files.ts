@@ -144,7 +144,6 @@ export function deriveView(get: (path: string) => string | undefined): string | 
   const intent = get(`${spec}/intent.md`) ?? ''
   Object.assign(run, { id, step, slug, spec, command, stage, title: /^#\s+(?:Intent:\s*)?(.+?)\s*$/m.exec(intent)?.[1] ?? slug, mode: armed ? 'autonomous' : 'interactive', complexity: bs.complexity ?? null })
   const files = planFiles(get(`${spec}/plan.md`) ?? '', get(`${spec}/tasks.md`) ?? '')
-  const noSpec = ['intent.md', 'plan.md', 'tasks.md', 'design.md'].every(n => get(`${spec}/${n}`) === undefined)
   v.guard = {
     ...(v.guard as J),
     stage,
@@ -158,7 +157,8 @@ export function deriveView(get: (path: string) => string | undefined): string | 
     plan_files: Array.isArray(bs.approved_files) ? bs.approved_files : files,
     step,
     run_id: id,
-    trivial_exit: stage === 'intent' && step === 0 && Object.keys(gates).length === 0 && overrides.length === 0 && noSpec,
+    // WP17: the state holds the trivial verdict (`temper intent trivial`), as scripts/flow_view.py writes it
+    trivial_exit: typeof bs.trivial === 'object' && bs.trivial !== null,
   }
   stamp(v.ask, id, step)
   stamp(v.restart, id, step)

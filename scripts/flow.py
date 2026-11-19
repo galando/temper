@@ -23,6 +23,7 @@ import budget
 import card
 import fresh_review
 import run_summary
+import trivial
 
 from flow_base import (
     FRESH_ROWS, GATE_HEADER, LABEL, TEMPER, VERSION, advance_ok, blocking_asks, design_accept, goes_on, on_model, plan_files)
@@ -255,10 +256,19 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
     def core_next(self):
         r = self.r
         if not r.active:
-            return {"v": VERSION, "action": "none", "run": None, "say": "No run is active."}
+            # WP17: after a trivial request the one line says what the person has: an uncommitted change, held to the
+            # bound
+            return {"v": VERSION, "action": "none", "run": None, "say": trivial.say() or "No run is active."}
         out = {"v": VERSION, "run": self.run_info(), "restart": self.restart()}
         if r.stage not in r.seq() or (r.stage not in ("intent", "rca") and r.spec and not os.path.isdir(r.spec)):
             out.update({"action": "broken", "say": "The run state does not fit its spec folder (%s at %s)." % (r.spec, r.stage)})
+            return out
+        if isinstance(r.state.get("trivial"), dict) and r.stage == "intent" and r.verdict("intent") is not None:
+            # WP17: the Intent agent took the trivial verdict and made the one change; the flow closes the run, no
+            # question
+            out.update({"action": "auto", "stage": "intent", "calls": [self.c("intent trivial --close")],
+                        "say": "Intent: the request is trivial (%s); the run closes, and the change is left for you to commit."
+                        % r.state["trivial"].get("why")})
             return out
         stage = r.stage
         done = r.state.get("adhoc_done")
@@ -284,7 +294,8 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                 out.update(fb)
                 return out
         if r.command == "fix" and stage == "rca":
-            out.update({"action": "ask", "stage": stage, "ask": self.ask(stage)})
+            # WP17: the root cause question is the approval; a change the person typed there runs the agent again first
+            out.update(self.rca_work() or {"action": "ask", "stage": stage, "ask": self.rca_approval()})
             return out
         verdict = r.verdict(stage)
         skipped = r.skip(stage) is not None
@@ -428,6 +439,7 @@ def run_next(ctx):
 
 def run_view(ctx):
     """Write .temper/view.json for the run as it stands."""
+    trivial.spent()   # WP17: a trivial record whose head is not HEAD any more holds nothing
     run = Run(ctx)
     project_facts(run, ctx)
     try:

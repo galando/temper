@@ -10,7 +10,9 @@ The line: {"v": 1, "at", "run", "slug", "command", "version", "mode", "ended", "
 files `state clear` deletes: build-state.json (the run), feedback-loops.json (the steps back), usage.json (the agents
 recorded with their stage and time), overrides.json (the skips), gates.json (`ended` is `committed` when the commit gate's
 verdict is PASS, else `cleared`) and asked.json. A launch is a usage row of an agent stage. A row of a task gate is no
-launch unless it has a time: the gate of a task an earlier conversation left running, which counts for Build.
+launch unless it has a time: the gate of a task an earlier conversation left running, which counts for Build. WP17: the
+run of a trivial request (its state holds `trivial`; `temper intent trivial --close` clears it) has `"kind": "trivial"`
+and `ended` `trivial`.
 
 asked.json holds the questions the CLI asked, once each: when `temper next` (which `temper go` and the run driver call)
 answers with a question, the key `<run id>:<step>:<question id>:<digest of its text>` is recorded with the stage and the
@@ -128,11 +130,13 @@ def summary(temper_dir, now):
     plugin = read(os.path.join(PLUGIN, ".claude-plugin", "plugin.json"), {})
     t0, t1 = stamp(state.get("started") or state.get("created")), stamp(now)
     spec = str(state.get("spec_path") or "")
+    kind = {"kind": "trivial"} if isinstance(state.get("trivial"), dict) else {}   # WP17: a trivial request's line
     return {
-        "v": 1, "at": now, "run": run_id, "slug": state.get("spec") or os.path.basename(spec.rstrip("/")) or None,
+        **kind, "v": 1, "at": now, "run": run_id, "slug": state.get("spec") or os.path.basename(spec.rstrip("/")) or None,
         "command": state.get("command") or "temper", "version": plugin.get("version") if isinstance(plugin, dict) else None,
         "mode": state.get("run_mode") or "interactive",
-        "ended": "committed" if isinstance(commit, dict) and commit.get("verdict") == "PASS" else "cleared",
+        "ended": "trivial" if isinstance(state.get("trivial"), dict) else
+                 "committed" if isinstance(commit, dict) and commit.get("verdict") == "PASS" else "cleared",
         "asks": asks,
         "steps_back": [{"from": f, "to": t, "n": n} for (f, t), n in sorted(back.items())],
         "launches": {"by_stage": dict(sorted(by_stage.items()))},

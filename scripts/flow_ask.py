@@ -206,7 +206,7 @@ class AskPart:
         """WP12 (ADR 0019 decision 4): the digests of intent.md and tasks.md as the question shows them, as the arguments
         of the approving advance; the CLI refuses the advance when a file changed since (scripts/approval.py)."""
         out = ""
-        for name in ("intent.md", "tasks.md"):
+        for name in ("rca.md",) if self.r.command == "fix" else ("intent.md", "tasks.md"):   # WP17: a fix run binds rca.md
             d = approval.digest(os.path.join(self.r.spec, name)) if self.r.spec else None
             if d:
                 out += " --shown %s=%s" % (name, d)
@@ -239,11 +239,12 @@ class AskPart:
         question. run.default orders them; approve-run is left out under never-unattended, for a skipped check, and when
         may_run_alone() says no (WP14). go(mode) is the option's calls, the first of them its bind(mode)."""
         r = self.r
-        ask = self.opt("Ask me at every stage", lead + "Approve the plan; every later stage asks you.", move="approve",
-                       calls=go("interactive"), oid="ask-every-stage")
+        fix = r.command == "fix"   # WP17: the root cause question of a fix run is its approval
+        ask = self.opt("Ask me at every stage", lead + "Approve the %s; every later stage asks you." % ("fix" if fix else "plan"),
+                       move="approve", calls=go("interactive"), oid="ask-every-stage")
         if r.run_default() == "never-unattended" or r.skip(stage) is not None or not self.may_run_alone():
             return [self.set_rec(ask, True)]
-        run = self.opt("Approve and build", lead + self.armed_text(), move="arm",
+        run = self.opt("Approve and %s" % ("fix" if fix else "build"), lead + self.armed_text(), move="arm",
                        calls=go("autonomous"), oid="approve-run")
         return [self.set_rec(ask, True), run] if r.run_default() == "ask" else [self.set_rec(run, True), ask]
 
@@ -294,9 +295,7 @@ class AskPart:
             return self.question(GATE_HEADER, text, stage=stage, options=[run, override_opt(go), self.save()], qid="run.walked")
 
         if r.command == "fix" and stage == "rca":
-            return self.question(GATE_HEADER, "RCA: the root cause is in %s/rca.md. Proceed to Fix?" % r.spec, stage=stage, qid="rca.approve", options=[
-                self.opt("Proceed to Fix (Recommended)", "Write the regression test and the fix.", move="approve",
-                         calls=[self.c("state advance rca_complete fix")], oid="continue"), self.save()])
+            return self.rca_approval()
 
         if stage == "intent":
             if passed:
@@ -633,7 +632,8 @@ class AskPart:
         if stage not in self.ADHOC_OPTION_STAGES or r.state.get("adhoc") or (r.command == "fix" and r.stage == "fix"):
             return out
         q = out.get("ask") if "ask" in out else out
-        if not isinstance(q, dict) or "options" not in q or any(o["label"] == "Make a small change" for o in q["options"]):
+        if not isinstance(q, dict) or "options" not in q or any(o["label"] == "Make a small change" for o in q["options"]) \
+                or (r.command == "fix" and q.get("id") == "commit.confirm"):   # WP17: commit, back to Fix, or save
             return out
         more = q.get("more")
         if stage == "review" and len(q["options"]) >= 4 and more and len(more["options"]) >= 4 and r.verdict("review") == "PASS" and \

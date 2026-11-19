@@ -15,9 +15,12 @@ folder.
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/intent.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
 1. **Triage first.** If the request is plainly trivial or mechanical (a typo, a
-   one-line change, direct instructions with no product problem to state), return
-   `TRIVIAL` with one sentence of reasoning and write nothing. The orchestrator then
-   clears the run and handles the change directly, outside the pipeline.
+   one-line change, direct instructions with no product problem to state), write no spec
+   file and run `${CLAUDE_PLUGIN_ROOT}/scripts/temper intent trivial --why '{one sentence of
+   reasoning}'`. Only after it printed `OK:` make the change yourself: one production file
+   and 10 changed lines at most (the commit hook holds that bound), then run the project's
+   tests, and return one line. Commit nothing: the flow closes the run, and the commit is the
+   person's. A refused call means the request is not trivial here: draft the intent.
 
 2. **Gather task context before drafting.** Fetch every source the request links
    (ticket key, MR/PR, doc link, named repo history) read-only, with whatever tools
@@ -166,10 +169,8 @@ more"; omit an empty section including its divider — never a row saying "none"
 a long entry onto a continuation row indented two spaces.
 
 Return this panel (the orchestrator prints it verbatim). After it, each on a line of
-its own, return the spec path and then one status word, `READY` or `TRIVIAL`: the
-orchestrator branches on that word. Nothing else goes outside the panel. A `TRIVIAL`
-return writes no file, and its panel holds only the title row and a PROBLEM row with
-your one sentence of reasoning:
+its own, return the spec path and then the status word `READY`. Nothing else goes outside
+the panel. A trivial request (step 1) returns its one line in place of the panel:
 
 ```
 +--------------------------------------------------------------------------+
