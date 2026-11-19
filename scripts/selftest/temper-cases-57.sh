@@ -171,6 +171,19 @@ fresh; gpass intent plan build review check commit
 git add -A >/dev/null 2>&1; git -c user.email=t@example.com -c user.name=T commit -qm "the spec is committed" >/dev/null 2>&1
 _at commit
 assert_eq "w16 step kinds: the report step carries the kind show-last beside the steps of next and go, and no other step is untyped text"   "show-last:0|show-last:0" "$(_kinds57)"
+_vkinds57() { # the view's work action: its steps and its step_kinds, as `temper next --json` gives them
+  python3 -B - "$("$TEMPER" next --json 2>/dev/null)" <<'PY'
+import json, sys
+try:
+    d, v = json.loads(sys.argv[1]), json.load(open(".temper/view.json")).get("next") or {}
+except (OSError, ValueError):
+    d, v = {}, {}
+print("%s|%s|%s" % (v.get("action"), ",".join(k for k in v.get("step_kinds") or [] if k) or "none",
+                    "same" if (v.get("steps"), v.get("step_kinds")) == (d.get("steps"), d.get("step_kinds")) else "differ"))
+PY
+}
+assert_eq "w16 step kinds: the view's work action carries step_kinds beside its steps, as next gives them" \
+  "work|show-last|same" "$(_vkinds57)"
 "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
 assert_eq "w16 step kinds: the no record note carries the kind note beside the steps of next and go, and no other step is untyped text"   "note:0|note:0" "$(_kinds57)"
 
