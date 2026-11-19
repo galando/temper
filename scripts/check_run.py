@@ -5,6 +5,11 @@ commands and records what they gave, and the agent is only the fallback for a st
   python3 check_run.py detect ROOT [TEST_CMD] [COVERAGE_CMD]    the commands it would run, as JSON ({} when none)
   python3 check_run.py run ROOT SPEC LEDGER BASE COMMAND [TEST_CMD] [COVERAGE_CMD] [KEY]
                                                                 run them, record the rows, print one line each
+  python3 check_run.py build-checks ROOT SPEC LEDGER BASE COMMAND [TEST_CMD COVERAGE_CMD KEY [nosuite]]
+                                                                the checks when Build ends (WP23): the same rows into the
+                                                                Build ledger (the suite as `Integration suite`, in the
+                                                                owner's run text, the plan's line only when nothing else
+                                                                names a suite); exits with the suite's exit code
   python3 check_run.py ahead ROOT SPEC BASE COMMAND [TEST_CMD COVERAGE_CMD KEY]
                                                                 the same run while Review reads the change, through the
                                                                 reuse store (run_env.run_cached), then the planted bugs
@@ -745,10 +750,11 @@ def acc_lock(root, spec, lockfile, cmd):
         return 1
     d = acc_read(lockfile)
     same = d.get("spec") == spec
-    # A lock is taken once. Only the person reopens it (the Check question's "Correct the acceptance test"), so a builder
+    # A lock is taken once. Only the person reopens it (the Build or Check question's "Correct the acceptance test"), so a builder
     # cannot change a locked test and lock it again.
     if same and d.get("cmd") and not d.get("reopened"):
-        print("FAIL: the acceptance tests are locked already; only the person reopens them (Correct the acceptance test, at the Check question)", file=sys.stderr)
+        print("FAIL: the acceptance tests are locked already; only the person reopens them (Correct the acceptance test, at the %s "
+              "question)" % stage_label(root), file=sys.stderr)
         return 1
     corrections = list(d.get("corrections") or []) if same else []
     if same and d.get("reopened"):
@@ -771,7 +777,7 @@ def acc_lock(root, spec, lockfile, cmd):
 
 
 def acc_reopen(spec, lockfile, reason):
-    """The person says a locked test is wrong (the Check question): the lock opens for one correction, which the
+    """The person says a locked test is wrong (the question of the stage the run is at): the lock opens for one correction, which the
     acceptance writer makes and locks again. The report and the gate row show the reason."""
     d = acc_read(lockfile)
     if d.get("spec") != spec or not d.get("cmd"):
@@ -788,7 +794,7 @@ def acc_reopen(spec, lockfile, reason):
 
 def acc_triage(spec, lockfile, text):
     """The triage of a failing locked test (agents/acceptance.md, Triage): `code: why` or `test: why`. It only sets which
-    option the Check question recommends; the person decides. Kept with a digest of the failure it read, so a new
+    option the question of the stage recommends; the person decides. Kept with a digest of the failure it read, so a new
     failure gets a new triage."""
     d = acc_read(lockfile)
     m = re.match(r"^\s*(code|test)\s*[:-]\s*(.+)$", text or "", re.S | re.I)
@@ -853,7 +859,7 @@ def acc_skip(spec, lockfile, reason):
 
 # The launches of the acceptance writer a run allows: to write the tests before Build (a writer that cannot lock does not
 # hold Build up: the flow records the skip), and to correct a test each time the person reopens the lock (then the
-# Check question is the person's again). flow.py reads both.
+# question of the stage is the person's again). flow.py reads both.
 ACC_MAX_LAUNCHES = 2
 ACC_MAX_CORRECTIONS = 2
 
@@ -867,7 +873,8 @@ def acc_start(spec, lockfile):
     if isinstance(d.get("reopened"), dict):
         n = int(d["reopened"].get("launches", 0))
         if n >= ACC_MAX_CORRECTIONS:
-            print("FAIL: the acceptance writer was launched %d times for this correction; the Check question is the person's" % n, file=sys.stderr)
+            print("FAIL: the acceptance writer was launched %d times for this correction; the %s question is the person's"
+                  % (n, stage_label(os.getcwd())), file=sys.stderr)
             return 1
         d["reopened"]["launches"] = n + 1
         acc_write(lockfile, d)
@@ -886,7 +893,7 @@ def acc_start(spec, lockfile):
 
 
 def acc_run(root, spec, lockfile):
-    """The acceptance row(s) for Check: [] when this run has no lock."""
+    """The acceptance row(s) for the checks when Build ends and for Check: [] when this run has no lock."""
     d = acc_read(lockfile)
     if not spec or d.get("spec") != os.path.relpath(spec, root) or not (d.get("cmd") or d.get("skipped")):
         return []
@@ -909,9 +916,39 @@ def acc_run(root, spec, lockfile):
 
 
 # ---- run -----------------------------------------------------------------------------------------------------------
-def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold="", info=None):
+def plan_line(spec):
+    """The plan's **Integration:** text (WP23: the owner of the suite only when the config and detect name none)."""
+    m = re.search(r"^\*\*Integration:\*\*\s*`([^`]+)`", _read(os.path.join(spec, "tasks.md")) if spec else "", re.M)
+    line = m.group(1).strip() if m else ""
+    return "" if line == "manual" else line
+
+
+def stage_label(root):
+    """The stage the run is at, in the person's words, for a text that names its question (Build or Check)."""
+    st = acc_read(os.path.join(root, ".temper", "build-state.json")).get("next_stage")
+    return {"build": "Build", "fix": "Build", "review": "Review", "check": "Check"}.get(st, "Build")
+
+
+def _failures():
+    import failure
+    return failure
+
+
+# the limit of a run of the checks: at Build TEMPER_INTEGRATION_TIMEOUT_S (an hour), at Check SUITE_TIMEOUT_S
+LIMIT_S = {"build": lambda: float(os.environ.get("TEMPER_INTEGRATION_TIMEOUT_S") or 3600), "check": lambda: SUITE_TIMEOUT_S}
+
+
+def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold="", info=None, stage="check", suite=True):
+    """Check's run (stage check), or the checks when Build ends (stage build, `build-checks`, WP23): the suite in the
+    owner's run text with its coverage, the coverage row, each scenario test, the locked acceptance tests and a fix's
+    regression proof, each through the reuse store and recorded in the stage's ledger; every failed run is one failure
+    record. Returns the suite's exit code at Build (0 when the person's skip of a red base covers it), else 0; 3 at Check
+    with no test command."""
     det = det_for(root, test_cmd, cov_cmd)
-    if not det:
+    line = plan_line(spec) if stage == "build" else ""
+    if not det and line:   # the plan's line owns the suite only when the config and detect name none
+        det = detect(root, line)
+    if not det and stage != "build":
         print("UNKNOWN: no test command for this project; set check.commands.test")
         return 3
     try:
@@ -920,35 +957,59 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
     except (OSError, ValueError):
         rows = []
     os.makedirs(os.path.join(root, ".temper", "check"), exist_ok=True)
+    ran = []   # (check, the row's index in the ledger)
+
+    def add(r_, check=None):
+        rows.append(r_)
+        if check:
+            ran.append((check, len(rows) - 1))
     cov = det.get("coverage")
-    # the suite, with coverage on in the same run when the stack allows it
-    cmd = cov["run"] if cov else det["test"]
-    import baseline
-    limit = baseline.limit_for(cmd, SUITE_TIMEOUT_S, root)   # WP20: three times the base's time of the same suite, at least
-    # WP22: through the reuse store; a kept pass of the same key (a group's Validate of the same text on the same
-    # content, the run made beside Review) is used, with what it measured
-    sinfo = {"measure": measure_of(root, det, base), "need_extra": True} if cov else {}
-    out, rc, _ = run_env.run_cached(root, limit, [cmd], info=sinfo, root=root)
-    cov_exit = rc if cov else None
-    if cov and rc == 127 and cmd != det["test"]:   # the coverage program could not start: the suite runs without it
-        sinfo = {}
-        out, rc, _ = run_env.run_cached(root, limit, [det["test"]], info=sinfo, root=root)
-        cmd = det["test"]
-    suite_s = float(sinfo.get("seconds") or 0)
-    if isinstance(info, dict):
-        info.update(suite_s=suite_s, rc=rc, det=det)
-    extra = sinfo.get("extra") if isinstance(sinfo.get("extra"), dict) else {}
-    if extra.get("report"):
-        out = out + b"\n" + extra["report"].encode("utf-8")
-    rows.append(row("tests: the suite (run by the CLI)", cmd, rc, out, **run_env.row_fields(sinfo)))
-    print("tests: exit %d, %.1f s (%s)" % (rc, suite_s, cmd[:120]))
-    why = setup_fault(out, rc, cmd)
-    if why:   # the suite row stays red: the gate fails as before, and the question says SETUP
-        rows.append(row("setup fault: " + why, cmd, 1, b"", label="HEURISTIC"))
-        print("SETUP: %s" % why)
-    c = coverage_row(root, det, cov["run"] if cov else "", out, rc, cov_exit, base, threshold, extra)
-    rows.append(c)
-    print("coverage: %s: %s" % (c["state"], c["output"]))
+    out, rc, out_rc = b"", 0, 0
+    if det and suite:
+        # the suite, with coverage on in the same run when the stack allows it
+        cmd = cov["run"] if cov else det["test"]
+        import baseline
+        limit = baseline.limit_for(cmd, LIMIT_S[stage](), root)   # WP20: three times the base's time of the same suite, at least
+        # WP22: through the reuse store; a kept pass of the same key (a group's Validate of the same text on the same
+        # content, integrate's run on the tree Check judges) is used, with what it measured
+        sinfo = {"measure": measure_of(root, det, base), "need_extra": True} if cov else {}
+        out, rc, _ = run_env.run_cached(root, limit, [cmd], info=sinfo, root=root)
+        cov_exit = rc if cov else None
+        if cov and rc == 127 and cmd != det["test"]:   # the coverage program could not start: the suite runs without it
+            sinfo = {}
+            out, rc, _ = run_env.run_cached(root, limit, [det["test"]], info=sinfo, root=root)
+            cmd = det["test"]
+        suite_s = float(sinfo.get("seconds") or 0)
+        if isinstance(info, dict):
+            info.update(suite_s=suite_s, rc=rc, det=det)
+        extra = sinfo.get("extra") if isinstance(sinfo.get("extra"), dict) else {}
+        if extra.get("report"):
+            out = out + b"\n" + extra["report"].encode("utf-8")
+        kw = dict(run_env.row_fields(sinfo), fail_lines=sinfo.get("fail_lines") or run_env.fail_lines(out, rc=rc)) if rc else \
+            run_env.row_fields(sinfo)
+        out_rc = rc
+        if stage == "build":
+            if line and line != cmd:
+                kw["plan_cmd"] = line
+            if rc != 0 and baseline.like_base(root, cmd, kw.get("fail_lines") or []):   # WP21: only the base's failures
+                kw["state"], out_rc = "skipped", 0
+                print("NOTE: the integration suite failed (exit %d) only as it failed on the base, which you went on from" % rc)
+            add(row("Integration suite", cmd, rc, out, phase="integration", **kw), None if out_rc == 0 and rc else "suite")
+        else:
+            add(row("tests: the suite (run by the CLI)", cmd, rc, out, **kw), "suite")
+        if stage == "build":
+            show(out, rc)
+            if out_rc:   # the reason integrate records
+                print("REASON: integration suite failed (exit %d): %s" % (rc, cmd[:300]))
+        print("tests: exit %d, %.1f s (%s)" % (rc, suite_s, cmd[:120]))
+        why = setup_fault(out, rc, cmd)
+        if why:   # the suite row stays red: the gate fails as before, and the question says SETUP
+            add(row("setup fault: " + why, cmd, 1, b"", label="HEURISTIC"))
+            print("SETUP: %s" % why)
+        c = coverage_row(root, det, cov["run"] if cov else "", out, rc, cov_exit, base, threshold, extra)
+        c.update({k: v for k, v in run_env.row_fields(sinfo).items() if k in ("tree", "key", "reused")})
+        add(c, "coverage")
+        print("coverage: %s: %s" % (c["state"], c["output"]))
     # each scenario's Test: command
     intent = os.path.join(spec, "intent.md") if spec else ""
     if intent and os.path.exists(intent):
@@ -956,29 +1017,59 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
             if not b.get("cmd", "").strip():
                 continue
             i = {}
-            sout, src, _ = run_env.run_cached(root, SUITE_TIMEOUT_S, [b["cmd"]], info=i, root=root)
-            rows.append(row("scenario: %s -> %s" % (b["name"], b["cmd"][:120]), b["cmd"], src, sout, phase="scenario",
-                            scenario=b["name"], **run_env.row_fields(i)))
-            print("scenario '%s': exit %d" % (b["name"][:60], src))
+            import baseline
+            sout, src, _ = run_env.run_cached(root, baseline.limit_for(b["cmd"], LIMIT_S[stage](), root), [b["cmd"]], info=i,
+                                              root=root)
+            add(row("scenario test at integration" if stage == "build" else "scenario: %s -> %s" % (b["name"], b["cmd"][:120]),
+                    b["cmd"], src, sout, phase="scenario", scenario=b["name"], **run_env.row_fields(i)), "scenario")
+            print("scenario '%s': exit %d%s" % (b["name"][:60], src, ", %.1f s" % float(i.get("seconds") or 0) if stage == "build" else ""))
     # the acceptance tests written before Build, as they were locked
     lockfile = os.path.join(root, ".temper", "evidence", "acceptance-lock.json")
     for r_ in acc_run(root, spec, lockfile):
-        rows.append(r_)
+        add(r_, "acceptance")
         print("acceptance: exit %s" % r_["exit_code"])
         why = setup_fault(r_.get("output") or "", r_["exit_code"] if isinstance(r_["exit_code"], int) else 1, r_.get("cmd") or "")
         if why and not any(str(x.get("claim", "")).startswith("setup fault: ") for x in rows[-3:]):
-            rows.append(row("setup fault: " + why, r_.get("cmd") or "", 1, b"", label="HEURISTIC"))
+            add(row("setup fault: " + why, r_.get("cmd") or "", 1, b"", label="HEURISTIC"))
             print("SETUP: %s" % why)
     # regression proof of a fix
-    if command == "fix" and base:
+    if command == "fix" and base and det:
         rrc, detail = regression(root, base, det["test"])
-        rows.append(row("regression proof", det["test"], rrc, detail))
+        add(row("regression proof", det["test"], rrc, detail), "regression")
         print("regression: %s" % detail)
     tmp = "%s.tmp.%d" % (ledger, os.getpid())
     with open(tmp, "w") as f:
         json.dump(rows, f, indent=2)
     os.replace(tmp, ledger)
-    return 0
+    if not isinstance(info, dict) or not info.get("ahead"):
+        record(stage, rows, ran, root)
+    return out_rc if stage == "build" else 0
+
+
+def record(stage, rows, ran, root):
+    """One failure record per failed run (WP23); a pass of the same check on another key resolves the open ones."""
+    try:
+        f = _failures()
+        for check, i in ran:
+            r_ = rows[i]
+            if r_.get("exit_code") == 0 or (check == "coverage" and r_.get("state") != "fail"):
+                if r_.get("exit_code") == 0:
+                    f.resolve_pass("gate:%s" % stage, check, r_.get("key") or "", root)
+                continue
+            f.of_row(stage, "gate:%s" % stage, check, r_, i, root=root,
+                     kind="coverage-drop" if check == "coverage" else None)
+    except Exception as e:   # the record never fails a check: the rows and the verdict stand
+        print("NOTE: the failure record was not written: %s" % str(e)[:160])
+
+
+def show(out, rc, keep=12):
+    """A suite's output for the orchestrator: a passing run its last lines, a failing one all of it."""
+    lines = out.decode("utf-8", "replace").splitlines(True)
+    if rc == 0 and len(lines) > keep:
+        sys.stdout.write("[the first %d lines of the passing output are not shown]\n" % (len(lines) - keep))
+        lines = lines[-keep:]
+    sys.stdout.write("".join(lines))
+    sys.stdout.flush()
 
 
 # ---- ahead: Check's run made while Review reads the change ------------------------------------------------------------
@@ -1037,7 +1128,7 @@ def ahead(root, spec, base, command, test_cmd="", cov_cmd="", threshold=""):
     os.close(fd)
     open(tmp, "w").write("[]")
     import contextlib, io
-    info = {}
+    info = {"ahead": True}   # a throwaway ledger: its failures are recorded by the run that writes the stage's ledger
     try:
         with contextlib.redirect_stdout(io.StringIO()):   # the regression proof of a fix is no store run: check run makes it
             rc = run(root, spec, tmp, base, "", test_cmd, cov_cmd, threshold, info)
@@ -1089,6 +1180,9 @@ def main(argv):
         os.makedirs(os.path.dirname(stop), exist_ok=True)
         open(stop, "w").write("%d\n" % (time.time() + STOP_AFTER_S))
         return run(*argv[2:7], *argv[7:10])
+    if len(argv) >= 7 and argv[1] == "build-checks":   # build-checks ROOT SPEC LEDGER BASE COMMAND [TEST COV KEY [nosuite]]
+        a = (argv[7:11] + ["", "", "", ""])[:4]
+        return run(*argv[2:7], *a[:3], stage="build", suite=a[3] != "nosuite")
     print(__doc__, file=sys.stderr)
     return 2
 

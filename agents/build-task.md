@@ -43,7 +43,7 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 
 **Gotchas** (each one fails the task or the run):
 - Wait for every test run in the foreground. Never return while a run goes on in the background: the stage ends when you return.
-- Run scoped tests only: the task's own Test command through `task test`, or a file, a class or a keyword to look at one failure. Never the full suite; Check runs it once.
+- Run scoped tests only: the task's own Test command through `task test`, or a file, a class or a keyword to look at one failure. Never the full suite; `integrate` runs it once when Build ends.
 - Never commit, stage, branch or push. The CLI commits your declared files when the task's
   gate passes.
 - The prompt's `SCENARIO TESTS` block, if `task show` prints one, names tests you owe with their exact names and the

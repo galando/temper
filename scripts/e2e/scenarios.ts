@@ -875,7 +875,7 @@ case "$*" in *verify*) exit 0 ;; esac
 const G1_CHECK = 'python3 -m unittest unit.test_ci_shape'
 const FAILED_CHECKS_ASKED = new Map<string, string>()
 export const failedChecks = (w: World): void => {
-  startProject(w)
+  startProject(w, '', wantsVersion(versionFlag(w)))   // WP23: the suite meets what the Integration command wants
   // every verdict a call recorded: the markers of the calls the world ran, and those `temper go` read
   const verdicts: string[] = []
   const run = w.run.bind(w)
@@ -893,7 +893,7 @@ export const failedChecks = (w: World): void => {
     return r
   }
   const fixes = { group: 0, integrate: 0 }
-  const agents: Record<string, Agent> = {
+  const agents: Record<string, Agent> = flagsLastTask(versionFlag(w), {
     ...AGENTS,
     // the plan: G1's check also wants a line no task writes, and so does the Integration command
     'temper:temper-plan': (wd, a) => {
@@ -916,7 +916,7 @@ export const failedChecks = (w: World): void => {
         fixes.integrate++
       }
     },
-  }
+  })
   const asked: string[] = []
   const end = orchestrate(w, script({
     agents,
@@ -1017,6 +1017,23 @@ export const fixRun = (w: World): void => {
   expect(branch === 'fix/bug' && own > 0 && w.sh('git log --format=%s -n 1').startsWith('fix(bug):'),
     `the fix is committed on fix/bug, off main (on ${branch}, ${own} commits beyond main: ${w.sh('git log --format=%s -n 1').trim()})`)
 }
+
+// WP23: integrate runs the owner's suite (the config's test command), not the plan's Integration line, which runs once
+// on the base (WP21). A failure met only when Build ends is the suite's own: once the agent of Task 2 (the last task)
+// returned, suite.sh wants the line the plan's Integration command wants. `wantsVersion` changes the project at its
+// start; `flagsLastTask` marks the end of the last task agent.
+export const versionFlag = (w: World): string => `${w.dir}.version-wanted`
+export const wantsVersion = (flag: string) => (wd: World): void => {
+  wd.write('suite.sh', `[ -f '${flag}' ] && ! grep -q VERSION src/ci_bytes.py && { echo 'FAIL: test_version: src/ci_bytes.py has no VERSION'; exit 1; }\n${wd.read('suite.sh')}`)
+  wd.sh('git add suite.sh && git commit -qm "the suite wants a VERSION once Build ends"')
+}
+export const flagsLastTask = (flag: string, agents: Record<string, Agent>): Record<string, Agent> => ({
+  ...agents,
+  'temper:temper-build-task': (wd, a) => {
+    (agents['temper:temper-build-task'] ?? buildTask)(wd, a)
+    if (tasksOf(a).includes(2)) fs.writeFileSync(flag, '')
+  },
+})
 
 // WP23: a fault of the environment met when Build ends, in a run that goes on by itself (the person approved with
 // the recommended approve-run). The suite passes on the base and at every group; once the last task agent returned,
@@ -1488,12 +1505,12 @@ def stage_summary(stages):
 `
 export const LOW_BYTES = 'import json; document = lambda ledger: json.dumps(ledger, sort_keys=True, separators=(",", ":"))\n'
 
-// WP19 test 9: the scripted builder leaves 12 new lines of which 4 run; the base value is 71%. Check fails on the row
-// coverage (a measured drop, class code); the run the person approved takes its one counted repair, whose scripted
-// agent changes no line that runs; Check fails again and the run stops with one question that names the row. It never
-// passes on to the commit and never takes a second repair by itself.
-// WP24: the repair is one in place, at Check: the CLI's own `repair start --stage check`, a fresh Build agent whose
-// prompt holds the line `Repair in place:`, and no step back (no call `state loop check build`).
+// WP19 test 9: the scripted builder leaves 12 new lines of which 4 run; the base value is 71%. The Build gate (WP23:
+// integrate measures coverage) fails on the row coverage (a measured drop, class code); the run the person approved
+// takes its one counted repair, Build's fix pass, whose scripted agent records RED and GREEN as a fix pass does and
+// changes no line that runs; the Build gate fails again and the run stops with one question that names the row. It
+// never passes on to the commit and never takes a second repair by itself.
+// WP24: the repair is made in the stage where the failure was found, by the CLI's own call, and no step back.
 export const coverageDrop = (w: World): void => {
   const fake = `${w.dir}.fakecov`
   fs.mkdirSync(path.join(fake, 'coverage'), { recursive: true })
@@ -1554,14 +1571,15 @@ export const coverageDrop = (w: World): void => {
     afterFailStops: true,
   }))
   const flow = w.trace.join('\n')
-  const rows = ((w.json('.temper/gates.json').check?.requirements ?? []) as Json[])
+  // WP23: integrate measures coverage when Build ends, so the measured drop fails the Build gate on the row coverage
+  const rows = ((w.json('.temper/gates.json').build?.requirements ?? []) as Json[])
   const cov = rows.find(r => r.name === 'coverage')
-  expect(cov !== undefined && cov.pass === false && String(w.json('.temper/gates.json').check?.verdict) === 'FAIL',
-    `Check fails on the row coverage, a measured drop (${JSON.stringify(rows.filter(r => r.pass !== true)).slice(0, 300)})`)
-  expect(!rows.some(r => /mutation/i.test(String(r.name))), 'no row of Check names the planted bugs')
+  expect(cov !== undefined && cov.pass === false && String(w.json('.temper/gates.json').build?.verdict) === 'FAIL',
+    `the Build gate fails on the row coverage, a measured drop (${JSON.stringify(rows.filter(r => r.pass !== true)).slice(0, 300)})`)
+  expect(!rows.some(r => /mutation/i.test(String(r.name))), 'no row of the Build gate names the planted bugs')
   const log = (w.exists('.temper/rule-log.json') ? w.json('.temper/rule-log.json') : []) as unknown as Json[]
-  const ruled = log.filter(x => x.kind === 'repair' && x.stage === 'check').length
-  expect(repairs === 1 && ruled === 1, `the run takes its one counted repair and no second (${repairs} launches of the repair agent, ${ruled} repairs by rule at Check)`)
+  const ruled = log.filter(x => x.kind === 'repair' && x.stage === 'build').length
+  expect(repairs === 1 && ruled === 1, `the run takes its one counted repair and no second (${repairs} launches of the repair agent, ${ruled} repairs by rule at Build)`)
   expect(asked.length === 1 && end.action === 'ask', `after the approval the run asks one question, at the stop (${asked.map(a => a.id).join(', ')})`)
   const q = String(asked[0]?.question?.question ?? '')
   expect(/\bcoverage\b/.test(q), `the stop's question names the row coverage (${q.slice(0, 200)})`)

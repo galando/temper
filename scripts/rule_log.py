@@ -56,6 +56,13 @@ def append(kind, stage, what):
         json.dump(rows, f, indent=1)
         f.write("\n")
     os.replace(tmp, PATH)
+    if kind in ("repair", "group fix", "stop"):   # WP23: the step a rule took is written on the open failure records
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import failure
+            failure.set_step([x["id"] for x in failure.open_records(stage=stage) if not x.get("step")], rows[-1]["what"])
+        except Exception:
+            pass
     return 0
 
 

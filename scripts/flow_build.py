@@ -8,6 +8,7 @@ import re
 import shlex
 
 import cli_words
+import failure
 import fresh_review
 import tasks_md
 
@@ -151,6 +152,13 @@ class BuildPart:
         before = r.state.get("built_before") and not rg
         if (integ and gid and all(gpass(g) for g in gid)) or before:
             lines = self.feedback_lines() + self.fault_lines()   # M1: the finding and what failed since
+            redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+            if self.env_records("build") and not str(redo.get("reason") or "").startswith("it is the code"):
+                # WP23: a fault of the environment gets no fix pass: the checks run again, and a failure there is the
+                # setup question (its option It is the code is the person's way to the fix pass)
+                return {"action": "auto" if r.armed() else "work", "stage": "build", "agents": [],
+                        "calls": ([self.c("integrate")] if integ and not before else [self.c("check build-checks")]) + [self.c("gate build")],
+                        "say": "Build: the last failure was the environment's, so no fix agent: the CLI checks Build again."}
             if not lines and not r.notes("build", "input"):
                 # 9.8.5 (S7): a fix pass with no fault in its prompt fixes nothing (a measured launch said so): the CLI
                 # checks Build again, and a failure there names the fault for the next pass
@@ -589,6 +597,7 @@ class BuildPart:
                  "Why the check failed: %s." % " ".join(str(gate.get("reason", "")).split())]
         if fl:
             lines.append("What failed (the first FAIL lines of its output): %s." % "; ".join(fl))
+        lines += self.record_lines(failure.open_records(scope="group:%s" % gid))   # WP23: what the record keeps
         a = self.agent("build", lines)
         # the commit clears the group's gate: the next action checks the group as an ordinary call, and a FAIL there asks
         # the group question again (that call records its verdict and prints its marker, so `temper go` goes on to ask)

@@ -208,6 +208,10 @@ def archive_ledger(argv):
         doc['grouped'] = json.loads(grouped)
     if usage:
         doc['usage'] = json.loads(usage)
+    import os
+    failures = load(os.path.join(os.path.dirname(os.path.abspath(gates_f)), 'evidence', 'failures.json'), [])
+    if failures:   # WP23: the failure records of the run (scripts/failure.py)
+        doc['failures'] = failures
     # The same record but for its times (state clear after the commit archives again): the committed file stays as it is,
     # so the commit does not leave the spec folder changed.
     def bare(o):

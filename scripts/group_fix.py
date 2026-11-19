@@ -82,6 +82,14 @@ def main(argv):
         g.pop("fix", None)
         g["fix_empty"] = int(g.get("fix_empty") or 0) + 1
         save(path, d)
+        try:   # WP23: one failure record of class command
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import failure
+            failure.record("build", "group:%s" % gid, "validate", "fix-changed-nothing",
+                           "group %s: the fix agent changed nothing, so the cause is not in the group's code" % gid,
+                           ran_by="agent", class_by="structure")
+        except Exception:
+            pass
         print("OK: group %s: the fix agent changed nothing, so the cause is not in the group's code; its check stays failed" % gid)
         return 0
     rc, out = git(wt, *id_args(), "commit", "-q", "-m", "fix(%s): %s group check" % (slug or "run", gid))
