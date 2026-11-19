@@ -142,7 +142,9 @@ OPTION_IDS = frozenset((
     # WP20
     "go-on-anyway",
     # WP21
-    "more-time"))
+    "more-time",
+    # WP22
+    "run-anyway"))
 
 
 def question_entry(qid):

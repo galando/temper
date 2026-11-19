@@ -300,7 +300,7 @@ _atcommit52() { # an unattended run of a plan of two groups at the commit questi
 }
 _atcommit52
 _cq52_want="commit.confirm|top=commit,commit-pr,back,more|rec=commit|back=state loop check build"
-_cq52_want+="|more=commit-stacked-prs,small-change,save"
+_cq52_want+="|more=commit-stacked-prs,run-anyway,small-change,save"
 assert_eq "run: the commit question of an unattended run" "$_cq52_want" \
   "$(_x52 "a = d.get('ask') or {}; top = a.get('options') or []; more = (a.get('more') or {}).get('options') or []
 b = (opt(d, 'back') or {}).get('calls') or ['']

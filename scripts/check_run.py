@@ -6,8 +6,9 @@ commands and records what they gave, and the agent is only the fallback for a st
   python3 check_run.py run ROOT SPEC LEDGER BASE COMMAND [TEST_CMD] [COVERAGE_CMD] [KEY]
                                                                 run them, record the rows, print one line each
   python3 check_run.py ahead ROOT SPEC BASE COMMAND [TEST_CMD COVERAGE_CMD KEY]
-                                                                the same run while Review reads the change, then the
-                                                                planted bugs (.temper/evidence/mutation.json)
+                                                                the same run while Review reads the change, through the
+                                                                reuse store (run_env.run_cached), then the planted bugs
+                                                                (.temper/evidence/mutation.json)
   python3 check_run.py coverage-verdict                         the coverage rule on one JSON object on standard input
   python3 check_run.py owner ROOT [SPEC]                        who owns the suite command (WP20, suite_owner), one JSON
                                                                 line {"test", "run", "source", "why"}
@@ -44,7 +45,7 @@ import acceptance
 import run_env
 
 SKIP_DIRS = {".git", ".temper", ".claude", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", "target", ".tox"}
-TEST_DIR_NAMES = ("tests", "test", "unit", "spec", "acceptance")
+TEST_DIR_NAMES = run_env.TEST_DIR_NAMES
 MUTANT_CAP = 40
 MUTATION_BUDGET_S = float(os.environ.get("TEMPER_MUTATION_BUDGET_S", "300"))
 SUITE_TIMEOUT_S = float(os.environ.get("TEMPER_CHECK_TIMEOUT_S", "1800"))
@@ -155,6 +156,17 @@ def detect(root, test_cmd="", cov_cmd=""):
         g = "./gradlew" if os.path.exists(j("gradlew")) else "gradle"
         return {"stack": "gradle", "test": "%s test" % g, "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
     return {}
+
+
+def det_for(root, test_cmd="", cov_cmd=""):
+    """The commands Check runs (WP22): detect() in the root, else those of the owner of the suite command when it found
+    them one folder down (suite_owner, WP20), so Check runs the owner's text, the key of the run the base, a group and
+    integrate made of it; {} when neither."""
+    det = detect(root, test_cmd, cov_cmd)
+    if det or test_cmd:
+        return det
+    o = suite_owner(root, {}, "")
+    return o["det"] if o.get("source") == "detected" else {}
 
 
 def _read(p):
@@ -361,12 +373,28 @@ def line_data(root, det, base):
     return {"ran": ran, "missed": missed}
 
 
-def coverage_row(root, det, cmd, out, rc, cov_exit, base, threshold):
+def measure_of(root, det, base):
+    """The coverage a passing suite run left (WP22): the report command, the total and the changed lines, kept with the
+    pass in the store, so a reused run gives them too."""
+    cov = det.get("coverage") or {}
+
+    def measure(out):
+        rout = run_env.run_cmd(root, 300, [cov["report"]])[0] if cov.get("report") else b""
+        total = coverage_value(root, det, (out + b"\n" + rout).decode("utf-8", "replace"))
+        return {"coverage": total, "changed": line_data(root, det, base) if total is not None else None, "base": base,
+                "report": rout[-2048:].decode("utf-8", "replace")}
+    return measure
+
+
+def coverage_row(root, det, cmd, out, rc, cov_exit, base, threshold, extra=None):
     """The one coverage row of the ledger: the verdict's fields beside what it was judged on, so the gate judges it again
     with the config and the baseline as they are then."""
     cov = det.get("coverage")
-    total = coverage_value(root, det, out.decode("utf-8", "replace")) if cov and rc == 0 and cov_exit != 127 else None
-    changed = line_data(root, det, base) if total is not None else None
+    ok = cov and rc == 0 and cov_exit != 127
+    m = extra if isinstance(extra, dict) else {}
+    total = m.get("coverage") if ok and "coverage" in m else coverage_value(root, det, out.decode("utf-8", "replace")) if ok else None
+    changed = (m.get("changed") if m.get("base") == base else None) if "coverage" in m else (
+        line_data(root, det, base) if total is not None else None)
     note = "the suite failed, so no coverage was taken" if cov and rc != 0 and cov_exit != 127 else ""
     measure = {"total": total, "command": bool(cov), "exit": cov_exit, "hint": det.get("hint") or "", "note": note}
     b, why = base_value(os.path.join(root, ".temper", "evidence", "baseline.json"))
@@ -405,17 +433,8 @@ CMP_SWAP = {ast.Lt: ast.LtE, ast.LtE: ast.Lt, ast.Gt: ast.GtE, ast.GtE: ast.Gt, 
             ast.In: ast.NotIn, ast.NotIn: ast.In}
 
 
-SOURCE_EXT = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".java", ".kt", ".rb", ".rs", ".cs", ".php", ".swift", ".scala", ".sh")
-
-
-def is_test_path(p):
-    """A test source file: a test file name (test_x.py, x_test.go, x.test.ts, x.spec.js, XTest.java), or a source file in a
-    tests folder. Never a compiled or cached file."""
-    if "__pycache__" in p or not p.endswith(SOURCE_EXT):
-        return False
-    b = os.path.basename(p)
-    return bool(re.match(r"^test_.*\.py$|^.*_test\.(py|go)$|^conftest\.py$|^.*\.(test|spec)\.[cm]?[jt]sx?$|^.*Tests?\.(java|kt|cs)$|^.*_spec\.rb$", b)) or any(
-        part in TEST_DIR_NAMES for part in p.split("/")[:-1])
+SOURCE_EXT = run_env.SOURCE_EXT
+is_test_path = run_env.is_test_path   # WP22: the runner reads them too (a byproduct is never a source or test file)
 
 
 def changed_lines(root, base):
@@ -881,15 +900,17 @@ def acc_run(root, spec, lockfile):
     if changed:
         return [row("acceptance (written before Build)", d["cmd"], 1,
                     "changed after they were locked: %s" % ", ".join(changed)[:300])]
-    out, rc = run_env.run_cmd(root, SUITE_TIMEOUT_S, [d["cmd"]])
+    info = {}   # WP22: its tests live under .temper/, outside the digest, so the lock's file digests are in its key
+    out, rc, _ = run_env.run_cached(root, SUITE_TIMEOUT_S, [d["cmd"]], info=info, extra={"lock": d.get("files") or {}},
+                                    root=root)
     fixed = [c.get("reason", "") for c in d.get("corrections") or [] if isinstance(c, dict)]
     name = "acceptance (written before Build)" + (", corrected after the lock: %s" % "; ".join(fixed)[:200] if fixed else "")
-    return [row(name, d["cmd"], rc, out)]
+    return [row(name, d["cmd"], rc, out, **run_env.row_fields(info))]
 
 
 # ---- run -----------------------------------------------------------------------------------------------------------
 def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold="", info=None):
-    det = detect(root, test_cmd, cov_cmd)
+    det = det_for(root, test_cmd, cov_cmd)
     if not det:
         print("UNKNOWN: no test command for this project; set check.commands.test")
         return 3
@@ -904,26 +925,28 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
     cmd = cov["run"] if cov else det["test"]
     import baseline
     limit = baseline.limit_for(cmd, SUITE_TIMEOUT_S, root)   # WP20: three times the base's time of the same suite, at least
-    t0 = time.time()
-    out, rc = run_env.run_cmd(root, limit, [cmd])
+    # WP22: through the reuse store; a kept pass of the same key (a group's Validate of the same text on the same
+    # content, the run made beside Review) is used, with what it measured
+    sinfo = {"measure": measure_of(root, det, base), "need_extra": True} if cov else {}
+    out, rc, _ = run_env.run_cached(root, limit, [cmd], info=sinfo, root=root)
     cov_exit = rc if cov else None
     if cov and rc == 127 and cmd != det["test"]:   # the coverage program could not start: the suite runs without it
-        t0 = time.time()
-        out, rc = run_env.run_cmd(root, limit, [det["test"]])
+        sinfo = {}
+        out, rc, _ = run_env.run_cached(root, limit, [det["test"]], info=sinfo, root=root)
         cmd = det["test"]
-    suite_s = time.time() - t0
+    suite_s = float(sinfo.get("seconds") or 0)
     if isinstance(info, dict):
         info.update(suite_s=suite_s, rc=rc, det=det)
-    if cov and cov.get("report") and rc == 0 and cov_exit != 127:
-        rout, _ = run_env.run_cmd(root, 300, [cov["report"]])
-        out = out + b"\n" + rout
-    rows.append(row("tests: the suite (run by the CLI)", cmd, rc, out))
+    extra = sinfo.get("extra") if isinstance(sinfo.get("extra"), dict) else {}
+    if extra.get("report"):
+        out = out + b"\n" + extra["report"].encode("utf-8")
+    rows.append(row("tests: the suite (run by the CLI)", cmd, rc, out, **run_env.row_fields(sinfo)))
     print("tests: exit %d, %.1f s (%s)" % (rc, suite_s, cmd[:120]))
     why = setup_fault(out, rc, cmd)
     if why:   # the suite row stays red: the gate fails as before, and the question says SETUP
         rows.append(row("setup fault: " + why, cmd, 1, b"", label="HEURISTIC"))
         print("SETUP: %s" % why)
-    c = coverage_row(root, det, cov["run"] if cov else "", out, rc, cov_exit, base, threshold)
+    c = coverage_row(root, det, cov["run"] if cov else "", out, rc, cov_exit, base, threshold, extra)
     rows.append(c)
     print("coverage: %s: %s" % (c["state"], c["output"]))
     # each scenario's Test: command
@@ -932,8 +955,10 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
         for b in acceptance.scenario_blocks(open(intent, encoding="utf-8").read().splitlines()):
             if not b.get("cmd", "").strip():
                 continue
-            sout, src = run_env.run_cmd(root, SUITE_TIMEOUT_S, [b["cmd"]])
-            rows.append(row("scenario: %s -> %s" % (b["name"], b["cmd"][:120]), b["cmd"], src, sout, phase="scenario", scenario=b["name"]))
+            i = {}
+            sout, src, _ = run_env.run_cached(root, SUITE_TIMEOUT_S, [b["cmd"]], info=i, root=root)
+            rows.append(row("scenario: %s -> %s" % (b["name"], b["cmd"][:120]), b["cmd"], src, sout, phase="scenario",
+                            scenario=b["name"], **run_env.row_fields(i)))
             print("scenario '%s': exit %d" % (b["name"][:60], src))
     # the acceptance tests written before Build, as they were locked
     lockfile = os.path.join(root, ".temper", "evidence", "acceptance-lock.json")
@@ -957,33 +982,11 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
 
 
 # ---- ahead: Check's run made while Review reads the change ------------------------------------------------------------
-# Review writes no code, so the CLI runs Check's suite and coverage in the background while the Review agent works.
-# `check run` adopts that run when the tree is still the one it measured (the same digest), else runs again. A run that
-# did not finish, or a tree that changed, is never adopted. Then, and only here, the planted bugs run (WP19): when three
-# runs of the suite fit MUTATION_BUDGET_S, into .temper/evidence/mutation.json. `check run` never waits for them.
-def tree_digest(root):
-    """HEAD, plus every changed, added or removed file outside .temper/ and .claude/ with its content."""
-    import hashlib
-    def git(*a):
-        p = subprocess.run(["git", "-C", root] + list(a), capture_output=True, text=True)
-        return p.stdout if p.returncode == 0 else ""
-    h = hashlib.sha256(git("rev-parse", "HEAD").encode())
-    names = sorted(set(git("-c", "core.quotePath=false", "ls-files", "-m", "-o", "-d", "--exclude-standard").splitlines()))
-    for n in names:
-        if n.startswith((".temper/", ".claude/")) or "__pycache__" in n:
-            continue
-        h.update(n.encode() + b"\0")
-        f = os.path.join(root, n)
-        if os.path.isfile(f):
-            h.update(hashlib.sha256(open(f, "rb").read()).digest())
-    return h.hexdigest()
-
-
-def ahead_paths(root):
-    d = os.path.join(root, ".temper", "check")
-    return os.path.join(d, "ahead.json"), os.path.join(d, "ahead.pid")
-
-
+# Review writes no code, so the CLI runs Check's commands through the reuse store in the background while the Review
+# agent works, into a throwaway ledger: the store is warm, and `check run` finds each entry by its key (a call while
+# that run goes on waits on the key's lock, then reads the entry). Then, and only here, the planted bugs run (WP19):
+# when three runs of the suite fit MUTATION_BUDGET_S, into .temper/evidence/mutation.json. `check run` never waits for
+# them.
 def mutation_path(root):
     return os.path.join(root, ".temper", "evidence", "mutation.json")
 
@@ -998,7 +1001,7 @@ def planted(root):
     """The planted bug score as the card and the view show it: {"state", "text"} of mutation.json when it measured the
     tree as it is now; None when there is none, or it is of another tree."""
     d = acc_read(mutation_path(root))
-    if not d.get("state") or d.get("tree") != tree_digest(root):
+    if not d.get("state") or d.get("tree") != run_env.tree_key(root, root=root):
         return None
     if d["state"] == "measured":
         n, c = int(d.get("ran") or 0), int(d.get("caught") or 0)
@@ -1026,59 +1029,25 @@ def plant(root, base, info, before):
 
 
 def ahead(root, spec, base, command, test_cmd="", cov_cmd="", threshold=""):
-    out, pidf = ahead_paths(root)
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    for f in (out, os.path.join(os.path.dirname(out), "mutation.stop"), mutation_path(root)):
+    for f in (os.path.join(root, ".temper", "check", "mutation.stop"), mutation_path(root)):
         if os.path.exists(f):
             os.remove(f)
-    open(pidf, "w").write(str(os.getpid()))
+    before = run_env.tree_key(root, root=root)
+    fd, tmp = tempfile.mkstemp(prefix="temper-ahead-", suffix=".json")
+    os.close(fd)
+    open(tmp, "w").write("[]")
+    import contextlib, io
+    info = {}
     try:
-        before = tree_digest(root)
-        fd, tmp = tempfile.mkstemp(prefix="temper-ahead-", suffix=".json")
-        os.close(fd)
-        open(tmp, "w").write("[]")
-        import contextlib, io
-        info = {}
-        with contextlib.redirect_stdout(io.StringIO()):
-            rc = run(root, spec, tmp, base, command, test_cmd, cov_cmd, threshold, info)
-        rows = json.load(open(tmp))
-        os.remove(tmp)
-        if rc == 0 and tree_digest(root) == before:
-            acc_write(out, {"digest": before, "rows": rows})
-            plant(root, base, info, before)
-        elif rc == 0:
-            planted_write(root, before, "not run", "the tree changed while the suite ran")
+        with contextlib.redirect_stdout(io.StringIO()):   # the regression proof of a fix is no store run: check run makes it
+            rc = run(root, spec, tmp, base, "", test_cmd, cov_cmd, threshold, info)
     finally:
-        if os.path.exists(pidf):
-            os.remove(pidf)
+        os.remove(tmp)
+    if rc == 0 and run_env.tree_key(root, root=root) == before:
+        plant(root, base, info, before)
+    elif rc == 0:
+        planted_write(root, before, "not run", "the tree changed while the suite ran")
     return 0
-
-
-def adopt(root, ledger):
-    """Add the rows of the ahead run to Check's ledger when it measured this very tree; True when adopted. Waits for an
-    ahead run still going (it is the same work this run would do)."""
-    out, pidf = ahead_paths(root)
-    t0 = time.time()
-    while os.path.exists(pidf) and not os.path.exists(out) and time.time() - t0 < SUITE_TIMEOUT_S:
-        try:
-            os.kill(int(open(pidf).read().strip() or "0"), 0)
-        except (ValueError, OSError):
-            break
-        time.sleep(1)
-    d = acc_read(out)
-    if os.path.exists(out):
-        os.remove(out)
-    if not d.get("rows") or d.get("digest") != tree_digest(root):
-        return False
-    try:
-        rows = json.load(open(ledger))
-        rows = rows if isinstance(rows, list) else []
-    except (OSError, ValueError):
-        rows = []
-    rows.extend(d["rows"])
-    acc_write(ledger, rows)
-    print("adopted the run made while Review read the change (%d rows; the tree is unchanged since)" % len(d["rows"]))
-    return True
 
 
 def main(argv):
@@ -1119,8 +1088,6 @@ def main(argv):
         stop = os.path.join(argv[2], ".temper", "check", "mutation.stop")
         os.makedirs(os.path.dirname(stop), exist_ok=True)
         open(stop, "w").write("%d\n" % (time.time() + STOP_AFTER_S))
-        if adopt(argv[2], argv[4]):
-            return 0
         return run(*argv[2:7], *argv[7:10])
     print(__doc__, file=sys.stderr)
     return 2

@@ -1,6 +1,7 @@
 """scenario_ops.py: the scenario tests of a grouped Build (F8, F9). A scenario of intent.md carries a `Test:` line, a scoped
 shell command that proves it on the merged tree. The commands run through run_env.py, so a credential-named variable is left
-out and the folder they run in comes first on PYTHONPATH.
+out and the folder they run in comes first on PYTHONPATH, and through its reuse store (WP22): the same test on the same tree
+runs once.
 
   python3 scenario_ops.py integrate INTENT CWD TIMEOUT LEDGER    run every Test: command, record one CLI-run row each, print
                                                                  one line each (name, exit, seconds); exit 0 whatever they give
@@ -124,8 +125,8 @@ def failure(name, cmd, rc, out=b""):
 def run_owed(items, cwd, timeout):
     """Run (name, cmd) pairs; returns the first failure message, or ''. Records nothing."""
     import baseline
-    for name, cmd in items:
-        out, rc = run_env.run_cmd(cwd, baseline.limit_for(cmd, timeout), [cmd])   # WP20: the limit from the base
+    for name, cmd in items:   # WP22: through the reuse store, so the same test on the same tree runs once
+        out, rc, _ = run_env.run_cached(cwd, baseline.limit_for(cmd, timeout), [cmd])   # WP20: the limit from the base
         if rc != 0:
             return failure(name, cmd, rc, out)
     return ""
@@ -142,14 +143,15 @@ def integrate(intent_path, cwd, timeout, ledger):
     for b in blocks(intent_path):
         if not b["cmd"].strip():
             continue
-        t0 = time.time()
         import baseline
-        out, rc = run_env.run_cmd(cwd, baseline.limit_for(b["cmd"], timeout), [b["cmd"]])   # WP20: the limit from the base
-        secs = time.time() - t0
-        rows.append({"claim": "scenario test at integration", "cmd": b["cmd"], "exit_code": rc, "artifact": None, "sha256": None,
-                     "value": None, "severity": None, "phase": "scenario", "scenario": b["name"], "criterion": None,
-                     "label": "PROVEN" if rc == 0 else "HEURISTIC", "executed_by": "cli",
-                     "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "output": out[-2048:].decode("utf-8", "replace")})
+        info = {}
+        out, rc, _ = run_env.run_cached(cwd, baseline.limit_for(b["cmd"], timeout), [b["cmd"]], info=info)   # WP20, WP22
+        secs = float(info.get("seconds") or 0)
+        rows.append(dict({"claim": "scenario test at integration", "cmd": b["cmd"], "exit_code": rc, "artifact": None,
+                          "sha256": None, "value": None, "severity": None, "phase": "scenario", "scenario": b["name"],
+                          "criterion": None, "label": "PROVEN" if rc == 0 else "HEURISTIC", "executed_by": "cli",
+                          "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                          "output": out[-2048:].decode("utf-8", "replace")}, **run_env.row_fields(info)))
         print("scenario '%s': exit %d, %.1f s" % (b["name"], rc, secs))
     tmp = "%s.tmp.%d" % (ledger, os.getpid())
     with open(tmp, "w") as f:

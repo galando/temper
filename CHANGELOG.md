@@ -172,6 +172,17 @@ All notable changes to Temper are documented here. The plugin version lives in
   `plan.preflight-timeout` and `plan.preflight-skip`, the environment agent (`agents/env.md`, its type and model name)
   and `temper doctor` with an agent's draft file. The stops `base.red`, `plan.command` and `person.baseline` join
   `scripts/stops.json`.
+- WP22: one digest, the reuse store and the flaky recheck. The same command on the same tree runs once: the digest
+  (`run_env.tree_key`) is the work tree as it is, tracked and untracked files alike, without `.temper/`, `.claude/` and
+  the byproducts a run left (never a tracked, declared, source or test file); the key adds the command, the setup block,
+  the folder and the first version line of each program. Every group check, `integrate`, Check (its suite, scenario
+  tests and acceptance tests), a task's scenario tests and the baseline go through the store, `temper-results.json` in
+  the git folder, now changed under a lock with one run in flight a key. A failure is kept beside the pass and not run
+  again on the same key; a failure whose command passed on the base runs once more at once, and fail then pass is
+  `flaky`, shown on the commit card. Each row names `tree`, `key`, `seconds` and `reused`, and each verdict its `tree`;
+  the commit gate fails (`checked tree`) when the project changed after Check. Run it anyway (`--fresh` on `check run`,
+  `group gate` and `integrate`, the option `run-anyway`) runs whatever the store holds, spends one repeat and marks the
+  row `forced`. `check ahead` warms the store: gone are its adopt step, `tree_digest` and `.temper/check/ahead.json`.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

@@ -71,6 +71,15 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   runs. "Go on anyway" at a red base is a recorded skip of the base's failures; only the mod ties it to your click
   (with the mod off nothing checks who ran `temper baseline accept-red`, and the skip row says it was the person). A
   green base that Temper reuses from its store is as old as the date the store shows for it.
+- **A reused result (9.8.5).** The same command on the same tree runs once: a pass or a failure is kept in
+  `temper-results.json` in your git folder and given again, with its date, on the same key (the tree as it is, the
+  command, the setup block, the folder, the first version line of each program it starts). A reused pass proves what
+  one run proved: one run per tree is the guarantee one CI run gives, weaker than the repeated runs of 9.8.4, so a test
+  that fails one time in ten can pass once and be kept. What the key cannot see is not in it: ignored folders such as
+  `node_modules` or `target/`, a service's state, the clock, a file outside the repository. A pass in a group worktree
+  is reused for the project folder with the same content, so a test that depends on its absolute path is not run again
+  where the code will live. A failure kept on the same tree is not run again until the code, the command or the
+  environment changes; "Run it anyway" (`--fresh`) runs it whatever the store holds, and counts as one repeat.
 - **Its own commits.** In a grouped Build the CLI commits each task's declared files in its worktree and merges
   them, as plain `git commit` and `git merge` calls that use git's own identity and settings (signing too, when
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none

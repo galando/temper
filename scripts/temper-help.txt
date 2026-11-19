@@ -28,7 +28,7 @@ Usage:
   temper group feedback G<n> --text T  (the person's change of a passed group: the next feedback #K row)
   temper output <stage>|G<n>      (read only: the gate's failed rows and its last run's output, or a group's last Validate)
   temper task <start|show|test|gate|blocked> N  (grouped Build: one task's lifecycle)
-  temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
+  temper integrate [--fresh]      (grouped Build: merge the passed groups, run the suite, check Interfaces)
   temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
   temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
   temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
@@ -57,7 +57,8 @@ Usage:
   temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
   temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
   temper spec branch --carry NAME | --if-protected  (switch carrying the spec files; a fix run's branch off main)
-  temper check run|detect                 (Check by the CLI: suite, coverage, scenarios, mutation, a fix's regression proof)
+  temper check run [--fresh]|detect       (Check by the CLI: suite, coverage, scenarios, a fix's regression proof;
+                                           --fresh runs whatever the reuse store holds, one repeat)
   temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
                                                              (the acceptance tests written from the intent before Build)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)

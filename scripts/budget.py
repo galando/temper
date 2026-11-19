@@ -45,6 +45,8 @@ SPENDS = (
     (("state", "set", "next_stage"), "step back", "to a stage before the one the run is at: as state loop "
                                                   "<that stage> <to>"),
     (("integrate",), "merge again", "the integration record is FAIL and no repeat of gate:build paid for it: gate:build"),
+    (("check", "run"), "run anyway", "with --fresh (WP22, the person's Run it anyway): gate:check; `group gate G --fresh` "
+                                     "spends group:<G>, `integrate --fresh` gate:build"),
 )
 
 
@@ -154,6 +156,11 @@ def key_of(words, facts):
         cur, seq = str(facts.state().get("next_stage") or ""), stages(facts)
         back = cur in seq and e in seq and seq.index(e) < seq.index(cur)
         return key_of(["state", "loop", cur, e], facts) if back else None
+    if "--fresh" in [str(x) for x in words] and (a, b) in (("check", "run"), ("group", "gate"), ("integrate", b)):
+        # WP22: a run whatever the reuse store holds is one counted repeat, always
+        key = "gate:check" if a == "check" else "gate:build" if a == "integrate" else (
+            "group:" + c if re.fullmatch(r"G\d+", c) else None)
+        return (key, "run anyway") if key else None
     group = (facts.groups().get("groups") or {}).get(c) if a == "group" else None
     group = group if isinstance(group, dict) else {}
     if a == "group" and not re.fullmatch(r"G\d+", c):
