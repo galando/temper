@@ -166,7 +166,7 @@ setup
 _pass intent
 "$TEMPER" state clear >/dev/null
 _c41_one="$(_c41_runs)"
-"$TEMPER" state init demo --command temper >/dev/null
+"$TEMPER" state init demo --command temper >/dev/null; _base_known
 "$TEMPER" state clear >/dev/null
 assert_eq "summary: state clear appends one line to .temper/runs.jsonl and the line survives state init" "1 2 demo temper cleared yes" \
   "$_c41_one $(_c41_runs) $(_c41_last 'd["slug"], d["command"], d["ended"]' | tr -d "(),'") $(grep -qxF '/.temper/runs.jsonl' .git/info/exclude && echo yes || echo no)"

@@ -647,7 +647,7 @@ setup
 "$TEMPER" override review --reason "old run" >/dev/null
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
-"$TEMPER" state init demo2 --command temper >/dev/null
+"$TEMPER" state init demo2 --command temper >/dev/null; _base_known
 assert_eq "state init clears inherited overrides" "[]" "$(cat .temper/overrides.json | tr -d '[:space:]')"
 assert_eq "state init clears inherited gate verdicts" "{}" "$(cat .temper/gates.json | tr -d '[:space:]')"
 assert_eq "state init clears inherited evidence" "0" "$(python3 -c 'import json,os; print(len(json.load(open(".temper/evidence/check.json"))) if os.path.exists(".temper/evidence/check.json") else 0)')"
@@ -656,7 +656,7 @@ assert_eq "state init archives the prior run's ledger" "yes" "$([[ -f .temper/sp
 setup
 rm -f .temper/build-state.json      # no prior run — but an override carries an approver
 "$TEMPER" override review --reason "keep the audit fact" >/dev/null
-"$TEMPER" state init fresh --command temper >/dev/null
+"$TEMPER" state init fresh --command temper >/dev/null; _base_known
 assert_eq "a pre-init override is archived, not deleted" "yes" \
   "$(ls .temper/archive/pre-init-*-overrides.json >/dev/null 2>&1 && echo yes || echo no)"
 assert_eq "the archived pre-init override keeps the reason" "keep the audit fact" \
@@ -668,7 +668,7 @@ setup
 git config user.email "t@e.com"; git config user.name t
 git add -A >/dev/null 2>&1
 git commit --no-verify -q -m "suite baseline for base_sha" >/dev/null 2>&1 || true
-"$TEMPER" state init demo --command temper >/dev/null   # fresh state on the committed tree
+"$TEMPER" state init demo --command temper >/dev/null; _base_known   # fresh state on the committed tree
 _ran_unattended   # WP11: the state a run the person started at the approval leaves
 "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null
 rm -f .temper/specs/demo/tasks.md   # the count rule is for a run without tasks.md (a /temper:fix run)
@@ -696,7 +696,7 @@ assert_eq "config get check.commands.lint prints an unquoted command" "npm run l
 assert_eq "config get check.commands.typecheck prints the configured command" "tsc --noEmit" "$("$TEMPER" config get check.commands.typecheck)"
 assert_eq "config get budget.per-failure prints 3 when set to 3" "3" "$("$TEMPER" config get budget.per-failure)"
 # budget.per-failure bounds each failed check by its own key; budget.per-run (6) bounds the run.
-"$TEMPER" state init demo --command fix >/dev/null; _at check
+"$TEMPER" state init demo --command fix >/dev/null; _base_known; _at check
 gfail check "tests pass" "unit failed"
 assert_exit "state loop check fix iteration 1 passes under budget.per-failure 3" 0 "$TEMPER" state loop check fix --reason a
 _at check; gfail check "tests pass" "unit failed"
@@ -714,7 +714,7 @@ assert_exit "state loop review fix third iteration passes under budget.per-failu
 _at review; gfail review "no blocking findings" "1 open high finding"
 assert_exit "state loop review fix: the seventh repeat of the run is blocked by budget.per-run 6" 1 "$TEMPER" state loop review fix --reason d
 setup
-"$TEMPER" state init demo --command fix >/dev/null; _at check
+"$TEMPER" state init demo --command fix >/dev/null; _base_known; _at check
 gfail check "tests pass" "unit failed"; "$TEMPER" state loop check fix --reason a >/dev/null; _at check
 gfail check "tests pass" "unit failed"; "$TEMPER" state loop check fix --reason b >/dev/null; _at check
 gfail check "tests pass" "unit failed"
@@ -818,7 +818,7 @@ MOD_STAGE_SEQ="intent plan design build review check"
 assert_eq "STAGE_SEQ_TEMPER is the stage order the mod expects" "$MOD_STAGE_SEQ" \
   "$(sed -n 's/^STAGE_SEQ_TEMPER="\(.*\)"$/\1/p' "$TEMPER")"
 setup
-"$TEMPER" state init demo --command temper >/dev/null
+"$TEMPER" state init demo --command temper >/dev/null; _base_known
 _pass intent
 assert_exit "the mod's approve intent command is accepted by the CLI" 0 "$TEMPER" state advance intent_complete plan
 _pass plan design; "$TEMPER" state set complexity medium >/dev/null; "$TEMPER" state set want_design true >/dev/null
@@ -869,7 +869,7 @@ assert_exit "acceptance.py status needs its arguments" 2 python3 "$REPO_ROOT/scr
 # Every command string the mod can name in a follow up prompt, in the order of the real stage sequence
 # (STAGE_SEQ_TEMPER): the bar and the CLI must move together, so each one has to succeed and set next_stage.
 setup
-"$TEMPER" state init demo --command temper >/dev/null
+"$TEMPER" state init demo --command temper >/dev/null; _base_known
 mirror_step() { # mirror_step <name> <expected next_stage> <temper args...>
   local name="$1" want="$2"; shift 2
   # ADR 0013: a stage is left once its check passed

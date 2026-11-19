@@ -85,11 +85,11 @@ assert_exit "9.8.4 2b: group fix is refused on a group whose gate did not fail" 
 assert_eq "9.8.4 2a: a FAIL line is what failed, not a traceback's header" "['FAIL: test_x (t.T.test_x)', 'AssertionError: 1 != 2', 'FAILED (failures=1)']" \
   "$(python3 - "$REPO_ROOT/scripts" <<'PYF'
 import sys
-src = open(sys.argv[1] + '/task_ops.py').read()   # task_ops.py runs a mode on import: read fail_lines out of it
-ns = {}
-exec('import re\n' + src[src.index('FAIL_LINE ='):src.index('def red_why')], ns)
+sys.path.insert(0, sys.argv[1])
+# WP20: fail_lines moved from task_ops.py (which runs a mode on import) to run_env.py, shared with the baseline
+import run_env
 out = b'..F\n=====\nFAIL: test_x (t.T.test_x)\n-----\nTraceback (most recent call last):\n  File \"t.py\", line 3\nAssertionError: 1 != 2\n\nFAILED (failures=1)\n'
-print(ns['fail_lines'](out))
+print(run_env.fail_lines(out))
 PYF
 )"
 
@@ -155,7 +155,7 @@ rm -rf test scripts p1-tasks.md
 # --- 3b. After a loop back that changes plan.md or tasks.md, the fresh review gets one more round past its cap ---
 setup
 printf 'plan:\n  fresh-review: auto\n  fresh-review-rounds: 1\n' >> .claude/temper.config
-"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
 printf '## Context Map\n- use: intent.md - the scope\n- reviewed: auto - current\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
 "$TEMPER" plan fresh start >/dev/null 2>&1
@@ -210,7 +210,7 @@ rm -f p5-tasks.md
 # --- 4. The fresh review converges: a first round with a tests lens, then rechecks of the earlier findings only ---
 setup
 printf 'plan:\n  fresh-review: auto\n' >> .claude/temper.config
-"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
 printf '## Context Map\n- use: intent.md - the scope\n- reviewed: auto - current\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
 "$TEMPER" gate plan >/dev/null 2>&1
@@ -266,7 +266,7 @@ assert_eq "9.8.4 7c: temper output changes nothing" "same" \
   "$(a=$(cksum .temper/gates.json .temper/evidence/build.json); "$TEMPER" output build >/dev/null 2>&1; [[ "$a" == "$(cksum .temper/gates.json .temper/evidence/build.json)" ]] && echo same || echo changed)"
 
 # --- 7d. An agent the tool ran in the background: its time is filled in when its completion notice arrives ---
-setup; "$TEMPER" state init demo >/dev/null 2>&1
+setup; "$TEMPER" state init demo >/dev/null 2>&1; _base_known
 "$TEMPER" usage add --stage plan --model opus --ms 1000 >/dev/null 2>&1
 "$TEMPER" usage add --stage design --model opus --ms none >/dev/null 2>&1
 "$TEMPER" usage add --stage build --model haiku --ms none --task 3 >/dev/null 2>&1
@@ -332,7 +332,7 @@ assert_eq "9.8.4 blocked: running the task again clears the block" "False" "$(_b
 # --- 9.8.4 live check: the person's Context check answer does not make the fresh review stale (no empty recheck round) ---
 setup
 printf 'plan:\n  fresh-review: auto\n' >> .claude/temper.config
-"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
 printf '## Context Map\n- use: intent.md - the scope\n- ignore: ledger/export.py: out of scope\n- reviewed: pending\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
 "$TEMPER" plan fresh start >/dev/null 2>&1

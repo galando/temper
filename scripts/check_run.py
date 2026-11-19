@@ -9,6 +9,8 @@ commands and records what they gave, and the agent is only the fallback for a st
                                                                 the same run while Review reads the change, then the
                                                                 planted bugs (.temper/evidence/mutation.json)
   python3 check_run.py coverage-verdict                         the coverage rule on one JSON object on standard input
+  python3 check_run.py owner ROOT [SPEC]                        who owns the suite command (WP20, suite_owner), one JSON
+                                                                line {"test", "run", "source", "why"}
 
 What `run` records in the Check ledger, every row `executed_by: cli`:
   - tests       the suite (with coverage on in the same run when the stack allows it), its exit and output tail
@@ -149,7 +151,7 @@ def detect(root, test_cmd="", cov_cmd=""):
     if os.path.exists(j("Cargo.toml")):
         return {"stack": "rust", "test": "cargo test", "coverage": None, "mutation": True, "hint": "set check.commands.coverage (cargo llvm-cov) to measure coverage"}
     if os.path.exists(j("pom.xml")):
-        return {"stack": "maven", "test": "mvn -q test", "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
+        return {"stack": "maven", "test": "mvn -q verify", "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
     if os.path.exists(j("build.gradle")) or os.path.exists(j("build.gradle.kts")):
         g = "./gradlew" if os.path.exists(j("gradlew")) else "gradle"
         return {"stack": "gradle", "test": "%s test" % g, "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
@@ -161,6 +163,58 @@ def _read(p):
         return open(p, encoding="utf-8", errors="replace").read()
     except OSError:
         return ""
+
+
+# ---- the owner of the suite command (WP20) --------------------------------------------------------------------------
+def suite_owner(root, cfg=None, spec=""):
+    """Who says which command is the project's suite: {"test", "run", "source", "why", "det"}. In this order: the
+    config's check.commands.test (with check.commands.coverage); detect() in the root; detect() of the one folder one
+    level down that answers (none when two do), with `cd <folder> && ` in front of each command and the folder in
+    front of its coverage file; the plan's **Integration:** line once tasks.md exists; else none, with the reason.
+    `run` is the coverage form or the test text again; `det` is what coverage_value() reads."""
+    import config_yaml
+    if cfg is None:
+        cfg = config_yaml.load(os.path.join(root, ".claude", "temper.config"))
+    test = str(config_yaml.get(cfg, "check.commands.test", "") or "").strip()
+    cov = str(config_yaml.get(cfg, "check.commands.coverage", "") or "").strip()
+    if test:
+        return {"test": test, "run": cov or test, "source": "configured", "why": "check.commands.test of the config",
+                "det": detect(root, test, cov)}
+    det = detect(root)
+    if det:
+        c = det.get("coverage") or {}
+        return {"test": det["test"], "run": c.get("run") or det["test"], "source": "detected",
+                "why": "the %s files in the project's root" % det.get("stack"), "det": det}
+    found = []
+    for name in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+        if name in SKIP_DIRS or name.startswith(".") or not os.path.isdir(os.path.join(root, name)):
+            continue
+        d = detect(os.path.join(root, name))
+        if d:
+            found.append((name, d))
+    if len(found) == 1:
+        name, d = found[0]
+        pre = "cd %s && " % name
+        c = dict(d.get("coverage") or {})
+        for k in ("run", "report"):
+            if c.get(k):
+                c[k] = pre + c[k]
+        for k in ("file", "lcov"):   # trap 7: the report is written under that folder
+            if c.get(k):
+                c[k] = os.path.join(name, c[k])
+        det = dict(d, test=pre + d["test"], coverage=c or None)
+        return {"test": det["test"], "run": c.get("run") or det["test"], "source": "detected",
+                "why": "the %s files in %s/, the one folder one level down that has them" % (d.get("stack"), name), "det": det}
+    tasks = os.path.join(spec, "tasks.md") if spec else ""
+    if tasks and os.path.isfile(tasks):
+        m = re.search(r"^\*\*Integration:\*\*\s*`([^`]+)`", _read(tasks), re.M)
+        if m and m.group(1).strip() and m.group(1).strip() != "manual":
+            line = m.group(1).strip()
+            return {"test": line, "run": line, "source": "plan", "why": "the Integration line of %s" % tasks,
+                    "det": detect(root, line)}
+    why = ("%s each have build files, one folder down, and nothing says which is the suite: set check.commands.test"
+           % " and ".join("%s/" % n for n, _ in found)) if found else "no test command is configured and none was found: set check.commands.test"
+    return {"test": "", "run": "", "source": "none", "why": why, "det": {}}
 
 
 def coverage_value(root, det, out_text):
@@ -849,12 +903,14 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
     cov = det.get("coverage")
     # the suite, with coverage on in the same run when the stack allows it
     cmd = cov["run"] if cov else det["test"]
+    import baseline
+    limit = baseline.limit_for(cmd, SUITE_TIMEOUT_S, root)   # WP20: three times the base's time of the same suite, at least
     t0 = time.time()
-    out, rc = run_env.run_cmd(root, SUITE_TIMEOUT_S, [cmd])
+    out, rc = run_env.run_cmd(root, limit, [cmd])
     cov_exit = rc if cov else None
     if cov and rc == 127 and cmd != det["test"]:   # the coverage program could not start: the suite runs without it
         t0 = time.time()
-        out, rc = run_env.run_cmd(root, SUITE_TIMEOUT_S, [det["test"]])
+        out, rc = run_env.run_cmd(root, limit, [det["test"]])
         cmd = det["test"]
     suite_s = time.time() - t0
     if isinstance(info, dict):
@@ -1045,6 +1101,10 @@ def main(argv):
             return acc_triage(spec, lockfile, text)
         if sub == "triaged":
             return acc_triaged(spec, lockfile, text)
+    if len(argv) >= 3 and argv[1] == "owner":   # owner ROOT [SPEC] (WP20): one JSON line
+        o = suite_owner(argv[2], None, argv[3] if len(argv) > 3 else "")
+        print(json.dumps({k: o[k] for k in ("test", "run", "source", "why")}))
+        return 0
     if len(argv) >= 3 and argv[1] == "detect":
         print(json.dumps(detect(argv[2], argv[3] if len(argv) > 3 else "", argv[4] if len(argv) > 4 else "")))
         return 0

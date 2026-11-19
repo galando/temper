@@ -111,6 +111,8 @@ QUESTIONS = {
     "run.restart": {"kind": "resume", "decision": "Whether the saved run state goes, so a new run starts."},
     "scope.drift": {"kind": "drift", "decision": "Whether a file outside the plan is added to it, reverted or allowed once."},
     "run.budget": {"kind": "gate", "decision": "Whether the run is saved, or allowed two more repeats of a failed check."},
+    "base.red": {"kind": "gate", "decision": "Whether a fault of the environment or a red base is repaired first, or the run "
+                 "goes on with the base's failures as a recorded skip."},
 }
 # A follow up question takes its parent's id and one of these suffixes: a More question asks its parent's decision, an
 # accept question keeps a finding, a reason question asks the reason the report shows, a name question a typed value.
@@ -127,14 +129,16 @@ OPTION_IDS = frozenset((
     "grill-me", "teach-me", "html-review", "share-review", "revise-plan", "fresh-review", "fresh-again", "find-setup",
     "walk-through", "change", "depth-review", "commit-pr", "commit-stacked-prs", "config-suggestions", "restore-tests",
     "correct-test", "end-run", "apply-fix", "new-branch", "merge-groups", "take-out",
-    "keep-commits", "accept-done", "twice-the-time", "fix-group", "change-command", "add-to-plan", "include-left-out",
+    "keep-commits", "accept-done", "fix-group", "change-command", "add-to-plan", "include-left-out",
     "revert", "allow-once",
     # WP08
     "check-again", "it-is-the-code",
     # WP10
     "grant-more",
     # WP14
-    "run-design"))
+    "run-design",
+    # WP20
+    "go-on-anyway"))
 
 
 def question_entry(qid):

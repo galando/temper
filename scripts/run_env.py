@@ -73,6 +73,29 @@ def _yaml_text(v):
     return ('true' if v else 'false') if isinstance(v, bool) else str(v)
 
 
+FAIL_LINE = re.compile(r'\bFAIL(?:ED|URE|S)?\b|\bERROR\b|^not ok\b|^E\s+\S|Error:')
+# 9.8.5 (S4): a log line a passing test printed (`20:01:44.264 [main] ERROR com.x.Y -- ...`) says nothing about the run
+LOG_LINE = re.compile(r'^\d{1,2}:\d{2}:\d{2}(?:[.,]\d+)?\s+\[[^\]]*\]\s+(?:ERROR|WARN)\b')
+# the build tool's own summary of what failed, before any other line: Maven's goal, a JaCoCo rule, a failed test's name
+SUMMARY = (re.compile(r'temper-setup: FAIL'), re.compile(r'Failed to execute goal'), re.compile(r'Rule violated'),
+           re.compile(r'^\[ERROR\]\s+(?:Tests run:.*FAILURE|[\w.$]+\.\w+:\d+\b)'), re.compile(r'<<< (?:FAILURE|ERROR)!'))
+
+def fail_lines(out, keep=8, rc=None):
+    """What a failing run says failed, most telling first: a time-out (exit 124); the build tool's summary (the last Maven
+    `Failed to execute goal` line, `Rule violated` lines, the names of failed tests); then the lines that say FAIL, FAILED,
+    ERROR, not ok or an exception, first ones first, without the log lines a passing test printed. With none of these, the
+    LAST three lines of the output, never the first (9.8.4, 9.8.5)."""
+    lines = [' '.join(l.split()) for l in out.decode('utf-8', 'replace').splitlines()]
+    lines = [l[:240] for l in lines if l]
+    head = ['the command did not finish within its time limit (exit 124)'] if rc == 124 else []
+    for pat in SUMMARY:
+        found = [l for l in lines if pat.search(l)]
+        head += found[-1:] if pat.pattern == 'Failed to execute goal' else found[:4]
+    hits = [l for l in lines if FAIL_LINE.search(l) and not LOG_LINE.search(l)]
+    picked = list(dict.fromkeys(head + hits))
+    return picked[:keep] if picked else lines[-3:]
+
+
 def load_setup(config=None):
     path = (config or os.environ.get('TEMPER_SETUP_CONFIG') or os.environ.get('TEMPER_CONFIG')
             or os.path.join('.claude', 'temper.config'))
@@ -146,8 +169,11 @@ def _store(wt):
     return os.path.join(d if os.path.isabs(d) else os.path.join(wt, d), RESULTS) if d else ''
 
 
-def run_cached(wt, timeout, cmd, setup=None):
-    """(output, exit, reused ts or '') : run_cmd, or the kept pass of the same command on the same clean tree."""
+def run_cached(wt, timeout, cmd, setup=None, info=None):
+    """(output, exit, reused ts or '') : run_cmd, or the kept pass of the same command on the same clean tree. With a
+    dict `info` (WP20, the baseline): its `seconds` and `coverage` are set, from the run or from the kept pass, and a
+    pass is kept with both; `info["measure"]`, when given, is called with the output of a pass and gives the
+    coverage."""
     import json
     import time
     if setup is None:
@@ -162,12 +188,20 @@ def run_cached(wt, timeout, cmd, setup=None):
             kept = {}
         hit = kept.get(key)
         if isinstance(hit, dict) and hit.get('rc') == 0:
+            if isinstance(info, dict):
+                info.update(seconds=hit.get('seconds'), coverage=hit.get('coverage'), reused=str(hit.get('ts', '')))
             note = '[temper: the same command passed on this same tree at %s; reused, not run again]\n' % hit.get('ts', '?')
             return (note + str(hit.get('tail', ''))).encode('utf-8'), 0, str(hit.get('ts', ''))
+    t0 = time.time()
     out, rc = run_cmd(wt, timeout, cmd, setup)
+    extra = {}
+    if isinstance(info, dict):
+        info['seconds'] = round(time.time() - t0, 1)
+        info['coverage'] = info['measure'](out) if rc == 0 and callable(info.get('measure')) else None
+        extra = {'seconds': info['seconds'], 'coverage': info['coverage']}
     if rc == 0 and key and path:
-        kept[key] = {'rc': 0, 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-                     'tail': out[-2048:].decode('utf-8', 'replace')}
+        kept[key] = dict({'rc': 0, 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                          'tail': out[-2048:].decode('utf-8', 'replace')}, **extra)
         if len(kept) > KEEP:
             for k in sorted(kept, key=lambda k: kept[k].get('ts', ''))[:len(kept) - KEEP]:
                 kept.pop(k, None)

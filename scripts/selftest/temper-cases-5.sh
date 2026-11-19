@@ -440,7 +440,7 @@ git checkout -q feature/demo
 mkdir -p .claude/worktrees/temper-demo-G1; echo squatter > .claude/worktrees/temper-demo-G1/x
 assert_exit "group start: a folder at the worktree path that is not this worktree exits 3" 3 "$TEMPER" group start G1
 assert_eq "group start: the squatting folder is left alone" "squatter" "$(cat .claude/worktrees/temper-demo-G1/x)"
-sw_setup; "$TEMPER" state init demo --branch main >/dev/null 2>&1; git checkout -q -B main
+sw_setup; "$TEMPER" state init demo --branch main >/dev/null 2>&1; _base_known; git checkout -q -B main
 assert_exit "group start: the main branch is refused (exit 3)" 3 "$TEMPER" group start G1
 assert_eq "group start: the refused main run made no worktree" "no" "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)"
 setup

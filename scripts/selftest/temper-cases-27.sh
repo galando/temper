@@ -40,31 +40,38 @@ rm -rf backend scripts fakepg; fresh
 assert_eq "9.8.5 propose: a project with no such facts gets no proposal" "True" \
   "$("$TEMPER" doctor --propose 2>&1 | grep -q '^Nothing to propose' && echo True || echo False)"
 
-# --- 9.8.5: a plan gate whose preflight hit the environment offers the proposed block first ---
+# --- 9.8.5: a fault of the environment offers the proposed block first. WP20: the offer moved from the failed plan
+#     question to the red base question (base.red), which the environment check asks before any agent ---
 _dp; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 gfail plan "preflight" "1 command(s): 1 environment fault
 environment fault \`mvn verify\`: needs JDK [24,) (found 21.0.12)"
 printf '{"env_faults": [{"cmd": "mvn verify", "files": null, "why": "needs JDK [24,) (found 21.0.12)"}], "limit": 30}\n' > .temper/preflight.json   # as the gate stores it
-assert_eq "9.8.5 propose: the failed plan question offers the option that adds the block, runs the preflight again and gates the plan" \
-  "Add the proposed setup block (Recommended)|doctor --propose --write|plan preflight|gate plan|True" \
-  "$(PATH="$PWD/fakepg:$PATH" nx "o = [x for x in d['ask']['options'] if x.get('id') == 'add-setup'][0]; '|'.join([o['label']] + [c.split('temper ', 1)[1] for c in o['calls']] + [str('IT_POSTGRES_PORT=5432' in o['description'])])")"
+assert_eq "9.8.5 propose (WP20): the failed plan question offers no setup block any more: the offer is the red base question's" \
+  "plan|none" \
+  "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; o = (a.get('options') or []) + ((a.get('more') or {}).get('options') or []); str(d.get('stage')) + '|' + ('add-setup' if any(x.get('id') == 'add-setup' for x in o) else 'none')")"
 # WP08 (M16): after the person repaired the environment, one option checks again: the preflight, then the plan gate
 assert_eq "9.8.5 preflight: the failed plan question offers check-again" "plan|check-again|plan preflight|gate plan" \
   "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; os_ = (a.get('options') or []) + ((a.get('more') or {}).get('options') or []); \
 o = ([x for x in os_ if x.get('id') == 'check-again'] or [{}])[0]; \
 '|'.join([str(d.get('stage')), o.get('id', 'none')] + [c.split('temper ', 1)[-1] for c in o.get('calls') or []])")"
+# WP20: the environment check found the JDK fault; the red base question shows the block and offers it first
+printf '{"result": "red", "kind": "tool-version", "why": "backend/pom.xml needs JDK 24; the shell has 21", "cmd": "cd backend && mvn -q verify", "env": [{"kind": "tool-version", "file": "backend/pom.xml", "need": "24", "have": "21"}]}\n' \
+  > .temper/evidence/baseline.json
 _blk27="$(PATH="$PWD/fakepg:$PATH" "$TEMPER" doctor --propose 2>/dev/null | sed -n '/^setup:/,/^[^ ]/p' | grep -E '^(setup:|  )')"
-assert_eq "9.8.5 propose: the question shows the proposed block whole" "lines>2|missing=none" \
+assert_eq "9.8.5 propose (WP20): the red base question shows the proposed block whole, and its first option adds it" \
+  "lines>2|missing=none|base.red|add-setup" \
   "lines$([[ $(grep -c . <<<"$_blk27") -gt 2 ]] && echo '>2' || echo "=$(grep -c . <<<"$_blk27")")|missing=$(PATH="$PWD/fakepg:$PATH" python3 - "$_blk27" "$(PATH="$PWD/fakepg:$PATH" "$TEMPER" next --json 2>/dev/null)" <<'PY'
 import json, sys
 d = json.loads(sys.argv[2])
-text = ((d.get("ask") or {}).get("question") or {}).get("question", "")
-print("; ".join(l.strip() for l in sys.argv[1].splitlines() if l.strip() and l.strip() not in text) or "none")
+a = d.get("ask") or {}
+text = (a.get("question") or {}).get("question", "")
+print("; ".join(l.strip() for l in sys.argv[1].splitlines() if l.strip() and l.strip() not in text) or "none", end="|")
+print("%s|%s" % (a.get("id"), ((a.get("options") or [{}])[0]).get("id")))
 PY
 )"
 printf 'setup:\n  env:\n    X: 1\n' >> .claude/temper.config
 assert_eq "9.8.5 propose: with a setup block already there, nothing is proposed at the question" "False" \
-  "$(PATH="$PWD/fakepg:$PATH" nx "any(o['label'].startswith('Add the proposed setup block') for o in d['ask']['options'])")"
+  "$(PATH="$PWD/fakepg:$PATH" nx "a = d.get('ask') or {}; any(o.get('id') == 'add-setup' for o in (a.get('options') or []) + ((a.get('more') or {}).get('options') or []))")"
 rm -rf backend scripts fakepg
 
 # --- 9.8.5: propose reads Gradle, version files, Docker Compose services and a Python virtual environment too ---

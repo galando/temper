@@ -371,11 +371,11 @@ class AskPart:
                                       "one before Build.", move="approve", oid="run-design",
                                       calls=self.leave_plan("design", fold=fold, then=[self.c("state set want_design true")]))
                     first = self.approval(lambda m: self.leave_plan(fold=fold, mode=m), "plan", lead)
-                    if revise is not None:   # findings below high: revising is offered, after the ways on
-                        return self.with_more(GATE_HEADER, text, stage, first + [revise], more([html, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
-                    if fr["offer"]:   # four options a question: the offer takes Share's place, which Open HTML review leads to anyway
-                        return self.with_more(GATE_HEADER, text, stage, first + [self.fresh_offer()], more([html, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
-                    return self.with_more(GATE_HEADER, text, stage, first + [html], more([share, design, grill, self.save()]), "Plan: more options.", qid="plan.approve")
+                    # findings below high: revising is offered, after the ways on; else the fresh review's offer takes
+                    # Share's place (four options a question), which Open HTML review leads to anyway
+                    extra = [revise] if revise is not None else [self.fresh_offer()] if fr["offer"] else [html]
+                    rest = [share, design, grill, self.save()] if extra == [html] else [html, design, grill, self.save()]
+                    return self.with_more(GATE_HEADER, text, stage, first + extra, more(rest), "Plan: more options.", qid="plan.approve")
                 cont = self.opt("Continue to %s (Recommended)" % nl, "%sApprove the plan, commit it, and start %s." % (lead, nl), move="approve", calls=go, oid="ask-every-stage")
                 if revise is not None:
                     return self.with_more(GATE_HEADER, text, stage, [cont, revise, html], more([share, grill, teach, self.save()]), "Plan: more options.", qid="plan.approve")
@@ -398,16 +398,9 @@ class AskPart:
             again = [self.opt("Check again", "Run the plan's commands again (after you repaired the environment) and "
                               "check the plan.", move="redo", calls=[self.c("plan preflight"), self.c("gate plan")],
                               oid="check-again")] if any(x.get("name") == "preflight" for x in rows) else []
-            env_opt = self.setup_offer(rows)
-            if env_opt:
-                # 9.8.5: the preflight hit the environment and the project declares none: one click adds the block that
-                # temper doctor --propose made from the project's own facts, runs the preflight again and checks the plan
-                text = ("Plan: the check failed (%s).%s The project's own files say what it needs: add the proposed "
-                        "setup block (%s) and check again?" % (why, said, self.shown_block))
-                opts = again + [env_opt] + back_opt() + [override_opt(self.skip_then()), self.save()]
-            else:
-                text = "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said)
-                opts = again + back_opt() + [override_opt(self.skip_then()), grill, self.save()]
+            # WP20: the offer of the setup block moved to the red base question (base.red), before any agent
+            text = "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said)
+            opts = again + back_opt() + [override_opt(self.skip_then()), grill, self.save()]
             return self.with_more(GATE_HEADER, text, stage, opts[:3], opts[3:], "Plan: more options.", qid="plan.fail")
 
         if stage == "design":

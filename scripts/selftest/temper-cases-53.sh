@@ -393,7 +393,7 @@ _w53+="|no project=$(_hw53 "$_np53" Write "$_np53/src/demo.sh")"
 rm -rf "$_np53"
 gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 _w53+="|build=$(_hw53 "$WORKDIR" Write "$WORKDIR/src/demo.sh")"
-fresh; "$TEMPER" state init bug --command fix >/dev/null 2>&1
+fresh; "$TEMPER" state init bug --command fix >/dev/null 2>&1; _base_known
 _w53+="|fix=$(_hw53 "$WORKDIR" Write "$WORKDIR/src/demo.sh")"
 fresh; rm -f .temper/build-state.json
 _w53+="|no run=$(_hw53 "$WORKDIR" Write "$WORKDIR/src/demo.sh")"

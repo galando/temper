@@ -216,7 +216,7 @@ assert_eq "next: once every group continued, the groups are merged and Build is 
   "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'])")"
 
 # --- doors: a run started at a later stage checks the stages before it ---
-setup; "$TEMPER" state init demo --enter review >/dev/null 2>&1
+setup; "$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known
 assert_eq "next: a door's earlier stage is checked, not run" "work|gate intent|0" \
   "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(len(d['agents']))")"
 gpass intent
@@ -282,7 +282,7 @@ assert_eq "next: Check FAIL on a missing measurement (no test run recorded) offe
 assert_eq "next: a question names the gate of its stage" "gate check" "$(nx "d['gate'].split('temper ', 1)[1]")"
 assert_eq "next: the question names the failed row" "1" "$(nx "int('no passing test-run evidence recorded' in d['ask']['question']['question'])")"
 
-setup; "$TEMPER" state init demo --enter check >/dev/null 2>&1; gfail intent "problem stated" "missing"
+setup; "$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gfail intent "problem stated" "missing"
 assert_eq "next: a door's failed earlier stage offers to run it, a skip with a reason, or Save for later" "Run Intent (Recommended)|Override and continue|Save for later" "$(labels)"
 
 # --- groups that stop: a failed group gate, a parked group ---
@@ -310,7 +310,7 @@ assert_eq "view: a finding keeps its file and line, and is open" "src/demo.sh|12
   "$(vw "f = d['findings'][0]; '|'.join([f['file'], str(f['line']), f['state'], f['severity']])")"
 assert_eq "view: the intent's criteria, with their status" "AC-01:open|AC-02:open" "$(vw "'|'.join(c['id'] + ':' + c['status'] for c in d['criteria'])")"
 assert_eq "view: a run that never left Intent with no spec file written is the TRIVIAL exit's case" "False" "$(vw "d['guard']['trivial_exit']")"
-setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1
+setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1; _base_known
 # WP17: trivial_exit says the run state holds the trivial verdict (`temper intent trivial`), the window of its one write
 _tv8="before=$(vw "d['guard']['trivial_exit']")"
 "$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true
@@ -339,12 +339,12 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 assert_exit "review 4: state set approved_files is refused" 1 "$TEMPER" state set approved_files none
 # 9. The trivial window still holds after the Intent agent's after calls ran its gate (WP17: once the verdict is
 #    recorded).
-setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1
+setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1; _base_known
 "$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true; "$TEMPER" gate intent >/dev/null 2>&1
 assert_eq "review 9: the trivial window still holds after the Intent agent's gate ran (WP17: the verdict recorded)" "True" \
   "$(vw "d['guard']['trivial_exit']")"
 # 10. A door's walked stage that fails its check names the failed rows in its question.
-fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1; gfail intent "problem stated" "no Problem section"
+fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known; gfail intent "problem stated" "no Problem section"
 assert_eq "review 10: the walked stage's question names what failed" "1" "$(nx "int('problem stated: no Problem section' in d['ask']['question']['question'])")"
 
 # --- the independent review of 9.7.0, round 2: each finding, reproduced ---
@@ -416,7 +416,7 @@ assert_eq "round 2, 11b: only the commit gate's own row failed: Check again is f
   "$(nx "q = d.get('ask') or {}; o = (q.get('options') or [{}])[0]; '%s|%s|%s|%s' % (q.get('id'), o.get('id'), bool(o.get('recommended')), ((o.get('calls') or ['none'])[-1]).split('temper ', 1)[-1])")"
 git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
 # 12. The Design door is the person's ask for Design (WP14): the stages before it are walked, not run again.
-setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; "$TEMPER" state set complexity simple >/dev/null 2>&1
+setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; _base_known; "$TEMPER" state set complexity simple >/dev/null 2>&1
 assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
   "$(nx "d['action'] + '|' + (d['calls'][0].split('temper ', 1)[1] if d['calls'] else '') + '|' + str(len(d.get('agents') or []))")"
 # 13. Stop at a group question saves the run; it records no Build verdict.
@@ -431,7 +431,7 @@ assert_eq "round 3, 1: a task with two **File:** lines declares the files of bot
   "$(python3 "$REPO_ROOT/scripts/tasks_md.py" parse r3-tasks.md | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)['tasks'][0]['files']))")"
 rm -f r3-tasks.md
 # 2. next_stage takes only a stage of the run's own sequence, so no other value opens a forward move.
-setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
 assert_exit "round 3, 2: state set next_stage to a value that is no stage of the run is refused" 1 "$TEMPER" state set next_stage bogus
 assert_exit "round 3, 2: and Commit stays refused from RCA" 1 "$TEMPER" state set next_stage commit
 assert_eq "round 3, 2: the fix run is still at RCA" "rca" "$("$TEMPER" state get next_stage)"
@@ -460,7 +460,7 @@ assert_eq "the run files of pull request 115 are listed and cleared" "yes yes ye
   "$_u19_listed|$(for f in preflight.json setup-tried.json decisions.json; do [[ -e ".temper/$f" ]] && echo "$f"; done | wc -l | tr -d ' ')"
 
 # --- a /temper:fix run ---
-setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
 assert_eq "next: a fix run starts at the RCA question, read by its id and the advance of its options (WP17)" \
   "rca.approve|state advance rca_complete fix" \
   "$(nx "import re; a = d['ask']; cs = [re.sub(r' --shown \\S+', '', c.split('temper ', 1)[1])

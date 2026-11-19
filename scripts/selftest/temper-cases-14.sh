@@ -5,7 +5,7 @@
 _fr_plan() { # a medium plan at the Plan stage whose only failing rows can be the fresh review's; $1: plan.fresh-review (default ask)
   setup
   [[ -n "${1:-}" ]] && printf 'plan:\n  fresh-review: %s\n' "$1" >> .claude/temper.config
-  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
   gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
   "$TEMPER" state set complexity medium >/dev/null 2>&1
   cat > .temper/specs/demo/plan.md <<'EOF'
@@ -55,7 +55,7 @@ assert_eq "ask: next launches one reviewer with no context, on the brief's model
   "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], a['model'], str(int('Lenses: readiness, zoom-out, comprehension, tests.' in a['prompt'])), str(int('Round: 1 of 3.' in a['prompt'])), a['before'][0].split('temper ', 1)[1]])")"
 assert_eq "ask: after the request the plan question no longer offers it" "0" "$(_fr_all >/dev/null; "$TEMPER" plan fresh start >/dev/null 2>&1; nx "sum(1 for o in d.get('ask', {}).get('options', []) if o['label'] == 'Fresh review first')")"
 setup
-assert_eq "ask: a simple plan is offered it too" "Fresh review first" "$("$TEMPER" state init demo >/dev/null 2>&1; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; nx "d['ask']['options'][2]['label']")"
+assert_eq "ask: a simple plan is offered it too" "Fresh review first" "$("$TEMPER" state init demo >/dev/null 2>&1; _base_known; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; nx "d['ask']['options'][2]['label']")"
 assert_exit "state set fresh is refused: the fresh review's marks are the CLI's" 1 "$TEMPER" state set fresh.requested true
 
 # --- 2. auto, always, off ---

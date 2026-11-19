@@ -199,8 +199,10 @@ class Run:
         return g.get("requirements", []) if isinstance(g, dict) else []
 
     def failed_rows(self, stage):
-        # WP19: a row not measured (pass null, state "not measured") is no failure; a row with no pass at all still is
-        return [r for r in self.rows(stage) if isinstance(r, dict) and r.get("pass") is not True and r not in self.unmeasured(stage)]
+        # WP19: a row not measured (pass null, state "not measured") is no failure; a row with no pass at all still is.
+        # WP20: nor is a row the person skipped at the red base (pass null, state "skipped")
+        return [r for r in self.rows(stage) if isinstance(r, dict) and r.get("pass") is not True and r not in self.unmeasured(stage)
+                and not (r.get("pass") is None and r.get("state") == "skipped")]
 
     def unmeasured(self, stage):
         """WP19: the rows of the third state, a measurement that was not taken: they fail nothing and pass nothing."""

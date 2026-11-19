@@ -101,10 +101,15 @@ fresh_reviewed() { # 9.7.6: a finished fresh review of the demo plan: the person
   "$TEMPER" evidence add --stage plan --phase fresh \
     --claim "paraphrase: the demo runs twice and prints its output | a demo is one shell step run by the suite" >/dev/null 2>&1
 }
+_base_known() { # WP20: the baseline on record as not run, so no case of the base meets the new first step (baseline
+                # start)
+  mkdir -p .temper/evidence
+  printf '{"result": "unknown", "why": "not run in the selftest"}\n' > .temper/evidence/baseline.json
+}
 fresh() { # a new run of the demo spec at Intent, with the run state written by the CLI
   setup
   rm -f .temper/groups.json .temper/view.json
-  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 }
 
 m_setup() { # m_setup <tasks.md text on stdin>: a fresh repository on the run's feature branch with the plan approved, one group started
@@ -331,7 +336,7 @@ review_repo() { # review_repo <folder>: a project of its own in <folder> of the 
   local s
   setup; rm -rf "${WORKDIR:?}/$1"; mkdir -p "$WORKDIR/$1"; cp -R .claude .temper "$WORKDIR/$1/"; cd "$WORKDIR/$1" || return 1
   git init -q .; git config user.email t@example.com; git config user.name T; git commit -q --allow-empty -m base
-  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
   gpass intent plan build
   for s in intent_complete:plan plan_complete:build build_complete:review; do
     "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1

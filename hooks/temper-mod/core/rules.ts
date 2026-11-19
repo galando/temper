@@ -387,7 +387,7 @@ const TOO_MANY_DENY =
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
-  'budget', 'grant', ...STAGES]
+  'budget', 'grant', 'baseline', 'accept-red', ...STAGES]
 
 const RESOLVE_DENY =
   'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
@@ -470,6 +470,8 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   // `--accept-for?ign`): bash expands it when a file of that name exists. Any other glob (`sonnet[1m]`) is no refusal.
   if (c.globWords.some(ws => ws.some(w => PERSON_WORDS.some(t => globCould(w, t) || globCould(w.split('=')[0] ?? w, t))))) return { deny: GLOB_DENY }
   const r = ctx.run
+  // WP20: one answer at base.red is one recorded skip: a second accept-red in the same command is not it
+  let wentOn = false
   for (const call of c.calls) {
     const w = callWords(call)
     const [a, b, key, value] = w
@@ -486,6 +488,11 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     }
     if (!personOnly(w, r)) continue
     // The person's answer at this step, or the CLI's own action, maps to this very call.
+    if (a === 'baseline' && b === 'accept-red' && ctx.allowed.some(written => sameCall(written, w))) {
+      if (wentOn) return { deny: personDeny(w, r, cli) }
+      wentOn = true
+      continue
+    }
     if (ctx.allowed.some(written => sameCall(written, w))) continue
     const resets = a === 'state' && (b === 'clear' || b === 'archive' || b === 'init')
     // Start over: the saved run state goes, and a run of the same command begins (never a fix run, which the mod stands
@@ -498,7 +505,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
 
 // The temper calls only the person may cause (ADR 0013), by their words after the script: leaving Intent or Plan, a
 // skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, writing a setup block, more
-// repeats than the budget holds, and starting over or ending the run before it is done.
+// repeats than the budget holds, going on from a red base, and starting over or ending the run before it is done.
 function personOnly(w: readonly string[], r: RunFacts): boolean {
   const [a, b, c, d] = w
   if (a === 'override') return true
@@ -518,6 +525,9 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   if (a === 'doctor') return w.includes('--write')
   // 9.8.5 (WP10): more repeats of a failed check than the budget holds are the person's grant, at run.budget.
   if (a === 'budget') return b === 'grant'
+  // 9.8.5 (WP20): going on from a red base is a recorded skip of the suite's failures, the person's at base.red; the
+  // baseline's own calls (start, clean) are the CLI's.
+  if (a === 'baseline') return b === 'accept-red'
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true

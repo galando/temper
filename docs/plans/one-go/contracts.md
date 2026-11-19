@@ -273,6 +273,8 @@ and the `autonomy.budget` block (WP10); `phases.design` (WP14); `autonomy.policy
 Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT_S` (WP01), `TEMPER_CAPTURE_DIR`
 (WP02), `TEMPER_E2E_COUNT` (WP05), `MOCK_SLOW_S`, `MOCK_RED`, `MOCK_FLAKY_BASE` and `MOCK_FLAKY_LATER` (WP06),
 `TEMPER_BASELINE_FOREGROUND` (WP20: the baseline and the plan commands run in the foreground).
+`TEMPER_BASELINE_TIMEOUT_S` (WP20: the baseline's own limit, when set; else Check's, `TEMPER_CHECK_TIMEOUT_S`; the slow
+scripted project sets it, so its base is measured whole while its other limits stay at 1 s).
 `TEMPER_WRITE_CARDS` (WP15: set to 1, case file 56 writes the three golden texts of `scripts/selftest/cards/`).
 
 ## 8. Marker lines and closed lists
@@ -305,6 +307,9 @@ Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT
 | the README's line on cost and time | exactly one line of the product's `README.md` starts `**Cost and time:**`. It holds a figure only when it also names `docs/evidence/scorecard-9.8.5.json` and that file exists | WP31, with no figure | the case `w31 the README has its parts` of WP31; `case 46 D108`; WP32 step 7 (g) writes the figures into this one line when the bench ran |
 | the version stamps | the six places of row `D86`: `.claude-plugin/plugin.json`, `.claude/CLAUDE.md`, the README badge, `docs/index.html`, `docs/index.md`, `docs/getting-started.md`. All that state the version say 9.8.5 at the head but `docs/index.html:35`, which says 9.8.4 | the head | WP31 sets the one stale line by hand and holds it with the case `w31 the stamps agree`; no package runs `scripts/version-bump.sh` |
 | the open lines of `final` | `OPEN: the bench gate (needs the owner's word and a model access)` when there is no scorecard file; `OPEN: the summary of the build` when `docs/history/build-9.8.5.md` is not there yet | WP07 (the first), WP32 (the second) | the session; the pull request text |
+| the owner of the suite command | `python3 scripts/check_run.py owner ROOT [SPEC]` (SPEC the run's spec folder, whose `tasks.md` gives the plan's line) prints one JSON line `{"test", "run", "source", "why"}`: `source` is `configured`, `detected`, `plan` or `none`; `run` is the coverage form or the test text again; with `none` the two texts are empty and `why` says why | WP20 | the baseline; case file 61; WP21 |
+| the baseline's other fields | `run` (the coverage form of the command), `notes`, `exit_code`, `answered` (`{by, reason, ts, kept}` of "go on anyway"), `env_only` (a door), `reused` (a green run taken from the store); the store holds `baseline:<key>` entries (`result`, `seconds`, `coverage`, `answer`) beside the head's; `python3 scripts/baseline.py ROOT CONFIG SPEC limit CMD DEFAULT`, `timeout CMD LIMIT` and `skip-row LEDGER` are the CLI's own calls | WP20 | the CLI (the group gate, Check's gate), the flow, the card; WP21, WP22, WP23 |
+| the baseline's results and kinds | in `.temper/evidence/baseline.json`: `result` is `running`, `green`, `red` or `unknown`; a red result's `kind` is `tool-version`, `program-missing`, `service-down`, `setup-line` or `red-base`; `env` holds one entry for each fault of the environment check, and each names the file that states the need; `answer` is set once the person went on anyway, and is `fix-run` for a red base a fix run recorded | WP20 | the flow (`base.red`), the card, case file 61; WP21, WP22, WP23 |
 
 ## 9. Scenario names
 

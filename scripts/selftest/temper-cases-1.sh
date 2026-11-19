@@ -205,7 +205,7 @@ assert_eq "after a loop back to build, a fix commit rides the checkpoint carve-o
 
 # --- state loop: a /temper:fix run clears build, review and check on a loop back to fix (woningscout #984) ---
 setup
-"$TEMPER" state init bug3 --command fix >/dev/null
+"$TEMPER" state init bug3 --command fix >/dev/null; _base_known
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
@@ -245,13 +245,13 @@ _at plan plan; "$TEMPER" state set complexity medium >/dev/null; "$TEMPER" state
 assert_exit "a /temper run accepts its own stage names" 0 "$TEMPER" state advance plan_complete design
 
 setup
-"$TEMPER" state init bug2 --command fix >/dev/null
+"$TEMPER" state init bug2 --command fix >/dev/null; _base_known
 assert_exit "a /temper:fix run accepts rca_complete" 0 "$TEMPER" state advance rca_complete fix
 assert_exit "a /temper:fix run rejects temper-only stage names (plan_complete)" 1 "$TEMPER" state advance plan_complete design
 
 # --- /temper:fix commits: no plan gate required (fix has no such stage) ---
 setup
-"$TEMPER" state init bug1 --command fix >/dev/null
+"$TEMPER" state init bug1 --command fix >/dev/null; _base_known
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
 "$TEMPER" gate build >/dev/null
@@ -686,7 +686,7 @@ assert_exit "model --all succeeds with no config file" 0 "$TEMPER" model --all
 # not weaken the check on it. Everything else: fail-open.
 setup
 SHIELD="$REPO_ROOT/scripts/guards/protect-regression-test.sh"
-"$TEMPER" state init bug2 --command fix >/dev/null
+"$TEMPER" state init bug2 --command fix >/dev/null; _base_known
 mkdir -p test && echo 'assert(true)' > test/regression.spec.js
 
 assert_exit "shield: no recorded regression test => edit passes" 0 \
@@ -713,7 +713,7 @@ assert_exit "shield: inert outside a fix run (command != fix)" 0 \
 
 # Degradation contract: garbage stdin, missing state, cleared shield — all fail open.
 setup
-"$TEMPER" state init bug3 --command fix >/dev/null
+"$TEMPER" state init bug3 --command fix >/dev/null; _base_known
 "$TEMPER" state set regression_test test/regression.spec.js >/dev/null
 assert_exit "shield: garbage stdin fails open" 0 \
   bash -c "echo 'not json' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"

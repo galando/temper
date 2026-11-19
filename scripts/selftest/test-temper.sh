@@ -23,6 +23,7 @@ WORKDIR="$(mktemp -d)" || exit 1
 WORKDIR="$(cd -P "$WORKDIR" && pwd)" || exit 1   # physical, as the scripts see their own folders
 # A CLI call from outside this folder is refused (exit 3), config and model included, and the real .temper is left as it was.
 export TEMPER_SELFTEST_ROOT="$WORKDIR"
+export TEMPER_BASELINE_FOREGROUND=1   # WP20: a case that starts the baseline runs its suite in the foreground
 _REAL_TEMPER_BEFORE="$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
@@ -191,7 +192,7 @@ The demo group.
 - [x] done task
 EOF
   "$TEMPER" init >/dev/null
-  "$TEMPER" state init demo --command temper >/dev/null
+  "$TEMPER" state init demo --command temper >/dev/null; _base_known
   printf '{"version": 1, "slug": "demo", "groups": {}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 }
 

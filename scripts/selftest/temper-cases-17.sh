@@ -42,7 +42,7 @@ _setj .temper/build-state.json "d['stage'] = 'review_complete'"
 printf '[{"claim": "x", "exit_code": 0}]\n' > .temper/evidence/commit.json
 "$TEMPER" state loop check build --reason x >/dev/null 2>&1
 assert_eq "A5, A15: a loop rewrites the stage too, and clears Commit's evidence" "design_complete|0" "$(_st stage)|$(_rows .temper/evidence/commit.json)"
-fresh; "$TEMPER" state init demo --command fix >/dev/null 2>&1; _at check
+fresh; "$TEMPER" state init demo --command fix >/dev/null 2>&1; _base_known; _at check
 printf '[{"claim": "x", "exit_code": 0}]\n' > .temper/evidence/commit.json
 "$TEMPER" state loop check fix --reason x >/dev/null 2>&1
 assert_eq "A5, A15: in a fix run a loop to Fix clears Commit's evidence and the stage is rca_complete" "0|rca_complete" "$(_rows .temper/evidence/commit.json)|$(_st stage)"

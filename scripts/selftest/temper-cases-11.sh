@@ -237,11 +237,12 @@ done
 assert_eq "F16: with the loop budget spent the text says to write the groups by hand or save" "1" \
   "$(nx "str(int('write the groups by hand' in d['ask']['question']['question']))")"
 
-# --- F17. After a timed out group gate the question offers a rerun at double the limit ---
+# --- F17. After a first timed out group gate the CLI runs the gate again with twice the limit, as its own call ---
+# WP20: the option "Run the gate again with twice the time" is gone; the first time out is no question
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "timeout_s": 600}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
-assert_eq "F17: a timed out gate offers a rerun at 1200 seconds first" "Run the gate again with twice the time (Recommended)|group gate G1 --timeout-s 1200" \
-  "$(nx "d['ask']['options'][0]['label'] + '|' + d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]")"
+assert_eq "F17 (WP20): a first timed out gate runs again at 1200 seconds as the CLI's own call, not a question" "auto|group gate G1 --timeout-s 1200" \
+  "$(nx "d['action'] + '|' + next((c.split('temper ', 1)[1] for c in d.get('calls') or [] if 'group gate' in c), 'none')")"
 
 # --- F13. Change reopens the task it concerns and the tasks that must reopen with it ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -541,7 +542,7 @@ assert_eq "F18: task test runs with the task worktree first on PYTHONPATH, so th
 rm -rf f18inst f18probe
 setup
 # F14 in a fix run: the Fix stage question is asked, and it does not offer the small change (its change is the fix itself)
-setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
 mkdir -p .temper/specs/demo-bug; printf '# Root cause\nx\n' > .temper/specs/demo-bug/rca.md
 _at fix; gpass build fix rca
 assert_eq "F14: a fix run's Fix stage question does not offer Make a small change" "ask|fix|0" \

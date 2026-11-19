@@ -342,7 +342,7 @@ assert_eq "F2: a worktree with uncommitted work is kept and named" "yes|1" \
 assert_exit "F2: the re-planned run starts G1 again" 0 "$TEMPER" group start G1
 
 # fail closed: a run state that lost spec_path (an agent rewrote build-state.json) refuses every gate with the repair
-setup; "$TEMPER" state init demo >/dev/null 2>&1
+setup; "$TEMPER" state init demo >/dev/null 2>&1; _base_known
 python3 -c "
 import json; p='.temper/build-state.json'; d=json.load(open(p)); d.pop('spec_path', None); json.dump(d, open(p, 'w'))"
 out="$("$TEMPER" gate check 2>&1)"; rc=$?

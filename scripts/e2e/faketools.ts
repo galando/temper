@@ -11,8 +11,9 @@
 // The faults each switch of `mvn` plants, all read from the environment and all off by default:
 //   TOOL_JDK                the JDK on the PATH: 24 passes the pom's enforcer rule [24,), anything else fails it (the
 //                           wrong tool version)
-//   $MOCK_DB/up             the database is up; without it and IT_POSTGRES_PORT, a verify without -DskipITs fails with
-//                           Connection refused (the service that is down)
+//   $MOCK_DB/up             the database is up; without it and IT_POSTGRES_PORT, a verify without -DskipITs of a
+//                           project with integration tests (src/test/ItBase.java under the pom's folder, WP20) fails
+//                           with Connection refused (the service that is down)
 //   MOCK_SLOW_S             a run with no -Dtest= filter (the whole suite) sleeps this many seconds before it answers (a
 //                           suite slower than the limits the scenario sets)
 //   MOCK_RED                a class name: a run with no filter fails with that class in its failure lines, on every tree
@@ -26,7 +27,8 @@
 //                           the number of mvn lines MOCK_LOG had.
 // A class runs when the run has no filter, or when its filter names it. In a project with the Maven layout
 // (src/test/java under the pom's folder) a run with no filter runs Shape and Bytes only once their test file is there, as
-// Maven runs the tests that exist; the project of the replay has no such folder, and its suite names both from the start.
+// Maven runs the tests that exist; the project of the replay has no such folder, and its suite names each class once
+// its code is there (WP20: so its base, before any code of the run, is green, as the base of the measured run was).
 //
 // Each call is one line of MOCK_LOG, written when it ends:
 //   `mvn <args> jdk=<n> db=<up|down> tree=<HEAD^{tree} where it ran> exit=<code> port=<port>`.
@@ -67,6 +69,8 @@ case "$args" in *-Dtest=ShapeTest*) classes=Shape ;; *-Dtest=BytesTest*) classes
 failed=""
 for c in $classes; do
   [ -z "$filtered" ] && [ -d "$root/src/test/java" ] && [ ! -f "$root/src/test/java/\${c}Test.java" ] && continue
+  # WP20: with no test folder a class is tested once its code is there (a base runs no test of code it lacks)
+  [ -z "$filtered" ] && [ ! -d "$root/src/test/java" ] && [ ! -f "$root/src/$c.java" ] && continue
   want "$c" || failed="$failed \${c}Test"
 done
 if runs "\${MOCK_RED:-}"; then failed="$failed $MOCK_RED"; fi
@@ -91,6 +95,8 @@ case "$args" in *verify*)
     echo "[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.16:check (coverage-check) on project demo: Coverage checks have not been met."
     echo "[INFO] BUILD FAILURE"; exit 1 ;; esac ;; esac
   case "$args" in *-DskipITs*) ;; *)
+    # WP20: a project with no integration test needs no database
+    [ -f "$root/src/test/ItBase.java" ] || { echo "[INFO] BUILD SUCCESS"; exit 0; }
     if [ ! -f "$MOCK_DB/up" ] || [ -z "\${IT_POSTGRES_PORT:-}" ]; then
       echo "[ERROR] ItBaseIT: org.postgresql.util.PSQLException: Connection refused. Check that the hostname and port are correct"
       echo "[INFO] BUILD FAILURE"; exit 1
@@ -113,7 +119,29 @@ export const PG: Record<string, string> = {
 echo "16  main    5432 $([ -f "$MOCK_DB/up" ] && echo online || echo down) postgres /var/lib/postgresql/16/main /var/log/pg.log"
 `,
   pg_isready: '#!/usr/bin/env bash\n[ -f "$MOCK_DB/up" ]\n',
-  pg_ctlcluster: '#!/usr/bin/env bash\necho "pg_ctlcluster $*" >> "$MOCK_LOG"; touch "$MOCK_DB/up"\n',
+  // WP20: the started cluster answers on its port as a real one does (the environment check connects to each service
+  // of the setup block): a listener on 127.0.0.1:5432 while $MOCK_DB/up exists, at most ten minutes; when the port is
+  // taken, it waits for it, and the port answers meanwhile
+  pg_ctlcluster: `#!/usr/bin/env bash
+echo "pg_ctlcluster $*" >> "$MOCK_LOG"; touch "$MOCK_DB/up"
+nohup python3 -c '
+import os, socket, sys, time
+t0 = time.time()
+while os.path.exists(sys.argv[1]) and time.time() - t0 < 600:
+    s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind(("127.0.0.1", 5432)); s.listen(16); s.settimeout(1)
+    except OSError:
+        s.close(); time.sleep(1); continue
+    while os.path.exists(sys.argv[1]) and time.time() - t0 < 600:
+        try:
+            c, _ = s.accept(); c.close()
+        except OSError:
+            pass
+    s.close()
+' "$MOCK_DB/up" </dev/null >/dev/null 2>&1 &
+for _ in $(seq 30); do (exec 3<>/dev/tcp/127.0.0.1/5432) 2>/dev/null && break; sleep 0.1; done
+`,
   docker: '#!/usr/bin/env bash\nexit 1\n',   // the container's docker: the program is there, its daemon is not
 }
 
@@ -248,7 +276,8 @@ export function picture(w: World, at: string): Picture {
   const files: Record<string, string> = {}
   const listed = w.run('git ls-files -z -c -o --exclude-standard').out.split('\0').filter(Boolean)
   for (const rel of [...new Set(listed)]) {
-    if (rel.startsWith('.temper/') || (spec !== '' && rel.startsWith(`${spec}/`)) || rel.endsWith('/')) continue
+    // WP20 (rule 1, D30a): the run's own places, .temper/ and the baseline's detached worktree under .claude/worktrees/
+    if (rel.startsWith('.temper/') || rel.startsWith('.claude/worktrees/') || (spec !== '' && rel.startsWith(`${spec}/`)) || rel.endsWith('/')) continue
     const abs = path.join(w.dir, rel)
     let st: fs.Stats
     try {
