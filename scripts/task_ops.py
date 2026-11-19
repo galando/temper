@@ -13,11 +13,10 @@ Standard library only.
 """
 import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
-from run_env import FAIL_LINE, LOG_LINE, SUMMARY, fail_lines, run_cached, run_cmd, test_env  # noqa: F401
+from run_env import FAIL_LINE, LOG_LINE, SUMMARY, env_fault, fail_lines, run_cached, run_cmd, test_env  # noqa: F401
 import baseline
 import scenario_ops
 import maven_loop
-import preflight
 import tasks_md
 
 # The project's folder from the top of its repository ("" at the top). git status and git diff name a path from the
@@ -473,6 +472,8 @@ elif mode == 'integrun':
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'integration', 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'executed_by': 'cli',
            'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'output': out[-4096:].decode('utf-8', 'replace'), 'reused': reused or None}
+    if rc != 0:   # WP21: what failed, which integrate compares with the base's failures
+        row['fail_lines'] = fail_lines(out, rc=rc)
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
@@ -737,14 +738,14 @@ elif mode == 'verdict':
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     verdict = 'FAIL' if reason else ('AWAIT' if c['manual'] and not c['confirmed_by'] else 'PASS')
-    # ENV: the attempt's last run is a failing GREEN whose output names an environment fault (preflight.env_fault; a
-    # time-out is the code's here), a RED came before it, and nothing else is wrong. The task does not pass: it keeps its
+    # ENV: the attempt's last run is a failing GREEN that shows a sure sign of the environment (run_env.env_fault: the
+    # setup line failed, a program is missing, a declared service does not answer; a time-out is the code's), a RED
+    # came before it, and nothing else is wrong. The task does not pass: it keeps its
     # attempt and its worktree, and the person repairs the environment and checks it again.
     env_why = ''
     if (verdict == 'FAIL' and green is None and not problems and not c['manual'] and mine and mine[-1].get('phase') == 'green'
             and mine[-1].get('exit_code') not in (0, None) and any(red_ok(r) for r in mine[:-1])):
-        env_why = preflight.env_fault(mine[-1].get('output') or '', mine[-1].get('exit_code'), mine[-1].get('cmd') or '',
-                                      timeout_is_env=False)
+        env_why = env_fault(mine[-1].get('output') or '', mine[-1].get('exit_code'), mine[-1].get('cmd') or '')
     if env_why and os.environ.get('TEMPER_NO_ENV') != '1':   # M9: --no-env, the person said it is the code
         verdict, reason = 'ENV', env_why
     red_cmd = red_tail = ''

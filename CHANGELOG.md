@@ -153,6 +153,25 @@ All notable changes to Temper are documented here. The plugin version lives in
   limit as the CLI's own call. Gone: the option "Run the gate again with twice the time", and the setup block's offer
   at a failed plan gate (it is the red base question's now). `temper baseline clean` removes the worktree; `state
   clear` and `state init` call it.
+- WP21: a plan command runs once on the base; the preflight goes (ADR 0020, which amends ADR 0018). `temper gate plan`
+  runs no project command. The planner's last calls are `temper baseline plan`, then `gate plan`: each group's
+  Validate and the Integration line run once on the current code, in the baseline's worktree, in a process of their own
+  (a fresh reviewer, a revision and a changed command end the same way, and Build's first step runs it when a result is
+  missing), each under Build's own limit. Left out: the suite the baseline ran, a command that names a file a task
+  creates, every task and scenario Test. The exit code alone decides (`plan` of `.temper/evidence/baseline.json`): pass,
+  fail, `timeout`, or `fails like the base` on a red base; exit 125 and a program that does not resolve are class
+  `environment`, and a program of the plan that does not resolve turns the base red. A failure or a time out is the
+  question `plan.command` (one site with `base.red`): Allow it more time (`more-time`, a longer limit kept in `limits`)
+  or Run it again, Change the command (`temper plan patch`, now also before the approval), Revise the plan (Loop back to
+  Plan after the approval), Go on anyway (`temper baseline skip`, the person's, the override `plan-command`), Save for
+  later; a run that goes on by itself stops there. At a task gate only three sure signs give ENV (`run_env.env_fault`):
+  the setup line failed, exit 127 for a program the command starts, a declared service that does not answer; a code bug
+  that prints `Connection refused` spends its attempt. `temper doctor --propose --write` writes only with `--expect` the
+  hash of the block the question showed. Gone: `scripts/preflight.py` with its classes and text patterns, the plan
+  gate row of that name, `temper plan` of that name, `.temper/` files of that name and `setup-tried.json`, the keys
+  `plan.preflight-timeout` and `plan.preflight-skip`, the environment agent (`agents/env.md`, its type and model name)
+  and `temper doctor` with an agent's draft file. The stops `base.red`, `plan.command` and `person.baseline` join
+  `scripts/stops.json`.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

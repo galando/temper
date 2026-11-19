@@ -231,47 +231,52 @@ running that measures its suite. The first time out of a group's check is no que
 --timeout-s <twice the limit>` itself (no repeat of the budget when the base measured that suite) and keeps the doubled
 limit in `limits`; a second time out asks `group.fail`.
 
-### The preflight, the setup block and an environment fault (9.8.5)
+### A command the plan wrote, the setup block and an environment fault (9.8.5)
 
-**The preflight.** `temper gate plan` has a `preflight` row (`scripts/preflight.py`). It runs each distinct group
-Validate and the Integration line of the plan once, in a detached worktree of HEAD that it removes after. No task Test
-and no scenario `Test:` runs there: they need code that is not written yet. It sorts each result into one of five
-classes: `passes`; `needs new code` (the tests of code not written yet fail on the base; this does not fail the row);
-`not checked` (the command ran over the time limit; this does not fail the row); `environment fault` (a
-`temper-setup: FAIL` line, the Maven enforcer's `which is not in the allowed range` reported as
-`needs JDK <range> (found <version>)`, an unsupported class file version, `Connection refused`, the command's own
-program not found, an uncached dependency offline); `command fault` (`Rule violated for bundle`,
-`Coverage checks have not been met`, tests that pass followed by `BUILD FAILURE`, an unknown phase or option). Either
-fault fails the row, which quotes the last 20 lines of the output plus every `Failed to execute goal` and
-`Rule violated` line. `plan.preflight-timeout` (300 s) is one limit for the whole row: each command gets what the
-commands before it left, and a command that finds none left does not run. A command over the limit is
-`not checked: over N s` or `not checked: the total limit of N s was spent`, never an environment fault, and the row
-names the three ways on: a longer `plan.preflight-timeout`, another command (`temper plan patch`), or a skip with a
-reason (`plan.preflight-skip`). A passed result is stored in `.temper/preflight.json` with a key of HEAD, the command
-texts, the setup block and the time limit; every later `gate plan` reads it while that key holds. A stored failure is
-never read back: the next `gate plan` runs the commands again, so a repaired environment is seen. The failed plan
-question offers `Check again` first whenever the `preflight` row failed: it runs `temper plan preflight`, which runs
-them again, then `temper gate plan`. `plan.preflight-skip: "<reason>"`, which only the person writes, skips the row
-(it passes and says `skipped by the person: <reason>`; the plan ledger gets one row); a skip with no text fails it.
+**A command the plan wrote (WP21).** The plan gate runs no project command. After the planner returned, its last calls
+are `temper baseline plan` and then `temper gate plan` (a fresh reviewer, a revision and a changed command end the same
+way). `baseline plan` (`scripts/baseline.py`) runs each distinct group Validate and the Integration line once on the
+current code, one after another in a process of its own, in the baseline's worktree `.claude/worktrees/temper-baseline`
+after the suite ended, each under the limit Build gives it: a Validate under the group gate's (`limit_for` of 600 s,
+`TEMPER_TASK_TEST_TIMEOUT_S`), the Integration line under `integrate`'s (3,600 s, `TEMPER_INTEGRATION_TIMEOUT_S`). A
+Maven command runs as written. Left out: a text equal to the suite the baseline ran (or the owner's test text), a
+command that names a file a task declares and the base lacks, and every task Test and scenario `Test:` (they fail on
+the base by design). Only a command with no result runs, so a second call is cheap; then the worktree goes. Each result
+is kept in `plan` of `.temper/evidence/baseline.json` under the command's text, judged by its exit code alone: 0 is
+`pass` (its seconds feed `limit_for`); 124 is `timeout`, never a fault of the environment; 125 (the setup line failed)
+and 127 or a first word that does not resolve are class `environment`; any other exit is `fails like the base` when the
+base is red, else `fail` (class `command`). No output text takes part. The same process resolves the first word of each
+step of every command of the plan, the task and scenario Tests too, in one shell call under the setup block; a program
+that does not resolve turns the base red, so `base.red` names it before any agent. A `fail` or a `timeout` is the
+question `plan.command` (the scope of `base.red`'s function): the command, where the plan wrote it, the exit, the
+seconds and the first fail lines; `Allow it more time` first at a time out (a longer limit kept in `limits`), else `Run
+it again`; `Change the command` (typed, `temper plan patch`, then the plan is checked again); `Revise the plan`;
+`Go on anyway` (a skip with a reason, the override `plan-command`); `Save for later`. No setup block and no agent are
+offered. A result that comes after the approval asks the same before the next task agent, with `Loop back to Plan` in
+place of `Revise the plan`; a result still running is `running` on the approval card, and only the first group gate of
+the group whose Validate it is waits for it. A run that goes on by itself stops there: it never changes a gate's
+command and never plans again.
 
 **The setup block.** `setup:` in `.claude/temper.config` holds `run:` (one shell line), `env:`, `services:` and
 `tools:`. `scripts/run_env.py` runs the line in the same shell before every command the CLI runs (task tests, group
-and scenario checks, integrate, Check, the preflight), prints `temper-setup: OK`, and adds the variables; a failing
+and scenario checks, integrate, Check, the baseline and the plan's commands), prints `temper-setup: OK`, and adds the variables; a failing
 line prints `temper-setup: FAIL (exit N)` and exits 125. A variable whose name says it holds a credential is never set
 or shown. Every agent prompt ends with an `Environment setup` line that carries the run line and the variables. No
 block: every command and prompt is as before. The person rarely writes the block: when the environment check or
 Check fails on the environment and there is none, the question (`base.red`, or Check's) offers `Add this setup block and
 run it again (Recommended)`, made by `temper doctor --propose` from the project's own files and its CI, and the question
-shows every line of the block. It is written only as the call of that answer: at `base.red` as shown (its hash), and the
-baseline that runs next is its check; at Check only after the CLI reran the failing commands with it and they no
-longer fail on the environment (`docs/commands.md`). No agent drafts a block (WP08).
+shows every line of the block. It is written only as the call of that answer, as shown (its hash): at `base.red` the
+baseline that runs next is its check, at Check the run of Check again (`docs/commands.md`). No agent drafts a block
+(WP08, WP21). When no rule proposes a block, the question says what is missing, in the words of the fault.
 
-**An environment fault at a task gate.** When the last run of a task's attempt is a failing GREEN, a RED came before
-it, nothing else is wrong, and the output names an environment fault, `temper task gate` prints `ENV: Task N failed on
-the environment, not on the code: <reason>`, exits 0, spends no attempt, keeps the worktree and the status `running`,
-and marks the task `env_fault` in `groups.json`. `temper next` then asks, in every mode: `Check it again
-(Recommended)` (runs `task test N --phase green` and `task gate N --model M`) or `Save for later`. Here a time-out is
-the code's, as before: it spends the attempt. Any status move clears the mark.
+**An environment fault at a task gate.** When the last run of a task's attempt is a failing GREEN, a RED came before it,
+nothing else is wrong, and the run shows one of three sure signs (WP21: the setup line failed, exit 127 for a program
+the command starts, or a service of `setup.services` that does not answer right after the run; a text such as
+`Connection refused` alone is no sign, so a code bug that prints it spends the attempt), `temper task gate` prints `ENV:
+Task N failed on the environment, not on the code: <reason>`, exits 0, spends no attempt, keeps the worktree and the
+status `running`, and marks the task `env_fault` in `groups.json`. `temper next` then asks, in every mode: `Check it
+again (Recommended)` (runs `task test N --phase green` and `task gate N --model M`) or `Save for later`. Here a time-out
+is the code's, as before: it spends the attempt. Any status move clears the mark.
 
 ### Decisions, findings and integrate (9.8.5)
 
@@ -344,12 +349,13 @@ back to Plan (or Save for later), and says the cause is the plan's command or th
 no question: the CLI runs the check again with twice the limit (WP20, above); a second one asks, with the command change
 first.
 
-**SETUP at Check.** When the suite or the acceptance run of Check fails on its environment (a project marker
-`<script>: SETUP: <reason>`, or the preflight's environment rule: a JDK out of range, `Connection refused`, a failed
-setup line), Check records a `setup fault: <reason>` row beside the red suite row, so the gate still fails. The
-question says `SETUP`, offers `Repair the environment and run again (Recommended)` first, and never recommends a loop
-back. The same fault after Check ran again recommends `Save for later`, first, and the repair loses its mark. Rows no
-longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe` warnings).
+**SETUP at Check.** When the suite or the acceptance run of Check fails on its environment (a project marker `<script>:
+SETUP: <reason>`, or one of the three sure signs of an environment fault: a failed setup line, a missing program, a
+declared service that does not answer), Check records a `setup fault: <reason>` row beside the red suite row, so the
+gate still fails. The question says `SETUP`, offers `Repair the environment and run again (Recommended)` first, and
+never recommends a loop back. The same fault after Check ran again recommends `Save for later`, first, and the repair
+loses its mark. Rows no longer carry the JVM's start text (`Picked up JAVA_TOOL_OPTIONS`, the `sun.misc.Unsafe`
+warnings).
 
 **Overrides at the commit gate.** `Override and commit` clears a failed stage gate the commit gate names. It never
 cleared the commit gate's own rows (blast radius, scope, park-on-touch), so it is no longer offered for them; the question

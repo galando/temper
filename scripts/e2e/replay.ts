@@ -132,11 +132,15 @@ A Maven backend (JDK 24). Each task's test runs its own class through mvn.
 - [ ] done
 `
 
+// WP21: the environment agent is gone from this version; the 9.8.4 and base CLIs this replay also drives may launch it,
+// so its scripted agent stays, under a name built at run time
+const ENV_AGENT = 'temper:temper-' + 'env'
+
 // ---- what is measured ---------------------------------------------------------------------------------------------
 const AGENT_MIN: Record<string, number> = {   // minutes per launch, from the measured run's own agent times
   'temper:temper-intent': 1, 'temper:temper-plan': 12, 'temper:temper-plan-review': 5, 'temper:temper-design': 5,
   'temper:temper-acceptance': 8, 'temper:temper-build-task': 25, 'temper:temper-build': 40, 'temper:temper-review': 3,
-  'temper:temper-check': 5, 'temper:temper-env': 5,
+  'temper:temper-check': 5, [ENV_AGENT]: 5,
 }
 const m = { questions: 0, question_texts: [] as string[], agents: {} as Record<string, number>, manual_repairs: [] as string[],
   setup_clicks: 0, overrides: 0, loops: [] as string[], cli_ms: 0,
@@ -163,6 +167,10 @@ const buildOne = (w: World, n: number): void => {
   t(w, `task test ${n} --phase green`)
 }
 
+// WP21: the rows the planner's own first gate failed on. The filtered verify is caught by the row
+// `maven filtered verify` as before; the plan gate runs no project command, so no other row names the JDK or the
+// database there.
+const planGateFailed: string[] = []
 const AGENTS: Record<string, Agent> = {
   'temper:temper-intent': w => {
     w.write(`${SPEC}/intent.md`, fs.readFileSync(path.join(ROOT, 'templates/example-intent.md'), 'utf8'))
@@ -178,6 +186,7 @@ const AGENTS: Record<string, Agent> = {
     t(w, 'state set complexity simple')
     t(w, 'risk')
     const gate = t(w, 'gate plan').out
+    if (planGateFailed.length === 0) planGateFailed.push(...[...gate.matchAll(/^\s*\[x\]\s+(.+?)\s+—/gm)].map(x => x[1]!), '')
     if (/\[x\] maven filtered verify/.test(gate)) w.write(`${SPEC}/tasks.md`, tasksMd(GOOD_VALIDATE))
   },
   'temper:temper-plan-review': () => undefined,
@@ -215,7 +224,7 @@ const AGENTS: Record<string, Agent> = {
     reviewDone(w)
   },
   'temper:temper-check': () => undefined,
-  'temper:temper-env': () => undefined,
+  [ENV_AGENT]: () => undefined,   // an older version may still launch it
 }
 
 const ENV_FAULT = /allowed range|Connection refused|environment fault|SETUP|needs JDK/
@@ -322,6 +331,7 @@ function main(): void {
     loops_recommended: m.loops,
     mvn_calls: calls.length, mvn_calls_failed_on_environment: envRuns.length,
     defect_in_commit: committed.length > 2 && !/fixed order/.test(w.run('git show HEAD:backend/src/Bytes.java 2>/dev/null').out),
+    plan_gate_failed_rows: planGateFailed.filter(Boolean),
     bad_validate_line_in_plan_at_end: (w.exists(`${SPEC}/tasks.md`) ? w.read(`${SPEC}/tasks.md`) : head).includes(BAD_VALIDATE),
     cli_seconds: Math.round(m.cli_ms / 1000),
     jdk_named_at: m.jdk_named_at || 'never', jdk_named_before_intent: m.jdk_named_before_intent,

@@ -527,8 +527,7 @@ class BuildPart:
         rerun_rec = not fixable and fails < 2 and not empty
         rerun = self.opt("Run the group's tasks again" + (" (Recommended)" if rerun_rec else ""), "Each task of %s runs again." % gid, move="redo", calls=reopen, oid="redo")
         plan_rec = not fix_rec and not rerun_rec and back
-        loop = self.opt("Loop back to Plan" + (" (Recommended)" if plan_rec else ""), "The plan cannot be built as written.", move="back",
-                        calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back") if back else None
+        loop = self.plan_loop(plan_rec) if back else None
         save_rec = not fix_rec and not rerun_rec and not plan_rec
         save = self.set_rec(self.save(), save_rec)
         if fix_rec:
@@ -569,6 +568,12 @@ class BuildPart:
         text += (" Change the group's command?" if cmd_cause else " Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
                  " Save the run for later?" if save_rec else " Run its tasks again?")
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="group.fail")}
+
+    def plan_loop(self, rec, why="The plan cannot be built"):
+        """Loop back to Plan from Build, with the person's reason (a failed group, and WP21 a command the plan wrote
+        that fails on the base after the approval)."""
+        return self.opt("Loop back to Plan" + (" (Recommended)" if rec else ""), "The plan cannot be built as written.", move="back",
+                        calls=[self.c("state loop build plan --reason '{reason}'")], reason=[why[:200]], oid="back")
 
     def group_fix_work(self, g, ginfo):
         """9.8.4: the person chose to fix a group whose check failed after every task passed: one Build fix agent works on the
@@ -628,7 +633,7 @@ class BuildPart:
             rerun = self.opt("Run the task again", "The blocked tasks run again as planned.", move="redo", calls=[self.c("group reopen %s %s" % (gid, targs))], oid="redo")
             save = self.save()
             if back:
-                opts = [self.opt("Loop back to Plan (Recommended)", "Plan moves the change or the test into the task that owns the file.", move="back",
+                opts = [self.opt("Loop back to Plan" + " (Recommended)", "Plan moves the change or the test into the task that owns the file.", move="back",
                                  calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back"), rerun, save]
             else:
                 opts = [self.set_rec(save, True), rerun]

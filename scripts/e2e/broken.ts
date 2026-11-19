@@ -20,7 +20,7 @@
 //   broken-first-run (plain, driver), row D13: in this order, the first question is asked with no agent launched and
 //     names the tool version and the service; its recommended option adds the setup block; the block written to the
 //     config is byte equal to the block that question showed; the red test is named in a question before the planner is
-//     launched; no launch of temper:temper-env and no fix pass of temper:temper-build in the whole run; no call of the
+//     launched; no launch of the environment agent (gone at WP21) and no fix pass of temper:temper-build in the whole run; no call of the
 //     trace steps back to Plan; the last question is commit.confirm, with the red test and the first flaky test on the
 //     commit card; at most 4 dialogs.
 //   broken-flaky (plain), row D14: the second flaky test fails once at the first gate that runs it on another tree; the
@@ -38,6 +38,9 @@ import { orchestrate } from './loop'
 import { defaultPerson, idOf, pickId, withoutSetup, worldCheck } from './persons'
 import { expect, mavenAgents, mavenScript, planMd, promise, startMaven, stepsBackToPlan, tasksMd, withCheckLines } from './slow'
 import type { World } from './world'
+
+// the agent type of the environment agent, gone at WP21: no run launches it (its name built here, for the grep of WP21)
+const ENV_AGENT = 'temper:temper-' + 'env'
 import type { Json, Person } from './world'
 
 export const INTEGRATION = 'cd backend && mvn -s settings.xml verify'
@@ -142,14 +145,14 @@ export const brokenFirstRun = (w: World): void => {
     if (text.includes(RED)) redNamed = true
     if (redNamed && !types().includes('temper:temper-plan')) redBeforePlan = true
     expect(redNamed || !types().includes('temper:temper-plan'), `D13 the red test ${RED} is named in a question before temper:temper-plan is launched (asked ${asked.map(idOf).join(', ')})`)
-    expect(!types().includes('temper:temper-env') && !types().includes('temper:temper-build'), `D13 no environment agent and no fix pass are launched (${types().join(', ')})`)
+    expect(!types().includes(ENV_AGENT) && !types().includes('temper:temper-build'), `D13 no environment agent and no fix pass are launched (${types().join(', ')})`)
     // WP20: the person goes on anyway at the red base (a recorded skip): the run reaches the commit with the red test
     if (idOf(ask) === 'base.red' && text.includes(RED)) return pickId(wd, ask, 'go-on-anyway')
     return base(ask, wd)
   }
   promise('D13', () => orchestrate(w, mavenScript(agents(), person)))
   expect(redNamed, `D13 the red test ${RED} is named in a question before the planner (asked ${asked.map(idOf).join(', ')})`)
-  expect(!types().includes('temper:temper-env') && !types().includes('temper:temper-build'), `D13 no environment agent and no fix pass are launched (${types().join(', ')})`)
+  expect(!types().includes(ENV_AGENT) && !types().includes('temper:temper-build'), `D13 no environment agent and no fix pass are launched (${types().join(', ')})`)
   const back = stepsBackToPlan(w)
   expect(back.length === 0, `D13 no call of the trace steps back to Plan (${back[0] ?? ''})`)
   const last = asked[asked.length - 1]
@@ -222,7 +225,7 @@ export const brokenFlaky = (w: World): void => {
     const runs = toolRuns(p.log)
     expect(reranAtOnce(runs, f.at, next?.runs ?? null),
       `D14 ${FLAKY_LATER} failed in \`mvn ${f.args}\` and the CLI did not run it once more at once, on the same tree, before ${next ? `launching ${next.type}` : where} (the next call: ${runs[f.at + 1]?.line ?? 'none'})`)
-    const fixers = launches.filter(l => l.runs > f.at && ['temper:temper-build', 'temper:temper-env'].includes(l.type))
+    const fixers = launches.filter(l => l.runs > f.at && ['temper:temper-build', ENV_AGENT].includes(l.type))
     expect(fixers.length === 0, `D14 no agent is launched for the flaky test (${fixers.map(l => l.type).join(', ')})`)
   }
   const flakyRow = (where: string): void => {

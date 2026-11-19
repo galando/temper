@@ -105,9 +105,6 @@ plan:
   fresh-review: ask                 # a reviewer with no context reads the plan: ask (offered; risk H gets it); auto (medium, complex); always; off
   fresh-review-twice: true          # a risk H plan gets two independent fresh reviewers (A and B)
   fresh-review-rounds: 3            # launches of the fresh review in one run, at most
-  # The preflight runs each group's Validate and the Integration line once on HEAD, before Build (no task Test).
-#  preflight-timeout: 300           # seconds for all of them together; a command over it is not checked, not a fault
-#  preflight-skip: "<reason>"       # only you skip it, with a reason; the plan ledger and the gate row show it
 phases:
   pipeline: true               # false: no Pipeline stage after a Commit that opened a pull request
 

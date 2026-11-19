@@ -80,6 +80,7 @@ Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command f
 | `python3 scripts/check_run.py coverage-verdict`; `python3 scripts/gate_rows.py check-rows` | WP19 | WP23 |
 | `temper baseline start [--again] [--env-only]`, `temper baseline clean`, `temper baseline accept-red --reason R`; `temper doctor --propose --write --expect <hash>`; `python3 scripts/check_run.py owner` | WP20 | WP21, WP22, WP23 |
 | `temper baseline plan`; `temper baseline skip --cmd C --reason R` | WP21 | WP25 |
+| `temper baseline plan --cmd C` (runs C again), `python3 scripts/baseline.py ROOT CONFIG SPEC wait CMD` (the group gate waits for a plan command still running) and `plan-run STARTED` (the process `baseline plan` starts) | WP21 | WP25 |
 | `--fresh` on `temper check run`, `temper group gate` and `temper integrate` | WP22 | WP24 |
 | `temper check build-checks` | WP23 | WP24 |
 | `temper repair start`, `test`, `commit`, `close`, `revert`, `status`; `temper evidence add --detail --fix --proof` | WP24 | none |
@@ -290,6 +291,8 @@ scripted project sets it, so its base is measured whole while its other limits s
 | budget keys | `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance`, `pipeline` (WP10); `plan-revise:<reason>` (WP27) | WP10 | a failure record's `scope` is its budget key (WP23); a failed `integrate` spends its repeat under `gate:build`, and that is the `scope` of its record |
 | rule log kinds | `advance`, `repair`, `group fix`, `covered`, `stop`, `answer`, `ended` (WP11); `amend` (WP25) | WP11 | the card section `rule_log` |
 | failure classes | `environment`, `command`, `plan`, `code`, `not measured`; the kinds are a closed list in `scripts/failure.py` | WP23 | WP24 (`code`), WP25 (`blocked-task`, `no-validate`) |
+| the results of the plan's commands | in `plan` of `.temper/evidence/baseline.json`, one entry for each command `temper baseline plan` ran, keyed by the command's text: `{"result", "exit", "seconds", "class", "kind", "why", "fail_lines", "tail"}`; `result` is `pass`, `fail`, `timeout` or `fails like the base` (`running` while it runs); `class` is `command` or `environment`, as in the failure classes; a skip with a reason is an override row named `plan-command` | WP21 | the flow (`plan.command`), the approval card, case file 62, case 45 `D99`; WP23, WP25 |
+| the plan's commands, more fields | each entry of `plan` also holds `where` (`G1 Validate`, `Integration`), `limit`, `started`, `pid` and `ended`; a skip adds `skipped` `{"by", "reason", "ts"}`, with `result` `not run` when the command never ran; a program of the plan that does not resolve adds a fault of kind `program-missing` to `env`, file `the plan` | WP21 | the flow (`plan.command`), the approval card |
 | card kinds and marks | `approval`, `commit`, `stop`; the marks of WP15 step 1 | WP15 | the mod's drawing |
 | the card entry of an end to end trace | one line `card <kind>` (indent allowed) in the step of the question that carries the card, before the calls of its answer, in plain, mod and driver mode; in driver mode a question `temper go` reached by its own steps gets its own line (`ask:<stage>:<id>:<option ids>`) before it | WP15 | `scripts/e2e/loop.ts`, the scenario `full-run`; WP17 |
 | the driver's effect `card` and the port's `card(rows)` | the card's rows, given once before the question is asked; the engine's port logs them outside full mode | WP15 | the mod; `scripts/e2e/loop.ts` |
@@ -438,6 +441,8 @@ WP32). They added no token to rows `D60` to `D64`: each of their cases now runs 
 | the wrong locked test met at `integrate` | `acceptance-wrong-test` | WP23 said `acceptanceAtBuild`; WP07 creates it and `done.md` names it |
 | scenarios named by their function only | the registered names of section 9 | `run.ts` takes the registered name |
 | the options of `base.red` | `add-setup`, `check-again`, `go-on-anyway`, `save` | WP20 said `base.add-setup`, `base.again`, `base.go-on`, `base.save`; WP04 owns the list and one id is one meaning |
+| the options of `plan.command` | `more-time` ("Allow it more time", at a time out) or `check-again` ("Run it again"), `change-command` ("Change the command"), `revise-plan` (after the approval `back`, "Loop back to Plan"), `go-on-anyway` ("Go on anyway": the skip with a reason, `baseline skip`), `save` | WP21 named "Skip this check"; the label of `base.red`'s skip is kept, so the scope adds no option site and no label but "Allow it more time" and "Change the command" (`scripts/caps.json`) |
+| the stops of WP20 and WP21 in `scripts/stops.json` | `base.red`, `plan.command`, `person.baseline` (`baseline accept-red`, `baseline skip`) | WP20 left `base.red` out of the list; WP21 adds it with its own two |
 | the option that runs a check anyway | `run-anyway` | WP22 said `check.fresh`, which has the form of a question id |
 | the id WP04 foresaw for a repair option | `repair-again` | WP04 said `repair-first`, which no package adds |
 | the registry of ids | `scripts/flow_base.py` | WP29 said `scripts/flow_ids.py`; WP04 put the registry into the base module |

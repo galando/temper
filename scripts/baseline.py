@@ -8,6 +8,10 @@
   python3 baseline.py ROOT CONFIG SPEC timeout CMD LIMIT             a time out of a command: twice its limit is kept
   python3 baseline.py ROOT CONFIG SPEC skip-row LEDGER               the row `tests pass` as a recorded skip, or nothing
   python3 baseline.py ROOT CONFIG SPEC run STARTED                   the suite's own process (what start starts)
+  python3 baseline.py ROOT CONFIG SPEC plan [--cmd C]                `temper baseline plan`: always exits 0 (WP21)
+  python3 baseline.py ROOT CONFIG SPEC skip --cmd C --reason R       `temper baseline skip`: the person's answer
+  python3 baseline.py ROOT CONFIG SPEC wait CMD                      waits while the plan's command CMD runs
+  python3 baseline.py ROOT CONFIG SPEC like-base CMD LINES_JSON      exit 0: a failed gate run of CMD fails as on the base
 
 A fault of the environment or of the base is named before any agent is paid for. `start` writes
 .temper/evidence/baseline.json and returns in seconds: no commit gives `unknown`; the environment check (doctor.needs:
@@ -25,7 +29,23 @@ base tree, the command, the setup block and the tool versions; the person's answ
 kept in the reuse store (temper-results.json in the git common folder) under it, so a later run with the same key asks
 nothing and records its own skip. A fix run records a red base of kind red-base with the answer `fix-run`. A green run
 is kept there too, with its seconds and coverage. `limit_for(cmd, default)` is the larger of the default and three times
-the seconds the same suite took on the base (`seconds_over` counts as measured), and of a doubled limit `timeout` kept.
+the seconds the same suite took on the base (`seconds_over` counts as measured), and of a limit kept in `limits` (a
+doubled limit `timeout` kept, or the person's more time).
+
+WP21, the plan's commands: `plan` runs each group's Validate and the Integration line of tasks.md once on the current
+code, in the same worktree, after the suite (it waits for a suite still running), one after another in a process of its
+own (or in the foreground with TEMPER_BASELINE_FOREGROUND), each under Build's limit for it (limit_for of the group
+gate's default, TEMPER_TASK_TEST_TIMEOUT_S or 600 s, and of integrate's, TEMPER_INTEGRATION_TIMEOUT_S or 3,600 s). Left
+out: a text equal to the suite the baseline ran (or to the owner's test text), a command that names a file a task
+declares and the base lacks, and every task Test and scenario Test (they fail on the base by design). Only a command
+with no result runs, so a second call is cheap; `--cmd C` runs C again. Each result goes into `plan` under the command's
+text: {"result", "exit", "seconds", "class", "kind", "why", "fail_lines", "tail", "where", "limit"}, judged by the exit
+code alone: 0 `pass`, 124 `timeout` (class command), 125 the setup line and 127 or a first word that does not resolve
+the environment's (class environment), any other `fails like the base` on a red base, else `fail` (class command). The
+first word of each step of every command of the plan, the task Tests and the scenario Tests too, is resolved in one
+shell call under the setup block (doctor.needs): one that does not resolve is a fault of the environment, which turns
+the base red. Then the worktree goes. `skip` is the person's skip of one command, with a reason: an override row named
+plan-command.
 Standard library only.
 """
 import hashlib
@@ -81,6 +101,28 @@ def write(doc, root=None):
         json.dump(doc, f, indent=1)
         f.write("\n")
     os.replace(tmp, p)
+
+
+def update(root, fn):
+    """Read, change and write the file under a lock of its folder: the suite's process and the plan's commands both
+    write it (WP21). fn changes the dict in place."""
+    p = path(root)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    fd = None
+    try:
+        import fcntl
+        fd = os.open(os.path.dirname(p), os.O_RDONLY)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except (ImportError, OSError):
+        pass
+    try:
+        d = read(root)
+        fn(d)
+        write(d, root)
+        return d
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 
 def num(v):
@@ -148,6 +190,9 @@ def limit_for(cmd, default, root=None):
     except (TypeError, ValueError):
         base = 600.0
     d = read(root)
+    kept = (d.get("limits") or {}).get(norm(cmd)) if isinstance(d.get("limits"), dict) else None
+    if num(kept):   # a limit kept for this very command: a doubled time out, or the person's more time (WP21)
+        base = max(base, float(kept))
     if not d or not same_suite(cmd, d):
         return int(math.ceil(base))
     t0 = time.time()
@@ -172,16 +217,18 @@ def measured(cmd, root=None):
 
 def timed_out(cmd, limit, root=None):
     """A time out of cmd at limit: twice the limit is kept in `limits`, the next run's limit."""
-    d = read(root)
-    if not d:
+    if not read(root):
         return
-    lim = d.get("limits") if isinstance(d.get("limits"), dict) else {}
     try:
-        lim[norm(cmd)] = 2 * int(float(limit))
+        twice = 2 * int(float(limit))
     except (TypeError, ValueError):
         return
-    d["limits"] = lim
-    write(d, root)
+
+    def keep(d):
+        lim = d.get("limits") if isinstance(d.get("limits"), dict) else {}
+        lim[norm(cmd)] = max(twice, int(lim.get(norm(cmd)) or 0) if num(lim.get(norm(cmd))) else twice)
+        d["limits"] = lim
+    update(root, keep)
 
 
 # ---- the reuse store --------------------------------------------------------------------------------------------------
@@ -268,7 +315,12 @@ def finish(root, doc, started):
     if doc.get("result") == "red" and doc.get("kind") == "red-base" and command_of(root) == "fix" and not doc.get("answer"):
         doc["answer"] = "fix-run"   # in a fix run the red suite may be the bug: recorded, not asked
     kept_answer(root, doc)
-    write(doc, root)
+
+    def put(d):   # the plan's commands and the kept limits are written by other processes meanwhile (WP21)
+        keep = {k: d[k] for k in ("plan", "limits") if isinstance(d.get(k), dict)}
+        d.clear()
+        d.update(doc, **keep)
+    update(root, put)
 
 
 def start(root, config, spec, again=False, env_only=False):
@@ -434,7 +486,7 @@ def stop_running(d):
                 pass
 
 
-def clean(root):
+def clean(root, quiet=False):
     d = read(root)
     if d.get("result") == "running":
         stop_running(d)
@@ -447,7 +499,8 @@ def clean(root):
             import shutil
             shutil.rmtree(wt, ignore_errors=True)
     git(root, "worktree", "prune")
-    print("OK: the baseline's worktree is gone")
+    if not quiet:
+        print("OK: the baseline's worktree is gone")
     return 0
 
 
@@ -467,6 +520,292 @@ def accept_red(root, reason):
     rc, out = cli(root, "override", "base-suite", "--reason", reason)
     sys.stdout.write(out)
     return rc
+
+
+# ---- WP21: the plan's commands, once on the base ----------------------------------------------------------------------
+PLACEHOLDER = re.compile(r"^\{\S[^{}]*\}$")   # a template's unfilled `{full suite command}` is no command
+GROUP_LIMIT_S = os.environ.get("TEMPER_TASK_TEST_TIMEOUT_S") or 600       # the group gate's default (scripts/temper)
+INTEGRATION_LIMIT_S = os.environ.get("TEMPER_INTEGRATION_TIMEOUT_S") or 3600   # integrate's default
+
+
+def real(cmd):
+    cmd = (cmd or "").strip()
+    return bool(cmd) and cmd != "manual" and not PLACEHOLDER.match(cmd)
+
+
+def spec_of(root, spec):
+    return os.path.join(root, spec) if spec and not os.path.isabs(spec) else spec
+
+
+def plan_of(root, spec):
+    """(commands, every, declared): commands is [(cmd, where, default limit)] distinct, in plan order, the group
+    Validates then the Integration line; every is each command of the plan (the task and scenario Tests too); declared
+    is the files the tasks declare."""
+    import acceptance
+    import tasks_md
+    sp = spec_of(root, spec)
+    if not sp or not os.path.isfile(os.path.join(sp, "tasks.md")):
+        return [], [], []
+    plan = tasks_md.parse(os.path.join(sp, "tasks.md"))
+    found = [(g["validate"], "%s Validate" % g["id"], GROUP_LIMIT_S) for g in plan["groups"]]
+    found.append((plan.get("integration") or "", "Integration", INTEGRATION_LIMIT_S))
+    out = {}
+    for cmd, where, lim in found:
+        cmd = (cmd or "").strip()
+        if real(cmd):
+            if cmd in out:
+                out[cmd][1] += ", " + where
+            else:
+                out[cmd] = [cmd, where, lim]
+    try:
+        lines = open(os.path.join(sp, "intent.md"), encoding="utf-8").read().splitlines()
+    except OSError:
+        lines = []
+    every = list(dict.fromkeys([c for c in out] + [t["test"].strip() for t in plan["tasks"] if real(t.get("test"))]
+                               + [b["cmd"].strip() for b in acceptance.scenario_blocks(lines) if real(b.get("cmd"))]))
+    return [tuple(v) for v in out.values()], every, sorted({f for t in plan["tasks"] for f in t["files"]})
+
+
+def suite_texts(root, config, spec, d):
+    """The texts of the suite the baseline ran, or of the owner of the suite command as it stands
+    (check_run.suite_owner: the plan's Integration line when the project names no suite): a plan command equal to one
+    runs no second time."""
+    mine = [x for x in (d.get("cmd"), d.get("run")) if x]
+    if not mine:
+        own = owner_of(root, config, spec)
+        mine = [x for x in (own.get("test"), own.get("run")) if x]
+    return {norm(x) for x in mine}
+
+
+def new_files(root, cmds, declared):
+    """The declared files a command names (the path, or a stem of four letters or more) that the base does not hold."""
+    named = [f for f in declared for st in [os.path.splitext(os.path.basename(f))[0]]
+             if any(f in c or (len(st) >= 4 and st in c) for c in cmds)]
+    if not named:
+        return set()
+    _, ls, _ = git(root, "ls-tree", "-r", "--name-only", "HEAD")
+    have = set(ls.splitlines())
+    return {f for f in named if f not in have}
+
+
+def to_run(root, config, spec, d=None):
+    """[(cmd, where, default limit)] of the plan's commands that run on the base, and the left out ones."""
+    d = read(root) if d is None else d
+    cmds, _, declared = plan_of(root, spec)
+    suite = suite_texts(root, config, spec, d) if cmds else set()
+    fresh = new_files(root, [c for c, _, _ in cmds], declared)
+    out = []
+    for c, where, lim in cmds:
+        if norm(c) in suite:
+            continue
+        if any(f in c or (len(st) >= 4 and st in c) for f in fresh for st in [os.path.splitext(os.path.basename(f))[0]]):
+            continue
+        out.append((c, where, lim))
+    return out
+
+
+def entry_alive(e):
+    pid = e.get("pid")
+    if isinstance(pid, int):
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+    return time.time() - _ts(e.get("started")) < 60
+
+
+def pending(root, config, spec, d=None):
+    """The plan's commands that have no result yet (one that was running in a process that is gone has none). None
+    with no commit to run on."""
+    d = read(root) if d is None else d
+    if git(root, "rev-parse", "--verify", "-q", "HEAD")[0] != 0:
+        return []
+    have = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+    out = []
+    for c, where, lim in to_run(root, config, spec, d):
+        e = have.get(c)
+        if not isinstance(e, dict) or (e.get("result") == "running" and not entry_alive(e)):
+            out.append((c, where, lim))
+    return out
+
+
+def failed(root, config, spec, d=None):
+    """[(cmd, entry)] of the plan's commands, as the plan stands, that failed or timed out on the base and that nobody
+    skipped, in plan order (a result on record is asked about, whatever would run now)."""
+    d = read(root) if d is None else d
+    have = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+    if not have:
+        return []
+    out = []
+    for c, where, _ in plan_of(root, spec)[0]:
+        e = have.get(c)
+        if isinstance(e, dict) and e.get("result") in ("fail", "timeout") and not e.get("skipped"):
+            out.append((c, dict(e, where=where)))
+    return out
+
+
+def judge(cmd, out, rc, secs, limit, red, missing):
+    """The result of one plan command, by its exit code alone (the output is kept, never read for the verdict)."""
+    tail = run_env.strip_banner(out[-2048:].decode("utf-8", "replace"))
+    e = {"result": "pass", "exit": rc, "seconds": round(secs, 1), "class": None, "kind": "", "why": "", "fail_lines": [],
+         "tail": tail, "limit": limit}
+    if rc == 0:
+        return e
+    gone = sorted(p for p in run_env.programs(cmd) if p in missing)
+    e["fail_lines"] = run_env.fail_lines(out, 8, rc)
+    if rc == 124:
+        e.update(result="timeout", kind="timeout", why="it did not end within its limit of %d s" % limit)
+    elif rc == 125:
+        e.update(result="fail", kind="setup-line", why="the setup line of the config failed (exit 125)")
+    elif rc == 127 or gone:
+        e.update(result="fail", kind="program-missing", why="%s is not found in the shell (exit %d)" % (
+            ", ".join(gone) or "a program it starts", rc))
+    elif red:
+        e.update(result="fails like the base", kind="red-base", why="exit %d; the base is red too, so this tells nothing" % rc)
+    else:
+        e.update(result="fail", kind="fails-on-base", why="exit %d on the current code" % rc)
+    e["class"] = "environment" if e["kind"] in ("setup-line", "program-missing") else "command"
+    return e
+
+
+def plan_start(root, config, spec, again=""):
+    """`temper baseline plan`: the commands with no result run, in a process of their own; exits 0 always."""
+    if git(root, "rev-parse", "--verify", "-q", "HEAD")[0] != 0:
+        print("OK: no commit to run the plan's commands on; nothing ran")
+        return 0
+    started = now(fine=True)
+
+    def mark(d):
+        p = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+        if again:
+            p.pop(again, None)
+        d["plan"] = p
+        for c, where, lim in pending(root, config, spec, d):
+            p[c] = {"result": "running", "where": where, "started": started}
+    d = update(root, mark)
+    todo = [c for c, e in d["plan"].items() if isinstance(e, dict) and e.get("started") == started]
+    if not todo:
+        print("OK: every command of the plan has its result on the current code, or is left out; nothing ran")
+        return 0
+    if os.environ.get("TEMPER_BASELINE_FOREGROUND"):
+        plan_run(root, config, spec, started)
+    else:
+        subprocess.Popen([sys.executable, "-E", "-s", os.path.abspath(__file__), root, config or "", spec or "", "plan-run",
+                          started], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    print("OK: %d command(s) of the plan %s on the current code" % (
+        len(todo), "ran" if os.environ.get("TEMPER_BASELINE_FOREGROUND") else "run in their own process"))
+    return 0
+
+
+def plan_run(root, config, spec, started):
+    """The plan's commands marked by `started`: wait for a suite still running, check the programs of the whole plan,
+    run each in the worktree, then remove the worktree."""
+    def mine(d):
+        p = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+        return [c for c, e in p.items() if isinstance(e, dict) and e.get("started") == started and e.get("result") == "running"]
+
+    def own(d):
+        for c in mine(d):
+            d["plan"][c]["pid"] = os.getpid()
+    d = update(root, own)
+    t0 = time.time()
+    while d.get("result") == "running" and alive(d) and time.time() - t0 < LIMIT_S:
+        time.sleep(0.5)
+        d = read(root)
+    try:
+        _plan_run(root, config, spec, started, d, mine(d))
+    except Exception as e:   # a baseline call never fails a run: each command left says why
+        def why(d):
+            for c in mine(d):
+                d["plan"][c] = {"result": "unknown", "why": "it could not run: %s" % str(e)[:200]}
+        update(root, why)
+    clean(root, quiet=True)
+    return 0
+
+
+def _plan_run(root, config, spec, started, d, todo):
+    import doctor
+    setup = run_env.load_setup(config) if config and os.path.isfile(config) else {}
+    red = d.get("result") == "red"
+    folder, why = worktree(root)
+    if not folder:
+        raise RuntimeError(why)
+    _, every, _ = plan_of(root, spec)
+    faults, _, _ = doctor.needs(folder, setup, every)
+    # a program the plan starts: a path into the tree may be a file a task makes, so only a bare name or an absolute
+    # path is looked up
+    faults = [f for f in faults if f.get("kind") == "program-missing" and f.get("file") == "the suite command"
+              and ("/" not in f["need"] or f["need"].startswith("/"))]
+    missing = {f["need"] for f in faults}
+    where = {c: (w, lim) for c, w, lim in to_run(root, config, spec, d)}
+    for c in todo:
+        w, lim = where.get(c, ("", GROUP_LIMIT_S))
+        limit = limit_for(c, lim, root)
+        t0 = time.monotonic()
+        out, rc = run_env.run_cmd(folder, limit, [c], setup)
+        e = dict(judge(c, out, rc, time.monotonic() - t0, limit, red, missing), where=w, ended=now())
+
+        def put(d, c=c, e=e):
+            d.setdefault("plan", {})[c] = e
+        update(root, put)
+    if faults:
+        def env(d):
+            known = {(x.get("kind"), x.get("need")) for x in d.get("env") or [] if isinstance(x, dict)}
+            add = [dict(f, file="the plan", why="%s is not found in the shell; a command of the plan starts it" % f["need"])
+                   for f in faults if ("program-missing", f["need"]) not in known]
+            d["env"] = list(d.get("env") or []) + add
+            if add and d.get("result") != "red":
+                d.update(result="red", kind="program-missing", why="; ".join(f["why"] for f in add))
+        update(root, env)
+
+
+def wait(root, cmd):
+    """Waits while the plan's command cmd runs on the base (the first group gate of its group), up to its limit."""
+    t0 = time.time()
+    while time.time() - t0 < LIMIT_S:
+        e = (read(root).get("plan") or {}).get(cmd)
+        if not (isinstance(e, dict) and e.get("result") == "running" and entry_alive(e)):
+            return 0
+        time.sleep(0.5)
+    return 0
+
+
+def like_base(root, cmd, lines):
+    """Whether a failed run of the plan's command cmd at its gate shows only the failures it showed on the base, on a
+    base the person went on from (its result `fails like the base`, or cmd is the suite the baseline ran): every fail
+    line is one of the base's, digits left out. No line to compare with is no match."""
+    d = read(root)
+    e = (d.get("plan") or {}).get(cmd) if isinstance(d.get("plan"), dict) else None
+    e = e if isinstance(e, dict) and e.get("result") == "fails like the base" else None
+    suite = d.get("result") == "red" and norm(cmd) in [norm(x) for x in (d.get("cmd"), d.get("run")) if x]
+    if d.get("answer") != "go-on-anyway" or not (e or suite):
+        return False
+    base = {mask(x) for x in list((e or {}).get("fail_lines") or []) + list(d.get("fail_lines") or [])}
+    got = [x for x in lines if str(x).strip()]
+    return bool(base) and bool(got) and all(mask(x) in base for x in got)
+
+
+def skip(root, cmd, reason):
+    """The person's skip of one plan command, with a reason: an override row named plan-command."""
+    reason = " ".join(str(reason or "").split())
+    if not cmd or not reason:
+        print("FAIL: usage: temper baseline skip --cmd '<command>' --reason '<why>'", file=sys.stderr)
+        return 1
+    rc, out = cli(root, "override", "plan-command", "--reason", "%s (the plan's command: %s)" % (reason, cmd[:200]))
+    sys.stdout.write(out)
+    if rc != 0:
+        return rc
+
+    def put(d):
+        p = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+        e = p.get(cmd) if isinstance(p.get(cmd), dict) else {"result": "not run"}
+        e["skipped"] = {"by": "the person", "reason": reason, "ts": now()}
+        p[cmd] = e
+        d["plan"] = p
+    update(root, put)
+    return 0
 
 
 # ---- the recorded skip: the row `tests pass` of a red base the person went on from ----------------------------------
@@ -555,12 +894,32 @@ def main(argv):
     if sub == "timeout" and len(rest) == 2:
         timed_out(rest[0], rest[1], root)
         return 0
+    if sub == "plan":
+        try:
+            return plan_start(root, config, spec, rest[rest.index("--cmd") + 1] if "--cmd" in rest[:-1] else "")
+        except Exception as e:   # a baseline call never fails a run
+            print("OK: the plan's commands could not start: %s" % str(e)[:200])
+            return 0
+    if sub == "plan-run" and rest:
+        return plan_run(root, config, spec, rest[0])
+    if sub == "skip":
+        arg = lambda k: rest[rest.index(k) + 1] if k in rest[:-1] else ""
+        return skip(root, arg("--cmd"), arg("--reason"))
+    if sub == "wait" and rest:
+        return wait(root, rest[0])
+    if sub == "like-base" and len(rest) == 2:
+        try:
+            lines = json.loads(rest[1])
+        except ValueError:
+            lines = []
+        return 0 if like_base(root, rest[0], lines if isinstance(lines, list) else []) else 1
     if sub == "skip-row" and rest:
         r = skip_row(root, rest[0], config)
         if r:
             print(r)
         return 0
-    print("FAIL: usage: temper baseline start [--again] [--env-only] | clean | accept-red --reason '<why>'", file=sys.stderr)
+    print("FAIL: usage: temper baseline start [--again] [--env-only] | clean | accept-red --reason '<why>' | plan [--cmd C] "
+          "| skip --cmd C --reason '<why>'", file=sys.stderr)
     return 1
 
 

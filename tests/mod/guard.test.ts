@@ -377,10 +377,10 @@ describe('the trivial window: the Intent agent writes the one change while the v
 })
 
 // 9.8.5 (WP08, M14): the files of the CLI that can turn a gate row are guarded like the gate verdicts: the store of
-// reused passes, the preflight's stored rows, the Design answers and the setup blocks already tried.
+// reused passes and the Design answers (WP21: the per command check of the plan and its two stores are gone).
 describe('the files that turn a gate row', () => {
   const FILES = [
-    '.git/temper-results.json', '.temper/preflight.json', '.temper/decisions.json', '.temper/setup-tried.json',
+    '.git/temper-results.json', '.temper/decisions.json',
     '.temper/check/ahead.json',
   ]
   const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ') && r.deny.includes('by hand')
@@ -396,7 +396,7 @@ describe('the files that turn a gate row', () => {
     })
   }
   test('rm .temper/*.json, and a glob that spells only the new files, are refused', () => {
-    for (const cmd of ['rm .temper/*.json', 'rm -f .temper/[dp]*.json', 'rm .temper/setup-*.json', 'rm .git/temper-*.json']) {
+    for (const cmd of ['rm .temper/*.json', 'rm -f .temper/[dp]*.json', 'rm .temper/deci*.json', 'rm .git/temper-*.json']) {
       expect(isDeny(bash(ctx('build'), cmd)), cmd).toBe(true)
     }
   })
@@ -481,6 +481,24 @@ describe('the red base: only the person goes on anyway', () => {
     expect(isDeny(bash(ctx('intent'), `${CLI} baseline accept-r?d --reason x`))).toBe(true)
     for (const cmd of [`${CLI} baseline start`, `${CLI} baseline start --again`, `${CLI} baseline clean`]) {
       expect('allow' in bash(ctx('intent'), cmd), cmd).toBe(true)
+    }
+  })
+})
+
+// 9.8.5 (WP21): "Go on anyway" at plan.command skips the check of one command the plan wrote, with a reason: only the
+// person's answer runs `baseline skip`. The run of the plan's commands (`baseline plan`) is the CLI's and passes.
+describe('a command the plan wrote: only the person skips its check', () => {
+  const SKIP = `${CLI} baseline skip --cmd 'make check' --reason '{reason}'`
+  const skip = (reason = 'the check needs the staging data'): string => `${CLI} baseline skip --cmd 'make check' --reason '${reason}'`
+  test('baseline skip outside the person\'s answer is refused, at Plan and at Build', () => {
+    for (const stage of ['plan', 'build'] as const) {
+      expect(bash(ctx(stage), skip()), stage).toEqual({ deny: ONLY_USER })
+    }
+  })
+  test('baseline skip passes as the call of the answer; baseline plan is the CLI\'s', () => {
+    expect('allow' in bash(ctx('plan', { allowed: [SKIP] }), skip())).toBe(true)
+    for (const cmd of [`${CLI} baseline plan`, `${CLI} baseline plan --cmd 'make check'`]) {
+      expect('allow' in bash(ctx('plan'), cmd), cmd).toBe(true)
     }
   })
 })

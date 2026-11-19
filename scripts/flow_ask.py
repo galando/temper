@@ -393,14 +393,10 @@ class AskPart:
                     why, said), stage=stage, qid="plan.fail", options=[self.set_rec(self.revise_opt(
                         "The Plan agent writes the tasks under your answers; then the plan is checked again.", self.answers_reason() or why), True),
                         ov] + back_opt() + [self.save()])
-            # WP08 (M16): a failed preflight is never returned from the store, so after the person repaired the
-            # environment one option runs the plan's commands again and checks the plan
-            again = [self.opt("Check again", "Run the plan's commands again (after you repaired the environment) and "
-                              "check the plan.", move="redo", calls=[self.c("plan preflight"), self.c("gate plan")],
-                              oid="check-again")] if any(x.get("name") == "preflight" for x in rows) else []
-            # WP20: the offer of the setup block moved to the red base question (base.red), before any agent
+            # WP20: the offer of the setup block moved to the red base question (base.red), before any agent; WP21: the
+            # plan gate runs no command, so a command the plan wrote is the question plan.command, after the gate passed
             text = "Plan: the check failed (%s).%s Fix the plan, or skip the check?" % (why, said)
-            opts = again + back_opt() + [override_opt(self.skip_then()), grill, self.save()]
+            opts = back_opt() + [override_opt(self.skip_then()), grill, self.save()]
             return self.with_more(GATE_HEADER, text, stage, opts[:3], opts[3:], "Plan: more options.", qid="plan.fail")
 
         if stage == "design":
@@ -476,7 +472,7 @@ class AskPart:
                 if repair:
                     first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go, oid="continue"), arch]
                 else:
-                    first = [self.opt("Continue to Check (Recommended)", "Start Check.", move="advance", calls=go, oid="continue")] + (back_opt() if opens else []) + [arch]
+                    first = [self.opt("Continue to Check" + " (Recommended)", "Start Check.", move="advance", calls=go, oid="continue")] + (back_opt() if opens else []) + [arch]
                 rest = [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()]
                 q = self.with_more(GATE_HEADER, "Review: %s%s. %s" % (state_of, self.finding_counts(opens),
                                    "Loop back to Build to repair them?" if repair else "Continue to Check?"), stage,
@@ -539,11 +535,10 @@ class AskPart:
                 fix = self.opt("Repair the environment and run again (Recommended)",
                                "temper doctor shows what is missing; the setup: block of .claude/temper.config makes it ready. Then Check runs again.",
                                move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))], oid="redo")
-                add = self.setup_offer([{"name": "preflight", "detail": "environment fault"}])   # no block, and one proposed
+                add = self.setup_offer()   # no block, and one proposed: written as shown, bound by its hash (WP21)
                 if add:
                     self.set_rec(fix, False)
-                    if add["id"] == "add-setup":
-                        add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
+                    add["calls"] = [add["calls"][0], self.c("state redo check --reason %s" % shlex.quote(("SETUP: " + setup)[:300]))]
                 # M10 of WP08: the same fault after Check ran again is not repaired again by the recommendation
                 redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
                 opts = ([add] if add else []) + [fix, self.save()]

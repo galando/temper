@@ -234,23 +234,17 @@ The mod lets it run during a run, as any CLI call. Use it when a gate says `envi
    local server of that kind. Only a database variable with a local port or host is taken from a CI `env:`; deploy
    targets and credentials never are.
 
-The environment agent (`agents/env.md`) is no longer offered or launched (WP08): a block reached the config through
-it before the person had seen the draft. Its brief and `temper doctor --candidate FILE` stay until the preflight goes.
+No agent drafts a block: the environment agent and `temper doctor` with a draft file of its are gone (WP21).
 
-**The check.** A block from any source is written to `.claude/temper.config` only by `--write`, and only after the CLI
-reruns each command the preflight found failing on the environment, with the block, on a throwaway worktree of HEAD,
-and none of them fails on the environment any more. With no stored failing command there is nothing to check, so
-nothing is written, and no block is offered (at Check too: a block is offered there only when the plan's preflight stored
-the commands that failed). A block that did not fix them is remembered and not offered again.
-
-**The block reaches the config only by your answer.** `temper doctor` reads; `temper doctor --propose --write` adds the
-block, and the mod lets it run only as the call of the option you picked. When the environment check or Check fails on
-the environment and the project has no block, the question offers `Add this setup block and run it again` (at the red
-base question `base.red` first, at Check first), and the question shows every line of the block (the run line with its
-secrets masked). A block that fakes a tool passes the CLI's check, so your reading of it is the control. At Check only a
-block that fixed the failing commands reaches the config; at `base.red` the call is
-`temper doctor --propose --write --expect <hash>`, which writes the block the question showed (refused when the
-proposal changed since), and the baseline that runs next is its check.
+**The block reaches the config only by your answer.** `temper doctor` and `temper doctor --propose` read;
+`temper doctor --propose --write --expect <hash>` adds the block, and the mod lets it run only as the call of the option
+you picked. When the environment check or Check fails on the environment and the project has no block, the question
+offers `Add this setup block and run it again` (at the red base question `base.red` first, at Check first), and the
+question shows every line of the block (the run line with its secrets masked). The call writes the block the question
+showed, bound by its hash (refused when the proposal changed since, and never over a block that is there); `--write`
+without `--expect` writes nothing. No command is run to check a block: the baseline that runs next (at `base.red`) or
+Check run again is its check. A block that fakes a tool passes every check of the CLI, so your reading of it is the
+control. When no rule proposes a block, the question says what is missing, in the words of the fault.
 What no source can make (a missing licence, a secret, a VPN, a JDK the machine does not have and the project cannot
 fetch) is said in plain words instead.
 
@@ -266,17 +260,19 @@ question: the base's failures become a recorded skip (an override row `base-suit
 call of that answer. `python3 scripts/check_run.py owner ROOT [SPEC]` prints who owns the suite command, as one JSON
 line `{"test", "run", "source", "why"}`. See `docs/flow.md`, "The environment check and the baseline".
 
+`temper baseline plan [--cmd C]` (WP21) runs each group's Validate and the Integration line of the plan once on the
+current code, in the same worktree, after the suite, in its own process, and keeps each result in `plan` of the same
+file; only a command with no result runs, and `--cmd C` runs C again. The planner's last calls run it, before
+`temper gate plan`, which runs no command. `temper baseline skip --cmd C --reason '<why>'` is your answer "Go on anyway"
+at `plan.command`: the check of that command is skipped (an override row `plan-command`); the mod lets it run only as
+the call of that answer. See `docs/flow.md`, "A command the plan wrote".
+
 ### `temper plan patch` (9.8.5)
 
 `temper plan patch G1 --cmd 'bash scripts/selftest/run-selftest.sh --fast'` changes one command line of the approved
 plan (`G<n>` a group's Validate, `task N` a task's Test, `integration` the Integration line), keeps every passed task,
-and spends no loop. You give it as your answer to "Change the group's command" at the group question.
-
-### `temper plan preflight` (9.8.5)
-
-Runs each group's Validate and the Integration line of the plan on HEAD again and stores the result the plan gate reads
-(see `docs/flow.md`). The failed plan question's `Check again` runs it, then `temper gate plan`, after the environment
-was repaired.
+and spends no loop. You give it as your answer to "Change the group's command" at the group question, or to "Change the
+command" at `plan.command` (WP21: there, before the approval, it changes the line of the plan, which is checked again).
 
 ## `/temper:intent`
 
