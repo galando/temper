@@ -8,12 +8,12 @@ import { HELP, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
-import { answeredResult, answersIn } from './core/answers'
+import { answeredResult, answersIn, noteOf } from './core/answers'
 import { evaluate } from './core/rules'
 import { callWords, readShell } from './core/shell'
 import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
 import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, isSavedStop, logRows, lookAtAgents, slugOf } from './core/driver'
-import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
+import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Picked, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import type { Stage } from './core/stages'
 import { SECTION_ID } from './core/section'
@@ -536,6 +536,8 @@ async function hostWait($: Api, cwd: string, ids: string[], signal: AbortSignal 
 // The question the driver is asking now: the tool.call hook below gives its dialog each option's description and preview,
 // which `$.ui.ask` cannot carry.
 let asking: GoQuestion | null = null
+// WP21: the person's note on the option picked in the driver's own dialog, which `$.ui.ask` does not give back
+let askedNote = ''
 
 async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
   asking = q
@@ -545,6 +547,16 @@ async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
   } finally {
     asking = null
   }
+}
+
+// The driver's question with the person's note on the picked option (WP21: a reason the person wrote there is the
+// reason, so the reason question is not asked again)
+async function hostAskNoted($: Api, q: GoQuestion): Promise<string | Picked | null> {
+  askedNote = ''
+  const a = await hostAsk($, q)
+  const note = askedNote
+  askedNote = ''
+  return a !== null && note !== '' ? { label: a, note } : a
 }
 
 // Several questions in one dialog (the Blocking questions): `$.ui.ask` raises the first, the tool.call hook below puts
@@ -595,7 +607,7 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
     run: call => hostRun($, cwd, call, signal),
     spawn: a => hostSpawn($, a),
     wait: ids => hostWait($, cwd, ids, signal),
-    ask: q => hostAsk($, q),
+    ask: q => hostAskNoted($, q),
     askAll: qs => hostAskAll($, qs),
     record: (q, label) => hostRecord($, q, label),
     // WP15: the card of the question the driver asks next: the render hook draws it above the dialog in full mode;
@@ -815,6 +827,8 @@ export const register: Register = (on, opts) => {
       await spendDecision(makeIo($), g.use)
       adopt($, await refresh($))
     }
+    // The note on the answer of the driver's own question, for hostAskNoted (WP21).
+    if (many === null && driverDialog && !errored && asking !== null) askedNote = noteOf(result, asking.question)
     // Every answer of the driver's dialog of several questions, for hostAskAll.
     if (many !== null && !errored) {
       const r = answeredResult(result)

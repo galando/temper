@@ -198,6 +198,35 @@ describe('the driver carries a run from the request to the end', () => {
     expect(log.recorded).toContain(`${rq.question} -> The plan cannot be built`)
   })
 
+  // WP21: the person's note on an option that needs a reason is that reason, as the guard reads it (answersIn: the note
+  // is the reason): no second dialog, the call runs with the note, and the note is recorded as the reason question's answer
+  test('an option that needs a reason, answered with a note on it, asks no reason question and runs the call with the note', async () => {
+    const rq = q('Go on anyway. What is the reason?', ['The failure is known', 'Cancel'])
+    const opts = { question: q('The base is red. Go on?', ['Go on anyway', 'Save for later']), options: [
+      { label: 'Go on anyway', calls: [`${CLI} baseline accept-red --reason '{reason}'`], reason: true, reason_question: rq, reason_ids: ids(rq) },
+      { label: 'Save for later', stop: true },
+    ] }
+    const noted = { label: 'Go on anyway', note: 'the legacy test was red before' } as unknown as string
+    const { p, log } = port({ goes: [{ action: 'ask', ask: opts }, { action: 'none', say: 'end' }], answers: [noted] })
+    await drive(p, CLI, null)
+    expect(log.asked.map(x => x.question)).toEqual([opts.question.question])
+    expect(log.ran).toContain(`${CLI} baseline accept-red --reason 'the legacy test was red before'`)
+    expect(log.recorded).toContain(`${rq.question} -> the legacy test was red before`)
+  })
+
+  test('an option that needs a reason, answered with no note, still asks the reason question', async () => {
+    const rq = q('Go on anyway. What is the reason?', ['The failure is known', 'Cancel'])
+    const opts = { question: q('The base is red. Go on?', ['Go on anyway', 'Save for later']), options: [
+      { label: 'Go on anyway', calls: [`${CLI} baseline accept-red --reason '{reason}'`], reason: true, reason_question: rq, reason_ids: ids(rq) },
+      { label: 'Save for later', stop: true },
+    ] }
+    const blank = { label: 'Go on anyway', note: '  ' } as unknown as string
+    const { p, log } = port({ goes: [{ action: 'ask', ask: opts }, { action: 'none', say: 'end' }], answers: [blank, 'The failure is known'] })
+    await drive(p, CLI, null)
+    expect(log.asked.map(x => x.question)).toEqual([opts.question.question, rq.question])
+    expect(log.ran).toContain(`${CLI} baseline accept-red --reason 'The failure is known'`)
+  })
+
   test('More options asks the rest of the question; an option whose needs is talk (a skill) hands back its kind and id (WP16)', async () => {
     const more = loose<GoAsk>({ question: q('More choices?', ['Grill Me', 'Cancel']), options: [{ label: 'Grill Me', id: 'grill-me', needs: 'talk', do: 'Use the grill-me skill on this stage\'s work, then ask this question again.' }, { label: 'Cancel' }] })
     const { p, log } = port({ goes: [{ action: 'ask', ask: { question: q('Approve?', ['Approve', 'More options']), options: [{ label: 'Approve' }, loose({ label: 'More options', id: 'more', needs: 'more', do: 'Ask the more question.', kind: 'more' })], more } }], answers: ['More options', 'Grill Me'] })
