@@ -41,7 +41,7 @@
   {
    "id": "group.parked",
    "where": "Build",
-   "trigger": "a parked group (a task out of attempts, a blocked task, an agent's commits)",
+   "trigger": "a parked group (a task out of attempts, a task blocked on a file no task of its own group declares or the rule may not add, an agent's commits)",
    "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   },
   {

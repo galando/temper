@@ -1085,7 +1085,7 @@ _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.js
       _task_py keep "$slug" replan "$ts" "$g" "$branch" >/dev/null \
         || echo "WARN: could not move $branch aside; delete it before the re-planned run starts $g" >&2
     fi
-  done < <(python3 -I "$SCRIPTS_DIR/groups_ops.py" groups-reset-rows "$GROUPS_FILE")
+  done < <(python3 -I "$SCRIPTS_DIR/group_keep.py" archive "$GROUPS_FILE")   # WP25: the plan the tasks were built from goes with it
   mkdir -p .temper/archive
   mv "$GROUPS_FILE" ".temper/archive/groups-$ts.json" && echo "OK: grouped run reset for the re-plan (groups.json -> .temper/archive/groups-$ts.json)"
 }
@@ -2242,12 +2242,13 @@ cmd_group() {
     gate) cmd_group_gate "$@" ;;
     reopen) cmd_group_reopen "$@" ;;
     report) cmd_group_report "$@" ;;
+    keep) _lock_acquire; python3 -I "$SCRIPTS_DIR/group_keep.py" keep "$GROUPS_FILE"; local rc=$?; _lock_release; return $rc ;;   # WP25: what a replan keeps
     fix) _lock_acquire; TEMPER_PREFIX="$(_prefix)" python3 -E -s "$SCRIPTS_DIR/group_fix.py" "$GROUPS_FILE" "$(_now)" "$(_spec_slug "$(_spec_path "")")" "$@"
          local rc=$?; _lock_release
          [[ $rc -eq 0 && -z "$(_json_get_path "$STATE_FILE" parked "")" && "$*" != *--commit* ]] && _rule_log "group fix" build "group ${1:-} fixed on its merged work"
          return $rc ;;   # 9.8.4: one fix agent on a failed group's merged tree
     take-out|feedback) python3 -E -s "$SCRIPTS_DIR/cli_words.py" "$GROUPS_FILE" "$sub" "$@" ;;   # WP16
-    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|fix|take-out|feedback> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|keep|fix|take-out|feedback> ..." >&2; return 1 ;;
   esac
 }
 
@@ -3589,15 +3590,15 @@ cmd_park() {
 # changes the plan: it is recorded as the person's note for Plan, and Plan runs again with it.
 cmd_plan() {
   _state_migrate_legacy
-  if [[ "${1:-}" == "patch" ]]; then   # the person's change of one command line (scripts/plan_patch.py)
-    local rc; _lock_acquire; python3 -E -s "$SCRIPTS_DIR/plan_patch.py" "$(_spec_path "")" "$STATE_FILE" "$GROUPS_FILE" "$(_evidence_file plan)" "${@:2}"; rc=$?; _lock_release; return $rc
+  if [[ "${1:-}" =~ ^(patch|amend)$ ]]; then   # the person's patch, the amendment by rule (WP25: scripts/plan_patch.py, plan_amend.py); a passed task they reopen goes back through the reopen
+    local rc o; _lock_acquire; o="$(python3 -E -s "$SCRIPTS_DIR/plan_$1.py" "$(_spec_path "")" "$STATE_FILE" "$GROUPS_FILE" "$(_evidence_file plan)" "${@:2}")"; rc=$?; [[ -n "$o" ]] && grep -v '^REOPEN: ' <<<"$o"; [[ $rc == 0 && "$o" == *"REOPEN: "* ]] && { _group_reopen_body $(sed -n 's/^REOPEN: //p' <<<"$o") || rc=1; }; _lock_release; return $rc
   fi
   if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
     local rc; _lock_acquire
     python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds 3)" "$(_now)" "$(_evidence_file plan)"; rc=$?
     _lock_release; return $rc
   fi
-  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan patch" >&2; return 1; }
+  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan patch | plan amend" >&2; return 1; }
   shift
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
@@ -3972,7 +3973,7 @@ main() {
        _config_pin ;;
   esac
   case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
-    "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"plan patch "*|"task retry "*|"task test "*|\
+    "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"task retry "*|"task test "*|\
 "acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*|"check run "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
   esac
   case "$sub" in

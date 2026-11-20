@@ -49,7 +49,8 @@ What users have is 9.8.4 (`7c7a1c1`).
 | `scripts/baseline.py` | the environment check, the baseline, the limits | WP20 | WP21 (plan commands), WP22, WP23 |
 | `scripts/failure.py` | the one typed failure record | WP23 | WP24, WP25 |
 | `scripts/repair_ops.py` | the repair in the stage | WP24 | none |
-| `scripts/plan_amend.py` | the amendment by rule | WP25 | none |
+| `scripts/plan_amend.py` | the amendment by rule; `can` (the flow asks it first), `new_faults` (the static rows on a result), `append_entry`, `reopen_unbuilt` (plan_patch.py uses them too) | WP25 | none |
+| `scripts/group_keep.py` | a replan keeps: `archive` (`_groups_reset` stamps groups.json with `run_id` and `plan`), `keep` (`temper group keep`), `pending` (the flow), `count` (the approval card) | WP25 | none |
 | `agents/plan-revise.md` | the narrow revise agent, type `temper:temper-plan-revise` | WP27 | none |
 | `reference/draft.md` | the page of the word `draft` | WP28 | none |
 | `scripts/defaults.py`, `scripts/config_tidy.py`, `scripts/check_config_keys.py` | every default in one table; the one time question; the reader test | WP29 | WP30 adds to `GONE` |
@@ -133,6 +134,8 @@ Run files:
 | `.temper/evidence/failures.json` | the failure record | WP23 | written only through `scripts/failure.py` |
 | `failures` of `.temper/specs/<slug>/gate-ledger.json`; `records` of a loop of `.temper/feedback-loops.json`; `failures` of a line of `.temper/runs.jsonl` | the archived failure records; the ids of the open records of the stage a step back leaves; the count of records by class | WP23 | WP24, WP25 |
 | `.temper/evidence/amendments.json` | amendments and patches, appended | WP25 | the commit card |
+| `.temper/evidence/amendments.json` entry | `{"n", "ts", "kind": "amend" or "patch", "what", "old", "new", "hash_before", "hash_after", "failure", "reopened"}`; a patch before the approval writes none | WP25 | the commit card section `plan_changes` |
+| `run_id`, `plan` of an archived `groups.json`; `kept_from`, and `kept` of a group, in `groups.json` | the plan the archived tasks were built from; the replan `temper group keep` read (once per replan) and what it kept of a group | WP25 | none |
 | `.temper/notice.json` | the one time notice was said | WP31 | none |
 | `.claude/temper.config.before-9.8.5` | the copy the config question keeps, of a config of 9.8.4 or of the base | WP29 | none |
 
@@ -468,6 +471,7 @@ WP32). They added no token to rows `D60` to `D64`: each of their cases now runs 
 | the one plan digest | `plan_digest` of `scripts/approval.py` | WP25 said `scripts/tasks_md.py`; WP12 moves the function first |
 | the budget store | `.temper/budget.json`, to the end | WP10 and WP23 each said the counts might move into the failure record; they stay, and the record's `scope` is the budget key |
 | what `plan amend` spends | the key `task:<N>`, the kind `plan amend` | WP25 said a step of class `plan`; the budget has keys and kinds, no classes |
+| the label of the option `add-file` | `Add to plan (Recommended)`, a label the flow had already (the Scope drift question at the commit gate) | section 7 named it "Add the file to the task"; the cap on option labels (`option_labels`) has no room for a new one, and the words say the same: the file is added to the approved plan |
 | the decision records | the numbers of section 11 | WP21 and WP24 said "the next free number", WP27, WP29 and WP30 left the number to WP31 |
 | the new case files | the numbers of section 10 | eleven specs said "the next free number" |
 | the switch that keeps the baseline in the foreground | `TEMPER_BASELINE_FOREGROUND` | WP20 named none; WP21 needs the same switch |

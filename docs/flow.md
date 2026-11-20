@@ -487,11 +487,48 @@ failing lines from the records; a step back names the record ids it carries (`re
 
 `temper plan patch G<n>|task N|integration --cmd '<command>'` changes one command line of the approved `tasks.md`
 (a group's Validate, a task's Test, the Integration line) and nothing else (`scripts/plan_patch.py`). The passed tasks
-keep their work, the patch spends one repeat of the budget, the approved plan's hash follows the change, a patched group's check runs again, and
-the plan ledger records the old and the new line as the person's. It refuses a `tasks.md` that differs from the
-approved plan in anything else (that is a loop back to Plan). It is the person's: the group question offers `Change
-the group's command`, recommended when the cause is the command (a second time-out, or a fix agent that changed
-nothing), and the person types the command. The mod lets it run only as that answer.
+keep their work, the patch spends one repeat of the budget, the approved plan's hash follows the change, and a patched
+group's check runs again with its failure marks (`fails`, `fix_tries`, `fix_empty`) reset. A group with no Validate
+line gets one, after its Depends line. A passed task whose Test line changed is reopened, as the group reopen does it.
+`temper plan patch task N --add-file F` adds a file outside the approved set to Task N and to `approved_files`; a task
+that gained it and has not passed runs again. The static rows of the plan gate (`scripts/plan_rows.py` and
+`gate_rows.py plan-rows`) run on the result first: a row the result fails that the plan did not fail the same way
+refuses the patch, and `tasks.md` stays as it was. The plan ledger records `plan patch: <what>: <old> -> <new>`, with no
+claim of who called: the CLI cannot know it (`docs/trust.md`). It refuses a `tasks.md` that differs from the approved
+plan in anything else (that is a loop back to Plan). It is the person's: the group question offers `Change the group's
+command`, recommended when the cause is the command (a second time-out, or a fix agent that changed nothing), its
+question names the command the plan has now, and the person types the new one; the commit card shows it word for word.
+After a patch at Build the flow runs `temper baseline plan`, so the new command runs once on the base before its check.
+The mod lets a patch run only as the person's answer.
+
+### A blocked task and the plan amendment (9.8.5, WP25)
+
+A task whose test needs a file it does not declare records `temper task blocked N --needs F --reason R`; its gate fails
+once and parks the group. When every blocked task of the group needs a file another task of the same group declares,
+the next action is the CLI's own `temper plan amend task N --add-file F [--failure ID]`, in every mode
+(`scripts/plan_amend.py`): Task N gains F on its File line and the owner on its Depends line, and nothing else. It
+refuses unless the plan is approved and `tasks.md` is that plan, F is declared by a task of the same group and is in
+`approved_files`, F is no test file of that task, no locked acceptance test and under no sensitive path, Task N is
+neither running nor passed, the static rows pass on the result, and the budget has room (one repeat, `task:N`, kind
+`plan amend`). It moves `plan_hash` in the run state and in `groups.json`, appends an entry to
+`.temper/evidence/amendments.json` (the approved record `approved-tasks.json` is never written by an amendment or a
+patch), writes the plan ledger row `plan amended by rule: Task N gains F (Task M declares it)` and the rule log entry of
+the kind `amend`, and reopens the task: its blocked mark, the group's park, gate and failure marks go, and no file is
+restored, so the work of the task it now depends on stays. The commit card lists every amendment and patch under
+`THE PLAN SINCE THE APPROVAL`. When the rule does not hold the run asks (a run that goes on by itself stops): a file no
+task declares first offers `Add to plan` (the id `add-file`, the person's `plan patch task N --add-file F`); a file of
+another group, a file the rule may not add, or a group parked twice with no blocked record first offers Loop back to
+Plan, which is the person's.
+
+### What a replan keeps (9.8.5, WP25)
+
+A step back to Plan archives `groups.json` with the plan its tasks were built from, and moves each group branch to its
+kept ref. After the new approval the first Build action is `temper group keep` (`scripts/group_keep.py`): a task is kept
+when its files, Depends and Test are those of the archived plan, every task it depends on is kept, and its group's
+Depends, and the groups those name, are unchanged and fully kept. A kept group's branch comes back from its kept ref, at
+the commit of its last kept task; the task records come back as passed, with their entries of `cli_commits`. The
+group's verdict is kept only when every task of it is kept and its Validate and Interfaces are equal. Everything else
+runs as a new group does. The approval card of the replan says how many built tasks it keeps.
 
 ### The budget (9.8.5, ADR 0019)
 
@@ -500,12 +537,13 @@ Every repeat that follows a failed check is counted by the CLI in one record, `.
 check that failed, its key: `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance` or `pipeline` (a failed `integrate`
 spends under `gate:build`). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
 gate (from Build, a failed or parked group's key), a group fix, the group's tasks again, more time at a failed group
-check, a plan patch, a task retry, a task checked again after an environment fault, a reopened acceptance test, a CI
-fix round, and a merge again after a failed `integrate`. A step back by `state set next_stage` spends as a
-`state loop` does. One CI fix round is one entry, under `pipeline`: the `state redo pipeline` of its steps answers the
+check, a plan patch, a plan amendment, a task retry, a task checked again after an environment fault, a reopened
+acceptance test, a CI fix round, and a merge again after a failed `integrate`. A step back by `state set next_stage`
+spends as a `state loop` does. One CI fix round is one entry, under `pipeline`: the `state redo pipeline` of its steps answers the
 failure that round paid for and spends nothing more. A change at a passed gate spends nothing. The CLI's dispatcher
 checks the call before it runs: past a limit it prints `BLOCKED: ...`, exits 1 and writes nothing. No flag and no
-variable exempts a call, and a call refused later for its own reason has spent its repeat.
+variable exempts a call, and a call refused later for its own reason has spent its repeat. A plan patch and a plan
+amendment spend inside their own scripts, once every check of theirs holds, so a refused one spends nothing.
 
 `temper next` never offers a call the budget refuses: the calls and steps of one option are checked
 together, in order, against both limits. A question that would offer one becomes `run.budget` (header

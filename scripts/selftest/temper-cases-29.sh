@@ -361,7 +361,7 @@ _p29_call="$(nx "o = next(x for x in d['ask']['options'] if any(' plan patch ' i
 [[ "$_p29_call" == *"plan patch "* ]] && bash -c "${_p29_call//\{answer\}/bash fast-g1.sh --quick}" >/dev/null 2>&1
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 gpass review; "$TEMPER" state advance review_complete check >/dev/null 2>&1
-gpass check; "$TEMPER" state advance check_complete commit >/dev/null 2>&1
+gpass check   # the run asks at every stage: check.pass carries the commit card (scripts/card.py kind_of)
 assert_eq "patch: the question and the card show the command word for word" \
   "patch offered|old command shown|patched|card shows the new command" \
   "$_p29_q|$(grep -c '^\*\*Validate:\*\* `bash fast-g1.sh --quick`' .temper/specs/demo/tasks.md | sed 's/^1$/patched/;s/^0$/not patched/')|$("$TEMPER" card 2>/dev/null | grep -qF 'bash fast-g1.sh --quick' && echo 'card shows the new command' || echo 'card does not show it')"

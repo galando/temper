@@ -97,7 +97,8 @@ orchestrator's conversation carries over except the prompt you were launched wit
   it is on PATH, and needs a new surefire report for each class. `temper gate plan` names a Maven group that breaks this, also
   after `cd backend &&` or with `./mvnw`. A `verify` with a `-Dtest=` or `-Dit.test=` filter can never meet a JaCoCo rule for
   the whole BUNDLE: the gate's `maven filtered verify` row fails it; use `test` for a filter, or add `-Djacoco.skip=true`.
-- A group's Validate and the Integration line must pass on the current code: the CLI runs each once after you return,
+- Every group needs a `**Validate:**` line (the gate's `group validate command` row). A group's Validate and the
+  Integration line must pass on the current code: the CLI runs each once after you return,
   in the background and never in your turn, so no time limit of 300 s applies (a Validate runs the tests that group
   can break, not a long suite).
 - Every scenario carries a `Test:` line: a scoped shell command that proves it on the merged tree and names the test a
