@@ -145,6 +145,25 @@ _s5+="|again=$(_x64 "r = 'says nothing ran' if 'nothing ran' in text(d) else 'ra
 assert_eq "p5fixf a group's Validate in the owner's run text: the coverage folder is made in its worktree, the coverage data it leaves is no part of a group fix, and a failure the store ran again is not called a run that did not happen" \
   "folder=PASS:runs 1|base=green |fix=empty 1,commits 0|again=ran again" "$_s5"
 
+# --- p5fixg a folder a group check left: its files are no part of a group fix, a source file the fix agent writes there is ---
+_group66 "$P64/covw"
+printf '#!/bin/sh\nmkdir -p gen66 && echo data > gen66/out.txt\necho data > .coverage\nexec "%s/suite" cov\n' "$P64" > "$P64/covw"
+echo fail > "$P64/suite.mode"; "$TEMPER" group gate G1 >/dev/null 2>&1
+_wt66="$(python3 -B -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1']['worktree'])")"
+_c66="$(git -C "$_wt66" rev-list --count HEAD)"
+_s7="left=$(python3 -B - "$REPO_ROOT/scripts" "$_wt66" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import run_env
+print(",".join(x for x in run_env.store_read(run_env._store(sys.argv[2])).get(run_env.BYPRODUCTS) or [] if "gen66" in x))
+PY
+)"
+"$TEMPER" group fix G1 >/dev/null 2>&1; echo 'echo fixed' > "$_wt66/gen66/api.sh"; "$TEMPER" group fix G1 --commit >/dev/null 2>&1
+_s7+="|fix=empty $(python3 -B -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('fix_empty'))"),commits $(( $(git -C "$_wt66" rev-list --count HEAD) - _c66 ))"
+_s7+="|files=$(git -C "$_wt66" show --name-only --format= HEAD | paste -sd, -)"
+assert_eq "p5fixg a folder a group check left: the fix commit holds the source file the fix agent wrote in it, not the check's own file there" \
+  "left=gen66/|fix=empty None,commits 1|files=gen66/api.sh" "$_s7"
+
 # --- p5fixf a coverage program that cannot start (exit 127): the group check, integrate and the planted bugs use the suite ---
 _group66 "nosuchcov66 $P64/suite cov"; "$TEMPER" group gate G1 >/dev/null 2>&1
 _s6="group=$(_gv66),$(_ledger64 build "next(('the test text' if __import__('shlex').split(str(x.get('cmd'))) == ['$P64/suite'] else str(x.get('cmd')) for x in rows if x.get('claim') == 'Group G1 validate'), 'no row')")"

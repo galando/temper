@@ -457,8 +457,8 @@ elif mode == 'grouprun':
                 'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
                 'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                 'output': out[-4096:].decode('utf-8', 'replace')}, **row_fields(info))
-    if rc != 0:
-        row['fail_lines'] = fail_lines(out, rc=rc)
+    if rc != 0:   # the whole list the run kept, which the gate compares with the base (baseline.like_base)
+        row['fail_lines'] = info.get('fail_lines') or fail_lines(out, rc=rc)
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
