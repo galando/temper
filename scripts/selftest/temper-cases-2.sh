@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Part 2 of the temper CLI test suite: config, evidence run, metrics, plans and the plugin folder.
+# Part 2 of the temper CLI test suite: config, evidence run, plans and the plugin folder.
 # Sourced in order by test-temper.sh, which sets up the helpers, WORKDIR and the counters;
 # not meant to run on its own.
 
@@ -75,53 +75,6 @@ assert_exit "imports hook: empty denylist stays a no-op" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/risky.js\"}}' | bash '$IMPORTS'"
 
 # --- v9 hardening: adversarial-review fixes (must never regress) ---
-
-# metrics append: the value is parsed by float() INSIDE python (argv), never
-# interpolated into source. A crafted payload must NOT execute and must exit 1.
-setup
-rm -f INJECTED
-"$TEMPER" metrics append cov "1');import os;os.system('touch INJECTED')#" >/dev/null 2>&1
-assert_eq "metrics append: an injection payload does not execute" "no" "$([[ -f INJECTED ]] && echo yes || echo no)"
-assert_exit "metrics append: an injection payload is rejected as non-numeric" 1 \
-  "$TEMPER" metrics append cov "1');import os;os.system('touch INJECTED')#"
-rm -f INJECTED
-
-# metrics append + bands agree on the friendly alias: `tests` lands in test_count_history,
-# which bands' `tests` metric reads — a recorded point must actually be band-able.
-setup
-rm -f .temper/metrics.json
-"$TEMPER" metrics append tests 42 >/dev/null
-assert_eq "metrics append tests writes the alias array bands reads (test_count_history)" "yes" \
-  "$(python3 -c "import json; d=json.load(open('.temper/metrics.json')); print('yes' if 'test_count_history' in d and 'tests_history' not in d else 'no')")"
-
-# bands never crashes on valid-but-small config — the spine's 'never a crash' contract.
-setup
-rm -f .temper/metrics.json
-for v in 80 81 82 83 84; do "$TEMPER" metrics append coverage $v >/dev/null; done
-cat >> .claude/temper.config <<'EOF'
-bands:
-  window: 0
-  metrics: [coverage]
-EOF
-assert_exit "bands: window 0 does not crash (exit 0/1, never a traceback)" 1 "$TEMPER" bands
-setup
-rm -f .temper/metrics.json
-for v in 80 81 82 83 84; do "$TEMPER" metrics append coverage $v >/dev/null; done
-cat >> .claude/temper.config <<'EOF'
-bands:
-  window: 2.5
-  metrics: [coverage]
-EOF
-assert_exit "bands: a non-integer window does not crash" 1 "$TEMPER" bands
-setup
-rm -f .temper/metrics.json
-"$TEMPER" metrics append coverage 80 >/dev/null
-cat >> .claude/temper.config <<'EOF'
-bands:
-  min-points: 1
-  metrics: [coverage]
-EOF
-assert_exit "bands: min-points 1 with a single point is graceful, not a crash" 0 "$TEMPER" bands
 
 # _glob_touch_match (park-on-touch): proper segment match, not a loose substring.
 # Assert on the park-on-touch requirement LINE, not the whole gate verdict (which also

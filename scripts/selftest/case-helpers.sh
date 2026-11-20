@@ -106,6 +106,13 @@ _base_known() { # WP20: the baseline on record as not run, so no case of the bas
   mkdir -p .temper/evidence
   printf '{"result": "unknown", "why": "not run in the selftest"}\n' > .temper/evidence/baseline.json
 }
+ev_red() { # ev_red <stage> <claim>: a failing test run the CLI made and recorded (WP30: a run an agent only claimed with
+           # `temper evidence add --exit N` counts at no gate, so a case that needs a RED row records a real one)
+  "$TEMPER" evidence run --stage "$1" --phase red --claim "$2" -- false >/dev/null 2>&1
+}
+ev_green() { # ev_green <stage> <claim>: a passing test run the CLI made and recorded (WP30)
+  "$TEMPER" evidence run --stage "$1" --phase green --claim "$2" -- true >/dev/null 2>&1
+}
 fresh() { # a new run of the demo spec at Intent, with the run state written by the CLI
   setup
   rm -f .temper/groups.json .temper/view.json

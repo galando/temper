@@ -224,7 +224,7 @@ assert_eq "verify-stage-gate reached through a symlink blocks and names its real
 ln -s "$CL_HOME" "$WORKDIR/cl-home-link"
 for sub in "init" "state init foo" "state set stage x" "state get" "state archive" "state clear" \
            "evidence add --stage build --claim x" "evidence list --stage build" "gate intent" "status" "report" \
-           "bands" "metrics append coverage 42" "override plan --reason x"; do
+           "override plan --reason x"; do
   assert_exit "the CLI refuses '$sub' in the home folder" 1 bash -c "cd '$CL_HOME' && HOME='$CL_HOME' '$CL_T' $sub"
 done
 ERR=$(cd "$CL_HOME" && HOME="$CL_HOME" "$CL_T" status 2>&1 >/dev/null; true)

@@ -648,7 +648,9 @@ print(next((x['name'] for x in e.get('requirements') or [] if x.get('name', '').
 fresh; sed -i '/^evidence:$/d; /claimed-runs:/d' .claude/temper.config; gpass intent plan build review; _at check
 "$TEMPER" evidence add --stage check --claim 'tests: unit' --exit 0 >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
 _d34a_default="$(_tests_row44)"
-fresh; gpass intent plan build review; _at check   # the fixture's config holds evidence.claimed-runs: count
+fresh; sed -i '/^evidence:$/d; /claimed-runs:/d' .claude/temper.config   # WP30: the key written here, so the half stays a
+printf 'evidence:\n  claimed-runs: count\n' >> .claude/temper.config        # case of it when the selftest's config drops it
+gpass intent plan build review; _at check
 "$TEMPER" evidence add --stage check --claim 'tests: unit' --exit 0 >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
 assert_eq "D34a a test run recorded with evidence add passes no row, and evidence.claimed-runs: count changes nothing" \
   "default=False|count=False" "default=$_d34a_default|count=$(_tests_row44)"

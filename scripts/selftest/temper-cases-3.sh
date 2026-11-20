@@ -7,7 +7,7 @@
 assert_eq "the throwaway test folder is not inside the repo, so no case here runs the CLI inside the plugin folder" "no" \
   "$(wd="$(cd "$WORKDIR" && pwd -P)"; rr="$(cd "$REPO_ROOT" && pwd -P)"; [[ "${wd#"$rr"/}" != "$wd" ]] && echo yes || echo no)"
 for sub in "init" "state init demo" "state get" "evidence add --stage build --claim x" "gate intent" \
-           "status" "report" "bands" "metrics append x 1" "override plan --reason x"; do
+           "status" "report" "override plan --reason x"; do
   assert_exit "the CLI refuses '$sub' in a folder inside the plugin folder" 1 \
     bash -c "cd '$CLI_PLUGIN/inner/sub' && '$CLI_PLUGIN/scripts/temper' $sub"
 done
@@ -103,7 +103,7 @@ LNK_BEFORE="$(plugin_state)"
 link_project
 ln -s "$LNK_PLUG/shipped" "$LNK_PROJ/.temper"
 for sub in "init" "state init foo" "state get" "state archive" "state clear" "evidence add --stage build --claim x" \
-           "gate intent" "status" "report" "bands" "metrics append coverage 42" "override plan --reason x"; do
+           "gate intent" "status" "report" "override plan --reason x"; do
   assert_exit "the CLI refuses '$sub' when .temper is a symlink (exit 3)" 3 bash -c "cd '$LNK_PROJ' && '$LNK_T' $sub"
 done
 ERR=$(cd "$LNK_PROJ" && "$LNK_T" init 2>&1 >/dev/null; true)
@@ -113,8 +113,8 @@ assert_eq "config get and model still answer next to a symlinked .temper" "auto|
   "$(cd "$LNK_PROJ" && TEMPER_CONFIG="$WORKDIR/.claude/temper.config" "$LNK_T" config get stack)|$(cd "$LNK_PROJ" && "$LNK_T" model plan)"
 link_project
 ln -s ../link-plugin/.temper "$LNK_PROJ/.temper"
-assert_exit "metrics append refuses a relative .temper symlink to the plugin's own .temper" 3 \
-  bash -c "cd '$LNK_PROJ' && '$LNK_T' metrics append coverage 42"
+assert_exit "evidence add refuses a relative .temper symlink to the plugin's own .temper" 3 \
+  bash -c "cd '$LNK_PROJ' && '$LNK_T' evidence add --stage build --claim x"
 link_project
 ln -s "$WORKDIR/no-such-folder" "$LNK_PROJ/.temper"
 assert_exit "init refuses a .temper symlink whose target does not exist" 3 bash -c "cd '$LNK_PROJ' && '$LNK_T' init"
