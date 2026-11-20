@@ -2883,17 +2883,17 @@
    },
    "driver": {
     "now": {
-     "dialogs": 11,
+     "dialogs": 9,
      "by_stage": {
-      "build": 4,
+      "build": 3,
       "check": 1,
       "commit": 1,
       "plan": 2,
       "rca": 1,
-      "review": 2
+      "review": 1
      },
      "by_kind": {
-      "gate": 9,
+      "gate": 7,
       "group": 2
      },
      "launches": {
@@ -2908,8 +2908,8 @@
       "temper:temper-review": 3
      },
      "launch_total": 16,
-     "auto": 21,
-     "back": 1,
+     "auto": 22,
+     "back": 0,
      "handbacks": 0,
      "suite_runs": 0
     }
