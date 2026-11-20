@@ -402,11 +402,16 @@ const TOO_MANY_DENY =
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
-  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', ...STAGES]
+  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', 'close', ...STAGES]
 
 const RESOLVE_DENY =
   'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
   `Next: ${ASK} for a decision on the finding.`
+
+// WP24: a repair window ends with the CLI's own `repair commit` (the fixer's after call), never as a small change.
+const REPAIR_CLOSE_DENY =
+  'Temper: a repair window is closed by temper repair commit, the fixer\'s after call: the CLI commits the fix, runs the checks again, and a reader rechecks it. ' +
+  'Do not close it as a small change. Next: finish the fix, commit nothing, and return.'
 
 const GLOB_DENY =
   'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
@@ -485,6 +490,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   // `--accept-for?ign`): bash expands it when a file of that name exists. Any other glob (`sonnet[1m]`) is no refusal.
   if (c.globWords.some(ws => ws.some(w => PERSON_WORDS.some(t => globCould(w, t) || globCould(w.split('=')[0] ?? w, t))))) return { deny: GLOB_DENY }
   const r = ctx.run
+  if (repairOpen(r) && c.calls.some(call => { const [a, b] = callWords(call); return a === 'adhoc' && b === 'close' })) return { deny: REPAIR_CLOSE_DENY }
   // WP20: one answer at base.red is one recorded skip: a second accept-red in the same command is not it
   let wentOn = false
   for (const call of c.calls) {

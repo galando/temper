@@ -636,6 +636,25 @@ describe('WP24: the repair in the stage', () => {
     expect(isDeny(write(ctx('check', { facts: atCheck }), 'src/billing.ts'))).toBe(true)
     expect('allow' in write(ctx('check', { facts: atCheck }), 'src/app.ts')).toBe(true)
   })
+  test('adhoc close inside a repair window is refused: repair commit ends it; in a small change window it passes', () => {
+    for (const stage of ['review', 'check'] as const) {
+      const facts = { adhocStage: stage, ...({ adhocKind: 'repair' } as unknown as Over) }
+      for (const cmd of [`${CLI} adhoc close`, `${CLI} adhoc close && ${CLI} next --json`]) {
+        const r = bash(ctx(stage, { facts }), cmd)
+        expect(isDeny(r) && r.deny.includes('repair commit'), `${stage}: ${cmd}`).toBe(true)
+      }
+      expect('allow' in bash(ctx(stage, { facts: { adhocStage: stage } }), `${CLI} adhoc close`), stage).toBe(true)
+    }
+  })
+  test('inside a repair window the drift ask the scope drift text names passes the guard (the CLI takes it from the fixer)', () => {
+    for (const stage of ['review', 'check'] as const) {
+      const facts = { adhocStage: stage, ...({ adhocKind: 'repair' } as unknown as Over) }
+      const r = write(ctx(stage, { facts }), 'src/billing.ts')
+      const named = isDeny(r) ? /(\S*temper drift ask --path src\/billing\.ts) /.exec(r.deny)?.[1] : undefined
+      expect(named, stage).toBeDefined()
+      expect('allow' in bash(ctx(stage, { facts }), `${named} --why 'the fix needs it' --change 'one line'`), stage).toBe(true)
+    }
+  })
   test('the control: a small change window still allows any path', () => {
     for (const stage of ['review', 'check'] as const) {
       expect('allow' in write(ctx(stage, { facts: { adhocStage: stage } }), 'src/billing.ts'), stage).toBe(true)

@@ -338,7 +338,10 @@ fresh `temper:temper-build` agent whose prompt has the line `Repair in place:` a
 suggested fix, proof field; at Check the failed row with its whole kept output); its after call is `temper repair
 commit`. The CLI commits only the changed files that are approved or a test (never the spec folder, the config, the git
 folder, a locked acceptance test, a lockfile or manifest, a CI file or a sensitive path: those ask `scope.drift`, with
-nothing committed), refuses a commit when HEAD moved, records `changed: 0` and asks when nothing changed, and asks
+nothing committed, for a file no answer can let through first, and offer Add to plan and Allow once only for a file
+outside the plan). The fixer may also ask with `temper drift ask`, as at Build: `repair commit` then commits nothing,
+`next` asks `scope.drift`, and the fixer runs again with its `Drift decision:` line. `temper adhoc close` is refused
+while a repair window is open. `repair commit` refuses a commit when HEAD moved, records `changed: 0` and asks when nothing changed, and asks
 `repair.stop` showing the lines when the diff removes a line of a test file that existed at the base. It commits as
 `fix(<slug>): repair N at <stage>` through the carve out `repair commit` of the commit gate, takes the Review snapshot
 again, and runs `integrate` and `gate build` (at Check also `check run` and `gate check`) on the new tree. Then `next`

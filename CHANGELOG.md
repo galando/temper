@@ -213,7 +213,9 @@ All notable changes to Temper are documented here. The plugin version lives in
   CLI and asked (`repair.stop`); a diff that removes test lines, a file outside the plan, the spec folder, the config,
   a lockfile, a CI file or a sensitive path is never committed by rule. One repair by rule a stage, one more on your
   click (`Repair again`), counted in the one budget; the rule's loop back to Build is gone, and the loop back stays
-  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs.
+  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs, in
+  every run. The fixer asks about a file outside the plan with `temper drift ask`, as at Build, and `adhoc close`
+  never closes a repair window.
 - WP25: a plan fault a narrow change repairs costs no replan (ADR 0019, ADR 0021). A task blocked on a file another
   task of its own group declares is amended by rule, in every mode, with no question: the CLI's own
   `temper plan amend task N --add-file F` adds the file and one Depends entry on its owner, and nothing else, refuses

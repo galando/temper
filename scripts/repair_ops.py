@@ -162,9 +162,11 @@ def cli(path, *words):
 
 # ---- what a repair reads -----------------------------------------------------------------------------------------------
 
-def is_test(p):
+def is_test(p, gate=False):
+    """A test file: with gate, the commit gate's pattern, what a repair may commit beside the plan (step 6.3); else also a
+    shell test, as task_ops reads it, for the one test rule and the recheck (F8: the gate's pattern stays the base's)."""
     import commit_rows
-    return bool(commit_rows.TEST_RE.search(p))
+    return bool(commit_rows.TEST_RE.search(p) or (not gate and re.search(r"_test\.sh$", p)))
 
 
 def step_of(d):
@@ -394,7 +396,7 @@ def refused_file(p, r, spec, config, allowed):
         return "%s is a dependency manifest or lockfile" % p
     if CI_FILE.search(norm):
         return "%s is a CI file" % p
-    if norm in allowed or is_test(norm):
+    if norm in allowed or is_test(norm, gate=True):
         return None
     return "%s is outside the approved file set" % p
 
@@ -575,6 +577,10 @@ def commit(r, cli_path):
     if w.get("commit"):
         print("OK: repair %s is committed already (%s)" % (w["n"], w["commit"][:7]))
         return 0
+    asked = [x["path"] for x in r.drifts() if not (x["choice"] and x["delivered"])]
+    if asked:   # the fixer asked about a file (temper drift ask): the person answers scope.drift and the fixer runs again first
+        print("OK: repair %s is not committed: the fixer asked about %s; the run asks the person first" % (w["n"], ", ".join(asked)))
+        return 0
     change_state(lambda d: d.pop("repair_stop", None))   # the person answered what it asked (scope.drift): commit again
     head = out("rev-parse", "HEAD")
     if head != w.get("base"):
@@ -593,7 +599,7 @@ def commit(r, cli_path):
         return 0
     allowed = allowed_files(r)
     bad = [(f, refused_file(f, r, r.spec, config, allowed)) for f in files]
-    bad = [(f, y) for f, y in bad if y]
+    bad = sorted([(f, y) for f, y in bad if y], key=lambda x: x[1].endswith("outside the approved file set"))   # F9: no answer lifts these
     if bad:
         stop("drift", "; ".join(y for _, y in bad), path=bad[0][0], files=[f for f, _ in bad])
         print("STOP: repair %s is not committed: %s; the change stays in the work tree and the run asks" % (
@@ -849,7 +855,7 @@ def carve():
     if not w.get("commit"):
         r = run_of(None)
         allowed = allowed_files(r)
-        if any(f not in allowed and not is_test(f) for f in staged):
+        if any(f not in allowed and not is_test(f, gate=True) for f in staged):
             return 1
     elif tok.get("tree") != w.get("base_tree"):
         return 1
