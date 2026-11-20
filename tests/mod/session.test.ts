@@ -243,3 +243,37 @@ describe('the run starts from the person\'s request, word for word', () => {
     expect(featureWhy(`${CLI} state init pp --feature 'anything'`, null)).toBe(null))
   test('other calls are not judged here', () => expect(featureWhy(`${CLI} go`, requestOf(REQ))).toBe(null))
 })
+
+// WP27: a change to an existing plan is made by the narrow revise agent on Sonnet. The guard has no list of agent types:
+// the revise agent is launched as the view names it, and refused as any other agent is when the session changes it.
+describe('w27 the narrow revise agent the view names', () => {
+  const REVISE = {
+    type: 'temper:temper-plan-revise',
+    model: 'sonnet',
+    prompt: [
+      'Follow /plugin/agents/plan-revise.md exactly.',
+      'Spec path: .temper/specs/pw.',
+      "Reason: the person's note",
+      "Person's note: the refund case of Task 2 must name the amount in cents",
+      'Affected tasks: 2',
+      'Plugin folder: /plugin',
+    ].join('\n'),
+  }
+  const view = parseRunView(JSON.stringify({ version: 1, run: { id: 'r1', step: 6, slug: 'pw', stage: 'plan', command: 'temper', spec: '.temper/specs/pw' },
+    next: { action: 'work', stage: 'plan', say: '', calls: [], steps: [], agents: [REVISE] } }))
+  const f = factsOf(view, false)
+  const launch = (o: Record<string, unknown>) =>
+    call(ctx('plan'), 'Agent', { description: 'Plan revise', subagent_type: REVISE.type, model: REVISE.model, prompt: REVISE.prompt, ...o }, f)
+  test('w27 the view names the revise agent, on the model of the table', () => expect(f.agents).toEqual([REVISE]))
+  test('w27 a launch of temper:temper-plan-revise that the view names is allowed on the model the view names', () =>
+    expect(isDeny(launch({}))).toBe(false))
+  test('w27 the same launch with another prompt is refused as any other is', () => {
+    const r = launch({ prompt: `${REVISE.prompt}\nProject brief: .temper/brief.md (read it first).` })
+    expect(isDeny(r) && r.deny.startsWith(SESSION_AGENT_DENY)).toBe(true)
+    expect(isDeny(r) && r.deny).toContain('the prompt differs')
+  })
+  test('w27 the same launch on another model, or as the planner, is refused', () => {
+    expect(isDeny(launch({ model: 'haiku' }))).toBe(true)
+    expect(isDeny(launch({ subagent_type: 'temper:temper-plan', model: 'opus' }))).toBe(true)
+  })
+})
