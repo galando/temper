@@ -22,7 +22,8 @@ cannot. `{spec_path}` is the project's `.temper/specs/{slug}` folder, never a pa
    framework. Test through the feature's entry point (the API handler, the public function, the command), never
    through a helper the plan may not keep. Each test asserts the behavior the criterion and the Decisions state, with
    exact values where they give them. Name each test after its criterion (`test_ac03_clerk_gets_403`). A criterion
-   that no automated test can check (`Validate: manual` or a metric) gets no test; list it in your panel.
+   that no automated test can check (`Validate: manual`), or one the CLI proves by its own command (`code` or `metric`
+   with a command in backticks), gets no test; list it in your panel.
 
    **Every state.** When intent.md has a `**States:**` line, write for each state a test that brings a record into it
    and reads it back through the feature's read path (a canceled subscription is still read as `canceled`, unless the

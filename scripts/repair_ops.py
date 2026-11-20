@@ -184,14 +184,15 @@ def this_round(d, stage):
 
 
 def manual_ids(r):
-    """The ids of the required, open criteria of intent.md that only the person confirms (Validate type manual)."""
+    """The ids of the required, open criteria of intent.md that only the person confirms (Validate type manual, or code
+    or metric with no command in backticks: acceptance.by_person)."""
     if not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
         return []
     try:
         import acceptance
         lines = open(os.path.join(r.spec, "intent.md"), encoding="utf-8").read().splitlines()
         return [c["id"] for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria"))
-                if c.get("id") and c.get("vtype") == "manual" and not c.get("placeholder")]
+                if c.get("id") and acceptance.by_person(c) and not c.get("placeholder")]
     except Exception:
         return []
 

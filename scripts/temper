@@ -13,7 +13,7 @@
 #                                                 archive writes gate-ledger.json in the spec folder
 #   temper evidence <add|run|list|resolve|accept|clear> ...  append/execute-and-record/read/mark-fixed/clear the ledger
 #   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
-#   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
+#   temper model <agent> | --all [--source]       an agent's model (config keys > the table of cli_ctx.py)
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
 #   temper status [--json] [--spec-path P]        per-criterion passed/open view; writes .temper/status.json
@@ -460,101 +460,16 @@ _cfg_get() { # _cfg_get <dot.path> [default]
 }
 
 # ---
-# model — resolve which model a stage runs on.
-#
-# v7 replaced the v6 `models.routing`/`models.tiers` config with fixed `model:`
-# frontmatter in each stage brief (see _agent_file), because the old block was a *resolution algorithm* a
-# prompt had to execute correctly on every run. That diagnosis still holds; what it cost
-# was the ability to change a model without editing plugin-owned files, which matters
-# every time a new model generation ships.
-#
-# So: the frontmatter stays the source of truth for defaults (no table to drift out of
-# sync with it), an optional flat `models.{stage}` config key overrides it, and the
-# lookup lives here — one deterministic call, no algorithm in prose.
+# model: which model an agent runs on. WP27: one table in scripts/cli_ctx.py (by agent, and by the class of the run:
+# standard, or high for a complex tier or risk H), with the keys models.<agent> and models.high.<agent> over it. The
+# lookup is one deterministic call, no algorithm in prose; each brief's model line equals the table's standard value.
 # ---
 
-_agent_file() { # <stage> -> its brief, each path written out in full (an unknown stage has none)
-  case "$1" in
-    intent) echo "$PLUGIN_ROOT/agents/intent.md" ;;
-    plan)   echo "$PLUGIN_ROOT/agents/plan.md" ;;
-    design) echo "$PLUGIN_ROOT/agents/design.md" ;;
-    build)  echo "$PLUGIN_ROOT/agents/build.md" ;;
-    review) echo "$PLUGIN_ROOT/agents/review.md" ;;
-    check)  echo "$PLUGIN_ROOT/agents/check.md" ;;
-    pipeline) echo "$PLUGIN_ROOT/agents/pipeline.md" ;;
-    rca)    echo "$PLUGIN_ROOT/agents/rca.md" ;;
-    fix)    echo "$PLUGIN_ROOT/agents/fix.md" ;;
-    *)      echo "" ;;
-  esac
-}
-
-_agent_default_model() { # <stage> -> the `model:` line in that stage brief's frontmatter
-  local f; f="$(_agent_file "$1")"
-  [[ -n "$f" && -f "$f" ]] || { echo ""; return; }
-  awk '
-    /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
-    n == 1 && /^model:/ { sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
-  ' "$f" 2>/dev/null
-}
-
-_resolve_model() { # <stage> -> config override, else frontmatter default, else ""
-  local override; override="$(_cfg_get "models.${1}" "")"
-  [[ -n "$override" ]] && { echo "$override"; return; }
-  _agent_default_model "$1"
-}
-
-_resolve_task_model() { # grouped task agent: config, else agents/build-task.md frontmatter, else the constant
-  local m; m="$(_cfg_get build.grouped.task-model "")"
-  [[ -n "$m" ]] && { echo "$m"; return; }
-  # 9.8.4: a complex or risk H plan builds on sonnet (cli_ctx.py risky_run, RISK_TASK_MODEL)
-  [[ -f "$STATE_FILE" ]] && [[ "$(_json_get_path "$STATE_FILE" complexity "")" == complex || "$(_json_get_path "$STATE_FILE" risk "")" == H ]] && { echo sonnet; return; }
-  local f="$PLUGIN_ROOT/agents/build-task.md"
-  [[ -f "$f" ]] && m="$(awk '
-    /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
-    n == 1 && /^model:/ { sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
-  ' "$f" 2>/dev/null)"
-  echo "${m:-claude-haiku-5-5}"
-}
-
-_resolve_task_escalation_model() {
-  local m; m="$(_cfg_get build.grouped.escalation-model "")"
-  echo "${m:-sonnet}"
-}
-
-cmd_model() {
-  local stage="${1:-}"
-  if [[ "${2:-}" == "--source" && "$stage" == "--all" ]]; then   # each model and where it comes from (cli_ctx.py)
-    python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --source
-    return
-  fi
-  if [[ -z "$stage" || "$stage" == "--all" ]]; then
-    local s m rc=0
-    for s in $AGENT_STAGES; do
-      m="$(_resolve_model "$s")"
-      [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$s' (is its brief in the plugin's agents folder?)" >&2; rc=1; continue; }
-      echo "${s}=${m}"
-    done
-    echo "task=$(_resolve_task_model)"
-    echo "task-escalation=$(_resolve_task_escalation_model)"
-    return $rc
-  fi
-
-  case "$stage" in
-    task) _resolve_task_model; return 0 ;;
-    task-escalation) _resolve_task_escalation_model; return 0 ;;
-  esac
-
-  case " $AGENT_STAGES " in
-    *" $stage "*) ;;
-    *) echo "FAIL: unknown stage '$stage' (one of: $AGENT_STAGES, or --all)" >&2; return 1 ;;
-  esac
-
-  local m; m="$(_resolve_model "$stage")"
-  # Fail loudly rather than printing an empty string the orchestrator would paste into
-  # an Agent launch. That is only reachable if the plugin's files are incomplete.
-  [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$stage' (is its brief in the plugin's agents folder?)" >&2; return 1; }
-  echo "$m"
-}
+# WP27: one resolver, the table of models of scripts/cli_ctx.py with the config keys over it; no default of its own
+cmd_model() { python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --state-file "$STATE_FILE" "$@"; }
+_resolve_model() { cmd_model "$1"; }
+_resolve_task_model() { cmd_model task; }
+_resolve_task_escalation_model() { cmd_model task-escalation; }
 
 # ---
 # init

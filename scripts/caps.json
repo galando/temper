@@ -9,7 +9,8 @@
   "scripts/flow_build.py",
   "scripts/flow_commit.py",
   "scripts/flow_view.py",
-  "scripts/flow_repair.py"
+  "scripts/flow_repair.py",
+  "scripts/flow_revise.py"
  ],
  "caps": {
   "question_sites": {
@@ -38,7 +39,7 @@
    "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, or a printed dict of a name and a pass), name lines of gate_rows.py"
   },
   "agent_briefs": {
-   "now": 12,
+   "now": 13,
    "final": 13,
    "measure": "measure_agent_briefs: files of agents/*.md"
   },
@@ -68,7 +69,7 @@
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 300275,
+   "now": 303834,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
@@ -78,7 +79,7 @@
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 218719,
+   "now": 215348,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

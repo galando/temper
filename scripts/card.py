@@ -202,6 +202,12 @@ def command_rows(r):
                 out.append(cell("Task %d: %s" % (n, t["test"])))
     if plan.get("integration"):
         out.append(cell("all: %s" % plan["integration"]))
+    # WP27: a criterion validated by code or a metric is a command the CLI runs at Build and at Check: the approval is of
+    # every command a gate will run
+    lines = (r.intent or "").splitlines()
+    for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria")):
+        if c.get("id") and c.get("vcmd") and not c.get("deferred"):
+            out.append(cell("%s: %s" % (c["id"], c["vcmd"])))
     return out
 
 
@@ -209,18 +215,17 @@ def launches(b):
     """How many agents of which kind the run launches after the click, with the model of each kind."""
     r = b.r
     plan = r.plan or {"tasks": []}
-    models = r.ctx.get("models") or {}
     short = lambda m: re.sub(r"^claude-(haiku|sonnet|opus|fable)-\d.*$", r"\1", str(m or "")) or "its model"
-    acc = r.cfg("models.acceptance", "") or models.get("acceptance") or "sonnet"
+    acc = r.model("acceptance")
     parts = []
     if r.command == "temper" and r.intent:
         parts.append("1 test writer (%s)" % short(acc))
     if r.stage == "plan" and r.has_design():
-        parts.append("1 designer (%s)" % short(models.get("design") or "opus"))
+        parts.append("1 designer (%s)" % short(r.model("design")))
     n = len(plan.get("tasks", []))
     if n:
         parts.append("%d builder%s (%s)" % (n, "" if n == 1 else "s", short(b.task_model())))
-    parts.append("1 reviewer (%s)" % short(models.get("review") or "sonnet"))
+    parts.append("1 reviewer (%s)" % short(r.model("review")))
     return [cell(", ".join(parts))]
 
 

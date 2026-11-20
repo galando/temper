@@ -10,7 +10,7 @@ assert_eq "F5: cli_ctx models gives the same model for every name" \
   "$("$TEMPER" model --all | sort | tr '\n' ' ')" \
   "$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config | sort | tr '\n' ' ')"
 OUT="$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config --source | grep '^task=')"
-assert_eq "F5: --source says the task model comes from its brief" "task=claude-haiku-5-5 (brief)" "$OUT"
+assert_eq "F5: --source says the task model comes from its brief" "task=sonnet (table)" "$OUT"
 rm -f .temper/view.json
 "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "F5: one next call writes .temper/view.json" "run-ok" \
@@ -54,7 +54,7 @@ PYT
 
 # --- F2. The model of each stage, and of the running attempt, is named ---
 fresh
-assert_eq "F2: model --all --source says a stage's model comes from its brief" "1" "$("$TEMPER" model --all --source | grep -c '^plan=.* (brief)$')"
+assert_eq "F2: model --all --source says a stage's model comes from its brief" "1" "$("$TEMPER" model --all --source | grep -c '^plan=.* (table)$')"
 printf 'models:\n  plan: opus\nbuild:\n  grouped:\n    task-model: sonnet\n' > .claude/temper.config
 assert_eq "F2: a config override is named as one" "plan=opus (config)|task=sonnet (config)" \
   "$("$TEMPER" model --all --source | grep -E '^(plan|task)=' | tr '\n' '|' | sed 's/|$//')"
@@ -68,7 +68,7 @@ printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "statu
 assert_eq "F2: the wait action of attempt 3 names the escalation model, in the task and in its gate call" "wait|sonnet|1" \
   "$(nx "'|'.join([d['action'], d['tasks'][0]['model'], str(d['tasks'][0]['after'][0].count('--model sonnet '))])")"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "status": "started"}}, "tasks": {"1": {"status": "running", "attempt": 1, "group": "G1"}}}\n' > .temper/groups.json
-assert_eq "F2: attempt 1 names the task model" "claude-haiku-5-5" "$(nx "d['tasks'][0]['model']")"
+assert_eq "F2: attempt 1 names the task model" "sonnet" "$(nx "d['tasks'][0]['model']")"
 
 # --- F3. Every say is a sentence for the person ---
 _banned_say() { # prints the first word of an instruction for Claude found in the text, or nothing
@@ -80,8 +80,8 @@ assert_eq "F3: a stage agent's wait text names the stage, the agent, the model a
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {"1": {"status": "running", "attempt": 1, "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F3: a running task is named with its model, and the run goes on when it returns" \
-  "Build: Task 1 runs on haiku. The run goes on when it returns." "$(nx "d['say']")"
-assert_eq "F3: the status the mod shows is that sentence" "Build: Task 1 runs on haiku. The run goes on when it returns." "$(vw "d['status']")"
+  "Build: Task 1 runs on sonnet. The run goes on when it returns." "$(nx "d['say']")"
+assert_eq "F3: the status the mod shows is that sentence" "Build: Task 1 runs on sonnet. The run goes on when it returns." "$(vw "d['status']")"
 _all_says=""
 fresh; _all_says+="$(vw "d['status']")"$'\n'
 gpass intent; _all_says+="$(vw "d['status']")"$'\n'

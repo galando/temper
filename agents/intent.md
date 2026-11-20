@@ -159,6 +159,8 @@ before. A house rule is a default for the new feature, so it stays a question.
   silent guess is the failure this stage exists to prevent.
 - Every criterion needs a stable `AC-NN` id, a `Why:` line and a `Validate:` type. An
   unlabeled open question or a missing header field fails `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent`.
+- A `code` or `metric` Validate carries its command in backticks, one that exits 0 when the criterion holds; the CLI
+  runs it. A metric that can only be read after release is `manual`.
 - Do not explore the codebase beyond naming and context. Blast radius and architecture
   belong to Plan and Plan's budget.
 - An intent already marked `**Status:** accepted` that passes the gate is read, never

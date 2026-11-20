@@ -86,12 +86,12 @@ than one test (happy path and a variant).
 
 If no `intent.md`: skip this gate, proceed as before.
 
-## Success Criteria Validation (IDD enforcement) — non-blocking
+## Success Criteria Validation (IDD enforcement)
 
-For each success criterion with `Validate: code — {pattern}`: grep for the pattern; ✅ if
-found, WARN "Success criterion not met: {criterion}" if not. `Validate: scenario` is
-already covered by the gate above; `Validate: metric`/`manual` defer to `/temper:review`.
-This is a WARN, not a blocker — report it, don't stop the build over it.
+A criterion validated by `code` or `metric` carries its command in backticks, and the CLI runs it when Build ends
+(`temper integrate`) and at Check, and records the row itself (9.8.5): the Build gate's `criteria validated` row passes
+it only from that row. Record nothing for it. `Validate: scenario` is covered by the gate above; a `manual` criterion,
+or a `code` or `metric` one with no command, is the person's to confirm at the Check question.
 
 ## Context Output
 

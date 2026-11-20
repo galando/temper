@@ -3,7 +3,7 @@
 # The flow: scripts/flow.py, the facade, and the modules it imports (WP03). A case that reads the text of the flow reads it
 # through _flow_text, or names the files by FLOW_FILES (paths from the repository root), so a moved method is still read.
 FLOW_FILES="scripts/flow.py scripts/flow_base.py scripts/flow_run.py scripts/flow_ask.py scripts/flow_work.py
-scripts/flow_build.py scripts/flow_commit.py scripts/flow_view.py scripts/flow_repair.py"
+scripts/flow_build.py scripts/flow_commit.py scripts/flow_view.py scripts/flow_repair.py scripts/flow_revise.py"
 _unattended() { # _unattended <stage>: a fresh unattended run at <stage> (intent, plan, design, build, review, check or
                 # commit), each stage before it passed. WP11: the run is started at the approval, as the person's option
                 # approve-run starts it (state set run_mode autonomous at Plan, its check passed), then advanced (WP07).

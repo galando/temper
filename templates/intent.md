@@ -22,7 +22,7 @@ to ### Decisions, it is never deleted silently.}
 
 - [ ] AC-01 [required]: {specific, measurable criterion} (source: {doc} §{section} | {TICKET})
   Why: {which business outcome, risk, or workflow this criterion serves}
-  Validate: {scenario | code | metric | manual} — {details}
+  Validate: {scenario | code | metric | manual} — {details; for code or metric, the `command` that exits 0 when it holds}
 - [ ] AC-02 [optional]: {criterion} (proposed)
   Why: {which business outcome, risk, or workflow this criterion serves}
   Validate: manual — {details}

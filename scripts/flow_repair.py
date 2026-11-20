@@ -118,7 +118,7 @@ class RepairPart:
                                       "%s: %s." % (answer, found)])
             say = "%s: repair %s changed more than a recheck reads; a full Review reads the change%s. %s"
         else:
-            models = r.ctx.get("models") or {}
+            model = r.model("review")
             others = [f for f in r.findings() if f["state"] == "open" and f["id"] not in (w.get("findings") or [])]
             lines = ["Follow %s/agents/review.md exactly." % self.plugin, "Spec path: %s." % r.spec,
                      "Re-check: repair %s at %s, commit %s. Read only the diff %s/repair-%s.diff (from the reviewed HEAD to the "
@@ -130,8 +130,8 @@ class RepairPart:
                      "%s; a new finding only on a changed line; then one row `review completed` with --cmd recheck, --value <the "
                      "count of ids checked> and one --read for each changed file: %s." % (answer, ", ".join(w.get("files") or [])),
                      self.plugin_line()]
-            a = {"type": "temper:temper-review", "model": models.get("review", ""), "prompt": "\n".join(lines),
-                 "after": [self.c("usage add --stage review --model %s --ms {ms}" % (models.get("review", "") or "unknown"))]}
+            a = {"type": "temper:temper-review", "model": model, "prompt": "\n".join(lines),
+                 "after": [self.c("usage add --stage review --model %s --ms {ms}" % (model or "unknown"))]}
             say = "%s: repair %s is committed and checked; a reader that did not write it rechecks the diff%s. %s"
         # the launch mark only: the CLI ran the suite on the repair tree already, and `check ahead` runs in the
         # background, where it would race the CLI's own revert commit on git's index
