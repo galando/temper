@@ -13,6 +13,7 @@ resolve it, for that commit. A repair that made things worse is reverted, and th
   python3 repair_ops.py CLI CONFIG revert                                 the CLI's own commit back to the reviewed tree
   python3 repair_ops.py CLI CONFIG status                                 the open repair and the closed ones, as JSON
   python3 repair_ops.py CLI CONFIG carve                                  the commit gate's carve out (prints its rows, exit 0)
+  python3 repair_ops.py CLI CONFIG answer CLAIM                           the question a Scope drift answer answers (answer_of)
 
 CLI is the path of scripts/temper, which runs the checks again (integrate, gate build, check run); CONFIG the project's
 config file. The run state keeps `repair` (the open window), `repairs` (the closed ones, each with its number `n`) and
@@ -53,6 +54,7 @@ MANIFEST = re.compile(r"(^|/)(package(-lock)?\.json|npm-shrinkwrap\.json|yarn\.l
                       r"settings\.gradle(\.kts)?|gradle\.lockfile|[^/]*\.csproj|packages\.lock\.json|mix\.(exs|lock))$")
 CI_FILE = re.compile(r"(^|/)(\.github/workflows/|\.circleci/|\.buildkite/)|(^|/)(\.gitlab-ci\.yml|Jenkinsfile|azure-pipelines\.yml|"
                      r"\.travis\.yml|bitbucket-pipelines\.yml|\.drone\.yml)$")
+ANSWER = r"^drift (\S+): (Add to plan|Allow once)\b"   # a Scope drift answer that widens the approved set
 RECHECK = re.compile(r"^\s*recheck #(\d+):\s*(fixed|not fixed)\b", re.I)
 
 
@@ -164,8 +166,9 @@ def cli(path, *words):
 # ---- what a repair reads -----------------------------------------------------------------------------------------------
 
 def is_test(p, gate=False):
-    """A test file: with gate, the commit gate's pattern, what a repair may commit beside the plan (step 6.3); else also a
-    shell test, as task_ops reads it, for the one test rule and the recheck (F8: the gate's pattern stays the base's)."""
+    """A test file: with gate, the commit gate's pattern, what a repair may commit beside the plan (step 6.3) and so what
+    can_start lets stand outside the plan; else also a shell test, as task_ops reads it, for the one test rule and the
+    recheck (F8: the gate's pattern stays the base's)."""
     import commit_rows
     return bool(commit_rows.TEST_RE.search(p) or (not gate and re.search(r"_test\.sh$", p)))
 
@@ -278,7 +281,7 @@ def can_start(r, stage, again=False):
             return "finding #%d is on %s, a sensitive path (autonomy.park-on-touch): nothing there is repaired by rule" % (
                 near[0]["id"], near[0]["file"])
         plan = allowed_files(r)
-        far = [f for f in opens if f.get("file") and os.path.normpath(f["file"]) not in plan and not is_test(f["file"])]
+        far = [f for f in opens if f.get("file") and os.path.normpath(f["file"]) not in plan and not is_test(f["file"], gate=True)]
         if far:
             return "finding #%d is on %s, a file outside the plan: its fix needs the plan changed, which no rule does" % (
                 far[0]["id"], far[0]["file"])
@@ -419,13 +422,55 @@ def refused_file(p, r, spec, config, allowed):
 
 
 def allowed_files(r):
+    """The approved set a repair commits by rule: the plan's files, approved_files, and each file the person added to the
+    plan or allowed once by answering a question the CLI asked (a row the CLI marked `answer` as it wrote it: answer_of),
+    never a row that only reads like one (lane E: the fixer could write that row itself)."""
     import flow_base
     files = set(r.state.get("approved_files") or []) | set(flow_base.plan_files(r.spec) if r.spec else [])
     for x in load(os.path.join(TEMPER, "evidence", "build.json"), list):
-        m = re.match(r"^drift (\S+): (Add to plan|Allow once)\b", str((x or {}).get("claim") or ""), re.I)
-        if m:
+        m = re.match(ANSWER, str((x or {}).get("claim") or ""), re.I)
+        if m and isinstance(x, dict) and x.get("answer"):
             files.add(m.group(1))
     return {os.path.normpath(f) for f in files}
+
+
+def answer_of(claim):
+    """The question a Scope drift answer that widens the approved set answers (`drift P: Add to plan|Allow once`, an
+    evidence add of the Build ledger), as the mark the CLI writes on its row: `scope.drift` for a drift ask of P with no
+    answer yet, `repair.stop` for the stop of an open repair on P, `commit.fail` for the commit gate's failed scope row
+    that names P; '' for any other claim. Inside a repair window that is not committed, such an answer to no question is
+    refused (ValueError): the fixer never writes the person's answer (outside one the row is kept unmarked, as before, and
+    no repair reads it). That a person gave the answer only the mod holds (docs/trust.md)."""
+    m = re.match(ANSWER, claim or "", re.I)
+    if not m:
+        return ""
+    path = m.group(1)
+    rows = [x for x in load(os.path.join(TEMPER, "evidence", "build.json"), list) if isinstance(x, dict)]
+    asked = [i for i, x in enumerate(rows) if x.get("phase") == "drift" and str(x.get("claim") or "").startswith("drift ask %s\n" % path)]
+    if asked and not any(re.match(r"drift %s: (Add to plan|Revert|Allow once)\b" % re.escape(path), str(x.get("claim") or ""))
+                         for x in rows[asked[-1] + 1:]):
+        return "scope.drift"
+    d = load(STATE)
+    st = d.get("repair_stop") if isinstance(d.get("repair_stop"), dict) else {}
+    if st.get("kind") == "drift" and st.get("path") == path:
+        return "repair.stop"
+    g = load(GATES).get("commit") or {}
+    for x in g.get("requirements") or [] if isinstance(g, dict) else []:
+        n = re.match(r"changed outside declared files: (.+)$", str((x or {}).get("detail") or ""))
+        if (x or {}).get("name") == "blast radius" and not x.get("pass") and n and path in [
+                f.strip() for f in re.sub(r"\s*\(and \d+ more\)$", "", n.group(1)).split(",")]:
+            return "commit.fail"
+    w = d.get("repair") if isinstance(d.get("repair"), dict) else {}
+    if w and not w.get("commit"):
+        raise ValueError("%s is a Scope drift answer to no question the CLI asked (no open drift ask of %s, no stop of the "
+                         "repair on it): inside repair %s only the person's answer to that question adds a file" % (
+                             claim, path, w.get("n")))
+    return ""
+
+
+def staged_files(*base):
+    """The staged paths (against base, else HEAD), read with -z so git quotes no name: as adhoc_ops.dirty reads them."""
+    return [p for p in git("diff", "--cached", "--name-only", "--no-renames", "-z", *base)[1].split("\0") if p]
 
 
 def removed_test_lines(base, files):
@@ -608,7 +653,7 @@ def commit(r, cli_path):
         print("FAIL: %s" % why, file=sys.stderr)
         return 1
     config = r.ctx.get("config_file")
-    staged = [l for l in out("diff", "--cached", "--name-only", "--no-renames", w["base"]).splitlines() if l]
+    staged = staged_files(w["base"])
     files = sorted(set(changed(w, r.spec, config)) | set(staged))   # the commit takes the whole index: check all of it
     if not files:
         change_state(lambda d: close_window(d, "unchanged", changed=0))
@@ -824,8 +869,9 @@ def revert(r, cli_path, why="the person reverted it"):
     base_tree = w.get("base_tree")
     if not w.get("commit"):
         kept, config = w.get("keep") or {}, r.ctx.get("config_file")
-        files = [f for f in changed(w, r.spec, config) if (f in kept or not f.startswith((".temper/", ".git/")))
-                 and not os.path.isabs(f)]
+        # every path changed() names: what git status lists and each guarded file (the spec folder, the config, the git
+        # hooks) whose digest moved, a guarded file the fixer created among them (in neither kept nor snap: removed)
+        files = [f for f in changed(w, r.spec, config) if not os.path.isabs(f)]
         for f in files:
             if f in kept:   # a file a repair may never change, as it was when the window opened
                 os.makedirs(os.path.dirname(f) or ".", exist_ok=True)
@@ -835,7 +881,7 @@ def revert(r, cli_path, why="the person reverted it"):
                 git("checkout", "-q", w["base"], "--", f)
             elif os.path.isfile(f) and f not in (w.get("snap") or {}) and f not in (w.get("dirty") or {}):
                 os.remove(f)
-        left = [f for f in changed(w, r.spec, config) if f in files]
+        left = changed(w, r.spec, config)
         change_state(lambda d: close_window(d, "reverted", reverted="work tree", why=why))
         stop("worse", "repair %s at %s was taken back before any commit: %s%s" % (
             w["n"], w["stage"].capitalize(), why, "; still not as it was: %s" % ", ".join(left[:6]) if left else ""))
@@ -885,7 +931,7 @@ def carve():
         return 1
     if out("rev-parse", "HEAD") != tok.get("parent") or out("write-tree") != tok.get("tree"):
         return 1
-    staged = [l for l in out("diff", "--cached", "--name-only", "--no-renames").splitlines() if l]
+    staged = staged_files()
     if not w.get("commit"):
         r = run_of(None)
         allowed = allowed_files(r)
@@ -952,6 +998,13 @@ def main(argv):
         return status()
     if word == "test":
         return test(rest)
+    if word == "answer":   # `temper evidence add` of a Scope drift answer: the question it answers (answer_of)
+        try:
+            print(answer_of(" ".join(rest)))
+            return 0
+        except ValueError as e:
+            print("FAIL: %s" % e, file=sys.stderr)
+            return 1
     r = run_of(config)
     if not r.active:
         print("FAIL: no active run (temper state init first)", file=sys.stderr)

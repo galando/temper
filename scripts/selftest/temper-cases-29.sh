@@ -394,6 +394,21 @@ d = json.load(open(p)); d['groups']['G1'].pop('worktree', None)
 json.dump(d, open(p, 'w'), indent=2)"
 assert_eq "patch: a changed Test line whose passed task cannot be reopened is refused, and nothing is written or spent" "refused|task1=passed" \
   "$(_try29 'not started|reopen' patch task 1 --cmd 'test -s src/a.sh')|task1=$(_g29 "d['tasks']['1'].get('status')")"
+# patch (lane E, RE8): the reopen's other refusals are checked before the patch writes too: a commit on the group's branch
+# the CLI did not record, and an upstream gate the reopen commit needs (ADR 0009)
+_amplan29 | m_setup; _built29 1 src/a.sh
+_p29_wt="$(_g29 "d['groups']['G1'].get('worktree', '')")"
+echo human > "$_p29_wt/human.txt"
+git -C "$_p29_wt" add human.txt >/dev/null 2>&1; git -C "$_p29_wt" -c user.email=h@example.com -c user.name=H commit -qm 'a commit by a human' >/dev/null 2>&1
+_p29_foreign="$(_try29 'did not record|nobody accepted' patch task 1 --cmd 'test -s src/a.sh')"
+_amplan29 | m_setup; _built29 1 src/a.sh
+python3 -c "
+import json
+p = '.temper/gates.json'; d = json.load(open(p)); d['plan'] = {'verdict': 'FAIL', 'requirements': [{'name': 'x', 'pass': False, 'detail': 'x'}]}
+json.dump(d, open(p, 'w'))"
+_p29_up="$(_try29 'upstream|ADR 0009' patch task 1 --cmd 'test -s src/a.sh')"
+assert_eq "patch: a changed Test line whose reopen would meet an unrecorded commit or an unmet upstream gate is refused, and nothing is written or spent" \
+  "foreign=refused|upstream=refused|task1=passed" "foreign=$_p29_foreign|upstream=$_p29_up|task1=$(_g29 "d['tasks']['1'].get('status')")"
 # patch: a group with no Validate line and no group Depends line gets the line in its own head, not in a task's block
 _pp; sed -i -e '/^\*\*Validate:\*\*/d' -e '/^## Group G1/,/^### /{/^\*\*Depends:\*\*/d}' .temper/specs/demo/tasks.md
 python3 -B - "$REPO_ROOT/scripts" <<'PY'

@@ -769,19 +769,31 @@ def main(argv):
         # WP24 (ADR 0021): the Review verdict is of the committed tree, or of a tree that differs from it only by repair
         # commits the CLI recorded, whose checks ran again and whose recheck completed (scripts/repair_ops.py)
         try:
-            gr = json.load(open(argv[2])).get('review') or {}
+            gates = json.load(open(argv[2]))
             st = json.load(open(os.path.join(argv[3], '.temper', 'build-state.json')))
         except (OSError, ValueError, AttributeError):
-            gr, st = {}, {}
-        rv = str(gr.get('tree') or '') if isinstance(gr, dict) and stage in ('check', 'commit') else ''
-        now = now or (tree_key(argv[3], root=argv[3]) if rv else '')
-        if rv and now and rv != now:   # in every run: a run with no repair has no chain, so any difference fails
-            import repair_ops
-            if not repair_ops.closed_chain(st, rv, now):
-                print('FAIL the Review verdict judged the tree %s, the project is now the tree %s, and the difference is not '
-                      'only closed repairs whose recheck completed; run Review again' % (rv[:12], now[:12]))
+            gates, st = {}, {}
+        why = review_stale(gates, st, argv[3], now) if stage in ('check', 'commit') else ''
+        if why:
+            print('FAIL ' + why)
         return 0
     return 2
+
+
+def review_stale(gates, state, root, now=''):
+    """Why the Review verdict is not of the project as it is (in every run: a run with no repair has no chain, so any
+    difference counts), or '': its tree is the tree now, or differs from it only by closed repairs whose recheck
+    completed. The commit gate's row checked tree reads it, and so does a small change at Check or Commit
+    (adhoc_ops.close_window), which then runs Review of its files again."""
+    gr = gates.get('review') if isinstance(gates, dict) else None
+    rv = str(gr.get('tree') or '') if isinstance(gr, dict) else ''
+    now = (now or tree_key(root, root=root)) if rv else ''
+    if rv and now and rv != now:
+        import repair_ops
+        if not repair_ops.closed_chain(state if isinstance(state, dict) else {}, rv, now):
+            return ('the Review verdict judged the tree %s, the project is now the tree %s, and the difference is not only '
+                    'closed repairs whose recheck completed; run Review again' % (rv[:12], now[:12]))
+    return ''
 
 
 def run_cmd(wt, timeout, cmd, setup=None):

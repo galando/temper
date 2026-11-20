@@ -248,7 +248,9 @@ export const modGuards = (w: World): void => {
 }
 
 // A small change at Check: the window opens (the person's answer), a code write passes inside it, and the closed change runs
-// Review of the changed files, then Check, then the commit gate.
+// Review of the changed files, then Check, then the commit gate. Then a second small change at Check, of docs only: it
+// leaves the tree the Review verdict judged, so it runs the same three steps, and the run reaches its commit (lane E: the
+// commit gate's row checked tree holds Review to the committed tree; a change that ran only the Check gate met a dead end).
 // WP11: the person approves with Ask me at every stage (asksEveryStage), so Check asks its own question.
 export const smallChange = (w: World): void => {
   startProject(w)
@@ -259,22 +261,25 @@ export const smallChange = (w: World): void => {
   orchestrate(w, script({
     person: (ask, wd) => {
       const q = String(ask.question.question)
-      if (q.startsWith('Check: the check passed') && !seen) return 'More options'
-      if (q.includes('more options') && !seen) return 'Make a small change'
+      if (q.startsWith('Check: the check passed') && seen !== 'docs') return 'More options'
+      if (q.includes('more options') && seen !== 'docs') return 'Make a small change'
       return asksEveryStage(ask, wd)
     },
     instruction: (wd, text) => {
       if (text.startsWith('Make the small change')) {
-        seen = 'changed'
-        wd.write('src/ci_shape.py', SHAPE_CODE + '\n# a small change made by hand\n')
+        if (seen === '') wd.write('src/ci_shape.py', SHAPE_CODE + '\n# a small change made by hand\n')
+        else wd.write('docs/notes.md', '# Notes\n\nThe report shape is stable across a run.\n')
+        seen = seen === '' ? 'changed' : 'docs'
         const r = t(wd, 'adhoc close')
-        expect(r.code === 0 && r.out.includes('still to run: review, check, commit'), `adhoc close lists the steps (${r.out})`)
+        expect(r.code === 0 && r.out.includes('still to run: review, check, commit'), `adhoc close lists the steps (${seen}: ${r.out})`)
         return true
       }
       return /each file the run changed|^Copy what|^When .* records deviations/.test(text)
     },
   }))
-  expect(seen === 'changed', 'the small change was made')
+  expect(seen === 'docs', `both small changes were made (${seen})`)
+  expect(!w.exists('.temper/build-state.json') && w.sh('git log --format=%H -n 1 -- docs/notes.md').trim() !== '',
+    'after the change of docs only the run reached its commit, with the file')
   const flow = w.trace.join('\n')
   expect(/work:check/.test(flow), 'the side steps ran')
   const after = w.denies({ tool: 'Write', input: { file_path: `${w.dir}/src/ci_shape.py` } })

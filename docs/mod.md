@@ -108,6 +108,8 @@ shows the file, why the task needs it and the change. You choose one answer:
 
 This question is the same with the mod and without it. The mod also refuses the write until you answer.
 The mod reads your answer from the result of the question, not from what Claude sends.
+The record of an Add to plan or Allow once answer is yours too: the mod refuses a call that records one you did not
+give, so an agent cannot widen the plan by writing the answer itself.
 
 ## Where enforcement works
 

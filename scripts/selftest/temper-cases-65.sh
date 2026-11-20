@@ -740,5 +740,108 @@ assert_eq "repair: the commit gate passes a Review verdict that differs from the
 _open65 none; _c65_tree="$(_tree65)"; echo 'echo later' >> src/demo.sh; git commit -q -am 'a change after the Review, no repair'
 assert_eq "repair: the commit gate fails a Review verdict of another tree in a run with no repair, naming both trees" \
   "tree row fails naming both trees" "$(_gates65 "$_c65_tree")"
+
+# --- the leftovers of the phase 6 recheck (lane E) ---
+# RE1: a small change of docs only at Check or at Commit, after an honest Review and the CLI's own Check, leaves the
+# tree Review judged; the commit gate's row checked tree compares that tree in every run, so the change runs Review of
+# its files again, then Check and the commit gate, and the commit gate passes (no dead end at commit.fail)
+_small65() { # _small65 <check|commit>: prints the steps the close listed and the commit gate's verdict after them
+  local i a c
+  _review65 docs/guide.md; review_done; "$TEMPER" gate review >/dev/null 2>&1
+  "$TEMPER" state advance review_complete check >/dev/null 2>&1
+  "$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+  [[ "$1" == commit ]] && "$TEMPER" state advance check_complete commit >/dev/null 2>&1
+  "$TEMPER" adhoc open --stage "$1" --reason 'a line of the guide' >/dev/null 2>&1
+  echo 'one more line' >> docs/guide.md
+  c="$("$TEMPER" adhoc close 2>&1)"
+  for i in 1 2 3 4 5 6; do
+    a="$(_x65 "r = d.get('action') if d.get('action') == 'work' and (d.get('ask') is None) else 'stop'")"
+    [[ "$a" == work ]] || break
+    [[ "$(_x65 "r = any(x.get('type') == 'temper:temper-review' for x in d.get('agents') or [])")" == True ]] && review_done
+    while IFS= read -r c2; do [[ -n "$c2" ]] && bash -c "$c2" >/dev/null 2>&1; done \
+      < <(_x65 "r = '\n'.join(list(d.get('calls') or []) + [c for x in d.get('agents') or [] for c in x.get('after') or []])")
+  done
+  "$TEMPER" gate commit >/dev/null 2>&1
+  printf '%s|%s' "$(sed -n 's/.*still to run: //p' <<<"$c")" \
+    "$(python3 -B -c "import json; g = json.load(open('.temper/gates.json')).get('commit') or {}; print(g.get('verdict'), ','.join(x.get('name') for x in g.get('requirements') or [] if not x.get('pass')) or 'every row')")"
+}
+assert_eq "repair: a small change of docs only at Check after the Review runs Review of its files, Check and the commit gate again, and the commit gate passes" \
+  "review, check, commit|PASS every row" "$(_small65 check)"
+assert_eq "repair: a small change of docs only at Commit after the Review runs Review of its files, Check and the commit gate again, and the commit gate passes" \
+  "review, check, commit|PASS every row" "$(_small65 commit)"
+
+# RE2: inside a repair window the fixer cannot widen the approved set by writing the person's answer itself: an evidence
+# add of a Scope drift answer that answers no question the CLI asked is refused, and a row written by hand (no mod) is
+# no answer the CLI recorded, so repair commit still stops on the file and the run asks
+_open65 none; _start65; _fix65; echo 'echo other' > src/other.sh
+_c65_out="$("$TEMPER" evidence add --stage build --phase feedback --claim 'drift src/other.sh: Add to plan: the fixer' 2>&1)"; _c65_rc=$?
+python3 -B - <<'PY'
+import json
+p = ".temper/evidence/build.json"
+rows = json.load(open(p))
+rows.append({"claim": "drift src/other.sh: Allow once: written by hand", "phase": "feedback", "label": "HEURISTIC", "ts": "2026-11-20T00:00:00Z"})
+json.dump(rows, open(p, "w"))
+PY
+_c65_head="$(git rev-parse HEAD)"; _commit65
+assert_eq "repair: the fixer cannot add a file to the plan by writing the answer row: evidence add refuses it, and a row by hand is no answer" \
+  "refused|says the question|not committed|scope.drift" \
+  "$([[ $_c65_rc -ne 0 ]] && echo refused || echo "rc 0: ${_c65_out:0:60}")|$(grep -qi 'question' <<<"$_c65_out" && echo 'says the question' || echo "says: ${_c65_out:0:80}")|$([[ "$(git rev-parse HEAD)" == "$_c65_head" ]] && echo 'not committed' || echo "committed $(_subj65)")|$(_x65 "q = d.get('ask') or {}; r = 'scope.drift' if q.get('id') == 'scope.drift' and 'src/other.sh' in json.dumps(q) else 'asked %s' % q.get('id')")"
+
+# RE3: the fixer's drift ask of a file no answer lets a repair commit (a manifest, the config) is refused at the ask, so
+# the person is never asked a question whose answer cannot take effect
+_open65 none; _start65
+_c65_a="$("$TEMPER" drift ask --path go.mod --why 'the fix needs a module' --change 'one require line' 2>&1)"; _c65_rc=$?
+_c65_b="$("$TEMPER" drift ask --path .claude/temper.config --why 'the fix needs a key' --change 'one line' 2>&1)"; _c65_rc2=$?
+assert_eq "repair: the fixer's drift ask of a manifest or the config is refused, says it needs a step back, and asks nothing" \
+  "refused|step back|refused|step back|no drift asked" \
+  "$([[ $_c65_rc -ne 0 ]] && echo refused || echo "rc 0")|$(grep -qi 'step back' <<<"$_c65_a" && echo 'step back' || echo "says: ${_c65_a:0:80}")|$([[ $_c65_rc2 -ne 0 ]] && echo refused || echo "rc 0")|$(grep -qi 'step back' <<<"$_c65_b" && echo 'step back' || echo "says: ${_c65_b:0:80}")|$(_x65 "r = 'no drift asked' if (d.get('ask') or {}).get('id') != 'scope.drift' else 'scope.drift asked'")"
+
+# RE4 and RE10: a finding on a shell file named like a test outside the plan is outside the approved set for the commit
+# (the gate's test pattern), so repair start refuses it as can_start's outside the plan test, with the same pattern
+_review65; _finding65 high 'src/other_test.sh:3 the helper test asserts nothing' 'the test passes on any input' 'assert the output' none
+review_done; "$TEMPER" gate review >/dev/null 2>&1
+assert_eq "repair: start refuses a finding on a shell file named like a test outside the plan, as the commit would" "$REFUSED65" \
+  "$(_refused65 'outside the plan')"
+
+# RE9: the revert of a repair not committed removes a guarded file the fixer created (a new git hook, a new file of the
+# spec folder), and says which file still differs when one does
+_open65 none; _start65; _fix65
+_c65_hook="$(python3 -B - <<'PY'
+import os, subprocess
+p = os.path.join(subprocess.run(["git", "rev-parse", "--git-path", "hooks"], stdout=subprocess.PIPE, text=True).stdout.strip(), "post-commit")
+os.makedirs(os.path.dirname(p), exist_ok=True)
+open(p, "w").write("#!/bin/sh\necho planted\n")
+os.chmod(p, 0o755)
+print(p)
+PY
+)"
+echo 'a note of the fixer' > .temper/specs/demo/fixer-note.md
+_commit65
+_c65_out="$("$TEMPER" repair revert 2>&1)"
+assert_eq "repair: revert of a repair not committed removes a new git hook and a new spec file of the fixer" \
+  "hook gone|note gone|reverted" \
+  "$([[ -e "$_c65_hook" ]] && echo 'hook left' || echo 'hook gone')|$([[ -e .temper/specs/demo/fixer-note.md ]] && echo 'note left' || echo 'note gone')|$(grep -qi 'reviewed tree again' <<<"$_c65_out" && echo reverted || echo "says: ${_c65_out:0:80}")"
+
+# RE12: the staged list of repair commit and of the carve out is read with -z, so a planned file whose name git quotes
+# (a double quote in it) is the approved file it is, and the repair is committed
+_open65 none
+python3 -B -c "
+import json
+p = '.temper/build-state.json'; d = json.load(open(p)); d['approved_files'] = list(d.get('approved_files') or []) + ['src/q\"x.sh']
+json.dump(d, open(p, 'w'), indent=2)"
+_start65; _fix65; echo 'echo q' > 'src/q"x.sh'; git add -- 'src/q"x.sh'
+_commit65
+assert_eq "repair: a staged planned file whose name git quotes is committed as the approved file it is" \
+  "repair commit with the file" \
+  "$([[ "$(_subj65)" == 'fix(demo): repair 1 at review' ]] && grep -qxF 'src/q"x.sh' <<<"$(git show --name-only --format= -z HEAD | tr '\0' '\n')" && echo 'repair commit with the file' || echo "HEAD $(_subj65)")"
+
+# RE5 and RE11: the fixer's brief names the drift ask of a repair, and the doc of the passed Review says where Repair again
+# stands first
+assert_eq "repair: the fixer's brief sends a file outside the plan to temper drift ask and reads a Drift decision line in a repair" \
+  "drift ask|Drift decision" \
+  "$(awk '/A repair in place/,/A record pass/' "$REPO_ROOT/agents/build.md" | grep -c 'drift ask' >/dev/null && echo 'drift ask' || echo 'no drift ask')|$(awk '/A repair in place/,/A record pass/' "$REPO_ROOT/agents/build.md" | grep -c 'Drift decision' >/dev/null && echo 'Drift decision' || echo 'no Drift decision')"
+assert_eq "repair: docs/flow.md says a passed Review with an open high finding offers Repair again first where it may start" \
+  "Repair again first" \
+  "$(grep -A2 'A passed Review with an open finding at high or above' "$REPO_ROOT/docs/flow.md" | tr '\n' ' ' | grep -c 'Repair again' >/dev/null && echo 'Repair again first' || echo 'Loop back only')"
 cd "$WORKDIR" || true
 rm -rf "$T65"

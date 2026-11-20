@@ -271,7 +271,8 @@ the call of that answer. See `docs/flow.md`, "A command the plan wrote".
 
 `temper plan patch G1 --cmd 'bash scripts/selftest/run-selftest.sh --fast'` changes one command line of the approved
 plan (`G<n>` a group's Validate, inserted after its Depends line, or after its head, when it has none; `task N` a task's
-Test, which reopens the task when it passed, and is refused before anything is written when that reopen cannot run;
+Test, which reopens the task when it passed, and is refused before anything is written when that reopen cannot run
+(no worktree, a task it cannot reopen, a commit on the group's branch the CLI did not record, an upstream gate it needs);
 `integration` the Integration line), keeps every other passed task, and spends one repeat.
 `temper plan patch task N --add-file F` adds a file outside the approved set to Task N and to `approved_files` (a name
 with no dot and no slash is written `./F`, so the plan reads it as a file). The static rows of the plan gate run on the

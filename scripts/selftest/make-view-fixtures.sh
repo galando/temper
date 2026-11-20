@@ -439,6 +439,27 @@ write(bs, ".temper/evidence/baseline.json", json.dumps({
     "seconds": 4.2, "fail_lines": ["FAIL test/totals.test.js > rounds a cent"], "env": [], "limits": {}, "plan": {}}))
 snap2(bs, "base-red", "run-baseline")
 
+# ---- 9.8.5 (WP24, trap 5): a passed Review with an open High finding where a repair may start (a reviewed HEAD on the
+# run's branch, Build integrated, a clean tree), so the Review question offers Repair again (repair-again) ----
+rp = project("repair")
+sh("git", "checkout", "-q", "-b", "feature/pw", cwd=rp)
+cli(rp, "state", "init", "pw", "--feature", "Password reset by email")
+cli(rp, "state", "set", "branch", "feature/pw")
+at_build(rp)
+write(rp, "src/app.ts", "export const token = () => 'x'\n")
+sh("git", "add", "src/app.ts", cwd=rp)
+sh("git", "commit", "-qm", "build: the token", cwd=rp)
+head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=rp, stdout=subprocess.PIPE, text=True).stdout.strip()
+write(rp, ".temper/groups.json", json.dumps({"version": 1, "slug": "pw", "cli_commits": [],
+      "groups": {"G1": {"status": "passed", "worktree": "", "confirmed": True, "gate": {"verdict": "PASS"}}},
+      "tasks": {"1": {"status": "passed", "group": "G1"}},
+      "integration": {"verdict": "PASS", "reason": "", "group": None, "files": [], "ts": "x", "head": head, "merged": True}}))
+verdict(rp, "build", True)
+cli(rp, "state", "advance", "build_complete", "review")
+write(rp, ".temper/evidence/review.json", json.dumps([{"claim": "src/app.ts:1 the token never expires", "severity": "high", "label": "PROVEN"}]))
+verdict(rp, "review", True)
+snap2(rp, "review-pass-repair", "run-repair")
+
 # A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
 for name in ("armed-review-pass", "review-fail", "armed-check-fail"):   # WP15: the cards made it grow; WP16: typed calls
     extra[name] = views.pop(name)

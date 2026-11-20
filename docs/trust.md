@@ -121,6 +121,13 @@ diff over 300 lines, or one that touches a file no finding names, gets a full Re
 changed files. No more: the CLI cannot see the reading. The row turns skipping a file from silence into a false
 statement in the ledger.
 
+**What a repair may commit (9.8.5).** A repair commits by rule only the plan's files, the tests, and a file you added
+to the plan or allowed once by answering a question the CLI asked: a Scope drift question about a file a drift ask
+named, the stop of a repair on that file, or the commit gate's failed scope row. The CLI marks such an answer as it
+writes it, and refuses an answer to no question while a repair is open. That you gave the answer, and not the fixer,
+only the mod holds: it refuses an agent's call that records an answer you did not give. With the mod off, nothing
+checks who ran the answer's call.
+
 
 ## Pull requests and the Pipeline stage (9.7.5)
 

@@ -19,7 +19,7 @@ WP25: the static rows of the plan gate run on the result first, and a row the re
 tasks.md as it was; the budget is spent here, once every check holds (one repeat: group:<G>, task:<N> or gate:build); an
 approved plan's patch is appended to .temper/evidence/amendments.json (the approved record is never written); a passed
 task whose Test line changed is reopened (the CLI's group reopen runs after this, on the REOPEN line it prints; a patch
-whose reopen could not run is refused first, before anything is written or spent); a task
+whose reopen could not run, for any refusal of that reopen, is refused first, before anything is written or spent); a task
 that gained a file and is neither running nor passed runs again. The ledger row says what changed, never who called: the
 CLI cannot know it (docs/trust.md; with the mod, only the person's answer runs it). Standard library only.
 """
@@ -143,7 +143,7 @@ def main(argv):
             (target == "group" and next((x.get("validate") for x in got["groups"] if x["id"] == num), None) != cmd):
         return fail("the plan would not read %s as written there; tasks.md is as it was" % cmd)
     if approved and target == "task" and not add:   # the CLI's group reopen runs after this call: what refuses it, first
-        why = reopen_refusal(groups, num, got)
+        why = reopen_refusal(groups, num, got, spec)
         if why:
             return fail("%s; tasks.md is as it was" % why)
     bad = plan_amend.new_faults(spec, text, "\n".join(new))
@@ -198,10 +198,10 @@ def main(argv):
     return 0
 
 
-def reopen_refusal(groups, num, plan):
+def reopen_refusal(groups, num, plan, spec=""):
     """Why the group reopen of passed Task num, whose Test line the patch changes, could not run (the group has no
-    worktree, or scripts/task_ops.py reopencheck refuses), checked before anything is written or spent; None when it can
-    run or no reopen is needed."""
+    worktree, scripts/task_ops.py reopencheck refuses, or one of the reopen's other refusals: reopen_more), checked before
+    anything is written or spent; None when it can run or no reopen is needed."""
     g = load(groups) or {}
     if ((g.get("tasks") or {}).get(num) or {}).get("status") != "passed":
         return None
@@ -218,6 +218,37 @@ def reopen_refusal(groups, num, plan):
     if r.returncode != 0:
         lines = r.stderr.decode("utf-8", "replace").strip().splitlines() or ["reopencheck failed"]
         return "the reopen of Task %s cannot run: %s" % (num, lines[-1].replace("FAIL: ", "", 1))
+    return reopen_more(groups, gid, num, spec)
+
+
+def reopen_more(groups, gid, num, spec):
+    """The other refusals of the CLI's group reopen (scripts/temper _group_reopen_body), checked here too (lane E): an
+    upstream gate the reopen commit needs (ADR 0009: plan, and intent and design where their files exist, passed or
+    skipped by the person), and a commit the CLI did not record and nobody accepted on the group's branch or a kept task
+    worktree of the group (groups_ops parked-foreign, task_ops foreigncheck). None when the reopen can run."""
+    import subprocess
+    here = os.path.dirname(os.path.abspath(__file__))
+    temper = os.path.dirname(os.path.abspath(groups))
+    gates = load(os.path.join(temper, "gates.json")) or {}
+
+    def py(script, *args):
+        return subprocess.run([sys.executable, "-I", os.path.join(here, script)] + list(args), stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+    missing = [st for st in ("plan", "intent", "design") if (st == "plan" or os.path.isfile(os.path.join(spec or "", st + ".md")))
+               and (gates.get(st) or {}).get("verdict") != "PASS"
+               and py("commit_rows.py", "override-covers", os.path.join(temper, "overrides.json"), os.path.join(temper, "gates.json"), st).returncode != 0]
+    if missing:
+        return "the reopen of Task %s cannot run: its commit needs the upstream gate(s) %s passed (ADR 0009)" % (num, " ".join(missing))
+    left = py("groups_ops.py", "parked-foreign", groups, gid).stdout.decode("utf-8", "replace").strip() or "[]"
+    wt = ((load(groups) or {}).get("groups") or {}).get(gid, {}).get("worktree") or ""
+    kept = py("groups_ops.py", "kept-worktrees", groups, gid).stdout.decode("utf-8", "replace").split("\n")
+    for w in [wt] + [k for k in kept if k.strip() and os.path.isdir(k.strip())]:
+        r = subprocess.run([sys.executable, "-E", "-s", os.path.join(here, "task_ops.py"), "foreigncheck", os.path.abspath(w.strip()), left, "",
+                            groups, gid], stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+        bad = [x.split()[1][:7] for x in r.stdout.decode("utf-8", "replace").splitlines() if x.split()[:1] in (["ON"], ["UNK"], ["BAD"])]
+        if r.returncode != 0 or bad:
+            return ("the reopen of Task %s cannot run: group %s holds commit(s) that the CLI did not record and nobody accepted: %s"
+                    % (num, gid, " ".join(bad) or r.stderr.decode("utf-8", "replace").strip()[-200:]))
     return None
 
 

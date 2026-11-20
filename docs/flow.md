@@ -66,7 +66,8 @@ its `after` calls) in `agents[]`.
 
 A **small change** (`temper adhoc open --stage S --reason R`, `adhoc close`) is offered at the Build, Review, Check and Commit questions as
 `Make a small change`. After `adhoc close`, `next` runs the steps the change touches: Review of the changed files, then Check, then the
-commit gate (a change made at Build, or of docs only, runs only the stage's gate).
+commit gate (a change made at Build, or of docs only, runs only the stage's gate; a change of docs only at Check or Commit that leaves
+the tree the Review verdict judged runs all three, since the commit gate holds Review and Check to the tree it commits).
 
 ### The actions
 
@@ -311,11 +312,13 @@ recommended and `The tasks already agree` as the first reason of its skip. Each 
 newest first, as decisions that win over `tasks.md`. The Design gate has no such row.
 
 **High findings block.** `review.block-on` defaults to `[critical, high]`. A failed Review is repaired in the stage
-(below). A passed Review with an open finding at high or above recommends `Loop back to Build`; with a Medium one it recommends `Continue to Check`, and the passed Check
-question lists the open findings (`open findings: 1 medium` and the first three claims) where the person commits. Both
-Review questions name the open findings per level (`open findings: 1 high, 2 medium`). At a passed Review with an open
-finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for later` are under `More options`, and
-`Teach Me` takes the place of `Architecture Depth Review`.
+(below). A passed Review with an open finding at high or above offers `Repair again` first, recommended, where
+`repair start --again` may start, and otherwise recommends `Loop back to Build`; with a Medium one it recommends
+`Continue to Check`, and the passed Check question lists the open findings (`open findings: 1 medium` and the first
+three claims) where the person commits. Both Review questions name the open findings per level (`open findings: 1 high,
+2 medium`). At a passed Review with an open finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for
+later` are under `More options`, and `Teach Me` takes the place of `Architecture Depth Review`; when `Repair again` is
+shown, `Architecture Depth Review` moves under `More options` too.
 
 **What resolves a finding (WP18).** `temper evidence resolve --stage S --id N --fixed-by COMMIT` marks a finding
 resolved only when four things hold: COMMIT is a commit; it is an ancestor of HEAD; it is no ancestor of the reviewed
@@ -343,7 +346,10 @@ only the changed files that are approved or a test (never the spec folder, the c
 folder, a locked acceptance test, a lockfile or manifest, a CI file or a sensitive path: those ask `scope.drift`, with
 nothing committed, for a file no answer can let through first, and offer Add to plan and Allow once only for a file
 outside the plan). The fixer may also ask with `temper drift ask`, as at Build: `repair commit` then commits nothing,
-`next` asks `scope.drift`, and the fixer runs again with its `Drift decision:` line. `temper adhoc close` is refused
+`next` asks `scope.drift`, and the fixer runs again with its `Drift decision:` line. The ask is refused for a file no
+answer lets a repair commit (a manifest, a CI file, the config, the spec folder, a sensitive path): the fix needs a
+step back. A repair commits a file outside the plan only for an answer the CLI marked as it wrote it (`answer` on the
+row: the question it answered), and refuses an answer to no question while the window is open. `temper adhoc close` is refused
 while a repair window is open. `repair commit` refuses a commit when HEAD moved, records `changed: 0` and asks when nothing changed, and asks
 `repair.stop` showing the lines when the diff removes a line of a test file that existed at the base. It commits as
 `fix(<slug>): repair N at <stage>` through the carve out `repair commit` of the commit gate, takes the Review snapshot
@@ -357,7 +363,8 @@ files; it reverts the repair (the CLI's own commit back to the reviewed tree) an
 passed fails, the open blocking findings are not fewer, the recheck names a new blocking finding or did not complete.
 That revert takes back only the repair commit, on a clean tree: with HEAD moved or the tree dirty it refuses and the run
 asks. A repair taken back before its commit puts back each file a repair may never change (the spec folder, the config,
-the git hooks) from the copy taken when the window opened, and says which file is still not as it was.
+the git hooks) from the copy taken when the window opened, removes one the fixer created there, and says which file
+is still not as it was.
 A failed Review or Check, and a passed Review with an open finding at high or above, offer `repair-again` exactly
 where its call may start (`can_start` with `--again`) ("Repair again", move `repair`, the call
 `repair start --stage S --again`): first and recommended while no repair of that failure ran at the stage, offered
