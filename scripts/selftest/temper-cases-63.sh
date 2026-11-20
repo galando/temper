@@ -282,6 +282,46 @@ assert_eq "w22 a racily clean edit: a tracked file edited to the same size in th
   "first=0:ran|edited=0:ran|git=src/a63.sh|loop=missed 0 of 60" "$_r63"
 _clean63
 
+# the digest reads the copied index's content and its time from one file: git replaces the index by a rename (here a
+# git status that rewrites it, newer, just after the digest opened the old one), and a copy with the old entries and
+# the new time would call the racily clean edit clean
+_i63="$(python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import builtins, os, shutil, subprocess, sys, tempfile
+sys.path.insert(0, sys.argv[1])
+import run_env
+d = tempfile.mkdtemp(prefix="temper-index63-")
+try:
+    git = lambda *a: subprocess.run(["git", "-C", d] + list(a), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.decode().strip()
+    f, idx = os.path.join(d, "a.sh"), os.path.join(d, ".git", "index")
+    open(f, "w").write("echo a\n")
+    for a in (["init", "-q"], ["config", "user.email", "t@example.com"], ["config", "user.name", "T"],
+              ["config", "core.trustctime", "false"], ["add", "-A"], ["commit", "-q", "-m", "base"]):
+        git(*a)
+    t = os.stat(f).st_mtime - 100
+    os.utime(f, (t, t)); git("add", "a.sh"); os.utime(idx, (t, t))
+    old = idx + ".old63"; shutil.copy2(idx, old)
+    open(f, "w").write("echo b\n"); os.utime(f, (t, t))
+    git("status", "--porcelain")   # git rewrites the index now
+    new = idx + ".new63"; shutil.copy2(idx, new); shutil.copy2(old, idx)
+    real = builtins.open
+    def opened(p, *a, **k):   # the rename lands just after the digest opened the index
+        fh = real(p, *a, **k)
+        if os.path.exists(new) and os.path.abspath(str(p)) == idx:
+            os.replace(new, idx)
+        return fh
+    builtins.open = opened
+    try:
+        key = run_env.tree_key(d, [])
+    finally:
+        builtins.open = real
+    print("seen" if key and key != git("rev-parse", "HEAD^{tree}") else "missed (the clean tree's digest)")
+finally:
+    shutil.rmtree(d, ignore_errors=True)
+PY
+)"
+assert_eq "w22 a racily clean edit: the copied index takes its content and its time from the one file it opened, so an index git renames into place meanwhile hides no edit" \
+  "seen" "$_i63"
+
 # --- w22 one run in flight per key: a key's lock file taken away between its open and its lock is opened again ---
 # the store's clean up (_drop_locks) unlinks the lock file of a key it no longer holds when no run holds its lock; a
 # call that opened that file just before must not lock the unlinked one, or a third call locks a new file beside it

@@ -408,8 +408,12 @@ def tree_key(wt, byproducts=None, root=None):
         os.makedirs(os.path.join(tmp, 'objects'))
         if os.path.isfile(index):
             # with its time: git reads an entry again when the index is no older than it (racy git), so a same size
-            # edit in the second the entry was written is seen; a copy dated now would let the stat data call it clean
-            shutil.copy2(index, os.path.join(tmp, 'index'))
+            # edit in the second the entry was written is seen; a copy dated now would let the stat data call it clean.
+            # Content and time from one open file: git replaces the index by a rename, which may land between two reads
+            with open(index, 'rb') as src, open(os.path.join(tmp, 'index'), 'wb') as dst:
+                st = os.fstat(src.fileno())
+                shutil.copyfileobj(src, dst)
+            os.utime(os.path.join(tmp, 'index'), ns=(st.st_atime_ns, st.st_mtime_ns))
         env = dict(os.environ, GIT_INDEX_FILE=os.path.join(tmp, 'index'), GIT_OBJECT_DIRECTORY=os.path.join(tmp, 'objects'),
                    GIT_ALTERNATE_OBJECT_DIRECTORIES=objects)
         # the run's own folders count as HEAD holds them: a spec file staged for the commit changes no digest
@@ -684,7 +688,7 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
         if rc == 0 and callable(info.get('measure')):
             info['extra'] = info['measure'](out)
         if rc != 0:
-            info['fail_lines'] = fail_lines(out, rc=rc)
+            info['fail_lines'] = fail_lines(out, None, rc)   # every one: a skip or a gate compares them with the base
         if not key:
             return out, rc, ''
         new = sorted(untracked(wt) - before)

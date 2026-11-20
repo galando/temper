@@ -219,7 +219,10 @@ a red base; a run that goes on by itself records a stop with its notice, then as
 "Go on anyway" is a recorded skip: a row `base-suite` in `.temper/overrides.json` (by the person), the answer in the
 file and in the reuse store under the baseline's key (the base tree, the command, the setup block, the tool versions).
 At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is `pass:
-null, state: skipped`; one new fail line fails it, after the eighth too (the ledger keeps the whole output). A base
+null, state: skipped`; one new fail line fails it, after the eighth too: the base keeps every fail line it showed, and so
+does each run of the suite (its ledger row and its entry in the reuse store). At Build the integration suite and a
+group's Validate that fail only as on that base are a recorded skip the same way; a list of exactly eight lines may be
+one cut by an older entry, so it never matches. A base
 where no test ran (a fault of the environment check, a setup line that failed with exit 125, a program not found with
 exit 127) skips nothing of the suite. A later run with the same key and the same kind of red asks nothing and records its own skip row;
 a changed key or another kind asks again. A fix run records a red base of kind `red-base` with the answer `fix-run` and
@@ -360,7 +363,7 @@ runs in the owner's run text, with its coverage measured as `integrate` measures
 `grouprun` of `scripts/task_ops.py`), so the last group's gate and `integrate` share one key on the merged tree and the
 suite runs once. As `check run` does in the project folder, the folder `.temper/check` the coverage run writes into is
 made in the group's worktree, and a coverage program that cannot start (exit 127) leaves the group's check to the test
-text alone. A byproduct of a check (coverage data, a cache) is no part of the commit of `temper group fix G<n> --commit`. A regression proof that fails twice with the same text (a run again changed nothing) asks `fix.fail`
+text alone. A byproduct of a check (coverage data, a cache) is no part of the commit of `temper group fix G<n> --commit`; a folder a check made counts by the files in it, so a source, test or declared file the fix agent writes there is part of the fix. A regression proof that fails twice with the same text (a run again changed nothing) asks `fix.fail`
 with `Correct the regression test` (`correct-test`, the label `Correct the %s test` the acceptance tests use): its calls
 are `state redo fix --reason '{reason}'` and `state set wrong_test '{reason}'`, and the Fix agent gets the reason as the
 person's note that the regression test is wrong, and writes it again (beside the old one when the shield of

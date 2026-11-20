@@ -24,12 +24,22 @@ EXCLUDE = [":(exclude,glob)**/.temper/**", ":(exclude,glob).temper/**",
 
 def byproducts(wt):
     """WP22: what a run of the reuse store left in the worktree (coverage data, caches; never a tracked, declared, source or
-    test file, run_env.byproducts_of), as exclude paths: a check's byproduct is no part of a fix; none when unknown."""
+    test file, run_env.byproducts_of), as exclude paths: a check's byproduct is no part of a fix; none when unknown. A
+    folder entry stands for the untracked files in it now, less every source, test or declared file: what the fix agent
+    wrote there is part of the fix."""
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import run_env
-        return [":(exclude,top,literal)%s" % x.rstrip("/")
-                for x in run_env.byproducts_of(wt, run_env.store_read(run_env._store(wt)), os.getcwd())]
+        lst = run_env.byproducts_of(wt, run_env.store_read(run_env._store(wt)), os.getcwd())
+        out = [x for x in lst if not x.endswith("/")]
+        dirs = [":(top,literal)%s" % x for x in lst if x.endswith("/")]
+        if dirs:
+            prefix, decl = run_env._git(wt, "rev-parse", "--show-prefix"), run_env.declared(os.getcwd()) | run_env.declared(wt)
+            p = subprocess.run(["git", "-C", wt, "ls-files", "-o", "--exclude-standard", "--full-name", "-z", "--"] + dirs,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True)
+            out += [f for f in p.stdout.decode("utf-8", "surrogateescape").split("\0")
+                    if f and not run_env._bad_byproduct(f, prefix, set(), decl)]
+        return [":(exclude,top,literal)%s" % x.rstrip("/") for x in out]
     except Exception:
         return []
 

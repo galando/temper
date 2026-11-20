@@ -312,6 +312,31 @@ _g61+="|new=$(_row61 check "tests pass")"
 assert_eq "w20 go on is a recorded skip: accept-red adds a base-suite row by the person; the base's fail lines alone are skipped, one new fail line fails tests pass" \
   "override=the person:1|old=None:skipped|new=False" "$_g61"
 
+# a base of more than eight fail lines keeps them all, and so does each run compared with it: its own failures are
+# skipped at Check and match the base at a group's Validate; one new line fails both
+_ten61() { # _ten61 [extra test name]: fail61.sh prints ten FAIL lines (and the extra one) and exits 1
+  python3 -B -c 'import sys; sys.stdout.write("".join("echo \"FAIL: test_%s\"\n" % n for n in sys.argv[1:]) + "exit 1\n")' \
+    alpha beta gamma delta eps zeta eta theta iota kappa ${1:-} > fail61.sh
+}
+_grp61() { # _grp61: the group's Validate (bash fail61.sh) as the gate runs it; prints whether its fail lines match the base
+  local l
+  python3 -B "$REPO_ROOT/scripts/task_ops.py" grouprun "$PWD" 60 "$PWD/.git/row61.json" G1 -- bash fail61.sh >/dev/null 2>&1
+  l="$(python3 -B "$REPO_ROOT/scripts/task_ops.py" faillines "$PWD/.git/row61.json")"
+  python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" "" "" like-base "bash fail61.sh" "$l" >/dev/null 2>&1 && echo match || echo 'no match'
+}
+_suite61 "bash fail61.sh"; _ten61; git add -A >/dev/null 2>&1; git commit -q -m ten; _start61
+"$TEMPER" baseline accept-red --reason 'the base was red before this run' >/dev/null 2>&1 || true
+_t61="base=$(_b61 "len(d.get('fail_lines') or [])")"
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+_t61+="|old=$(_row61 check "tests pass")|group=$(_grp61)"
+_ten61 test_new_bug
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+_t61+="|new=$(_row61 check "tests pass")|group=$(_grp61)"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true; rm -f .git/row61.json
+assert_eq "w20 go on is a recorded skip: a base of ten fail lines keeps all ten; the same ten are skipped at Check and match the base at a group's Validate, an eleventh fails both" \
+  "base=10|old=None:skipped|group=match|new=False|group=no match" "$_t61"
+
 # --- w20 the answer is kept: the same base, setup block and tools ask nothing; a changed setup block asks again ---
 fresh; _clean61; _scripts61; _cmd61 "bash fail61.sh"; _repo61 ignore-config; rm -f .temper/evidence/baseline.json
 _start61; "$TEMPER" baseline accept-red --reason 'the base was red before this run' >/dev/null 2>&1 || true

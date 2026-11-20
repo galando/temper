@@ -511,7 +511,8 @@ def _run(root, config, spec, started, doc):
         if down:
             doc["env"] = [{"kind": "service-down", "file": os.path.join(".claude", "temper.config"), "need": n,
                            "have": "no answer", "why": "the service %s does not answer after the run" % n} for n in down]
-    doc.update(result="red", kind=kind, exit_code=rc, fail_lines=picked(out, rc),
+    whole = "\n".join(info.get("fail_lines") or []).encode() + b"\n" + out   # every line, a reused run's too
+    doc.update(result="red", kind=kind, exit_code=rc, fail_lines=picked(whole, rc, None),
                why="%s exited %d on the current code" % (own["run"][:200], rc))
     return finish(root, doc, started)
 
@@ -695,7 +696,7 @@ def judge(cmd, out, rc, secs, limit, red, missing):
     if rc == 0:
         return e
     gone = sorted(p for p in run_env.programs(cmd) if p in missing)
-    e["fail_lines"] = run_env.fail_lines(out, 8, rc)
+    e["fail_lines"] = run_env.fail_lines(out, None, rc)   # every one, as like_base compares them
     if rc == 124:
         e.update(result="timeout", kind="timeout", why="it did not end within its limit of %d s" % limit)
     elif rc == 125:
@@ -842,13 +843,14 @@ def wait(root, cmd):
     return 0
 
 
-FAIL_CAP = 8   # the fail lines a run keeps (run_env.fail_lines, task_ops faillines)
+FAIL_CAP = 8   # the fail lines a cut list keeps (run_env.fail_lines); a run's list from run_cached is whole
 
 
 def like_base(root, cmd, lines):
     """Whether a failed run of the plan's command cmd at its gate shows only the failures it showed on the base, on a
     base the person went on from (its result `fails like the base`, or cmd is the suite the baseline ran): every fail
-    line is one of the base's, digits left out. No line to compare with is no match."""
+    line is one of the base's, digits left out. No line to compare with is no match. A list longer than FAIL_CAP is
+    whole (run_cached keeps every line; a cut one holds FAIL_CAP at most)."""
     d = read(root)
     e = (d.get("plan") or {}).get(cmd) if isinstance(d.get("plan"), dict) else None
     e = e if isinstance(e, dict) and e.get("result") == "fails like the base" else None
@@ -857,7 +859,7 @@ def like_base(root, cmd, lines):
         return False
     base = {mask(x) for x in list((e or {}).get("fail_lines") or []) + list(d.get("fail_lines") or [])}
     got = [x for x in lines if str(x).strip()]
-    if len(got) >= FAIL_CAP:   # a list cut at its cap may hide a new failure: no match
+    if len(got) == FAIL_CAP:   # a list cut at its cap may hide a new failure: no match
         return False
     return bool(base) and bool(got) and all(mask(x) in base for x in got)
 
@@ -925,8 +927,9 @@ def skip_row(root, ledger, config=""):
     for r in red:
         if not same_suite(r.get("cmd") or "", ref):
             return ""
-        # the ledger holds the whole output: every fail line counts, so a new one after the eighth is no skip
-        got = picked(str(r.get("output") or "").encode(), r.get("exit_code"), None)
+        # every fail line counts, so a new one after the eighth is no skip: the row's whole list and its output's tail
+        got = picked(("\n".join(map(str, r.get("fail_lines") or [])) + "\n" + str(r.get("output") or "")).encode(),
+                     r.get("exit_code"), None)
         if base and (not got or any(mask(x) not in base for x in got)):
             return ""
         now_lines += got
