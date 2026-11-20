@@ -24,32 +24,34 @@ Each success criterion gets a validation type. This is what makes IDD mechanical
 | Type | What It Means | How Review Checks It | Example |
 |------|--------------|---------------------|---------|
 | `scenario` | Criterion is satisfied when a linked BDD scenario's test passes | Finds the test, runs it, checks PASS | "Users can reset password" → linked to scenario "Successful password reset" |
-| `code` | Criterion is satisfied when specific code exists | Greps the codebase for the pattern | "POST /api/reset endpoint exists" → greps for route definition |
-| `metric` | Can't be verified before deployment | Flags for post-deploy monitoring | "Support tickets decrease 30%" → requires production data |
-| `manual` | Requires human judgment | Flags for human review, non-blocking | "Reset flow feels intuitive" → UX review needed |
+| `code` | Criterion is satisfied when specific code exists | The CLI runs the command in backticks on the Validate line, at Build and at Check, and reads its exit code | "POST /api/reset endpoint exists" → `grep -q "POST /api/reset" src/routes.ts` |
+| `metric` | Criterion is satisfied when a measured value is inside its bound | The CLI runs the command in backticks on the Validate line, at Build and at Check, and reads its exit code | "The bundle stays under 200 KB" → `test "$(wc -c < dist/app.js)" -lt 200000` |
+| `manual` | Requires human judgment, or a value that can be read only after release | The person confirms it at the Check question | "Reset flow feels intuitive" → UX review needed; "Support tickets decrease 30%" → read after release |
 
-**Why this matters:** Without validate types, "intent validation" means the AI reads your success criteria and subjectively judges "yeah, this looks met." With validate types, most criteria are mechanically verified — a test passes or it doesn't, code exists or it doesn't. Only `metric` and `manual` require judgment.
+A `code` or `metric` criterion with no command in backticks fails the Intent gate; one that can only be checked by a person is `manual`.
+
+**Why this matters:** Without validate types, "intent validation" means the AI reads your success criteria and subjectively judges "yeah, this looks met." With validate types, most criteria are mechanically verified: a test passes or it does not, a command exits 0 or it does not. Only `manual` requires judgment, and it is the person's.
 
 ### Intent Validation in Review
 
 When `/temper:review` runs, it produces:
 
 ```
-Intent Validation (IDD): 4/5 (3 mechanical, 1 deferred, 1 manual)
+Intent Validation (IDD): 3/5 (4 mechanical, 1 for the person)
   Problem: Users unable to reset passwords without support
 
   [x] Users can reset password without support
       validate: scenario -> test_successful_reset PASS
   [x] Reset endpoint exists at POST /api/reset
-      validate: code -> route found in AuthController.ts:23
+      validate: code -> grep -q "POST /api/reset" src/routes.ts exit 0 (run by the CLI)
   [x] Rate limiting prevents abuse
       validate: scenario -> test_rate_limiting PASS
-  [ ] Support ticket volume decreases 30%
-      validate: metric -> post-deploy monitoring required
+  [ ] The bundle stays under 200 KB
+      validate: metric -> test "$(wc -c < dist/app.js)" -lt 200000 exit 1 (run by the CLI)
   [ ] Reset flow completes in under 2 minutes
-      validate: manual -> requires human review
+      validate: manual -> the person confirms it at the Check question
 
-  Confidence: 3/5 mechanically verified
+  Confidence: 3/4 mechanically verified
 ```
 
 ---

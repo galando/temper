@@ -137,10 +137,11 @@ Every verdict is labeled **mechanical** (provable by tools) or **semantic** (jud
 directional, not proof).
 
 - **a. BDD (mechanical):** each `Scenario:` → the test its `Test:` line names → it passes.
-- **b. IDD (structured):** per Success Criterion, run its `Validate:` method —
-  `scenario` / `code` (grep) → ✅/❌, `metric` → 📊 deferred, `manual` → 🔍 flagged.
-  Verdict: satisfied / partially satisfied (name the gaps) / not satisfied, plus
-  "{N} mechanical, {N} deferred, {N} manual". No intent.md → same verdict against the
+- **b. IDD (structured):** per Success Criterion, read the row of its `Validate:` method:
+  `scenario`, and `code` or `metric` with a command in backticks → the row the CLI ran of that command
+  (✅ exit 0, ❌ otherwise, or no row yet); `code` or `metric` with no command, and `manual` → 🔍 the person
+  confirms it at the Check question. Verdict: satisfied / partially satisfied (name the gaps) / not satisfied, plus
+  "{N} mechanical, {N} for the person". No intent.md → same verdict against the
   linked ticket.
 - **c. Test quality (per covered scenario):** judge each test against the scenario's `Then` line and the Cases of the
   task that owns it. Zero assertions → **TRIVIAL**; no asserted variable appears in the Then line's keywords → **WEAK**

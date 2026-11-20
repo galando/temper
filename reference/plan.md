@@ -281,7 +281,7 @@ would otherwise reject the new test file as an undeclared change.
 The plan gate runs no command: after the planner returns, the CLI runs each once (`temper baseline plan`) in the
 baseline's worktree, with the project's `setup:` block, under the limit Build gives it, in a process of its own. Left
 out: a command whose text is the suite the baseline ran, a command that names a file a task creates, and every task
-and scenario Test (they fail on the base by design). The exit code alone decides: 0 passes; a time out is no fault of
+and scenario Test and every criterion command (they fail on the base by design; their programs are still looked up). The exit code alone decides: 0 passes; a time out is no fault of
 the environment and offers more time; exit 125 (the setup line) and a program the shell does not find are the
 environment's; any other exit fails, unless the base itself is red. A failed or timed out command is the person's
 question `plan.command`: more time, another command, a revised plan, or a skip with a reason.

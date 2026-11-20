@@ -179,8 +179,8 @@ Claude set on getting around a gate through Bash can do it. The hard guarantees 
 The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
 - **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
-  step back, accepting a finding, arming autonomy, keeping an agent's commits, overriding the commit
-  gate, starting over during a run) needs your answer in the question dialog, at the run and the step
+  step back, accepting a finding, confirming a criterion at Check (`evidence add --person`), arming autonomy,
+  keeping an agent's commits, overriding the commit gate, starting over during a run) needs your answer in the question dialog, at the run and the step
   the CLI is at. The guard finds the call when it is written out in the command
   (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word
   before its reason (`temper o?erride`) is refused, since bash may expand it to a file's name.

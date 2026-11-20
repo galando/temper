@@ -340,6 +340,20 @@ print('row=%s,AC-02=%s,command=%s' % (ok, 'yes' if 'AC-02' in detail else 'no', 
 _w27_5b+="|agents for it=$(_named71 "$_RO71" AC-02)"
 assert_eq "w27 a code criterion is run by the CLI: with the text missing the CLI's row has exit 1, the Build gate fails naming AC-02 and its command (an agent's passing row does not count), and no agent is named for it" \
   "rows=1|row=False,AC-02=yes,command=yes|agents for it=0" "$_w27_5b"
+# (lane B of phase 7) spec step 8 and row D22: the approval card shows the criterion's command, the approval is of every
+# command a gate will run; and the environment check before the approval (baseline.plan_of, doctor.needs) is given it
+fresh; _tasks71; _crit71 "code — \`$_CMD71\`"; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+_w27_5c="card=$("$TEMPER" card 2>/dev/null | grep -qF "AC-02: $_CMD71" && echo shown || echo 'not shown')"
+_w27_5c+="|plan_of=$(python3 -B - "$REPO_ROOT/scripts" "$_CMD71" <<'PY'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import baseline
+print("given" if sys.argv[2] in baseline.plan_of(os.getcwd(), ".temper/specs/demo")[1] else "not given")
+PY
+)"
+assert_eq "w27 a code criterion is run by the CLI: the approval card shows its command as a line AC-02: <command>, and the environment check before the approval is given it" \
+  "card=shown|plan_of=given" "$_w27_5c"
 assert_eq "w27 a code criterion is run by the CLI: no script holds the words of the record pass" "none" \
   "$({ git -C "$REPO_ROOT" grep -n -F "$_RO71" -- scripts | cut -d: -f1,2 | head -10 | tr '\n' ' '; echo; } | sed 's/ $//;s/^$/none/')"
 
@@ -362,6 +376,41 @@ gfail check "acceptance evidence" "AC-01 has no supported passing evidence row"
 _w27_7+="|$(nx "o = next((o for o in list(d.get('ask', {}).get('options') or []) + list((d.get('ask', {}).get('more') or {}).get('options') or []) if o.get('id') == 'confirm'), {}); 'ask=%s|confirm AC-01=%s' % (d.get('ask', {}).get('id'), 'yes' if any('--criterion AC-01' in c for c in o.get('calls') or []) else 'no')")"
 assert_eq "w27 no command means the person confirms: an accepted intent whose code criterion has prose and no command launches no agent at Check, and the criterion is in the list the person confirms" \
   "agents=0|ask=check.fail|confirm AC-01=yes" "$_w27_7"
+# (lane B of phase 7) spec step 7: in the Check branch a criterion row counts only when executed_by is cli or person. An
+# agent's evidence add row, or a row the CLI ran of a command that is not the criterion's, leaves the criterion open; the
+# confirm option's own call, which carries --person, records the person's row and the criterion counts
+_ac71() { "$TEMPER" gate check >/dev/null 2>&1; _row71 check 'acceptance evidence' | python3 -B -c "
+import sys
+print('open' if 'AC-01 has no supported passing evidence row' in sys.stdin.read() else 'counted')"; }
+_cf71="o = next((o for o in list(d.get('ask', {}).get('options') or []) + list((d.get('ask', {}).get('more') or {}).get('options') or []) if o.get('id') == 'confirm'), {})"
+_w27_7c="before=$(_ac71)"
+"$TEMPER" evidence add --stage check --criterion AC-01 --claim 'I looked at it' --cmd true --exit 0 >/dev/null 2>&1
+_w27_7c+="|agent add=$(_ac71)"
+"$TEMPER" evidence run --stage check --criterion AC-01 --claim 'it holds' -- true >/dev/null 2>&1
+_w27_7c+="|agent run=$(_ac71)"
+_w27_7c+="|bare --person=$("$TEMPER" evidence add --stage check --claim 'a note' --person >/dev/null 2>&1 && echo taken || echo refused)"
+_w27_7c+="|option=$(nx "$_cf71; 'person' if any('--criterion AC-01' in c and ' --person' in c for c in o.get('calls') or []) else 'no person'")"
+while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "$_cf71; chr(10).join(o.get('calls') or [])")
+_w27_7c+="|after confirm=$(_ac71)|by=$(python3 -B -c "
+import json
+rows = [x for x in json.load(open('.temper/evidence/check.json')) if isinstance(x, dict) and x.get('criterion') == 'AC-01']
+print(rows[-1].get('executed_by') if rows else 'none')" 2>/dev/null)"
+assert_eq "w27 no command means the person confirms: in the Check branch an agent's row (evidence add, or evidence run of another command) leaves the criterion open; the confirm option's call carries --person, writes executed_by person, and the criterion counts; a bare --person is refused" \
+  "before=open|agent add=open|agent run=open|bare --person=refused|option=person|after confirm=counted|by=person" "$_w27_7c"
+# as Run it anyway: a run the person started at the approval that goes on by itself, with no stop open, never records the
+# person's row; at its stop (the park call, then the Check question) the confirm option's call does
+_unattended check; sed -i '0,/Validate: scenario — traced to a test below/s//Validate: code — the module exports one builder function/' .temper/specs/demo/intent.md
+gfail check "acceptance evidence" "AC-01 has no supported passing evidence row"
+_w27_7d="armed=$("$TEMPER" evidence add --stage check --criterion AC-01 --claim 'confirmed' --cmd 'the person' --exit 0 --person >/dev/null 2>&1 && echo taken || echo refused)"
+for _i71 in 1 2 3 4; do
+  [[ "$(nx "d.get('action')")" == ask ]] && break
+  while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "chr(10).join(d.get('calls') or [])")
+done
+_w27_7d+="|stop=$(nx "'%s,parked=%s' % (d.get('ask', {}).get('id'), 'yes' if __import__('json').load(open('.temper/build-state.json')).get('parked') else 'no')")"
+while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "$_cf71; chr(10).join(o.get('calls') or [])")
+_w27_7d+="|after confirm=$(_ac71)"
+assert_eq "w27 no command means the person confirms: a run that goes on by itself with no stop open is refused the --person row; at its stop the confirm option's call records it and the criterion counts" \
+  "armed=refused|stop=check.fail,parked=yes|after confirm=counted" "$_w27_7d"
 _draft71() { # _draft71 <Validate text of AC-01>: a draft intent that passes temper gate intent at the head but for that line
   cat > .temper/specs/demo/intent.md <<EOF
 **Author:** A Author <a@example.com>

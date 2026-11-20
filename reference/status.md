@@ -162,8 +162,10 @@ Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQ
   `**Status:** draft` and `**Created:** {date}`. Then the body:
   **Problem** = the breach verbatim from `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands`
   (metric, latest, baseline, z-score — evidence, not narrative); **Success
-  Criteria** = stable `AC-NN` ids, the metric back inside its bands with
-  `Validate: metric` and a `Why:` line naming the risk the band guards, plus at
+  Criteria** = stable `AC-NN` ids, the metric back inside its bands, with a
+  `Validate: metric` line that carries in backticks a command exiting 0 when the
+  metric is inside its bands (or `Validate: manual` when it can be read only after
+  the next status run), and a `Why:` line naming the risk the band guards, plus at
   least one `Validate: scenario` criterion for the suspected cause once known;
   **Constraints** = fix goes through the normal pipeline `(source: pipeline rules)`;
   **Open Questions** labeled

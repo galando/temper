@@ -145,10 +145,14 @@ def deviations(spec):
         for x in d.get(key) or [] if isinstance(d, dict) else []:
             text = x if isinstance(x, str) else "; ".join("%s: %s" % (k, v) for k, v in x.items()) if isinstance(x, dict) else str(x)
             rows.append("- %s: %s" % (title, " ".join(str(text).split())))
-    if not rows:
+    path = os.path.join(spec, "deviations.md")
+    if not rows:   # an earlier file goes, so the file always says what build-context.json holds
+        try:
+            os.remove(path)
+        except OSError:
+            pass
         print("OK: no deviations recorded")
         return 0
-    path = os.path.join(spec, "deviations.md")
     tmp = "%s.tmp.%d" % (path, os.getpid())
     try:
         with open(tmp, "w", encoding="utf-8") as f:

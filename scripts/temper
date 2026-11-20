@@ -1137,7 +1137,7 @@ cmd_state() {
 # ---
 
 cmd_evidence_add() {
-  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind="" reads=()
+  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind="" by="" reads=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
@@ -1155,6 +1155,7 @@ cmd_evidence_add() {
       --scenario) scenario="$2"; shift 2 ;;
       --criterion) criterion="$2"; shift 2 ;;
       --kind) kind="$2"; shift 2 ;;
+      --person) by=person; shift ;;   # the person's confirmation of a criterion at Check (ledger_ops.py)
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
@@ -1190,7 +1191,7 @@ cmd_evidence_add() {
     artifact_hash="$(python3 -I -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
   fi
   local entry
-  entry=$(TEMPER_ANSWER="$ans" python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"}) || return 1
+  entry=$(TEMPER_ANSWER="$ans" TEMPER_BY="$by" TEMPER_STATE="$STATE_FILE" python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"}) || return 1
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }

@@ -249,6 +249,13 @@ _w26_devctx; _w26_5="with plan.md=$(_w26_dev)"
 fresh; rm -f .temper/specs/demo/plan.md; _w26_devctx; _w26_5+=" / no plan.md=$(_w26_dev)|plan.md=$([[ -f .temper/specs/demo/plan.md ]] && echo written || echo absent)"
 assert_eq "w26 deviations are a file of their own: spec deviations exits 0 with and without plan.md, writes deviations.md once, and leaves plan.md and tasks.md byte equal" \
   "with plan.md=0|files=1,1|same=yes / no plan.md=0|files=1,1|same=yes|plan.md=absent" "$_w26_5"
+# (lane B of phase 7) step 8, "replacing an earlier file": a later call that finds no deviation recorded leaves no
+# earlier deviations.md behind, so the file always says what build-context.json holds
+printf '{"deviations": {}}\n' > .temper/specs/demo/build-context.json
+"$TEMPER" spec deviations >/dev/null 2>&1; _w26_5b="exit=$?|deviations.md=$([[ -f .temper/specs/demo/deviations.md ]] && echo left || echo gone)"
+"$TEMPER" spec deviations >/dev/null 2>&1; _w26_5b+="|again=$?"
+assert_eq "w26 deviations are a file of their own: with no deviation recorded, spec deviations exits 0 and removes the deviations.md an earlier call wrote" \
+  "exit=0|deviations.md=gone|again=0" "$_w26_5b"
 
 # --- 6. the intent row target users action chain is gone ---
 setup; _draft70

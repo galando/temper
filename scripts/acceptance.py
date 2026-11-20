@@ -429,7 +429,9 @@ def main():
             row = latest_scen.get(name)
             if not row or not supported_pass(row):
                 errors.append(f"scenario '{name}' has no supported passing evidence row")
-        latest_crit = latest_by_key(rows, "criterion")
+        # WP27 step 7: a row counts only when the CLI ran it (a criterion's own command, below) or the person gave it (the
+        # confirm option's `evidence add --person`): an agent's row, or a CLI run of a command an agent chose, proves nothing
+        latest_crit = latest_by_key([r for r in rows if isinstance(r, dict) and r.get("executed_by") == "person"], "criterion")
         for c in real:
             # A deferred optional criterion is skipped here as in the Build report (9.8.0: Check asked evidence for it).
             if c.get("id") and c["has_validate"] and c["vtype"] in ("code", "manual", "metric") \
