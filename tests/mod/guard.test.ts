@@ -497,7 +497,7 @@ describe('run it anyway: only the person runs a check whatever the store holds',
     for (const stage of ['build', 'review', 'check', 'commit'] as const) {
       for (const cmd of FRESH) expect(bash(ctx(stage), cmd), `${stage}: ${cmd}`).toEqual({ deny: ONLY_USER })
     }
-    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    const back = optionCalls('check-fail', 'Loop back to Build')
     expect(bash(ctx('check', { allowed: back }), `${CLI} check run --fresh`)).toEqual({ deny: ONLY_USER })
   })
 
