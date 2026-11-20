@@ -183,11 +183,18 @@ def write_verdict(argv):
                 d[stage].update(reviewed=reps[0].get('base_tree'), repairs=[x.get('n') for x in reps])
         except (OSError, ValueError, AttributeError):
             pass
+    if stage == 'check':   # rule 5: Check judged the tree its latest CLI run ran on, not the tree at the gate's moment
+        try:
+            ran = [x.get('tree') for x in json.load(open(os.path.join(os.path.dirname(f), 'evidence', 'check.json')))
+                   if isinstance(x, dict) and x.get('executed_by') == 'cli' and x.get('tree')]
+        except (OSError, ValueError, TypeError):
+            ran = []
+        d[stage]['tree'] = ran[-1] if ran else d[stage].get('tree')
     tmp = '%s.tmp.%d' % (f, os.getpid())
     with open(tmp, 'w') as fh:
         json.dump(d, fh, indent=2)
     os.replace(tmp, f)
-    if verdict == 'FAIL':   # WP23: one failure record per failed row that no run recorded yet
+    if verdict:   # WP23: one failure record per failed row that no run recorded yet; a row that passes resolves its own
         try:
             import importlib.util   # by its full path, no folder on the import path (this module runs isolated)
             spec = importlib.util.spec_from_file_location('failure', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'failure.py'))

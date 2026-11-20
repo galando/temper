@@ -15,8 +15,8 @@ import fresh_review
 import repair_ops
 import run_env
 
-from flow_base import (BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, NEEDS, OPTION_IDS, OPTION_KINDS, choice_id, goes_on, on_model,
-                       question_entry, read_json, same_failure, with_step_kinds)
+from flow_base import (BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, NEEDS, OPTION_IDS, OPTION_KINDS, TEMPER, choice_id, goes_on,
+                       on_model, question_entry, read_json, same_failure, with_step_kinds)
 
 RECOMMENDED = " (Recommended)"   # the label's suffix: only opt() and set_rec() read or write it
 
@@ -121,6 +121,16 @@ class AskPart:
         holds (`--fresh`, the first call), its row is marked forced, and it spends one repeat of the budget."""
         return self.opt("Run it anyway", "The check runs once more whatever Temper kept of this tree (a service started by hand, a "
                         "flaky test); it counts as one repeat.", move="redo", calls=[self.c(x) for x in calls], oid="run-anyway")
+
+    def kept_again(self, stage, since="", claim=None):
+        """WP22 step 8: the store first. Whether the reuse store already knows that a check of the stage's ledger (its rows
+        of `claim` alone, when given) failed again on the same key since `since` (run_env.kept_again): then what ran in
+        between changed nothing, whatever the failure's text."""
+        try:
+            rows = read_json(os.path.join(TEMPER, "evidence", "%s.json" % stage), [])
+            return run_env.kept_again(os.getcwd(), [x for x in rows if claim is None or (isinstance(x, dict) and x.get("claim") == claim)], since)
+        except Exception:   # a question never fails on the store: the text compare stands
+            return False
 
     def save(self):
         return self.opt("Save for later", "Stop here. The run is saved; /temper:%s takes it up again." % ("fix" if self.r.command == "fix" else "temper"),
@@ -470,7 +480,9 @@ class AskPart:
             # 9.8.4: the same failure after a Run again is not run again by the recommendation: the run converges on the
             # person (an e2e run that followed it relaunched Build's fix pass forty times on one failure)
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
-            same = redo.get("stage") == stage and same_failure(str(redo.get("reason") or ""), why[:300])
+            # WP22 step 8: the store first (a fix pass by rule names its reason "rule: ...", which no text compare matches)
+            same = redo.get("stage") == stage and (self.kept_again(r.gate_of(stage) or stage, str(redo.get("ts") or "")) or
+                                                   same_failure(str(redo.get("reason") or ""), why[:300]))
             acc = self.acceptance_options(rows) if stage == "build" else []
             same = same and not acc
             again = self.opt("Run %s again" % label + ("" if same or (acc and acc[0].get("recommended")) else " (Recommended)"),
@@ -480,6 +492,12 @@ class AskPart:
                                                        if same else "Run %s again?" % label)
             opts = ([self.set_rec(self.save(), True), again] + back_opt() + [override_opt(go)] if same else
                     [again] + back_opt() + [override_opt(go), self.save()])
+            if same and r.command == "fix" and any(x.get("name") == "regression proof" for x in rows):
+                # WP23 mechanism 9: a fix's regression proof failed twice the same way; its test has no lock, so the
+                # person may say it is wrong: their reason goes to the Fix agent as a note
+                opts.insert(1, self.correct_test(False, "regression"))
+                text = ("%s: the check failed (%s). It failed the same way after it ran again: if the regression test is wrong, "
+                        "say why and the Fix agent writes it again. Save the run for later?" % (label, why))
             if acc:   # WP23: the locked acceptance tests failed when Build ended, and nothing else did
                 t = self.acc_triage()
                 said = (" The triage says the %s looks wrong: %s." % (t["verdict"], t.get("reason", ""))) if t.get("verdict") in ("code", "test") else ""
@@ -575,7 +593,8 @@ class AskPart:
             # 9.8.4: the same missing measurement after a Run again (the tool is still not there) is not run again by the
             # recommendation: a benchmark run without coverage.py ran Check again 52 times
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
-            same = gap and redo.get("stage") == "check" and same_failure(str(redo.get("reason") or ""), ("the measurement was missing: " + why)[:300])
+            same = gap and redo.get("stage") == "check" and (self.kept_again("check", str(redo.get("ts") or "")) or   # WP22: the store first
+                                                             same_failure(str(redo.get("reason") or ""), ("the measurement was missing: " + why)[:300]))
             again = [self.opt("Run Check again" + ("" if same else " (Recommended)"), "Install what the failed row names, then Check measures again; Build is not redone.",
                               move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))], oid="redo")] if gap else []
             if same:

@@ -377,6 +377,12 @@ function main(): void {
   }
   fs.rmSync(tools, { recursive: true, force: true })
   fs.rmSync(db, { recursive: true, force: true })
+  // WP20 (Tests first, item 14): the tree under test names the JDK fault before the Intent agent is launched; another
+  // plugin folder (TEMPER_E2E_ROOT, the base of the A/B replay) is only measured
+  if (!process.env.TEMPER_E2E_ROOT && !m.jdk_named_before_intent) {
+    console.error(`replay: the JDK fault was not named before the Intent agent (first named at: ${m.jdk_named_at || 'no question'})`)
+    process.exit(1)
+  }
 }
 
 main()

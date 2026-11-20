@@ -92,6 +92,7 @@ TEMPER_DIR="$REPO_ROOT/.temper"
 # own); nothing in this script ever writes to it.
 CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
 export TEMPER_SETUP_CONFIG="$CONFIG_FILE"   # the setup block (scripts/run_env.py)
+unset TEMPER_FRESH   # WP22: only a counted --fresh sets it
 STATE_FILE="$TEMPER_DIR/build-state.json"
 LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
 GATES_FILE="$TEMPER_DIR/gates.json"
@@ -3910,19 +3911,19 @@ cmd_check() {
       local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
       base="$(cmd_state_get base_sha "")"
       [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
-      mkdir -p "$TEMPER_DIR/evidence"; [[ "${2:-}" == --fresh ]] && export TEMPER_FRESH=1
+      mkdir -p "$TEMPER_DIR/evidence"; [[ $sub == run && "${2:-}" == --fresh ]] && export TEMPER_FRESH=1
       local ledger=check; [[ $sub == run ]] || ledger=build; ledger="$(_evidence_file $ledger)"; [[ -f "$ledger" ]] || echo '[]' > "$ledger"
       python3 -E -s "$SCRIPTS_DIR/check_run.py" "$sub" "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$REPO_ROOT/$ledger" "$base" "$cmd" "$tcmd" "$ccmd" "$key" "${2:-}"
       local rc=$?; [[ $sub == run || -n "${_bc_rc:-}" ]] || rc=0; return $rc ;;   # a red suite is a verdict: integrate reads it
     ahead)
-      # 9.8.0: Check's run, in the background while the Review agent reads the change (Review writes no code), into
-      # the reuse store, where `check run` finds it by key (WP22); it fails open.
+      # Beside Review, in the background: the planted bugs; a fix run first warms the store, where `check run`
+      # finds its runs by key (a feature run's store is warm from integrate).
       local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
       base="$(cmd_state_get base_sha "")"
       [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
       mkdir -p "$TEMPER_DIR/check"
       nohup python3 -E -s "$SCRIPTS_DIR/check_run.py" ahead "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$base" "$cmd" "$tcmd" "$ccmd" "$key" >/dev/null 2>&1 &
-      echo "OK: Check's run started in the background; check run reuses what it ran" ;;
+      echo "OK: the planted bugs (in a fix run Check's run first) run in the background" ;;
     *) echo "FAIL: usage: temper check run [--fresh]|build-checks|ahead|detect" >&2; return 1 ;;
   esac
 }

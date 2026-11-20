@@ -256,14 +256,37 @@ class WorkPart:
         return "build" if self.r.stage in ("build", "fix") else "check"
 
     def env_records(self, stage=None):
-        """WP23: the open failure records of class environment of the stage's gate (scripts/failure.py)."""
+        """WP23: the open failure records of class environment of the stage's gate (scripts/failure.py) that still stand: a
+        record stands only while its own failure is the latest of its check at that stage. Its row is still on the stage's
+        ledger with its key (a step back takes it off), no later record of its check names another failure, and its
+        command did not pass later in the ledger (a repair on the same key, which leaves it open)."""
         st = stage or self.check_stage()
-        return [x for x in failure.open_records(scope="gate:%s" % st) if x.get("class") == "environment"]
+        rows = read_json(os.path.join(TEMPER, "evidence", "%s.json" % st), [])
+        rows = rows if isinstance(rows, list) else []
+        recs = failure.read()
+
+        def same(a, b):
+            return (a.get("class"), a.get("kind"), a.get("cmd")) == (b.get("class"), b.get("kind"), b.get("cmd"))
+
+        def stands(x):
+            last = [y for y in recs if (y.get("scope"), y.get("check")) == (x.get("scope"), x.get("check"))]
+            if last and not same(last[-1], x):
+                return False
+            if not x.get("row"):
+                return True
+            m = re.match(r"^%s#(\d+)$" % st, str(x.get("row") or ""))
+            i = int(m.group(1)) if m else len(rows)
+            r = rows[i] if i < len(rows) and isinstance(rows[i], dict) else {}
+            if not r or (r.get("key") or "") != (x.get("key") or ""):
+                return False
+            return not any(isinstance(y, dict) and y.get("cmd") == r.get("cmd") and y.get("exit_code") == 0 for y in rows[i + 1:])
+        return [x for x in failure.open_records(scope="gate:%s" % st) if x.get("class") == "environment" and stands(x)]
 
     def setup_fault(self, stage=None):
         """9.8.5 (Q6): the reason the latest run of the stage's checks hit the environment (a `setup fault:` row after its last
         suite row), or "". WP23: the stage the run is at (integrate's checks at Build, Check's at Check), and else an open
-        record of class environment at a failed suite row of that gate."""
+        record of class environment at a failed suite row of that gate, or of the locked acceptance tests at their failed
+        row (an exit 125 with no SETUP marker writes no `setup fault:` row)."""
         st = stage or self.check_stage()
         rows = [x for x in read_json(os.path.join(TEMPER, "evidence", "%s.json" % st), []) if isinstance(x, dict)]
         suite = "Integration suite" if st == "build" else "tests: the suite"
@@ -271,9 +294,11 @@ class WorkPart:
         hits = [x for x in rows[last + 1:] if str(x.get("claim", "")).startswith("setup fault: ")]
         if hits:
             return " ".join(hits[-1]["claim"][len("setup fault: "):].split())[:300]
-        env = self.env_records(st)
-        failed = {x.get("name") for x in self.r.failed_rows(st)}
-        return " ".join(str(env[-1].get("why") or "").split())[:300] if env and failed & {"integration", "tests pass"} else ""
+        failed = {str(x.get("name") or "") for x in self.r.failed_rows(st)}
+        suite = bool(failed & {"integration", "tests pass"})
+        acc = any(x.startswith("acceptance tests written before Build") for x in failed)
+        env = [x for x in self.env_records(st) if suite or (acc and x.get("check") == "acceptance")]
+        return " ".join(str(env[-1].get("why") or "").split())[:300] if env else ""
 
     def setup_question(self, stage, setup, rest):
         """9.8.5 (Q6), WP23: the environment was not ready (no database, the wrong JDK, a failed setup line) when the checks
@@ -334,7 +359,12 @@ class WorkPart:
     def feedback_lines(self):
         fb = self.r.latest_feedback()
         lines = []
-        if fb:
+        redo = self.r.state.get("redo") if isinstance(self.r.state.get("redo"), dict) else {}
+        if fb and str(self.r.state.get("wrong_test")) == str(redo.get("reason")) == fb:   # WP23 mechanism 9: correct-test
+            lines.append("Note from the person: the regression test is wrong: %s. Write the regression test again so it fails on "
+                         "the code before the fix and passes with it (a test the shield of regression_test keeps stays as it "
+                         "is: add the new one beside it), keep the fix as rca.md says, then continue." % fb)
+        elif fb:
             lines.append("Feedback re-entry: %s. Fix this, then continue." % fb)
         found = self.r.latest_findings()
         loop = self.r.latest_loop() or {}
@@ -468,9 +498,10 @@ class WorkPart:
                     "say": "Check: the CLI runs the suite, coverage and the scenario tests; the Check agent records %d criteria%s." % (len(rec), on_model([a]))}
         a = self.agent(stage, extra)
         if stage == "review" and self.cli_check():
-            # 9.8.0: the CLI runs Check's suite and coverage while Review reads the change (Review writes no code), into
-            # the reuse store, where Check finds the run by its key (WP22). WP17: in a fix run too (its regression
-            # proof). WP19: then the planted bugs, the one place they run, as information beside Review.
+            # 9.8.0: the CLI works while Review reads the change (Review writes no code). A feature run plants bugs only
+            # (WP19, the one place they run, as information beside Review), timed by the store's entry of the tree that
+            # integrate left (WP23 mechanism 10). A fix run, which has no integrate, first runs Check's suite and coverage
+            # into the reuse store, where Check finds the run by its key (WP22, WP17), then plants the bugs.
             a["before"] = (a.get("before") or []) + [self.c("check ahead")]
         if stage == "design":
             # 9.8.0 (round 5): the CLI draws the stage's panel from the files the agent wrote; the agent draws
@@ -569,11 +600,11 @@ class WorkPart:
     def acc_failure(self):
         """(detail, digest) when the gate of the stage the run is at (Build, where integrate ran them, or Check) failed on
         the locked acceptance tests and on nothing else, they were not changed after the lock and are not reopened: a test
-        or the code is wrong. Else None."""
+        or the code is wrong. Else None; also when the environment failed them (WP23: the setup question comes first)."""
         d = self.acceptance()
         rows = self.r.failed_rows(self.check_stage())
         acc = [x for x in rows if str(x.get("name", "")).startswith("acceptance tests written before Build")]
-        if not d.get("cmd") or d.get("reopened") or not acc or len(acc) != len(rows):
+        if not d.get("cmd") or d.get("reopened") or not acc or len(acc) != len(rows) or self.setup_fault():
             return None
         detail = str(acc[0].get("detail", ""))
         if detail.startswith(("changed after they were locked", "reopened")):
@@ -674,9 +705,23 @@ class WorkPart:
             rec = t["verdict"] == "test" or not r.can_loop("check", "build")
         else:
             rec = r.loop_count("check", "build") >= 1 or not r.can_loop("check", "build")
-        return [self.opt("Correct the acceptance test" + (" (Recommended)" if rec else ""),
-                         "The test is wrong, not the code: the writer corrects it against the intent and locks it again; the report shows your reason.",
-                         move="redo", calls=[self.c("acceptance reopen --reason '{reason}'")], reason=self.ACC_REASONS, oid="correct-test")]
+        return [self.correct_test(rec)]
+
+    REG_REASONS = ["The test does not fail on the code before the fix", "The test checks another fault than the root cause"]
+
+    def correct_test(self, rec, what="acceptance"):
+        """The person's answer that a test is wrong, not the code (correct-test, one label for both). A locked acceptance
+        test: the writer corrects it against the intent and locks it again. A fix run's regression test (WP23 mechanism 9,
+        after its proof failed twice the same way; the head has no lock on it): the Fix agent gets the person's reason as
+        a note (feedback_lines), and Fix is checked again."""
+        if what == "regression":
+            desc = "The regression test is wrong, not the fix: the Fix agent gets your reason as a note and writes the test again; Fix is checked again."
+            calls, reasons = [self.c("state redo fix --reason '{reason}'"), self.c("state set wrong_test '{reason}'")], self.REG_REASONS
+        else:
+            desc = "The test is wrong, not the code: the writer corrects it against the intent and locks it again; the report shows your reason."
+            calls, reasons = [self.c("acceptance reopen --reason '{reason}'")], self.ACC_REASONS
+        return self.opt("Correct the %s test" % what + (" (Recommended)" if rec else ""), desc, move="redo", calls=calls, reason=reasons,
+                        oid="correct-test")
 
     def acceptance_fix_work(self):
         """The person reopened the locked acceptance tests at the question of the stage (Build or Check): the writer
@@ -721,8 +766,10 @@ class WorkPart:
                 and not (c.get("deferred") and c.get("optional"))]
 
     def cli_check(self):
-        """True when the CLI can run Check itself: a configured test command, or one it detects for the stack."""
+        """True when the CLI can run Check itself: a configured test command, one it detects for the stack, or else the
+        plan's Integration line (WP23 mechanism 2, as check_run.run reads it)."""
         try:
-            return bool(check_run.det_for(os.getcwd(), self.r.cfg("check.commands.test", ""), self.r.cfg("check.commands.coverage", "")))
+            return bool(check_run.det_for(os.getcwd(), self.r.cfg("check.commands.test", ""), self.r.cfg("check.commands.coverage", ""))
+                        or check_run.plan_line(self.r.spec))
         except Exception:
             return False

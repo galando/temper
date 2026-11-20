@@ -270,6 +270,8 @@ def spend(words, facts):
     if hit is None:
         return 0, ""
     key, kind = hit
+    if kind == "run anyway" and facts.run().armed():   # WP22 step 11: the person's option; a run on its own never takes it
+        return 1, "BLOCKED: Run it anyway (--fresh) is the person's answer at a question; a run that goes on by itself never takes it"
     rm = room(key, facts)
     if rm["used"] >= rm["limit"]:
         return 1, "BLOCKED: %s was repeated %d times (limit %d); the person grants more at the question" % (

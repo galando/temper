@@ -356,7 +356,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart):
             if redo:
                 out.update(redo)
                 return out
-            cmds = self.plan_command_step()   # WP21: the plan's commands on the base, once the plan was checked
+            cmds = self.plan_command_step() if verdict == "PASS" else None   # WP21: the plan's commands, once it passed
             if cmds:
                 out.update(cmds)
                 return out

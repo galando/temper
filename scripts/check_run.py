@@ -218,6 +218,8 @@ def suite_owner(root, cfg=None, spec=""):
         for k in ("file", "lcov"):   # trap 7: the report is written under that folder
             if c.get(k):
                 c[k] = os.path.join(name, c[k])
+        if c:   # and the paths inside the report are that folder's (_line_hits)
+            c["dir"] = name
         det = dict(d, test=pre + d["test"], coverage=c or None)
         return {"test": det["test"], "run": c.get("run") or det["test"], "source": "detected",
                 "why": "the %s files in %s/, the one folder one level down that has them" % (d.get("stack"), name), "det": det}
@@ -314,9 +316,17 @@ def coverage_verdict(measure, base, changed, threshold, base_why=""):
 
 
 def base_value(path):
-    """(the base total, why there is none) from the baseline (.temper/evidence/baseline.json, written by WP20)."""
+    """(the base total, why there is none) from the baseline (.temper/evidence/baseline.json, written by WP20), only when
+    it ran on the code of the run's base commit (base_sha of the run state beside it; .temper/ and .claude/ aside): one
+    taken again later, past `integrate`, measured the change."""
     d = acc_read(path)
     c = _num(d.get("coverage"))
+    temper = os.path.dirname(os.path.dirname(os.path.abspath(path)))
+    sha = acc_read(os.path.join(temper, "build-state.json")).get("base_sha")
+    if c is not None and d.get("head") and sha and d["head"] != sha and subprocess.run(
+            ["git", "diff", "--quiet", d["head"], sha, "--", ".", ":(exclude).temper", ":(exclude).claude"],
+            cwd=os.path.dirname(temper), capture_output=True).returncode == 1:
+        return None, "the baseline ran on %s, not on the run's base %s" % (str(d["head"])[:12], str(sha)[:12])
     if c is not None:
         return c, ""
     if not d:
@@ -330,10 +340,10 @@ def _line_hits(root, det):
     """{path: (lines that ran, lines that did not)} from the coverage report's line data: coverage.py's JSON, Go's
     profile, lcov.info of jest, vitest and c8. {} when the tool gives none."""
     cov = det.get("coverage") or {}
-    kind, hits = cov.get("kind"), {}
+    kind, hits, sub = cov.get("kind"), {}, cov.get("dir") or ""
 
     def add(p, line, n):
-        r, m = hits.setdefault(p, (set(), set()))
+        r, m = hits.setdefault(os.path.normpath(os.path.join(sub, p)), (set(), set()))
         (r if n else m).add(line)
     if kind == "coverage.py":
         for p, f in (json.load(open(os.path.join(root, cov["file"]))).get("files") or {}).items():
@@ -342,7 +352,7 @@ def _line_hits(root, det):
             for line in f.get("missing_lines") or []:
                 add(os.path.normpath(p), line, 0)
     elif kind == "go":
-        mod = re.search(r"^module\s+(\S+)", _read(os.path.join(root, "go.mod")), re.M)
+        mod = re.search(r"^module\s+(\S+)", _read(os.path.join(root, sub, "go.mod")), re.M)
         for line in _read(os.path.join(root, cov["file"])).splitlines():
             m = re.match(r"^(.+?):(\d+)\.\d+,(\d+)\.\d+ \d+ (\d+)$", line)
             if m:
@@ -355,7 +365,7 @@ def _line_hits(root, det):
         p = None
         for line in _read(os.path.join(root, cov["lcov"])).splitlines():
             if line.startswith("SF:"):
-                p = os.path.relpath(os.path.join(root, line[3:].strip()), root)
+                p = os.path.relpath(os.path.join(root, sub, line[3:].strip()), os.path.join(root, sub))
             elif line.startswith("DA:") and p:
                 n, c = (line[3:].split(",") + ["0"])[:2]
                 add(p, int(n), int(float(c or 0)))
@@ -804,6 +814,12 @@ def acc_triage(spec, lockfile, text):
     d["triage"] = {"verdict": m.group(1).lower(), "reason": " ".join(m.group(2).split())[:300],
                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     acc_write(lockfile, d)
+    if d["triage"]["verdict"] == "test":   # WP23: a locked test the triage calls wrong is a record of class plan
+        try:
+            root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(lockfile))))
+            _failures().triaged_test(stage_label(root).lower(), root)
+        except Exception:
+            pass
     print("OK: triage recorded: the %s looks wrong" % d["triage"]["verdict"])
     return 0
 
@@ -908,8 +924,9 @@ def acc_run(root, spec, lockfile):
         return [row("acceptance (written before Build)", d["cmd"], 1,
                     "changed after they were locked: %s" % ", ".join(changed)[:300])]
     info = {}   # WP22: its tests live under .temper/, outside the digest, so the lock's file digests are in its key
-    out, rc, _ = run_env.run_cached(root, SUITE_TIMEOUT_S, [d["cmd"]], info=info, extra={"lock": d.get("files") or {}},
-                                    root=root)
+    import baseline   # WP20: the limit from the base's time of the same suite and from a kept limit, at least Check's
+    out, rc, _ = run_env.run_cached(root, baseline.limit_for(d["cmd"], SUITE_TIMEOUT_S, root), [d["cmd"]], info=info,
+                                    extra={"lock": d.get("files") or {}}, root=root)
     fixed = [c.get("reason", "") for c in d.get("corrections") or [] if isinstance(c, dict)]
     name = "acceptance (written before Build)" + (", corrected after the lock: %s" % "; ".join(fixed)[:200] if fixed else "")
     return [row(name, d["cmd"], rc, out, **run_env.row_fields(info))]
@@ -945,7 +962,7 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
     record. Returns the suite's exit code at Build (0 when the person's skip of a red base covers it), else 0; 3 at Check
     with no test command."""
     det = det_for(root, test_cmd, cov_cmd)
-    line = plan_line(spec) if stage == "build" else ""
+    line = plan_line(spec)   # WP23 mechanism 2: at Build and at Check, so a run never ends at Check for want of a command
     if not det and line:   # the plan's line owns the suite only when the config and detect name none
         det = detect(root, line)
     if not det and stage != "build":
@@ -974,6 +991,8 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
         # content, integrate's run on the tree Check judges) is used, with what it measured
         sinfo = {"measure": measure_of(root, det, base), "need_extra": True} if cov else {}
         out, rc, _ = run_env.run_cached(root, limit, [cmd], info=sinfo, root=root)
+        if rc == 124:   # WP20 mechanism 14: twice the limit is kept, the next run's limit, so the kept time out runs again
+            baseline.timed_out(cmd, limit, root)
         cov_exit = rc if cov else None
         if cov and rc == 127 and cmd != det["test"]:   # the coverage program could not start: the suite runs without it
             sinfo = {}
@@ -1072,12 +1091,13 @@ def show(out, rc, keep=12):
     sys.stdout.flush()
 
 
-# ---- ahead: Check's run made while Review reads the change ------------------------------------------------------------
-# Review writes no code, so the CLI runs Check's commands through the reuse store in the background while the Review
-# agent works, into a throwaway ledger: the store is warm, and `check run` finds each entry by its key (a call while
-# that run goes on waits on the key's lock, then reads the entry). Then, and only here, the planted bugs run (WP19):
-# when three runs of the suite fit MUTATION_BUDGET_S, into .temper/evidence/mutation.json. `check run` never waits for
-# them.
+# ---- ahead: beside Review, the planted bugs (and in a fix run Check's run) -----------------------------------------------
+# Review writes no code, so the CLI works in the background while the Review agent reads the change. In a fix run (no
+# integrate) it runs Check's commands through the reuse store into a throwaway ledger: the store is warm, and `check run`
+# finds each entry by its key (a call while that run goes on waits on the key's lock, then reads the entry). A feature
+# run's store is warm from integrate (WP23 mechanism 10): no check runs, and the suite's time is the one the store keeps
+# for the tree as it is (trap 9). Then, and only here, the planted bugs run (WP19): when three runs of the suite fit
+# MUTATION_BUDGET_S, into .temper/evidence/mutation.json. `check run` never waits for them.
 def mutation_path(root):
     return os.path.join(root, ".temper", "evidence", "mutation.json")
 
@@ -1119,11 +1139,34 @@ def plant(root, base, info, before):
     return planted_write(root, before, "measured", "", ran=ran, caught=caught, survivors=surv)
 
 
+def plant_kept(root, spec, base, test_cmd, cov_cmd, before):
+    """A feature run's planted bugs (WP23 mechanism 10, trap 9): the suite's time and result are the store's entry of the
+    tree as it is (the run integrate made, or Check's), read and never run; with no entry nothing runs, and the file says
+    why."""
+    det = det_for(root, test_cmd, cov_cmd)
+    line = plan_line(spec)
+    if not det and line:
+        det = detect(root, line)
+    if not det:
+        return planted_write(root, before, "not run", "no test command for this project")
+    # a kept pass first: the coverage run that could not start (exit 127) is followed by the suite's own text, as at run
+    kept = [run_env.kept(root, [c], root=root) for c in dict.fromkeys(x for x in ((det.get("coverage") or {}).get("run"),
+                                                                                 det.get("test")) if x)]
+    got = next((k for k in kept if k and k[0] == "pass"), None) or next((k for k in kept if k), None)
+    if not got:
+        return planted_write(root, before, "not run", "no run of the suite on this tree is kept (integrate and Check made "
+                             "none on it), so its time is not known")
+    plant(root, base, {"det": det, "suite_s": got[1].get("seconds"), "rc": 0 if got[0] == "pass" else got[1].get("rc")}, before)
+    return 0
+
+
 def ahead(root, spec, base, command, test_cmd="", cov_cmd="", threshold=""):
     for f in (os.path.join(root, ".temper", "check", "mutation.stop"), mutation_path(root)):
         if os.path.exists(f):
             os.remove(f)
     before = run_env.tree_key(root, root=root)
+    if command != "fix":
+        return plant_kept(root, spec, base, test_cmd, cov_cmd, before)
     fd, tmp = tempfile.mkstemp(prefix="temper-ahead-", suffix=".json")
     os.close(fd)
     open(tmp, "w").write("[]")

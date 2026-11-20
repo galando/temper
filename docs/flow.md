@@ -219,10 +219,15 @@ a red base; a run that goes on by itself records a stop with its notice, then as
 
 "Go on anyway" is a recorded skip: a row `base-suite` in `.temper/overrides.json` (by the person), the answer in the
 file and in the reuse store under the baseline's key (the base tree, the command, the setup block, the tool versions).
-At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is
-`pass: null, state: skipped`; one new fail line fails it. A later run with the same key asks nothing and records its own
-skip row; a changed key asks again. A fix run records a red base of kind `red-base` with the answer `fix-run` and asks
-nothing: there the red suite may be the bug.
+At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is `pass:
+null, state: skipped`; one new fail line fails it, after the eighth too: the base keeps every fail line it showed, and so
+does each run of the suite (its ledger row and its entry in the reuse store). At Build the integration suite and a
+group's Validate that fail only as on that base are a recorded skip the same way; a list of exactly eight lines may be
+one cut by an older entry, so it never matches. A base
+where no test ran (a fault of the environment check, a setup line that failed with exit 125, a program not found with
+exit 127) skips nothing of the suite. A later run with the same key and the same kind of red asks nothing and records its own skip row;
+a changed key or another kind asks again. A fix run records a red base of kind `red-base` with the answer `fix-run` and
+asks nothing: there the red suite may be the bug.
 
 **Limits from measured time.** `baseline.limit_for(cmd, default)` is the larger of the site's default and three times
 the seconds the same suite took on the base (the same text, or the same steps with other flags; `seconds_over` counts
@@ -230,7 +235,9 @@ as measured). It sets the limit of the group gate (600 s), a task's test and its
 (3,600 s) and Check (1,800 s); the environment variables stay the defaults, and a gate waits for a baseline still
 running that measures its suite. The first time out of a group's check is no question: the CLI runs `group gate G
 --timeout-s <twice the limit>` itself (no repeat of the budget when the base measured that suite) and keeps the doubled
-limit in `limits`; a second time out asks `group.fail`.
+limit in `limits`; a second time out asks `group.fail`. A time out of Check's suite, of `integrate`'s suite or of a
+task's test keeps its doubled limit in `limits` too, so its next run gets it and runs again rather than reuse the time
+out. The locked acceptance tests take their limit from `limit_for` with Check's default.
 
 ### A command the plan wrote, the setup block and an environment fault (9.8.5)
 
@@ -241,22 +248,24 @@ current code, one after another in a process of its own, in the baseline's workt
 after the suite ended, each under the limit Build gives it: a Validate under the group gate's (`limit_for` of 600 s,
 `TEMPER_TASK_TEST_TIMEOUT_S`), the Integration line under `integrate`'s (3,600 s, `TEMPER_INTEGRATION_TIMEOUT_S`). A
 Maven command runs as written. Left out: a text equal to the suite the baseline ran (or the owner's test text), a
-command that names a file a task declares and the base lacks, and every task Test and scenario `Test:` (they fail on
-the base by design). Only a command with no result runs, so a second call is cheap; then the worktree goes. Each result
-is kept in `plan` of `.temper/evidence/baseline.json` under the command's text, judged by its exit code alone: 0 is
-`pass` (its seconds feed `limit_for`); 124 is `timeout`, never a fault of the environment; 125 (the setup line failed)
-and 127 or a first word that does not resolve are class `environment`; any other exit is `fails like the base` when the
-base is red, else `fail` (class `command`). No output text takes part. The same process resolves the first word of each
-step of every command of the plan, the task and scenario Tests too, in one shell call under the setup block; a program
-that does not resolve turns the base red, so `base.red` names it before any agent. A `fail` or a `timeout` is the
-question `plan.command` (the scope of `base.red`'s function): the command, where the plan wrote it, the exit, the
-seconds and the first fail lines; `Allow it more time` first at a time out (a longer limit kept in `limits`), else `Run
-it again`; `Change the command` (typed, `temper plan patch`, then the plan is checked again); `Revise the plan`;
-`Go on anyway` (a skip with a reason, the override `plan-command`); `Save for later`. No setup block and no agent are
-offered. A result that comes after the approval asks the same before the next task agent, with `Loop back to Plan` in
-place of `Revise the plan`; a result still running is `running` on the approval card, and only the first group gate of
-the group whose Validate it is waits for it. A run that goes on by itself stops there: it never changes a gate's
-command and never plans again.
+command that names a file a task declares and the base lacks, and every task Test and scenario `Test:` (they fail on the
+base by design). Only a command with no result runs, so a second call is cheap; a call made while an earlier one still
+runs waits for it (as long as the earlier call's commands may run, each under its own limit), and the last one
+removes the worktree. Each result is kept in `plan` of
+`.temper/evidence/baseline.json` under the command's text, judged by its exit code alone: 0 is `pass` (three times its
+seconds is the least limit `limit_for` gives that command); 124 is `timeout`, never a fault of the environment; 125 (the
+setup line failed) and 127 or a first word that does not resolve are class `environment`; any other exit is `fails like
+the base` when the base is red, else `fail` (class `command`). No output text takes part. The same process resolves the
+first word of each step of every command of the plan, the task and scenario Tests too, in one shell call under the setup
+block (also when no command is left to run); a program that does not resolve turns the base red, so `base.red` names it
+before any agent. Once the plan gate passed, a `fail` or a `timeout` is the question `plan.command` (the scope of
+`base.red`'s function): the command, where the plan wrote it, the exit, the seconds and the first fail lines; `Allow it
+more time` first at a time out (a longer limit kept in `limits`), else `Run it again`; `Change the command` (typed,
+`temper plan patch`, then the plan is checked again); `Revise the plan`; `Go on anyway` (a skip with a reason, the
+override `plan-command`); `Save for later`. No setup block and no agent are offered. A result that comes after the
+approval asks the same before the next task agent, with `Loop back to Plan` in place of `Revise the plan`; a result
+still running is `running` on the approval card, and only the first group gate of the group whose Validate it is waits
+for it. A run that goes on by itself stops there: it never changes a gate's command and never plans again.
 
 **The setup block.** `setup:` in `.claude/temper.config` holds `run:` (one shell line), `env:`, `services:` and
 `tools:`. `scripts/run_env.py` runs the line in the same shell before every command the CLI runs (task tests, group
@@ -379,7 +388,20 @@ tree that changed after `integrate` (a repair at Review) every command runs agai
 regression proof are on the Build ledger before Review is paid for, and the Build gate of a fix run has the rows `tests
 pass` and `regression proof`. Only a regression proof the CLI ran counts, at the Build gate, the Check gate and on the
 commit card; a row written with `evidence add` fails the row. A program of the repository named by its full path is
-never started with `--version` to read its version for the key.
+never started with `--version` to read its version for the key. A group's Validate whose text is the owner's test text
+runs in the owner's run text, with its coverage measured as `integrate` measures it (`run_env.as_owner`, used by
+`grouprun` of `scripts/task_ops.py`), so the last group's gate and `integrate` share one key on the merged tree and the
+suite runs once. As `check run` does in the project folder, the folder `.temper/check` the coverage run writes into is
+made in the group's worktree, and a coverage program that cannot start (exit 127) leaves the group's check to the test
+text alone. A byproduct of a check (coverage data, a cache) is no part of the commit of `temper group fix G<n> --commit`; a folder a check made counts by the files in it, so a source, test or declared file the fix agent writes there is part of the fix. A regression proof that fails twice with the same text (a run again changed nothing) asks `fix.fail`
+with `Correct the regression test` (`correct-test`, the label `Correct the %s test` the acceptance tests use): its calls
+are `state redo fix --reason '{reason}'` and `state set wrong_test '{reason}'`, and the Fix agent gets the reason as the
+person's note that the regression test is wrong, and writes it again (beside the old one when the shield of
+`regression_test` keeps that file; lifting the shield stays the person's, in a terminal). `Save for later` stays
+recommended. `check ahead` beside Review runs
+no check in a feature run, whose store is warm from `integrate`: it plants bugs only, timed by the store's entry of the
+suite on the tree as it is (a kept pass first, of the coverage run or of the test text), and with no entry it writes `not run` with the reason. In a fix run it runs Check's
+commands through the store first, as WP22 made it.
 
 ### Failure text, the SETUP verdict and recommendations that follow the evidence (9.8.5)
 
@@ -394,8 +416,15 @@ its prompt. When nothing names a fault (no feedback, no failed row, no note of t
 CLI runs `integrate` and `gate build` again, and a failure there names the fault.
 
 **A fix that changed nothing.** `temper group fix G<n> --commit` with no change keeps the group's check failed (the same
-tree would fail the same way, so it does not run again) and counts `fix_empty`. The next question recommends the loop
-back to Plan (or Save for later), and says the cause is the plan's command or the environment. A first time-out is
+tree would fail the same way, so it does not run again) and counts `fix_empty`; what a check left behind is no
+change. The next question recommends the loop
+back to Plan (or Save for later), and says the cause is the plan's command or the environment. The questions read the
+reuse store first (WP22 step 8, `run_env.kept_again`): a check whose newest row came back from the kept failure (nothing
+ran, the tree had not changed) or whose environment fault the store ran again and saw fail is the same failure,
+whatever the text. A group's check asked again on the same tree counts as `fix_empty` does, and the question says it
+failed again on the same tree (that nothing ran, or that the store ran it again and it failed the same way); after a run again of Build, Fix or Check (a fix pass by rule names its reason `rule:
+...`, which no text compare matches), `Save for later` is recommended. The text compares stay for a failure the store
+holds no key of. A first time-out is
 no question: the CLI runs the check again with twice the limit (WP20, above); a second one asks, with the command change
 first.
 
@@ -444,7 +473,12 @@ own action (`state redo build`, one repeat of `gate:build`), and then the run as
 failed suite or a measured coverage drop (`code`, when they are the only failed rows) gets the same one fix pass by
 rule; in a run the person drives it asks (row `D41`). Any other failure asks as before (a run that goes on by itself
 stops). A class never changes a verdict: a record is resolved only by a pass of the same
-check and scope on another key, or by the person's skip with its reason. The fix pass prompts take `why` and the
+check and scope on another key (a record with no key, of a task or a gate row, by any pass of it), or by the person's
+skip with its reason (`base-suite` resolves the record of a red base, `plan-command` that of a plan command, a stage's
+skip the records of that stage). A record of class `environment` picks the step only while its own failure is the latest
+of its check at that stage: once its command passed later in the stage's ledger (the person repaired it, on the same
+key), a later record of its check names another failure, or a step back took its row off the ledger, it stays open,
+but it no longer picks the step. The fix pass prompts take `why` and the
 failing lines from the records; a step back names the record ids it carries (`records` of the loop); `temper output
 <stage>`, the view (`failures`: the open records, with what a rule did), the end of run report and the run summary
 (`failures`, counts by class) show them.
@@ -592,8 +626,8 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   BUG`), `cause`, `fix`, `test`, `files`, `commands` and `risk`, read from `rca.md` by `panel.rca_fields`; its foot
   names the branch the click makes and ends `Nothing is pushed.`
 - **In between.** Approved with `approve-run`, a passed Fix, Review and Check move on as the CLI's own action, a failed
-  check takes the one repair (`state loop <stage> fix`), and Review starts Check's run (`check ahead`), as in a feature
-  run. The commit question of a fix run offers `commit`, `back` (`state loop check fix`) and `save`: no pull request
+  check takes the one repair (`state loop <stage> fix`), and Review starts Check's run (`check ahead`); in a feature
+  run the same call plants bugs only, the store being warm from `integrate`. The commit question of a fix run offers `commit`, `back` (`state loop check fix`) and `save`: no pull request
   and no small change; its card's `message` is the message the CLI drafts from `rca.md`.
 - **TRIVIAL.** The Intent agent of a `/temper:temper` run at Intent, at step 0, with no spec file, calls `temper
   intent trivial --why TEXT` (`scripts/trivial.py`): the run state takes `trivial: {why, head, at, dirty_before}` and
@@ -619,9 +653,13 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   and GREEN do not. A row the runner made carries `tree`, `key`, `seconds` and `reused` (the date of the kept result).
   A failure is kept beside the pass and is not run again on the same key (an environment or not measured failure runs
   again at most twice, a time out under a larger limit runs). A failure whose command passed on the base, that names no
-  declared file, runs once more at once: fail then pass is `flaky`, the pass counts and the commit card lists it.
+  declared file, runs once more at once: fail then pass is `flaky`, the pass counts and the commit card lists it
+  once (a reused pass of it stays `flaky`, and the rows that reused it are one line of the card; a run of the same key
+  that passes at once ends it; an owed scenario test of a task or group gate that passed so adds a row to the Build
+  ledger).
   `--fresh` (`check run`, `group gate`, `integrate`; the person's Run it anyway) runs whatever the store holds, spends
-  one repeat and marks the row `forced`. Each verdict of `.temper/gates.json` names its `tree`; the commit gate fails
+  one repeat and marks the row `forced`. Each verdict of `.temper/gates.json` names its `tree` (Check's, the tree its
+  latest CLI run ran on); the commit gate fails
   (`checked tree`) when the project is no longer the tree the Check verdict names.
 - **The lock.** A write waits for a live holder of `.temper/.lock` up to `TEMPER_LOCK_MAX_S` (120 s) and breaks a gone
   holder's old lock. Past that it fails with exit 75 and writes nothing; it never writes past the lock.
@@ -663,7 +701,7 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 | `build` | `{groups: [{id, title, status, verdict, tasks: [{n, title, files, state, model, attempts}]}], integration}`; a task's `state` is `waiting`, `running`, `red`, `green`, `pass`, `fail` or `parked` |
 | `findings` | `[{id, severity, confidence, claim, file, line, state, label}]`; `confidence` is the reviewer's 0 to 1 (`temper evidence add --confidence`) or `null`; `file` and `line` come from a claim that starts `file:line`; `state` is `open`, `resolved` or `accepted` |
 | `checks` | the rows of the Check gate: `[{name, pass, detail, state?}]`; 9.8.5 (WP19): `pass` is `null` and `state` is `not measured` for a measurement that was not taken (the row `coverage` with no coverage tool or no base value), which fails nothing and passes nothing |
-| `check_markers` | `[{name, state, detail, value?, lines}]` for compile, tests, coverage, lint and security, and `mutation` (WP19) when `.temper/evidence/mutation.json` measured the tree as it is: the planted bug score beside Review, always `info`; `state` is `pass`, `fail`, `info` or `none`; the coverage marker follows the gate's row `coverage`, `info` with the detail `not measured: <why>` for the third state |
+| `check_markers` | `[{name, state, detail, value?, lines}]` for compile, tests, coverage, lint and security, and `mutation` (WP19) when `.temper/evidence/mutation.json` measured the tree as it is: the planted bug score beside Review, always `info`; `state` is `pass`, `fail`, `info` or `none`; the coverage marker follows the gate's row `coverage` (before the gate, the CLI row's own `state`), `info` with the detail `not measured: <why>` for the third state |
 | `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |

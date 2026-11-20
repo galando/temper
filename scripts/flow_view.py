@@ -30,10 +30,11 @@ def check_markers(run):
         last = hits[-1] if hits else {}
         code = last.get("exit_code")
         state = "pass" if code == 0 else ("fail" if isinstance(code, int) else "info")
-        if name == "coverage" and last.get("value") is not None:
-            state = "pass" if code in (0, None) else state
         lines = [str(r.get("claim", ""))[:200] for r in hits if isinstance(r.get("exit_code"), int) and r.get("exit_code") != 0][-5:]
         detail = str(last.get("claim", ""))[:200]
+        if name == "coverage" and last.get("state"):   # WP19: the CLI row's own verdict; not measured is never a pass
+            state = {"pass": "pass", "fail": "fail"}.get(last["state"], "info")
+            detail = ("not measured: " + str(last.get("output") or ""))[:200] if state == "info" else detail
         if gate is not None:   # WP19: the gate's own verdict of the row coverage, the third state with it
             state = {True: "pass", False: "fail"}.get(gate.get("pass"), "info")
             detail, lines = str(gate.get("detail") or "")[:200], [] if gate.get("pass") is not False else lines

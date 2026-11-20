@@ -194,6 +194,13 @@ All notable changes to Temper are documented here. The plugin version lives in
   proof the CLI ran counts. Every failure is one typed record in `.temper/evidence/failures.json`
   (`scripts/failure.py`), of one of five classes; a class picks the next step and never a verdict; a step back keeps
   it, and `state archive` copies it into `gate-ledger.json`.
+- Phase 5, the parts WP22 and WP23 left out. The questions read the reuse store before they compare failure texts: a
+  failure the store kept and gave back on the same tree is the same failure (after a fix pass by rule too), and a
+  group's check asked again on the same tree counts as a fix that changed nothing. A fix run's regression proof that
+  fails twice with the same text offers `Correct the regression test` (`correct-test`), whose reason the Fix agent
+  gets as your note. `check ahead` of a feature run plants bugs only, timed by the store's entry of the tree, and says
+  why when there is none; a fix run's stays the warm run. A group's Validate in the owner's test text runs in the
+  owner's run text, so `integrate` reuses the last group's run on the merged tree.
 - WP24: a finding is repaired in its stage (ADR 0021). A High or critical finding of Review, or a failed row of Check
   whose failure record has the class `code`, is repaired where it was found with no dialog, in every mode: the CLI's
   own `temper repair start` (only when every condition of `scripts/repair_ops.py` holds), a fresh Build agent told

@@ -193,6 +193,10 @@ def limit_for(cmd, default, root=None):
     kept = (d.get("limits") or {}).get(norm(cmd)) if isinstance(d.get("limits"), dict) else None
     if num(kept):   # a limit kept for this very command: a doubled time out, or the person's more time (WP21)
         base = max(base, float(kept))
+    p = next((e for c, e in (d.get("plan") or {}).items() if norm(c) == norm(cmd) and isinstance(e, dict)
+              and e.get("result") == "pass" and num(e.get("seconds"))), None) if isinstance(d.get("plan"), dict) else None
+    if p:   # WP21 mechanism 5: a plan command that passed on the base, three times its seconds
+        base = max(base, 3 * float(p["seconds"]))
     if not d or not same_suite(cmd, d):
         return int(math.ceil(base))
     t0 = time.time()
@@ -313,8 +317,8 @@ def kept_answer(root, doc):
     if doc.get("result") != "red" or doc.get("answer"):
         return
     a = store_get(root, doc.get("key") or "").get("answer")
-    if not isinstance(a, dict) or not a.get("reason"):
-        return
+    if not isinstance(a, dict) or not a.get("reason") or a.get("kind") != doc.get("kind"):
+        return   # an answer given at another kind of red (a fault of the environment, or a red suite) asks again
     doc["answer"] = "go-on-anyway"
     doc["answered"] = dict(a, kept=True)
     cli(root, "override", "base-suite", "--reason", "%s (your answer of %s on the same base, kept)" % (
@@ -365,6 +369,8 @@ def start(root, config, spec, again=False, env_only=False):
     started = now(fine=True)
     doc = {"started": started, "result": "unknown", "why": "the environment check is running", "env": [], "limits": {},
            "plan": {}}
+    if env_only:
+        doc["env_only"] = True   # a door: no red base question, a fault of the environment check included
     if again:
         doc["again"] = True   # WP22: the person's Run it again is a fresh run, whatever the store holds
     write(doc, root)   # this start owns the file from now on: an older run of the suite that ends later writes nothing
@@ -396,7 +402,6 @@ def start(root, config, spec, again=False, env_only=False):
                        why="a door: the environment was checked; the store holds a green run of this base of %s" % kept.get("ts"))
         else:
             doc["why"] = "a door into a later stage: only the environment was checked, no suite ran on the base"
-        doc["env_only"] = True
         finish(root, doc, started)
         print("OK: baseline (the environment check only): %s" % doc["result"])
         return 0
@@ -441,9 +446,10 @@ def worktree(root):
     return os.path.join(wt, pre).rstrip("/"), ""
 
 
-def picked(out, rc):
-    """The lines that say what failed, picked by pattern (task_ops.fail_lines without its fallback to the last lines)."""
-    lines = run_env.fail_lines(out if isinstance(out, bytes) else str(out).encode(), 8, rc)
+def picked(out, rc, keep=8):
+    """The lines that say what failed, picked by pattern (task_ops.fail_lines without its fallback to the last lines); at
+    most `keep` of them, every one with keep None."""
+    lines = run_env.fail_lines(out if isinstance(out, bytes) else str(out).encode(), keep, rc)
     pats = (run_env.FAIL_LINE,) + tuple(run_env.SUMMARY)
     return [x for x in lines if x.startswith("the command did not finish") or any(p.search(x) for p in pats)]
 
@@ -471,6 +477,7 @@ def _run(root, config, spec, started, doc):
         doc.update(result="unknown", why=why)
         return finish(root, doc, started)
     det = own.get("det") or {}
+    os.makedirs(os.path.join(folder, ".temper", "check"), exist_ok=True)   # where the run text writes its coverage
 
     def measure(out):
         c = det.get("coverage") or {}
@@ -504,7 +511,8 @@ def _run(root, config, spec, started, doc):
         if down:
             doc["env"] = [{"kind": "service-down", "file": os.path.join(".claude", "temper.config"), "need": n,
                            "have": "no answer", "why": "the service %s does not answer after the run" % n} for n in down]
-    doc.update(result="red", kind=kind, exit_code=rc, fail_lines=picked(out, rc),
+    whole = "\n".join(info.get("fail_lines") or []).encode() + b"\n" + out   # every line, a reused run's too
+    doc.update(result="red", kind=kind, exit_code=rc, fail_lines=picked(whole, rc, None),
                why="%s exited %d on the current code" % (own["run"][:200], rc))
     return finish(root, doc, started)
 
@@ -548,7 +556,7 @@ def accept_red(root, reason):
     if d.get("result") != "red":
         print("FAIL: the base is not red (%s); there is nothing to go on from" % (d.get("result") or "no baseline"), file=sys.stderr)
         return 1
-    a = {"by": "the person", "reason": reason, "ts": now()}
+    a = {"by": "the person", "reason": reason, "ts": now(), "kind": d.get("kind")}
     d.update(answer="go-on-anyway", answered=a)
     write(d, root)
     store_put(root, d.get("key") or "", answer=a)
@@ -688,7 +696,7 @@ def judge(cmd, out, rc, secs, limit, red, missing):
     if rc == 0:
         return e
     gone = sorted(p for p in run_env.programs(cmd) if p in missing)
-    e["fail_lines"] = run_env.fail_lines(out, 8, rc)
+    e["fail_lines"] = run_env.fail_lines(out, None, rc)   # every one, as like_base compares them
     if rc == 124:
         e.update(result="timeout", kind="timeout", why="it did not end within its limit of %d s" % limit)
     elif rc == 125:
@@ -722,7 +730,7 @@ def plan_start(root, config, spec, again=""):
                 p[c]["fresh"] = True   # WP22: the person's Run it again runs whatever the store holds
     d = update(root, mark)
     todo = [c for c, e in d["plan"].items() if isinstance(e, dict) and e.get("started") == started]
-    if not todo:
+    if not todo and not plan_of(root, spec)[1]:
         print("OK: every command of the plan has its result on the current code, or is left out; nothing ran")
         return 0
     if os.environ.get("TEMPER_BASELINE_FOREGROUND"):
@@ -731,14 +739,16 @@ def plan_start(root, config, spec, again=""):
         subprocess.Popen([sys.executable, "-E", "-s", os.path.abspath(__file__), root, config or "", spec or "", "plan-run",
                           started], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
-    print("OK: %d command(s) of the plan %s on the current code" % (
-        len(todo), "ran" if os.environ.get("TEMPER_BASELINE_FOREGROUND") else "run in their own process"))
+    print("OK: %d command(s) of the plan %s on the current code%s" % (
+        len(todo), "ran" if os.environ.get("TEMPER_BASELINE_FOREGROUND") else "run in their own process",
+        "" if todo else "; the programs of every command of the plan are checked"))
     return 0
 
 
 def plan_run(root, config, spec, started):
-    """The plan's commands marked by `started`: wait for a suite still running, check the programs of the whole plan,
-    run each in the worktree, then remove the worktree."""
+    """The plan's commands marked by `started`: wait for a suite still running and for an earlier call's commands (the
+    worktree is one), check the programs of the whole plan, run each in the worktree, then remove the worktree when no
+    other call runs in it."""
     def mine(d):
         p = d.get("plan") if isinstance(d.get("plan"), dict) else {}
         return [c for c, e in p.items() if isinstance(e, dict) and e.get("started") == started and e.get("result") == "running"]
@@ -746,9 +756,26 @@ def plan_run(root, config, spec, started):
     def own(d):
         for c in mine(d):
             d["plan"][c]["pid"] = os.getpid()
+
+    def others(d, older=True):   # the plan's commands another call runs (an older one, or any) in the one worktree
+        p = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+        return [c for c, e in p.items() if isinstance(e, dict) and e.get("result") == "running" and entry_alive(e)
+                and e.get("started") != started and (not older or str(e.get("started") or "") < started)]
     d = update(root, own)
-    t0 = time.time()
-    while d.get("result") == "running" and alive(d) and time.time() - t0 < LIMIT_S:
+    t0, until = time.time(), None
+    while (d.get("result") == "running" and alive(d)) or (mine(d) and others(d)):
+        if d.get("result") == "running" and alive(d):   # the suite, up to the baseline's own limit
+            if time.time() - t0 >= LIMIT_S:
+                break
+        else:   # the older call runs its commands one after another, each up to its own limit (integrate's is an hour)
+            if until is None:
+                try:
+                    lims = {c: lim for c, _, lim in plan_of(root, spec)[0]}
+                except Exception:
+                    lims = {}
+                until = time.time() + sum(limit_for(c, lims.get(c, GROUP_LIMIT_S), root) + 30 for c in others(d))
+            if time.time() >= until:
+                break
         time.sleep(0.5)
         d = read(root)
     try:
@@ -758,7 +785,8 @@ def plan_run(root, config, spec, started):
             for c in mine(d):
                 d["plan"][c] = {"result": "unknown", "why": "it could not run: %s" % str(e)[:200]}
         update(root, why)
-    clean(root, quiet=True)
+    if not others(read(root), older=False):   # the last call that runs in the worktree removes it
+        clean(root, quiet=True)
     return 0
 
 
@@ -766,7 +794,7 @@ def _plan_run(root, config, spec, started, d, todo):
     import doctor
     setup = run_env.load_setup(config) if config and os.path.isfile(config) else {}
     red = d.get("result") == "red"
-    folder, why = worktree(root)
+    folder, why = worktree(root) if todo else (root, "")   # nothing to run: the programs only, in the project
     if not folder:
         raise RuntimeError(why)
     _, every, _ = plan_of(root, spec)
@@ -815,10 +843,14 @@ def wait(root, cmd):
     return 0
 
 
+FAIL_CAP = 8   # the fail lines a cut list keeps (run_env.fail_lines); a run's list from run_cached is whole
+
+
 def like_base(root, cmd, lines):
     """Whether a failed run of the plan's command cmd at its gate shows only the failures it showed on the base, on a
     base the person went on from (its result `fails like the base`, or cmd is the suite the baseline ran): every fail
-    line is one of the base's, digits left out. No line to compare with is no match."""
+    line is one of the base's, digits left out. No line to compare with is no match. A list longer than FAIL_CAP is
+    whole (run_cached keeps every line; a cut one holds FAIL_CAP at most)."""
     d = read(root)
     e = (d.get("plan") or {}).get(cmd) if isinstance(d.get("plan"), dict) else None
     e = e if isinstance(e, dict) and e.get("result") == "fails like the base" else None
@@ -827,6 +859,8 @@ def like_base(root, cmd, lines):
         return False
     base = {mask(x) for x in list((e or {}).get("fail_lines") or []) + list(d.get("fail_lines") or [])}
     got = [x for x in lines if str(x).strip()]
+    if len(got) == FAIL_CAP:   # a list cut at its cap may hide a new failure: no match
+        return False
     return bool(base) and bool(got) and all(mask(x) in base for x in got)
 
 
@@ -861,8 +895,9 @@ def skip_row(root, ledger, config=""):
     the ledger runs the base's suite and shows only the base's fail lines (all of them, when the base showed none); else
     nothing: the row fails as before. Only after the person went on anyway, in this run."""
     d = read(root)
-    if d.get("answer") != "go-on-anyway":
-        return ""
+    if d.get("answer") != "go-on-anyway" or not (d.get("kind") == "red-base" or (
+            isinstance(d.get("exit_code"), int) and d.get("exit_code") not in (125, 127))):
+        return ""   # a fault of the environment check, a setup line or a program that did not start ran no test on the base
     try:
         ov = json.load(open(os.path.join(root, ".temper", "overrides.json")))
     except (OSError, ValueError):
@@ -892,7 +927,9 @@ def skip_row(root, ledger, config=""):
     for r in red:
         if not same_suite(r.get("cmd") or "", ref):
             return ""
-        got = picked(str(r.get("output") or "").encode(), r.get("exit_code"))
+        # every fail line counts, so a new one after the eighth is no skip: the row's whole list and its output's tail
+        got = picked(("\n".join(map(str, r.get("fail_lines") or [])) + "\n" + str(r.get("output") or "")).encode(),
+                     r.get("exit_code"), None)
         if base and (not got or any(mask(x) not in base for x in got)):
             return ""
         now_lines += got

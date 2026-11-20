@@ -76,10 +76,14 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   command, the setup block, the folder, the first version line of each program it starts). A reused pass proves what
   one run proved: one run per tree is the guarantee one CI run gives, weaker than the repeated runs of 9.8.4, so a test
   that fails one time in ten can pass once and be kept. What the key cannot see is not in it: ignored folders such as
-  `node_modules` or `target/`, a service's state, the clock, a file outside the repository. A pass in a group worktree
+  `node_modules` or `target/`, environment variables outside the setup block, a service's state, the clock, a file
+  outside the repository. A pass in a group worktree
   is reused for the project folder with the same content, so a test that depends on its absolute path is not run again
   where the code will live. A failure kept on the same tree is not run again until the code, the command or the
-  environment changes; "Run it anyway" (`--fresh`) runs it whatever the store holds, and counts as one repeat.
+  setup block changes; "Run it anyway" (`--fresh`) runs it whatever the store holds, and counts as one repeat. It is
+  your option only: a run that goes on by itself never takes it (the CLI refuses it there), and only the mod ties it
+  to your click. With the mod off the budget alone holds it: nothing checks who ran `--fresh`, and each call spends
+  one repeat.
 - **Its own commits.** In a grouped Build the CLI commits each task's declared files in its worktree and merges
   them, as plain `git commit` and `git merge` calls that use git's own identity and settings (signing too, when
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none

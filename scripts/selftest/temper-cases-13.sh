@@ -128,6 +128,7 @@ assert_eq "WP24 Check: a failing test is a defect in the code: Repair again is f
   "repair-again,True|back offered|0" \
   "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + ('back offered' if any(x['id'] == 'back' for x in a) else 'no back') + '|' + str(sum(1 for x in a if x['id'] == 'redo'))")"
 gfail check "tests pass" "no passing test-run evidence recorded"
+sed -i 's/^\*\*Integration:\*\* `true`$/**Integration:** `manual`/' .temper/specs/demo/tasks.md   # W23-6: no plan line the CLI can run either
 "$TEMPER" state redo check --reason "the measurement was missing" >/dev/null 2>&1
 assert_eq "Check: after state redo check the verdict is gone and the Check agent runs again" "work|temper:temper-check|none" \
   "$(nx "d['action'] + '|' + d['agents'][0]['type'] + '|' + str(d.get('ask') and 'asked' or 'none')")"

@@ -91,10 +91,11 @@ if "intent_hash" in d:
     json.dump(d, open(p, "w"), indent=2)
 PY
 }
-_acc64() { # the locked acceptance test: it logs its run, and fails while $P64/acc says fail
+_acc64() { # the locked acceptance test: it logs its run, and fails while $P64/acc says fail (meets a setup line that
+           # fails, exit 125, while it says env; exits 125 with no SETUP marker while it says bare)
   mkdir -p .temper/specs/demo/acceptance
-  printf 'echo acceptance >> "%s/log"\nif [ "$(cat "%s/acc" 2>/dev/null)" = fail ]; then echo "FAIL: test_ac01 expected the field stage"; exit 1; fi\necho ok\n' \
-    "$P64" "$P64" > .temper/specs/demo/acceptance/test_acc64.sh
+  printf 'echo acceptance >> "%s/log"\nif [ "$(cat "%s/acc" 2>/dev/null)" = env ]; then echo "temper-setup: FAIL (exit 1)"; exit 125; fi\nif [ "$(cat "%s/acc" 2>/dev/null)" = bare ]; then echo "the database did not start"; exit 125; fi\nif [ "$(cat "%s/acc" 2>/dev/null)" = fail ]; then echo "FAIL: test_ac01 expected the field stage"; exit 1; fi\necho ok\n' \
+    "$P64" "$P64" "$P64" "$P64" > .temper/specs/demo/acceptance/test_acc64.sh
   "$TEMPER" acceptance lock --cmd "bash .temper/specs/demo/acceptance/test_acc64.sh" >/dev/null 2>&1
 }
 _passed64() { # group G1 passed and continued, every task passed (as the group gate and the person leave them)
@@ -264,6 +265,18 @@ _w3+="|rows=$(_ledger64 check "','.join('%s%s' % (kind(x), '+' if x.get('reused'
 _w3+="|edited=suite $(_n64 suite),first $(_n64 'scenario first'),second $(_n64 'scenario second'),acceptance $(_n64 acceptance)"
 assert_eq "w23 Check reuses: on the tree integrate left check run runs no command and records the suite, coverage, scenario and acceptance rows as reused with their tree; after one edit of a tracked file every one of them runs" \
   "same tree=0 runs|rows=suite+,coverage+,scenario+,scenario+,acceptance+|edited=suite 1,first 1,second 1,acceptance 1" "$_w3"
+# the plan's Integration line owns the suite when the config and detect name none: at Check too, so Check runs through the
+# CLI and reuses integrate's run of it, and never ends for want of a test command
+_tasks64 | sed "s|^\*\*Integration:\*\* \`true\`\$|**Integration:** \`$P64/suite\`|" | m_setup
+_progs64; _intent64; _acc64; _passed64
+"$TEMPER" evidence add --stage build --phase red --claim 'unit tests' --cmd 'true' --exit 1 >/dev/null 2>&1
+"$TEMPER" evidence add --stage build --phase green --claim 'unit tests' --cmd 'true' --exit 0 >/dev/null 2>&1
+: > "$P64/log"; _integ64; gpass build review; _at check
+_w3b="next=$(_x64 "r = 'the CLI runs Check' if any(short(c).startswith('check run') for c in d.get('calls') or []) else '%s:%s' % (d.get('action'), [short(c)[:40] for c in d.get('calls') or []])")"
+"$TEMPER" check run >/dev/null 2>&1; _w3b+="|check run=exit $?"
+_w3b+="|suite=integrate $(_ledger64 build "sum(1 for x in rows if kind(x) == 'suite')"),runs $(_n64 suite),check $(_ledger64 check "next(('reused' if x.get('reused') else 'ran') for x in rows if kind(x) == 'suite') if any(kind(x) == 'suite' for x in rows) else 'no suite row'")"
+assert_eq "w23 one owner: with no test command in the config and none detected, the plan's Integration line is the suite at Check too, which reuses integrate's run" \
+  "next=the CLI runs Check|check run=exit 0|suite=integrate 1,runs 1,check reused" "$_w3b"
 
 # --- w23 triage first, in every mode: a failing locked test at the Build gate gets the triage agent ---
 _accfail64() { # _accfail64: a run at Build, integrated, whose Build gate failed on the locked acceptance test alone
@@ -464,4 +477,84 @@ _w10="archived=$(_archived64)"
 _w10+="|after clear=$(_archived64)"
 assert_eq "w23 the record is archived: temper state archive writes the records into the spec folder's gate-ledger.json, and temper state clear leaves that file" \
   "archived=all|after clear=all" "$_w10"
+# --- w23 a repaired environment: its record, open while no other key passed, is no fault of a later run ---
+_stepq64() { _x64 "r = '%s:%s:%s' % (d.get('action'), 'SETUP' if 'SETUP' in text(d) else 'no SETUP', ','.join(a.get('type', '') for a in d.get('agents') or []) or 'no agent')"; }
+_run64; echo env > "$P64/suite.mode"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+rm -f "$P64/suite.mode"; _opt64 check-again
+_w11="repaired=$(python3 -B -c "import json; print((json.load(open('.temper/gates.json')).get('build') or {}).get('verdict'))" 2>/dev/null)"
+echo more >> README; git add README; git commit -q -m 'a code change'; echo fail > "$P64/suite.mode"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+_w11+="|a code failure=$(_stepq64):$(_x64 "r = 'it-is-the-code' if opt(d, 'it-is-the-code') else 'no it-is-the-code'")"
+_run64; echo env > "$P64/suite.mode"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+rm -f "$P64/suite.mode"; _opt64 check-again
+"$TEMPER" state advance build_complete review >/dev/null 2>&1; gfail review findings 'a finding: the total is one short'
+"$TEMPER" state loop review build --reason 'a finding: the total is one short' >/dev/null 2>&1
+_w11+="|a step back from Review=$(_stepq64)"
+echo fixed >> README; git add README; git commit -q -m 'the fix pass'; echo fail > "$P64/suite.mode"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+_w11b="after the step back=$(_rec64 "'%s %s' % (f[0].get('class'), 'open' if f[0].get('resolved') is None else 'resolved')"),last $(_rec64 "[x for x in f if x.get('check') == 'suite'][-1].get('class')")"
+_w11b+="|a code failure=$(_stepq64):$(_x64 "r = 'it-is-the-code' if opt(d, 'it-is-the-code') else 'no it-is-the-code'")"
+_run64; echo env > "$P64/acc"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+_w11+="|acceptance=$(_rec64 "f[-1].get('class') if f else 'no record'"):$(_stepq64)"
+assert_eq "w23 a repaired environment: after the person repairs it and the checks pass on the same key, a later failure of the code is no setup question, and a step back from Review launches the fix agent; a locked acceptance test that meets the environment gets the setup question, not the triage" \
+  "repaired=PASS|a code failure=ask:no SETUP:no agent:no it-is-the-code|a step back from Review=work:no SETUP:temper:temper-build|acceptance=environment:ask:SETUP:no agent" "$_w11"
+assert_eq "w23 a record stands only while its failure is the latest of its check: after the repair and a step back from Review, a failure of the code in the fix pass is no setup question, though the repaired record stays open" \
+  "after the step back=environment open,last code|a code failure=ask:no SETUP:no agent:no it-is-the-code" "$_w11b"
+_run64; echo bare > "$P64/acc"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+_w11c="record=$(_rec64 "'%s/%s' % (f[-1].get('class'), f[-1].get('kind')) if f else 'no record'")|step=$(_stepq64)"
+assert_eq "w23 a locked acceptance test that exits 125 with no SETUP marker is a record of class environment, and gets the setup question, not the triage" \
+  "record=environment/setup-line|step=ask:SETUP:no agent" "$_w11c"
+
+# --- w23 a pass resolves: a group gate, a task gate and a gate row that pass resolve the records of their own ---
+_tasks64 "$P64/suite" | m_setup; _progs64; echo fail > "$P64/suite.mode"
+python3 -B -c "
+import json
+d = json.load(open('.temper/groups.json')); d.setdefault('tasks', {})['1'] = {'status': 'passed', 'group': 'G1'}
+json.dump(d, open('.temper/groups.json', 'w'))"
+"$TEMPER" group gate G1 >/dev/null 2>&1
+_open64() { _rec64 "','.join('%s %s' % (x.get('$1'), 'open' if x.get('resolved') is None else 'resolved') for x in f if $2) or 'no record'"; }
+_w12="group=$(_open64 scope "x.get('scope') == 'group:G1'")"
+rm -f "$P64/suite.mode"
+( cd .claude/worktrees/temper-demo-G1 && echo more >> README && git add README && git commit -q -m 'the group mended' ) >/dev/null 2>&1
+"$TEMPER" group gate G1 >/dev/null 2>&1
+_w12+=",then $(python3 -B -c "import json; print((json.load(open('.temper/groups.json'))['groups']['G1'].get('gate') or {}).get('verdict'))"):$(_open64 scope "x.get('scope') == 'group:G1'")"
+declare -F st_setup >/dev/null || source "$TESTS_DIR/case-helpers-5.sh"
+st_setup; st_attempt m 5 >/dev/null
+_w12+="|task=$(_open64 scope "x.get('scope') == 'task:1'")"
+st_pass_ready; "$TEMPER" task gate 1 --model m >/dev/null 2>&1
+_w12+=",then $(st_field 1 status):$(_open64 scope "x.get('scope') == 'task:1'")"
+fresh
+printf '%s\n' '**Status:** draft' '' '## Problem' 'The demo.' '' '### Success Criteria' '- [ ] AC-01 [required]: alpha works' \
+  '  Why: a' '  Validate: manual - check it' > .temper/specs/demo/intent.md
+"$TEMPER" gate intent >/dev/null 2>&1
+_rows64="x.get('check') == 'row:rules checklist covered'"
+_w12+="|row=$(_open64 check "$_rows64")"
+printf '\n### Rules covered\n\n- Who: asked\n- When: not applicable (no time rule)\n- How much: not applicable\n- Exempt: not applicable (every run is reported)\n- States: assumed (none change)\n- Where it shows: assumed\n- Exceptions: asked (twice, gone)\n' >> .temper/specs/demo/intent.md
+"$TEMPER" gate intent >/dev/null 2>&1
+_w12+=",then $(_open64 check "$_rows64"),the rows that fail $(_rec64 "'open' if [x for x in f if x.get('check') != 'row:rules checklist covered'] and all(x.get('resolved') is None for x in f if x.get('check') != 'row:rules checklist covered') else 'resolved'")"
+assert_eq "w23 a pass resolves: a group gate that passes on another key resolves the group's record, a task that passes the task's, a gate row that passes its own row's; the rows that still fail stay open" \
+  "group=group:G1 open,then PASS:group:G1 resolved|task=task:1 open,then passed:task:1 resolved|row=row:rules checklist covered open,then row:rules checklist covered resolved,the rows that fail open" "$_w12"
+
+# --- w23 the person's skip resolves: the skip of a red base resolves the base's record, a stage's skip does not ---
+fresh; rm -rf .git; git init -q . 2>/dev/null; git checkout -q -B main 2>/dev/null
+git config user.email t@example.com; git config user.name T; printf '/.temper/\n' >> .git/info/exclude
+_progs64; echo fail > "$P64/suite.mode"; _cmds64 no-coverage
+git add -A >/dev/null 2>&1; git commit -q -m base
+rm -f .temper/evidence/baseline.json; TEMPER_BASELINE_FOREGROUND=1 "$TEMPER" baseline start >/dev/null 2>&1
+_w13="base=$(_rec64 "','.join('%s %s %s' % (x.get('scope'), x.get('stage'), 'open' if x.get('resolved') is None else 'resolved') for x in f) or 'no record'")"
+"$TEMPER" override intent --reason 'the intent is fine as it is' >/dev/null 2>&1
+_w13+="|intent skip=$(_rec64 "'open' if f and all(x.get('resolved') is None for x in f) else 'resolved'")"
+"$TEMPER" override base-suite --reason 'the base fails the same on main; go on' >/dev/null 2>&1
+_w13+="|base skip=$(_rec64 "'resolved with the reason' if f and all('the base fails the same on main' in json.dumps(x.get('resolved')) for x in f) else 'open'")"
+TEMPER_BASELINE_FOREGROUND=1 "$TEMPER" baseline clean >/dev/null 2>&1 || true
+assert_eq "w23 the person's skip resolves: override base-suite resolves the record of the red base with its reason; the skip of the stage the record was written at does not" \
+  "base=base intent open|intent skip=open|base skip=resolved with the reason" "$_w13"
+
+# --- w23 the triage calls the test wrong: the acceptance record is class plan, kind test-wrong, by the triage ---
+_run64; echo fail > "$P64/acc"; _integ64; "$TEMPER" gate build >/dev/null 2>&1
+_acc64r() { _rec64 "','.join('%s/%s/%s' % (x.get('class'), x.get('kind'), x.get('class_by')) for x in f if x.get('check') == 'acceptance') or 'no record'"; }
+_w14="before=$(_acc64r):$(_stepq64)"
+_triaged64 "test: the test wants the field state; the intent says stage"
+_w14+="|test=$(_acc64r)"
+assert_eq "w23 the triage calls the test wrong: the open acceptance record turns from code to class plan, kind test-wrong, class_by triage" \
+  "before=code/test-failed/exit:work:no SETUP:temper:temper-acceptance|test=plan/test-wrong/triage" "$_w14"
+
 rm -rf "$P64" src unit

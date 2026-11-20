@@ -402,7 +402,7 @@ const TOO_MANY_DENY =
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
-  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', ...STAGES]
+  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', ...STAGES]
 
 const RESOLVE_DENY =
   'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
@@ -548,6 +548,8 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   // (`--again`); its commit, mark, close and revert pass only as calls of the action the view names. Its test runs and
   // its status decide nothing.
   if (a === 'repair') return b !== 'test' && b !== 'status'
+  // WP22 (step 11): Run it anyway, a check run whatever the reuse store holds, is the person's option only.
+  if (w.includes('--fresh') && ((a === 'check' && (b === 'run' || b === 'build-checks')) || (a === 'group' && b === 'gate') || a === 'integrate')) return true
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true

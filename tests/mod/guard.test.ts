@@ -488,6 +488,36 @@ describe('the red base: only the person goes on anyway', () => {
   })
 })
 
+// 9.8.5 (WP22, step 11): "Run it anyway" (`--fresh`), a check run whatever the reuse store holds, is the person's
+// option only: it passes as the call of the answer, word for word. The same calls without the flag are the CLI's.
+describe('run it anyway: only the person runs a check whatever the store holds', () => {
+  const FRESH = [`${CLI} check run --fresh`, `${CLI} check build-checks --fresh`, `${CLI} group gate G1 --fresh`,
+    `${CLI} group gate G1 --timeout-s 60 --fresh`, `${CLI} integrate --fresh`]
+  test('a --fresh call outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+      for (const cmd of FRESH) expect(bash(ctx(stage), cmd), `${stage}: ${cmd}`).toEqual({ deny: ONLY_USER })
+    }
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), `${CLI} check run --fresh`)).toEqual({ deny: ONLY_USER })
+  })
+
+  test('it passes as the call of the answer, word for word; without the flag the calls are the CLI\'s', () => {
+    const c = ctx('check', { allowed: [`${CLI} check run --fresh`] })
+    expect('allow' in bash(c, `${CLI} check run --fresh`)).toBe(true)
+    for (const cmd of [`${CLI} integrate --fresh`, `${CLI} group gate G1 --fresh`, `${CLI} check build-checks --fresh`]) {
+      expect(isDeny(bash(c, cmd)), cmd).toBe(true)
+    }
+    expect('allow' in bash(ctx('check'), `${CLI} check run`)).toBe(true)
+    for (const cmd of [`${CLI} group gate G1`, `${CLI} group gate G1 --timeout-s 60`, `${CLI} integrate`, `${CLI} check build-checks`]) {
+      expect('allow' in bash(ctx('build'), cmd), cmd).toBe(true)
+    }
+  })
+
+  test('an unquoted glob that could spell --fresh is refused', () => {
+    for (const cmd of [`${CLI} check run --fr?sh`, `${CLI} integrate --fre*`]) expect(isDeny(bash(ctx('check'), cmd)), cmd).toBe(true)
+  })
+})
+
 // 9.8.5 (WP22): the reuse store decides gate rows: a pass kept there is a check that is not run again, a failure kept
 // there is a check that is not run again either. It is one file in the git common folder, shared by every worktree of
 // the clone, and only the CLI's runner writes it, the byproduct list in it included.

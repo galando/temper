@@ -211,6 +211,43 @@ belongs to a later package, do not weaken it: name that package on its line of t
   - The view fixtures are close to the 256 KiB limit; WP01 made room. Regenerating must not add a view.
 - **Size:** M.
 
+### WP26, added by the owner on 2026-11-19: Intent looks a fact up and never asks it
+
+This part was added after the plan was approved, on the owner's word. It is part of WP26 and is built with it.
+
+- **Why:** Intent writes its questions before any agent has read the code, so it can ask the person what the
+  project's own files already answer. The click costs a dialog line, and a wrong click puts a rule into the code
+  that the project contradicts. It is the fault of "The request decides first" (`agents/intent.md`), with the
+  project as the source in place of the request.
+- **Touches (added to the list above):** `agents/intent.md`, `scripts/selftest/temper-cases-70.sh`.
+- **Tests first,** in `scripts/selftest/temper-cases-70.sh`:
+  14. `w26 intent looks a fact up`: `agents/intent.md` holds the paragraph that starts
+      `**A fact is looked up, never asked.**`, and that paragraph names the bound of one search a question and
+      the Decisions row of mechanism step 2 below.
+  15. `w26 a looked up fact passes the intent gate`: a draft intent whose `### Decisions` holds one row in the
+      form of mechanism step 2, and no question for it, passes `temper gate intent`.
+- **Mechanism:**
+  1. In `agents/intent.md`, after "The request decides first", one paragraph. Before a question is written, the
+     agent decides what kind it is. A fact says what the project is today: what an existing endpoint returns, a
+     value in a config file, the name of a field, a limit the code already holds. A decision says what the new
+     feature shall do. A fact is never a question.
+  2. For a fact the agent makes one search (one Grep, or one file read) and no more. Found: one row under
+     `### Decisions`, `- {the fact} -> as the project holds it ({file}:{line})`. Not found in that one search:
+     the item is a question or an assumption as before, and the brief's limit of six questions stays.
+  3. A house rule is not a fact in this sense. It is a default for the new feature, so it stays a question with
+     its choice marked `(house rule)` first, as the brief says today.
+  4. The bound of the brief's step 2 stays as it is: no blast radius and no architecture at Intent. The lookup
+     is at most one search for each of at most six questions.
+- **Measured at WP32:** the scorecard already counts the answers to `intent.blocking` (the field `blocking` of
+  `bench/scorecard.py`). The pull request text gives its mean for the vague tasks in the round before and the
+  round after. It is information; no pass line rests on it.
+- **Traps:**
+  - Confirm that `temper gate intent` reads the Decisions row of step 2 before the brief names it; if a row of
+    the gate wants the form `({who}, {date})`, write the row so that it passes and say so in the brief.
+  - The paragraph must fit in the bytes this package cuts from the brief: `prompt_bytes` of `scripts/caps.json`
+    does not rise for it.
+  - Do not let it grow into exploration. One search a question is the whole of it.
+
 ## WP27 A narrow revise agent; `code` and `metric` criteria by the CLI; models by tier and risk
 
 - **Goal:** A change to an existing plan is made by a small agent on Sonnet that gets the reason and the affected
@@ -934,6 +971,35 @@ belongs to a later package, do not weaken it: name that package on its line of t
     (`commands/fix.md:67-68`, `hooks/temper-mod/core/driver.ts:502`), was replaced by WP16; confirm with
     `git grep -n "git pack" commands hooks` before this package ends.
 - **Size:** L.
+
+### WP30, added by the owner on 2026-11-19: Grill Me asks in rounds
+
+This part was added after the plan was approved, on the owner's word. It is part of WP30 and is built with it.
+
+- **Why:** `skills/grill-me/SKILL.md` stays shipped (step `w30 two skills`), and it asks one question a turn.
+  The skill it was adapted from now asks in rounds: every question whose prerequisites are settled goes into
+  the same round, each with a recommended answer, and its changelog reports the same 13 questions in about 3
+  rounds. A person who must answer ten single dialogs ends the session early.
+- **Touches (added to the list above):** `skills/grill-me/SKILL.md`, `scripts/selftest/temper-cases-74.sh`.
+- **Tests first,** in `scripts/selftest/temper-cases-74.sh`:
+  - `w30 grill me asks in rounds`: `skills/grill-me/SKILL.md` holds neither `one at a time` nor
+    `One Question at a Time` (in any case of letters), names the limit of four questions a round, and says that
+    the first option of each question is the recommended answer.
+- **Mechanism:**
+  1. Step 3 of the skill becomes "Ask in rounds". A round is one `AskUserQuestion` call with up to four
+     questions (the tool takes no more). A question enters a round only when every decision it depends on is
+     settled; one that depends on an open answer waits for the next round.
+  2. Each question carries two or three concrete answers, the one the skill would pick first and marked
+     `(Recommended)`. The options `Update plan` and `Done grilling` stay in reach in every round.
+  3. A fact about the project is looked up in the code and never asked.
+  4. The limits stay in substance: at most 10 questions, now in at most 4 rounds, and the session ends early
+     after a round that revealed no weakness.
+  5. The `description:` line of the front matter and the row `Mode` of the skill's table say rounds. The credit
+     line stays.
+- **Traps:**
+  - The old text gives a reason for single questions: in a batch the person answers the easy ones and skips the
+    hard one. Keep that guard another way: a question skipped in a round is listed in the summary as still open.
+  - `pack_skill_bytes` of `scripts/caps.json` does not rise for this.
 
 ## WP31 Words and documents; decision records; CHANGELOG; version 9.8.5
 

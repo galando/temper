@@ -715,14 +715,22 @@ assert_eq "D35b a missing coverage tool is not measured in the gate, the view an
   "gate=None:not measured|view=not measured|card=not measured" \
   "gate=$(_covrow44)|view=$(vw "next((x.get('state') for x in d.get('checks') or [] if str(x.get('name', '')).startswith('coverage')), None)")|card=$(_x44 "s = section(d.get('card'), 'coverage'); r = 'not measured' if s and any('not measured' in x.get('text', '') for x in s.get('rows') or []) else 'no coverage row'")"
 rm -f Cargo.toml
-_mut44() { # _mut44 <with|without>: Check's verdict and its failed rows, with or without a planted bug score of 40
+_mut44() { # _mut44 <with|without>: Check's verdict and its failed rows, then next's action and calls, with or without a
+           # planted bug score of 4 of 10 in .temper/evidence/mutation.json (of this tree) and of 40 in Check's ledger
   fresh; gpass intent plan build review; _at check
   [[ "$1" == with ]] && "$TEMPER" evidence add --stage check --claim 'mutation score' --value 40 >/dev/null 2>&1
+  [[ "$1" == with ]] && python3 -B -c "
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import check_run, run_env
+check_run.planted_write(os.getcwd(), run_env.tree_key(os.getcwd(), root=os.getcwd()), 'measured', ran=10, caught=4)
+None if check_run.planted(os.getcwd()) else print('the score is not of this tree')" "$REPO_ROOT/scripts"
   "$TEMPER" gate check >/dev/null 2>&1
   python3 -c "
 import json
 e = json.load(open('.temper/gates.json')).get('check') or {}
 print('%s:%s' % (e.get('verdict'), ','.join(x['name'] for x in e.get('requirements') or [] if x.get('pass') is False)))"
+  nx "d['action'] + '|' + ' '.join(d.get('calls') or [])"
 }
 _d35c_with="$(_mut44 with)"; _d35c_without="$(_mut44 without)"
 assert_eq "D35c the planted bug score fails nothing and moves nothing" "mutation rows=0|same=True" \

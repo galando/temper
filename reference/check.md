@@ -193,7 +193,8 @@ and exit codes, never by output text:
    counts only when the project's own config holds it; remove the line and coverage is judged against the project.
 2. No coverage command for the stack, or the coverage program could not start (exit 127): `not measured`, with the
    hint of what to set.
-3. No base value (the baseline's `coverage`, `.temper/evidence/baseline.json`): `not measured`.
+3. No base value (the baseline's `coverage`, `.temper/evidence/baseline.json`, of a run on the run's base commit):
+   `not measured`.
 4. Line data and at least 10 changed executable lines: their share that ran must reach the base total, never more
    than 80 (rule `changed lines`). Line data comes from coverage.py's JSON, Go's profile and `lcov.info` of jest,
    vitest and c8.
@@ -202,7 +203,10 @@ and exit codes, never by output text:
 
 The planted bug score is no row of the gate: `temper check ahead`, beside Review, plants one small bug at a time in
 the changed lines when three runs of the suite fit the budget, and writes `.temper/evidence/mutation.json`. The commit
-card and the Check markers show it as information; it gates nothing and moves nothing.
+card and the Check markers show it as information; it gates nothing and moves nothing. In a feature run it runs no
+check: the store is warm from `integrate`, and the suite's time and result are the store's entry of the tree as it is;
+with no entry nothing runs, and the file says why. In a fix run, which has no `integrate`, it first runs Check's
+commands through the store.
 
 ## Maven
 
@@ -218,7 +222,8 @@ Build ledger (9.8.5, WP23). When the stack allows it, coverage is on in that sam
 is never made. Every run goes through the reuse store: on the tree `integrate` left, Check runs no command and records
 the suite, coverage, scenario and acceptance rows as reused, with their key and tree. What Check still runs: a fix's
 regression proof, the criteria validated by `code` or `metric`, a criterion the person confirms, and every command
-again on a tree that changed after `integrate` (a repair at Review). A group's check of the same text as the owner's
+again on a tree that changed after `integrate` (a repair at Review). With no suite in the config or `detect`, the plan's
+`**Integration:**` line is Check's owner too. A group's check of the same text as the owner's
 test command is the same key on the same content. On jest the coverage command is `npx jest`, not the project's `npm
 test` script: a project whose test script does more than run jest sets `check.commands.test`. The coverage output goes under `.temper/check/` (`.temper/check/coverage.xml`,
 `.temper/check/htmlcov/`), which the blast radius skips along with `.coverage`, `htmlcov/`, `.pytest_cache/` and

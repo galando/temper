@@ -184,6 +184,21 @@ gpass intent plan build review; _at check
 "$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
 assert_eq "w19 the old key: a total of 55 fails the key's 80 and the row names the key; with no key, 55 on a base of 55 passes" \
   "key=FAIL:False:names the key, the value and the way out|nokey=PASS:True" "key=$_key60|nokey=$(_verdict60 check):$(_row60 check coverage)"
+fresh; _repo60; _nokey60; _cmds60 true "echo 'TOTAL 100 45 55%'"   # a total and no baseline: not measured
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
+assert_eq "w19 a total with no base value, before gate check: check_markers says not measured, not pass" \
+  "markers=not measured" "$(_view60 | sed 's/^.*|markers=/markers=/')"
+_headed60() { # _headed60 <commit>: a green baseline of total 55 that ran on that commit, then check run and gate check
+  printf '{"result": "green", "coverage": 55, "head": "%s"}\n' "$1" > .temper/evidence/baseline.json
+  "$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1; _row60 check coverage
+}
+fresh; _repo60; _nokey60; _cmds60 true "echo 'TOTAL 100 45 55%'"
+"$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1; gpass intent plan build review; _at check
+_on_base60="$(_headed60 "$(git rev-parse HEAD)")"
+echo 'echo merged' >> src/demo.sh; git commit -qam 'a merge of the work'   # the baseline taken again after integrate
+assert_eq "w19 the base value is the baseline's only when it ran on the run's base commit: else coverage is not measured" \
+  "base=True|later=None:not measured" "base=$_on_base60|later=$(_headed60 "$(git rev-parse HEAD)")"
 assert_eq "w19 the old key: the template and the plugin's own config hold no coverage-threshold line" "0|0" \
   "$(grep -c '^ *coverage-threshold:' "$REPO_ROOT/templates/temper.config.default")|$(grep -c '^ *coverage-threshold:' "$REPO_ROOT/.claude/temper.config")"
 
@@ -210,6 +225,28 @@ assert_eq "WP24 w19 a failed coverage row is no measurement gap: the repair in t
   "repair-again,True|back offered|0" \
   "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + ('back offered' if any(x['id'] == 'back' for x in a) else 'no back') + '|' + str(sum(1 for x in a if x['label'].startswith('Run Check again')))")"
 
+# --- the suite's owner one folder down: the report's paths are that folder's, and the changed lines still match ---
+_owned60() { # _owned60 <folder>: ran/missed of check_run.line_data for the owner suite_owner finds, against HEAD
+  python3 -B - "$REPO_ROOT/scripts" "$(git rev-parse HEAD)" <<'PY'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import check_run
+o = check_run.suite_owner(os.getcwd(), {}, "")
+d = check_run.line_data(os.getcwd(), o.get("det") or {}, sys.argv[2])
+print("%s/%s" % (d.get("ran"), d.get("missed")) if d else d)
+PY
+}
+fresh; _repo60; rm -rf app web; mkdir -p app/lib app/.temper/check
+printf 'module example.com/app\n' > app/go.mod; seq 1 13 | sed 's/^/\/\/ line /' > app/lib/x.go
+printf 'mode: set\nexample.com/app/lib/x.go:1.1,4.2 1 1\nexample.com/app/lib/x.go:5.1,13.2 1 0\n' > app/.temper/check/cover.out
+_go60="$(_owned60)"; rm -rf app; mkdir -p web/src web/.temper/check/coverage
+printf '{"scripts": {"test": "vitest run"}, "devDependencies": {"vitest": "1"}}\n' > web/package.json
+seq 1 13 | sed 's/^/\/\/ line /' > web/src/y.js
+{ echo 'SF:src/y.js'; for n in $(seq 1 13); do echo "DA:$n,$((n <= 4))"; done; echo end_of_record; } > web/.temper/check/coverage/lcov.info
+assert_eq "w19 a suite owned one folder down: the changed lines of its Go profile and its lcov report are judged (4 ran, 9 not)" \
+  "go=4/9|lcov=4/9" "go=$_go60|lcov=$(_owned60)"
+rm -rf app web
+
 # --- 6. check run plants no bug: on a green suite with changed lines, the suite runs once ---
 fresh; _repo60; _nokey60; _py60
 rm -f .git/count60; _cmds60 "echo run >> $WORKDIR/.git/count60; python3 -m unittest discover -s unit -t ."
@@ -224,6 +261,7 @@ rm -f .git/count60
 _cmds60 "cksum < lib/calc.py >> $WORKDIR/.git/count60; sleep 1; python3 -m unittest discover -s unit -t ."
 gpass intent plan build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 _real60="$(cksum < lib/calc.py)"
+"$TEMPER" check build-checks >/dev/null 2>&1   # WP23 trap 9: the suite's time is the one integrate's run left in the store
 TEMPER_MUTATION_BUDGET_S=2 "$TEMPER" check ahead >/dev/null 2>&1
 _mut_done60() { # waits as _ahead_done of case 15 does: the background run has ended and left its file
   local i
