@@ -279,7 +279,7 @@ removes the worktree. Each result is kept in `plan` of
 seconds is the least limit `limit_for` gives that command); 124 is `timeout`, never a fault of the environment; 125 (the
 setup line failed) and 127 or a first word that does not resolve are class `environment`; any other exit is `fails like
 the base` when the base is red, else `fail` (class `command`). No output text takes part. The same process resolves the
-first word of each step of every command of the plan, the task and scenario Tests too, in one shell call under the setup
+first word of each step of every command of the plan, the task and scenario Tests and the criterion commands too, in one shell call under the setup
 block (also when no command is left to run); a program that does not resolve turns the base red, so `base.red` names it
 before any agent. Once the plan gate passed, a `fail` or a `timeout` is the question `plan.command` (the scope of
 `base.red`'s function): the command, where the plan wrote it, the exit, the seconds and the first fail lines; `Allow it
@@ -421,7 +421,10 @@ locked acceptance tests. `temper check run` records the same criterion rows into
 `criteria validated` (Build) and `acceptance evidence` (Check) pass such a criterion only from a row the CLI ran of its
 own command that exited 0 (`FAIL: <command> exit N`, or `its command has no row run by the CLI`); no agent records
 one, so no record pass and no Check agent are launched for it. One with no command is the person's to confirm at the
-Check question, as a `manual` one is, and a draft intent with such a line fails the row `criteria validate`.
+Check question, as a `manual` one is, and a draft intent with such a line fails the row `criteria validate`. Such a
+criterion counts at Check only from a row of the person (`executed_by: person`), the one the confirm option's call
+`temper evidence add --criterion AC-NN --exit 0 --person` writes; the mod lets that call through only as the person's
+answer. An agent's row, or a CLI run of a command an agent chose, does not count.
 A suite that fails on its environment adds the row `setup fault: <why>`, as Check does. A failing suite fails the
 integration; a failing scenario test, acceptance test or coverage row leaves it PASS, and the Build gate fails on that
 row: `acceptance tests written before Build` and `coverage`, the names Check uses, from `scripts/gate_rows.py
@@ -813,8 +816,8 @@ next` gives three actions in turn: steps that end with `temper report --end`, wh
 the orchestrator to show; `temper report --html`, which writes the page with no question (9.8.0; the run used to ask
 whether to write it); then the commit steps. The run's `end_report` records the first two (the CLI keeps it), and
 the page is carried by the commit. In a feature run the first steps hold `temper spec deviations` (WP26): the
-deviations `build-context.json` records go to `deviations.md` in the spec folder, replacing an earlier file, at every
-tier; plan.md and tasks.md stay as the approval saw them, and the commit of the run's record carries the file. Every
+deviations `build-context.json` records go to `deviations.md` in the spec folder, replacing an earlier file (removed
+when none is recorded), at every tier; plan.md and tasks.md stay as the approval saw them, and the commit of the run's record carries the file. Every
 value is escaped, and it never writes inside the plugin's own folder.
 
 ## The run summary (9.8.5)

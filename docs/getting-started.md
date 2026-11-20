@@ -201,7 +201,7 @@ Temper will:
 🟡 WARN: Method exceeds 30 lines
    └─ UserService.java:112
 
-   Intent Validation: 5/5 (3 mechanical, 1 deferred, 1 manual)
+   Intent Validation: 5/5 (4 mechanical, 1 for the person)
    Scenario Coverage: 5/5
 
 ✅ All tests passing

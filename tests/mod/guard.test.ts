@@ -518,6 +518,35 @@ describe('run it anyway: only the person runs a check whatever the store holds',
   })
 })
 
+// 9.8.5 (WP27, step 7; lane B of phase 7): a criterion the person confirms at the Check question (manual, or code or a
+// metric with no command) counts only from a row of the person: the confirm option's `evidence add --person`. The mod
+// lets that call through only as the call of the answer, word for word, as it does Run it anyway; the same row without
+// the flag is any session's, and the gate does not count it.
+describe('the person\'s confirmation of a criterion: only the person records a row --person', () => {
+  const CONFIRM = `${CLI} evidence add --stage check --criterion AC-02 --claim 'confirmed by the person at the Check question: read the output' --cmd 'the person, at the Check question' --exit 0 --person`
+  test('a --person row outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+      expect(bash(ctx(stage), CONFIRM), stage).toEqual({ deny: ONLY_USER })
+      expect(bash(ctx(stage), `${CLI} evidence add --stage check --claim x --person`), stage).toEqual({ deny: ONLY_USER })
+    }
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), CONFIRM)).toEqual({ deny: ONLY_USER })
+  })
+
+  test('it passes as the call of the answer, word for word; without the flag the row is any session\'s', () => {
+    const c = ctx('check', { allowed: [CONFIRM] })
+    expect('allow' in bash(c, CONFIRM)).toBe(true)
+    expect(isDeny(bash(c, CONFIRM.replace('AC-02', 'AC-03')))).toBe(true)
+    expect('allow' in bash(ctx('check'), CONFIRM.replace(' --person', ''))).toBe(true)
+  })
+
+  test('an unquoted glob that could spell --person is refused', () => {
+    for (const cmd of [`${CLI} evidence add --stage check --claim x --pers?n`, `${CLI} evidence add --stage check --claim x --per*`]) {
+      expect(isDeny(bash(ctx('check'), cmd)), cmd).toBe(true)
+    }
+  })
+})
+
 // 9.8.5 (WP22): the reuse store decides gate rows: a pass kept there is a check that is not run again, a failure kept
 // there is a check that is not run again either. It is one file in the git common folder, shared by every worktree of
 // the clone, and only the CLI's runner writes it, the byproduct list in it included.

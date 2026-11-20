@@ -117,6 +117,21 @@ def evidence_entry(argv):
     # WP24: a finding of Review carries its whole text: --detail, --fix and --proof test|none (the reviewer's, never the fixer's)
     more = dict(r[1:].split('=', 1) for r in argv[15:] if r.startswith('\x1f') and '=' in r)
     more.pop('answer', None)
+    # lane B of phase 7 (WP27 step 7): --person is the call of the person's confirm option at the Check question, the one
+    # row a criterion the person confirms counts from (acceptance.py check); only the mod ties it to the person's click.
+    # As Run it anyway (budget.py), a run that goes on by itself with no stop open never records it (flow_run.armed)
+    if os.environ.get('TEMPER_BY') == 'person':
+        if not criterion or e['exit_code'] != 0 or severity or scenario or kind:
+            sys.exit("FAIL: --person goes only with --criterion AC-NN and --exit 0: the person's confirmation of a criterion at the Check question")
+        try:
+            st = json.load(open(os.environ.get('TEMPER_STATE') or ''))
+        except (OSError, ValueError):
+            st = {}
+        st = st if isinstance(st, dict) else {}
+        if st.get('run_mode') == 'autonomous' and st.get('unattended_from') and st.get('unattended_from') != st.get('next_stage') \
+                and not st.get('parked'):
+            sys.exit("BLOCKED: --person is the person's answer at the Check question; a run that goes on by itself never records it")
+        e['executed_by'] = 'person'
     if os.environ.get('TEMPER_ANSWER'):   # lane E: the question a Scope drift answer answers, as the CLI found it (repair_ops.answer_of)
         e['answer'] = os.environ['TEMPER_ANSWER']
     if more and not (severity and e['claim'] != 'review completed'):

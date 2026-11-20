@@ -128,6 +128,15 @@ writes it, and refuses an answer to no question while a repair is open. That you
 only the mod holds: it refuses an agent's call that records an answer you did not give. With the mod off, nothing
 checks who ran the answer's call.
 
+**A criterion you confirm (9.8.5).** A criterion validated by hand, or by `code` or `metric` with no command in
+backticks, passes Check only from the row your Confirmed answer at the Check question writes: `temper evidence add
+--person`, a row marked `executed_by: person`. A row an agent records, or a CLI run of a command an agent chose, does
+not count for it. That the answer was yours only the mod holds: it lets a `--person` call through only as the call of
+the option you picked, word for word, as it does Run it anyway. With the mod off, nothing checks who ran it: the Check
+brief tells the agent never to record one, the CLI takes the flag only with a criterion and exit 0 and never in a run
+that goes on by itself with no stop open, and the row stays in the ledger as the person's, where `temper evidence list
+--stage check` shows it.
+
 
 ## Pull requests and the Pipeline stage (9.7.5)
 

@@ -402,7 +402,7 @@ const TOO_MANY_DENY =
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
-  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', 'close', ...STAGES]
+  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', 'close', '--person', ...STAGES]
 
 const RESOLVE_DENY =
   'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
@@ -561,8 +561,9 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   if (a === 'acceptance' && b === 'reopen') return true
   if (a === 'state' && b === 'set' && c === 'branch') return true
   if (a === 'group' && b === 'reopen') return w.some(x => x === '--accept-foreign' || x.startsWith('--accept-foreign='))
-  // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's.
-  if (a === 'evidence') return b === 'accept' || b === 'clear'
+  // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's. 9.8.5 (WP27 step 7): so
+  // is a row `--person`, the confirm option's call: the one row a criterion the person confirms at Check counts from.
+  if (a === 'evidence') return b === 'accept' || b === 'clear' || (b === 'add' && w.includes('--person'))
   // 9.8.5 (M13): a setup block runs before every command of every gate, so writing one to the config is the person's;
   // `doctor` and `doctor --propose` only read.
   if (a === 'doctor') return w.includes('--write')
