@@ -527,7 +527,10 @@ class AskPart:
                 high = any(f["severity"] in ("critical", "high") for f in opens)
                 repair = ([self.repair_opt(stage, rep)] if high and rep is not None else []) + (back_opt(rec=not rep) if high else [])
                 if repair:
-                    first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go, oid="continue"), arch]
+                    # With Repair again offered, Repair again, the loop back, Continue, Accept a finding, Grill Me, Teach Me and Save for
+                    # later fill the question and its More question: the Architecture Depth Review gives way, as M2 of WP08 has it (D42)
+                    first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go, oid="continue")] + \
+                        ([] if rep is not None else [arch])
                 else:
                     first = [self.opt("Continue to Check" + " (Recommended)", "Start Check.", move="advance", calls=go, oid="continue")] + (back_opt() if opens else []) + [arch]
                 rest = [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()]
