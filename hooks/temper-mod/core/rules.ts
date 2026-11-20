@@ -507,6 +507,14 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
         if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(key) }
       }
     }
+    // 9.8.5 (lane E): a Scope drift answer that widens the approved set (`drift P: Add to plan|Allow once`) is recorded
+    // only as the person's answer: their Scope drift answer for P, or the call of the gate answer they gave (the commit
+    // gate's Add to plan). The fixer of a repair never writes it (the CLI refuses an answer to no question in a repair).
+    const ans = driftAnswer(w)
+    if (ans !== null && !ctx.allowed.some(written => sameCall(written, w))) {
+      const given = ans.add ? ctx.drift.added : ctx.drift.allowOnce.map(x => x.path)
+      if (!given.some(p => normalizePath(p) === normalizePath(ans.path))) return { deny: DRIFT_ANSWER_DENY(ans.path) }
+    }
     if (!personOnly(w, r)) continue
     // The person's answer at this step, or the CLI's own action, maps to this very call.
     if (a === 'baseline' && b === 'accept-red' && ctx.allowed.some(written => sameCall(written, w))) {
@@ -523,6 +531,20 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   }
   return ALLOW
 }
+
+// The Scope drift answer an `evidence add` records, when it widens the approved set: its path, and whether it adds the file
+// to the plan (else it allows it once). Null for any other call.
+function driftAnswer(w: readonly string[]): { path: string; add: boolean } | null {
+  if (w[0] !== 'evidence' || w[1] !== 'add') return null
+  const at = w.findIndex(x => x === '--claim' || x.startsWith('--claim='))
+  const claim = at < 0 ? '' : w[at] === '--claim' ? (w[at + 1] ?? '') : (w[at] as string).slice('--claim='.length)
+  const m = /^drift (\S+): (Add to plan|Allow once)\b/i.exec(claim)
+  return m ? { path: m[1] as string, add: (m[2] as string).toLowerCase() === 'add to plan' } : null
+}
+
+const DRIFT_ANSWER_DENY = (path: string): string =>
+  `Temper: a Scope drift answer for ${path} is the user's, given at the Scope drift question; no agent records it. ` +
+  'Next: ask about the file with temper drift ask, stop, and return; the user answers the question.'
 
 // The temper calls only the person may cause (ADR 0013), by their words after the script: leaving Intent or Plan, a
 // skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, writing a setup block, more

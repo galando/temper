@@ -14,9 +14,11 @@ docs/plans/one-go/done.md (row D108 for `readme_lines`). Three rules:
 
   python3 scripts/check_caps.py [--final] [--caps FILE]
 
-FILE defaults to scripts/caps.json; the measure is always of the plugin folder this script sits in. The code of each
+FILE defaults to scripts/caps.json; the measure is always of the plugin folder this script sits in. Each cap's line
+also gives the same measure taken on the base 10e965a (git show of that commit; "not found" when the history lacks it),
+so a report says how much of an overrun is growth since the base and how much was there already. The code of each
 measure is the function named in the `measure` field beside its key. Files are listed with git ls-files. Python 3 and
-git only, well under a second. Exit 0 when every rule holds, else 1 (2 for a wrong call).
+git only, a second or two (the base measures read the base commit). Exit 0 when every rule holds, else 1 (2 for a wrong call).
 """
 import ast
 import json
@@ -31,13 +33,19 @@ CAPS = os.path.join(HERE, "caps.json")
 TEMPLATE = "templates/temper.config.default"
 
 
+BASE = "10e965a"   # the base of the build (docs/plans/one-go/contracts.md): each measure is also taken there
+SRC = None         # None: the measures read the tree as it is; a commit: they read that commit (at_base)
+
+
 def git(cwd, *args):
     p = subprocess.run(["git", "-C", cwd] + list(args), capture_output=True, text=True)
     return p.stdout if p.returncode == 0 else None
 
 
 def files(*specs):
-    """The files of the tree under the pathspecs, tracked or new, that exist."""
+    """The files of the tree under the pathspecs, tracked or new, that exist (with SRC: the files of that commit)."""
+    if SRC:
+        return sorted({f for f in (git(ROOT, "ls-tree", "-r", "--name-only", SRC, "--", *specs) or "").splitlines() if f})
     out = git(ROOT, "ls-files", "--cached", "--others", "--exclude-standard", "--", *specs) or ""
     return sorted({f for f in out.splitlines() if os.path.isfile(os.path.join(ROOT, f))})
 
@@ -53,12 +61,32 @@ def in_folder(folder, suffix):
 
 
 def text(rel):
+    if SRC:   # a file the commit does not hold reads as empty: its measure there counts nothing of it
+        return git(ROOT, "show", "%s:%s" % (SRC, rel)) or ""
     with open(os.path.join(ROOT, rel), encoding="utf-8") as f:
         return f.read()
 
 
 def size(rels):
+    if SRC:
+        return sum(int((git(ROOT, "cat-file", "-s", "%s:%s" % (SRC, r)) or "0").strip() or 0) for r in rels)
     return sum(os.path.getsize(os.path.join(ROOT, r)) for r in rels)
+
+
+def at_base(fn, doc):
+    """The measure fn taken on the base commit BASE, as git holds it (git show), or None when the history has no BASE:
+    the report gives it beside the measure of the tree, so an overrun reads as growth since the base and as what was
+    there already (lane E)."""
+    global SRC
+    if git(ROOT, "cat-file", "-e", BASE + "^{commit}") is None:
+        return None
+    SRC = BASE
+    try:
+        return fn(doc)
+    except (OSError, ValueError, SyntaxError, KeyError, TypeError):
+        return None
+    finally:
+        SRC = None
 
 
 def lines(rel):
@@ -85,7 +113,7 @@ def measure_option_sites(doc):
 def option_labels(doc):
     """The labels of the self.opt( calls of the flow files, read from the syntax tree so a label is seen however it
     reaches the call (phase 6): a string; a format string, as the text it gives when its arguments are fixed, else as
-    written; the left part of a sum (a suffix keeps the label); both arms of a choice; a name, through what the
+    written; an f-string, or a string's .format(), as written (lane E); the left part of a sum (a suffix keeps the label); both arms of a choice; a name, through what the
     function assigns to it, a loop over a list of tuples or a zip of lists (the function's own or a module's), or a
     parameter, through the self.NAME( calls that pass it."""
     consts, calls = {}, []
@@ -125,6 +153,10 @@ def option_labels(doc):
             return out
         if isinstance(node, ast.IfExp):
             return vals(node.body, fn, depth + 1) | vals(node.orelse, fn, depth + 1)
+        if isinstance(node, ast.JoinedStr):   # an f-string, as written (the measure before phase 6 read it so)
+            return {"".join(v.value if isinstance(v, ast.Constant) else "{%s}" % ast.unparse(v.value) for v in node.values)}
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+            return vals(node.func.value, fn, depth + 1)   # "... {}".format(x): the string it formats, as written
         if not isinstance(node, ast.Name):
             return set()
         out = set().union(*[vals(v, fn, depth + 1) for v in bound(node.id, fn)])
@@ -308,7 +340,7 @@ def main(argv):
         i += 1
     with open(path, encoding="utf-8") as f:
         doc = json.load(f)
-    problems = []
+    problems, report = [], []
     caps = doc.get("caps") or {}
     for k, c in sorted(caps.items()):
         fn = MEASURES.get(k)
@@ -319,6 +351,11 @@ def main(argv):
             problems.append("%s: needs a whole number now and final" % k)
             continue
         got = fn(doc)
+        base = at_base(fn, doc)
+        report.append("  %s: now %d, base %s %s, final %d%s" % (
+            k, got, BASE, "not found" if base is None else base, c["final"],
+            "" if base is None else " (%+d since the base; %s)" % (got - base, "the base is over its final too"
+                                                                      if base > c["final"] else "the base is within its final")))
         if got != c["now"]:
             problems.append("%s: the measure is %d, the file says now %d (set now to the measure in this commit)" % (k, got, c["now"]))
         if final and c["now"] > c["final"]:
@@ -326,6 +363,8 @@ def main(argv):
     for k in sorted(set(MEASURES) - set(caps)):
         problems.append("%s: measured here, and the file holds no cap for it" % k)
     problems += raised(finals(doc), first_values(path))
+    for line in report:
+        print(line)
     for p in problems:
         print("FAIL caps: %s" % p)
     if not problems:

@@ -114,6 +114,29 @@ print("|".join(labels) + "|rows %d" % m.measure_gate_rows(doc))
 PY
 )"
 
+# a label written as an f-string or built with .format() counts as written, as the measure before phase 6 counted it
+# (lane E, RE7)
+cat > "$_c41_m/scripts/flow_y.py" <<'PY'
+class Y:
+    def a(self, n, x):
+        return [self.opt(f"Run {n} again", "d"), self.opt("Commit and open {}".format(x), "d"), self.opt(f"Plain f", "d")]
+PY
+assert_eq "caps: the label measure sees a label written as an f-string or with .format()" \
+  "Commit and open {}|Plain f|Run {n} again" \
+  "$(python3 -I - "$_c41_m/scripts/check_caps.py" <<'PY'
+import importlib.util as u, sys
+s = u.spec_from_file_location("check_caps_y", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)
+print("|".join(sorted(m.option_labels({"flow_files": ["scripts/flow_y.py"]}))))
+PY
+)"
+
+# the report of the caps says, beside each measure, the same measure on the base (10e965a), so an overrun reads as the
+# growth since the base and the part that was always there (lane E, RE6): the base measures are fixed numbers
+_c41_rep="$(python3 -I "$_c41_caps" 2>&1)"
+assert_eq "caps: the report gives each cap's measure on the base 10e965a beside its own" \
+  "16 lines|gate_rows base 73|option_labels base 74|cli_bytes base" \
+  "$(grep -c 'base 10e965a' <<<"$_c41_rep") lines|$(grep -o 'gate_rows: now [0-9]*, base 10e965a 73' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a/ base/')|$(grep -o 'option_labels: now [0-9]*, base 10e965a 74' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a/ base/')|$(grep -o 'cli_bytes: now [0-9]*, base 10e965a [0-9]' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a [0-9]/ base/')"
+
 # --- floor ---
 _c41_hist "$_c41_dir/hf" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
 _c41_edit "$_c41_dir/hf/floor.json" 'd["scenarios"]["default-run"]["plain"]["final"]["dialogs"] += 1'

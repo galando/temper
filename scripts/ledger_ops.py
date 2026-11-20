@@ -116,6 +116,9 @@ def evidence_entry(argv):
         e['read'] = list(dict.fromkeys(os.path.normpath(os.path.relpath(r) if os.path.isabs(r) else r) for r in reads if r.strip()))
     # WP24: a finding of Review carries its whole text: --detail, --fix and --proof test|none (the reviewer's, never the fixer's)
     more = dict(r[1:].split('=', 1) for r in argv[15:] if r.startswith('\x1f') and '=' in r)
+    more.pop('answer', None)
+    if os.environ.get('TEMPER_ANSWER'):   # lane E: the question a Scope drift answer answers, as the CLI found it (repair_ops.answer_of)
+        e['answer'] = os.environ['TEMPER_ANSWER']
     if more and not (severity and e['claim'] != 'review completed'):
         sys.exit("FAIL: --detail, --fix and --proof go with a finding of Review (--stage review --severity S)")
     if more.get('proof', 'none') not in ('test', 'none'):

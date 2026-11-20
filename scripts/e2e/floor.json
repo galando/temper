@@ -3375,15 +3375,16 @@
   "small-change": {
    "plain": {
     "now": {
-     "dialogs": 8,
+     "dialogs": 11,
      "by_stage": {
       "build": 3,
-      "check": 3,
+      "check": 5,
+      "commit": 1,
       "plan": 1,
       "review": 1
      },
      "by_kind": {
-      "gate": 6,
+      "gate": 9,
       "group": 2
      },
      "launches": {
@@ -3391,26 +3392,27 @@
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
-      "temper:temper-review": 2
+      "temper:temper-review": 3
      },
-     "launch_total": 7,
+     "launch_total": 8,
      "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "mod": {
     "now": {
-     "dialogs": 8,
+     "dialogs": 11,
      "by_stage": {
       "build": 3,
-      "check": 3,
+      "check": 5,
+      "commit": 1,
       "plan": 1,
       "review": 1
      },
      "by_kind": {
-      "gate": 6,
+      "gate": 9,
       "group": 2
      },
      "launches": {
@@ -3418,26 +3420,27 @@
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
-      "temper:temper-review": 2
+      "temper:temper-review": 3
      },
-     "launch_total": 7,
+     "launch_total": 8,
      "auto": 1,
      "back": 0,
      "handbacks": 0,
-     "suite_runs": 3
+     "suite_runs": 4
     }
    },
    "driver": {
     "now": {
-     "dialogs": 8,
+     "dialogs": 11,
      "by_stage": {
       "build": 3,
-      "check": 3,
+      "check": 5,
+      "commit": 1,
       "plan": 1,
       "review": 1
      },
      "by_kind": {
-      "gate": 6,
+      "gate": 9,
       "group": 2
      },
      "launches": {
@@ -3445,13 +3448,13 @@
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
       "temper:temper-plan": 1,
-      "temper:temper-review": 2
+      "temper:temper-review": 3
      },
-     "launch_total": 7,
-     "auto": 15,
+     "launch_total": 8,
+     "auto": 18,
      "back": 0,
-     "handbacks": 1,
-     "suite_runs": 3
+     "handbacks": 2,
+     "suite_runs": 4
     }
    }
   },

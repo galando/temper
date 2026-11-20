@@ -655,6 +655,26 @@ describe('WP24: the repair in the stage', () => {
       expect('allow' in bash(ctx(stage, { facts }), `${named} --why 'the fix needs it' --change 'one line'`), stage).toBe(true)
     }
   })
+  // lane E (RE2): the fixer could widen the approved set by writing the person's answer row itself
+  test('an agent\'s evidence add of a Scope drift answer is refused unless the person gave it; Revert and other rows pass', () => {
+    const add = `${CLI} evidence add --stage build --phase feedback --claim 'drift src/other.ts: Add to plan: the fixer'`
+    const once = `${CLI} evidence add --stage build --phase feedback --claim 'drift src/other.ts: Allow once: the fixer'`
+    for (const stage of ['build', 'review', 'check'] as const) {
+      const facts = stage === 'build' ? {} : { adhocStage: stage, ...({ adhocKind: 'repair' } as unknown as Over) }
+      for (const cmd of [add, once, add.replace(`--claim 'drift`, `--claim='drift`)]) {
+        const r = bash(ctx(stage, { facts }), cmd)
+        expect(isDeny(r) && r.deny.includes('src/other.ts'), `${stage}: ${cmd}`).toBe(true)
+      }
+      expect('allow' in bash(ctx(stage, { facts, drift: { added: ['src/other.ts'], allowOnce: [] } }), add), stage).toBe(true)
+      expect(isDeny(bash(ctx(stage, { facts, drift: { added: ['src/other.ts'], allowOnce: [] } }), once)), stage).toBe(true)
+      expect('allow' in bash(ctx(stage, { facts, drift: { added: [], allowOnce: [{ id: 'd1', path: 'src/other.ts' }] } }), once), stage).toBe(true)
+      expect('allow' in bash(ctx(stage, { facts, allowed: [add] }), add), stage).toBe(true)
+      for (const cmd of [`${CLI} evidence add --stage build --phase feedback --claim 'drift src/other.ts: Revert: the fixer'`,
+        `${CLI} evidence add --stage build --phase drift --claim 'drift decided'`, `${CLI} evidence add --stage build --claim 'tests pass'`]) {
+        expect('allow' in bash(ctx(stage, { facts }), cmd), `${stage}: ${cmd}`).toBe(true)
+      }
+    }
+  })
   test('the control: a small change window still allows any path', () => {
     for (const stage of ['review', 'check'] as const) {
       expect('allow' in write(ctx(stage, { facts: { adhocStage: stage } }), 'src/billing.ts'), stage).toBe(true)

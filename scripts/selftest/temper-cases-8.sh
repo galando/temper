@@ -495,6 +495,26 @@ assert_eq "view fixtures: the module the mod's tests import is what the CLI writ
   "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" && echo same || echo differs)"
 assert_eq "view fixtures: the second module (the states 9.7.5 added) is what the CLI writes now (make-view-fixtures.sh extra)" "same" \
   "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" extra 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures-2.ts" && echo same || echo differs)"
+# trap 5 of WP24 (lane E, RE13): a fixture view stands where a repair may start, so the mod's audit of every option of
+# every fixture view makes the Repair again call with no matching answer
+assert_eq "view fixtures: a view offers Repair again (repair-again), with its call repair start --again" "yes" \
+  "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" "$REPO_ROOT/scripts/selftest/view-fixtures-2.ts" <<'PY'
+import json, sys
+found = []
+def walk(o):
+    if isinstance(o, dict):
+        if o.get("id") == "repair-again" and any("repair start --stage" in c and c.endswith("--again") for c in o.get("calls") or []):
+            found.append(o)
+        for v in o.values():
+            walk(v)
+    elif isinstance(o, list):
+        for v in o:
+            walk(v)
+for f in sys.argv[1:]:
+    walk(json.loads(open(f).read().split("= ", 1)[1]))
+print("yes" if found else "no")
+PY
+)"
 assert_eq "view fixtures: the next field carries the calls of the CLI's own action" "state advance build_complete review" \
   "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" <<'PY'
 import json, sys

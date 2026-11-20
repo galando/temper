@@ -1249,6 +1249,7 @@ cmd_evidence_add() {
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   [[ ${#reads[@]} -eq 0 || "$stage $claim $severity" == "review review completed " || "${reads[*]}" == $'\x1f'* ]] || { echo "FAIL: --read goes only with --stage review --claim 'review completed': the files Review read whole" >&2; return 1; }
+  local ans=""; [[ "$stage" != build ]] || ans="$(python3 -E -s "$SCRIPTS_DIR/repair_ops.py" "" "" answer "$claim")" || return 1   # lane E: a Scope drift answer's question
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
   if [[ -n "$confidence" ]] && ! [[ "$confidence" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
     echo "FAIL: --confidence takes a number from 0 to 1 (0.85), got '$confidence'" >&2; return 1
@@ -1274,7 +1275,7 @@ cmd_evidence_add() {
     artifact_hash="$(python3 -I -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
   fi
   local entry
-  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"}) || return 1
+  entry=$(TEMPER_ANSWER="$ans" python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"}) || return 1
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
