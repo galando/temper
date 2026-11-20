@@ -563,7 +563,7 @@ class BuildPart:
         patch = self.opt("Change the group's command" + (" (Recommended)" if cmd_cause else ""),
                          "Type the Validate command group %s should run (now: %s); its check runs again, the tasks keep their work; it counts as one repeat." % (
                              gid, (g.get("validate") or "none")[:120]),
-                         move="redo", calls=[self.c("plan patch %s --cmd '{answer}'" % gid), self.c("group gate %s" % gid)],
+                         move="redo", calls=[self.c("plan patch %s --cmd '{answer}'" % gid)],   # then baseline plan, the check
                          answer=("Group command", "Group %s: what Validate command should it run? It runs the tests this group can break, within the time limit." % gid),
                          oid="change-command")
         if cmd_cause:

@@ -25,7 +25,7 @@ assert_exit "9.8.5 patch: a command with a backquote is refused" 1 "$TEMPER" pla
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", "fails": 1, "fix_tries": 1, "fix_empty": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: bash slow.sh", "ran": true, "timeout_s": 600, "fail_lines": ["x"]}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "9.8.5 patch: after an empty fix, Change the group's command is first and recommended, and asks for the command" \
-  "Change the group's command (Recommended)|plan patch G1 --cmd '{answer}'|group gate G1|Group command" \
+  "Change the group's command (Recommended)|plan patch G1 --cmd '{answer}'|Group command" \
   "$(nx "o = d['ask']['options'][0]; '|'.join([o['label']] + [c.split('temper ', 1)[1] for c in o['calls']] + [o['answer_question']['header']])")"
 
 # --- WP25: the plan amendment by rule and the plan patch, the person's (names amend: and patch:) ---
@@ -365,5 +365,70 @@ gpass check   # the run asks at every stage: check.pass carries the commit card 
 assert_eq "patch: the question and the card show the command word for word" \
   "patch offered|old command shown|patched|card shows the new command" \
   "$_p29_q|$(grep -c '^\*\*Validate:\*\* `bash fast-g1.sh --quick`' .temper/specs/demo/tasks.md | sed 's/^1$/patched/;s/^0$/not patched/')|$("$TEMPER" card 2>/dev/null | grep -cF 'bash fast-g1.sh --quick' >/dev/null && echo 'card shows the new command' || echo 'card does not show it')"
+
+# amend: a file only a later task of the group declares is the plan's (Loop back to Plan), not the rule's
+_amplan29 | m_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+"$TEMPER" task blocked 1 --needs src/b.sh --reason 'the test of a needs the b event, written in src/b.sh' >/dev/null 2>&1
+"$TEMPER" task test 1 --phase red >/dev/null 2>&1; "$TEMPER" task gate 1 --model m >/dev/null 2>&1
+assert_eq "amend: refused for a file only a later task of the group declares, and the run asks with Loop back to Plan first" \
+  "refused|ask:back" "$(_try29 'later task' amend task 1 --add-file src/b.sh)|$(nx "d['action'] + ':' + str(((d.get('ask') or {}).get('options') or [{}])[0].get('id'))")"
+# amend: a step back to Plan keeps plan_hash until the new approval; the amendment waits for that approval
+_am29; "$TEMPER" state loop build plan --reason 'the plan changes' >/dev/null 2>&1
+assert_eq "amend: refused after a step back to Plan, before the new approval" "refused" \
+  "$(_try29 'at Plan' amend task 2 --add-file src/a.sh)"
+# amend: a new approval starts the list of the plan since the approval again (the card lists amendments.json)
+_am29; "$TEMPER" plan amend task 2 --add-file src/a.sh >/dev/null 2>&1
+_a29_n="$(python3 -c "import json; print(len(json.load(open('.temper/evidence/amendments.json'))))" 2>/dev/null || echo 0)"
+"$TEMPER" state loop build plan --reason 'the plan changes' >/dev/null 2>&1
+gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+assert_eq "amend: a new approval of the plan leaves no change of the plan before it in amendments.json" "before=1|after=0" \
+  "before=$_a29_n|after=$(python3 -c "import json; print(len(json.load(open('.temper/evidence/amendments.json'))))" 2>/dev/null || echo 0)"
+# patch: a passed task whose Test line changes is reopened by the CLI's group reopen; when that reopen cannot run (the
+# group has no worktree any more), the patch is refused before it writes or spends anything
+_amplan29 | m_setup; _built29 1 src/a.sh
+git worktree remove --force "$(_g29 "d['groups']['G1'].get('worktree', '')")" >/dev/null 2>&1
+python3 -c "
+import json
+p = '.temper/groups.json'
+d = json.load(open(p)); d['groups']['G1'].pop('worktree', None)
+json.dump(d, open(p, 'w'), indent=2)"
+assert_eq "patch: a changed Test line whose passed task cannot be reopened is refused, and nothing is written or spent" "refused|task1=passed" \
+  "$(_try29 'not started|reopen' patch task 1 --cmd 'test -s src/a.sh')|task1=$(_g29 "d['tasks']['1'].get('status')")"
+# patch: a group with no Validate line and no group Depends line gets the line in its own head, not in a task's block
+_pp; sed -i -e '/^\*\*Validate:\*\*/d' -e '/^## Group G1/,/^### /{/^\*\*Depends:\*\*/d}' .temper/specs/demo/tasks.md
+python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import approval, tasks_md
+h = approval.plan_digest(tasks_md.parse(".temper/specs/demo/tasks.md"))   # the plan as approved: G1 has neither line
+for p in (".temper/build-state.json", ".temper/groups.json"):
+    d = json.load(open(p)); d["plan_hash"] = h; json.dump(d, open(p, "w"), indent=2)
+PY
+"$TEMPER" plan patch G1 --cmd 'bash v.sh' >/dev/null 2>&1; _p29_rc=$?
+assert_eq "patch: a missing Validate line of a group with no Depends line goes into the group's head" "rc=0|G1=bash v.sh|in a task=0" \
+  "rc=$_p29_rc|G1=$(_parse29 | python3 -c "import json,sys; print(json.load(sys.stdin)['groups'][0]['validate'])")|in a task=$(sed -n '/^### Task/,$p' .temper/specs/demo/tasks.md | grep -c '^\*\*Validate:\*\*')"
+# patch: --add-file of a path with no dot and no slash (Makefile) is written so the plan reads it as a file
+_amplan29 | m_setup
+"$TEMPER" plan patch task 2 --add-file Makefile >/dev/null 2>&1; _p29_rc=$?
+assert_eq "patch: --add-file of a file with no dot and no slash is a file of the task as the plan reads it" "rc=0|files=src/b.sh,Makefile|hash=digest" \
+  "rc=$_p29_rc|files=$(_parse29 | python3 -c "import json,sys; print(','.join(next(t for t in json.load(sys.stdin)['tasks'] if t['n'] == 2)['files']))")|hash=$(python3 -c "
+import json, sys; sys.path.insert(0, sys.argv[1]); import approval, tasks_md
+print('digest' if json.load(open('.temper/build-state.json')).get('plan_hash') == approval.plan_digest(tasks_md.parse('.temper/specs/demo/tasks.md')) else 'other')" "$REPO_ROOT/scripts")"
+# patch: the group question's Change the group's command runs the new command once on the base before its check
+_pp
+python3 -B - <<'PY'
+import json
+p = ".temper/groups.json"
+d = json.load(open(p))
+d["groups"]["G1"].update(status="running", fails=1, fix_tries=1, fix_empty=1,
+                         gate={"verdict": "FAIL", "reason": "group G1 Validate failed", "ran": True, "fail_lines": ["x"]})
+d.setdefault("tasks", {}).update({"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}})
+json.dump(d, open(p, "w"), indent=2)
+json.dump({"result": "pass", "plan": {}}, open(".temper/evidence/baseline.json", "w"))
+PY
+_p29_calls="$(nx "o = next(x for x in d['ask']['options'] if x.get('id') == 'change-command'); chr(10).join(o['calls'])" 2>/dev/null)"
+while IFS= read -r _c; do [[ "$_c" == *temper* ]] && bash -c "${_c//\{answer\}/bash v29.sh}" >/dev/null 2>&1; done <<<"$_p29_calls"
+assert_eq "patch: after Change the group's command the new command runs once on the base before the group is checked" \
+  "auto|baseline plan" "$(nx "d['action'] + '|' + ' '.join(c.split(' ', 1)[1] if ' ' in c else c for c in d.get('calls') or [])")"
 cd "$WORKDIR" || true
 rm -rf "$T29"

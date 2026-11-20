@@ -216,8 +216,8 @@ All notable changes to Temper are documented here. The plugin version lives in
   yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs, in
   every run. The fixer asks about a file outside the plan with `temper drift ask`, as at Build, and `adhoc close`
   never closes a repair window.
-- WP25: a plan fault a narrow change repairs costs no replan (ADR 0019, ADR 0021). A task blocked on a file another
-  task of its own group declares is amended by rule, in every mode, with no question: the CLI's own
+- WP25: a plan fault a narrow change repairs costs no replan (ADR 0019, ADR 0021). A task blocked on a file an earlier
+  or passed task of its own group declares is amended by rule, in every mode, with no question: the CLI's own
   `temper plan amend task N --add-file F` adds the file and one Depends entry on its owner, and nothing else, refuses
   every other change (a file no task or another group declares, a test file, a locked acceptance test, a sensitive path,
   a running or passed task, a row the result newly fails, no room in the budget), spends one repeat (`task:N`) and runs

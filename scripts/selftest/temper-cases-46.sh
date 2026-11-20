@@ -348,6 +348,19 @@ done
 assert_eq "D26d the plan gate fails a group with no Validate, and a replan keeps a built task whose fields did not change" \
   "row=False|task1=passed|kept commit=True|task2=not passed" \
   "row=$_d26d_row|task1=$(_task46 1 status)|kept commit=$([[ -n "$_d26d_c1" && "$_d26d_c1" == "$(_task46 1 commit)" ]] && git merge-base --is-ancestor "$_d26d_c1" temper/demo/G1 2>/dev/null && echo True || echo False)|task2=$([[ "$(_task46 2 status)" == passed ]] && echo passed || echo 'not passed')"
+# the plan as approved has no Validate line for G1: plan patch adds the missing line, and the plan's row then passes
+_tasks46 | sed '/^## Group G1/,/^### /{/^\*\*Validate:\*\*/d}' | m_setup
+_d26e="patch=$(_amend46 patch G1 --cmd 'bash v.sh')|$(python3 -I - "$REPO_ROOT/scripts" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import plan_amend, tasks_md
+g = next(g for g in tasks_md.parse(".temper/specs/demo/tasks.md")["groups"] if g["id"] == "G1")
+row = plan_amend.static_rows(".temper/specs/demo", open(".temper/specs/demo/tasks.md").read()).get("group validate command")
+print("G1=%s|row=%s" % (g["validate"] or "none", row[0] if row else "absent"))
+PY
+)"
+assert_eq "D26e plan patch adds the missing Validate line of a group whose approved plan has none, and the plan's row then passes" \
+  "patch=taken|G1=bash v.sh|row=True" "$_d26e"
 
 # --- D27a to D27c: the simple tier writes tasks.md only, the briefs ask for nothing unread, and the CLI bounds the tier ---
 _tier46() { # a run at Plan, tier simple, the plan gate run on the plan as it stands

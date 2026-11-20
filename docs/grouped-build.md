@@ -198,9 +198,9 @@ usage page.
   groups those name, are unchanged and fully kept: its group branch comes back from the kept ref at the commit of the
   last kept task, and the records come back as passed. A group's verdict is kept only when every task of it is kept and
   its Validate and Interfaces are equal; every other task runs again.
-- **A blocked task** whose file its own group owns is amended by rule (`temper plan amend`): the file and the Depends
-  entry on its owner, and the task runs again. A file no task declares is the person's `temper plan patch task N
-  --add-file F`.
+- **A blocked task** whose file an earlier or passed task of its own group owns is amended by rule
+  (`temper plan amend`): the file and the Depends entry on its owner, and the task runs again. A file no task declares is
+  the person's `temper plan patch task N --add-file F`.
 - **Timeouts.** The group gate takes `--timeout-s`; the integration suite has its own limit (`TEMPER_INTEGRATION_TIMEOUT_S`).
 - **Maven.** `scripts/maven_loop.py` runs the declared test classes offline and needs a new surefire report per class; a Maven group
   validates with `mvn verify` and JaCoCo.

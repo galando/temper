@@ -11,11 +11,14 @@ A step back to Plan archives groups.json to .temper/archive/groups-<ts>.json and
 refs/temper/kept/<slug>/replan-<ts>/<G> (scripts/temper `_groups_reset`). After the new approval a task is kept when its
 files, Depends and Test are those of the archived plan, every task it depends on is kept, and its group's Depends, and
 the groups those name, are unchanged and fully kept. A group's branch comes back from its kept ref, reset to the commit
-of the last kept task in the order the branch holds them: the walk stops at the first commit that is not a kept task's,
-so the branch holds only the CLI's own commits of kept tasks. Those task records come back as passed, with their entries
-of cli_commits; the group's gate verdict is kept only when every task of it is kept, nothing followed them on the branch,
-and its Validate and Interfaces are equal. Everything else runs as a new group does. A task block's text is never
-compared (the CLI ticks a box inside it): the fields of the digest are. Run in the project folder; standard library only.
+of the last kept task in the order the branch holds them: the walk stops at the first commit that is not a kept task's
+(the CLI's merge of a task that ran beside another is that task's: its second parent is the task's commit), so the
+branch holds only the CLI's own commits of kept tasks. Those task records come back as passed, with their entries of
+cli_commits; the group's gate verdict is kept only when every task of it is kept, nothing followed them on the branch,
+and its Validate and Interfaces are equal. Everything else runs as a new group does. Only the newest archive of the run
+is read: one with no plan (tasks.md differed from the approved plan at the step back) keeps nothing. A task block's text
+is never compared (the CLI ticks a box inside it): the fields of the digest are. Run in the project folder; standard
+library only.
 """
 import json
 import os
@@ -72,15 +75,15 @@ def archive(argv):
     st = load(STATE, {})
     spec = st.get("spec_path") or ""
     tasks = os.path.join(spec, "tasks.md") if spec else ""
-    if d and st.get("run_id") and tasks and os.path.isfile(tasks):
-        plan = tasks_md.parse(tasks)
+    if d and st.get("run_id"):
+        d["run_id"] = st["run_id"]   # every archive of this run says so: one with no plan ends the search of `latest`
+        plan = tasks_md.parse(tasks) if tasks and os.path.isfile(tasks) else None
         want = d.get("plan_hash") or st.get("plan_hash")
-        if want and approval.plan_digest(plan) == want:   # only the plan the tasks were built from is kept for a replan
-            d["run_id"] = st["run_id"]
+        if plan and want and approval.plan_digest(plan) == want:   # only the plan the tasks were built from is kept
             d["plan"] = {"tasks": plan["tasks"], "groups": plan["groups"], "integration": plan["integration"]}
             for t in d["plan"]["tasks"]:
                 t.pop("block", None)
-            save(path, d)
+        save(path, d)
     import groups_ops
     groups_ops.groups_reset_rows(argv)
     return 0
@@ -99,9 +102,9 @@ def latest(state, groups):
     for name in sorted(names, reverse=True)[:20]:
         p = os.path.join(folder, name)
         d = load(p, {})
-        if d.get("run_id") == rid and isinstance(d.get("plan"), dict):
+        if d.get("run_id") == rid:   # the newest archive of this run only: one with no plan keeps nothing
             ts = os.path.basename(p)[len("groups-"):-len(".json")]
-            return None if groups.get("kept_from") == ts else (ts, d)
+            return None if groups.get("kept_from") == ts or not isinstance(d.get("plan"), dict) else (ts, d)
     return None
 
 
@@ -143,22 +146,26 @@ def keep_set(plan, doc, ts, slug):
             commits = git("rev-list", "--first-parent", "--reverse", "%s..%s" % (base, ref))[1].split()
             by_commit = {str(r.get("commit")): int(n) for n, r in rec.items() if isinstance(r, dict) and n.isdigit()
                          and r.get("status") == "passed" and r.get("group") == gid and r.get("commit")}
-            mine, last = [], ""
+            cli = set(str(x) for x in doc.get("cli_commits") or [])
+            mine, last, merges = [], "", []
             for c in commits:
                 n = by_commit.get(c)
+                if n is None and c in cli:   # the CLI's merge of a task that ran beside another: its second parent
+                    n = by_commit.get(git("rev-parse", "--verify", "-q", c + "^2")[1])
                 t, o = ntasks.get(n), otasks.get(n)
                 if n is None or not t or not o or t.get("group") != gid or o.get("group") != gid \
                         or task_fields(t) != task_fields(o) or not all(d in kept or d in mine for d in t.get("depends") or []):
                     break
                 mine.append(n)
                 last = c
+                merges += [] if c in by_commit else [c]
             if not mine:
                 continue
             kept.update(mine)
             whole = sorted(mine) == sorted(g.get("tasks") or []) and last == head
             full[gid] = whole
             same = (og.get("validate") == g.get("validate") and og.get("interfaces") == g.get("interfaces"))
-            out[gid] = {"tasks": mine, "commit": last, "full": whole,
+            out[gid] = {"tasks": mine, "commit": last, "full": whole, "merges": merges,
                         "gate": whole and same and (e.get("gate") or {}).get("verdict") == "PASS"}
     return out
 
@@ -210,6 +217,9 @@ def keep(argv):
             if t.get("commit") and t["commit"] not in g.setdefault("cli_commits", []):
                 g["cli_commits"].append(t["commit"])
             kept.append(n)
+        for c in k.get("merges") or []:   # the CLI's own merge commits of kept tasks stay the CLI's
+            if c not in g.setdefault("cli_commits", []):
+                g["cli_commits"].append(c)
     if kept:
         g["slug"] = slug
         g.setdefault("feature_branch", doc.get("feature_branch"))
