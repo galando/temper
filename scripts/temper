@@ -1142,7 +1142,7 @@ cmd_evidence_add() {
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
       --detail|--fix|--proof) reads+=($'\x1f'"${1#--}=$2"); shift 2 ;;   # WP24: the whole finding (ledger_ops.py)
-      --read) reads+=("$2"); shift 2 ;;
+      --read) [[ "$2" != $'\x1f'* ]] || { echo "FAIL: a --read path never starts with the field mark" >&2; return 1; }; reads+=("$2"); shift 2 ;;
       --claim) claim="$2"; shift 2 ;;
       --confidence) confidence="$2"; shift 2 ;;
       --cmd) cmd="$2"; shift 2 ;;
