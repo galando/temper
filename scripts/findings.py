@@ -10,7 +10,7 @@
                                                                in that state (open: neither resolved nor accepted)
   python3 findings.py open-claims LEDGER.json SEVS             the claims of those open findings, \x1f-joined, each with
                                                                its contest or escalation
-  python3 findings.py fixed-by COMMIT STATE GROUPS            9.8.5 (WP18): prints the full id of COMMIT when evidence
+  python3 findings.py fixed-by COMMIT STATE GROUPS STAGE ID   9.8.5 (WP18): prints the full id of COMMIT when evidence
                                                                resolve may name it, else one FAIL line (see fixed_by)
   python3 findings.py since-base BASE                          the commit gate's set: the files changed since BASE,
                                                                uncommitted and untracked, from the project folder
@@ -134,7 +134,7 @@ NO_REPAIR = ("  This run recorded no commit of its own (a fix run, or a Build wi
              "records a repair commit, a finding ends by the person's accept, or by a loop back and a second Review.")
 
 
-def fixed_by(name, state_path, groups_path):
+def fixed_by(name, state_path, groups_path, fid=None):
     """9.8.5 (WP18): the full id of the commit `evidence resolve --fixed-by NAME` may name, or (None, why). All four
     hold: NAME is a commit; it is on this branch (an ancestor of HEAD); Review did not read it (it is no ancestor of the
     reviewed HEAD, the head of review_snapshot, written as the run enters Review); the CLI recorded it as its own
@@ -160,7 +160,7 @@ def fixed_by(name, state_path, groups_path):
     if sha not in (load(groups_path).get("cli_commits") or []):
         return None, "commit %s is not one the CLI recorded (cli_commits); the reviewed HEAD is %s" % (sha[:7], seen[:7])
     import repair_ops   # WP24: the fifth condition, a repair of the CLI's with a recheck row written after it
-    why = repair_ops.recheck_after(load(state_path), sha)
+    why = repair_ops.recheck_after(load(state_path), sha, fid)
     return (None, why) if why else (sha, None)
 
 
@@ -267,8 +267,8 @@ def main(argv):
         if not reason.strip():
             return fail("an escalation needs --reason: what only the person knows")
         return mark(ledger, id_s, "escalated", {"reason": reason, "ts": ts})
-    if len(argv) == 5 and argv[1] == "fixed-by":
-        sha, why = fixed_by(argv[2], argv[3], argv[4])
+    if len(argv) == 7 and argv[1] == "fixed-by":   # WP24: and the finding a hand resolve names (rule 8)
+        sha, why = fixed_by(argv[2], argv[3], argv[4], int(argv[6]) if argv[5] == "review" and argv[6].isdigit() else -1)
         if why:
             print("FAIL: %s" % why, file=sys.stderr)
             if not load(argv[4]).get("cli_commits"):

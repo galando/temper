@@ -14,9 +14,11 @@ docs/plans/one-go/done.md (row D108 for `readme_lines`). Three rules:
 
   python3 scripts/check_caps.py [--final] [--caps FILE]
 
-FILE defaults to scripts/caps.json; the measure is always of the plugin folder this script sits in. The code of each
+FILE defaults to scripts/caps.json; the measure is always of the plugin folder this script sits in. Each cap's line
+also gives the same measure taken on the base 10e965a (git show of that commit; "not found" when the history lacks it),
+so a report says how much of an overrun is growth since the base and how much was there already. The code of each
 measure is the function named in the `measure` field beside its key. Files are listed with git ls-files. Python 3 and
-git only, well under a second. Exit 0 when every rule holds, else 1 (2 for a wrong call).
+git only, a second or two (the base measures read the base commit). Exit 0 when every rule holds, else 1 (2 for a wrong call).
 """
 import ast
 import json
@@ -31,13 +33,19 @@ CAPS = os.path.join(HERE, "caps.json")
 TEMPLATE = "templates/temper.config.default"
 
 
+BASE = "10e965a"   # the base of the build (docs/plans/one-go/contracts.md): each measure is also taken there
+SRC = None         # None: the measures read the tree as it is; a commit: they read that commit (at_base)
+
+
 def git(cwd, *args):
     p = subprocess.run(["git", "-C", cwd] + list(args), capture_output=True, text=True)
     return p.stdout if p.returncode == 0 else None
 
 
 def files(*specs):
-    """The files of the tree under the pathspecs, tracked or new, that exist."""
+    """The files of the tree under the pathspecs, tracked or new, that exist (with SRC: the files of that commit)."""
+    if SRC:
+        return sorted({f for f in (git(ROOT, "ls-tree", "-r", "--name-only", SRC, "--", *specs) or "").splitlines() if f})
     out = git(ROOT, "ls-files", "--cached", "--others", "--exclude-standard", "--", *specs) or ""
     return sorted({f for f in out.splitlines() if os.path.isfile(os.path.join(ROOT, f))})
 
@@ -53,12 +61,32 @@ def in_folder(folder, suffix):
 
 
 def text(rel):
+    if SRC:   # a file the commit does not hold reads as empty: its measure there counts nothing of it
+        return git(ROOT, "show", "%s:%s" % (SRC, rel)) or ""
     with open(os.path.join(ROOT, rel), encoding="utf-8") as f:
         return f.read()
 
 
 def size(rels):
+    if SRC:
+        return sum(int((git(ROOT, "cat-file", "-s", "%s:%s" % (SRC, r)) or "0").strip() or 0) for r in rels)
     return sum(os.path.getsize(os.path.join(ROOT, r)) for r in rels)
+
+
+def at_base(fn, doc):
+    """The measure fn taken on the base commit BASE, as git holds it (git show), or None when the history has no BASE:
+    the report gives it beside the measure of the tree, so an overrun reads as growth since the base and as what was
+    there already (lane E)."""
+    global SRC
+    if git(ROOT, "cat-file", "-e", BASE + "^{commit}") is None:
+        return None
+    SRC = BASE
+    try:
+        return fn(doc)
+    except (OSError, ValueError, SyntaxError, KeyError, TypeError):
+        return None
+    finally:
+        SRC = None
 
 
 def lines(rel):
@@ -82,9 +110,85 @@ def measure_option_sites(doc):
     return len(re.findall(r"self\.opt\(", flow_text(doc)))
 
 
+def option_labels(doc):
+    """The labels of the self.opt( calls of the flow files, read from the syntax tree so a label is seen however it
+    reaches the call (phase 6): a string; a format string, as the text it gives when its arguments are fixed, else as
+    written; an f-string, or a string's .format(), as written (lane E); the left part of a sum (a suffix keeps the label); both arms of a choice; a name, through what the
+    function assigns to it, a loop over a list of tuples or a zip of lists (the function's own or a module's), or a
+    parameter, through the self.NAME( calls that pass it."""
+    consts, calls = {}, []
+    for t in [ast.parse(text(f)) for f in doc.get("flow_files") or []]:
+        consts.update({n.targets[0].id: n.value for n in t.body if isinstance(n, ast.Assign) and len(n.targets) == 1
+                       and isinstance(n.targets[0], ast.Name)})
+        for fn in ast.walk(t):
+            if isinstance(fn, ast.FunctionDef):
+                calls += [(c, fn) for c in ast.walk(fn) if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                          and getattr(c.func.value, "id", "") == "self"]
+
+    def bound(name, fn):
+        got = [n.value for n in ast.walk(fn) if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == name for t in n.targets)]
+        return got or ([consts[name]] if name in consts else [])
+
+    def items(node, fn, depth):
+        if isinstance(node, (ast.List, ast.Tuple)):
+            return node.elts
+        return [e for v in bound(node.id, fn) for e in items(v, fn, depth + 1)] if isinstance(node, ast.Name) and depth < 9 else []
+
+    def vals(node, fn, depth=0):
+        if depth > 9:
+            return set()
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return {node.value}
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Mod, ast.Add)):
+            left = vals(node.left, fn, depth + 1)
+            args = node.right.elts if isinstance(node.right, ast.Tuple) else [node.right]
+            if isinstance(node.op, ast.Add) or not all(isinstance(a, ast.Constant) for a in args):
+                return left
+            out = set()
+            for s in left:
+                try:
+                    out.add(s % tuple(a.value for a in args))
+                except (TypeError, ValueError):
+                    out.add(s)
+            return out
+        if isinstance(node, ast.IfExp):
+            return vals(node.body, fn, depth + 1) | vals(node.orelse, fn, depth + 1)
+        if isinstance(node, ast.JoinedStr):   # an f-string, as written (the measure before phase 6 read it so)
+            return {"".join(v.value if isinstance(v, ast.Constant) else "{%s}" % ast.unparse(v.value) for v in node.values)}
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+            return vals(node.func.value, fn, depth + 1)   # "... {}".format(x): the string it formats, as written
+        if not isinstance(node, ast.Name):
+            return set()
+        out = set().union(*[vals(v, fn, depth + 1) for v in bound(node.id, fn)])
+        for g in ast.walk(fn):
+            if not isinstance(g, (ast.For, ast.comprehension)):
+                continue
+            names = [getattr(e, "id", None) for e in getattr(g.target, "elts", [g.target])]
+            if node.id not in names:
+                continue
+            i = names.index(node.id)
+            if isinstance(g.iter, ast.Call) and getattr(g.iter.func, "id", "") == "zip":
+                rows = items(g.iter.args[i], fn, depth + 1) if i < len(g.iter.args) else []
+            elif isinstance(g.target, ast.Tuple):
+                rows = [e.elts[i] for e in items(g.iter, fn, depth + 1) if isinstance(e, ast.Tuple) and i < len(e.elts)]
+            else:
+                rows = items(g.iter, fn, depth + 1)
+            out = out.union(*[vals(e, fn, depth + 1) for e in rows])
+        params = [a.arg for a in fn.args.args]
+        if not out and node.id in params:
+            i = params.index(node.id) - 1
+            for c, caller in calls:
+                if c.func.attr == fn.name:
+                    passed = ([c.args[i]] if 0 <= i < len(c.args) else []) + [k.value for k in c.keywords if k.arg == node.id]
+                    out = out.union(*[vals(a, caller, depth + 1) for a in passed])
+        return out
+
+    return set().union(*[vals(c.args[0], fn) for c, fn in calls if c.func.attr == "opt" and c.args])
+
+
 def measure_option_labels(doc):
-    """distinct first arguments (a string) of those calls"""
-    return len(set(re.findall(r'self\.opt\(\s*f?"([^"]+)"', flow_text(doc))))
+    """distinct labels of those calls, seen through a tuple, a variable or a format string (option_labels)"""
+    return len(option_labels(doc))
 
 
 def measure_question_ids(doc):
@@ -105,11 +209,17 @@ def measure_handback_kinds(doc):
 
 
 def measure_gate_rows(doc):
-    """distinct _req names of the CLI, distinct row( names of the Python scripts, name lines of gate_rows.py"""
+    """distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, or a
+    dict of a name and a pass a script prints), name lines of gate_rows.py"""
     req = set(re.findall(r'_req "([^"$]+)"', text("scripts/temper")))
     rows = set()
     for f in in_folder("scripts", ".py"):
-        rows |= set(re.findall(r'\brow\("([^"]+)"', text(f)))
+        src = text(f)
+        rows |= {name for _, name in re.findall(r'''\brow\((["'])(.+?)\1''', src)}
+        for d in ast.walk(ast.parse(src)) if re.search(r"[\"']pass[\"']", src) else []:
+            keys = [getattr(k, "value", None) for k in d.keys] if isinstance(d, ast.Dict) else []
+            if "name" in keys and "pass" in keys and isinstance(d.values[keys.index("name")], ast.Constant):
+                rows.add(d.values[keys.index("name")].value)
     named = len(re.findall(r'(?m)^\s+name = "', text("scripts/gate_rows.py")))
     return len(req) + len(rows) + named
 
@@ -230,7 +340,7 @@ def main(argv):
         i += 1
     with open(path, encoding="utf-8") as f:
         doc = json.load(f)
-    problems = []
+    problems, report = [], []
     caps = doc.get("caps") or {}
     for k, c in sorted(caps.items()):
         fn = MEASURES.get(k)
@@ -241,6 +351,11 @@ def main(argv):
             problems.append("%s: needs a whole number now and final" % k)
             continue
         got = fn(doc)
+        base = at_base(fn, doc)
+        report.append("  %s: now %d, base %s %s, final %d%s" % (
+            k, got, BASE, "not found" if base is None else base, c["final"],
+            "" if base is None else " (%+d since the base; %s)" % (got - base, "the base is over its final too"
+                                                                      if base > c["final"] else "the base is within its final")))
         if got != c["now"]:
             problems.append("%s: the measure is %d, the file says now %d (set now to the measure in this commit)" % (k, got, c["now"]))
         if final and c["now"] > c["final"]:
@@ -248,6 +363,8 @@ def main(argv):
     for k in sorted(set(MEASURES) - set(caps)):
         problems.append("%s: measured here, and the file holds no cap for it" % k)
     problems += raised(finals(doc), first_values(path))
+    for line in report:
+        print(line)
     for p in problems:
         print("FAIL caps: %s" % p)
     if not problems:

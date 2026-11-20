@@ -5,6 +5,9 @@
 # Plain-bash assertions, no test framework dependency (consistent with the rest of
 # Temper's tooling). Runs entirely in a throwaway tmp dir; never touches the repo.
 set -uo pipefail
+# grep -q stops at the first match, so a command before it that writes again (echo and printf too) can die of
+# SIGPIPE, and pipefail fails the pipe: a variable goes to grep as a here-string (`grep -q PATTERN <<<"$OUT"`), and
+# after a command grep reads its whole input (`grep -c PATTERN >/dev/null`).
 # No case reads the terminal: a hook a case runs with no input of its own reads an empty standard
 # input, also when the suite itself is started with one left open.
 exec </dev/null

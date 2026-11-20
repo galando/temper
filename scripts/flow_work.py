@@ -171,18 +171,23 @@ class WorkPart:
             return None   # no baseline of this run started (or a selftest's file of a baseline not run)
         root, cfg = os.getcwd(), r.ctx.get("config_file") or os.path.join(".claude", "temper.config")
         fails = baseline.failed(root, cfg, r.spec, b)
+        gs = r.groups.get("groups") or {}
+
+        def unchecked(where):   # a command whose check has not run in Build yet
+            return any((w.startswith("G") and not (gs.get(w.split()[0]) or {}).get("gate"))
+                       or (w == "Integration" and not r.groups.get("integration")) for w in where.split(", "))
         if after:   # after the approval: only a command whose check has not run in Build yet still asks
-            gs = r.groups.get("groups") or {}
-            fails = [(c, e) for c, e in fails if any((w.startswith("G") and not (gs.get(w.split()[0]) or {}).get("gate"))
-                                                     or (w == "Integration" and not r.groups.get("integration"))
-                                                     for w in e["where"].split(", "))]
+            fails = [(c, e) for c, e in fails if unchecked(e["where"])]
         if fails:
             c, e = fails[0]
             if r.armed():
                 return self.stop(r.stage, "a command the plan wrote %s on the current code: %s (%s)" % (
                     "timed out" if e.get("result") == "timeout" else "fails", c[:200], e.get("why") or ""))
             return {"action": "ask", "stage": r.stage, "ask": self.base_red(b, (c, e), after)}
-        if (not after or not r.groups.get("groups")) and baseline.pending(root, cfg, r.spec, b):
+        pend = baseline.pending(root, cfg, r.spec, b)
+        if after and r.groups.get("groups"):   # WP25: a command a patch changed in Build runs once on the base before its check
+            pend = [p for p in pend if unchecked(p[1])]
+        if pend:
             return {"action": "auto", "stage": r.stage, "calls": [self.c("baseline plan")],
                     "say": "The plan's Validates and its Integration line run once on the current code."}
         return None

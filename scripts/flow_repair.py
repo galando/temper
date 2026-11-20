@@ -12,6 +12,7 @@ import shlex
 import failure
 import repair_ops
 
+from flow_build import DRIFT_WORDS
 from flow_base import (DRIFT_HEADER, DRIFT_IDS, DRIFT_OPTIONS, DRIFT_PREFIX, GATE_HEADER, LABEL, TEMPER, goes_on, on_model,
                        read_json)
 
@@ -35,8 +36,9 @@ class RepairPart:
             return {"action": "ask", "stage": stage, "ask": self.repair_question(stage, st)}
         w = d.get("repair") if isinstance(d.get("repair"), dict) else None
         if w and w.get("stage") == stage:
-            if not w.get("commit"):
-                return self.repair_work(w)
+            if not w.get("commit"):   # the fixer's drift ask is the person's scope.drift first, as at Build
+                drift = self.drift_next(stage)
+                return drift if drift is not None and drift.get("action") == "ask" else self.repair_work(w)
             if w.get("recheck") == "none":
                 gate = self.c("gate %s" % stage)
                 return {"action": "auto", "stage": stage, "calls": [self.c("repair close"), gate],
@@ -85,7 +87,10 @@ class RepairPart:
         others = [f for f in r.findings() if f["state"] == "open" and f["id"] not in (w.get("findings") or [])]
         if others:
             lines.append("Open findings this repair must not touch: %s." % "; ".join(f["claim"][:160] for f in others[:5]))
-        a = self.agent("build", lines)
+        given = [x for x in r.drifts() if x["choice"] and not x["delivered"]]
+        a = self.agent("build", lines + ["Drift decision: %s: %s" % (x["path"], DRIFT_WORDS[x["choice"]]) for x in given])
+        if given:
+            a["before"] = [self.c("evidence add --stage build --phase drift --claim 'drift decided'")]
         a["after"].append(self.c("repair commit"))
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
                 "say": "%s: repair %s: a fresh Build agent fixes it in the stage%s. %s" % (LABEL[stage], w["n"], on_model([a]), goes_on(False))}
@@ -145,7 +150,7 @@ class RepairPart:
         revert = [self.c("repair revert")]
         # the options of the repair's own answers: (label, description, move, calls, id)
         if kind == "drift":
-            plan = "outside the approved file set" in str(st.get("why"))
+            plan = str(st.get("why")).startswith("%s is outside the approved file set" % path)   # the named file's own reason
             note = lambda label: [self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote(
                 "drift %s: %s: repair %s" % (path, label, n))), self.c("repair commit")]
             own = [(label, DRIFT_SAYS[label], "drift", revert if label == "Revert" else note(label), ids["id"])

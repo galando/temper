@@ -97,18 +97,30 @@ def open_window(state_path, stage, reason):
     return d["adhoc"]
 
 
-def steps_for(stage, files):
+def steps_for(stage, files, reviewed=True):
     """What a change made at the stage re-runs. A doc only change, and a change made at Build, re-run only the stage's own
     gate; a code change at Review re-runs Review; at Check or Commit, Review of the changed files, then Check, then the
-    commit gate. A change made at Pipeline (a CI fix, already pushed) re-runs nothing: `state redo pipeline`, which the fix ends
-    with, makes the Pipeline stage read the checks again."""
+    commit gate. A doc only change at Check or Commit that leaves the tree the Review verdict judged (reviewed False) runs
+    those three too: the commit gate's row checked tree holds Review and Check to the tree that is committed (lane E). A
+    change made at Pipeline (a CI fix, already pushed) re-runs nothing: `state redo pipeline`, which the fix ends with,
+    makes the Pipeline stage read the checks again."""
     if stage == "pipeline":
         return []
-    if not files or all(is_doc(f) for f in files) or stage == "build":
+    if not files or (all(is_doc(f) for f in files) and (reviewed or stage not in ("check", "commit"))) or stage == "build":
         return ["gate"]
     if stage == "review":
         return ["review"]
     return ["review", "check", "commit"]
+
+
+def review_stale(state_path):
+    """True when the Review verdict judged another tree than the project's now (run_env.review_stale); never on an error."""
+    try:
+        import run_env
+        temper = os.path.dirname(os.path.abspath(state_path))
+        return bool(run_env.review_stale(load(os.path.join(temper, "gates.json")), load(state_path), os.path.dirname(temper)))
+    except Exception:
+        return False
 
 
 def close_window(state_path):
@@ -116,6 +128,8 @@ def close_window(state_path):
     w = d.get("adhoc")
     if not w:
         raise ValueError("no small change is open (temper adhoc open --stage <stage> --reason '<why>')")
+    if w.get("kind") == "repair":   # WP24: the CLI's own commit, the checks and the recheck end a repair, never this call
+        raise ValueError("a repair window is closed by temper repair commit, not as a small change")
     now = dirty()
     changed = set()
     for p, h in now.items():
@@ -127,7 +141,7 @@ def close_window(state_path):
     if w.get("base"):                        # committed since the open
         changed |= {p for p in git("diff", "--name-only", "--no-renames", w["base"], "HEAD").split("\n") if p and not internal(p)}
     files = sorted(changed)
-    steps = steps_for(w["stage"], files)
+    steps = steps_for(w["stage"], files, reviewed=not (files and w["stage"] in ("check", "commit") and review_stale(state_path)))
     owed = d.get("adhoc_done") if isinstance(d.get("adhoc_done"), dict) and d["adhoc_done"].get("stage") == w["stage"] else {}
     if owed.get("steps"):   # an earlier change here still owes these: both changes' steps run, in their order
         steps = [s for s in STEP_ORDER if s in steps or s in owed["steps"]]

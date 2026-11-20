@@ -124,8 +124,8 @@ assert_eq "Check: Run Check again runs state redo check with the reason, and mov
   "$(nx "o = d['ask']['options'][0]; ' '.join(o['calls'][0].split('temper ', 1)[1].split()[:3]) + '|' + o['move'] + '|' + str(len(o['calls']))")"
 assert_eq "Check: the question asks Run Check again, not Loop back" "1" "$(nx "int(d['ask']['question']['question'].endswith('Run Check again?'))")"
 gfail check "tests pass" "the latest run of a test command failed: unit/test_cli.py"
-assert_eq "WP24 Check: a failing test is a defect in the code: Repair again is first and recommended, the loop back stays offered, and there is no Run Check again" \
-  "repair-again,True|back offered|0" \
+assert_eq "WP24 Check: a failing test is a defect in the code: with no reviewed HEAD no Repair again, the loop back first and recommended, and there is no Run Check again" \
+  "back,True|back offered|0" \
   "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + ('back offered' if any(x['id'] == 'back' for x in a) else 'no back') + '|' + str(sum(1 for x in a if x['id'] == 'redo'))")"
 gfail check "tests pass" "no passing test-run evidence recorded"
 sed -i 's/^\*\*Integration:\*\* `true`$/**Integration:** `manual`/' .temper/specs/demo/tasks.md   # W23-6: no plan line the CLI can run either

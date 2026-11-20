@@ -116,13 +116,13 @@ ln -s "$WORKDIR" "$CL_PROJ/.temper/specs/demo-run/notes"
 ln -s "$WORKDIR/cl-no-such-target" "$CL_PROJ/.temper/specs/other-run/dangling"
 OUT=$(cd "$CL_PROJ" && "$CL_T" gate commit 2>&1); CL_RC=$?
 assert_eq "a link inside a spec folder leaves the commit gate to fail a red run (exit 1, never 3)" "1|yes|0" \
-  "$CL_RC|$(printf '%s\n' "$OUT" | grep -q 'temper gate commit -> FAIL' && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -c 'unsafe .temper')"
+  "$CL_RC|$(printf '%s\n' "$OUT" | grep -c 'temper gate commit -> FAIL' >/dev/null && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -c 'unsafe .temper')"
 (cd "$CL_PROJ" && bash "$CL_G/install.sh" >/dev/null 2>&1)
 echo b > "$CL_PROJ/b.txt"
 git -C "$CL_PROJ" add b.txt
 OUT=$(cd "$CL_PROJ" && git commit -qm 'code with red gates' 2>&1); CL_RC=$?
 assert_eq "the native pre-commit hook blocks that red run, link and all" "blocked|yes|1" \
-  "$([[ $CL_RC -ne 0 ]] && echo blocked || echo committed)|$(printf '%s\n' "$OUT" | grep -q 'temper gate commit -> FAIL' && echo yes || echo no)|$(git -C "$CL_PROJ" rev-list --count HEAD)"
+  "$([[ $CL_RC -ne 0 ]] && echo blocked || echo committed)|$(printf '%s\n' "$OUT" | grep -c 'temper gate commit -> FAIL' >/dev/null && echo yes || echo no)|$(git -C "$CL_PROJ" rev-list --count HEAD)"
 assert_exit "the in-agent commit gate blocks it too" 2 \
   bash -c "cd '$CL_PROJ' && echo '{\"tool_input\": {\"command\": \"git commit -m y\"}}' | bash '$CL_G/block-uncommitted-gate.sh'"
 echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_G/stage-marker.sh"
@@ -144,7 +144,7 @@ for p in .temper/specs .temper/archive .temper/build-state.json .temper/override
   ln -s "$WORKDIR/cl-no-such-target" "$CL_PROJ/$p"
   OUT=$(cd "$CL_PROJ" && "$CL_T" gate commit 2>&1); CL_RC=$?
   assert_eq "a link at $p is refused with exit 3 and named" "3|yes" \
-    "$CL_RC|$(printf '%s\n' "$OUT" | grep -qF "unsafe .temper: '$p' is a symlink" && echo yes || echo no)"
+    "$CL_RC|$(printf '%s\n' "$OUT" | grep -cF "unsafe .temper: '$p' is a symlink" >/dev/null && echo yes || echo no)"
 done
 cl_project
 mv "$CL_PROJ/.temper/specs/demo-run" "$WORKDIR/cl-spec-real"
@@ -195,7 +195,7 @@ assert_eq "run-formatter reached through a symlink runs the project's formatter"
   "$([[ -e "$CL_PROJ/src/a.ts.formatted" ]] && echo yes || echo no)"
 OUT=$(echo '{"tool_input": {"command": "temper override plan --reason y"}}' | bash "$CL_BIN/confirm-override.sh")
 assert_eq "confirm-override reached through a symlink asks" "yes" \
-  "$(printf '%s\n' "$OUT" | grep -q '"permissionDecision": "ask"' && echo yes || echo no)"
+  "$(printf '%s\n' "$OUT" | grep -c '"permissionDecision": "ask"' >/dev/null && echo yes || echo no)"
 OUT=$(echo '{"tool_input": {"command": "temper override plan --reason y"}}' | bash "$CL_LOOSE/confirm-override.sh")
 assert_eq "confirm-override copied outside a scripts/guards folder does nothing" "" "$OUT"
 CL_RISKY="{\"tool_input\": {\"file_path\": \"$CL_PROJ/risky.js\"}}"
@@ -216,7 +216,7 @@ assert_exit "verify-stage-gate copied outside a scripts/guards folder does nothi
   bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$CL_PROJ' bash '$CL_LOOSE/verify-stage-gate.sh'"
 OUT=$(echo '{}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_BIN/verify-stage-gate.sh" 2>&1); CL_RC=$?
 assert_eq "verify-stage-gate reached through a symlink blocks and names its real CLI" "2|yes" \
-  "$CL_RC|$(printf '%s\n' "$OUT" | grep -qF "$(printf '%q' "$CL_T_REAL") gate intent" && echo yes || echo no)"
+  "$CL_RC|$(printf '%s\n' "$OUT" | grep -cF "$(printf '%q' "$CL_T_REAL") gate intent" >/dev/null && echo yes || echo no)"
 
 # The home folder is never a project: every subcommand that keeps run state is refused there
 # (exit 1), decided by identity, and nothing is written. config and model still answer, and a
@@ -229,7 +229,7 @@ for sub in "init" "state init foo" "state set stage x" "state get" "state archiv
 done
 ERR=$(cd "$CL_HOME" && HOME="$CL_HOME" "$CL_T" status 2>&1 >/dev/null; true)
 assert_eq "the home refusal is one line that says why" "1|yes" \
-  "$(printf '%s\n' "$ERR" | wc -l | tr -d ' ')|$(printf '%s\n' "$ERR" | grep -q 'not from the home folder' && echo yes || echo no)"
+  "$(printf '%s\n' "$ERR" | wc -l | tr -d ' ')|$(printf '%s\n' "$ERR" | grep -c 'not from the home folder' >/dev/null && echo yes || echo no)"
 assert_exit "the home folder entered through a symlink is refused too" 1 \
   bash -c "cd '$WORKDIR/cl-home-link' && HOME='$CL_HOME' '$CL_T' init"
 assert_exit "a HOME spelled through a symlink names the same folder" 1 \
@@ -370,7 +370,7 @@ L_SUM="$(cksum < .git/default-gate/pre-commit)"
 OUT=$(bash "$L_DG_INSTALL" 2>&1); L_RC=$?
 _l_lines "$OUT"
 assert_eq "install.sh refuses over a hook of the user's in the default folder: FAIL first, the kept hook, the one line, a hint last" "1|yes|yes|$L_CALL|yes" \
-  "$L_RC|$(printf '%s\n' "$OUT" | head -1 | grep -qxF "FAIL: $WORKDIR/.git/default-gate holds hooks git would stop running if core.hooksPath pointed at Temper's folder: pre-commit." && echo yes || echo no)|$(_l_line "$OUT" "The Temper hook is kept in $WORKDIR/.git/temper-gate/pre-commit $L_KEPT_TEXT")|$(cat "$L_LINES")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "Hint: add the line to your own pre-commit hook ($WORKDIR/.git/default-gate/pre-commit), $L_HINT_END" && echo yes || echo no)"
+  "$L_RC|$(head -1 <<<"$OUT" | grep -qxF "FAIL: $WORKDIR/.git/default-gate holds hooks git would stop running if core.hooksPath pointed at Temper's folder: pre-commit." && echo yes || echo no)|$(_l_line "$OUT" "The Temper hook is kept in $WORKDIR/.git/temper-gate/pre-commit $L_KEPT_TEXT")|$(cat "$L_LINES")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "Hint: add the line to your own pre-commit hook ($WORKDIR/.git/default-gate/pre-commit), $L_HINT_END" && echo yes || echo no)"
 assert_eq "the refused hook is left as it was, no backup is made, core.hooksPath stays unset, and the full hook is kept" "yes|0|none|yes|no" \
   "$([[ "$(cksum < .git/default-gate/pre-commit)" == "$L_SUM" ]] && echo yes || echo no)|$(find .git/default-gate -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')|$(_l_path "$WORKDIR")|$(_l_dg_kept "$WORKDIR")|$(_l_has "$OUT" "$L_DG_CLI_LINE")"
 cat "$L_LINES" >> .git/default-gate/pre-commit

@@ -5,6 +5,7 @@ import { ACCEPT_SCENARIOS } from './accept'
 import { BROKEN_SCENARIOS } from './broken'
 import { SLOW_SCENARIOS } from './slow'
 import { planCommandFails, setupAtBuild } from './scenarios'   // WP21 and WP23, registered below with the scenarios of the base
+import { blockedOutsidePlan, blockedTaskAmended } from './scenarios'   // WP25, registered below
 import { listed, loadList, skipsCompare, stale, verdict } from './xfail'
 import { Denied, World } from './world'
 import type { Json, Mode } from './world'
@@ -26,6 +27,10 @@ for (const [name, s] of Object.entries({ ...SLOW_SCENARIOS, ...BROKEN_SCENARIOS,
 SCENARIOS['plan-command-fails'] = planCommandFails
 // WP23: a fault of the environment at integrate in an unattended run; every mode
 SCENARIOS['setup-at-build'] = setupAtBuild
+// WP25: a blocked task amended by rule, every mode; a file outside the plan, the person's patch, plain mode only
+SCENARIOS['blocked-task-amended'] = blockedTaskAmended
+SCENARIOS['blocked-outside-plan'] = blockedOutsidePlan
+ONLY['blocked-outside-plan'] = ['plain']
 // The expected to fail list (scripts/selftest/expected-fail.txt), read once: a line it cannot read, or an e2e line that
 // names no scenario or a mode its scenario never runs in, fails the run at once (scripts/e2e/xfail.ts).
 let LISTED: ReturnType<typeof loadList> = []

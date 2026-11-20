@@ -213,7 +213,23 @@ All notable changes to Temper are documented here. The plugin version lives in
   CLI and asked (`repair.stop`); a diff that removes test lines, a file outside the plan, the spec folder, the config,
   a lockfile, a CI file or a sensitive path is never committed by rule. One repair by rule a stage, one more on your
   click (`Repair again`), counted in the one budget; the rule's loop back to Build is gone, and the loop back stays
-  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs.
+  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs, in
+  every run. The fixer asks about a file outside the plan with `temper drift ask`, as at Build, and `adhoc close`
+  never closes a repair window.
+- WP25: a plan fault a narrow change repairs costs no replan (ADR 0019, ADR 0021). A task blocked on a file an earlier
+  or passed task of its own group declares is amended by rule, in every mode, with no question: the CLI's own
+  `temper plan amend task N --add-file F` adds the file and one Depends entry on its owner, and nothing else, refuses
+  every other change (a file no task or another group declares, a test file, a locked acceptance test, a sensitive path,
+  a running or passed task, a row the result newly fails, no room in the budget), spends one repeat (`task:N`) and runs
+  the task again; the commit card lists it under `THE PLAN SINCE THE APPROVAL`. A file no task declares is offered as
+  `Add to plan` (`add-file`), your `temper plan patch task N --add-file F`, which also adds it to the approved files.
+  `plan patch` resets a patched group's failure marks, inserts a missing Validate line, reopens a passed task whose
+  Test line changed, runs the plan gate's static rows on the result, spends its repeat only once it holds, and its
+  ledger row no longer says "by the person"; the group question names the command the plan has now. Both calls append
+  to `.temper/evidence/amendments.json` and move `plan_hash`; the approved record is never overwritten. The plan gate
+  gains the row `group validate command`. A replan keeps the built tasks whose files, Depends and Test did not change
+  (`temper group keep`), and its approval card says how many. The budget note of the commit card reads
+  `repeats of the budget used: N of M`.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

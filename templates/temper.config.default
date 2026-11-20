@@ -129,7 +129,7 @@ phases:
 # pushes, merges to a remote, or makes the final feature commit (the commit
 # question always asks); the commits it allows are the CLI's own: grouped Build's
 # task commits, the `temper integrate` merge and a repair in its stage (ADR 0021);
-# NEVER re-plans by itself; nothing under park-on-touch is repaired by rule.
+# NEVER re-plans by itself (one exception: a file its group owns goes on a task); nothing under park-on-touch is repaired by rule.
 # ============================================================
 # run:
 #   default: to-commit         # the approval's first option: to-commit, ask or never-unattended

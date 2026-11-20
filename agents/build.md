@@ -39,8 +39,10 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    nothing else. For a finding whose proof is `test`, write the failing test first and run
    `TEMPER repair test <id> --phase red -- <command>`, then the code, then the same call with `--phase green`. For a
    failed row of Check no new failing test is asked: the CLI's failed row is the RED. Commit nothing (the CLI commits
-   with `temper repair commit` and runs the checks again), change no locked acceptance test and no file outside the
-   plan, and never accept, override or skip. When the fix needs the plan or the intent changed, stop and say so.
+   with `temper repair commit` and runs the checks again), change no locked acceptance test, and never accept,
+   override or skip. A file outside the plan goes to `TEMPER drift ask` as at Build (step 6), and a later
+   `Drift decision:` line of the prompt applies to the repair as it does at Build. When the CLI refuses that ask, or
+   the fix needs the intent changed, stop and say so.
 
    **A record pass.** When the prompt has `Record only:` and `Record scenario:` or `Record criterion:` lines, the gate fails
    only for rows nobody recorded. Write them and change nothing else: for each scenario, find the scoped command that

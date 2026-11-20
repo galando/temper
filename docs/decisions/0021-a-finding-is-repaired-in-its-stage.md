@@ -27,7 +27,8 @@ and until this record no commit was ever one `evidence resolve` takes).
    `recheck #<id>: fixed` row was written after the commit and after the recheck's launch mark (`temper repair mark`),
    the recheck completed, the checks passed on the repair tree, and, for a finding marked `proof: test`, the CLI ran a
    RED before the fix and a GREEN after it on unchanged test files. `evidence resolve` takes a commit only when the run
-   state records it as a repair and a recheck row follows it. No model calls it.
+   state records it as a repair and a recheck row follows it, and a hand call takes only a finding `repair close`
+   resolved. No model calls it.
 3. **A repair that made things worse is reverted.** A row that passed before fails after, the open blocking findings
    are not fewer, the recheck names a new blocking finding, or the recheck did not complete: the CLI commits the tree
    Review read again, through the same carve out, and the run asks `repair.stop`, which names what broke.
@@ -42,6 +43,15 @@ and until this record no commit was ever one `evidence resolve` takes).
    rule.
 6. **A verdict is of the tree it judged.** The commit gate's row `checked tree` passes a Review verdict of an older tree
    only when the difference is repair commits the CLI recorded, whose checks ran again and whose recheck completed.
+
+7. **A plan fault a narrow change repairs costs no replan (WP25).** `temper plan amend task N --add-file F` is the
+   amendment by rule: it only adds to a task a file another task of its own group declares, and that task to its
+   Depends line, and it is no person only call, because its whole effect is bounded by the CLI (blocker B3 of the red
+   team). `temper plan patch` stays the person's: every command line, and every file outside the approved set (`task N
+   --add-file F`). Both run the plan gate's static rows on the result and refuse a row it newly fails, spend one repeat,
+   append to `.temper/evidence/amendments.json` and move `plan_hash`; neither writes the approved record. Neither
+   ledger row claims who called: only the mod checks the click (`docs/trust.md`). A full replan keeps the built tasks
+   whose approved fields did not change (`temper group keep`).
 
 ## Amendments
 
