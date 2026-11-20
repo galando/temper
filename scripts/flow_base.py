@@ -37,7 +37,7 @@ BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "revi
 # Every move an option of a question may carry (the `move` of view.json's options): each is the person's answer, and
 # the mod lets an option's CLI calls through only on that answer. opt() refuses any other, so this list is the checked one.
 MOVES = {"advance", "approve", "arm", "override", "back", "redo", "accept", "covered", "keep", "commitOverride", "restart",
-         "confirm", "drift", "answer", "pause", "adhoc", "grant"}
+         "confirm", "drift", "answer", "pause", "adhoc", "grant", "repair"}
 # WP16: the closed list of what an option or a step needs beyond its calls (its `needs`). Three are navigation the run
 # driver does itself (more, accept, cancel); the other seven are the hand back kinds, each one step the conversation
 # does for the person, then it stops. opt() refuses any other, and a `do` text with no needs.
@@ -115,6 +115,8 @@ QUESTIONS = {
                  "goes on with the base's failures as a recorded skip."},
     "plan.command": {"kind": "gate", "decision": "Whether a command the plan wrote that fails or times out on the base gets "
                      "more time, another command, a revised plan or a skip with a reason."},
+    "repair.stop": {"kind": "gate", "decision": "What happens to a repair in the stage that the rule may not resolve, or that "
+                    "was reverted: revert it, repair again, step back, keep a finding, skip the check or save."},
 }
 # A follow up question takes its parent's id and one of these suffixes: a More question asks its parent's decision, an
 # accept question keeps a finding, a reason question asks the reason the report shows, a name question a typed value.
@@ -144,7 +146,9 @@ OPTION_IDS = frozenset((
     # WP21
     "more-time",
     # WP22
-    "run-anyway"))
+    "run-anyway",
+    # WP24
+    "repair-again", "revert-repair"))
 
 
 def question_entry(qid):

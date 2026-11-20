@@ -220,9 +220,10 @@ print(sum(1 for x in e.get('requirements') or [] if 'mutation' in str(x.get('nam
 # --- a failed coverage row is a measured drop, a defect of the code: no Run Check again for it ---
 fresh; gpass intent plan build review; _at check
 gfail check "coverage" "recorded coverage 'none' vs threshold 80%"
-assert_eq "w19 a failed coverage row is no measurement gap: Loop back to Build first, and no Run Check again" \
-  "Loop back to Build (Recommended)|0" \
-  "$(nx "d['ask']['options'][0]['label'] + '|' + str(sum(1 for o in d['ask']['options'] if o['label'].startswith('Run Check again')))")"
+# WP24: a defect of the code is repaired in its stage first (Repair again, while the budget allows); the loop back stays
+assert_eq "WP24 w19 a failed coverage row is no measurement gap: the repair in the stage first, the loop back offered, and no Run Check again" \
+  "repair-again,True|back offered|0" \
+  "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + ('back offered' if any(x['id'] == 'back' for x in a) else 'no back') + '|' + str(sum(1 for x in a if x['label'].startswith('Run Check again')))")"
 
 # --- the suite's owner one folder down: the report's paths are that folder's, and the changed lines still match ---
 _owned60() { # _owned60 <folder>: ran/missed of check_run.line_data for the owner suite_owner finds, against HEAD

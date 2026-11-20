@@ -112,7 +112,7 @@ whatever its exit code. When it prints `action: error`, say its `say` in one lin
   calls are only `temper` calls); or, for an option with `do`, do what it says, then ask the same
   question again unless it says what comes next;
   "More options" asks `ask.more.question`, "Accept a finding" asks `ask.accept.question`. An option
-  with `stop` ends the turn: the run is saved.
+  with `stop` ends the turn: the run is saved. A finding is resolved only by the CLI's `temper repair close`.
 - **`wait`**: tasks are running. For a task whose agent you launched in this conversation, wait for
   its result, then run its `after` calls. Otherwise (a new conversation) run its `after` calls now.
 - **`auto`**: the CLI's own move (the run after the approval goes on to the commit by itself, or a step with

@@ -741,7 +741,7 @@ cmd_state_set() {
     stage) echo "FAIL: stage is kept by the CLI (state advance records the stage the run left; a step back rewrites it)" >&2; return 1 ;;
     command) echo "FAIL: command is kept by the CLI (state init --command temper|fix starts a run of that command)" >&2; return 1 ;;
     parked) echo "FAIL: parked is kept by the CLI (temper park parks an armed run; the run's next move ends the park)" >&2; return 1 ;;
-    adhoc|adhoc_done) echo "FAIL: $top is kept by the CLI (temper adhoc open|close; the gates mark the steps a small change owes)" >&2; return 1 ;;
+    adhoc|adhoc_done|repair|repairs|repair_stop) echo "FAIL: $top is kept by the CLI (temper adhoc open|close; the gates mark the steps a small change owes)" >&2; return 1 ;;
     redo) echo "FAIL: redo is kept by the CLI (temper state redo <stage> --reason R)" >&2; return 1 ;;
     trivial) echo "FAIL: trivial is kept by the CLI (temper intent trivial --why TEXT)" >&2; return 1 ;;
     run_mode|pipeline_round|regression_test)
@@ -1226,6 +1226,7 @@ cmd_evidence_add() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
+      --detail|--fix|--proof) reads+=($'\x1f'"${1#--}=$2"); shift 2 ;;   # WP24: the whole finding (ledger_ops.py)
       --read) reads+=("$2"); shift 2 ;;
       --claim) claim="$2"; shift 2 ;;
       --confidence) confidence="$2"; shift 2 ;;
@@ -1247,7 +1248,7 @@ cmd_evidence_add() {
   [[ "$kind" == input ]] && label=PERSON   # 9.8.5 (U5): the person's own words, not a heuristic
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
-  [[ ${#reads[@]} -eq 0 || "$stage $claim $severity" == "review review completed " ]] || { echo "FAIL: --read goes only with --stage review --claim 'review completed': the files Review read whole" >&2; return 1; }
+  [[ ${#reads[@]} -eq 0 || "$stage $claim $severity" == "review review completed " || "${reads[*]}" == $'\x1f'* ]] || { echo "FAIL: --read goes only with --stage review --claim 'review completed': the files Review read whole" >&2; return 1; }
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
   if [[ -n "$confidence" ]] && ! [[ "$confidence" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
     echo "FAIL: --confidence takes a number from 0 to 1 (0.85), got '$confidence'" >&2; return 1
@@ -1273,7 +1274,7 @@ cmd_evidence_add() {
     artifact_hash="$(python3 -I -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
   fi
   local entry
-  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"})
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"}) || return 1
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -3176,6 +3177,7 @@ gate_commit() {
   # out-of-run commit.
   # WP17: with an open trivial record, the bound of the trivial request (scripts/trivial.py)
   [[ -f "$STATE_FILE" ]] || { python3 -I "$SCRIPTS_DIR/trivial.py" gate 2>/dev/null || echo '[] 1'; return; }
+  local rp; rp="$(python3 -E -s "$SCRIPTS_DIR/repair_ops.py" "" "" carve 2>/dev/null)" && { echo "$rp" 1; return; }   # WP24
 
   # Build-checkpoint carve-out (docs/decisions/0009): a per-task checkpoint
   # commit lands while next_stage is still build, when the full commit gate
@@ -3994,6 +3996,7 @@ main() {
     next) cmd_next "$@" ;;
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
+    repair) python3 -E -s "$SCRIPTS_DIR/repair_ops.py" "$SCRIPTS_DIR/temper" "$CONFIG_FILE" "$@" ;;   # WP24 (ADR 0021)
     review) if [[ "$*" == files ]]; then python3 -I "$SCRIPTS_DIR/findings.py" review-files "$STATE_FILE"
             else echo "FAIL: usage: temper review files" >&2; false; fi ;;
     plan) cmd_plan "$@" ;;

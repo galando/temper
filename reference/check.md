@@ -148,7 +148,9 @@ Write `check-context.json`:
 
 When test failures exist in newly written code, write a targeted fix entry per failure
 (test name, error, file:line, the `intent.md` scenario it maps to) to `check-context.json`.
-The CLI's Check question offers "Loop back to Build" while the budget lasts; once it is
+A failed row of class `code` is repaired in the stage first (ADR 0021): the CLI's failed row is the
+RED, a fresh Build agent fixes it, and the CLI commits it and runs the checks again. The CLI's Check
+question then offers "Repair again" once, and "Loop back to Build" while the budget lasts; once it is
 spent, it asks `run.budget`.
 
 ## Summary + Gate
@@ -160,8 +162,8 @@ verdict `{X}/{Y} behaviorally verified` (STRONG assertions count full, WEAK half
 quality-weighted, intentionally different from Build's binary pass/fail).
 
 The gate question and the commit are the orchestrator's: `temper next --json` gives the question
-and its options (a passed Check is the one Commit question; a failed one offers the loop back to
-Build while the budget allows, a skip with a reason, and Save for later). This stage never asks it.
+and its options (a passed Check is the one Commit question; a failed one offers Repair again and the
+loop back to Build while the budget allows, a skip with a reason, and Save for later). This stage never asks it.
 
 ## Error Interpretation
 

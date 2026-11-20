@@ -109,10 +109,15 @@ in a variable, a string another program runs, a script on disk or a commit the h
 (`git merge`, `cherry-pick`, git plumbing) gets through. [The mod](mod.md#what-the-guard-checks-and-what-it-does-not)
 lists these limits, and the mod's tests hold each one, so the docs cannot claim more than the code does.
 
-**What resolves a finding, and what the completion row proves (9.8.5).** A finding is resolved only by
-`temper evidence resolve` for a commit the CLI recorded as its own after the reviewed HEAD, on the run's branch; a note
-or a commit made by hand resolves nothing. Otherwise a finding ends by your accept, or by a loop back and a second
-Review. Review's completion row names the files the reviewer says it read, and the CLI compares those names with the
+**What resolves a finding, and what the completion row proves (9.8.5).** A finding is resolved only by the CLI, in
+`temper repair close` (WP24, ADR 0021), for the repair commit it made after the reviewed HEAD on the run's branch: the
+checks ran again on that tree and passed, a reader that did not write the fix wrote `recheck #<id>: fixed` after the
+commit and after the recheck's launch mark, and a finding marked `proof: test` had a RED before the fix and a GREEN after
+it, both run by the CLI on unchanged test files. A note or a commit made by hand resolves nothing. Otherwise a finding
+ends by your accept, or by a loop back and a second Review. The CLI cannot tell the fixer and the reader apart: the
+order of the rows stands in for it. The recheck reads the diff, not the code around it, so a defect outside the changed
+lines is caught only by the CLI's own runs: a project with a thin suite gets less than a second full Review gave, and a
+diff over 300 lines, or one that touches a file no finding names, gets a full Review again. Review's completion row names the files the reviewer says it read, and the CLI compares those names with the
 changed files. No more: the CLI cannot see the reading. The row turns skipping a file from silence into a false
 statement in the ledger.
 

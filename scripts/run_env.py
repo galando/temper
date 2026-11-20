@@ -765,6 +765,21 @@ def main(argv):
         if was and now and now != was:
             print('FAIL the project changed after the Check verdict: Check judged the tree %s, the project is now the tree '
                   '%s; run Check again' % (was[:12], now[:12]))
+            return 0
+        # WP24 (ADR 0021): the Review verdict is of the committed tree, or of a tree that differs from it only by repair
+        # commits the CLI recorded, whose checks ran again and whose recheck completed (scripts/repair_ops.py)
+        try:
+            gr = json.load(open(argv[2])).get('review') or {}
+            st = json.load(open(os.path.join(argv[3], '.temper', 'build-state.json')))
+        except (OSError, ValueError, AttributeError):
+            gr, st = {}, {}
+        rv = str(gr.get('tree') or '') if isinstance(gr, dict) and stage in ('check', 'commit') else ''
+        now = now or (tree_key(argv[3], root=argv[3]) if rv else '')
+        if rv and now and rv != now and (st.get('repairs') or (st.get('repair') or {}).get('commit')):
+            import repair_ops
+            if not repair_ops.closed_chain(st, rv, now):
+                print('FAIL the Review verdict judged the tree %s, the project is now the tree %s, and the difference is not '
+                      'only closed repairs whose recheck completed; run Review again' % (rv[:12], now[:12]))
         return 0
     return 2
 

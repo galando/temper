@@ -4,7 +4,7 @@ Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
-  temper evidence resolve --stage S --id N --fixed-by COMMIT   (only a commit the CLI recorded after the reviewed HEAD)
+  temper evidence resolve --stage S --id N --fixed-by COMMIT   (only a repair commit of the CLI, rechecked)
   temper evidence add --stage review --claim 'review completed' --exit 0 --read FILE   (once for each file read whole)
   temper review files                     (read only: the changed files Review must read, the set its gate compares)
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
@@ -42,6 +42,8 @@ Usage:
   temper park --verdict V --reason R      (an armed run stops for the person)
   temper budget | budget grant --key K --reason R  (the repeats of the run; the person's two more at run.budget)
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
+  temper repair start --stage review|check [--again] | test ID --phase red|green -- CMD | commit | mark | close |
+    revert | status   (WP24: a finding repaired in its stage; start and close are the CLI's own actions)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
   temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)

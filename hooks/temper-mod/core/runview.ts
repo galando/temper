@@ -54,7 +54,8 @@ export type RunView = {
   status: string
   // 9.8.0: `agents` are the agents the session may launch, each as it is to be launched: a work action's, and while the run
   // waits on them at the same stage, the ones it named (the session launches only these).
-  next: { action: string; stage: string; say: string; calls: string[]; steps: string[]; agents: Array<{ type: string; model: string; prompt: string }> }
+  // WP24: `after`, the before and after calls of the action's agents (a call of the action the view names)
+  next: { action: string; stage: string; say: string; calls: string[]; steps: string[]; after?: string[]; agents: Array<{ type: string; model: string; prompt: string }> }
   ask: Ask | null
   // 9.8.0: the Blocking open questions as the session asks them (header, question, options), before the gate question.
   blockingAsks: Question[]
@@ -78,6 +79,8 @@ export type RunView = {
     prefix: string
     // The small change window that is open (`temper adhoc open`): the stage it was opened at, or null.
     adhocStage: string | null
+    // WP24: its kind: `repair` for a repair in the stage (Build's write rule), null for a small change.
+    adhocKind?: string | null
   } | null
   plan: { approved: boolean; files: string[]; groups: Array<{ id: string; title: string; files: string[] }> }
   // 9.7.6: the fresh review of the plan (a reader with no context); null when it does not apply to the run.
@@ -236,6 +239,7 @@ export function parseRunView(text: string): RunView | null {
       say: str(n.say),
       calls: strs(n.calls),
       steps: strs(n.steps),
+      after: strs(n.after),
       agents: arr(n.agents).map(x => ({ type: str(obj(x).type), model: str(obj(x).model), prompt: str(obj(x).prompt) })),
     },
     ask: ask(v.ask),
@@ -260,6 +264,7 @@ export function parseRunView(text: string): RunView | null {
             trivialExit: g.trivial_exit === true,
             prefix: str(g.prefix),
             adhocStage: strOrNull(g.adhoc_stage),
+            adhocKind: strOrNull(g.adhoc_kind),
           },
     plan: {
       approved: plan.approved === true,
