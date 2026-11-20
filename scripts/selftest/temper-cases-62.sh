@@ -316,3 +316,20 @@ _s62+="|service down=$(grep -q '^ENV:' <<<"$OUT" && echo ENV || echo not ENV):at
 assert_eq "w21 task gate, sure signs only: a GREEN that prints Connection refused and exits 1 with no declared service is FAIL and spends the attempt; with a declared service that does not answer it is ENV, and it-is-the-code is offered" \
   "no service=FAIL:attempts=1|service down=ENV:attempts=0:task.env,it-is-the-code" "$_s62"
 rm -rf "$WORKDIR/.git/bin62"
+
+# the phase 5 gate: an operator inside quotes splits no step, so a quoted `;` names no program (failing-scenario's base)
+_s62="$(cd "$WORKDIR" && python3 -I - "$REPO_ROOT/scripts" <<'PYEOF'
+import os, sys, tempfile
+sys.path.insert(0, sys.argv[1])
+import run_env, doctor
+cmd = 'python3 -c "import sys; sys.exit(3)"'
+d = tempfile.mkdtemp()
+faults, _, _ = doctor.needs(d, {}, [cmd, "pytest -q 2>&1 | tee out.txt", "A=1 sh -c 'x || y' && echo 'a|b'"])
+print("%s|%s|%s|%s" % (",".join(sorted(run_env.programs(cmd))),
+                       ",".join(sorted(run_env.programs("pytest -q 2>&1 | tee out.txt"))),
+                       ",".join(sorted(run_env.programs("A=1 sh -c 'x || y' && echo 'a|b'"))),
+                       ",".join(sorted(f["need"] for f in faults if f.get("kind") == "program-missing" and f["need"] != "pytest")) or "none"))
+PYEOF
+)"
+assert_eq "w21 which programs a command starts: an operator inside quotes splits no step, so a quoted ; or | names no program" \
+  "python3|pytest,tee|echo,sh|none" "$_s62"

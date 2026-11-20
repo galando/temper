@@ -301,8 +301,7 @@ def needs(project, setup, commands=()):
     progs = []   # (program, folder it runs in, the file that names it)
     for c in commands:
         folder = ""
-        for seg in re.split(r"&&|\|\||;|\|", c or ""):
-            toks = [t for t in seg.split() if not re.match(r"^\w+=", t)]
+        for toks in run_env.steps(c):   # quotes respected: a `;` inside quotes names no program
             if not toks:
                 continue
             if toks[0] == "cd" and len(toks) > 1:

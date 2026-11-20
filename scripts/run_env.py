@@ -99,14 +99,36 @@ def fail_lines(out, keep=8, rc=None):
     return picked[:keep] if picked else lines[-3:]
 
 
+STEP_OPS = {';', ';;', '&&', '||', '|', '|&'}
+
+
+def steps(cmd):
+    """The words of each step of a shell line, assignments left out. An operator inside quotes splits no step; a lone
+    `&` (a redirection such as 2>&1, or a background job) splits nothing, as before. Unbalanced quotes: the plain split."""
+    import shlex
+    try:
+        lex = shlex.shlex(cmd or '', posix=True, punctuation_chars=';&|')
+        lex.whitespace_split = True
+        toks = list(lex)
+    except ValueError:
+        toks = None
+    if toks is None:
+        segs = [seg.split() for seg in re.split(r'&&|\|\||;|\|', cmd or '')]
+    else:
+        segs, cur = [], []
+        for t in toks:
+            if t in STEP_OPS:
+                segs.append(cur)
+                cur = []
+            else:
+                cur.append(t)
+        segs.append(cur)
+    return [[t for t in seg if not re.match(r'^\w+=', t)] for seg in segs]
+
+
 def programs(cmd):
     """The first word of each step of a shell line (assignments left out): the programs it starts (9.8.5, WP21)."""
-    out = set()
-    for seg in re.split(r'&&|\|\||;|\|', cmd or ''):
-        toks = [t for t in seg.split() if not re.match(r'^\w+=', t)]
-        if toks:
-            out.add(toks[0])
-    return out
+    return {seg[0] for seg in steps(cmd) if seg}
 
 
 def env_fault(out, rc, cmd, setup=None):
