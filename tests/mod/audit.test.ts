@@ -43,10 +43,11 @@ const kindOf = (call: string): string | null => {
   if (w[0] === 'adhoc' && w[1] === 'open') return 'adhoc open'
   if (w[0] === 'state' && w[1] === 'set' && w[2] === 'branch') return 'state set branch'
   if (w[0] === 'budget' && w[1] === 'grant') return 'budget grant'
+  if (w[0] === 'config' && w[1] === 'tidy') return 'config tidy'
   return null
 }
 const REQUIRED = ['override', 'plan review', 'task confirm', 'task accept', 'adhoc open', 'state set branch',
-  'budget grant']
+  'budget grant', 'config tidy']
 
 describe('the mod answer audit: every option of every question is reachable, and its calls are judged by the rule', () => {
   const seen = new Set<string>()
@@ -177,6 +178,75 @@ describe('the question at the limit of the budget: budget grant only on the exac
     // the exact match: another key, a second key, or a grant with no reason is another call
     for (const cmd of [call.replace('--key gate:check', '--key group:G1'), `${call} --key gate:build`,
       call.replace(/ --reason .*$/, '')]) {
+      expect(judge(rv, written, cmd), cmd).toBe(false)
+    }
+  })
+})
+
+// 9.8.5 (WP29): the one time config question (ADR 0023). The fixture view `config-tidy` is a new /temper:temper run at
+// Intent, no agent launched yet, whose config is the template of 9.8.4: `temper next` asks config.tidy before anything
+// else. Its two calls, `config tidy --apply` and `config tidy --keep`, rewrite or mark the config: each counts only as the
+// option the person picked at the `Temper gate` question the view holds; typed by the model it is refused.
+describe('the one time config question: config tidy only as the picked option of config.tidy', () => {
+  const NAME = 'config-tidy'
+  const read = (): RunView | null => (ALL[NAME] === undefined ? null : parseRunView(JSON.stringify(ALL[NAME])))
+  const said = (rv: RunView, a: Ask, option: Option): Option[] => {
+    const q = a.question.question
+    const result = { result: { questions: [{ header: a.question.header, question: q, multiSelect: false }], answers: { [q]: option.label }, annotations: {} } }
+    return answersIn(result, rv)
+      .filter(x => x.kind === 'gate' && x.option.label === option.label)
+      .map(x => (x as { option: Option }).option)
+  }
+  const judge = (rv: RunView, allowed: string[], command: string): boolean =>
+    !('deny' in evaluate(ctx(rv, allowed), { tool: 'Bash', input: { command } } as never))
+  const tidyCall = (o: Option | undefined): string => fill((o?.calls ?? []).find(c => kindOf(c) === 'config tidy') ?? '')
+
+  test(`the fixture view ${NAME} asks config.tidy at Intent, with Remove them first and recommended, and Keep my file`, () => {
+    const rv = read()
+    expect(rv).not.toBeNull()
+    expect(rv?.run?.stage).toBe('intent')
+    expect(rv?.ask?.id).toBe('config.tidy')
+    expect(rv?.ask?.question.header).toBe('Temper gate')
+    const ids = (rv?.ask?.options ?? []).map(o => o.id)
+    expect(ids).toEqual(['tidy-config', 'keep-config'])
+    expect(rv?.ask?.options[0]?.recommended).toBe(true)
+    expect(rv?.ask?.options[0]?.label).toBe('Remove them (Recommended)')
+    expect(rv?.ask?.options[1]?.label).toBe('Keep my file')
+    expect(tidyCall(rv?.ask?.options[0])).toMatch(/\/scripts\/temper config tidy --apply$/)
+    expect(tidyCall(rv?.ask?.options[1])).toMatch(/\/scripts\/temper config tidy --keep$/)
+  })
+
+  test('each call passes as its own answer, and as no other answer, from no model and with no other words', () => {
+    const rv = read()
+    const a = rv?.ask ?? null
+    expect(a).toBeTruthy()
+    if (rv === null || a === null) return
+    for (const id of ['tidy-config', 'keep-config']) {
+      const option = a.options.find(o => o.id === id)
+      expect(option, id).toBeTruthy()
+      if (!option) continue
+      const call = tidyCall(option)
+      expect(call, id).not.toBe('')
+      const found = said(rv, a, option)
+      expect(found.length, id).toBeGreaterThan(0)
+      const written = [...(found[0] as Option).calls, ...(found[0] as Option).steps]
+      // the picked option lets its call through; the same call typed by the model, with no answer, is refused
+      expect(judge(rv, written, call), id).toBe(true)
+      expect(judge(rv, [], call), id).toBe(false)
+      // the other answer does not let it through
+      for (const o of a.options) {
+        if (o.id === id) continue
+        const other = said(rv, a, o)
+        const calls = other.length > 0 ? [...(other[0] as Option).calls, ...(other[0] as Option).steps] : o.calls
+        expect(judge(rv, calls, call), `${o.id} lets ${id} through`).toBe(false)
+      }
+    }
+    // the exact match: the call with another word, or the bare word, is another call, refused even after an answer
+    const tidy = a.options.find(o => o.id === 'tidy-config')
+    const found = tidy === undefined ? [] : said(rv, a, tidy)
+    const written = found.length > 0 ? [...(found[0] as Option).calls, ...(found[0] as Option).steps] : []
+    const call = tidyCall(tidy)
+    for (const cmd of [`${call} --keep`, call.replace(/ --apply$/, ''), call.replace(/ --apply$/, ' --apply --force')]) {
       expect(judge(rv, written, cmd), cmd).toBe(false)
     }
   })

@@ -439,6 +439,13 @@ write(bs, ".temper/evidence/baseline.json", json.dumps({
     "seconds": 4.2, "fail_lines": ["FAIL test/totals.test.js > rounds a cent"], "env": [], "limits": {}, "plan": {}}))
 snap2(bs, "base-red", "run-baseline")
 
+# ---- 9.8.5 (WP29): the one time config question: a new run at Intent, no agent launched yet, on the template of 9.8.4 ----
+ct = project("config-tidy")
+with open(os.path.join(root, "scripts", "selftest", "saved-old.json")) as f:
+    write(ct, ".claude/temper.config", json.load(f)["7c7a1c1"]["template"].replace("@PLUGIN@", root))
+cli(ct, "state", "init", "pw", "--feature", "Password reset by email")
+snap2(ct, "config-tidy", "run-config-tidy")
+
 # A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
 for name in ("armed-review-pass", "review-fail", "armed-check-fail"):   # WP15: the cards made it grow; WP16: typed calls
     extra[name] = views.pop(name)
