@@ -13,8 +13,8 @@ cannot. `{spec_path}` is the project's `.temper/specs/{slug}` folder, never a pa
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/acceptance.md taken off). Wherever this brief writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
 1. **Read what was approved.** `{spec_path}/intent.md`: the Success Criteria (each `AC-NN`), the Decisions (every
-   answer the person gave), the Constraints and Scope. `{spec_path}/plan.md`: only to learn the entry points and
-   names the feature will have (routes, functions, files under an `Interfaces` heading or named in the tasks). Then
+   answer the person gave), the Constraints and Scope. `{spec_path}/tasks.md`: only to learn the entry points and
+   names the feature will have, from its `**Interfaces:**` and `**File:**` lines (routes, functions, files). Then
    read the project's existing tests and house rules (CONVENTIONS.md, CONTRIBUTING.md, CLAUDE.md, AGENTS.md) for the
    test framework, the helpers and the style.
 

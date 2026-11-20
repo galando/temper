@@ -4,7 +4,6 @@
 **Status:** draft
 **Created:** 2026-09-29
 **Ticket:** PROJ-1187
-**Reviewer:** Marco Reyes <marco.reyes@example.com> (EM)
 **Complexity:** medium
 
 ---
@@ -56,16 +55,6 @@ each stage. The first CI user will confirm this.
 - Out of scope: HTML output, upload of the report, the write path of gates.json
 - Must keep working: `report` (human table) and `report --json` (gates.json as it is)
 
-### Business Outcome
-
-Teams use Temper's gate in CI without wrapper scripts. We measure this as the
-number of downstream repos that read `--ci` output (owner: Dana, reviewed each quarter).
-
-### Target Users
-
-- Release engineer: adds one call of the CLI's `report --ci` to the pipeline → the CI step fails the build on any FAIL requirement, with no parsing of internals
-- Reviewer: opens the CI job log → sees pass or fail rows for every stage of the run
-
 ### Open Questions
 
 - Deferred: does `--ci` exit non-zero when any stage FAILs, or does `gate` alone own the exit code; consequence: pipelines that use the exit code need a wrapper if we choose wrong; why work can proceed: `report --ci` is the only caller and Marco decides before the first outside user; needed by: before the first outside user.
@@ -89,8 +78,6 @@ number of downstream repos that read `--ci` output (owner: Dana, reviewed each q
 ---
 
 ## Scenarios (BDD)
-
-## Scenario Coverage Checklist
 
 ## Source Traceability
 

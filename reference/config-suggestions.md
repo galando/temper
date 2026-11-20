@@ -43,7 +43,7 @@ After all validation levels of Check pass (no failures), before the Commit gate:
    b. Naming conventions (file naming, class naming, function naming)
    c. Directory structure patterns (where new files were placed)
    d. Import/export patterns (barrel exports, named exports)
-   e. Testing patterns (describe/it, Given/When/Then, test helpers)
+   e. Testing patterns (describe/it, arrange and assert, test helpers)
    f. Configuration patterns (env vars, config files, feature flags)
    g. API patterns (route structure, middleware, validation)
    h. Data patterns (DTOs, mappers, serializers)

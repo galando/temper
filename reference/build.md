@@ -36,10 +36,9 @@ a missing record does.
 
 **b. Write the test first — priority order, first match wins:**
 
-1. **`intent.md` exists** → scenario-driven, regardless of whether a TDD pack is
-   enabled: one test per Gherkin scenario minimum, Given→setup, When→action, Then→
-   assertions. If a TDD pack is *also* enabled, intent.md drives WHAT to test and the
-   pack enforces HOW (RED→GREEN→REFACTOR discipline, naming conventions).
+1. **`intent.md` exists** → scenario-driven, regardless of whether a TDD pack is enabled: one test per scenario minimum,
+   written from its `Then` line (its assertions) and the Cases of the task that owns it. If a TDD pack is *also*
+   enabled, intent.md drives WHAT to test and the pack enforces HOW (RED→GREEN→REFACTOR discipline, naming conventions).
 2. **TDD pack enabled, no intent.md** → RED→GREEN→REFACTOR from the pack's rules.
 3. **Neither** → implement without an enforced test-first step.
 
@@ -57,19 +56,18 @@ written before the person's `Drift decision:` line allows it (list it in the Bui
 `unplanned_files` with that decision and a one-line reason; a task skipped/failed →
 `skipped_tasks` with a reason; an
 approach that materially differs from the plan (different library/pattern) →
-`approach_changes`. Only track when `tasks.md` exists. The Traceability Check (below)
-reconciles these against each task's `Traced to:` field.
-**f. Simplify** — if the `code-simplifier` agent is available, run it on the files you
-just touched (not the whole codebase); preserve behavior, improve clarity only.
+`approach_changes`. Only track when `tasks.md` exists. At the commit the CLI writes them to the spec's `deviations.md`
+(`temper spec deviations`). **f. Simplify** — if the `code-simplifier` agent is available, run it on the files you just
+touched (not the whole codebase); preserve behavior, improve clarity only.
 
 ## Scenario tests: the Build gate reads them
 
-A scenario of `intent.md` carries a `Test:` command. A task owes the scenarios its `Traced to:` line names: write each
-test under the exact name the command gives. The task gate runs the scenarios the task owes in its worktree (a scenario
-traced to several tasks runs at the task all the others precede, else at the group gate), and the group gate runs the
-group's on the merged group branch. `temper integrate` then runs every `Test:` command on the merged tree and records one
-CLI-run row each; a failing command records a failing row and Build's gate names the scenario, its command and the exit.
-A pytest exit 4 or 5 means no test has that name: write it under the name the command gives.
+A scenario of `intent.md` carries a `Test:` command. A task owes the scenarios whose `Test:` command runs a file it
+declares: write each test under the exact name the command gives. The task gate runs the scenarios the task owes in its
+worktree (a scenario owed by several tasks runs at the task all the others precede, else at the group gate), and the
+group gate runs the group's on the merged group branch. `temper integrate` then runs every `Test:` command on the merged
+tree and records one CLI-run row each; a failing command records a failing row and Build's gate names the scenario, its
+command and the exit. A pytest exit 4 or 5 means no test has that name: write it under the name the command gives.
 
 ## Scenario Coverage (BDD): the Check gate reads it
 
@@ -83,17 +81,8 @@ Scenario Coverage: X/Y scenarios covered
  [ ] Scenario: Rate limiting -> MISSING — writing test...
 ```
 
-A scenario's `Note:` field picks the testing approach: `unit` (default), `mock`
-(external dependency, verify the interaction), `integration` (write one if test infra
-exists, else mock), `manual` (skip automated coverage, log "requires manual
-verification" — still counts as covered in the tally, flagged with ⚠️ in the report).
-
-Then write the results back into `intent.md`'s `## Scenario Coverage Checklist`:
-`- [x] {Scenario Name} -> {TestClass.test_method}` per passing test (a `- [ ] ... NO
-TEST` line should never survive the gate above — if it does, that's a gate-logic bug,
-not an acceptable output). A test name should contain the scenario name; one test can't
-satisfy two scenarios, but one scenario may need more than one test (happy path +
-variant).
+A test name should contain the scenario name; one test cannot satisfy two scenarios, but one scenario may need more
+than one test (happy path and a variant).
 
 If no `intent.md`: skip this gate, proceed as before.
 
@@ -103,15 +92,6 @@ For each success criterion with `Validate: code — {pattern}`: grep for the pat
 found, WARN "Success criterion not met: {criterion}" if not. `Validate: scenario` is
 already covered by the gate above; `Validate: metric`/`manual` defer to `/temper:review`.
 This is a WARN, not a blocker — report it, don't stop the build over it.
-
-## Traceability Check — non-blocking
-
-If `tasks.md` has `Traced to:` fields: for each unplanned file from the deviation log
-with no justification, WARN "trace to a scenario or mark as infrastructure"; for each
-planned file that was never touched, WARN "is the task complete?". Report `N/M files
-match plan ({D} deviations tracked)`. No `Traced to:` fields → skip (backward
-compatible). This is signal, not a gate; the scenario coverage above is the hard one
-(at Check).
 
 ## Context Output
 

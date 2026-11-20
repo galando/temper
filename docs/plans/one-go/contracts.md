@@ -135,6 +135,7 @@ Run files:
 | `.temper/evidence/failures.json` | the failure record | WP23 | written only through `scripts/failure.py` |
 | `failures` of `.temper/specs/<slug>/gate-ledger.json`; `records` of a loop of `.temper/feedback-loops.json`; `failures` of a line of `.temper/runs.jsonl` | the archived failure records; the ids of the open records of the stage a step back leaves; the count of records by class | WP23 | WP24, WP25 |
 | `.temper/evidence/amendments.json` | amendments and patches, appended | WP25 | the commit card |
+| `.temper/specs/<slug>/deviations.md` | the deviations of `build-context.json` that `temper spec deviations` writes, replacing an earlier file; `plan.md` holds no `## Deviations` | WP26 | the commit of the run's record, which takes the whole spec folder |
 | `.temper/evidence/amendments.json` entry | `{"n", "ts", "kind": "amend" or "patch", "what", "old", "new", "hash_before", "hash_after", "failure", "reopened"}`; a patch before the approval writes none | WP25 | the commit card section `plan_changes` |
 | `run_id`, `plan` of an archived `groups.json`; `kept_from`, and `kept` of a group, in `groups.json` | the plan the archived tasks were built from; the replan `temper group keep` read (once per replan) and what it kept of a group | WP25 | none |
 | `.temper/notice.json` | the one time notice was said | WP31 | none |

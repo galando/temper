@@ -85,9 +85,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `git commit -m "feat({slug}): {scenario} [AC-NN]"`. Never `git add -A`, never
    `--no-verify`. An infrastructure-only task (no scenario) makes no commit.
 
-6. **A file outside the plan: the person decides first.** The plan's files are the ones in
-   `plan.md`'s Files to Create and Files to Modify tables and on the `**File:**` lines of
-   `tasks.md`; test files and the spec folder are always yours. Before you change any
+6. **A file outside the plan: the person decides first.** The plan's files are the ones on
+   the `**File:**` lines of `tasks.md`; test files and the spec folder are always yours. Before you change any
    other file, stop: do not write it, not even another way. Finish what the task can do
    without it, leave the task's box unticked, record each file with
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper drift ask --path {path} --why '{why}' --change '{the change}'`

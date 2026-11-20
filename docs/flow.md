@@ -782,7 +782,10 @@ gate has passed. By default it writes `report.html` in the run's spec folder. At
 next` gives three actions in turn: steps that end with `temper report --end`, which prints the report for
 the orchestrator to show; `temper report --html`, which writes the page with no question (9.8.0; the run used to ask
 whether to write it); then the commit steps. The run's `end_report` records the first two (the CLI keeps it), and
-the page is carried by the commit. Every value is escaped, and it never writes inside the plugin's own folder.
+the page is carried by the commit. In a feature run the first steps hold `temper spec deviations` (WP26): the
+deviations `build-context.json` records go to `deviations.md` in the spec folder, replacing an earlier file, at every
+tier; plan.md and tasks.md stay as the approval saw them, and the commit of the run's record carries the file. Every
+value is escaped, and it never writes inside the plugin's own folder.
 
 ## The run summary (9.8.5)
 

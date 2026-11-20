@@ -87,9 +87,9 @@ _fr_done readiness; _fr_para
 assert_exit "launch mark: rows after it, with the task count and a real paraphrase, pass the plan gate" 0 "$TEMPER" gate plan
 assert_eq "the plan question shows the reader's paraphrase" "1" \
   "$(nx "int('A reader with no context took it as: the demo runs twice and prints its output | a demo is one shell step run by the suite. Approve the plan' in d['ask']['question']['question'])")"
-gfail plan "blast radius documented" "plan.md missing a Blast Radius section"
+gfail plan "tier recorded" "the run records simple and tasks.md has 2 groups"   # WP26: the row blast radius documented is gone
 assert_eq "a plan question that failed on another row still carries the paraphrase" "1" \
-  "$(nx "int('Plan: the check failed (blast radius documented: plan.md missing a Blast Radius section). A reader with no context took it as: the demo runs' in d['ask']['question']['question'])")"
+  "$(nx "int('Plan: the check failed (tier recorded: the run records simple and tasks.md has 2 groups). A reader with no context took it as: the demo runs' in d['ask']['question']['question'])")"
 "$TEMPER" gate plan >/dev/null 2>&1
 assert_eq "a launched review that did not finish is asked about, never launched again by itself" "ask" \
   "$("$TEMPER" plan fresh again >/dev/null 2>&1; "$TEMPER" plan fresh start >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1; nx "d['action']")"

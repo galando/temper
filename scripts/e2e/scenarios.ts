@@ -99,7 +99,9 @@ export const AGENTS: Record<string, Agent> = {
     if (!w.read(`${SPEC}/intent.md`).includes(INTENT_SCENARIOS)) w.write(`${SPEC}/intent.md`, w.read(`${SPEC}/intent.md`).replace('## Scenarios (BDD)\n', INTENT_SCENARIOS))
     w.write(`${SPEC}/plan.md`, PLAN_MD)
     w.write(`${SPEC}/tasks.md`, TASKS_MD)
-    t(w, 'state set complexity simple')
+    // WP26: the plan has two groups, so it is above the simple tier (the row tier recorded bounds simple to one group);
+    // its plan.md is the short one, a Context Map and a Blast Radius
+    t(w, 'state set complexity medium')
     t(w, 'risk')
   },
   'temper:temper-plan-review': (w, a) => freshReviewer(w, a, []),
@@ -303,7 +305,6 @@ export const coveredAndManual = (w: World): void => {
 **Cases:**
 - the guide names the install step
 - the guide links the changelog
-**Traced to:** Infrastructure: the report needs a guide
 - [ ] done
 `
   const agents: Record<string, Agent> = {
@@ -311,7 +312,6 @@ export const coveredAndManual = (w: World): void => {
     'temper:temper-plan': wd => {
       AGENTS['temper:temper-plan']!(wd, {})
       wd.write(`${SPEC}/tasks.md`, tasks)
-      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('| unit/test_ci_bytes.py | tests the byte order | Same ledger gives the same bytes |', '| unit/test_ci_bytes.py | tests the byte order | Same ledger gives the same bytes |\n| docs/guide.md | the guide | Infrastructure: the report needs a guide |'))
     },
     'temper:temper-build-task': chained((wd, n) => {
       if (n === 3) {
@@ -568,7 +568,8 @@ export const failingScenario = (w: World): void => {
 `
       let intent = wd.read(`${SPEC}/intent.md`)
       intent = intent.replace('\n### Constraints', extra + '\n### Constraints')
-      intent = intent.replace('## Scenario Coverage Checklist', '```gherkin\nScenario: An untraced behavior holds\n  Given a thing\n  When it runs\n  Then it holds\n  Note: unit\n  Covers: AC-04\n  Test: python3 -c "import sys; sys.exit(3)"\n```\n\n## Scenario Coverage Checklist')
+      // WP26: the block goes after the scenarios Plan wrote, in their shape (the template has no Scenario Coverage Checklist)
+      intent = intent.replace(INTENT_SCENARIOS, INTENT_SCENARIOS + '```gherkin\nScenario: An untraced behavior holds\n  Then it holds\n  Covers: AC-04\n  Test: python3 -c "import sys; sys.exit(3)"\n```\n\n')
       wd.write(`${SPEC}/intent.md`, intent)
     },
   }
@@ -778,7 +779,6 @@ Plain python, standard library only.
 **Cases:**
 - the extra value is one
 - the extra value is an int
-**Traced to:** Infrastructure: a third group for the e2e
 - [ ] done
 `
   const extraTest = 'import unittest\n\nfrom src.ci_extra import VALUE\n\n\nclass ExtraTest(unittest.TestCase):\n    def test_the_extra_value_is_one(self):\n        self.assertEqual(VALUE, 1)\n\n    def test_the_extra_value_is_an_int(self):\n        self.assertIsInstance(VALUE, int)\n'
@@ -787,7 +787,6 @@ Plain python, standard library only.
     'temper:temper-plan': (wd, a) => {
       AGENTS['temper:temper-plan']!(wd, a)
       wd.write(`${SPEC}/tasks.md`, tasks)
-      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('## Files to Modify', '| src/ci_extra.py | an extra module | Infrastructure: a third group for the e2e |\n| unit/test_ci_extra.py | its test | Infrastructure: a third group for the e2e |\n\n## Files to Modify'))
       wd.write(`${SPEC}/intent.md`, wd.read(`${SPEC}/intent.md`).replace(/Test: python3 -m unittest unit\.test_ci_(shape|bytes)\n/g, 'Test: bash scen.sh $1\n'))
     },
     'temper:temper-build-task': chained((wd, n) => {
@@ -842,14 +841,11 @@ case "$*" in *verify*) exit 0 ;; esac
     .replace('`src/ci_shape.py`, `unit/test_ci_shape.py`', '`src/main/java/com/acme/Shape.java`, `src/test/java/com/acme/ShapeTest.java`')
     .replace('`src/ci_bytes.py`, `unit/test_ci_bytes.py`', '`src/main/java/com/acme/Bytes.java`, `src/test/java/com/acme/BytesTest.java`')
     .replace(/\*\*Test:\*\* `python3 -m unittest unit\.test_ci_(shape|bytes)`/g, '**Test:** `mvn test`')
-  const plan = PLAN_MD.replace(/src\/ci_shape\.py/g, 'src/main/java/com/acme/Shape.java').replace(/unit\/test_ci_shape\.py/g, 'src/test/java/com/acme/ShapeTest.java')
-    .replace(/src\/ci_bytes\.py/g, 'src/main/java/com/acme/Bytes.java').replace(/unit\/test_ci_bytes\.py/g, 'src/test/java/com/acme/BytesTest.java')
   const agents: Record<string, Agent> = {
     ...AGENTS,
     'temper:temper-plan': (wd, a) => {
       AGENTS['temper:temper-plan']!(wd, a)
       wd.write(`${SPEC}/tasks.md`, tasks)
-      wd.write(`${SPEC}/plan.md`, plan)
       // the scenario Test: commands are Maven ones too
       wd.write(`${SPEC}/intent.md`, wd.read(`${SPEC}/intent.md`).replace(/Test: python3 -m unittest unit\.test_ci_\w+/g, 'Test: mvn test'))
     },

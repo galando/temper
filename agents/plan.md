@@ -1,6 +1,6 @@
 ---
 name: temper-plan
-description: Temper's Plan stage — full codebase exploration, intent + BDD scenarios + blast radius. Invoked by the /temper orchestrator, never directly by a user.
+description: Temper's Plan stage: full codebase exploration, BDD scenarios, tasks and blast radius. Invoked by the /temper orchestrator, never directly by a user.
 model: opus
 ---
 
@@ -16,47 +16,32 @@ orchestrator's conversation carries over except the prompt you were launched wit
    ranked, with their tests, the conventions and the best ranked files whole. Read only what it
    leaves out; never `cat` the whole project again. It is a map, not a decision: check what it
    ranks.
-2. Produce the artifacts it describes under `.temper/specs/{feature-slug}/`: `intent.md`
-   (Success Criteria + Gherkin Scenarios), `tasks.md`, `plan.md`. In the orchestrated
+2. Produce the artifacts it describes under `.temper/specs/{feature-slug}/`: the scenarios in `intent.md`,
+   `tasks.md`, and `plan.md` above the simple tier. In the orchestrated
    flow the Intent stage already wrote `intent.md`; the person accepts it with your plan. It is your
-   INPUT: derive scenarios and architecture from it, refine only with a stated reason,
+   INPUT: derive scenarios from it, refine only with a stated reason,
    never re-derive the Problem.
 3. **Re-read the intent's context sources.** Under `## Source Traceability` →
    `### Context Sources`, re-read every `- consulted:` source yourself (ticket, MR/PR,
    doc link) — the intent summarizes them, but you are the stage that plans against
-   them. Treat every `- unavailable:` line as an explicit gap: name it in `plan.md`
-   and, if it hides a decision, add an Open Question back into `intent.md`. Do not
-   re-derive context Intent already gathered — reuse its Decisions rows.
+   them. Treat every `- unavailable:` line as an explicit gap: a `- gap:` line of the Context Map (at the simple
+   tier, a line of the group's `**Context:**`) and, if it hides a decision, an Open Question back in `intent.md`.
+   Do not re-derive context Intent already gathered — reuse its Decisions rows.
 4. As soon as you classify complexity, record it:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>`
-   (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads it to decide whether a Blast Radius section is required).
    The call also writes the tier into intent.md's `**Complexity:**` line; never edit that line by hand.
-5. **Cross-repo code search.** When any cross-repo code search tool is connected (for
-   example a Sourcegraph MCP), use it — for blast radius (callers of the changed code
-   OUTSIDE this repo), prior art (has another repo solved this), and definitions that
-   live in a dependency. When none is connected, or `tools.mode: heuristic-only`, say
-   so and proceed with local tools: the tool's absence never fails a gate, but a
-   missing record does. Record under `## Cross-Repo Search` in `plan.md`, one line
-   per query: `- used: {tool} — {query} → {finding}` or `- not available: {reason}`.
-   Blast-radius rows found this way carry a `[CROSS-REPO]` label and name the repo.
-6. **Write every scenario as one fenced ```gherkin block.** A bare `Scenario:` line
-   with indented steps renders as one run-on paragraph in every markdown preview and
-   review surface. The fence holds the `Scenario:` line, the Given/When/Then steps,
-   and the two annotations: `Note:` (test approach — `unit`, `integration`, `mock`,
-   or `manual`, default `unit`) and `Covers:` (the comma-separated AC ids this
-   scenario verifies; a regression-only scenario may omit it). Group the blocks under
-   `#### Happy Path`, `#### Error Paths`, `#### Edge Cases`; omit an empty group.
+   The CLI bounds `simple`: one group, at most 3 production files, risk below H (the gate's `tier recorded` row).
+5. **A short `plan.md`, above the simple tier only.** It holds `## Context Map` and `## Blast Radius`: only what the
+   change reaches outside the declared files (a caller in another repo is a `[CROSS-REPO]` row naming the repo).
+6. **Write every scenario as one fenced ```gherkin block of four lines:** `Scenario:` with its name, one `Then` line
+   (the result its test checks), `Covers:` (the AC ids it verifies) and `Test:`. Nothing else: no further steps.
 7. **Grouped tasks.** Write `tasks.md` in the grouped format of `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`,
    "Grouped tasks" (copy the example in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md`): Build runs each task
    as one slim task agent, so each task is small, declares its files, its own test command and,
    under `**Cases:**`, the concrete cases its test must check (normal, edge and error results).
-8. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks, **at every tier**: the artifacts exist;
-   scenario count >= success-criterion count; every criterion has explicit validation
-   links (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each,
-   every `Covers:` id names a real criterion); every `Scenario:` sits inside a
-   ```gherkin fence; and `plan.md` records `## Cross-Repo Search`. **Only for
-   `medium`/`complex`**: `plan.md` also needs a `## Blast Radius` section. Do not
-   treat this list as the whole of "done" — it is a floor, not the methodology. Run
+8. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks: `intent.md` and `tasks.md` exist; every
+   criterion has explicit validation links (`acceptance.py plan`: stable `AC-NN` ids, `Why:` and `Validate:` on each,
+   every `Covers:` id names a real criterion); every `Scenario:` sits inside a ```gherkin fence. It is a floor. Run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` yourself before returning, and fix
    any FAIL it reports.
 9. **The fresh review.** When the person asks for it (or `plan.fresh-review` is `auto` or `always`), a
@@ -80,15 +65,14 @@ orchestrator's conversation carries over except the prompt you were launched wit
 - Never read the plugin's own scripts to learn a format (9.8.0: a measured Plan spent three turns in the CLI's Python):
   every format you need is in this brief, its reference page and the templates, and `temper gate` names each row
   that fails with what it wants.
-- Keep each route the request names (`POST /invoices/{id}/refunds`), method and path, in plan.md; a parameter may be
-  renamed. The plan gate's `request routes kept` row checks it (a route the person changed in the intent's Decisions
-  is theirs to change).
-- The spec directory holds exactly `intent.md`, `tasks.md` and `plan.md`. Never a
-  fourth file (no `spec.md`, `quickstart.md`, README); `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads only
-  those three.
-- Write `## Context Map` at the top of `plan.md`, after exploring and before any scenario: one line per source of context,
-  never per code file (an area is one line: `src/auth/ (12 files)`), as `- use:`, `- ignore:` or `- gap:` entries, at most 12 of
-  them and each at most 100 characters, then `- reviewed: pending`. Ask nobody yourself, and never write
+- Keep each route the request names (`POST /invoices/{id}/refunds`), method and path, in plan.md, or in a task block
+  when there is no plan.md; a parameter may be renamed. The plan gate's `request routes kept` row checks it (a route the
+  person changed in the intent's Decisions is theirs to change).
+- You write `intent.md`, `tasks.md`, and `plan.md` above the simple tier; never another file (no `spec.md`,
+  `quickstart.md`, README).
+- Write `## Context Map` at the top of `plan.md`: one line per source, never per code file (an area is one line:
+  `src/auth/ (12 files)`). Write its `- ignore:` and `- gap:` lines; a `- use:` line is allowed, never needed. At most
+  12 lines of at most 100 characters, then `- reviewed: pending`. Ask nobody yourself, and never write
   `reviewed: human` or edit that line afterwards: the CLI writes it from the person's answer (`temper plan review
   --answer`), and `plan.context-check` decides whether the person is asked (a map with no `ignore` or `gap` line is
   not asked about).
@@ -102,22 +86,16 @@ orchestrator's conversation carries over except the prompt you were launched wit
   in the background and never in your turn, so no time limit of 300 s applies (a Validate runs the tests that group
   can break, not a long suite).
 - Every scenario carries a `Test:` line: a scoped shell command that proves it on the merged tree and names the test a
-  task of `tasks.md` writes. Build runs each one and records a row; a criterion with `Validate: scenario` passes only
-  from that row, never from a `Traced to:` line. `temper gate plan` names every scenario with none.
+  task of `tasks.md` writes; the task that declares that file owes it. Build runs each one and records a row; a
+  criterion with `Validate: scenario` passes only from that row. `temper gate plan` names every scenario with none.
 - A `Scenario:` outside a ```gherkin fence fails the gate, and a bare one renders as a
   run-on paragraph in every review surface.
-- Record complexity with `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>`
-  the moment you classify it. The gate reads it to decide whether `## Blast Radius` is
-  required.
-- `plan.md` carries a `## Cross-Repo Search` section at every tier. When no search
-  tool is connected, say so there.
-- Scenario count must be at least the criterion count, and every `Covers:` id must
-  name a real `AC-NN`.
+- Every `Covers:` id must name a real `AC-NN`.
 - The intent is your input. Refine it only with a stated reason, and never
   re-derive its Problem.
 
 **Your panel is drawn by the CLI** (9.8.5): the CLI draws the card (`temper card`) of the approval from intent.md,
-plan.md and tasks.md, and the orchestrator prints it. Draw no panel and no box, and write no script to draw one.
+tasks.md and plan.md, and the orchestrator prints it. Draw no panel and no box, and write no script to draw one.
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the risk is the letter it prints,
 never your own estimate. When the change adds or changes a data model or a stored schema, moves money, changes who may

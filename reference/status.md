@@ -159,16 +159,14 @@ Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQ
   `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent --spec-path .temper/specs/{metric}-breach-{date}`
   itself (run it, and fix any FAIL before you report the draft):
   header including `**Author:** Temper control-band monitor`,
-  `**Status:** draft`, `**Created:** {date}`, and a `**Reviewer:**` — ask who
-  reviews it; a name, not a role, and never a guessed default. Then the body:
+  `**Status:** draft` and `**Created:** {date}`. Then the body:
   **Problem** = the breach verbatim from `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands`
   (metric, latest, baseline, z-score — evidence, not narrative); **Success
   Criteria** = stable `AC-NN` ids, the metric back inside its bands with
   `Validate: metric` and a `Why:` line naming the risk the band guards, plus at
   least one `Validate: scenario` criterion for the suspected cause once known;
   **Constraints** = fix goes through the normal pipeline `(source: pipeline rules)`;
-  **Target Users** = action chains (`{user}: reads the bands dashboard → sees the
-  metric back in band at the next status run`); **Open Questions** labeled
+  **Open Questions** labeled
   Blocking/Deferred; `### Context Sources` = `- consulted: .temper/metrics.json —
   the breached series' history ({date})`. Then report: "Run `/temper` to pick it
   up." The draft rides the ordinary pipeline — every gate applies (the Intent gate

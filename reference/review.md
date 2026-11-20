@@ -136,16 +136,15 @@ never go silent because of a threshold.
 Every verdict is labeled **mechanical** (provable by tools) or **semantic** (judgment —
 directional, not proof).
 
-- **a. BDD (mechanical):** each `Scenario:` → a corresponding test → it passes.
-  Checklist.
+- **a. BDD (mechanical):** each `Scenario:` → the test its `Test:` line names → it passes.
 - **b. IDD (structured):** per Success Criterion, run its `Validate:` method —
   `scenario` / `code` (grep) → ✅/❌, `metric` → 📊 deferred, `manual` → 🔍 flagged.
   Verdict: satisfied / partially satisfied (name the gaps) / not satisfied, plus
   "{N} mechanical, {N} deferred, {N} manual". No intent.md → same verdict against the
   linked ticket.
-- **c. Test quality (per covered scenario):** zero assertions → **TRIVIAL**; no
-  asserted variable appears in the Then clause's keywords → **WEAK** (mechanical);
-  otherwise judge Given→setup/When→action/Then→assertion alignment and depth — accept
+- **c. Test quality (per covered scenario):** judge each test against the scenario's `Then` line and the Cases of the
+  task that owns it. Zero assertions → **TRIVIAL**; no asserted variable appears in the Then line's keywords → **WEAK**
+  (mechanical); otherwise judge whether the assertions check the Then and the Cases, and how deeply; accept
   indirect assertions that semantically cover the Then; unsure → don't flag. STRONG
   counts full, WEAK half, TRIVIAL zero toward the verdict's evidence ratio; WEAK is a
   MEDIUM issue, TRIVIAL a LOW.
