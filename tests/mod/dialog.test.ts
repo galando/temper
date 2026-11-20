@@ -210,7 +210,9 @@ describe('every wait point of the flow audit', () => {
     expect(state(w).run_mode).toBe('autonomous')
   })
 
-  test('the run to the commit (WP11): a failed Check loops back once by rule as the CLI\'s own action, and no other loop back goes', async ($, on) => {
+  // WP24: the rule's loop back to Build is gone: the CLI's own move at a failed Check is the repair in the stage, or the
+  // park call where it may not start (this world is no repository with a reviewed HEAD)
+  test('WP24 the run to the commit: a failed Check is never looped back by rule: the CLI\'s own move is the repair in the stage or a park, and no loop back goes', async ($, on) => {
     const api = $ as unknown as Api
     const state = { run_mode: 'autonomous', unattended_from: 'plan' }   // started at the approval (approve-run)
     const w = begin(on, 'check', { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'FAIL' }, [], { '.temper/build-state.json': JSON.stringify(state) })
@@ -218,7 +220,8 @@ describe('every wait point of the flow audit', () => {
     const next = (JSON.parse(viewText(w) ?? '{}') as { next: { action: string; calls: string[] } }).next
     expect(next.action).toBe('auto')
     expect(next.calls.length).toBe(1)
-    expect(next.calls[0]).toContain("state loop check build --reason 'rule: ")
+    expect(next.calls[0]).toMatch(/repair start --stage check$|park --verdict PARKED-NEEDS-DECISION /)
+    expect(next.calls[0]).not.toContain('state loop')
     expect(await sh(api, `${CLI} state loop check build --reason 'my own words'`)).toBeDefined()
     expect(await write(api, 'src/app.ts')).toContain('Check only runs checks')
   })

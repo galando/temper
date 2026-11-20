@@ -14,6 +14,7 @@ import decisions
 import doctor
 import failure
 import findings
+import repair_ops
 import run_env
 
 from flow_base import GATE_HEADER, LABEL, TEMPER, goes_on, loop_at, on_model, read_json, same_failure
@@ -78,23 +79,6 @@ class WorkPart:
         return {"action": "auto", "stage": stage, "say": "%s. The run stops here and asks you." % what[:240].rstrip("."),
                 "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(what[:1200]))]}
 
-    def repair(self, stage, reason):
-        """WP11 (ADR 0019 decision 3): the one seam of the repair by rule: one counted loop back to Build (or Fix). It stops
-        when the plan declares a sensitive path, when the budget already holds a repeat for the stage's check, or when that
-        key has no room. WP24 replaces this body by the repair in place."""
-        r = self.r
-        back = "fix" if r.command == "fix" else "build"
-        key = "gate:%s" % (r.gate_of(stage) or stage)
-        if r.sensitive():
-            return self.stop(stage, "the plan touches a sensitive path (%s), so nothing is repaired by rule: %s" % (
-                ", ".join(r.sensitive()[:3]), reason))
-        rm = r.room(key)
-        if rm["used"] >= 1 or not rm["ok"]:
-            return self.stop(stage, "%s after its one repair by rule: %s" % (
-                "it failed again" if rm["used"] >= 1 else "the budget has no room", reason))
-        return {"action": "auto", "stage": stage, "say": "%s: the rule loops back to %s once (%s)." % (LABEL[stage], LABEL[back], reason[:120]),
-                "calls": [self.c("state loop %s %s --reason %s" % (stage, back, shlex.quote(("rule: " + reason)[:300])))]}
-
     def rule_move(self, stage, verdict):
         """WP11 (ADR 0019 decision 3): Review and Check of a run that goes on by itself, by the closed list. Review: an open
         finding at a level of review.block-on takes the repair; a PASS moves on (a finding below the level is carried to
@@ -110,8 +94,9 @@ class WorkPart:
               "calls": [self.c("state advance %s_complete %s" % (stage, nxt))]}
         if stage == "review":
             opens = r.open_findings()
-            if opens:
-                return self.repair(stage, "repair %d open finding(s): %s" % (len(opens), "; ".join(f["claim"][:100] for f in opens[:3])))
+            if opens:   # WP24: the repair in the stage ran or may not run (repair_step): the person decides
+                return self.stop(stage, "%d open finding(s), no repair by rule (%s): %s" % (
+                    len(opens), repair_ops.can_start(r, stage) or "its repair ran", "; ".join(f["claim"][:100] for f in opens[:3])))
             if verdict == "PASS":
                 return go
             return self.stop(stage, why or "the check failed")
@@ -129,7 +114,7 @@ class WorkPart:
             manual = [c["id"] for c in self.criteria("manual") if re.search(r"\b%s has no supported passing evidence row" % re.escape(c["id"]), details)]
             if manual:
                 return self.stop(stage, "%s: only you can confirm %s" % (why, ", ".join(manual)))
-            return self.repair(stage, why or "the check failed")
+            return self.stop(stage, "%s (%s)" % (why or "the check failed", repair_ops.can_start(r, stage) or "its repair ran"))
         return None
 
     def setup_offer(self, base=False):

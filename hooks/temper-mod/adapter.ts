@@ -215,7 +215,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const run: RunFacts | null =
     stage === null || g === null
       ? null
-      : { stage, step: g.step, specDir: g.spec, planFiles: g.planFiles, groupedActive: g.grouped, trivialExit: g.trivialExit, prefix: g.prefix, adhocStage: g.adhocStage }
+      : { stage, step: g.step, specDir: g.spec, planFiles: g.planFiles, groupedActive: g.grouped, trivialExit: g.trivialExit, prefix: g.prefix, adhocStage: g.adhocStage, adhocKind: g.adhocKind }
   return {
     ...idle,
     failOpen: run === null,
@@ -228,7 +228,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     at,
     decisions: decisionsOf(book, at.run),
     answer: currentAnswer(book, at, rv.ask?.question.question ?? null),
-    allowed: [...allowedCalls(book, at), ...rv.next.calls, ...rv.next.steps],
+    allowed: [...allowedCalls(book, at), ...rv.next.calls, ...rv.next.steps, ...(rv.next.after ?? [])],
     restart: restartFor(book, at) !== null,
     drift: driftOf(book, at.run, used),
   }

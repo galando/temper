@@ -558,6 +558,20 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
       printf '{"result": "green", "seconds": 1, "plan": {"true": {"result": "fail", "exit": 1, "seconds": 1, "class": "command", "kind": "fails-on-base", "why": "exit 1", "fail_lines": ["FAIL: test_a"], "tail": ""}}}\n' \
         > .temper/evidence/baseline.json
       _stop44 "$_FORBID44|baseline (skip|timeout)|state (loop|redo) \S+ plan" ;;
+    repair.contested|repair.outside-plan|repair.sensitive|repair.unfinished|repair.environment|repair.unmeasured|\
+    repair.person-criterion|repair.acceptance-test)   # WP24: the never by rule list, each state as D05b builds it
+      _d05 "$(sed 's/^repair\.//; s/^outside-plan$/outside/; s/^person-criterion$/person/; s/^acceptance-test$/acceptance/' <<<"$1")" \
+        | cut -d, -f1 ;;
+    repair.tests-removed|repair.worse) _unattended review   # WP24: what a repair asks (repair.stop) is a stop, never passed
+      "$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
+      gfail review "no blocking findings" "1 open high finding"
+      python3 -c "
+import json, sys
+p = '.temper/build-state.json'; d = json.load(open(p))
+d['repair_stop'] = {'kind': 'tests' if sys.argv[1] == 'repair.tests-removed' else 'worse', 'why': 'repair 1 at Review: ' + sys.argv[1],
+                    'n': 1, 'stage': 'review', 'lines': ['src/demo_test.sh: b=2']}
+json.dump(d, open(p, 'w'), indent=2)" "$1"
+      _stop44 "$_FORBID44|repair (start|commit|revert)" ;;
     *) echo "no state is built for this stop" ;;
   esac
 }

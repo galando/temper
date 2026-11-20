@@ -146,8 +146,9 @@ export class World {
     if (rv === null || rv.run === null || rv.run.command === 'fix') return { ctx: null }
     const stage = cliStage(rv.run.stage)
     const g = rv.guard
-    const run: RunFacts | null = stage === null || g === null ? null : { stage, step: g.step, specDir: g.spec, planFiles: g.planFiles, groupedActive: g.grouped, trivialExit: g.trivialExit, prefix: g.prefix, adhocStage: g.adhocStage }
-    return { ctx: { run, allowed: [...this.allowed, ...rv.next.calls, ...rv.next.steps], root: this.dir, drift: { added: [], allowOnce: [] }, restart: false, cli: TEMPER, fixRun: false } as unknown as RuleContext }
+    const run: RunFacts | null = stage === null || g === null ? null : { stage, step: g.step, specDir: g.spec, planFiles: g.planFiles, groupedActive: g.grouped, trivialExit: g.trivialExit, prefix: g.prefix, adhocStage: g.adhocStage, adhocKind: g.adhocKind }
+    // as the adapter builds it (WP24: the before and after calls of the action's agents, `next.after`, are the action's)
+    return { ctx: { run, allowed: [...this.allowed, ...rv.next.calls, ...rv.next.steps, ...(rv.next.after ?? [])], root: this.dir, drift: { added: [], allowOnce: [] }, restart: false, cli: TEMPER, fixRun: false } as unknown as RuleContext }
   }
   guard(call: { tool: string; input: Json }): void {
     const { ctx } = this.facts()

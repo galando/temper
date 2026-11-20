@@ -35,11 +35,12 @@ from flow_ask import AskPart
 from flow_work import WorkPart
 from flow_build import BuildPart
 from flow_commit import CommitPart
+from flow_repair import RepairPart
 
 
 # ---- building the answer ---------------------------------------------------------------------
 
-class Builder(AskPart, WorkPart, BuildPart, CommitPart):
+class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart):
     def __init__(self, run):
         self.r = run
         self.cli = run.ctx.get("cli") or "temper"
@@ -313,6 +314,12 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             if stage in ("build", "check") and verdict is not None and not skipped else None
         if fixacc:
             out.update(fixacc)
+            return out
+        # WP24 (ADR 0021): a finding, or a failed row of class code, is repaired in its stage, in every mode, before the
+        # rule's move and before the question (scripts/repair_ops.py holds the conditions)
+        rep = self.repair_step(stage) if stage in ("review", "check") and r.command == "temper" else None
+        if rep:
+            out.update(rep)
             return out
         # A note the person gave after the verdict: input goes to the agent again, edit (made for them) only to the gate.
         if verdict is not None and not skipped and not self.walked(stage):

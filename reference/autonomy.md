@@ -17,10 +17,12 @@ the stage it was made at (`unattended_from`).
 **What a rule does** (each an `auto` action, recorded in `.temper/rule-log.json`):
 
 - A passed check moves on: Design, Build, Review, Check; a passed group's question is answered Continue.
-- A failed check gets one counted repair: one loop back to Build for a Review finding at a level of
-  `review.block-on`, or for a failed Check; the recommended option of a failed group check when it needs nothing
-  typed, is no step back and the group declares no sensitive path. A finding below the level goes on and is named at
-  the commit question.
+- A failed check gets one counted repair. A Review finding at a level of `review.block-on`, or a failed row of Check
+  of class `code`, is repaired in its stage (ADR 0021): `temper repair start`, a fresh Build agent, the CLI's commit
+  and checks, a recheck, and `temper repair close`; a repair that made things worse is reverted and asked about
+  (`repair.stop`). The rule never loops back to Build. A failed group check takes its recommended option when it needs
+  nothing typed, is no step back and the group declares no sensitive path. A finding below the level goes on and is
+  named at the commit question.
 - A task an earlier task built is taken as done.
 - At a failed Build gate (the checks run when Build ends, 9.8.5, WP23) the failure record's class picks the step: a
   fault of the environment (`environment`) is a stop with the setup question, and no fix pass; a locked acceptance test

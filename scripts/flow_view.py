@@ -235,6 +235,11 @@ def view(run, nxt):
         "status": status_line(r, nxt),
         "next": {"action": nxt.get("action"), "stage": nxt.get("stage"), "say": nxt.get("say"),
                  "calls": nxt.get("calls") or [] if nxt.get("action") in ("work", "auto") else [],
+                 # WP24: the before and after calls of the action's agents (the CLI's `repair mark`, `repair commit`,
+                 # `repair close`), which the mod lets through as calls of the action the view names
+                 "after": [c for a in nxt.get("agents") or [] for c in (a.get("before") or []) + (a.get("after") or [])
+                           if re.search(r"(^|/|\s)temper repair ", c)]
+                 if nxt.get("action") == "work" else [],
                  "steps": nxt.get("steps") or [] if nxt.get("action") == "work" else [],
                  "agents": agents},
         "ask": nxt.get("ask") if nxt.get("action") == "ask" else None,
@@ -251,7 +256,10 @@ def view(run, nxt):
                   "prefix": git("rev-parse", "--show-prefix"),
                   "adhoc_stage": (r.state.get("adhoc") or {}).get("stage") if isinstance(r.state.get("adhoc"), dict) else None,
                   # WP17: the state holds the trivial verdict (temper intent trivial): the window of its one write
-                  "trivial_exit": isinstance(r.state.get("trivial"), dict)},
+                  "trivial_exit": isinstance(r.state.get("trivial"), dict),
+                  # WP24: the kind of an open window, only when it has one: `repair` applies Build's write rule (a planned
+                  # file or a test); none is a small change
+                  **({"adhoc_kind": r.state["adhoc"]["kind"]} if isinstance(r.state.get("adhoc"), dict) and r.state["adhoc"].get("kind") else {})},
         "plan": plan_view(r),
         "fresh": fresh_view(r),
         "build": build_view(r),
@@ -273,6 +281,8 @@ def view(run, nxt):
         out["failures"] = [{"id": x.get("id"), "class": x.get("class"), "why": x.get("why"), "step": x.get("step")} for x in recs]
     if nxt.get("action") == "work" and nxt.get("step_kinds"):
         out["next"]["step_kinds"] = nxt["step_kinds"]   # the kind of each step beside `steps` (flow_base.step_kinds)
+    if not out["next"]["after"]:
+        out["next"].pop("after")   # WP24: only an action whose agents have before or after calls names them
     return out
 
 

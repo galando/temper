@@ -8,26 +8,27 @@
   "scripts/flow_work.py",
   "scripts/flow_build.py",
   "scripts/flow_commit.py",
-  "scripts/flow_view.py"
+  "scripts/flow_view.py",
+  "scripts/flow_repair.py"
  ],
  "caps": {
   "question_sites": {
-   "now": 52,
+   "now": 53,
    "final": 53,
    "measure": "measure_question_sites: calls of self.question( and self.with_more( in the flow files"
   },
   "option_sites": {
-   "now": 89,
+   "now": 91,
    "final": 89,
    "measure": "measure_option_sites: calls of self.opt( in the flow files"
   },
   "option_labels": {
-   "now": 73,
+   "now": 72,
    "final": 71,
    "measure": "measure_option_labels: distinct first arguments (a string) of those calls"
   },
   "question_ids": {
-   "now": 37,
+   "now": 38,
    "final": 35,
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
@@ -67,7 +68,7 @@
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 303473,
+   "now": 306186,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
@@ -77,7 +78,7 @@
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 219197,
+   "now": 219625,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

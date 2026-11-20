@@ -194,6 +194,19 @@ All notable changes to Temper are documented here. The plugin version lives in
   proof the CLI ran counts. Every failure is one typed record in `.temper/evidence/failures.json`
   (`scripts/failure.py`), of one of five classes; a class picks the next step and never a verdict; a step back keeps
   it, and `state archive` copies it into `gate-ledger.json`.
+- WP24: a finding is repaired in its stage (ADR 0021). A High or critical finding of Review, or a failed row of Check
+  whose failure record has the class `code`, is repaired where it was found with no dialog, in every mode: the CLI's
+  own `temper repair start` (only when every condition of `scripts/repair_ops.py` holds), a fresh Build agent told
+  `Repair in place:` with the whole finding (`evidence add --detail --fix --proof test|none`), the CLI's own commit
+  `fix(<slug>): repair N at <stage>` through a second carve out of the commit gate (`repair commit`), `integrate` and
+  `gate build` again on the new tree, and a narrow recheck by the Review brief's `Re-check:` section (a full Review for
+  a diff over 300 lines or a file no finding names). Only `temper repair close` resolves a finding, for that commit,
+  once a `recheck #<id>: fixed` row follows the commit and the recheck's launch mark, the checks passed and, for
+  `proof: test`, a RED and a GREEN of `temper repair test` held. A repair that made things worse is reverted by the
+  CLI and asked (`repair.stop`); a diff that removes test lines, a file outside the plan, the spec folder, the config,
+  a lockfile, a CI file or a sensitive path is never committed by rule. One repair by rule a stage, one more on your
+  click (`Repair again`), counted in the one budget; the rule's loop back to Build is gone, and the loop back stays
+  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

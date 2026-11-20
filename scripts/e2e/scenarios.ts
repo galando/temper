@@ -1266,11 +1266,18 @@ export const fixBreaksSuite = (w: World): void => {
   }
   let reviews = 0
   let fixes = 0
+  let inPlace = 0
   const asked: string[] = []
   const agents: Record<string, Agent> = {
     ...AGENTS,
-    // the scripted reviewer: one High finding on its first review, none after
-    'temper:temper-review': wd => {
+    // the scripted reviewer: one High finding on its first review, none after (a recheck of the repair in the stage,
+    // WP24, finds it not fixed: the repair broke the suite, and the CLI reverts it)
+    'temper:temper-review': (wd, a) => {
+      if (/Re-check:/.test(String(a.prompt ?? ''))) {
+        t(wd, "evidence add --stage review --claim 'recheck #1: not fixed' --exit 1 --cmd recheck")
+        t(wd, "evidence add --stage review --claim 'review completed' --exit 0 --cmd recheck --value 1 --read src/ci_shape.py")
+        return
+      }
       reviews++
       if (reviews === 1)
         t(wd, "evidence add --stage review --severity high --label PROVEN --claim 'src/ci_shape.py:2 the stage object keeps the caller list'")
@@ -1283,7 +1290,14 @@ export const fixBreaksSuite = (w: World): void => {
     // agents/build.md step 2 tells a fix pass) and commits its change on the feature branch, as steps 4 and 5 tell it
     // (git add and git commit in two calls; the commit hook takes it as a build checkpoint). The git calls are a
     // subagent's: the mod's guard holds them (rules.ts), not the rules of the session.
-    'temper:temper-build': wd => {
+    'temper:temper-build': (wd, a) => {
+      // WP24: the repair in the stage comes first: it misreads the finding the same way and breaks the shape tests, and
+      // commits nothing (the CLI commits, the checks fail on its tree, and the CLI reverts it)
+      if (/Repair in place:/.test(String(a.prompt ?? ''))) {
+        inPlace++
+        wd.write('src/ci_shape.py', SHAPE_BROKEN)
+        return
+      }
       fixes++
       const own = 'unit.test_ci_shape.ShapeTest.test_the_stage_object_drops_the_caller_list'
       if (fixes === 1) {
@@ -1312,9 +1326,11 @@ export const fixBreaksSuite = (w: World): void => {
     stopAt: (_wd, n) => n.stage === 'commit',
   }))
   expect(merged.length === 0, `no call failed with "not something we can merge" (${merged.join(', ')})`)
-  expect(fixes === 2 && (w.counts.launches['temper:temper-build'] ?? 0) === 2, `the fix agent ran twice (${fixes} passes, ${w.counts.launches['temper:temper-build'] ?? 0} launches)`)
-  // the question of the broken suite itself, after the first failed Review: build.pass is asked at every Build gate
-  const firstReviewFail = asked.indexOf('review.fail')
+  expect(inPlace === 1 && fixes === 2 && (w.counts.launches['temper:temper-build'] ?? 0) === 3,
+    `WP24 the repair in the stage ran once and was reverted, then the fix agent ran twice after the loop back (${inPlace} in place, ${fixes} passes, ${w.counts.launches['temper:temper-build'] ?? 0} launches)`)
+  // the question of the broken suite itself, after the first failed Review (WP24: the question of the reverted repair,
+  // repair.stop): build.pass is asked at every Build gate
+  const firstReviewFail = asked.findIndex(id => id === 'review.fail' || id === 'repair.stop')
   expect(firstReviewFail >= 0 && asked.slice(firstReviewFail + 1).includes('build.fail'), `the failed suite asked the Build question (${asked.join(', ')})`)
   expect(end.stage === 'commit', `the run reached the commit (${end.action} ${end.stage ?? ''})`)
   expect(String(w.json('.temper/groups.json').integration?.verdict ?? '') === 'PASS', 'integrate passed again on the repaired tree')
@@ -1324,9 +1340,10 @@ export const fixBreaksSuite = (w: World): void => {
 // failed group gate as an error and the driver hands the run back). WP11: the key autonomy.policy is gone; this is a
 // default run, the template's park-on-touch and max-blast-radius apply. The person takes the recommended option of the
 // approval, approve-run; group G1's check fails once (its Validate also wants a line no task writes, which the group fix
-// agent adds); the first Review leaves one High finding, which fails Review (block-on critical, high) and is repaired by
-// the one loop back to Build the rule takes. The run plans once, launches the group fix once, never steps back to Plan,
-// asks nothing between the approval and the commit question, and commits the change.
+// agent adds); the first Review leaves one High finding, which fails Review (block-on critical, high) and is repaired in
+// its stage (WP24: the rule's one repair, a fresh Build agent, the CLI's commit, and a recheck). The run plans once,
+// launches the group fix once, never steps back, asks nothing between the approval and the commit question, and commits
+// the change.
 export const policyRun = (w: World): void => {
   startProject(w)
   const g1 = 'python3 -m unittest unit.test_ci_shape'
@@ -1356,9 +1373,18 @@ export const policyRun = (w: World): void => {
       const file = path.join(wt, 'src/ci_shape.py')
       wd.write(file, `${(wd.exists(file) ? wd.read(file) : SHAPE_CODE).replace(/\n*$/, '\n')}VERSION = 1\n`)
     },
-    // the reviewer reports the High finding while the code has it
-    'temper:temper-review': wd => {
+    // the reviewer reports the High finding while the code has it; WP24: a recheck (the brief's `Re-check:`) answers
+    // each finding of the repair, fixed once the code has the repair, and records its completion
+    'temper:temper-review': (wd, a) => {
       reviews++
+      const prompt = String(a.prompt ?? '')
+      if (/Re-check:/.test(prompt)) {
+        const fixed = wd.read('src/ci_shape.py').includes(REPAIRED)
+        const found = [...new Set([...prompt.matchAll(/#(\d+)/g)].map(x => x[1]!))]
+        for (const id of found) t(wd, `evidence add --stage review --claim 'recheck #${id}: ${fixed ? 'fixed' : 'not fixed'}' --exit ${fixed ? 0 : 1} --cmd recheck`)
+        t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd recheck --value ${found.length} --read src/ci_shape.py`)
+        return
+      }
       if (!wd.read('src/ci_shape.py').includes(REPAIRED))
         t(wd, "evidence add --stage review --severity high --label PROVEN --claim 'src/ci_shape.py:2 the stage object keeps the caller list, so a later change to that list changes the report'")
       reviewDone(wd)
@@ -1380,8 +1406,8 @@ export const policyRun = (w: World): void => {
   expect((w.counts.launches['temper:temper-plan'] ?? 0) === 1, `temper:temper-plan is launched once (${w.counts.launches['temper:temper-plan'] ?? 0})`)
   expect(groupFixes === 1, `the group fix agent is launched once for the failed group check (${groupFixes})`)
   expect(!/state loop build plan/.test(flow), 'no call state loop build plan: the run never steps back to Plan by rule')
-  expect(reviews === 2 && (flow.match(/state loop review build/g) ?? []).length === 1,
-    `the High finding loops back to Build once and Review runs again (${reviews} reviews)`)
+  expect(reviews === 2 && !/state loop review build/.test(flow) && (flow.match(/repair start --stage review/g) ?? []).length === 1,
+    `WP24 the High finding is repaired in its stage once: one full Review and one recheck, no loop back to Build (${reviews} reviews)`)
   expect(ids.slice(approval + 1).join(',') === 'commit.confirm', `no question between the approval and the commit question (${ids.slice(approval + 1).join(', ')})`)
   expect(!w.exists('.temper/build-state.json') && w.sh('git log --format=%s -1 -- src/ci_shape.py').trim() !== '' && /VERSION = 1/.test(w.sh('git show HEAD:src/ci_shape.py')),
     'the run ended and the change is committed, the group fix with it')
@@ -1584,10 +1610,11 @@ export const coverageDrop = (w: World): void => {
   const q = String(asked[0]?.question?.question ?? '')
   expect(/\bcoverage\b/.test(q), `the stop's question names the row coverage (${q.slice(0, 200)})`)
   expect(!/state advance check_complete/.test(flow) && !asked.some(a => a.id === 'commit.confirm'), 'the run never passes on to the commit')
-  // WP24: the one repair is made in place at Check, by the CLI's own call, and never by a step back to Build
-  const started = w.trace.filter(l => /^\s*call temper repair start --stage check\b/.test(l)).length
-  expect(started === 1 && inPlace === 1, `WP24 the repair is one in place: the CLI's own repair start at Check, its agent told Repair in place (${started} repair start calls, ${inPlace} of ${repairs} launches in place)`)
-  expect(!/state loop check build\b/.test(flow), 'WP24 the repair takes no step back: no call state loop check build')
+  // WP24: the one repair is made in the stage that found the drop (Build since WP23, where the repair in the stage is
+  // Build's own fix pass), by the CLI's own call, and never by a step back
+  const inStage = w.trace.filter(l => /^\s*call temper state redo build --reason '?rule: /.test(l)).length
+  expect(inStage === 1 && repairs === 1, `WP24 the repair is one in the stage that found the drop: the CLI's own fix pass at Build by rule (${inStage} calls state redo build by rule, ${repairs} launches of the repair agent, ${inPlace} told Repair in place)`)
+  expect(!/state loop \w+ \w+\b/.test(flow), 'WP24 the repair takes no step back: no call state loop')
 }
 
 // WP21: a command the plan wrote fails on the base (the scenario plan-command-fails). The scripted planner writes a

@@ -111,8 +111,16 @@ def evidence_entry(argv):
         e['confidence'] = float(confidence)
     if kind:
         e['kind'] = kind
-    if argv[15:]:   # 9.8.5 (WP18): Review's completion row names the files read, from the project folder
-        e['read'] = list(dict.fromkeys(os.path.normpath(os.path.relpath(r) if os.path.isabs(r) else r) for r in argv[15:] if r.strip()))
+    reads = [r for r in argv[15:] if not r.startswith('\x1f')]
+    if reads:   # 9.8.5 (WP18): Review's completion row names the files read, from the project folder
+        e['read'] = list(dict.fromkeys(os.path.normpath(os.path.relpath(r) if os.path.isabs(r) else r) for r in reads if r.strip()))
+    # WP24: a finding of Review carries its whole text: --detail, --fix and --proof test|none (the reviewer's, never the fixer's)
+    more = dict(r[1:].split('=', 1) for r in argv[15:] if r.startswith('\x1f') and '=' in r)
+    if more and not (severity and e['claim'] != 'review completed'):
+        sys.exit("FAIL: --detail, --fix and --proof go with a finding of Review (--stage review --severity S)")
+    if more.get('proof', 'none') not in ('test', 'none'):
+        sys.exit("FAIL: --proof takes test (a behaviour defect: a test first) or none")
+    e.update({k: v for k, v in more.items() if v != ''})
     print(json.dumps(e))
 
 
@@ -166,6 +174,15 @@ def write_verdict(argv):
     d[stage] = {'verdict': verdict, 'requirements': json.loads(reqs), 'ts': ts}
     if len(argv) > 6:   # WP22: the digest of the project folder the verdict judged (run_env.tree_key), or null
         d[stage]['tree'] = argv[6] or None
+    if stage == 'review':   # WP24: the tree the full Review read, and the closed repairs between it and this tree
+        try:
+            st = json.load(open(os.path.join(os.path.dirname(f), 'build-state.json')))
+            reps = [x for x in st.get('repairs') or [] if isinstance(x, dict) and x.get('step') == st.get('step')
+                    and x.get('outcome') in ('resolved', 'closed')]
+            if reps:
+                d[stage].update(reviewed=reps[0].get('base_tree'), repairs=[x.get('n') for x in reps])
+        except (OSError, ValueError, AttributeError):
+            pass
     tmp = '%s.tmp.%d' % (f, os.getpid())
     with open(tmp, 'w') as fh:
         json.dump(d, fh, indent=2)

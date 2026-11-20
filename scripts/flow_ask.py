@@ -12,6 +12,7 @@ import adhoc_ops
 import approval
 import decisions
 import fresh_review
+import repair_ops
 import run_env
 
 from flow_base import (BACK_TO, FRESH_ROWS, GATE_HEADER, LABEL, MOVES, NEEDS, OPTION_IDS, OPTION_KINDS, choice_id, goes_on, on_model,
@@ -181,7 +182,7 @@ class AskPart:
 
     def revise_opt(self, description, why):
         """Revise the plan: the Plan agent runs again for the reason (state redo plan)."""
-        return self.opt("Revise the plan", description, move="redo", oid="revise-plan",
+        return self.opt("Revise the plan%s" % "", description, move="redo", oid="revise-plan",
                         calls=[self.c("state redo plan --reason %s" % shlex.quote(why[:300]))])
 
     def answers_reason(self):
@@ -265,6 +266,18 @@ class AskPart:
                         calls=[self.c("state loop %s %s --reason '{reason}'" % (stage, back))],
                         reason=["The check found a real problem"], oid="back")
 
+    def override_opt(self, stage, then):
+        return self.opt("Override and continue", "Skip this check with your reason; the report shows it.", move="override",
+                        calls=[self.c("override %s --reason '{reason}'" % (self.r.gate_of(stage) or stage))] + then,
+                        reason=["I accept the risk", "It is not a real issue"], oid="override")
+
+    def repair_opt(self, stage, rec):
+        """WP24: Repair again, the person's click: one more repair in the stage (`repair start --again`), which the CLI
+        refuses outside its conditions (scripts/repair_ops.py can_start)."""
+        return self.opt("Repair again" + (" (Recommended)" if rec else ""), "A fresh Build agent repairs it here; the CLI commits "
+                        "and rechecks it (one repeat).", move="repair",
+                        calls=[self.c("repair start --stage %s --again" % stage)], oid="repair-again")
+
     # -- gate questions ----------------------------------------------------------------------
     def ask(self, stage):
         r = self.r
@@ -278,15 +291,14 @@ class AskPart:
         why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in rows[:3])
         state_of = "the check passed" if verdict == "PASS" else ("skipped by you" if skipped else "the check failed")
         override_reasons = ["I accept the risk", "It is not a real issue"]
+        rep = repair_ops.offer(r, stage) if stage in ("review", "check") else None   # WP24: Repair again, first while it may run
 
         def back_opt(rec=False):
             # a step back the budget refuses is dropped after (budget_guard), so the question says so
             return [self.loop_opt(stage, back, rec)] if back else []
 
         def override_opt(then):
-            return self.opt("Override and continue", "Skip this check with your reason; the report shows it.", move="override",
-                            calls=[self.c("override %s --reason '{reason}'" % (r.gate_of(stage) or stage))] + then,
-                            reason=override_reasons, oid="override")
+            return self.override_opt(stage, then)
 
         walked = self.walked(stage)
         if walked:
@@ -508,16 +520,17 @@ class AskPart:
             accept = None
             # A review that recorded no completion row did not finish (its agent failed or stopped): run it again first.
             unfinished = bool(rows) and all(x.get("name") == "review completed" for x in rows)
-            first = back_opt(rec=not unfinished)
+            first = ([self.repair_opt(stage, rep)] if rep is not None else []) + back_opt(rec=not unfinished and rep is None)
             if unfinished:
                 first.insert(0, self.opt("Run Review again (Recommended)", "The review did not finish; it runs again.", move="redo",
                                          calls=[self.c("state redo review --reason 'the review did not finish'")], oid="redo"))
             if opens:
                 accept = self.accept_question(opens, qid="review.fail.accept")
                 first.append(self.accept_opt())
-            first.append(override_opt(go))
-            text = "Review: the check failed (%s)%s. Loop back to %s?" % (why, self.finding_counts([f for f in r.findings() if f["state"] == "open"]),
-                                                                         LABEL.get(back or "build", "Build"))
+            # WP24: with Repair again first, the skip stays in the question and keeping a finding goes under More options
+            first.insert(len(first) - (1 if opens and rep is not None else 0), override_opt(go))
+            text = "Review: the check failed (%s)%s. %s?" % (why, self.finding_counts([f for f in r.findings() if f["state"] == "open"]),
+                                                            "Repair it in the stage" if rep else "Loop back to %s" % LABEL.get(back or "build", "Build"))
             q = self.with_more(GATE_HEADER, text, stage, first[:3], first[3:] + [arch, self.save()], "Review: more options.", qid="review.fail")
             if accept:
                 q["accept"] = accept
@@ -573,14 +586,18 @@ class AskPart:
             if acc:
                 first = acc[0]
                 rec = first.get("recommended") is True
-                opts = [first] + back_opt(rec=False) if rec else back_opt(rec=True) + [first]
+                opts = [first] + back_opt(rec=False) if rec else back_opt(rec=rep is None) + [first]
+                if rep is not None:
+                    opts.insert(0 if rep and not rec else 1, self.repair_opt(stage, rep and not rec))
                 lead = next((o for o in opts if o.get("recommended")), first)
                 t = self.acc_triage()
                 said = (" The triage says the %s looks wrong: %s." % (t["verdict"], t.get("reason", ""))) if t.get("verdict") in ("code", "test") else ""
                 return self.question(GATE_HEADER, "Check: the check failed (%s).%s %s?" % (why, said, self.bare(lead)), stage=stage,
                                      options=opts + [override_opt(go), anyway, self.save()], qid="check.fail")
-            return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, "Run Check again" if gap else "Loop back to %s" % LABEL[back or "build"]), stage=stage,
-                                 options=again + back_opt(rec=not gap) + [override_opt(go), anyway, self.save()], qid="check.fail")
+            fix = [self.repair_opt(stage, rep)] if rep is not None and not gap else []
+            return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, "Run Check again" if gap else "Repair it in the stage" if fix and rep
+                                 else "Loop back to %s" % LABEL[back or "build"]), stage=stage,
+                                 options=fix + again + back_opt(rec=not gap and not (fix and rep)) + [override_opt(go), anyway, self.save()], qid="check.fail")
 
         return None
 

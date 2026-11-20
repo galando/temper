@@ -138,6 +138,8 @@ def state_next(argv):
         # a small change belongs to the stage it was made at: a window open there, or the steps it still owed, end with it
         d.pop('adhoc', None)
         d.pop('adhoc_done', None)
+        d.pop('repair', None)   # WP24: a repair belongs to the stage it opened at, and so does what it asks
+        d.pop('repair_stop', None)
         try:
             d['step'] = int(d.get('step') or 0) + 1
         except (TypeError, ValueError):
@@ -236,6 +238,8 @@ def state_redo(argv):
     # the stage runs again from the start: a small change made at it, and the steps it still owed, end here
     d.pop('adhoc', None)
     d.pop('adhoc_done', None)
+    d.pop('repair', None)
+    d.pop('repair_stop', None)
     if stage == 'commit':
         d.pop('end_report', None)   # the commit gate runs again, and the report is shown again after it
     tmp = '%s.tmp.%d' % (p, os.getpid())

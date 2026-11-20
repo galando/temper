@@ -40,11 +40,20 @@ export type RunFacts = {
   prefix?: string
   // The stage a small change window was opened at (`temper adhoc open`), or null/absent when none is open.
   adhocStage?: string | null
+  // WP24: the kind of that window: `repair` (a repair in the stage, `temper repair start`) holds Build's write rule; none
+  // (or any other) is a small change.
+  adhocKind?: string | null
 }
 
 // A small change window is open at the stage the run is at, and that stage is one a window may be opened at
 // (ADHOC_STAGES). The one rule: the stage write rule here and the main session's rule (core/session.ts) both ask it.
-export const adhocOpen = (r: RunFacts): boolean => r.adhocStage != null && r.adhocStage === r.stage && ADHOC_STAGES.includes(r.stage)
+export const adhocOpen = (r: RunFacts): boolean =>
+  r.adhocStage != null && r.adhocStage === r.stage && ADHOC_STAGES.includes(r.stage) && r.adhocKind !== 'repair'
+
+// WP24: a repair window is open at the stage the run is at (Review or Check): its fixer writes as a Build agent does, a
+// planned file or a test; any other path is scope drift.
+export const repairOpen = (r: RunFacts): boolean => r.adhocStage != null && r.adhocStage === r.stage && r.adhocKind === 'repair'
+
 
 // The trivial window (WP17): the CLI recorded the trivial verdict at Intent, before any step (view.json's
 // trivial_exit). The Intent agent may then make the one change outside the spec folder; the commit hook holds it to
@@ -244,6 +253,22 @@ function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): 
   return { ...res, deny: text }
 }
 
+// Build's write rule: the spec folder, a test, a planned file, or a file the person added to the plan or allowed once.
+function buildWrite(ctx: RuleContext & { run: RunFacts }, path: string, inSpec: boolean): RuleResult {
+  if (inSpec || isTestFile(path) || matchesPlan(path, ctx.run.planFiles) || ctx.drift.added.some(p => normalizePath(p) === path)) return ALLOW
+  const once = ctx.drift.allowOnce.find(a => normalizePath(a.path) === path)
+  if (once) return { allow: true, use: once.id }
+  return {
+    deny:
+      `Temper: scope drift. ${path} is not in the plan, so the user decides first: add to plan, revert, or allow once. ` +
+      `Do not write it another way. Next: stop this task, record the file with ${ctx.cli ?? CLI} drift ask --path ${path} ` +
+      "--why '<why it is needed>' --change '<what you would change>' (WP16: in place of a DRIFT section of your panel), and " +
+      `return. The CLI asks the user: header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", ` +
+      'then a "Why:" line and a "Change:" line, and the options Add to plan, Revert, Allow once.',
+    drift: path,
+  }
+}
+
 function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: string): RuleResult {
   const r = ctx.run
   // A write in a group or task worktree of this run is judged by its worktree-relative path, with the same rule.
@@ -265,6 +290,8 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
   const label = stageLabel(r.stage)
   // A small change window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only there.
   if (adhocOpen(r)) return ALLOW
+  // WP24: a repair window holds Build's write rule at Review or Check
+  if (repairOpen(r)) return buildWrite(ctx, path, inSpec)
 
   switch (r.stage) {
     case 'intent':
@@ -305,20 +332,8 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
           `Temper: ${label} stage. Writing ${path} is not allowed. Check only runs checks. ` +
           `Next: finish the check stage. To change code, ${ASK} whether to loop back to Build.`,
       }
-    case 'build': {
-      if (inSpec || isTestFile(path) || matchesPlan(path, r.planFiles) || ctx.drift.added.some(p => normalizePath(p) === path)) return ALLOW
-      const once = ctx.drift.allowOnce.find(a => normalizePath(a.path) === path)
-      if (once) return { allow: true, use: once.id }
-      return {
-        deny:
-          `Temper: scope drift. ${path} is not in the plan, so the user decides first: add to plan, revert, or allow once. ` +
-          `Do not write it another way. Next: stop this task, record the file with ${ctx.cli ?? CLI} drift ask --path ${path} ` +
-          "--why '<why it is needed>' --change '<what you would change>' (WP16: in place of a DRIFT section of your panel), and " +
-          `return. The CLI asks the user: header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", ` +
-          'then a "Why:" line and a "Change:" line, and the options Add to plan, Revert, Allow once.',
-        drift: path,
-      }
-    }
+    case 'build':
+      return buildWrite(ctx, path, inSpec)
     case 'pipeline':
       // Pipeline reads the pull request's checks and proposes a fix; the push is the person's. The fix is applied in a small
       // change window the Pipeline question's steps open.
@@ -387,7 +402,7 @@ const TOO_MANY_DENY =
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
-  'budget', 'grant', 'baseline', 'accept-red', 'skip', ...STAGES]
+  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', ...STAGES]
 
 const RESOLVE_DENY =
   'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
@@ -529,6 +544,10 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   // baseline's own calls (start, clean, plan) are the CLI's. WP21: a skip of a command the plan wrote, with a reason,
   // is the person's at plan.command.
   if (a === 'baseline') return b === 'accept-red' || b === 'skip'
+  // 9.8.5 (WP24): the repair in the stage is the CLI's own action (`repair start`) or the person's Repair again
+  // (`--again`); its commit, mark, close and revert pass only as calls of the action the view names. Its test runs and
+  // its status decide nothing.
+  if (a === 'repair') return b !== 'test' && b !== 'status'
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true

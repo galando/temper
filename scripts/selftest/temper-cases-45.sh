@@ -113,6 +113,9 @@ d = {"version": 1, "slug": "demo", "cli_commits": [],
      "integration": {"verdict": "PASS", "reason": "", "group": None, "files": [], "ts": "x", "head": sys.argv[1], "merged": True}}
 json.dump(d, open(".temper/groups.json", "w"))
 PY
+  # the tests Build ran first failing, then passing (a built run's ledger: Build's gate runs again on it after a repair)
+  "$TEMPER" evidence run --stage build --claim 'the demo test' --phase red -- false >/dev/null 2>&1
+  "$TEMPER" evidence run --stage build --claim 'the demo test' --phase green -- true >/dev/null 2>&1
   gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
   "$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity "$1" --label PROVEN >/dev/null 2>&1
   _done45 src/demo.sh src/demo_test.sh
