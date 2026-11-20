@@ -557,3 +557,33 @@ The brief is `docs/plans/one-go/README.md`; the names both packages use are thos
     parts 1, 4, 5, 6 and 8 of a few lines each. A table row may be longer than 120 characters; no other line.
 - **Size:** L. The review and its fixes are the open end; the bench with its model test adds about 9 to 11 hours of
   machine time when it runs. The live smoke is about ten minutes, and the summary about an hour.
+
+### WP32, added by the owner on 2026-11-19: two plan quality figures on the scorecard
+
+This part was added after the plan was approved, on the owner's word. It is part of WP32, and its code is in
+place before round (b) of step 7 starts, because a run that was graded is not run again.
+
+- **Why:** rule (d) of step 7 decides the planner's model on hidden tests, rules met, blocked tasks and steps
+  back to Plan. Those show a weak plan only when it fails hard. Two figures show it sooner: how often the
+  approved plan had to be changed, and how much the first Review found.
+- **Touches (added to the list above):** `bench/scorecard.py`, the scorecard's own test on made up runs (WP05),
+  `bench/README.md`, and the harness (`bench/run.mjs`) only if a run's folder does not yet keep the two records
+  named below.
+- **Tests first,** in the scorecard's own test: two made up runs, one with two entries in its amendments record
+  and three High findings in its first Review, one with neither record. The first gives `amendments` 2 and
+  `first_review_high` 3; the second gives `null` for both, never 0, so a round on a CLI that writes no such
+  record (round (a), on `10e965a`) is shown as not measured.
+- **Mechanism:**
+  1. `amendments`: the entries of the run's `amendments.json` (WP25), the ones made by rule and the ones the
+     person made counted together and also apart.
+  2. `first_review_high`: the findings of level High or critical that the first Review launch of the run
+     recorded, read from the run's ledger.
+  3. Both go into `one()` and, as a spread, into `cell()` of `bench/scorecard.py`, beside `steps_back` and
+     `blocked`.
+  4. Rule (d) gains one condition, fixed before round (c) like the others: the means of `amendments` and of
+     `first_review_high` in round (c) are not above those of round (b). Else Opus stays.
+  5. The pull request text shows both figures for rounds (b) and (c).
+- **Traps:**
+  - Round (a) has neither record. Compare (c) with (b) only.
+  - Three runs a cell is few. A difference of one finding in one run moves a mean; the text says the number of
+    runs beside each figure.

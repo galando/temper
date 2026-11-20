@@ -138,7 +138,8 @@ def fixed_by(name, state_path, groups_path):
     """9.8.5 (WP18): the full id of the commit `evidence resolve --fixed-by NAME` may name, or (None, why). All four
     hold: NAME is a commit; it is on this branch (an ancestor of HEAD); Review did not read it (it is no ancestor of the
     reviewed HEAD, the head of review_snapshot, written as the run enters Review); the CLI recorded it as its own
-    (cli_commits of groups.json). No note and no commit made by hand resolves a finding."""
+    (cli_commits of groups.json). WP24, the fifth: it is a repair commit of the run state, and a recheck row was written
+    after it (scripts/repair_ops.py). No note and no commit made by hand resolves a finding."""
     rc, sha = git("rev-parse", "--verify", "--quiet", "%s^{commit}" % name) if not name.startswith("-") else (1, "")
     sha = sha.strip()
     if rc or not sha:
@@ -146,7 +147,11 @@ def fixed_by(name, state_path, groups_path):
     head = git("rev-parse", "HEAD")[1].strip()
     if git("merge-base", "--is-ancestor", sha, "HEAD")[0]:
         return None, "commit %s is not on this branch: it is no ancestor of HEAD %s" % (sha[:7], head[:7])
-    seen = (load(state_path).get("review_snapshot") or {}).get("head") or ""
+    st = load(state_path)
+    seen = (st.get("review_snapshot") or {}).get("head") or ""
+    # WP24: the CLI takes the snapshot again after its repair commit; Review read the repair's base
+    seen = next((x.get("base") for x in (st.get("repairs") or []) + [st.get("repair") or {}]
+                 if isinstance(x, dict) and x.get("commit") == sha and x.get("base")), seen)
     if not seen:
         return None, "the run has no Review snapshot, so commit %s (HEAD %s) cannot follow the reviewed HEAD" % (
             sha[:7], head[:7])
@@ -154,7 +159,9 @@ def fixed_by(name, state_path, groups_path):
         return None, "commit %s is the reviewed HEAD %s or an ancestor of it: Review read it already" % (sha[:7], seen[:7])
     if sha not in (load(groups_path).get("cli_commits") or []):
         return None, "commit %s is not one the CLI recorded (cli_commits); the reviewed HEAD is %s" % (sha[:7], seen[:7])
-    return sha, None
+    import repair_ops   # WP24: the fifth condition, a repair of the CLI's with a recheck row written after it
+    why = repair_ops.recheck_after(load(state_path), sha)
+    return (None, why) if why else (sha, None)
 
 
 def since_base(base):
@@ -209,11 +216,19 @@ def names(files, n=5):
 
 def read_check(ledger, state):
     """The row review completed: the latest completion row has exit 0 and its read list holds every file Review must
-    read. A row with no read list (written before 9.8.5) names no file."""
+    read. A row with no read list (written before 9.8.5) names no file. WP24: a recheck's completion row (written after a
+    repair's launch mark) names only the files the repair changed, so the files of the completion rows before it count
+    too."""
     row = completion(ledger)
     if not row or row.get("exit_code") != 0:
         return 0, "no review completion evidence: an empty findings ledger is not a review"
     files = review_files(state)
+    marks = [str((x.get("mark") or {}).get("ts") or "") for x in (state.get("repairs") or []) + [state.get("repair") or {}]
+             if isinstance(x, dict) and isinstance(x.get("mark"), dict)]
+    if marks and (row.get("cmd") == "recheck" or str(row.get("ts") or "") >= min(marks)):
+        rows = [e for e in load(ledger, list) if isinstance(e, dict) and re.search("review completed", e.get("claim") or "", re.I)
+                and e.get("exit_code") == 0]
+        row = dict(row, read=[f for e in rows for f in e.get("read") or []])
     left = unread(row, files)
     if left:
         return 0, "read %d of %d changed files; not read: %s" % (len(files) - len(left), len(files), names(left))

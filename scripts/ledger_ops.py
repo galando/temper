@@ -111,8 +111,16 @@ def evidence_entry(argv):
         e['confidence'] = float(confidence)
     if kind:
         e['kind'] = kind
-    if argv[15:]:   # 9.8.5 (WP18): Review's completion row names the files read, from the project folder
-        e['read'] = list(dict.fromkeys(os.path.normpath(os.path.relpath(r) if os.path.isabs(r) else r) for r in argv[15:] if r.strip()))
+    reads = [r for r in argv[15:] if not r.startswith('\x1f')]
+    if reads:   # 9.8.5 (WP18): Review's completion row names the files read, from the project folder
+        e['read'] = list(dict.fromkeys(os.path.normpath(os.path.relpath(r) if os.path.isabs(r) else r) for r in reads if r.strip()))
+    # WP24: a finding of Review carries its whole text: --detail, --fix and --proof test|none (the reviewer's, never the fixer's)
+    more = dict(r[1:].split('=', 1) for r in argv[15:] if r.startswith('\x1f') and '=' in r)
+    if more and not (severity and e['claim'] != 'review completed'):
+        sys.exit("FAIL: --detail, --fix and --proof go with a finding of Review (--stage review --severity S)")
+    if more.get('proof', 'none') not in ('test', 'none'):
+        sys.exit("FAIL: --proof takes test (a behaviour defect: a test first) or none")
+    e.update({k: v for k, v in more.items() if v != ''})
     print(json.dumps(e))
 
 
@@ -166,10 +174,35 @@ def write_verdict(argv):
     d[stage] = {'verdict': verdict, 'requirements': json.loads(reqs), 'ts': ts}
     if len(argv) > 6:   # WP22: the digest of the project folder the verdict judged (run_env.tree_key), or null
         d[stage]['tree'] = argv[6] or None
+    if stage == 'review':   # WP24: the tree the full Review read, and the closed repairs between it and this tree
+        try:
+            st = json.load(open(os.path.join(os.path.dirname(f), 'build-state.json')))
+            reps = [x for x in st.get('repairs') or [] if isinstance(x, dict) and x.get('step') == st.get('step')
+                    and x.get('outcome') in ('resolved', 'closed')]
+            if reps:
+                d[stage].update(reviewed=reps[0].get('base_tree'), repairs=[x.get('n') for x in reps])
+        except (OSError, ValueError, AttributeError):
+            pass
+    if stage == 'check':   # rule 5: Check judged the tree its latest CLI run ran on, not the tree at the gate's moment
+        try:
+            ran = [x.get('tree') for x in json.load(open(os.path.join(os.path.dirname(f), 'evidence', 'check.json')))
+                   if isinstance(x, dict) and x.get('executed_by') == 'cli' and x.get('tree')]
+        except (OSError, ValueError, TypeError):
+            ran = []
+        d[stage]['tree'] = ran[-1] if ran else d[stage].get('tree')
     tmp = '%s.tmp.%d' % (f, os.getpid())
     with open(tmp, 'w') as fh:
         json.dump(d, fh, indent=2)
     os.replace(tmp, f)
+    if verdict:   # WP23: one failure record per failed row that no run recorded yet; a row that passes resolves its own
+        try:
+            import importlib.util   # by its full path, no folder on the import path (this module runs isolated)
+            spec = importlib.util.spec_from_file_location('failure', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'failure.py'))
+            failure = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(failure)
+            failure.of_gate(stage, d[stage]['requirements'], os.path.dirname(os.path.dirname(os.path.abspath(f))))
+        except Exception:
+            pass
 
 
 def last_value(argv):
@@ -179,26 +212,6 @@ def last_value(argv):
     vals = [e.get('value') for e in entries
             if (not keyword or re.search(keyword, e.get('claim') or '', re.I)) and e.get('value') is not None]
     print(vals[-1] if vals else '')
-
-
-def last_claim(argv):
-    import json, re, sys
-    try:
-        rows = json.load(open(argv[1]))
-    except Exception:
-        rows = []
-    hits = [str(r.get('claim')) for r in rows if isinstance(r, dict) and re.search(argv[2], str(r.get('claim') or ''))]
-    print(hits[-1] if hits else '')
-
-
-def last_row(argv):
-    import json, re, sys
-    try:
-        rows = json.load(open(argv[1]))
-    except Exception:
-        rows = []
-    hits = [r for r in rows if isinstance(r, dict) and re.search(argv[2], str(r.get('claim') or ''))]
-    print('%s|%s' % (hits[-1].get('exit_code'), ' '.join(str(hits[-1].get('output') or '').split())[:300]) if hits else '')
 
 
 def scenarios_covered(argv):
@@ -237,8 +250,6 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('confirm_row', confirm_row),
     ('write_verdict', write_verdict),
     ('last_value', last_value),
-    ('last_claim', last_claim),
-    ('last_row', last_row),
     ('scenarios_covered', scenarios_covered),
     ('latest_claim_exit', latest_claim_exit),
     ('print_rows', print_rows),

@@ -287,6 +287,17 @@ assert_eq "w20 red base question: a second red result asks again, without the ad
   "$(PATH="$WORKDIR/.git/bin61:$PATH" _x61 "r = '%s|%s' % ((d.get('ask') or {}).get('id'), 'add-setup' if opt(d, 'add-setup') else 'no add-setup')")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true; _clean61
 
+# U13: the block add-setup proposes for a project's ignored .venv activates it in the baseline's worktree too, where
+# the ignored folder is absent
+fresh; _clean61; _scripts61; printf 'test "$VENV61" = 1 || { echo "FAIL: test_venv the venv is not active"; exit 1; }\n' > venv61.sh
+_cmd61 "bash venv61.sh"; _repo61; mkdir -p .venv/bin; printf 'export VENV61=1\n' > .venv/bin/activate
+printf '/.venv/\n' >> .git/info/exclude; rm -f .temper/evidence/baseline.json; _start61
+_v61="first=$(_b61 "'%s:%s' % (d.get('result'), d.get('kind'))")|offer=$(_x61 "r = 'add-setup' if opt(d, 'add-setup') else 'no add-setup'")"
+_run61 add-setup
+assert_eq "w20 red base question: the block add-setup writes for a project's ignored .venv activates it in the baseline's worktree too (U13)" \
+  "first=red:red-base|offer=add-setup|then=green" "$_v61|then=$(_b61 "'%s:%s' % (d.get('result'), str(d.get('tail'))[-160:]) if d.get('result') != 'green' else 'green'")"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true; rm -rf .venv venv61.sh
+
 # --- w20 go on is a recorded skip: the base's fail lines are skipped in tests pass, a new fail line fails it ---
 _suite61 "bash fail61.sh"; _start61
 "$TEMPER" baseline accept-red --reason 'the base was red before this run' >/dev/null 2>&1 || true
@@ -300,6 +311,31 @@ _g61+="|new=$(_row61 check "tests pass")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
 assert_eq "w20 go on is a recorded skip: accept-red adds a base-suite row by the person; the base's fail lines alone are skipped, one new fail line fails tests pass" \
   "override=the person:1|old=None:skipped|new=False" "$_g61"
+
+# a base of more than eight fail lines keeps them all, and so does each run compared with it: its own failures are
+# skipped at Check and match the base at a group's Validate; one new line fails both
+_ten61() { # _ten61 [extra test name]: fail61.sh prints ten FAIL lines (and the extra one) and exits 1
+  python3 -B -c 'import sys; sys.stdout.write("".join("echo \"FAIL: test_%s\"\n" % n for n in sys.argv[1:]) + "exit 1\n")' \
+    alpha beta gamma delta eps zeta eta theta iota kappa ${1:-} > fail61.sh
+}
+_grp61() { # _grp61: the group's Validate (bash fail61.sh) as the gate runs it; prints whether its fail lines match the base
+  local l
+  python3 -B "$REPO_ROOT/scripts/task_ops.py" grouprun "$PWD" 60 "$PWD/.git/row61.json" G1 -- bash fail61.sh >/dev/null 2>&1
+  l="$(python3 -B "$REPO_ROOT/scripts/task_ops.py" faillines "$PWD/.git/row61.json")"
+  python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" "" "" like-base "bash fail61.sh" "$l" >/dev/null 2>&1 && echo match || echo 'no match'
+}
+_suite61 "bash fail61.sh"; _ten61; git add -A >/dev/null 2>&1; git commit -q -m ten; _start61
+"$TEMPER" baseline accept-red --reason 'the base was red before this run' >/dev/null 2>&1 || true
+_t61="base=$(_b61 "len(d.get('fail_lines') or [])")"
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+_t61+="|old=$(_row61 check "tests pass")|group=$(_grp61)"
+_ten61 test_new_bug
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+_t61+="|new=$(_row61 check "tests pass")|group=$(_grp61)"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true; rm -f .git/row61.json
+assert_eq "w20 go on is a recorded skip: a base of ten fail lines keeps all ten; the same ten are skipped at Check and match the base at a group's Validate, an eleventh fails both" \
+  "base=10|old=None:skipped|group=match|new=False|group=no match" "$_t61"
 
 # --- w20 the answer is kept: the same base, setup block and tools ask nothing; a changed setup block asks again ---
 fresh; _clean61; _scripts61; _cmd61 "bash fail61.sh"; _repo61 ignore-config; rm -f .temper/evidence/baseline.json
@@ -317,6 +353,49 @@ printf 'setup:\n  env:\n    X61: "1"\n' >> .claude/temper.config
 _new61
 assert_eq "w20 the answer is kept: a changed setup block asks again" "base.red" "$(_x61 "r = (d.get('ask') or {}).get('id')")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
+
+# an answer given at a red suite is kept for that red suite only: an environment fault of a later run on the same key is
+# asked, and going on from it (no suite ran on the base) skips no later failure of the suite
+fresh; _clean61; _scripts61; _cmd61 "tool61 && bash fail61.sh"; _repo61; rm -f .temper/evidence/baseline.json
+mkdir -p .git/bin61; printf '#!/bin/sh\nexit 0\n' > .git/bin61/tool61; chmod +x .git/bin61/tool61
+PATH="$WORKDIR/.git/bin61:$PATH" _start61
+_e61="first=$(_b61 "'%s:%s' % (d.get('result'), d.get('kind'))")"
+"$TEMPER" baseline accept-red --reason 'the base was red before this run' >/dev/null 2>&1 || true
+_new61; _e61+="|then=$(_b61 "'%s:%s:%s' % (d.get('result'), d.get('kind'), d.get('answer'))"):$(_x61 "r = (d.get('ask') or {}).get('id')")"
+assert_eq "w20 the answer is kept: an answer given at a red suite is not kept for an environment fault of a later run on the same key, which asks again" \
+  "first=red:red-base|then=red:program-missing:None:base.red" "$_e61"
+"$TEMPER" baseline accept-red --reason 'the tool comes later' >/dev/null 2>&1 || true
+printf '[{"claim": "full test suite", "cmd": "tool61 && bash fail61.sh", "exit_code": 1, "executed_by": "cli", "output": "FAIL: test_new_bug"}]\n' > .git/ledger61.json
+assert_eq "w20 go on is a recorded skip: going on from a fault of the environment check, where no suite ran on the base, skips no failure of the suite" \
+  "row=none" "row=$(_r61="$(python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" .claude/temper.config "" skip-row "$PWD/.git/ledger61.json" 2>&1 | head -c 200)"; echo "${_r61:-none}")"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true; rm -f .git/ledger61.json; rm -rf .git/bin61
+# every fail line of the ledger counts, the ninth too; a base where no test ran (exit 127 or 125) skips no failure
+_sk61() { # _sk61 <kind> <exit> <the base's fail lines, | between> <the suite's output now, | between>: the state of the
+          # skip row of a base the person went on from, or none
+  python3 -B - "$@" <<'PY'
+import json, sys
+kind, rc, base, now = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+json.dump({"result": "red", "kind": kind, "exit_code": rc, "answer": "go-on-anyway", "cmd": "bash fail61.sh",
+           "run": "bash fail61.sh", "fail_lines": [x for x in base.split("|") if x], "answered": {"reason": "known"}},
+          open(".temper/evidence/baseline.json", "w"))
+json.dump([{"stage": "base-suite", "reason": "the base was red before this run", "by": "the person"}],
+          open(".temper/overrides.json", "w"))
+json.dump([{"claim": "full test suite", "cmd": "bash fail61.sh", "exit_code": 1, "executed_by": "cli",
+            "output": "\n".join(now.split("|"))}], open(".temper/evidence/ledger61.json", "w"))
+PY
+  local r; r="$(python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" .claude/temper.config "" skip-row "$PWD/.temper/evidence/ledger61.json" 2>/dev/null)"
+  python3 -B -c "import json, sys; print(json.loads(sys.argv[1]).get('state') if sys.argv[1].strip() else 'none')" "$r"
+}
+fresh; mkdir -p .temper/evidence
+_eight61="FAIL: test_alpha|FAIL: test_beta|FAIL: test_gamma|FAIL: test_delta|FAIL: test_eps|FAIL: test_zeta|FAIL: test_eta|FAIL: test_theta"
+_c61="eight=$(_sk61 red-base 1 "$_eight61" "$_eight61")"
+_c61+="|a ninth=$(_sk61 red-base 1 "$_eight61" "$_eight61|FAILED test_b.py::test_new_bug")"
+_c61+="|exit 127=$(_sk61 program-missing 127 "" "FAILED test_b.py::test_new_bug")"
+_c61+="|exit 125=$(_sk61 setup-line 125 "" "FAILED test_b.py::test_new_bug")"
+_c61+="|exit 1, no line=$(_sk61 red-base 1 "" "FAILED test_b.py::test_new_bug")"
+assert_eq "w20 go on is a recorded skip: a new fail line after the eighth fails tests pass; a base whose suite could not start (exit 127, exit 125) skips no failure of the suite, a red base with no line that names a test skips them all" \
+  "eight=skipped|a ninth=none|exit 127=none|exit 125=none|exit 1, no line=skipped" "$_c61"
+rm -f .temper/evidence/ledger61.json .temper/overrides.json
 
 # --- w20 limits: three times the measured seconds, never below the default; a time out doubles once, then asks ---
 fresh; _clean61; mkdir -p .temper/evidence
@@ -366,6 +445,27 @@ done < <(_x61 "r = '\n'.join(d.get('calls') or []) if d.get('action') == 'auto' 
 _t61+="|again=$(_gv61)|then=$(_x61 "r = '%s:%s' % (d.get('action'), (d.get('ask') or {}).get('id'))")"
 assert_eq "w20 limits: the group gate's limit follows the base; after one time out the CLI's own call runs it with twice the limit, and after a second the run asks" \
   "measured=PASS|none=FAIL|1|then=auto:group gate G1 --timeout-s 2|again=FAIL|2|then=ask:group.fail" "$_t61"
+_lim_kept61() { _b61 "(d.get('limits') or {}).get('bash slow61.sh')"; }   # the limit kept for the slow script
+fresh; _clean61; _scripts61; _cmd61 "bash slow61.sh"; _repo61; gpass intent plan build review; _at check
+TEMPER_CHECK_TIMEOUT_S=1 "$TEMPER" check run >/dev/null 2>&1
+_o61="check=$(_lim_kept61)"
+TEMPER_CHECK_TIMEOUT_S=1 "$TEMPER" check run >/dev/null 2>&1
+_o61+="|runs=$(wc -l < .git/count61 | tr -d ' ')"
+_known61; python3 -B "$REPO_ROOT/scripts/task_ops.py" testrun . 1 "$WORKDIR/.git/row61" 1 G1 1 green -- bash slow61.sh \
+  >/dev/null 2>&1 </dev/null
+_o61+="|task=$(_lim_kept61)"
+assert_eq "w20 limits: a time out of Check's suite or of a task test keeps twice its limit, and the next Check runs it again" \
+  "check=2|runs=2|task=2" "$_o61"
+fresh; _clean61; _scripts61; _cmd61 "true"; _repo61; gpass intent plan build review; _at check
+mkdir -p .temper/specs/demo/acceptance; printf 'sleep 2\necho ok\n' > .temper/specs/demo/acceptance/test_acc61.sh
+"$TEMPER" acceptance lock --cmd "bash .temper/specs/demo/acceptance/test_acc61.sh" >/dev/null 2>&1
+printf '{"result": "unknown", "limits": {"bash .temper/specs/demo/acceptance/test_acc61.sh": 30}}\n' > .temper/evidence/baseline.json
+TEMPER_CHECK_TIMEOUT_S=1 "$TEMPER" check run >/dev/null 2>&1
+assert_eq "w20 limits: Check's run of the locked acceptance tests takes its limit from the baseline (limit_for)" "0" \
+  "$(python3 -B -c "
+import json
+r = [x for x in json.load(open('.temper/evidence/check.json')) if str(x.get('claim', '')).startswith('acceptance (written')]
+print(r[-1].get('exit_code') if r else 'no acceptance row')" 2>&1)"
 
 # --- w20 fix run and door: a red base of kind red-base in a fix run is recorded, a failing setup line asks; a door
 #     into Review checks the environment and runs no suite ---
@@ -395,5 +495,12 @@ while IFS= read -r _c61; do
 done < <(_x61 "r = '\n'.join(d.get('calls') or []) if d.get('action') == 'auto' else ''")
 assert_eq "w20 fix run and door: a door into Review runs the environment check and no suite on the base" \
   "auto:env-only|runs=0|file" "$_d61|runs=$(_runs61)|$([[ -f .temper/evidence/baseline.json ]] && echo file || echo 'no file')"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true
+fresh; _clean61; _scripts61; _cmd61 "bash pass61.sh"; printf 'setup:\n  services:\n    db61: 127.0.0.1:1\n' >> .claude/temper.config
+_repo61; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1
+rm -f .temper/evidence/baseline.json; _settle61
+assert_eq "w20 fix run and door: a door into Review whose environment check finds a fault asks no red base question" \
+  "red:service-down:door|runs=0|asked=no" \
+  "$(_b61 "'%s:%s:%s' % (d.get('result'), d.get('kind'), 'door' if d.get('env_only') else 'no door')")|runs=$(_runs61)|asked=$(_x61 "r = 'base.red' if (d.get('ask') or {}).get('id') == 'base.red' else 'no'")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
 _clean61; rm -f .git/count61 .git/where61; rm -rf .git/bin61

@@ -148,7 +148,9 @@ Write `check-context.json`:
 
 When test failures exist in newly written code, write a targeted fix entry per failure
 (test name, error, file:line, the `intent.md` scenario it maps to) to `check-context.json`.
-The CLI's Check question offers "Loop back to Build" while the budget lasts; once it is
+A failed row of class `code` is repaired in the stage first (ADR 0021): the CLI's failed row is the
+RED, a fresh Build agent fixes it, and the CLI commits it and runs the checks again. The CLI's Check
+question then offers "Repair again" once, and "Loop back to Build" while the budget lasts; once it is
 spent, it asks `run.budget`.
 
 ## Summary + Gate
@@ -160,8 +162,8 @@ verdict `{X}/{Y} behaviorally verified` (STRONG assertions count full, WEAK half
 quality-weighted, intentionally different from Build's binary pass/fail).
 
 The gate question and the commit are the orchestrator's: `temper next --json` gives the question
-and its options (a passed Check is the one Commit question; a failed one offers the loop back to
-Build while the budget allows, a skip with a reason, and Save for later). This stage never asks it.
+and its options (a passed Check is the one Commit question; a failed one offers Repair again and the
+loop back to Build while the budget allows, a skip with a reason, and Save for later). This stage never asks it.
 
 ## Error Interpretation
 
@@ -191,7 +193,8 @@ and exit codes, never by output text:
    counts only when the project's own config holds it; remove the line and coverage is judged against the project.
 2. No coverage command for the stack, or the coverage program could not start (exit 127): `not measured`, with the
    hint of what to set.
-3. No base value (the baseline's `coverage`, `.temper/evidence/baseline.json`): `not measured`.
+3. No base value (the baseline's `coverage`, `.temper/evidence/baseline.json`, of a run on the run's base commit):
+   `not measured`.
 4. Line data and at least 10 changed executable lines: their share that ran must reach the base total, never more
    than 80 (rule `changed lines`). Line data comes from coverage.py's JSON, Go's profile and `lcov.info` of jest,
    vitest and c8.
@@ -200,7 +203,10 @@ and exit codes, never by output text:
 
 The planted bug score is no row of the gate: `temper check ahead`, beside Review, plants one small bug at a time in
 the changed lines when three runs of the suite fit the budget, and writes `.temper/evidence/mutation.json`. The commit
-card and the Check markers show it as information; it gates nothing and moves nothing.
+card and the Check markers show it as information; it gates nothing and moves nothing. In a feature run it runs no
+check: the store is warm from `integrate`, and the suite's time and result are the store's entry of the tree as it is;
+with no entry nothing runs, and the file says why. In a fix run, which has no `integrate`, it first runs Check's
+commands through the store.
 
 ## Maven
 
@@ -210,9 +216,15 @@ each class (`scripts/maven_loop.py`). Check never runs a second full Maven pass 
 
 ## One suite run, with coverage
 
-Check runs the project's suite once. When the stack allows it, coverage is on in that same run; a second full run
-for coverage is never made. The run goes through the reuse store (9.8.5): the run `temper check ahead` made beside
-Review, or a group's check of the same text on the same content, is used with what it measured, so a tree is
-measured by one suite run. The coverage output goes under `.temper/check/` (`.temper/check/coverage.xml`,
+The suite runs once, in its coverage form, when Build ends: `temper integrate` (and, in a fix run, the Fix agent's
+`temper check build-checks`) runs the owner's command, each scenario test and the locked acceptance tests into the
+Build ledger (9.8.5, WP23). When the stack allows it, coverage is on in that same run; a second full run for coverage
+is never made. Every run goes through the reuse store: on the tree `integrate` left, Check runs no command and records
+the suite, coverage, scenario and acceptance rows as reused, with their key and tree. What Check still runs: a fix's
+regression proof, the criteria validated by `code` or `metric`, a criterion the person confirms, and every command
+again on a tree that changed after `integrate` (a repair at Review). With no suite in the config or `detect`, the plan's
+`**Integration:**` line is Check's owner too. A group's check of the same text as the owner's
+test command is the same key on the same content. On jest the coverage command is `npx jest`, not the project's `npm
+test` script: a project whose test script does more than run jest sets `check.commands.test`. The coverage output goes under `.temper/check/` (`.temper/check/coverage.xml`,
 `.temper/check/htmlcov/`), which the blast radius skips along with `.coverage`, `htmlcov/`, `.pytest_cache/` and
 the other test caches. Task agents and the fix pass run scoped tests, never the full suite.

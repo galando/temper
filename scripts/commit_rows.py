@@ -8,6 +8,7 @@ Code moved out of scripts/temper, one word for each block:
 Each word's function takes the arguments the block read as sys.argv, the word first in the place of the
 program name. Nothing runs at import.
 """
+import re
 import sys
 
 
@@ -26,6 +27,10 @@ def override_covers(argv):
                       for o in over) else 1)
 
 
+# the test files the commit gate allows beside the plan's, and a repair may commit (WP24: a shell test, as task_ops reads it)
+TEST_RE = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\.py$|_test\.(py|go|sh)$|\.(test|spec)\.[cm]?[jt]sx?$|Tests?\.(java|kt|cs)$|_spec\.rb$')
+
+
 def blast_radius(argv):
     import json, os, re, sys
     plan = json.loads(argv[1]); spec = argv[2].rstrip('/')
@@ -39,7 +44,7 @@ def blast_radius(argv):
         m = re.match(r'^drift (\S+): (Add to plan|Allow once)\b', str(r.get('claim') or ''), re.I)
         if m:
             allowed.add(m.group(1))
-    test = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\.py$|_test\.(py|go)$|\.(test|spec)\.[cm]?[jt]sx?$|Tests?\.(java|kt|cs)$|_spec\.rb$')
+    test = TEST_RE
     def ok(p):
         if spec and (p == spec or p.startswith(spec + '/')): return True
         if p.startswith('.temper/') or p.startswith('.claude/worktrees/'): return True   # run state the CLI owns

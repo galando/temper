@@ -76,10 +76,14 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   command, the setup block, the folder, the first version line of each program it starts). A reused pass proves what
   one run proved: one run per tree is the guarantee one CI run gives, weaker than the repeated runs of 9.8.4, so a test
   that fails one time in ten can pass once and be kept. What the key cannot see is not in it: ignored folders such as
-  `node_modules` or `target/`, a service's state, the clock, a file outside the repository. A pass in a group worktree
+  `node_modules` or `target/`, environment variables outside the setup block, a service's state, the clock, a file
+  outside the repository. A pass in a group worktree
   is reused for the project folder with the same content, so a test that depends on its absolute path is not run again
   where the code will live. A failure kept on the same tree is not run again until the code, the command or the
-  environment changes; "Run it anyway" (`--fresh`) runs it whatever the store holds, and counts as one repeat.
+  setup block changes; "Run it anyway" (`--fresh`) runs it whatever the store holds, and counts as one repeat. It is
+  your option only: a run that goes on by itself never takes it (the CLI refuses it there), and only the mod ties it
+  to your click. With the mod off the budget alone holds it: nothing checks who ran `--fresh`, and each call spends
+  one repeat.
 - **Its own commits.** In a grouped Build the CLI commits each task's declared files in its worktree and merges
   them, as plain `git commit` and `git merge` calls that use git's own identity and settings (signing too, when
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none
@@ -105,10 +109,15 @@ in a variable, a string another program runs, a script on disk or a commit the h
 (`git merge`, `cherry-pick`, git plumbing) gets through. [The mod](mod.md#what-the-guard-checks-and-what-it-does-not)
 lists these limits, and the mod's tests hold each one, so the docs cannot claim more than the code does.
 
-**What resolves a finding, and what the completion row proves (9.8.5).** A finding is resolved only by
-`temper evidence resolve` for a commit the CLI recorded as its own after the reviewed HEAD, on the run's branch; a note
-or a commit made by hand resolves nothing. Otherwise a finding ends by your accept, or by a loop back and a second
-Review. Review's completion row names the files the reviewer says it read, and the CLI compares those names with the
+**What resolves a finding, and what the completion row proves (9.8.5).** A finding is resolved only by the CLI, in
+`temper repair close` (WP24, ADR 0021), for the repair commit it made after the reviewed HEAD on the run's branch: the
+checks ran again on that tree and passed, a reader that did not write the fix wrote `recheck #<id>: fixed` after the
+commit and after the recheck's launch mark, and a finding marked `proof: test` had a RED before the fix and a GREEN after
+it, both run by the CLI on unchanged test files. A note or a commit made by hand resolves nothing. Otherwise a finding
+ends by your accept, or by a loop back and a second Review. The CLI cannot tell the fixer and the reader apart: the
+order of the rows stands in for it. The recheck reads the diff, not the code around it, so a defect outside the changed
+lines is caught only by the CLI's own runs: a project with a thin suite gets less than a second full Review gave, and a
+diff over 300 lines, or one that touches a file no finding names, gets a full Review again. Review's completion row names the files the reviewer says it read, and the CLI compares those names with the
 changed files. No more: the CLI cannot see the reading. The row turns skipping a file from silence into a false
 statement in the ledger.
 

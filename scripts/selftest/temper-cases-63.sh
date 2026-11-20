@@ -246,6 +246,118 @@ assert_eq "w22 what ends a pass: an edit of a tracked file, a new untracked file
   "tracked=1,1,2,2|untracked=1,1,2,2|removed=1,1,2,2|command=1,1,2,2|setup=1,1,2,2|folder=1,1,2,2|version=1,1,2,2|lock=1,1,2,2" "$_e63"
 rm -rf .git/bin63; rm -f .git/ver63 .git/acc63; _clean63
 
+# --- w22 a racily clean edit: a tracked file edited to the same size in the second its index entry was written ---
+# git reads such an entry again when the index is no older than the entry (racy git); the digest's copy of the index
+# keeps that time. The times are set back so the second is the same on every runner (ctime, which touch cannot set, is
+# left out with core.trustctime false); then a loop of real edits in the same second as the commit.
+fresh; _clean63; _scripts63; _files63; _repo63
+git config core.trustctime false
+_t63=$(( $(date +%s) - 100 ))
+touch -d "@$_t63" src/a63.sh; git add src/a63.sh; touch -d "@$_t63" .git/index
+_r63="first=$(_rc63 "bash pass63.sh")"
+echo 'echo b' > src/a63.sh; touch -d "@$_t63" src/a63.sh
+_r63+="|edited=$(_rc63 "bash pass63.sh")|git=$(git diff --name-only -- src/a63.sh)"
+_r63+="|loop=$(python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import os, shutil, subprocess, sys, tempfile
+sys.path.insert(0, sys.argv[1])
+import run_env
+miss, n = 0, 60
+for _ in range(n):
+    d = tempfile.mkdtemp(prefix="temper-race63-")
+    try:
+        os.makedirs(os.path.join(d, "src"))
+        open(os.path.join(d, "src", "a.sh"), "w").write("echo a\n")
+        for a in (["init", "-q"], ["config", "user.email", "t@example.com"], ["config", "user.name", "T"], ["add", "-A"],
+                  ["commit", "-q", "-m", "base"]):
+            subprocess.run(["git", "-C", d] + a, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        k1 = run_env.tree_key(d, [])
+        open(os.path.join(d, "src", "a.sh"), "w").write("echo b\n")
+        miss += k1 == run_env.tree_key(d, [])
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+print("missed %d of %d" % (miss, n))
+PY
+)"
+assert_eq "w22 a racily clean edit: a tracked file edited to the same size in the second of its index entry runs the command again, as git sees it; sixty such edits right after a commit each change the digest" \
+  "first=0:ran|edited=0:ran|git=src/a63.sh|loop=missed 0 of 60" "$_r63"
+_clean63
+
+# the digest reads the copied index's content and its time from one file: git replaces the index by a rename (here a
+# git status that rewrites it, newer, just after the digest opened the old one), and a copy with the old entries and
+# the new time would call the racily clean edit clean
+_i63="$(python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import builtins, os, shutil, subprocess, sys, tempfile
+sys.path.insert(0, sys.argv[1])
+import run_env
+d = tempfile.mkdtemp(prefix="temper-index63-")
+try:
+    git = lambda *a: subprocess.run(["git", "-C", d] + list(a), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.decode().strip()
+    f, idx = os.path.join(d, "a.sh"), os.path.join(d, ".git", "index")
+    open(f, "w").write("echo a\n")
+    for a in (["init", "-q"], ["config", "user.email", "t@example.com"], ["config", "user.name", "T"],
+              ["config", "core.trustctime", "false"], ["add", "-A"], ["commit", "-q", "-m", "base"]):
+        git(*a)
+    t = os.stat(f).st_mtime - 100
+    os.utime(f, (t, t)); git("add", "a.sh"); os.utime(idx, (t, t))
+    old = idx + ".old63"; shutil.copy2(idx, old)
+    open(f, "w").write("echo b\n"); os.utime(f, (t, t))
+    git("status", "--porcelain")   # git rewrites the index now
+    new = idx + ".new63"; shutil.copy2(idx, new); shutil.copy2(old, idx)
+    real = builtins.open
+    def opened(p, *a, **k):   # the rename lands just after the digest opened the index
+        fh = real(p, *a, **k)
+        if os.path.exists(new) and os.path.abspath(str(p)) == idx:
+            os.replace(new, idx)
+        return fh
+    builtins.open = opened
+    try:
+        key = run_env.tree_key(d, [])
+    finally:
+        builtins.open = real
+    print("seen" if key and key != git("rev-parse", "HEAD^{tree}") else "missed (the clean tree's digest)")
+finally:
+    shutil.rmtree(d, ignore_errors=True)
+PY
+)"
+assert_eq "w22 a racily clean edit: the copied index takes its content and its time from the one file it opened, so an index git renames into place meanwhile hides no edit" \
+  "seen" "$_i63"
+
+# --- w22 one run in flight per key: a key's lock file taken away between its open and its lock is opened again ---
+# the store's clean up (_drop_locks) unlinks the lock file of a key it no longer holds when no run holds its lock; a
+# call that opened that file just before must not lock the unlinked one, or a third call locks a new file beside it
+_l63="$(python3 -B - "$REPO_ROOT/scripts" "$WORKDIR/.git/locks63" <<'PY'
+import fcntl, os, sys
+sys.path.insert(0, sys.argv[1])
+import run_env
+p = os.path.join(sys.argv[2], "k.lock")
+real, n = fcntl.flock, [0]
+def flock(fd, op):
+    if n[0] == 0 and op == fcntl.LOCK_EX:   # the clean up runs between this call's open and its lock
+        n[0] += 1
+        os.unlink(p)
+    return real(fd, op)
+fcntl.flock = flock
+with run_env._Flock(p) as a:
+    fcntl.flock = real
+    try:
+        st, now = os.fstat(a.fd), os.stat(p)
+        same = (st.st_ino, st.st_dev) == (now.st_ino, now.st_dev)
+    except (OSError, TypeError):
+        same = False
+    fd = os.open(p, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        third = "a third call locks too"
+    except OSError:
+        third = "a third call waits"
+    os.close(fd)
+print("%s|%s" % ("the file at the path" if same else "an unlinked file", third))
+PY
+)"
+rm -rf .git/locks63
+assert_eq "w22 one run in flight per key: a lock file unlinked between a call's open and its lock is opened again, so the call holds the file at the path and a third call waits" \
+  "the file at the path|a third call waits" "$_l63"
+
 # --- w22 a byproduct is never a tracked file: entries edited into the list by hand are ignored ---
 fresh; _clean63; _scripts63; _files63; mkdir -p unit; echo 'echo n' > src/new63.sh; echo 'pass' > unit/test_new63.py
 _repo63
@@ -313,6 +425,38 @@ _r0=$(_runs63); FLAKY63_LINE='FAIL: src/clock63.sh:3 expected the final value' _
 _l63+="|declared=$(( $(_runs63) - _r0 )) run,$(_row63 .temper/evidence/check.json tests "'flaky' if x.get('flaky') else 'not flaky'")"
 assert_eq "w22 flaky: a command that passed on the base, fails once and then passes runs twice in one call (no agent between), and the row and the store entry say flaky; a failure that names a declared file runs once" \
   "base=green|one call=2 runs|row=flaky,0|store=flaky|declared=1 run,not flaky" "$_l63"
+# The flaky pass reaches the commit card when it is reused (a run beside Review, integrate's run) and when a gate's owed
+# scenario test made it (scenario_ops.run_owed, which records no row of its own)
+_flaky63; _check63; _check63
+_g63="reused=$(_row63 .temper/evidence/check.json tests "'%s,%s' % ('reused' if x.get('reused') else 'ran', 'flaky' if x.get('flaky') else 'not flaky')")"
+_flaky63
+_g63+="|owed=$(python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import scenario_ops
+why = scenario_ops.run_owed([("first", "bash flaky63.sh")], os.getcwd(), "60")
+try:
+    rows = json.load(open(".temper/evidence/build.json"))
+except (OSError, ValueError):
+    rows = []
+print(why or ("flaky" if any(isinstance(x, dict) and isinstance(x.get("flaky"), dict) for x in rows) else "no flaky row"))
+PY
+)"
+assert_eq "w22 flaky: a reused flaky pass keeps flaky on its row, and an owed scenario test's flaky pass is a Build row the card lists" \
+  "reused=reused,flaky|owed=flaky" "$_g63"
+# One flaky event is one line of the commit card, however many rows reuse its pass (p5fixf); a pass the CLI made cleanly
+# on the same key (Run it anyway) ends the stamp, so the reused rows after it are not flaky
+_cardflaky63() { # the flaky lines of the commit card, at the question after a passed Check
+  gpass check
+  nx "sum(1 for s in (d.get('card') or {}).get('sections') or [] if s.get('id') == 'suite' for x in s.get('rows') or [] if str(x.get('text', '')).startswith('flaky: '))"
+}
+_flaky63; _check63; _check63; _check63
+_k63="card=$(_cardflaky63)"
+_check63 --fresh; _check63
+_k63+="|after a clean pass=$(_row63 .temper/evidence/check.json tests "'%s,%s' % ('reused' if x.get('reused') else 'ran', 'flaky' if x.get('flaky') else 'not flaky')")"
+_k63+=",store $(_store63 "'flaky' if any(e.get('flaky') for e in entries) else 'not flaky'")"
+assert_eq "w22 flaky: one flaky event is one line of the commit card however many check runs reuse its pass, and a clean pass of the same key ends its stamp" \
+  "card=1|after a clean pass=reused,not flaky,store not flaky" "$_k63"
 # The base itself fails one test (a red base the person went on with, as in the scenario broken-flaky): a failure known
 # at the base counts as the base's pass. The change meets a flaky test once; the second run fails like the base.
 _suite63 "bash flaky63.sh"; rm -f .git/flaky63.done
@@ -382,6 +526,66 @@ assert_eq "w22 run it anyway: the failed Check question and the passed Check que
   "check.fail:fresh|check.pass:fresh" "$_y63"
 _clean63
 
+# --- w22 run it anyway is the person's: a run that goes on by itself never takes it; at a stop the answer runs it ---
+_suite63 "bash pass63.sh"; _check63
+_armed63() { # _armed63 <stop>: the run goes on by itself from Build (WP11), parked at <stop> when given
+  python3 -B - "${1:-}" <<'PY'
+import json, sys
+p = ".temper/build-state.json"
+d = json.load(open(p))
+d.update(run_mode="autonomous", unattended_from="build")
+d.pop("parked", None)
+if sys.argv[1]:
+    d["parked"] = sys.argv[1]
+json.dump(d, open(p, "w"), indent=2)
+PY
+}
+_armed63
+_r0=$(_runs63); _n0="$(_used63)"
+_out63="$("$TEMPER" check run --fresh 2>&1)"; _rc=$?
+_p63="armed=$_rc:$(head -1 <<<"$_out63" | cut -d: -f1):$(( $(_runs63) - _r0 )) runs:$(( $(_used63) - _n0 )) spent"
+_out63="$("$TEMPER" integrate --fresh 2>&1)"
+_p63+="|integrate=$(head -1 <<<"$_out63" | cut -d: -f1):$(( $(_used63) - _n0 )) spent"
+_armed63 check; _r0=$(_runs63)
+_check63 --fresh; _rc=$?
+_p63+="|parked=$_rc:$(( $(_runs63) - _r0 )) run:$(( $(_used63) - _n0 )) spent"
+assert_eq "w22 run it anyway is the person's: in a run that goes on by itself check run --fresh and integrate --fresh are refused, run nothing and spend nothing; at a stop the person's answer runs it" \
+  "armed=1:BLOCKED:0 runs:0 spent|integrate=BLOCKED:0 spent|parked=0:1 run:1 spent" "$_p63"
+_clean63
+
+# --- w22 the store does not grow without bound: a lock file goes with its entry, a byproduct that is gone leaves the list ---
+fresh; _clean63; _scripts63; _repo63
+_s63="$(python3 -B - "$REPO_ROOT/scripts" "$WORKDIR" <<'PY'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import run_env
+wt = sys.argv[2]
+locks = os.path.join(wt, ".git", "temper-locks")
+def lists():
+    s = json.load(open(os.path.join(wt, ".git", "temper-results.json")))
+    keys = {k for k, v in s.items() if isinstance(v, dict)}
+    files = {f[:-5] for f in os.listdir(locks) if f.endswith(".lock")}
+    return keys, files, s.get("byproducts") or []
+run_env.KEEP = 1
+run_env.run_cached(wt, 60, ["bash pass63.sh one"])
+run_env.run_cached(wt, 60, ["bash pass63.sh two"])
+keys, files, _ = lists()
+out = ["locks=%s" % ("one each entry" if files == keys else "%d for %d entries" % (len(files), len(keys)))]
+run_env.KEEP = 200
+run_env.run_cached(wt, 60, ["bash by63.sh"])
+run_env.run_cached(wt, 60, ["bash pass63.sh three"])
+out.append("present=%d" % len(lists()[2]))
+os.remove(os.path.join(wt, "__pycache__", "by63.cpython-313.pyc")); os.rmdir(os.path.join(wt, "__pycache__"))
+os.remove(os.path.join(wt, ".coverage"))
+run_env.run_cached(wt, 60, ["bash pass63.sh four"])
+out.append("gone=%d" % len(lists()[2]))
+print("|".join(out))
+PY
+)"
+assert_eq "w22 the store does not grow without bound: past the store's limit a dropped entry takes its lock file along, and a byproduct no worktree holds leaves the list" \
+  "locks=one each entry|present=2|gone=0" "$_s63"
+_clean63
+
 # --- w22 every verdict names its tree: the digest of the project folder when the verdict was computed ---
 fresh; _clean63; _scripts63; _files63; _repo63; gpass intent plan build review; _at check
 "$TEMPER" gate build >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
@@ -394,4 +598,11 @@ echo 'echo edited' > src/a63.sh; "$TEMPER" gate check >/dev/null 2>&1
 _v63+="|edited=$([[ "$(_tree63 check)" != None && "$(_tree63 check)" != "$_t63" && "$(_tree63 check)" != "$_head63" ]] && echo changed || echo "same ($(_tree63 check))")"
 assert_eq "w22 every verdict names its tree: after gate build and gate check each entry of gates.json holds the tree of the clean project, and an edit of a tracked file changes it" \
   "build=HEAD tree|check=HEAD tree|edited=changed" "$_v63"
+_suite63 "bash pass63.sh"; _check63
+_ran63="$(_row63 .temper/evidence/check.json tests "x.get('tree') or ''")"
+echo 'echo edited after check run' > src/a63.sh; "$TEMPER" gate check >/dev/null 2>&1
+_e63="verdict=$([[ -n "$_ran63" && "$(_tree63 check)" == "$_ran63" ]] && echo 'the rows tree' || echo "$(_tree63 check), rows $_ran63")"
+_e63+="|commit gate=$(python3 -B "$REPO_ROOT/scripts/run_env.py" checked .temper/gates.json "$PWD" | cut -c1-4)"
+assert_eq "w22 every verdict names its tree: an edit between check run and gate check leaves the verdict on the tree its rows ran on, and the commit gate fails" \
+  "verdict=the rows tree|commit gate=FAIL" "$_e63"
 _clean63; rm -f .git/count63

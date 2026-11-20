@@ -5,7 +5,7 @@
 //                    review with a tests lens whose medium finding reaches the builder, a group check that fails after
 //                    every task passed (fixed by one fix agent on the merged tree), temper output, a usage time filled late.
 //   pyjokes-full     a medium plan at risk H: two fresh reviewers, a high finding answered and rechecked, no Design
-//                    (WP14: it runs only when asked), a critical Review finding that loops back to the Build fix pass,
+//                    (WP14: it runs only when asked), a critical Review finding repaired in its stage (WP24),
 //                    then a /temper:fix run.
 //   pyjokes-blocked  a task whose test needs a file another task declares: `temper task blocked` parks it at once (no
 //                    retry, no escalation) and the person's question recommends the loop back to Plan.
@@ -343,8 +343,18 @@ export const pyjokesFull = (w: World): void => {
       seen.note('design-prompt', a.prompt)
       wd.write(`${SPEC}/design.md`, '# Design: unknown categories raise\n\n## Architecture\n\nOne exception class in core.py, exported by the package.\n\n## API Contracts\n\nget_jokes(category) raises CategoryNotFoundError(category).\n\n## Areas of Concern\n\nNone flagged: the change is one module and its export.\n')
     },
-    'temper:temper-review': wd => {
+    'temper:temper-review': (wd, a) => {
+      // WP24: the recheck of the repair in the stage (the brief's `Re-check:`): the finding is fixed once the code raises
+      // the clear error
+      const prompt = String(a.prompt ?? '')
       reviews++
+      if (/Re-check:/.test(prompt)) {
+        const fixed = wd.read('pyjokes/core.py').includes('if not jokes:')
+        const found = [...new Set([...prompt.matchAll(/#(\d+)/g)].map(x => x[1]!))]
+        for (const id of found) t(wd, `evidence add --stage review --claim 'recheck #${id}: ${fixed ? 'fixed' : 'not fixed'}' --exit ${fixed ? 0 : 1} --cmd recheck`)
+        t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd recheck --value ${found.length} --read pyjokes/core.py --read unit/test_empty.py`)
+        return
+      }
       if (reviews === 1) t(wd, `evidence add --stage review --severity critical --claim 'pyjokes/core.py:14 get_joke on an empty category raises IndexError from random.choice, not a clear error' --exit 1 --cmd 'review panel'`)
       reviewDone(wd)
     },
@@ -365,7 +375,8 @@ export const pyjokesFull = (w: World): void => {
   const models = seen.of('build-model')
   expect(models.length > 0 && models.every(m => /sonnet/.test(m)), `risk H builds its tasks on sonnet (${models.join('; ')})`)
   expect(seen.of('build-prompt').some(p => p.startsWith('Task 3') && p.includes('Plan review note: [tests] Task 3')), 'the medium finding reaches the builder as a note')
-  expect(qs.some(q => q.startsWith('Review: the check failed')) && seen.of('fix-prompt').some(p => p.includes('Feedback re-entry') || p.includes('What the stage before the loop left open')), 'a critical Review finding loops back to the Build fix pass, with the finding in its prompt')
+  expect(seen.of('fix-prompt').some(p => p.includes('Repair in place:') && p.includes('get_joke on an empty category')) && !qs.some(q => q.startsWith('Review: the check failed')),
+    'WP24 a critical Review finding is repaired in its stage: a fresh Build agent told Repair in place, with the finding in its prompt, and no Review question')
   expect(reviews === 2, `Review ran again after the fix pass (${reviews})`)
   expect(end.action === 'none', `the feature run ended (last action ${end.action})`)
   const files = w.run('git diff --stat main...HEAD').out

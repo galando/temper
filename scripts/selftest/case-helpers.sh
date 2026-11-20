@@ -3,7 +3,7 @@
 # The flow: scripts/flow.py, the facade, and the modules it imports (WP03). A case that reads the text of the flow reads it
 # through _flow_text, or names the files by FLOW_FILES (paths from the repository root), so a moved method is still read.
 FLOW_FILES="scripts/flow.py scripts/flow_base.py scripts/flow_run.py scripts/flow_ask.py scripts/flow_work.py
-scripts/flow_build.py scripts/flow_commit.py scripts/flow_view.py"
+scripts/flow_build.py scripts/flow_commit.py scripts/flow_view.py scripts/flow_repair.py"
 _unattended() { # _unattended <stage>: a fresh unattended run at <stage> (intent, plan, design, build, review, check or
                 # commit), each stage before it passed. WP11: the run is started at the approval, as the person's option
                 # approve-run starts it (state set run_mode autonomous at Plan, its check passed), then advanced (WP07).
@@ -326,6 +326,18 @@ if not isinstance(d, dict):
     d = {}
 d.setdefault("cli_commits", []).append(sys.argv[1])
 json.dump(d, open(p, "w"))
+PY
+  # WP24: and as a repair the CLI closed after its recheck completed (the run state's repairs), the fifth condition of
+  # evidence resolve (scripts/repair_ops.py recheck_after)
+  python3 - "$sha" "$(git rev-parse 'HEAD^{tree}')" <<'PY'
+import json, os, sys, time
+ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+p = ".temper/build-state.json"
+d = json.load(open(p)) if os.path.exists(p) else {}
+reps = d.setdefault("repairs", [])
+reps.append({"n": len(reps) + 1, "stage": "review", "step": d.get("step"), "commit": sys.argv[1], "base_tree": sys.argv[2],
+             "tree": sys.argv[2], "committed": ts, "reruns": "passed", "complete": True, "outcome": "resolved"})
+json.dump(d, open(p, "w"), indent=2)
 PY
   echo "$sha"
 }

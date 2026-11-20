@@ -229,6 +229,66 @@
    "where": "any stage",
    "trigger": "temper baseline accept-red or baseline skip: going on from a red base, skipping the check of a command the plan wrote",
    "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
+  },
+  {
+   "id": "repair.contested",
+   "where": "Review",
+   "trigger": "a contested or escalated finding: never repaired by rule (WP24), the person decides it",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.outside-plan",
+   "where": "Review",
+   "trigger": "a finding whose fix needs a file outside the plan, or the plan or the intent changed: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.sensitive",
+   "where": "Review, Check",
+   "trigger": "a finding under a sensitive path, or any run whose plan touches one (risk H): never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.unfinished",
+   "where": "Review",
+   "trigger": "an unfinished Review (no completion row), or the row `no code changed at Review`: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.environment",
+   "where": "Check",
+   "trigger": "an environment fault (SETUP, class environment): never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.unmeasured",
+   "where": "Check",
+   "trigger": "a check that was not measured: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.person-criterion",
+   "where": "Check",
+   "trigger": "a criterion only the person can confirm: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.acceptance-test",
+   "where": "Check",
+   "trigger": "a locked acceptance or regression test the triage does not blame on the code: never repaired by rule (WP24)",
+   "check": "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window"
+  },
+  {
+   "id": "repair.tests-removed",
+   "where": "Review, Check",
+   "trigger": "a repair whose diff removes test lines: never committed or resolved by rule; repair.stop asks (WP24)",
+   "check": "D37c a repair that removes a line of a test file is not committed or resolved: the run asks and shows the line"
+  },
+  {
+   "id": "repair.worse",
+   "where": "Review, Check",
+   "trigger": "a repair that made things worse, reverted by the CLI: repair.stop names what broke (WP24)",
+   "check": "D37e after one repair the run asks one question, repair.stop"
   }
  ]
 }

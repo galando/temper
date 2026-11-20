@@ -208,16 +208,18 @@ _finding52() { # _finding52 <severity> [claim]: an open finding of Review, as th
   "$TEMPER" evidence add --stage review --claim "${2:-src/demo.sh:1 the demo prints nothing on error}" --severity "$1" \
     --label PROVEN >/dev/null 2>&1
 }
+# WP24: the rule's loop back to Build is gone: its one repair is the repair in the stage (`repair start`, case file 65),
+# which this fixture (no repository, so no reviewed HEAD) may not start, so the run stops there
 _nogit52; _unattended review; _finding52 critical; gfail review "no blocking findings" "1 open critical finding"
 _bf52="first=$(_x52 "c = [short(x) for x in d.get('calls') or []]
-rule = len(c) == 1 and re.match(r\"state loop review build --reason 'rule: \", c[0])
-r = '%s,%s' % (d.get('action'), 'loop by rule' if rule else '; '.join(c)[:160])")"
+own = len(c) == 1 and re.match(r'(repair start --stage review$|park --verdict PARKED-NEEDS-DECISION )', c[0])
+r = '%s,%s' % (d.get('action'), 'no loop by rule' if own and not any(x.startswith('state loop') for x in c) else '; '.join(c)[:160])")"
 _auto52 >/dev/null
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 _finding52 critical; gfail review "no blocking findings" "1 open critical finding"
 _bf52+="|second=$(_stop52)"
-assert_eq "run: a blocking finding gets one loop back by rule, the second stops" "first=auto,loop by rule|second=stop" \
-  "$_bf52"
+assert_eq "WP24 run: a blocking finding is never looped back by rule: the first move is the repair in the stage or a stop, the second stops" \
+  "first=auto,no loop by rule|second=stop" "$_bf52"
 
 _nogit52; _unattended review; _finding52 high; review_done; gpass review   # the fixture's review.block-on is [critical]
 _bb52="review=$(_x52 "c = [short(x) for x in d.get('calls') or []]
@@ -406,9 +408,13 @@ assert_eq "run: the unattended run ends at the commit: Pipeline is asked from a 
   "mode=interactive|work,run.armed=False|ask pipeline.fail,run.armed=False|guard.armed=False" "$_pl52"
 
 # --- the rule log: what a rule decided, in .temper/rule-log.json and in the view ---
-_nogit52; _unattended build; rm -f .temper/rule-log.json   # what the helper's own approval and advances wrote goes
-gpass build; _auto52 >/dev/null                                                                 # an advance
-_finding52 critical; gfail review "no blocking findings" "1 open critical finding"; _auto52 >/dev/null     # a repair
+_nogit52; _unattended design; rm -f .temper/rule-log.json   # what the helper's own approval and advances wrote goes
+gpass design; _auto52 >/dev/null                                                                # an advance
+# a repair: since WP24 a Review finding is repaired in its stage (case file 65, which needs a repository); here the
+# repair by rule is Build's fix pass of WP23, for a failed suite of class code
+gfail build "integration" "integration FAIL: integration suite failed (exit 1)"
+python3 -B "$REPO_ROOT/scripts/failure.py" record build gate:build suite test-failed 'the suite failed' >/dev/null 2>&1
+_auto52 >/dev/null
 gfail build "RED then GREEN" "have red=0 green=0"; _auto52 >/dev/null                            # a stop
 _rl52_end="$(_last52)"
 [[ "$_rl52_end" == 'park --end --answer '* ]] || _rl52_end="park --end --answer $(_rec52)"

@@ -30,10 +30,11 @@ def check_markers(run):
         last = hits[-1] if hits else {}
         code = last.get("exit_code")
         state = "pass" if code == 0 else ("fail" if isinstance(code, int) else "info")
-        if name == "coverage" and last.get("value") is not None:
-            state = "pass" if code in (0, None) else state
         lines = [str(r.get("claim", ""))[:200] for r in hits if isinstance(r.get("exit_code"), int) and r.get("exit_code") != 0][-5:]
         detail = str(last.get("claim", ""))[:200]
+        if name == "coverage" and last.get("state"):   # WP19: the CLI row's own verdict; not measured is never a pass
+            state = {"pass": "pass", "fail": "fail"}.get(last["state"], "info")
+            detail = ("not measured: " + str(last.get("output") or ""))[:200] if state == "info" else detail
         if gate is not None:   # WP19: the gate's own verdict of the row coverage, the third state with it
             state = {True: "pass", False: "fail"}.get(gate.get("pass"), "info")
             detail, lines = str(gate.get("detail") or "")[:200], [] if gate.get("pass") is not False else lines
@@ -235,6 +236,11 @@ def view(run, nxt):
         "status": status_line(r, nxt),
         "next": {"action": nxt.get("action"), "stage": nxt.get("stage"), "say": nxt.get("say"),
                  "calls": nxt.get("calls") or [] if nxt.get("action") in ("work", "auto") else [],
+                 # WP24: the before and after calls of the action's agents (the CLI's `repair mark`, `repair commit`,
+                 # `repair close`), which the mod lets through as calls of the action the view names
+                 "after": [c for a in nxt.get("agents") or [] for c in (a.get("before") or []) + (a.get("after") or [])
+                           if re.search(r"(^|/|\s)temper repair ", c)]
+                 if nxt.get("action") == "work" else [],
                  "steps": nxt.get("steps") or [] if nxt.get("action") == "work" else [],
                  "agents": agents},
         "ask": nxt.get("ask") if nxt.get("action") == "ask" else None,
@@ -251,7 +257,10 @@ def view(run, nxt):
                   "prefix": git("rev-parse", "--show-prefix"),
                   "adhoc_stage": (r.state.get("adhoc") or {}).get("stage") if isinstance(r.state.get("adhoc"), dict) else None,
                   # WP17: the state holds the trivial verdict (temper intent trivial): the window of its one write
-                  "trivial_exit": isinstance(r.state.get("trivial"), dict)},
+                  "trivial_exit": isinstance(r.state.get("trivial"), dict),
+                  # WP24: the kind of an open window, only when it has one: `repair` applies Build's write rule (a planned
+                  # file or a test); none is a small change
+                  **({"adhoc_kind": r.state["adhoc"]["kind"]} if isinstance(r.state.get("adhoc"), dict) and r.state["adhoc"].get("kind") else {})},
         "plan": plan_view(r),
         "fresh": fresh_view(r),
         "build": build_view(r),
@@ -267,8 +276,14 @@ def view(run, nxt):
         "rule_log": [x for x in read_json(os.path.join(TEMPER, "rule-log.json"), []) if isinstance(x, dict)],
         "time": {"started": r.state.get("started") or r.state.get("created"), "updated": r.state.get("updated")},
     }
+    import failure
+    recs = failure.open_records()
+    if recs:   # WP23: the open failure records: class, why and what a rule did (only when there are any)
+        out["failures"] = [{"id": x.get("id"), "class": x.get("class"), "why": x.get("why"), "step": x.get("step")} for x in recs]
     if nxt.get("action") == "work" and nxt.get("step_kinds"):
         out["next"]["step_kinds"] = nxt["step_kinds"]   # the kind of each step beside `steps` (flow_base.step_kinds)
+    if not out["next"]["after"]:
+        out["next"].pop("after")   # WP24: only an action whose agents have before or after calls names them
     return out
 
 

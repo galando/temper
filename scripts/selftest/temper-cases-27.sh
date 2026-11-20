@@ -76,7 +76,7 @@ assert_eq "9.8.5 propose: Gradle and .tool-versions name the JDK; Compose servic
   "$(python3 -c "
 import sys; o = sys.stdin.read()
 print('|'.join(map(str, ['app/build.gradle.kts needs JDK 21' in o, '.tool-versions names JDK 21' in o, 'docker compose -f compose.yaml up -d db cache' in o,
-      '    APP_POSTGRES_PORT: 5433' in o and '    APP_REDIS_PORT: 6380' in o, '    db: 127.0.0.1:5433' in o, '. .venv/bin/activate' in o])))" <<<"$OUT")"
+      '    APP_POSTGRES_PORT: 5433' in o and '    APP_REDIS_PORT: 6380' in o, '    db: 127.0.0.1:5433' in o, '. \"\$(dirname \"\$(git rev-parse --git-common-dir)\")/\$(git rev-parse --show-prefix).venv/bin/activate\"' in o])))" <<<"$OUT")"
 OUT="$(python3 -I -c "
 import sys, shutil; sys.path.insert(0, sys.argv[1]); import doctor
 real = shutil.which; doctor.shutil.which = lambda n: None if n == 'docker' else real(n)

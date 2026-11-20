@@ -8,6 +8,7 @@ import re
 import shlex
 
 import cli_words
+import failure
 import fresh_review
 import tasks_md
 
@@ -151,6 +152,13 @@ class BuildPart:
         before = r.state.get("built_before") and not rg
         if (integ and gid and all(gpass(g) for g in gid)) or before:
             lines = self.feedback_lines() + self.fault_lines()   # M1: the finding and what failed since
+            redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
+            if self.env_records("build") and not str(redo.get("reason") or "").startswith("it is the code"):
+                # WP23: a fault of the environment gets no fix pass: the checks run again, and a failure there is the
+                # setup question (its option It is the code is the person's way to the fix pass)
+                return {"action": "auto" if r.armed() else "work", "stage": "build", "agents": [],
+                        "calls": ([self.c("integrate")] if integ and not before else [self.c("check build-checks")]) + [self.c("gate build")],
+                        "say": "Build: the last failure was the environment's, so no fix agent: the CLI checks Build again."}
             if not lines and not r.notes("build", "input"):
                 # 9.8.5 (S7): a fix pass with no fault in its prompt fixes nothing (a measured launch said so): the CLI
                 # checks Build again, and a failure there names the fault for the next pass
@@ -519,6 +527,10 @@ class BuildPart:
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = []
         empty = int(ginfo.get("fix_empty") or 0)   # 9.8.5 (S8): a fix agent that changed nothing: the code is not the cause
+        # WP22 step 8: the store first. Its check asked again on the same tree got the kept failure back: what ran in between
+        # (a rerun of its tasks, a fix) changed nothing, which is what the count fix_empty says of a fix
+        kept = not empty and self.kept_again("build", claim="Group %s validate" % gid)
+        empty = empty or int(bool(kept))
         fix_rec = fixable and not tried and not empty
         fix = self.opt("Fix the group's merged work" + (" (Recommended)" if fix_rec else ""),
                        "One Build fix agent works on %s's merged tree (every task's work together) until its check passes; the tasks keep their work." % gid,
@@ -562,7 +574,12 @@ class BuildPart:
         text = "Group %s failed its check" % gid + (" %d times" % fails if fails > 1 else "") + " (%s)." % reason
         if fl:
             text += " What failed: %s." % fl
-        if empty:
+        if kept:
+            text += (" It failed again on the same tree (%s), so what ran in between changed nothing: the plan's command or "
+                     "the environment is the likelier cause (temper doctor shows the environment)." % (
+                         "Temper kept that failure and gave it back, nothing ran" if kept == "reused" else
+                         "Temper ran it again, as it does for a fault of the environment, and it failed the same way"))
+        elif empty:
             text += (" A fix agent changed nothing, so the cause is not in the group's code: the plan's command or the "
                      "environment is (temper doctor shows the environment).")
         elif tried and fixable:
@@ -589,6 +606,7 @@ class BuildPart:
                  "Why the check failed: %s." % " ".join(str(gate.get("reason", "")).split())]
         if fl:
             lines.append("What failed (the first FAIL lines of its output): %s." % "; ".join(fl))
+        lines += self.record_lines(failure.open_records(scope="group:%s" % gid))   # WP23: what the record keeps
         a = self.agent("build", lines)
         # the commit clears the group's gate: the next action checks the group as an ordinary call, and a FAIL there asks
         # the group question again (that call records its verdict and prints its marker, so `temper go` goes on to ask)

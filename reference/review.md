@@ -239,8 +239,12 @@ Write `review-context.json`:
 
 ## Feedback Loop to Build
 
-When fixable issues remain, write them to `review-context.json`. The CLI's Review question
-offers "Loop back to Build" while the budget lasts; once it is spent, it asks `run.budget`.
+When fixable issues remain, write them to `review-context.json`. A blocking finding is repaired in
+the stage first (ADR 0021): the CLI's own `temper repair start`, a fresh Build agent, the CLI's
+commit and checks, a recheck (`Re-check:` in the brief), and `temper repair close`, which alone
+resolves a finding. Record each finding whole (`--detail`, `--fix`, `--proof test|none`). The CLI's
+Review question then offers "Repair again" once, and "Loop back to Build" while the budget lasts;
+once it is spent, it asks `run.budget`.
 
 ## Answering a finding without fixing it (9.7.6)
 

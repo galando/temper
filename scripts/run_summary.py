@@ -143,7 +143,16 @@ def summary(temper_dir, now):
         "seconds": int((t1 - t0).total_seconds()) if t0 and t1 else None,
         "agent_seconds": ms // 1000,
         "skips": len(overrides) if isinstance(overrides, list) else 0,
+        "failures": failures_by_class(temper_dir),   # WP23: the failure records, counted by class
     }
+
+
+def failures_by_class(temper_dir):
+    out = {}
+    for x in read(os.path.join(temper_dir, "evidence", "failures.json"), []):
+        if isinstance(x, dict):
+            out[str(x.get("class"))] = out.get(str(x.get("class")), 0) + 1
+    return dict(sorted(out.items()))
 
 
 def append(temper_dir, now):

@@ -117,6 +117,9 @@ d = {"version": 1, "slug": "demo", "cli_commits": [],
      "integration": {"verdict": "PASS", "reason": "", "group": None, "files": [], "ts": "x", "head": sys.argv[1], "merged": True}}
 json.dump(d, open(".temper/groups.json", "w"))
 PY
+  # the tests Build ran first failing, then passing (a built run's ledger: Build's gate runs again on it after a repair)
+  "$TEMPER" evidence run --stage build --claim 'the demo test' --phase red -- false >/dev/null 2>&1
+  "$TEMPER" evidence run --stage build --claim 'the demo test' --phase green -- true >/dev/null 2>&1
   gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
   : > "$P65/log"
   [[ $# -eq 0 ]] && _save65 review
@@ -274,7 +277,13 @@ json.dump({"v": 1, "run": rid, "used": u, "grants": []}, open(".temper/budget.js
 PY
 assert_eq "repair: start is refused outside its conditions: the budget has no room" "$REFUSED65" "$(_refused65 'budget|repeat|BLOCKED|limit')"
 _open65 none
-"$TEMPER" evidence contest --stage review --id 1 --cite src/demo.sh:1 --quote 'echo demo' --reason 'the demo prints its line' >/dev/null 2>&1
+"$TEMPER" evidence contest --stage review --id 1 --cite src/demo.sh:1 --quote 'echo demo' --reason 'the demo prints its line' >/dev/null 2>&1 \
+  || python3 -B -c "
+import json
+p = '.temper/evidence/review.json'; rows = json.load(open(p))
+f = [e for e in rows if isinstance(e, dict) and e.get('severity')][0]
+f['contested'] = {'cite': 'src/demo.sh:1', 'quote': 'echo demo', 'reason': 'the demo prints its line', 'ts': 'x'}
+json.dump(rows, open(p, 'w'), indent=2)"   # the CLI takes a quote of 12 characters at least, and src/demo.sh holds 9
 "$TEMPER" gate review >/dev/null 2>&1
 assert_eq "repair: start is refused outside its conditions: a finding is contested" "$REFUSED65" "$(_refused65 'contest')"
 _review65 src/auth/login.sh

@@ -96,6 +96,9 @@ def render(view):
             rows.append("<li class='warn'>%s skipped: %s</li>" % (e(s.get("label")), e((s.get("skipped") or {}).get("reason"))))
         for f in s.get("failed") or []:
             rows.append("<li class='bad'>%s failed: %s %s</li>" % (e(s.get("label")), e(f.get("name")), e(f.get("detail"))))
+    for x in view.get("failures") or []:   # WP23: the open failure records, with what a rule did
+        rows.append("<li class='bad'>%s %s: %s%s</li>" % (e(x.get("id")), e(x.get("class")), e(x.get("why")),
+                                                         e("; " + x["step"]) if x.get("step") else ""))
     label = {s.get("id"): s.get("label") for s in stages}
     for loop in view.get("loops") or []:
         rows.append("<li class='info'>↺ %s to %s (%s of %s): %s</li>" % (e(label.get(loop.get("from"), loop.get("from"))), e(label.get(loop.get("to"), loop.get("to"))), e(loop.get("iteration")),

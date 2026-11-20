@@ -127,9 +127,9 @@ phases:
 #
 # Hardcoded, not configurable (safety invariants, not preferences): it NEVER
 # pushes, merges to a remote, or makes the final feature commit (the commit
-# question always asks); the only commits it allows are grouped Build's local task
-# commits and the local `temper integrate` merge, both made by the CLI; NEVER
-# re-plans by itself; nothing under park-on-touch is repaired by rule.
+# question always asks); the commits it allows are the CLI's own: grouped Build's
+# task commits, the `temper integrate` merge and a repair in its stage (ADR 0021);
+# NEVER re-plans by itself; nothing under park-on-touch is repaired by rule.
 # ============================================================
 # run:
 #   default: to-commit         # the approval's first option: to-commit, ask or never-unattended

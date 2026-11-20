@@ -23,6 +23,7 @@ What users have is 9.8.4 (`7c7a1c1`).
 | `scripts/temper-help.txt`, `scripts/selftest/capture-cli.sh` | the help text; the capture of every CLI output | WP02 | WP03 |
 | `scripts/flow_base.py` | the tables of the flow: `MOVES`, `SEQ`, and the registries `QUESTIONS`, `OPTION_IDS`, `NEEDS` | WP03 (the registries: WP04; `NEEDS`: WP16) | every package that adds a question, an option, a move or a kind |
 | `scripts/flow_run.py`, `scripts/flow_ask.py`, `scripts/flow_work.py`, `scripts/flow_build.py`, `scripts/flow_commit.py`, `scripts/flow_view.py` | `Run`; the four parts of `Builder`; the view | WP03 | "the flow modules" of every later spec |
+| `scripts/flow_repair.py` | `RepairPart` of `Builder`: what comes next while a repair in the stage runs (one of "the flow modules"; listed in `flow_files` of `scripts/caps.json` and `FLOW_FILES` of the selftest) | WP24 | WP25 |
 | `scripts/flow.py` | the facade: `Builder`, `core_next`, `main` | WP03 | every caller of the flow, unchanged |
 | `tests/mod/ids.test.ts` | the mod reads ids and still takes a view of the base (`10e965a`), which has none | WP04 | kept by every package (`D65`) |
 | `scripts/e2e/floor.json`, `scripts/check_floor.py` | the counts of the scripted runs, `now` and `final` | WP05 | every package that moves a count lowers `now` in the same commit |
@@ -84,7 +85,9 @@ Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command f
 | `--fresh` on `temper check run`, `temper group gate` and `temper integrate` | WP22 | WP24 |
 | `python3 scripts/run_env.py tree DIR` (the digest of a folder, the tree a verdict names) and `checked GATES DIR` (`FAIL <why>` when the project is no longer the tree of the Check verdict); the variable `TEMPER_FRESH=1`, which `--fresh` sets for the runner | WP22 | WP23, WP24 |
 | `temper check build-checks` | WP23 | WP24 |
+| `python3 scripts/check_run.py build-checks ROOT SPEC LEDGER BASE COMMAND [TEST COV KEY [nosuite]]` (exits with the suite's exit code; `temper check build-checks` exits 0 unless `integrate` calls it); `python3 scripts/gate_rows.py build-rows SPEC LEDGER [KEY]`; `python3 scripts/failure.py record`, `skip STAGE REASON` and `open [STAGE]` (`temper override` calls `skip`) | WP23 | WP24, WP25 |
 | `temper repair start`, `test`, `commit`, `close`, `revert`, `status`; `temper evidence add --detail --fix --proof` | WP24 | none |
+| `temper repair mark`, the recheck's launch mark (its `before` call: only rows written after it count); `python3 scripts/repair_ops.py "" "" carve`, the commit gate's carve out | WP24 | none |
 | `temper plan amend task N --add-file F [--failure ID]`; `temper plan patch task N --add-file F`; `temper group keep` | WP25 | WP27 |
 | `temper model --all --source` | WP27 | WP29 |
 | `temper packs --stage S`; `temper config show [--markdown]`; `temper config tidy --apply` and `--keep` | WP29 | WP30, WP31 |
@@ -106,6 +109,7 @@ Keys of `.temper/build-state.json`:
 | `intent_hash` | the digest of the intent as approved, beside `plan_hash` and `approved_files` | WP12 | WP13, WP17, WP24, WP25 |
 | `from_branch` | the branch the run stands on before its approval, which the commit hook gates too; `state set` refuses it | WP12 | none |
 | `repair`, `repairs` | the open repair window; the closed repairs. Each entry of `repairs` holds the number `n` of its repair (case file 65 counts the repairs of a stage by it), and a repair that changed nothing records `changed: 0`; the window `adhoc_ops.open_window` opens for it carries the mark `kind: repair` | WP24 | WP25 |
+| `repair_stop` | what a repair asks until the person answers or the run moves: `{kind, why, n, stage, ts}` (`kind` `drift`, `tests`, `worse`, `unchanged`, `moved`, `hook`), the question `scope.drift` or `repair.stop`; a move and `state redo` drop it with `repair` | WP24 | WP25 |
 | `trivial` | the trivial verdict, until the flow closes the run | WP17 | none |
 | `rca_notes` | in a fix run, how many notes typed at the root cause question the root cause agent has taken | WP17 | none |
 | `saved_by` | the Temper version that saved the state (`state init` stamps it); `state set` refuses it; a state saved at Review without it runs Review once more (row D60) | WP11 | WP28 |
@@ -127,6 +131,7 @@ Run files:
 | `.claude/worktrees/temper-baseline` | the one detached worktree of the baseline | WP20 | WP21 |
 | `temper-results.json` in the git common folder | the reuse store; exists at the head | the head | WP08 (guarded, tested), WP20, WP22 (the key) |
 | `.temper/evidence/failures.json` | the failure record | WP23 | written only through `scripts/failure.py` |
+| `failures` of `.temper/specs/<slug>/gate-ledger.json`; `records` of a loop of `.temper/feedback-loops.json`; `failures` of a line of `.temper/runs.jsonl` | the archived failure records; the ids of the open records of the stage a step back leaves; the count of records by class | WP23 | WP24, WP25 |
 | `.temper/evidence/amendments.json` | amendments and patches, appended | WP25 | the commit card |
 | `.temper/notice.json` | the one time notice was said | WP31 | none |
 | `.claude/temper.config.before-9.8.5` | the copy the config question keeps, of a config of 9.8.4 or of the base | WP29 | none |
@@ -151,7 +156,9 @@ The view stays version 1: a field is added, none is renamed or removed (`D65`).
 | `needs`, `option` on a `work` action | `next`, `go`: steps that are the conversation's one step (`pull-request`), and the id of the option they came from | WP16 | the mod's run driver |
 | `step_kinds` beside `steps`, on a `work` action and on an option | `next`, `go`, the view: the kind of each step, `show-last` (the report step), `note` (the no record note) or `""`; absent when no step has a kind (`scripts/flow_base.py`) | WP16 (the phase 4b fix of its step 4) | the mod's run driver (`stepPlan`) |
 | `state` beside `pass` in `checks`; the entry `mutation` of `check_markers` | the view | WP19 | WP20 (`skipped`), WP23 |
+| `failures` (only when a record is open): `{id, class, why, step}` of each open failure record | the view | WP23 | the end of run report; WP24 |
 | `guard.adhoc_kind` | the view; the mod reads it as `adhocKind` beside `adhocStage` (`core/runview.ts`, `RunFacts`) | WP24 | the mod |
+| `next.after` | the view, only when not empty: the `repair` calls among the `before` and `after` calls of a `work` action's agents; the mod lets them through as calls of the action the view names (`core/runview.ts`, `adapter.ts`) | WP24 | the mod |
 | `drift_ids` beside the options of `drift`, their ids at their places | the view | WP04 | every test |
 
 ## 5. Question ids and option ids: the closed list
@@ -293,6 +300,7 @@ scripted project sets it, so its base is measured whole while its other limits s
 | budget keys | `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance`, `pipeline` (WP10); `plan-revise:<reason>` (WP27) | WP10 | a failure record's `scope` is its budget key (WP23); a failed `integrate` spends its repeat under `gate:build`, and that is the `scope` of its record |
 | rule log kinds | `advance`, `repair`, `group fix`, `covered`, `stop`, `answer`, `ended` (WP11); `amend` (WP25) | WP11 | the card section `rule_log` |
 | failure classes | `environment`, `command`, `plan`, `code`, `not measured`; the kinds are a closed list in `scripts/failure.py` | WP23 | WP24 (`code`), WP25 (`blocked-task`, `no-validate`) |
+| the lines of `build-checks` | `REASON: integration suite failed (exit <n>): <command>` when the suite failed (the reason `integrate` records); the row `Integration suite` holds `plan_cmd` (the plan's Integration text when it differs from the owner's) and `state: skipped` when the person's skip of a red base covers its failure; the coverage row holds `tree`, `key` and `reused` of the suite's run | WP23 | the CLI, WP24 |
 | the results of the plan's commands | in `plan` of `.temper/evidence/baseline.json`, one entry for each command `temper baseline plan` ran, keyed by the command's text: `{"result", "exit", "seconds", "class", "kind", "why", "fail_lines", "tail"}`; `result` is `pass`, `fail`, `timeout` or `fails like the base` (`running` while it runs); `class` is `command` or `environment`, as in the failure classes; a skip with a reason is an override row named `plan-command` | WP21 | the flow (`plan.command`), the approval card, case file 62, case 45 `D99`; WP23, WP25 |
 | the plan's commands, more fields | each entry of `plan` also holds `where` (`G1 Validate`, `Integration`), `limit`, `started`, `pid` and `ended`; a skip adds `skipped` `{"by", "reason", "ts"}`, with `result` `not run` when the command never ran; a program of the plan that does not resolve adds a fault of kind `program-missing` to `env`, file `the plan` | WP21 | the flow (`plan.command`), the approval card |
 | the reuse store | `temper-results.json` in the git common folder, changed under the lock file `temper-results.json.lock` beside it; one entry a key (`run_env.result_key`: the digest `run_env.tree_key`, the command, the setup block, the folder inside the repository, the first version line of each program, what the caller adds): `{"pass": {"ts", "tail", "seconds", "extra"}, "fail": {"ts", "rc", "tail", "fail_lines", "answer", "class", "limit", "again"}, "flaky", "forced", "last"}`; the byproduct list under the reserved key `byproducts`; the baseline's `baseline:<key>` entries; one lock file a key in `temper-locks/` | WP22 | `scripts/baseline.py`, WP23, WP24 |
@@ -317,7 +325,7 @@ scripted project sets it, so its base is measured whole while its other limits s
 | the version stamps | the six places of row `D86`: `.claude-plugin/plugin.json`, `.claude/CLAUDE.md`, the README badge, `docs/index.html`, `docs/index.md`, `docs/getting-started.md`. All that state the version say 9.8.5 at the head but `docs/index.html:35`, which says 9.8.4 | the head | WP31 sets the one stale line by hand and holds it with the case `w31 the stamps agree`; no package runs `scripts/version-bump.sh` |
 | the open lines of `final` | `OPEN: the bench gate (needs the owner's word and a model access)` when there is no scorecard file; `OPEN: the summary of the build` when `docs/history/build-9.8.5.md` is not there yet | WP07 (the first), WP32 (the second) | the session; the pull request text |
 | the owner of the suite command | `python3 scripts/check_run.py owner ROOT [SPEC]` (SPEC the run's spec folder, whose `tasks.md` gives the plan's line) prints one JSON line `{"test", "run", "source", "why"}`: `source` is `configured`, `detected`, `plan` or `none`; `run` is the coverage form or the test text again; with `none` the two texts are empty and `why` says why | WP20 | the baseline; case file 61; WP21 |
-| the baseline's other fields | `run` (the coverage form of the command), `notes`, `exit_code`, `answered` (`{by, reason, ts, kept}` of "go on anyway"), `env_only` (a door), `reused` (a green run taken from the store); the store holds `baseline:<key>` entries (`result`, `seconds`, `coverage`, `answer`) beside the head's; `python3 scripts/baseline.py ROOT CONFIG SPEC limit CMD DEFAULT`, `timeout CMD LIMIT` and `skip-row LEDGER` are the CLI's own calls | WP20 | the CLI (the group gate, Check's gate), the flow, the card; WP21, WP22, WP23 |
+| the baseline's other fields | `run` (the coverage form of the command), `notes`, `exit_code`, `answered` (`{by, reason, ts, kept, kind}` of "go on anyway"; a kept answer holds only for a red base of its `kind`), `env_only` (a door), `reused` (a green run taken from the store); the store holds `baseline:<key>` entries (`result`, `seconds`, `coverage`, `answer`) beside the head's; `python3 scripts/baseline.py ROOT CONFIG SPEC limit CMD DEFAULT`, `timeout CMD LIMIT` and `skip-row LEDGER` are the CLI's own calls | WP20 | the CLI (the group gate, Check's gate), the flow, the card; WP21, WP22, WP23 |
 | the baseline's results and kinds | in `.temper/evidence/baseline.json`: `result` is `running`, `green`, `red` or `unknown`; a red result's `kind` is `tool-version`, `program-missing`, `service-down`, `setup-line` or `red-base`; `env` holds one entry for each fault of the environment check, and each names the file that states the need; `answer` is set once the person went on anyway, and is `fix-run` for a red base a fix run recorded | WP20 | the flow (`base.red`), the card, case file 61; WP21, WP22, WP23 |
 
 ## 9. Scenario names
@@ -347,7 +355,7 @@ name is what `bun scripts/e2e/run.ts <mode> <name>` takes, what `scripts/e2e/flo
 | `fix-breaks-suite`, `policy-run` | `scripts/e2e/scenarios.ts` | WP08 | WP09 (`policy-run` in driver mode), WP11 (the policy key goes; the scenario stays as a default run) |
 | `failed-checks` | `scripts/e2e/scenarios.ts` | WP16 | none |
 | `trivial` | `scripts/e2e/scenarios.ts` | WP17 | none |
-| `coverage-drop` | `scripts/e2e/scenarios.ts` | WP19 | WP24 (it then asserts the repair in the stage) |
+| `coverage-drop` | `scripts/e2e/scenarios.ts` | WP19 | WP24 (it then asserts the repair in the stage: since WP23 that stage is Build, whose fix pass is the CLI's own `state redo build` by rule) |
 | `red-base-after-approval` | `scripts/e2e/scenarios.ts` | WP20 | none |
 | `plan-command-fails` | `scripts/e2e/scenarios.ts` | WP21 | none |
 | `setup-at-build` | `scripts/e2e/scenarios.ts` | WP23 | none |

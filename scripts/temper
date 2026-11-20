@@ -92,6 +92,7 @@ TEMPER_DIR="$REPO_ROOT/.temper"
 # own); nothing in this script ever writes to it.
 CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
 export TEMPER_SETUP_CONFIG="$CONFIG_FILE"   # the setup block (scripts/run_env.py)
+unset TEMPER_FRESH   # WP22: only a counted --fresh sets it
 STATE_FILE="$TEMPER_DIR/build-state.json"
 LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
 GATES_FILE="$TEMPER_DIR/gates.json"
@@ -740,7 +741,7 @@ cmd_state_set() {
     stage) echo "FAIL: stage is kept by the CLI (state advance records the stage the run left; a step back rewrites it)" >&2; return 1 ;;
     command) echo "FAIL: command is kept by the CLI (state init --command temper|fix starts a run of that command)" >&2; return 1 ;;
     parked) echo "FAIL: parked is kept by the CLI (temper park parks an armed run; the run's next move ends the park)" >&2; return 1 ;;
-    adhoc|adhoc_done) echo "FAIL: $top is kept by the CLI (temper adhoc open|close; the gates mark the steps a small change owes)" >&2; return 1 ;;
+    adhoc|adhoc_done|repair|repairs|repair_stop) echo "FAIL: $top is kept by the CLI (temper adhoc open|close; the gates mark the steps a small change owes)" >&2; return 1 ;;
     redo) echo "FAIL: redo is kept by the CLI (temper state redo <stage> --reason R)" >&2; return 1 ;;
     trivial) echo "FAIL: trivial is kept by the CLI (temper intent trivial --why TEXT)" >&2; return 1 ;;
     run_mode|pipeline_round|regression_test)
@@ -1225,6 +1226,7 @@ cmd_evidence_add() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
+      --detail|--fix|--proof) reads+=($'\x1f'"${1#--}=$2"); shift 2 ;;   # WP24: the whole finding (ledger_ops.py)
       --read) reads+=("$2"); shift 2 ;;
       --claim) claim="$2"; shift 2 ;;
       --confidence) confidence="$2"; shift 2 ;;
@@ -1246,7 +1248,7 @@ cmd_evidence_add() {
   [[ "$kind" == input ]] && label=PERSON   # 9.8.5 (U5): the person's own words, not a heuristic
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
-  [[ ${#reads[@]} -eq 0 || "$stage $claim $severity" == "review review completed " ]] || { echo "FAIL: --read goes only with --stage review --claim 'review completed': the files Review read whole" >&2; return 1; }
+  [[ ${#reads[@]} -eq 0 || "$stage $claim $severity" == "review review completed " || "${reads[*]}" == $'\x1f'* ]] || { echo "FAIL: --read goes only with --stage review --claim 'review completed': the files Review read whole" >&2; return 1; }
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
   if [[ -n "$confidence" ]] && ! [[ "$confidence" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
     echo "FAIL: --confidence takes a number from 0 to 1 (0.85), got '$confidence'" >&2; return 1
@@ -1272,7 +1274,7 @@ cmd_evidence_add() {
     artifact_hash="$(python3 -I -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
   fi
   local entry
-  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"})
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"}) || return 1
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -1526,18 +1528,6 @@ _ev_last_value() { # _ev_last_value <stage> <keyword-regex|""> -> last matching 
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo ""; return; }
   python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-value "$file" "$keyword"
-}
-
-_ev_last_claim() { # _ev_last_claim <stage> <regex> -> the claim of the last row whose claim matches, or ""
-  local file; file="$(_evidence_file "$1")"
-  [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-claim "$file" "$2" 2>/dev/null
-}
-
-_ev_last_row() { # _ev_last_row <stage> <regex> -> "<exit>|<output, one line>" of the last row whose claim matches, or ""
-  local file; file="$(_evidence_file "$1")"
-  [[ -f "$file" ]] || { echo ""; return; }
-  python3 -I "$SCRIPTS_DIR/ledger_ops.py" last-row "$file" "$2" 2>/dev/null
 }
 
 _ev_count_severity_in() { # _ev_count_severity_in <stage> <comma-separated severities>
@@ -2635,21 +2625,15 @@ cmd_integrate() {
     echo "FAIL: no grouped run to integrate (temper group start first)" >&2
     return 1
   fi
-  local iv; iv="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" integration-head "$GROUPS_FILE")"
-  if [[ "${iv##* }" == 1 ]]; then   # M1: merged; a new commit or a FAIL runs the suite again
-    if [[ "$iv" != "PASS $(git rev-parse HEAD) 1" ]]; then
-      local s rf; s="$(_jget "$(_task_py integplan "$(_grouped_parse "$spec_path/tasks.md")" "$GROUPS_FILE")" integration)"
-      if [[ -n "$s" ]]; then
-        rf="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
-        _task_py integrun "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$rf" -- "$s"; local rc=$?
-        [[ -s "$rf" ]] && _json_append "$(_evidence_file build)" "$(cat "$rf")"; rm -f "$rf"
-        [[ $rc -eq 0 ]] || { _integ_record FAIL "integration suite failed after new commits (exit $rc): $s"; echo "FAIL: integration suite failed (exit $rc): $s"; return 0; }
-      fi
+  local iv out rc _bc_rc=1; iv="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" integration-head "$GROUPS_FILE")"
+  if [[ "${iv##* }" == 1 ]]; then   # M1: merged; a new commit or a FAIL runs the suite again (WP23: in build-checks)
+    local same=""; [[ "$iv" == "PASS $(git rev-parse HEAD) 1" ]] && same=nosuite
+    out="$(cmd_check build-checks $same)"; rc=$?; sed '/^REASON: /d' <<<"$out"
+    if [[ -z "$same" ]]; then
+      [[ $rc -eq 0 ]] || { _integ_record FAIL "$(sed -n 's/^REASON: //p' <<<"$out") after new commits"; echo "FAIL: integration suite failed (exit $rc)"; return 0; }
       _integ_record PASS "" || return 1
       echo "OK: new commits since the last integrate; the Integration suite ran again and passed"
     fi
-    # 9.8.4: after a fix pass, the scenario tests run again on the fixed tree (a step back cleared Build's rows)
-    [[ -f "$spec_path/intent.md" ]] && python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" integrate "$spec_path/intent.md" "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$(_evidence_file build)"
     echo "OK: already integrated; the scenario tests ran again"
     return 0
   fi
@@ -2670,12 +2654,11 @@ cmd_integrate() {
     echo "FAIL: integrate runs on the run's feature branch '$feature' (current branch: '${cur:-none}')" >&2
     return 1
   fi
-  local plan facts notpassed suite
+  local plan facts notpassed
   plan="$(_grouped_parse "$spec_path/tasks.md")"
   _plan_fresh "$plan" || return 1
   facts="$(_task_py integplan "$plan" "$GROUPS_FILE")" || return 1
   notpassed="$(python3 -I -c "import json, sys; print(', '.join(json.loads(sys.argv[1])['notpassed']))" "$facts")"
-  suite="$(_jget "$facts" integration)"
   if [[ -n "$notpassed" ]]; then
     _integ_record FAIL "group gate not passed: $notpassed" || true
     echo "FAIL: group gate has not passed for: $notpassed" >&2
@@ -2722,26 +2705,14 @@ cmd_integrate() {
     [[ -n "$wt" ]] && git worktree remove --force "$wt" >/dev/null 2>&1
   done
   git worktree prune >/dev/null 2>&1 || true
-  if [[ -n "$suite" ]]; then
-    local rowfile rc
-    rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
-    _task_py integrun "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$rowfile" -- "$suite"
-    rc=$?
-    _ensure_dirs
-    [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
-    local flines; flines="$(_task_py faillines "$rowfile")"; rm -f "$rowfile"
-    if [[ "$rc" -ne 0 ]] && _baseline like-base "$suite" "$flines"; then   # WP21: only the base's failures, gone on from
-      echo "NOTE: the integration suite failed (exit $rc) only as it failed on the base, which you went on from"
-    elif [[ "$rc" -ne 0 ]]; then
-      _integ_record FAIL "integration suite failed (exit $rc): $suite" || true
-      echo "FAIL: integration suite failed (exit $rc): $suite" >&2
-      return 1
-    fi
-  fi
-  # F8: each scenario's Test: command runs on the merged tree, one CLI-run row each. A failing one records a failing row and
-  # does not fail the integration: the Build gate fails for that reason and the person gets the gate question.
-  if [[ -f "$spec_path/intent.md" ]]; then
-    python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" integrate "$spec_path/intent.md" "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$(_evidence_file build)" || true
+  # WP23: the suite in the owner's run text with its coverage, each scenario test and the locked acceptance tests, in
+  # one call (scripts/check_run.py build-checks). A failing suite fails the integration; any other failed row leaves it
+  # PASS, and the Build gate fails on that row.
+  out="$(cmd_check build-checks)"; rc=$?; sed '/^REASON: /d' <<<"$out"
+  if [[ $rc -ne 0 ]]; then
+    local why; why="$(sed -n 's/^REASON: //p' <<<"$out")"; _integ_record FAIL "$why" || true
+    echo "FAIL: ${why:-integration suite failed (exit $rc)}" >&2
+    return 1
   fi
   local ifail
   if ! ifail="$(_task_py ifcheck "$(python3 -I -c "import json, sys; print(json.dumps(json.loads(sys.argv[1])['interfaces']))" "$facts")")"; then
@@ -2965,10 +2936,11 @@ gate_build() {
     local trow; trow="$(python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-tasks "$spec_path/tasks.md" "$GROUPS_FILE")"
     reqs+=("$trow")
     grep -q '"pass": false' <<<"$trow" && all_pass=0
-    # every success criterion is validated: a scenario criterion by a row the CLI ran (F7, scripts/acceptance.py build)
-    trow="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" build-rows "$spec_path" "$(_evidence_file build)")"
-    if [[ -n "$trow" ]]; then reqs+=("$trow"); grep -q '"pass": false' <<<"$trow" && all_pass=0; fi
   fi
+  # every success criterion is validated (F7); the acceptance tests and coverage the checks when Build ended recorded; a
+  # fix run's suite and regression proof (WP23, scripts/gate_rows.py build-rows)
+  trow="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" build-rows "$spec_path" "$(_evidence_file build)" "$(_cfg_get check.coverage-threshold)")"
+  if [[ -n "$trow" ]]; then reqs+=("$trow"); grep -q '"pass": false' <<<"$trow" && all_pass=0; fi
   # Checkpoint feedback: every `feedback #N` row the orchestrator recorded must be
   # answered by a `feedback-resolved` row — applied (detail optional) or declined
   # with a reason. A decline with no reason is not an answer.
@@ -3127,35 +3099,10 @@ gate_check() {
       all_pass=0
     fi
   fi
-  # WP19: the row coverage, judged against the project (scripts/gate_rows.py check-rows); not measured fails nothing
+  # WP19: the row coverage, judged against the project (scripts/gate_rows.py check-rows); not measured fails nothing. WP23:
+  # then the acceptance tests written before Build, run as they were locked, and a fix's regression proof the CLI ran
   local cov; cov="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" check-rows "$(_evidence_file check)" "$TEMPER_DIR/evidence/baseline.json" "$(_cfg_get check.coverage-threshold)")"
   reqs+=("$cov"); grep -q '"pass": false' <<<"$cov" && all_pass=0
-  # 9.8.0: the acceptance tests written from the intent before Build (agents/acceptance.md), run as they were locked.
-  local acc; acc="$(_ev_last_row check '^acceptance \(written before Build\)')"
-  if [[ -n "$acc" ]]; then
-    local acc_claim; acc_claim="$(_ev_last_claim check '^acceptance \(written before Build\)')"
-    if [[ "${acc%%|*}" == "0" ]]; then
-      local acc_ok="they pass, unchanged since they were locked"
-      [[ "$acc_claim" == *", corrected after the lock: "* ]] && acc_ok="they pass, as the person corrected them after the lock (${acc_claim#*, corrected after the lock: })"
-      [[ "$acc_claim" == *skipped ]] && acc_ok="skipped: ${acc#*|}"
-      reqs+=("$(_req "acceptance tests written before Build" 1 "$acc_ok")")
-    else
-      reqs+=("$(_req "acceptance tests written before Build" 0 "${acc#*|}")")
-      all_pass=0
-    fi
-  fi
-  # 9.8.0: a fix's regression proof: the tests it added or changed fail on the code before the fix (scripts/check_run.py).
-  if [[ "$(cmd_state_get command temper)" == "fix" ]]; then
-    local reg; reg="$(_ev_last_row check '^regression proof$')"
-    if [[ -n "$reg" ]]; then
-      if [[ "${reg%%|*}" == "0" ]]; then
-        reqs+=("$(_req "regression proof" 1 "${reg#*|}")")
-      else
-        reqs+=("$(_req "regression proof" 0 "${reg#*|}")")
-        all_pass=0
-      fi
-    fi
-  fi
   if [[ -f "$spec_path/intent.md" ]]; then
     # Every criterion has explicit, SUPPORTED passing evidence — the same checker
     # gate plan used on the artifact's internal links, now against the ledger.
@@ -3230,6 +3177,7 @@ gate_commit() {
   # out-of-run commit.
   # WP17: with an open trivial record, the bound of the trivial request (scripts/trivial.py)
   [[ -f "$STATE_FILE" ]] || { python3 -I "$SCRIPTS_DIR/trivial.py" gate 2>/dev/null || echo '[] 1'; return; }
+  local rp; rp="$(python3 -E -s "$SCRIPTS_DIR/repair_ops.py" "" "" carve 2>/dev/null)" && { echo "$rp" 1; return; }   # WP24
 
   # Build-checkpoint carve-out (docs/decisions/0009): a per-task checkpoint
   # commit lands while next_stage is still build, when the full commit gate
@@ -3532,6 +3480,7 @@ cmd_override() {
   entry=$(python3 -I "$SCRIPTS_DIR/state_ops.py" override-entry "$stage" "$reason" "$by" "$(_now)")
   _json_append "$OVERRIDES_FILE" "$entry"
   echo "OK: override recorded for '$stage' by $by: $reason"
+  python3 -E -s "$SCRIPTS_DIR/failure.py" skip "$stage" "$reason" || true   # WP23: the skip resolves the stage's records
   # WP11 (rule 3): a skip of a check ends the run that goes on by itself
   [[ $ok -eq 1 && "$stage" != foreign-commit:* ]] && _unattended_end "the person skipped the $stage check"
   return 0
@@ -3958,23 +3907,24 @@ cmd_check() {
   local tcmd ccmd key; tcmd="$(_cfg_get check.commands.test)"; ccmd="$(_cfg_get check.commands.coverage)"; key="$(_cfg_get check.coverage-threshold)"
   case "$sub" in
     detect) python3 -E -s "$SCRIPTS_DIR/check_run.py" detect "$REPO_ROOT" "$tcmd" "$ccmd" ;;
-    run)
+    run|build-checks)   # WP23: build-checks is the checks when Build ends, into the Build ledger
       local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
       base="$(cmd_state_get base_sha "")"
       [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
-      mkdir -p "$TEMPER_DIR/evidence"; [[ "${2:-}" == --fresh ]] && export TEMPER_FRESH=1
-      local ledger; ledger="$(_evidence_file check)"; [[ -f "$ledger" ]] || echo '[]' > "$ledger"
-      python3 -E -s "$SCRIPTS_DIR/check_run.py" run "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$REPO_ROOT/$ledger" "$base" "$cmd" "$tcmd" "$ccmd" "$key" ;;
+      mkdir -p "$TEMPER_DIR/evidence"; [[ $sub == run && "${2:-}" == --fresh ]] && export TEMPER_FRESH=1
+      local ledger=check; [[ $sub == run ]] || ledger=build; ledger="$(_evidence_file $ledger)"; [[ -f "$ledger" ]] || echo '[]' > "$ledger"
+      python3 -E -s "$SCRIPTS_DIR/check_run.py" "$sub" "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$REPO_ROOT/$ledger" "$base" "$cmd" "$tcmd" "$ccmd" "$key" "${2:-}"
+      local rc=$?; [[ $sub == run || -n "${_bc_rc:-}" ]] || rc=0; return $rc ;;   # a red suite is a verdict: integrate reads it
     ahead)
-      # 9.8.0: Check's run, in the background while the Review agent reads the change (Review writes no code), into
-      # the reuse store, where `check run` finds it by key (WP22); it fails open.
+      # Beside Review, in the background: the planted bugs; a fix run first warms the store, where `check run`
+      # finds its runs by key (a feature run's store is warm from integrate).
       local spec base cmd; spec="$(_spec_path "")"; cmd="$(cmd_state_get command temper)"
       base="$(cmd_state_get base_sha "")"
       [[ -n "$base" ]] || base="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
       mkdir -p "$TEMPER_DIR/check"
       nohup python3 -E -s "$SCRIPTS_DIR/check_run.py" ahead "$REPO_ROOT" "${spec:+$REPO_ROOT/$spec}" "$base" "$cmd" "$tcmd" "$ccmd" "$key" >/dev/null 2>&1 &
-      echo "OK: Check's run started in the background; check run reuses what it ran" ;;
-    *) echo "FAIL: usage: temper check run [--fresh]|ahead|detect" >&2; return 1 ;;
+      echo "OK: the planted bugs (in a fix run Check's run first) run in the background" ;;
+    *) echo "FAIL: usage: temper check run [--fresh]|build-checks|ahead|detect" >&2; return 1 ;;
   esac
 }
 
@@ -4046,6 +3996,7 @@ main() {
     next) cmd_next "$@" ;;
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
+    repair) python3 -E -s "$SCRIPTS_DIR/repair_ops.py" "$SCRIPTS_DIR/temper" "$CONFIG_FILE" "$@" ;;   # WP24 (ADR 0021)
     review) if [[ "$*" == files ]]; then python3 -I "$SCRIPTS_DIR/findings.py" review-files "$STATE_FILE"
             else echo "FAIL: usage: temper review files" >&2; false; fi ;;
     plan) cmd_plan "$@" ;;

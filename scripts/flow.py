@@ -35,11 +35,12 @@ from flow_ask import AskPart
 from flow_work import WorkPart
 from flow_build import BuildPart
 from flow_commit import CommitPart
+from flow_repair import RepairPart
 
 
 # ---- building the answer ---------------------------------------------------------------------
 
-class Builder(AskPart, WorkPart, BuildPart, CommitPart):
+class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart):
     def __init__(self, run):
         self.r = run
         self.cli = run.ctx.get("cli") or "temper"
@@ -307,9 +308,18 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             return out
         verdict = r.verdict(stage)
         skipped = r.skip(stage) is not None
-        fixacc = (self.acceptance_fix_work() or self.acceptance_triage_work()) if stage == "check" and verdict is not None and not skipped else None
+        # WP23: the locked acceptance tests run when Build ends: the correction, the triage (in every mode) and the CLI's fix
+        # pass for a test the triage blames on the code come before any question, at Build as at Check
+        fixacc = (self.acceptance_fix_work() or self.acceptance_triage_work() or self.triage_fix_pass()) \
+            if stage in ("build", "check") and verdict is not None and not skipped else None
         if fixacc:
             out.update(fixacc)
+            return out
+        # WP24 (ADR 0021): a finding, or a failed row of class code, is repaired in its stage, in every mode, before the
+        # rule's move and before the question (scripts/repair_ops.py holds the conditions)
+        rep = self.repair_step(stage) if stage in ("review", "check") and r.command == "temper" else None
+        if rep:
+            out.update(rep)
             return out
         # A note the person gave after the verdict: input goes to the agent again, edit (made for them) only to the gate.
         if verdict is not None and not skipped and not self.walked(stage):
@@ -346,7 +356,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
             if redo:
                 out.update(redo)
                 return out
-            cmds = self.plan_command_step()   # WP21: the plan's commands on the base, once the plan was checked
+            cmds = self.plan_command_step() if verdict == "PASS" else None   # WP21: the plan's commands, once it passed
             if cmds:
                 out.update(cmds)
                 return out
@@ -379,7 +389,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart):
                             "say": "%s passed; the run goes on to %s." % (LABEL[stage], LABEL.get(nxt, nxt))})
                 return out
             why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows(stage))[:200]
-            out.update(self.stop(stage, "the check failed: %s" % why))
+            out.update(self.code_fix_pass() or self.stop(stage, "the check failed: %s" % why))   # WP23: class code
             return out
         if stage == "intent" and self.intent_by_rule():
             # WP13: the run leaves Intent as the CLI's own action; the person accepts the intent with the plan, at the

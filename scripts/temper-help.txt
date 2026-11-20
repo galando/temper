@@ -4,7 +4,7 @@ Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|resolve|accept|contest|escalate|clear> ...
-  temper evidence resolve --stage S --id N --fixed-by COMMIT   (only a commit the CLI recorded after the reviewed HEAD)
+  temper evidence resolve --stage S --id N --fixed-by COMMIT   (only a repair commit of the CLI, rechecked)
   temper evidence add --stage review --claim 'review completed' --exit 0 --read FILE   (once for each file read whole)
   temper review files                     (read only: the changed files Review must read, the set its gate compares)
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P] [--brief: failed rows only]
@@ -42,6 +42,8 @@ Usage:
   temper park --verdict V --reason R      (an armed run stops for the person)
   temper budget | budget grant --key K --reason R  (the repeats of the run; the person's two more at run.budget)
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
+  temper repair start --stage review|check [--again] | test ID --phase red|green -- CMD | commit | mark | close |
+    revert | status   (WP24: a finding repaired in its stage; start and close are the CLI's own actions)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
   temper plan patch G<n>|task N|integration --cmd C   (the person's change of one command line; no loop)
@@ -59,6 +61,8 @@ Usage:
   temper spec branch --carry NAME | --if-protected  (switch carrying the spec files; a fix run's branch off main)
   temper check run [--fresh]|detect       (Check by the CLI: suite, coverage, scenarios, a fix's regression proof;
                                            --fresh runs whatever the reuse store holds, one repeat)
+  temper check build-checks               (the checks when Build ends, into the Build ledger: the suite with coverage,
+                                           the scenario and acceptance tests, a fix's regression proof; run when Build ends)
   temper acceptance lock --cmd C | skip --reason R | start | reopen --reason R | restore
                                                              (the acceptance tests written from the intent before Build)
   temper drift [--json]                   (where the code moved away from the finished specs; read only)

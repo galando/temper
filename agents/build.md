@@ -34,6 +34,14 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    is the evidence. If the fix needs a file of a later group, or a change to the plan, stop and say
    so in your panel; the person decides at the next question.
 
+   **A repair in place.** When the prompt has a `Repair in place:` line, Review or Check found one defect after Build,
+   and you repair it where it was found: fix exactly what the prompt names, in the files of the plan or a test, and
+   nothing else. For a finding whose proof is `test`, write the failing test first and run
+   `TEMPER repair test <id> --phase red -- <command>`, then the code, then the same call with `--phase green`. For a
+   failed row of Check no new failing test is asked: the CLI's failed row is the RED. Commit nothing (the CLI commits
+   with `temper repair commit` and runs the checks again), change no locked acceptance test and no file outside the
+   plan, and never accept, override or skip. When the fix needs the plan or the intent changed, stop and say so.
+
    **A record pass.** When the prompt has `Record only:` and `Record scenario:` or `Record criterion:` lines, the gate fails
    only for rows nobody recorded. Write them and change nothing else: for each scenario, find the scoped command that
    proves it and run `TEMPER evidence run --stage build --scenario '<name>' --claim 'scenario test' -- <command>`; for each

@@ -558,6 +558,20 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
       printf '{"result": "green", "seconds": 1, "plan": {"true": {"result": "fail", "exit": 1, "seconds": 1, "class": "command", "kind": "fails-on-base", "why": "exit 1", "fail_lines": ["FAIL: test_a"], "tail": ""}}}\n' \
         > .temper/evidence/baseline.json
       _stop44 "$_FORBID44|baseline (skip|timeout)|state (loop|redo) \S+ plan" ;;
+    repair.contested|repair.outside-plan|repair.sensitive|repair.unfinished|repair.environment|repair.unmeasured|\
+    repair.person-criterion|repair.acceptance-test)   # WP24: the never by rule list, each state as D05b builds it
+      _d05 "$(sed 's/^repair\.//; s/^outside-plan$/outside/; s/^person-criterion$/person/; s/^acceptance-test$/acceptance/' <<<"$1")" \
+        | cut -d, -f1 ;;
+    repair.tests-removed|repair.worse) _unattended review   # WP24: what a repair asks (repair.stop) is a stop, never passed
+      "$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
+      gfail review "no blocking findings" "1 open high finding"
+      python3 -c "
+import json, sys
+p = '.temper/build-state.json'; d = json.load(open(p))
+d['repair_stop'] = {'kind': 'tests' if sys.argv[1] == 'repair.tests-removed' else 'worse', 'why': 'repair 1 at Review: ' + sys.argv[1],
+                    'n': 1, 'stage': 'review', 'lines': ['src/demo_test.sh: b=2']}
+json.dump(d, open(p, 'w'), indent=2)" "$1"
+      _stop44 "$_FORBID44|repair (start|commit|revert)" ;;
     *) echo "no state is built for this stop" ;;
   esac
 }
@@ -701,14 +715,22 @@ assert_eq "D35b a missing coverage tool is not measured in the gate, the view an
   "gate=None:not measured|view=not measured|card=not measured" \
   "gate=$(_covrow44)|view=$(vw "next((x.get('state') for x in d.get('checks') or [] if str(x.get('name', '')).startswith('coverage')), None)")|card=$(_x44 "s = section(d.get('card'), 'coverage'); r = 'not measured' if s and any('not measured' in x.get('text', '') for x in s.get('rows') or []) else 'no coverage row'")"
 rm -f Cargo.toml
-_mut44() { # _mut44 <with|without>: Check's verdict and its failed rows, with or without a planted bug score of 40
+_mut44() { # _mut44 <with|without>: Check's verdict and its failed rows, then next's action and calls, with or without a
+           # planted bug score of 4 of 10 in .temper/evidence/mutation.json (of this tree) and of 40 in Check's ledger
   fresh; gpass intent plan build review; _at check
   [[ "$1" == with ]] && "$TEMPER" evidence add --stage check --claim 'mutation score' --value 40 >/dev/null 2>&1
+  [[ "$1" == with ]] && python3 -B -c "
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import check_run, run_env
+check_run.planted_write(os.getcwd(), run_env.tree_key(os.getcwd(), root=os.getcwd()), 'measured', ran=10, caught=4)
+None if check_run.planted(os.getcwd()) else print('the score is not of this tree')" "$REPO_ROOT/scripts"
   "$TEMPER" gate check >/dev/null 2>&1
   python3 -c "
 import json
 e = json.load(open('.temper/gates.json')).get('check') or {}
 print('%s:%s' % (e.get('verdict'), ','.join(x['name'] for x in e.get('requirements') or [] if x.get('pass') is False)))"
+  nx "d['action'] + '|' + ' '.join(d.get('calls') or [])"
 }
 _d35c_with="$(_mut44 with)"; _d35c_without="$(_mut44 without)"
 assert_eq "D35c the planted bug score fails nothing and moves nothing" "mutation rows=0|same=True" \

@@ -43,6 +43,7 @@ _at_check() { # a run at Check, with the earlier gates passed
   for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 }
 _at_check; _clear_root
+sed -i 's/^\*\*Integration:\*\* `true`$/**Integration:** `manual`/' .temper/specs/demo/tasks.md   # WP23: no plan line either
 assert_eq "9.8.0: with no test command the CLI can find, Check is the agent as before" "work|1|0" \
   "$(nx "'|'.join([d['action'], str(len(d['agents'])), str(sum(1 for c in d['calls'] if 'check run' in c))])")"
 python3 - <<'PYEOF'
@@ -481,7 +482,7 @@ PYEOF
 printf 'pwd -P >> "%s"\necho x > .coverage\necho ok\n' "$WORKDIR/.git/count15" > .git/cov15.sh
 sed -i "s|^    test: \"true\"$|    test: \"bash $WORKDIR/.git/cov15.sh\"|" .claude/temper.config
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
-assert_eq "9.8.0: the Review agent's launch first starts Check's run in the background" "yes" \
+assert_eq "9.8.0: the Review agent's launch first starts check ahead in the background (in a feature run the planted bugs only)" "yes" \
   "$(nx "'yes' if any(c.endswith('temper check ahead') for c in d['agents'][0].get('before', [])) else 'no'")"
 _ahead15() { # check ahead, then a wait for its end: the planted bug score it writes last, no longer running
   local i
@@ -498,10 +499,12 @@ _reused15() { python3 -c "
 import json
 rows = [r for r in json.load(open('.temper/evidence/check.json')) if 'tests: the suite' in r.get('claim', '')]
 print('yes' if rows and rows[-1].get('reused') else 'no')" 2>/dev/null || echo 'no row'; }
-: > .git/count15; _ahead15
+# WP23 (mechanism 10): a feature run's store is warm from integrate (its checks, check build-checks), and check ahead
+# beside Review plants bugs only
+: > .git/count15; "$TEMPER" check build-checks >/dev/null 2>&1
 echo '[]' > .temper/evidence/check.json
 "$TEMPER" check run >/dev/null 2>&1
-assert_eq "WP22: with a suite that leaves .coverage, Check uses the run made beside Review: one suite run in all, and the suite row of check run says reused" \
+assert_eq "WP23: with a suite that leaves .coverage, Check uses the run integrate made: one suite run in all, and the suite row of check run says reused" \
   "runs=1|reused=yes" "runs=$(_runs15)|reused=$(_reused15)"
 _ahead15; _ah15="$(_runs15)"
 mkdir -p src; echo "changed after" > src/later.sh
@@ -573,7 +576,8 @@ bash -c "$STAMP" >/dev/null 2>&1
 assert_eq "WP23: the triage says the code is wrong: no question; the CLI's own fix pass comes next" "fix pass" \
   "$(nx "'fix pass' if d['action'] in ('auto', 'work') and (any(a['type'] == 'temper:temper-build' for a in d.get('agents') or []) or any('state redo build' in c for c in d.get('calls') or [])) else d['action']")"
 gfail build "acceptance tests written before Build" "FAIL: test_ac01 AssertionError: another failure"
-assert_eq "9.8.0: a new failure gets a new triage" "work" "$(nx "d['action']")"
+assert_eq "9.8.0: a new failure gets a new triage" "work|temper:temper-acceptance|triage" \
+  "$(nx "a = (d.get('agents') or [{}])[0]; '|'.join([d['action'], str(a.get('type')), 'triage' if 'Triage: a locked acceptance test fails at Build' in a.get('prompt', '') else 'no triage'])")"
 
 # every state the intent lists is named in an acceptance test
 f9_tasks | m_setup

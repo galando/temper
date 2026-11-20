@@ -301,8 +301,7 @@ def needs(project, setup, commands=()):
     progs = []   # (program, folder it runs in, the file that names it)
     for c in commands:
         folder = ""
-        for seg in re.split(r"&&|\|\||;|\|", c or ""):
-            toks = [t for t in seg.split() if not re.match(r"^\w+=", t)]
+        for toks in run_env.steps(c):   # quotes respected: a `;` inside quotes names no program
             if not toks:
                 continue
             if toks[0] == "cd" and len(toks) > 1:
@@ -492,7 +491,8 @@ def propose(project):
     # a Python virtual environment of the project
     venv = next((d for d in (".venv", "venv") if os.path.isfile(os.path.join(project, d, "bin", "activate"))), "")
     if venv:
-        run.append(". %s/bin/activate" % venv)
+        # by the main checkout's path: a worktree of the clone (Build's, the baseline's) holds no ignored folder (U13)
+        run.append('. "$(dirname "$(git rev-parse --git-common-dir)")/$(git rev-parse --show-prefix)%s/bin/activate"' % venv)
         facts.append("%s/ is the project's Python environment" % venv)
         tools += [] if "python3" in tools else ["python3"]
     if ci["node"] and shutil.which("node") and java_major('version "%s' % version("node", project).lstrip("v")) != ci["node"][0]:

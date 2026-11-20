@@ -13,7 +13,7 @@ Standard library only.
 """
 import calendar, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
-from run_env import FAIL_LINE, LOG_LINE, SUMMARY, env_fault, fail_lines, row_fields, run_cached, run_cmd, test_env  # noqa: F401
+from run_env import FAIL_LINE, LOG_LINE, SUMMARY, as_owner, env_fault, fail_lines, row_fields, run_cached, run_cmd, test_env  # noqa: F401
 import baseline
 import scenario_ops
 import maven_loop
@@ -414,6 +414,8 @@ elif mode == 'testrun':
         out, rc = run_cmd(wt, timeout, ['python3', '-E', '-s', loop, 'run', wt, str(timeout), cmd[0]] + task['files'])
     else:
         out, rc = run_cmd(wt, timeout, cmd)
+    if rc == 124:   # WP20 mechanism 14: twice the limit is kept, the next run's limit
+        baseline.timed_out(' '.join(cmd), timeout)
     # F5: untracked paths that first appear during this CLI run (__pycache__, coverage files, logs) are the test
     # command's byproducts; the task verdict does not count them as undeclared changes
     byproducts = sorted(untracked(wt) - before)
@@ -442,16 +444,21 @@ elif mode == 'grouprun':
     # group and carries phase 'group', so it never counts as a task RED or GREEN run
     wt, timeout, rowfile, group = sys.argv[2:6]
     cmd = sys.argv[7:]    # argv[6] is the '--' separator
-    info = {}
+    # WP23 mechanism 2: the owner's test text runs in the owner's run text, so integrate reuses it on the merged tree
+    given = cmd
+    cmd, info = as_owner(wt, cmd)
     out, rc, reused = run_cached(wt, timeout, cmd, info=info)
+    if rc == 127 and cmd != given:   # the coverage program could not start: the test text runs without it, as at check run
+        cmd, info = given, {}
+        out, rc, reused = run_cached(wt, timeout, cmd, info=info)
     show(out, rc)
     row = dict({'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
                 'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'group', 'scenario': None,
                 'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
                 'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                 'output': out[-4096:].decode('utf-8', 'replace')}, **row_fields(info))
-    if rc != 0:
-        row['fail_lines'] = fail_lines(out, rc=rc)
+    if rc != 0:   # the whole list the run kept, which the gate compares with the base (baseline.like_base)
+        row['fail_lines'] = info.get('fail_lines') or fail_lines(out, rc=rc)
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 

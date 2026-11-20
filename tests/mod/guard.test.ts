@@ -192,13 +192,15 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
   })
 
-  test('the run to the commit (WP11): its own moves keep the mode, and Review loops back by rule only as the CLI\'s own action', () => {
+  // WP24: the rule's loop back to Build is gone: at a failed Review the CLI's own move is the repair in the stage, or a
+  // recorded stop (the park call) where the repair may not start (this fixture is no repository with a reviewed HEAD)
+  test('WP24 the run to the commit: its own moves keep the mode, and Review never loops back by rule: its own move is the repair in the stage or a park', () => {
     const own = nextCalls('armed-build-pass')
     expect(own.map(c => c.replace(/^\S+ /, ''))).toEqual(['state advance build_complete review'])
     for (const c of own) expect('allow' in bash(ctx('build', { allowed: own }), c.replace(/^\S+/, CLI))).toBe(true)
-    const loop = nextCalls('armed-review-fail')
-    expect(loop.length === 1 && loop[0]!.includes("state loop review build --reason 'rule: ")).toBe(true)
-    expect('allow' in bash(ctx('review', { allowed: loop }), loop[0]!.replace(/^\S+/, CLI))).toBe(true)
+    const move = nextCalls('armed-review-fail')
+    expect(move.length === 1 && /repair start --stage review$|park --verdict PARKED-NEEDS-DECISION /.test(move[0]!) && !move[0]!.includes('state loop')).toBe(true)
+    expect('allow' in bash(ctx('review', { allowed: move }), move[0]!.replace(/^\S+/, CLI))).toBe(true)
     expect(isDeny(bash(ctx('review'), `${CLI} state loop review build --reason x`))).toBe(true)
   })
 
@@ -483,6 +485,36 @@ describe('the red base: only the person goes on anyway', () => {
     for (const cmd of [`${CLI} baseline start`, `${CLI} baseline start --again`, `${CLI} baseline clean`]) {
       expect('allow' in bash(ctx('intent'), cmd), cmd).toBe(true)
     }
+  })
+})
+
+// 9.8.5 (WP22, step 11): "Run it anyway" (`--fresh`), a check run whatever the reuse store holds, is the person's
+// option only: it passes as the call of the answer, word for word. The same calls without the flag are the CLI's.
+describe('run it anyway: only the person runs a check whatever the store holds', () => {
+  const FRESH = [`${CLI} check run --fresh`, `${CLI} check build-checks --fresh`, `${CLI} group gate G1 --fresh`,
+    `${CLI} group gate G1 --timeout-s 60 --fresh`, `${CLI} integrate --fresh`]
+  test('a --fresh call outside the person\'s answer is refused, at every stage of a run', () => {
+    for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+      for (const cmd of FRESH) expect(bash(ctx(stage), cmd), `${stage}: ${cmd}`).toEqual({ deny: ONLY_USER })
+    }
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
+    expect(bash(ctx('check', { allowed: back }), `${CLI} check run --fresh`)).toEqual({ deny: ONLY_USER })
+  })
+
+  test('it passes as the call of the answer, word for word; without the flag the calls are the CLI\'s', () => {
+    const c = ctx('check', { allowed: [`${CLI} check run --fresh`] })
+    expect('allow' in bash(c, `${CLI} check run --fresh`)).toBe(true)
+    for (const cmd of [`${CLI} integrate --fresh`, `${CLI} group gate G1 --fresh`, `${CLI} check build-checks --fresh`]) {
+      expect(isDeny(bash(c, cmd)), cmd).toBe(true)
+    }
+    expect('allow' in bash(ctx('check'), `${CLI} check run`)).toBe(true)
+    for (const cmd of [`${CLI} group gate G1`, `${CLI} group gate G1 --timeout-s 60`, `${CLI} integrate`, `${CLI} check build-checks`]) {
+      expect('allow' in bash(ctx('build'), cmd), cmd).toBe(true)
+    }
+  })
+
+  test('an unquoted glob that could spell --fresh is refused', () => {
+    for (const cmd of [`${CLI} check run --fr?sh`, `${CLI} integrate --fre*`]) expect(isDeny(bash(ctx('check'), cmd)), cmd).toBe(true)
   })
 })
 

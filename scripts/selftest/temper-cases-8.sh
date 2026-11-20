@@ -738,6 +738,10 @@ json.dump([{"id": "F1", "ts": "2026-11-19T00:00:00Z", "stage": "build", "scope":
             "class": "environment", "kind": "setup-line", "class_by": "exit",
             "why": "the setup block failed (temper-setup: FAIL (exit 1))", "fail_lines": ["temper-setup: FAIL (exit 1)"],
             "row": "build#1", "n": 1, "step": "", "resolved": None}], open(".temper/evidence/failures.json", "w"), indent=2)
+# the record's row on the Build ledger, as integrate leaves it (a record stands only while its failure is there)
+json.dump([{"claim": "unit tests", "phase": "green", "cmd": "true", "exit_code": 0, "executed_by": "cli"},
+           {"claim": "Integration suite", "phase": "integration", "cmd": "bash suite.sh", "exit_code": 125, "executed_by": "cli",
+            "key": "k8", "tree": "t8", "output": "temper-setup: FAIL (exit 1)"}], open(".temper/evidence/build.json", "w"), indent=2)
 PY
 }
 _env8

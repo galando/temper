@@ -18,6 +18,7 @@ def groups_mutate(argv):
     spec = importlib.util.spec_from_file_location('task_cover', argv[1])   # by its one full path, no folder on the import path
     task_cover = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(task_cover)
+    FAILURE[:] = [os.path.join(os.path.dirname(argv[1]), 'failure.py')]   # WP23: the failure record, by its full path
     task_status = task_cover.set_status
     f, body, a = argv[2], argv[3], argv[4:]
     try:
@@ -178,8 +179,27 @@ def group_start(d, a, task_status):
     e.setdefault('finished_at', None)
 
 
+FAILURE = []
+
+
+def record(fn, *args):
+    """WP23: one failure record (scripts/failure.py, loaded by its full path); it never fails the change of groups.json."""
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('failure', FAILURE[0])
+        failure = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(failure)
+        getattr(failure, fn)(*args)
+    except Exception:
+        pass
+
+
 def group_gate(d, a, task_status):
     g = d.setdefault('groups', {}).setdefault(a[0], {})
+    if a[1] != 'PASS':
+        record('of_group', a[0], a[2], a[3])
+    else:   # WP23: a pass resolves the group's records
+        record('pass_group', a[0])
     g['gate'] = {'verdict': a[1], 'ts': a[4]}
     if a[1] == 'PASS':
         g['status'] = 'passed'
@@ -265,6 +285,9 @@ def task_awaiting(d, a, task_status):
 
 def task_fail(d, a, task_status):
     t = d['tasks'][a[0]]
+    if not t.get('blocked'):   # a blocked task has its record from `task blocked`
+        record('record', 'build', 'task:%s' % a[0], 'task-test', 'undeclared-change' if a[8] or 'undeclared change' in a[3]
+               else 'test-failed', a[3], '', None, 'cli', '', '', None, (), '', 'structure')
     def num(x): return int(x) if x.isdigit() else None
     t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3],
         'ms': num(a[4]), 'ts': a[5], 'output': a[6]})
@@ -297,6 +320,7 @@ def task_pass(d, a, task_status):
         'ms': num(a[3]), 'ts': a[4]})
     task_status(t, 'passed')
     t['passed_at'] = a[4]
+    record('resolve_pass', 'task:%s' % a[0], 'task-test', '')   # WP23: a pass resolves the task's records
     t['commit'] = a[7] or None
     for x in (a[5], a[6]):
         if x:
@@ -316,6 +340,8 @@ def merged(i):
 
 def integration(d, a, task_status):
     old = d.get('integration') or {}
+    if a[0] != 'PASS':
+        record('of_integration', a[1], a[2])
     d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
                         'files': [f for f in a[3].split(',') if f], 'ts': a[4], 'head': a[6]}
     if a[0] == 'PASS' or merged(old):

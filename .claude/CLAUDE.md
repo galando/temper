@@ -66,7 +66,8 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
   `commands/fix.md` — it belongs in that stage's own brief in `agents/` (including the
   stage's return box: a brief must never point a clean-context subprocess at an
   orchestrator file); new commands and agents must be listed in `.claude-plugin/plugin.json`;
-  the person decides only in a question dialog, so never add a button that decides to the
+  a finding is resolved by `temper repair close` (scripts/repair_ops.py), never by a brief or an agent's
+  call; the person decides only in a question dialog, so never add a button that decides to the
   mod, and never give a stage command a flow of its own (it is a door into `/temper`); a cap
   of `scripts/caps.json` is never raised by a building session (`now` follows the measure,
   `final` never moves), and a count of the floor (`scripts/e2e/floor.json`) moves only in the

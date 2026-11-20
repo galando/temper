@@ -25,13 +25,17 @@ in the plugin folder.
    names every changed file, and no code changed at Review. Record every finding as evidence: the ledger is the record of what was
    found; report EVERY CRITICAL and HIGH finding in your panel, never only "the top
    issues". You do not change code at Review (with the mod, a write outside the spec
-   folder is refused at this stage); the person loops a finding back to Build. The loop
+   folder is refused at this stage); the CLI repairs a blocking finding in the stage, and
+   resolves it itself (`temper repair close`), never you. A loop back to Build
    starts the review ledger empty (the earlier findings go with the loop), so on a Review
    after it, record again each finding that is still there and leave out one the fix pass
-   fixed and re-tested; the loop's reason in the report says what was found before:
+   fixed and re-tested; the loop's reason in the report says what was found before.
+   Record each finding whole: its detail, the fix you suggest, and `--proof test` for a
+   behaviour defect a test can show (the fixer writes that test first) or `--proof none`:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage review \
      --claim '<file>:<line> <one-line finding>' --severity critical|high|medium|low \
+     --detail '<what is wrong and why>' --fix '<the fix you suggest>' --proof test|none \
      --confidence <0.0-1.0> --label HEURISTIC
    ```
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
@@ -47,7 +51,13 @@ in the plugin folder.
      --claim "review completed" --exit 0 --label PROVEN --read <file> --read <file>
    ```
    One `--read` for each changed file you read whole. An empty findings ledger is not a review.
-4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
+4. **Re-check:** when the prompt has a `Re-check:` line, the CLI repaired findings in the stage. Read only the diff the
+   line names, the findings it lists and the CLI's results, and answer three questions, no other lens: is each finding
+   fixed; did the changed lines add a defect; was a test weakened or removed. Record one row a finding,
+   `--claim 'recheck #<id>: fixed' --exit 0` or `--claim 'recheck #<id>: not fixed' --exit 1`, each with `--cmd recheck`;
+   a new finding only on a changed line; then `--claim 'review completed' --exit 0 --cmd recheck --value <ids checked>`
+   with one `--read` for each changed file. You read the diff, not the code around it.
+5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):

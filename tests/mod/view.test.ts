@@ -85,7 +85,7 @@ describe('the view of the run', () => {
     g0.tasks[1].state = 'red'
     const b = buildView(input('build-work', {}, { build: groups }))
     expect(b.detail).toEqual(['Tasks: 1 of 3 done', 'G1 Tokens  ✓1 ◐2', 'G2 Mail  ○3'])
-    expect(buildView(input('review-fail')).detail).toEqual(['Open findings: 1 critical, 1 low', 'Failed: critical findings'])
+    expect(buildView(input('review-fail')).detail).toEqual(['Open findings: 1 critical, 1 low', 'Failed: no blocking findings'])
     const v = buildView(input('check-fail'))
     expect(v.detail).toEqual(['Failed: tests pass'])
     expect(v.failedChecks).toEqual([{ name: 'tests pass', detail: 'exit 1: 2 failed' }])

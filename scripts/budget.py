@@ -47,6 +47,8 @@ SPENDS = (
     (("integrate",), "merge again", "the integration record is FAIL and no repeat of gate:build paid for it: gate:build"),
     (("check", "run"), "run anyway", "with --fresh (WP22, the person's Run it anyway): gate:check; `group gate G --fresh` "
                                      "spends group:<G>, `integrate --fresh` gate:build"),
+    (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped: gate:<stage> (WP24: the repair in the stage, "
+                                    "spent by scripts/repair_ops.py once every condition holds)"),
 )
 
 
@@ -149,6 +151,9 @@ def key_of(words, facts):
             return "group:" + held[0], "step back"
         plan = facts.run().plan or {}
         return ("gate:build", "step back") if plan.get("tasks") and not plan.get("groups") else None
+    if a == "repair" and b == "start":
+        st = next((y for x, y in zip(words, list(words[1:])) if x == "--stage"), "")
+        return ("gate:" + st, "repair") if st and facts.failed(st) else None
     if a == "state" and b == "set" and c == "pipeline_round":
         return "pipeline", "CI fix"
     if a == "state" and b == "set" and c == "next_stage":
@@ -265,6 +270,8 @@ def spend(words, facts):
     if hit is None:
         return 0, ""
     key, kind = hit
+    if kind == "run anyway" and facts.run().armed():   # WP22 step 11: the person's option; a run on its own never takes it
+        return 1, "BLOCKED: Run it anyway (--fresh) is the person's answer at a question; a run that goes on by itself never takes it"
     rm = room(key, facts)
     if rm["used"] >= rm["limit"]:
         return 1, "BLOCKED: %s was repeated %d times (limit %d); the person grants more at the question" % (

@@ -99,14 +99,36 @@ def fail_lines(out, keep=8, rc=None):
     return picked[:keep] if picked else lines[-3:]
 
 
+STEP_OPS = {';', ';;', '&&', '||', '|', '|&'}
+
+
+def steps(cmd):
+    """The words of each step of a shell line, assignments left out. An operator inside quotes splits no step; a lone
+    `&` (a redirection such as 2>&1, or a background job) splits nothing, as before. Unbalanced quotes: the plain split."""
+    import shlex
+    try:
+        lex = shlex.shlex(cmd or '', posix=True, punctuation_chars=';&|')
+        lex.whitespace_split = True
+        toks = list(lex)
+    except ValueError:
+        toks = None
+    if toks is None:
+        segs = [seg.split() for seg in re.split(r'&&|\|\||;|\|', cmd or '')]
+    else:
+        segs, cur = [], []
+        for t in toks:
+            if t in STEP_OPS:
+                segs.append(cur)
+                cur = []
+            else:
+                cur.append(t)
+        segs.append(cur)
+    return [[t for t in seg if not re.match(r'^\w+=', t)] for seg in segs]
+
+
 def programs(cmd):
     """The first word of each step of a shell line (assignments left out): the programs it starts (9.8.5, WP21)."""
-    out = set()
-    for seg in re.split(r'&&|\|\||;|\|', cmd or ''):
-        toks = [t for t in seg.split() if not re.match(r'^\w+=', t)]
-        if toks:
-            out.add(toks[0])
-    return out
+    return {seg[0] for seg in steps(cmd) if seg}
 
 
 def env_fault(out, rc, cmd, setup=None):
@@ -238,10 +260,23 @@ class _Flock:
         try:
             import fcntl
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
-            fcntl.flock(self.fd, fcntl.LOCK_EX)
         except (ImportError, OSError):
-            self.fd = None
+            return self
+        for _ in range(20):
+            try:
+                fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+            except OSError:
+                return self
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                a, b = os.fstat(fd), os.stat(self.path)
+                if (a.st_ino, a.st_dev) == (b.st_ino, b.st_dev):
+                    self.fd = fd
+                    return self
+            except OSError:
+                pass
+            # the file was unlinked (_drop_locks) between the open and the lock: lock the one at the path now
+            os.close(fd)
         return self
 
     def __exit__(self, *exc):
@@ -278,6 +313,7 @@ def store_change(path, fn):
         if len(keys) > KEEP:
             for k in sorted(keys, key=lambda k: _newest(d[k]))[:len(keys) - KEEP]:
                 d.pop(k, None)
+        _drop_locks(path, d)
         try:
             tmp = '%s.tmp.%d' % (path, os.getpid())
             with open(tmp, 'w') as f:
@@ -286,6 +322,33 @@ def store_change(path, fn):
         except OSError:
             pass
         return d
+
+
+def _drop_locks(path, d):
+    """The lock file of a key the store no longer holds goes, unless a run holds it now: the folder stays small."""
+    folder = os.path.join(os.path.dirname(path), 'temper-locks')
+    try:
+        import fcntl
+        names = [n for n in os.listdir(folder) if n.endswith('.lock') and not isinstance(d.get(n[:-5]), dict)]
+    except (ImportError, OSError):
+        return
+    for n in names:
+        try:
+            fd = os.open(os.path.join(folder, n), os.O_RDWR)
+        except OSError:
+            continue
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.unlink(os.path.join(folder, n))
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+
+
+def _tops(wt):
+    """The top folder of every worktree of the clone."""
+    return [x[9:] for x in _git(wt, 'worktree', 'list', '--porcelain').splitlines() if x.startswith('worktree ')]
 
 
 def untracked(wt):
@@ -366,7 +429,13 @@ def tree_key(wt, byproducts=None, root=None):
     try:
         os.makedirs(os.path.join(tmp, 'objects'))
         if os.path.isfile(index):
-            shutil.copyfile(index, os.path.join(tmp, 'index'))
+            # with its time: git reads an entry again when the index is no older than it (racy git), so a same size
+            # edit in the second the entry was written is seen; a copy dated now would let the stat data call it clean.
+            # Content and time from one open file: git replaces the index by a rename, which may land between two reads
+            with open(index, 'rb') as src, open(os.path.join(tmp, 'index'), 'wb') as dst:
+                st = os.fstat(src.fileno())
+                shutil.copyfileobj(src, dst)
+            os.utime(os.path.join(tmp, 'index'), ns=(st.st_atime_ns, st.st_mtime_ns))
         env = dict(os.environ, GIT_INDEX_FILE=os.path.join(tmp, 'index'), GIT_OBJECT_DIRECTORY=os.path.join(tmp, 'objects'),
                    GIT_ALTERNATE_OBJECT_DIRECTORIES=objects)
         # the run's own folders count as HEAD holds them: a spec file staged for the commit changes no digest
@@ -384,12 +453,17 @@ def tree_key(wt, byproducts=None, root=None):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def versions(cmd, setup=None):
+def versions(cmd, setup=None, wt=None):
     """{program: its first version line} of each program the command starts (a path into the tree is part of the
-    digest) and of each tool of the setup block: one shell call for those not read yet in this process."""
+    digest) and of each tool of the setup block: one shell call for those not read yet in this process. A program of
+    the repository itself, named by its full path (a script in the work tree or in the git folder), is the project's
+    own: it is never started with --version, which would run it (WP23)."""
     text = cmd[0] if len(cmd) == 1 else (cmd[0] if cmd else '')
-    progs = sorted({p for p in programs(text) if p not in BUILTINS and ('/' not in p or p.startswith('/'))}
-                   | set((setup or {}).get('tools') or []))
+    own = [x.rstrip('/') + '/' for x in (_git(wt, 'rev-parse', '--show-toplevel'), _git(wt, 'rev-parse', '--git-common-dir'))
+           if x] if wt else []
+    own = [os.path.realpath(x if os.path.isabs(x) else os.path.join(os.path.abspath(wt), x)) + '/' for x in own]
+    progs = sorted({p for p in programs(text) if p not in BUILTINS and ('/' not in p or p.startswith('/'))
+                    and not (p.startswith('/') and any(os.path.realpath(p).startswith(x) for x in own))} | set((setup or {}).get('tools') or []))
     todo = [p for p in progs if p not in _VERSIONS]
     if todo:
         import shlex
@@ -421,7 +495,7 @@ def result_key(wt, cmd, setup, extra=None, tree=None):
     if not tree:
         return None, ''
     folder = _git(wt, 'rev-parse', '--show-prefix')
-    raw = json.dumps([tree, list(cmd), setup or {}, folder, versions(cmd, setup), extra], sort_keys=True, default=str)
+    raw = json.dumps([tree, list(cmd), setup or {}, folder, versions(cmd, setup, wt), extra], sort_keys=True, default=str)
     return hashlib.sha256(raw.encode('utf-8')).hexdigest(), tree
 
 
@@ -490,6 +564,72 @@ def _recheck_base(root, cmd, out, rc, setup):
     return base[0], base[1], [x for x in lines if baseline.mask(x) not in base[1]]
 
 
+def as_owner(wt, cmd, root=None):
+    """WP23 mechanism 2, one owner: a command whose text is the owner's test text (check_run.det_for of the project
+    folder `root`, as integrate reads it) runs in the owner's run text, its coverage measured as integrate measures it,
+    so a group's Validate on the merged tree and integrate share one key. (command, info) for run_cached; the command as
+    given, with no info, when it is not the owner's test text or the owner has no other run text. The folder the run
+    text writes its coverage into (.temper/check, as check_run.run makes it in the project folder) is made in wt."""
+    import json
+    root = root or os.getcwd()
+    text = ' '.join(cmd).strip()
+    try:
+        import check_run
+        cfg = config_yaml.load(os.path.join(root, '.claude', 'temper.config'))
+        det = check_run.det_for(root, *(str(config_yaml.get(cfg, k, '') or '').strip()
+                                         for k in ('check.commands.test', 'check.commands.coverage')))
+        run = ((det.get('coverage') or {}).get('run') or '') if det.get('test', '').strip() == text else ''
+        if not run or run == text:
+            return cmd, {}
+        try:
+            base = json.load(open(os.path.join(root, '.temper', 'build-state.json'))).get('base_sha') or ''
+        except (OSError, ValueError, AttributeError):
+            base = ''
+        base = base or _git(root, 'rev-parse', 'HEAD')   # as `check build-checks` takes it
+        os.makedirs(os.path.join(wt, '.temper', 'check'), exist_ok=True)   # go test -coverprofile makes no folder
+        return [run], {'measure': check_run.measure_of(wt, det, base), 'need_extra': True}
+    except Exception:   # the owner unknown: the command runs as the plan wrote it
+        return cmd, {}
+
+
+def kept(wt, cmd, setup=None, root=None):
+    """What the store holds of cmd on the tree of wt as it is now, without running it (WP23 trap 9, the planted bugs read
+    the suite's time here): ('pass' | 'fail', its record) as the runner would give it, or None when it holds nothing."""
+    if setup is None:
+        setup = load_setup()
+    root = root or os.getcwd()
+    path = _store(wt)
+    store = store_read(path) if path else {}
+    key = result_key(wt, cmd, setup, None, tree_key(wt, byproducts_of(wt, store, root), root))[0] if path else None
+    e = store.get(key) if key else None
+    if not isinstance(e, dict):
+        return None
+    p, f = (e.get(x) if isinstance(e.get(x), dict) else None for x in ('pass', 'fail'))
+    if f and (e.get('last') == 'fail' or not p):
+        return 'fail', f
+    return ('pass', p) if p else None
+
+
+def kept_again(wt, rows, since=''):
+    """WP22 step 8: whether the store already knows that a check of `rows` (a ledger) failed again on the same key since
+    `since`: 'reused' when the newest row of that check, written then, came back from the kept failure (nothing ran, so
+    the tree, the command and the setup did not change), 'again' when the store ran an environment or not measured
+    failure again there and it failed; else False. The questions read this before they compare failure texts and before
+    the count fix_empty."""
+    last = {}
+    for x in rows or []:
+        if isinstance(x, dict) and str(x.get('ts') or '') >= since:
+            last[(x.get('claim'), x.get('group'), x.get('scenario'), x.get('cmd'))] = x
+    want = [x for x in last.values() if x.get('key') and x.get('exit_code') not in (0, None)]
+    store = store_read(_store(wt)) if want else {}
+    for x in want:
+        e = store.get(x['key'])
+        f = e.get('fail') if isinstance(e, dict) else None
+        if isinstance(f, dict) and e.get('last', 'fail') == 'fail' and (x.get('reused') or int(f.get('again') or 0) >= 1):
+            return 'reused' if x.get('reused') else 'again'
+    return False
+
+
 def row_fields(info):
     """The fields a row of a runner call carries: tree, key, seconds and reused (the date, or null); flaky and forced
     when they hold."""
@@ -530,10 +670,12 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
         info.update(reused=str(rec.get('ts') or ''), seconds=rec.get('seconds'), extra=rec.get('extra'),
                     fail_lines=rec.get('fail_lines'))
         if k[0] == 'pass':
+            if isinstance(e.get('flaky'), dict):   # step 9: a reused flaky pass is still flaky, for the commit card
+                info['flaky'] = e['flaky']
             note = '[temper: the same command passed on this same tree at %s; reused, not run again]\n' % rec.get('ts', '?')
             return (note + str(rec.get('tail', ''))).encode('utf-8'), 0, str(rec.get('ts', ''))
         note = ('[temper: the same command failed on this same tree at %s (exit %s); not run again: change the code, the '
-                'command or the environment, or run it anyway]\n' % (rec.get('ts', '?'), rec.get('rc')))
+                'command or the setup block, or run it anyway]\n' % (rec.get('ts', '?'), rec.get('rc')))
         return (note + str(rec.get('tail', ''))).encode('utf-8'), int(rec.get('rc') or 1), str(rec.get('ts', ''))
     if key and not fresh:
         got = hit(store.get(key))
@@ -568,13 +710,14 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
         if rc == 0 and callable(info.get('measure')):
             info['extra'] = info['measure'](out)
         if rc != 0:
-            info['fail_lines'] = fail_lines(out, rc=rc)
+            info['fail_lines'] = fail_lines(out, None, rc)   # every one: a skip or a gate compares them with the base
         if not key:
             return out, rc, ''
         new = sorted(untracked(wt) - before)
         if new:
             new = byproducts_of(wt, None, root, new)
         ts = _now()
+        tops = _tops(wt) if new or store.get(BYPRODUCTS) else []
 
         def put(d):
             e = d.get(key) if isinstance(d.get(key), dict) else {}
@@ -588,11 +731,14 @@ def run_cached(wt, timeout, cmd, setup=None, info=None, extra=None, fresh=None, 
                 e['last'] = 'fail'
             if info.get('flaky'):
                 e['flaky'] = info['flaky']
+            elif rc == 0:   # the stamp is of the pass it describes: a pass made cleanly on the key ends it
+                e.pop('flaky', None)
             if fresh:
                 e['forced'] = ts
             d[key] = e
-            if new:
-                d[BYPRODUCTS] = sorted(set(x for x in d.get(BYPRODUCTS) or [] if isinstance(x, str)) | set(new))
+            if new or (tops and d.get(BYPRODUCTS)):   # a byproduct no worktree holds any more leaves the list
+                d[BYPRODUCTS] = sorted(x for x in set(x for x in d.get(BYPRODUCTS) or [] if isinstance(x, str)) | set(new)
+                                       if not tops or any(os.path.lexists(os.path.join(t, x)) for t in tops))
         store_change(path, put)
     return out, rc, ''
 
@@ -619,6 +765,21 @@ def main(argv):
         if was and now and now != was:
             print('FAIL the project changed after the Check verdict: Check judged the tree %s, the project is now the tree '
                   '%s; run Check again' % (was[:12], now[:12]))
+            return 0
+        # WP24 (ADR 0021): the Review verdict is of the committed tree, or of a tree that differs from it only by repair
+        # commits the CLI recorded, whose checks ran again and whose recheck completed (scripts/repair_ops.py)
+        try:
+            gr = json.load(open(argv[2])).get('review') or {}
+            st = json.load(open(os.path.join(argv[3], '.temper', 'build-state.json')))
+        except (OSError, ValueError, AttributeError):
+            gr, st = {}, {}
+        rv = str(gr.get('tree') or '') if isinstance(gr, dict) and stage in ('check', 'commit') else ''
+        now = now or (tree_key(argv[3], root=argv[3]) if rv else '')
+        if rv and now and rv != now and (st.get('repairs') or (st.get('repair') or {}).get('commit')):
+            import repair_ops
+            if not repair_ops.closed_chain(st, rv, now):
+                print('FAIL the Review verdict judged the tree %s, the project is now the tree %s, and the difference is not '
+                      'only closed repairs whose recheck completed; run Review again' % (rv[:12], now[:12]))
         return 0
     return 2
 

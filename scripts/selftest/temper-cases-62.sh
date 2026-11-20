@@ -162,6 +162,15 @@ assert_eq "w21 which commands run: after baseline plan a group Validate and the 
   "owner on the base=$_owner62|V=$(_n62 V)|I=$(_n62 I)|T=$(_n62 T)|S=$(_n62 S)|O=$(_n62 O)|N=$(_n62 N)"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
 
+# with no command of the plan to run on the base (each is left out), the programs of every command are still checked
+fresh; _repo62; _progs62; _known62
+_tasks62 "sh src/t62_1.sh" "nosuchprog21 --run" "sh src/t62_1.sh"; _scen62 "$P62/ok S" "$P62/ok S"
+_at62; _bp62
+assert_eq "w21 which commands run: with every command left out, a task Test whose program is missing is still an environment fault shown in base.red" \
+  "ran=0|red|program-missing:nosuchprog21|asked=base.red" \
+  "ran=$(grep -c . "$P62/log" | tr -d ' ')|$(_b62 "'%s|%s' % (d.get('result'), ','.join('%s:%s' % (x.get('kind'), x.get('need')) for x in d.get('env') or []) or 'no fault')")|asked=$(_x62 "r = (d.get('ask') or {}).get('id')")"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true
+
 # --- w21 where and how long: the baseline worktree; Build's limit; a time out is no environment fault ---
 fresh; _repo62; _progs62; _known62
 _tasks62 "$P62/ok I" "$P62/ok T" "pwd -P > $P62/where" "sleep 3"; _scen62 "$P62/ok S" "$P62/ok S"
@@ -178,6 +187,45 @@ r = '%s|first=%s|change=%s|skip=%s|setup=%s|agents=%d' % (a.get('id'), (opts(d) 
     'yes' if any(c.startswith('baseline skip') and '{reason}' in c for c in calls(d)) else 'no',
     'yes' if opt(d, 'add-setup') or any(c.startswith('doctor') and '--write' in c for c in calls(d)) else 'no',
     len(d.get('agents') or []))")"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true
+
+# a passed command's seconds feed its limit: three times them, as for the suite
+fresh; mkdir -p .temper/evidence
+printf '{"result": "green", "cmd": "make test", "seconds": 1, "plan": {"make lint": {"result": "pass", "seconds": 500}, "make slow": {"result": "fail", "seconds": 500}}}\n' > .temper/evidence/baseline.json
+_lim62() { python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" "" "" limit "$1" 600 2>&1; }
+assert_eq "w21 where and how long: the seconds a plan command took when it passed on the base set its limit at the group gate, three times them" \
+  "pass=1500|fail=600|other=600" "pass=$(_lim62 'make lint')|fail=$(_lim62 'make slow')|other=$(_lim62 'make other')"
+# two calls of baseline plan at once share the one worktree: the later one waits, and a command that passes on the base
+# is never recorded as failed because the other call made the worktree again or removed it
+fresh; _repo62; _progs62; _known62
+_tasks62 "$P62/ok I" "$P62/ok T" "sleep 1; exit 1" "sleep 4; test -f src/demo.sh"; _scen62 "$P62/ok S" "$P62/ok S"
+_at62
+env -u TEMPER_BASELINE_FOREGROUND "$TEMPER" baseline plan >/dev/null 2>&1
+for _i62 in 1 2 3 4 5 6 7 8 9 10; do [[ "$(_b62 "res('sleep 1; exit 1').get('result')")" == fail ]] && break; sleep 0.5; done
+env -u TEMPER_BASELINE_FOREGROUND "$TEMPER" baseline plan --cmd 'sleep 1; exit 1' >/dev/null 2>&1
+for _i62 in $(seq 1 80); do
+  [[ "$(_b62 "any(isinstance(e, dict) and e.get('result') == 'running' for e in (d.get('plan') or {}).values())")" == False ]] && break
+  sleep 0.5
+done
+assert_eq "w21 where and how long: a second baseline plan while the first runs waits for it; the command that passes on the base is pass, the failing one fail, and the worktree is gone after both" \
+  "G1=fail|G2=pass|worktree=gone" \
+  "G1=$(_b62 "res('sleep 1; exit 1').get('result')")|G2=$(_b62 "res('sleep 4; test -f src/demo.sh').get('result')")|worktree=$([[ -d .claude/worktrees/temper-baseline ]] && echo there || echo gone)"
+"$TEMPER" baseline clean >/dev/null 2>&1 || true
+# the wait of the later call lasts as long as the older call's commands may run, not only the baseline's own limit
+# (TEMPER_BASELINE_TIMEOUT_S, here 1 s against a Validate that runs 4 s under its limit of 600 s)
+fresh; _repo62; _progs62; _known62
+_tasks62 "$P62/ok I" "$P62/ok T" "sleep 1; exit 1" "sleep 4; test -f src/demo.sh"; _scen62 "$P62/ok S" "$P62/ok S"
+_at62
+env -u TEMPER_BASELINE_FOREGROUND "$TEMPER" baseline plan >/dev/null 2>&1
+for _i62 in 1 2 3 4 5 6 7 8 9 10; do [[ "$(_b62 "res('sleep 1; exit 1').get('result')")" == fail ]] && break; sleep 0.5; done
+env -u TEMPER_BASELINE_FOREGROUND TEMPER_BASELINE_TIMEOUT_S=1 "$TEMPER" baseline plan --cmd 'sleep 1; exit 1' >/dev/null 2>&1
+for _i62 in $(seq 1 80); do
+  [[ "$(_b62 "any(isinstance(e, dict) and e.get('result') == 'running' for e in (d.get('plan') or {}).values())")" == False ]] && break
+  sleep 0.5
+done
+assert_eq "w21 where and how long: the later baseline plan waits as long as the older call's commands may run, past the baseline's own limit, so the command that passes on the base is pass" \
+  "G1=fail|G2=pass|worktree=gone" \
+  "G1=$(_b62 "res('sleep 1; exit 1').get('result')")|G2=$(_b62 "res('sleep 4; test -f src/demo.sh').get('result')")|worktree=$([[ -d .claude/worktrees/temper-baseline ]] && echo there || echo gone)"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
 
 # --- w21 binary rule: the exit code alone decides; a connection error in the output changes nothing ---
@@ -204,11 +252,29 @@ assert_eq "w21 binary rule: exit 1 on a red base fails like the base and raises 
   "base=red|B=fails like the base|asked=base.red|then=plan.approve" "$_red62|then=$(_x62 "r = (d.get('ask') or {}).get('id')")"
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
 
+# a failed Validate at its gate matches the base only when its fail lines are all there: a list cut at its eight lines
+# may hide a new failure, so it is no match
+fresh; mkdir -p .temper/evidence
+python3 -B - <<'PY'
+import json
+lines = ["FAILED t62/test_a.py::test_parse_%d - assert 2 == 3" % i for i in range(1, 9)]
+json.dump({"result": "red", "kind": "red-base", "answer": "go-on-anyway", "cmd": "make test", "fail_lines": [],
+           "plan": {"make it": {"result": "fails like the base", "fail_lines": lines}}}, open(".temper/evidence/baseline.json", "w"))
+PY
+_like62() { python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" "" "" like-base "make it" "$1" >/dev/null 2>&1 && echo match || echo 'no match'; }
+assert_eq "w21 binary rule: at the gate, two of the base's fail lines match the base; eight lines, the cap of the list, are no match" \
+  "two=match|eight=no match" \
+  "two=$(_like62 '["FAILED t62/test_a.py::test_parse_1 - assert 2 == 3", "FAILED t62/test_a.py::test_parse_2 - assert 2 == 3"]')|eight=$(_like62 "$(python3 -c 'import json; print(json.dumps(["FAILED t62/test_a.py::test_parse_%d - assert 2 == 3" % i for i in range(1, 9)]))')")"
+
 # --- w21 a failed result is not final: after the repair, Run it again runs the command again and it passes ---
 fresh; _repo62; _progs62; _known62
 _tasks62 "$P62/ok I" "$P62/ok T" "$P62/mark M"; _scen62 "$P62/ok S" "$P62/ok S"
 _at62; _bp62
 _f62="first=$(_b62 "res('$P62/mark M').get('result')")|asked=$(_x62 "r = '%s:%s' % ((d.get('ask') or {}).get('id'), 'check-again' if opt(d, 'check-again') else 'no check-again')")"
+gfail plan "maven group verify" "the group's verify is filtered"
+assert_eq "w21 a failed result is not final: at a failed plan gate the gate's own question comes first, not plan.command" \
+  "plan.fail" "$(_x62 "r = (d.get('ask') or {}).get('id')")"
+gpass plan
 touch "$P62/repaired"; _runopt62 check-again
 assert_eq "w21 a failed result is not final: after the repair, the option check-again runs the command again and the result is pass" \
   "first=fail|asked=plan.command:check-again|runs=2|then=pass|asked=plan.approve" \
@@ -250,3 +316,20 @@ _s62+="|service down=$(grep -q '^ENV:' <<<"$OUT" && echo ENV || echo not ENV):at
 assert_eq "w21 task gate, sure signs only: a GREEN that prints Connection refused and exits 1 with no declared service is FAIL and spends the attempt; with a declared service that does not answer it is ENV, and it-is-the-code is offered" \
   "no service=FAIL:attempts=1|service down=ENV:attempts=0:task.env,it-is-the-code" "$_s62"
 rm -rf "$WORKDIR/.git/bin62"
+
+# the phase 5 gate: an operator inside quotes splits no step, so a quoted `;` names no program (failing-scenario's base)
+_s62="$(cd "$WORKDIR" && python3 -I - "$REPO_ROOT/scripts" <<'PYEOF'
+import os, sys, tempfile
+sys.path.insert(0, sys.argv[1])
+import run_env, doctor
+cmd = 'python3 -c "import sys; sys.exit(3)"'
+d = tempfile.mkdtemp()
+faults, _, _ = doctor.needs(d, {}, [cmd, "pytest -q 2>&1 | tee out.txt", "A=1 sh -c 'x || y' && echo 'a|b'"])
+print("%s|%s|%s|%s" % (",".join(sorted(run_env.programs(cmd))),
+                       ",".join(sorted(run_env.programs("pytest -q 2>&1 | tee out.txt"))),
+                       ",".join(sorted(run_env.programs("A=1 sh -c 'x || y' && echo 'a|b'"))),
+                       ",".join(sorted(f["need"] for f in faults if f.get("kind") == "program-missing" and f["need"] != "pytest")) or "none"))
+PYEOF
+)"
+assert_eq "w21 which programs a command starts: an operator inside quotes splits no step, so a quoted ; or | names no program" \
+  "python3|pytest,tee|echo,sh|none" "$_s62"
