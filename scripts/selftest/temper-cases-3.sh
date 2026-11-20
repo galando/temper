@@ -228,7 +228,7 @@ assert_exit "gate intent FAILs the raw template" 1 "$TEMPER" gate intent
 assert_eq "a placeholder that spans lines is not Problem content" "yes" \
   "$(grep -q '\[x\] problem stated' <<<"$OUT" && echo yes || echo no)"
 assert_eq "no requirement row prints Python's None" "0" "$(echo "$OUT" | grep -c 'None')"
-assert_eq "with no Status header each of the 13 draft-only rows says why it skipped" "13" \
+assert_eq "WP26 with no Status header each of the 12 draft-only rows says why it skipped" "12" \
   "$(echo "$OUT" | grep -c 'skipped: no recognized Status header (draft, accepted or completed)')"
 cat > .temper/specs/demo/intent.md <<'EOF'
 **Status:** draft

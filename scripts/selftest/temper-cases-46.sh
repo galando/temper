@@ -384,7 +384,7 @@ print(','.join(cut) or 'none')" 2>/dev/null)"
 assert_eq "D27b no brief, reference page or template asks for a part that nothing reads" "none|mermaid=0" \
   "$(git -C "$REPO_ROOT" grep -l -F -e 'Cross-Repo Search' -e 'Files to Create' -e 'Files to Modify' -e 'Patterns to Follow' \
       -e 'Risk Level:' -e 'Scenario Coverage Checklist' -e 'Target Users' -e 'Business Outcome' -e 'Traced to' \
-      -e 'Given/When/Then' -e 'Approach Decisions' -e '## Diagram' -- agents reference templates | tr '\n' ' ' | sed 's/ $//;s/^$/none/')|mermaid=$(cat "$REPO_ROOT/templates/plan.md" 2>/dev/null | grep -c mermaid)"
+      -e 'Given/When/Then' -e 'Approach Decisions' -e '## Diagram' -- agents reference templates | { tr '\n' ' '; echo; } | sed 's/ $//;s/^$/none/')|mermaid=$(cat "$REPO_ROOT/templates/plan.md" 2>/dev/null | grep -c mermaid)"
 _d27c=""
 _tier46; second_group; "$TEMPER" gate plan >/dev/null 2>&1; _d27c+="two groups=$(_row46 plan 'tier recorded')"
 _tier46; sed -i 's|^\*\*File:\*\* `src/demo.sh`|**File:** `src/demo.py`, `src/one.py`, `src/two.py`, `src/three.py`|' .temper/specs/demo/tasks.md

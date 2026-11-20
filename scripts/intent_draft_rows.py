@@ -25,7 +25,7 @@ if status != 'draft':
         # row; these rows say why they skipped instead of printing Python's None.
         d = ("skipped: no recognized Status header (draft, accepted or completed); this check "
              "applies to drafts only, and the status header requirement reports the missing header")
-    for name in ('task context recorded', 'criteria why', 'target users action chain',
+    for name in ('task context recorded', 'criteria why',
                  'criteria ids', 'criteria priority', 'criteria validate',
                  'open questions labeled', 'no duplicate question', 'header fields',
                  'no scenarios in draft', 'no soft words'):
@@ -108,14 +108,6 @@ no_why = [label(c) for c in crits if not c['why']]
 add('criteria why', not no_why,
     'every criterion states the outcome or risk it serves' if not no_why
     else 'no Why: line with real text on: ' + ' | '.join(no_why))
-
-# --- target users action chain --------------------------------------------
-tusers = bullets_with_blocks(sec('Target Users'))
-bad_u = [' '.join(b['block'])[:60] for b in tusers
-         if not any(('→' in l or '->' in l) for l in b['block'])]
-add('target users action chain', not bad_u,
-    'every Target Users bullet is an action chain (user: does -> next)' if not bad_u
-    else 'no action chain (→ or ->) on: ' + ' | '.join(bad_u))
 
 # --- open questions --------------------------------------------------------
 def norm_q(text):

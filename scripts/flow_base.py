@@ -290,8 +290,9 @@ def advance_ok(run, done, nxt):
 
 
 def plan_files(run_or_spec):
-    """The files a plan allows: the backticked paths of the Files to Create and Files to Modify
-    tables of plan.md, and of the **File:** lines of tasks.md."""
+    """The files a plan allows: the backticked paths of the **File:** lines of tasks.md, and of the two file tables of
+    plan.md that a plan approved by 9.8.4 or by the base holds (WP26: Plan writes those tables no more, so a new plan
+    has none and its files are the **File:** lines alone)."""
     spec = run_or_spec
     out = []
     active, level = False, 0

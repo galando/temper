@@ -230,6 +230,19 @@ All notable changes to Temper are documented here. The plugin version lives in
   gains the row `group validate command`. A replan keeps the built tasks whose files, Depends and Test did not change
   (`temper group keep`), and its approval card says how many. The budget note of the commit card reads
   `repeats of the budget used: N of M`.
+- WP26: Plan writes only what a script, a gate row or a later agent reads. At the simple tier a plan is `tasks.md` and
+  the scenarios, with no `plan.md`; above it `plan.md` holds a Context Map and a Blast Radius, and no tier needs one.
+  Each scenario is one `gherkin` block of four lines (its name, one `Then` line, `Covers:`, `Test:`), and Review, Check
+  and Build judge a test against that `Then` line. No `Traced to:` line is written: a scenario is owed by the task that
+  declares the file its `Test:` command runs (a plan with the line still reads). The plan gate loses the rows
+  `criteria -> scenarios`, `cross-repo search recorded` and `blast radius documented`, the Intent gate the row
+  `target users action chain`; a plan.md with no Context Map passes its row; the row `tier recorded` bounds the simple
+  tier (one group, at most 3 production files, risk below H) and names `temper state set complexity medium`.
+  `temper spec deviations` writes `deviations.md` in the spec folder and never touches plan.md. The templates and the
+  briefs lose the Reviewer line, Business Outcome, Target Users, the Scenario Coverage Checklist, the intent's panel,
+  Architecture, Approach Decisions, the diagram, the file tables, Patterns, Dependencies and Risk Level. Intent looks a
+  fact up and never asks it: one search a question, and a fact it finds is a Decisions row
+  `{the fact} -> as the project holds it ({file}:{line})`.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

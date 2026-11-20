@@ -40,18 +40,17 @@ INTENT = "\n".join([
     "### Success Criteria",
     "",
 ] + ["- [ ] AC-0%d [required]: criterion %d (source: test)" % (n, n) for n in range(1, 6)] + [""])
-PLAN = "\n".join(["# Plan", "", "### Files to Modify", "", "| File | Change |", "|---|---|", "| `src/app.ts` | edit |",
-                  "| `unit/app.test.ts` | add |", "| `src/mail.ts` | edit |", ""])
+PLAN = "\n".join(["# Plan", "", "## Blast Radius", "", "- nothing outside the declared files", ""])   # WP26: the new shape
 TASKS = "\n".join([
     "# Tasks: Password reset by email", "", "**Integration:** `npm test`", "",
     "## Group G1: Tokens", "**Depends:** none", "**Validate:** `npm test`", "**Context:**", "Keep the token API.", "",
     "### Task 1: Issue a token", "**File:** `src/app.ts`, `unit/app.test.ts`", "**Depends:** none", "**Test:** `npm test`",
-    "**Cases:**", "- a token is issued", "**Traced to:** Scenario: \"reset\"", "- [ ] done", "",
+    "**Cases:**", "- a token is issued", "- [ ] done", "",
     "### Task 2: Expire a token", "**File:** `src/app.ts`", "**Depends:** Task 1", "**Test:** `npm test`",
-    "**Cases:**", "- an old token is refused", "**Traced to:** Scenario: \"reset\"", "- [ ] done", "",
+    "**Cases:**", "- an old token is refused", "- [ ] done", "",
     "## Group G2: Mail", "**Depends:** G1", "**Validate:** `npm test`", "**Context:**", "Send the mail.", "",
     "### Task 3: Send the mail", "**File:** `src/mail.ts`", "**Depends:** none", "**Test:** `npm test`",
-    "**Cases:**", "- the mail holds the link", "**Traced to:** Scenario: \"reset\"", "- [ ] done", ""])
+    "**Cases:**", "- the mail holds the link", "- [ ] done", ""])
 FINDINGS = [
     {"claim": "src/app.ts:12 the token never expires", "severity": "critical", "label": "PROVEN"},
     {"claim": "src/mail.ts:4 the subject is not localized", "severity": "low", "label": "HEURISTIC"},
@@ -331,7 +330,7 @@ write(c, ".temper/specs/pw/intent.md", INTENT)
 verdict(c, "intent", True)
 # WP13: the run leaves Intent by rule; the intent stays a draft until the approval accepts it
 cli(c, "state", "advance", "intent_complete", "plan")
-write(c, ".temper/specs/pw/plan.md", "# Plan\n\n## Context Map\n- use: intent.md - scope\n- gap: no rate limit policy\n- reviewed: pending\n\n## Files to Modify\n")
+write(c, ".temper/specs/pw/plan.md", "# Plan\n\n## Context Map\n- use: intent.md - scope\n- gap: no rate limit policy\n- reviewed: pending\n\n## Blast Radius\n")
 verdict(c, "plan", False, "context map reviewed", "the Context check is pending: the person's answer is not recorded yet")
 snap2(c, "context-check", "run-ctx")
 

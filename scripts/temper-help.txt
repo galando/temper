@@ -57,7 +57,7 @@ Usage:
                                           after the planner; skip is the person's, with a reason, at plan.command)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
-  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
+  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; deviations.md; a commit)
   temper spec branch --carry NAME | --if-protected  (switch carrying the spec files; a fix run's branch off main)
   temper check run [--fresh]|detect       (Check by the CLI: suite, coverage, scenarios, a fix's regression proof;
                                            --fresh runs whatever the reuse store holds, one repeat)

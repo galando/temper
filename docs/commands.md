@@ -310,7 +310,7 @@ without starting the pipeline.
 - Interviews the originator the way an analyst would (scope, affected users,
   constraints, what better looks like) — no formal language required of them
 - Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (a name you
-  typed, else `the person`; never from git), Problem, measurable Success Criteria, Constraints, Target Users, and Open
+  typed, else `the person`; never from git), Problem, measurable Success Criteria, Constraints, Scope and Non-goals, and Open
   Questions — **no scenarios and no architecture**; those are Plan's job, derived from
   the measured blast radius later
 - Keeps criteria and constraints firm: `temper gate intent` fails a draft that uses

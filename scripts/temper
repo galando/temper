@@ -1678,10 +1678,6 @@ _unfenced_scenarios() { # _unfenced_scenarios <intent.md> -> \x1f-joined "lineno
   python3 -I "$SCRIPTS_DIR/spec_text.py" unfenced-scenarios "$1"
 }
 
-_cross_repo_recorded() { # _cross_repo_recorded <plan.md> -> "ok" or a FAIL detail
-  python3 -I "$SCRIPTS_DIR/spec_text.py" cross-repo-recorded "$1"
-}
-
 # Grouped Build (9.7.0): the tasks.md parser. One embedded python parser shared by every grouped
 # subcommand, JSON out: {groups:[{id,title,depends,validate,interfaces,context,context_bytes,tasks}],
 # tasks:[{n,title,group,files,depends,test,block_bytes,block}], integration}.
@@ -2794,17 +2790,6 @@ gate_plan() {
     all_pass=0
   fi
   if [[ -f "$spec_path/intent.md" ]]; then
-    local criteria scenarios
-    # Section parsing: a heading at any level opens, the next heading of any level
-    # closes — so `### Constraints` bullets after `### Success Criteria` never count.
-    criteria=$(awk 'tolower($0) ~ /^#+[ \t]*success criteria/ {f=1; next} f && /^#/ {f=0} f && /^- /{c++} END{print c+0}' "$spec_path/intent.md")
-    scenarios=$(_count_lines_matching '^[[:space:]]*Scenario:' "$spec_path/intent.md")
-    if [[ "$criteria" -gt 0 && "$scenarios" -ge "$criteria" ]]; then
-      reqs+=("$(_req "criteria -> scenarios" 1 "$scenarios scenario(s) for $criteria success criterion/criteria")")
-    else
-      reqs+=("$(_req "criteria -> scenarios" 0 "$scenarios scenario(s) for $criteria success criterion/criteria — need >=1 scenario per criterion")")
-      all_pass=0
-    fi
     # Every criterion is explicitly tied to the scenario/evidence that proves it.
     local acc_out acc_rc
     acc_out="$(python3 "$ACCEPTANCE_PY" plan "$spec_path/intent.md" "$(_evidence_file plan)" 2>&1)"; acc_rc=$?
@@ -2838,35 +2823,19 @@ gate_plan() {
       fi
     fi
   fi
-  # Cross-repo code search: absence of the tool never fails; a missing record does.
-  if [[ ! -f "$spec_path/plan.md" ]]; then
-    reqs+=("$(_req "cross-repo search recorded" 1 "no plan.md — nothing to record yet")")
-  else
-    local cr_out; cr_out="$(_cross_repo_recorded "$spec_path/plan.md")"
-    if [[ "$cr_out" == "ok" ]]; then
-      reqs+=("$(_req "cross-repo search recorded" 1 "plan.md records the cross-repo search (or why none ran)")")
-    else
-      reqs+=("$(_req "cross-repo search recorded" 0 "$cr_out")")
-      all_pass=0
-    fi
-  fi
   local complexity; complexity="$(cmd_state_get complexity "")"
-  if [[ "$complexity" == "medium" || "$complexity" == "complex" ]]; then
-    if [[ -f "$spec_path/plan.md" ]] && grep -qiE '^#+ .*blast radius' "$spec_path/plan.md"; then
-      reqs+=("$(_req "blast radius documented" 1 "plan.md has a Blast Radius section ($complexity change)")")
-    else
-      reqs+=("$(_req "blast radius documented" 0 "plan.md missing a Blast Radius section — required for $complexity complexity")")
-      all_pass=0
-    fi
-  fi
-  # The tier the run records is the one its files record: a door reads it from their Complexity lines.
+  # The tier the run records is the one its files record: a door reads it from their Complexity lines. WP26: the CLI
+  # bounds the simple tier (one group, at most 3 production files, risk below H).
   if [[ -n "$complexity" ]]; then
-    local tier_off; tier_off="$(_tier_lines "$spec_path" check "$complexity" | paste -sd';' - | sed 's/;/; /g')"
-    if [[ -z "$tier_off" ]]; then
-      reqs+=("$(_req "tier recorded" 1 "no Complexity line names another tier than the run's ($complexity)")")
-    else
+    local tier_off tier_cap; tier_off="$(_tier_lines "$spec_path" check "$complexity" | paste -sd';' - | sed 's/;/; /g')"
+    tier_cap="$(python3 -I "$SCRIPTS_DIR/plan_ops.py" tier-bound "$spec_path" "$complexity" "$STATE_FILE")"
+    if [[ -n "$tier_off" ]]; then
       reqs+=("$(_req "tier recorded" 0 "$tier_off, while the run records $complexity: temper state set complexity <tier> records one tier in the run and in those lines")")
       all_pass=0
+    elif [[ -n "$tier_cap" ]]; then
+      reqs+=("$(_req "tier recorded" 0 "$tier_cap")"); all_pass=0
+    else
+      reqs+=("$(_req "tier recorded" 1 "no Complexity line names another tier than the run's ($complexity)")")
     fi
   fi
   # Grouped Build (the default): the grouped requirement rows of the run's tasks.md
