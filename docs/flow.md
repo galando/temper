@@ -167,6 +167,28 @@ A loop back that changes neither earns nothing (the plan the earlier rounds read
 loop back before that round is taken earns no second one. The round is counted in the run state
 (`fresh.grant`, then `fresh.extra`), and the question names the limit with it.
 
+### A change to the plan: the revise agent (9.8.5)
+
+A change to a plan that exists is made by a small agent on Sonnet, `temper:temper-plan-revise`
+(`agents/plan-revise.md`), not by a second full planner pass (`scripts/flow_revise.py`). It is chosen when `tasks.md`
+exists, at least one item exists, no loop back passes through Intent, and fewer than two revise launches were made for
+the reason. A first plan, and a changed intent (a loop back to Intent that comes through Plan again), get the planner.
+Its prompt is a closed list of lines the CLI writes: `Spec path:`, `Reason:` (fresh findings, the person's note, the
+context answer, a decision against the plan, a failed plan row, or a loop back from a stage), every item whole, one a
+line (`Finding #<id> [<severity>]: <claim>`, `Person's note: <text>`, `Left open: <text>`, `Row <name>: <detail>`; a
+step back is `Left open: Loop back from <Stage>: <reason>.` and each thing it left `Left open: What <Stage> left open:
+<n>. <item>`, in the words the planner's prompt uses),
+`Affected tasks:` (the tasks a `Task N` names, the tasks of a group named, the tasks that declare a file named, or `not
+named`), the decisions and the plugin line. It has no project brief line, and its action has no `brief` call. Its
+`before` call is `temper budget revise --key plan-revise:<reason>`, one repeat of the run's budget; its `after` calls
+are the planner's: the usage row, `temper risk`, `temper baseline plan` and `temper gate plan`.
+
+When the plan gate fails after a revise launch, the flow's own action is one more revise, with the failed rows added as
+items. After the second, before the approval, the next launch is the planner with the same items, once
+(`revise_fallback` in the run state). After the approval the same launch is refused by the budget, so the question is
+`run.budget`: a rule never plans again. A row that waits on the person (a Blocking question, the context check, a
+reviewer that did not finish, or only contested findings) is the question's, never a revision's.
+
 ### A failed group check (9.8.4)
 
 The group gate keeps the first FAIL lines of its Validate output and counts its failures
@@ -243,8 +265,8 @@ out. The locked acceptance tests take their limit from `limit_for` with Check's 
 ### A command the plan wrote, the setup block and an environment fault (9.8.5)
 
 **A command the plan wrote (WP21).** The plan gate runs no project command. After the planner returned, its last calls
-are `temper baseline plan` and then `temper gate plan` (a fresh reviewer, a revision and a changed command end the same
-way). `baseline plan` (`scripts/baseline.py`) runs each distinct group Validate and the Integration line once on the
+are `temper risk` (the CLI rates the plan, 9.8.5), `temper baseline plan` and then `temper gate plan` (a fresh reviewer,
+a revision and a changed command end with the last two). `baseline plan` (`scripts/baseline.py`) runs each distinct group Validate and the Integration line once on the
 current code, one after another in a process of its own, in the baseline's worktree `.claude/worktrees/temper-baseline`
 after the suite ended, each under the limit Build gives it: a Validate under the group gate's (`limit_for` of 600 s,
 `TEMPER_TASK_TEST_TIMEOUT_S`), the Integration line under `integrate`'s (3,600 s, `TEMPER_INTEGRATION_TIMEOUT_S`). A
@@ -392,7 +414,14 @@ failed since in one prompt.
 (`scripts/check_run.py build-checks`), which records into the Build ledger, in this order: the suite in the owner's run
 text (WP20: `check.commands.coverage` or `check.commands.test`, else what `detect` finds, else the plan's
 `**Integration:**` line), with its coverage report, as the row `Integration suite` (phase `integration`; the plan's
-text in `plan_cmd` when it differs); the row `coverage` (WP19); one row per scenario test; the locked acceptance tests.
+text in `plan_cmd` when it differs); the row `coverage` (WP19); one row per scenario test; one row per criterion
+command (9.8.5: a criterion validated by `code` or `metric` carries its command in backticks; the row has phase
+`criterion`, the criterion's id, `scenario` null and `executed_by` cli, and only an accepted intent's commands run); the
+locked acceptance tests. `temper check run` records the same criterion rows into the Check ledger. The rows
+`criteria validated` (Build) and `acceptance evidence` (Check) pass such a criterion only from a row the CLI ran of its
+own command that exited 0 (`FAIL: <command> exit N`, or `its command has no row run by the CLI`); no agent records
+one, so no record pass and no Check agent are launched for it. One with no command is the person's to confirm at the
+Check question, as a `manual` one is, and a draft intent with such a line fails the row `criteria validate`.
 A suite that fails on its environment adds the row `setup fault: <why>`, as Check does. A failing suite fails the
 integration; a failing scenario test, acceptance test or coverage row leaves it PASS, and the Build gate fails on that
 row: `acceptance tests written before Build` and `coverage`, the names Check uses, from `scripts/gate_rows.py
@@ -556,7 +585,8 @@ the replan says how many built tasks it keeps.
 Every repeat that follows a failed check is counted by the CLI in one record, `.temper/budget.json`, read only through
 `scripts/budget.py`: 2 for one failure (`budget.per-failure`) and 6 for one run (`budget.per-run`). A failure is the
 check that failed, its key: `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance` or `pipeline` (a failed `integrate`
-spends under `gate:build`). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
+spends under `gate:build`); a launch of the revise agent spends under `plan-revise:<reason>` (its before call
+`temper budget revise`, 9.8.5). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
 gate (from Build, a failed or parked group's key), a group fix, the group's tasks again, more time at a failed group
 check, a plan patch, a plan amendment, a task retry, a task checked again after an environment fault, a reopened
 acceptance test, a CI fix round, and a merge again after a failed `integrate`. A step back by `state set next_stage`

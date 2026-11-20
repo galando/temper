@@ -618,7 +618,8 @@ export const budgetStop = (w: World): void => {
   watch(w)
   startProject(w)
   const repeats = (): number =>
-    launchesOf(w, 'temper:temper-build').length + Math.max(0, launchesOf(w, 'temper:temper-build-task').length - 2) + Math.max(0, launchesOf(w, 'temper:temper-plan').length - 1)
+    launchesOf(w, 'temper:temper-build').length + Math.max(0, launchesOf(w, 'temper:temper-build-task').length - 2) + Math.max(0, launchesOf(w, 'temper:temper-plan').length - 1) +
+    launchesOf(w, 'temper:temper-plan-revise').length   // WP27: the narrow revise agent plans again too
   const counted = (type: string, a: Agent): Agent => (wd, x) => {
     expect(repeats() <= 2, `D08 a third launch for the same failure: ${type} after ${repeats() - 1} repeats of group G1's check`)
     a(wd, x)
@@ -663,18 +664,19 @@ export const criteriaByCli = (w: World): void => {
     'temper:temper-build': (_wd, a) => { throw new Error(`D10 a record pass was launched for the code criterion: ${String(a.prompt ?? '').split('\n').find(l => /Record/i.test(l))?.slice(0, 160) ?? 'temper:temper-build'}`) },
     'temper:temper-check': () => { throw new Error('D10 a Check agent was launched for the code criterion') },
   }
-  let ledger = ''
+  // the two ledgers as the CLI wrote them, one text each (a ledger the CLI rewrites whole is indented JSON, over lines)
+  let ledgers: string[] = []
   const base = defaultPerson()   // the questions asked are not row D10's promise
   const { person } = seeing(w, (ask, wd) => {
     if (idOf(ask) === 'commit.confirm')
-      ledger = ['build', 'check'].map(s => (wd.exists(`.temper/evidence/${s}.json`) ? wd.read(`.temper/evidence/${s}.json`) : '[]')).join('\n')
+      ledgers = ['build', 'check'].map(s => (wd.exists(`.temper/evidence/${s}.json`) ? wd.read(`.temper/evidence/${s}.json`) : '[]'))
     return base(ask, wd)
   })
   promise('D10', () => orchestrate(w, script({ agents, person })))
   const record = watched(w).launches.filter(l => /Record (evidence )?only/i.test(l.prompt))
   expect(record.length === 0, `D10 no record pass is launched (${record.map(l => l.type).join(', ')})`)
   expect(launchesOf(w, 'temper:temper-check').length === 0, 'D10 no Check agent is launched')
-  const rows = ledger.split('\n').flatMap(text => {
+  const rows = ledgers.flatMap(text => {
     try {
       return JSON.parse(text) as Json[]
     } catch {

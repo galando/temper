@@ -191,7 +191,7 @@ class AskPart:
         return self.question(header, text, first[:3] + [more_opt], stage, more=more, qid=qid)
 
     def revise_opt(self, description, why):
-        """Revise the plan: the Plan agent runs again for the reason (state redo plan)."""
+        """Revise the plan: Plan runs again for the reason (state redo plan), by the revise agent (WP27)."""
         return self.opt("Revise the plan", description, move="redo", oid="revise-plan",
                         calls=[self.c("state redo plan --reason %s" % shlex.quote(why[:300]))])
 
@@ -392,7 +392,7 @@ class AskPart:
                     # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
                     text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. %s" % (
                         state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", ask_text % nl)
-                    revise = self.revise_opt("The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
+                    revise = self.revise_opt("The revise agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                              "fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))
                 # The approval (WP11): here when no Design follows, at the Design question when it does.
                 if not r.has_design():
@@ -422,7 +422,7 @@ class AskPart:
                 ov = self.set_reasons(override_opt(self.skip_then()), ["The tasks already agree"] + override_reasons)
                 return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Revise the plan so the tasks follow your answers?" % (
                     why, said), stage=stage, qid="plan.fail", options=[self.set_rec(self.revise_opt(
-                        "The Plan agent writes the tasks under your answers; then the plan is checked again.", self.answers_reason() or why), True),
+                        "The revise agent writes the tasks under your answers; then the plan is checked again.", self.answers_reason() or why), True),
                         ov] + back_opt() + [self.save()])
             # WP20: the offer of the setup block moved to the red base question (base.red), before any agent; WP21: the
             # plan gate runs no command, so a command the plan wrote is the question plan.command, after the gate passed
@@ -719,7 +719,7 @@ class AskPart:
                 ", ".join(fr["missing"] + fr["lazy"]) or "no usable paraphrase"), move="redo", calls=[self.c("plan fresh again")], oid="fresh-again"))
         if opens and not fr["capped"]:
             first.append(self.opt("Revise the plan%s" % ("" if first else " (Recommended)"),
-                                  "The Plan agent fixes or contests each finding; the fresh review runs again on the changed files.",
+                                  "The revise agent fixes or contests each finding; the fresh review runs again on the changed files.",
                                   move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
                                       ("fresh review: " + "; ".join(fresh_review.describe(f) for f in opens))[:300]))], oid="revise-plan"))
         if opens:

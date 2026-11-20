@@ -25,6 +25,7 @@ What `run` records in the Check ledger, every row `executed_by: cli`:
                 program that could not start, no base value). KEY is check.coverage-threshold when the project's
                 config holds it.
   - scenario    each intent.md scenario's `Test:` command, its real exit (a scenario row is a real run, not a trace)
+  - criterion   each criterion validated by code or a metric, by its command in backticks (WP27; phase criterion)
   - regression  (fix runs) the tests the fix added or changed, run on the code before the fix: they must FAIL there,
                 or they do not prove the fix
 `run` plants no bug. The planted bug score is information beside Review: `ahead` plants one small bug at a time in
@@ -965,14 +966,16 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
     line = plan_line(spec)   # WP23 mechanism 2: at Build and at Check, so a run never ends at Check for want of a command
     if not det and line:   # the plan's line owns the suite only when the config and detect name none
         det = detect(root, line)
-    if not det and stage != "build":
-        print("UNKNOWN: no test command for this project; set check.commands.test")
-        return 3
     try:
         rows = json.load(open(ledger))
         rows = rows if isinstance(rows, list) else []
     except (OSError, ValueError):
         rows = []
+    if not det and stage != "build":   # WP27: a criterion's command needs no suite: it is run and recorded all the same
+        if run_criteria(root, spec, rows.append, stage):
+            write_rows(ledger, rows)
+        print("UNKNOWN: no test command for this project; set check.commands.test")
+        return 3
     os.makedirs(os.path.join(root, ".temper", "check"), exist_ok=True)
     ran = []   # (check, the row's index in the ledger)
 
@@ -1042,6 +1045,7 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
             add(row("scenario test at integration" if stage == "build" else "scenario: %s -> %s" % (b["name"], b["cmd"][:120]),
                     b["cmd"], src, sout, phase="scenario", scenario=b["name"], **run_env.row_fields(i)), "scenario")
             print("scenario '%s': exit %d%s" % (b["name"][:60], src, ", %.1f s" % float(i.get("seconds") or 0) if stage == "build" else ""))
+    run_criteria(root, spec, lambda r_: add(r_, "criterion"), stage)
     # the acceptance tests written before Build, as they were locked
     lockfile = os.path.join(root, ".temper", "evidence", "acceptance-lock.json")
     for r_ in acc_run(root, spec, lockfile):
@@ -1056,13 +1060,43 @@ def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold=""
         rrc, detail = regression(root, base, det["test"])
         add(row("regression proof", det["test"], rrc, detail), "regression")
         print("regression: %s" % detail)
+    write_rows(ledger, rows)
+    if not isinstance(info, dict) or not info.get("ahead"):
+        record(stage, rows, ran, root)
+    return out_rc if stage == "build" else 0
+
+
+def write_rows(ledger, rows):
     tmp = "%s.tmp.%d" % (ledger, os.getpid())
     with open(tmp, "w") as f:
         json.dump(rows, f, indent=2)
     os.replace(tmp, ledger)
-    if not isinstance(info, dict) or not info.get("ahead"):
-        record(stage, rows, ran, root)
-    return out_rc if stage == "build" else 0
+
+
+def run_criteria(root, spec, add, stage):
+    """WP27: each required criterion validated by code or a metric with its command in backticks (acceptance.parse_criteria
+    vcmd), not deferred, of an accepted intent only (the approval covers the command: the card shows it, and WP12 binds the
+    intent): its command, through the reuse store, as a row of the stage's ledger like a scenario's (phase criterion).
+    Returns how many ran."""
+    intent = os.path.join(spec, "intent.md") if spec else ""
+    if not intent or not os.path.isfile(intent):
+        return 0
+    import baseline
+    import intent_parse
+    text = open(intent, encoding="utf-8").read()
+    if intent_parse.status(text) not in ("accepted", "completed"):
+        return 0
+    n = 0
+    for c in acceptance.parse_criteria(acceptance.section_lines(text.splitlines(), "Success Criteria")):
+        if not c.get("id") or c.get("placeholder") or not c.get("vcmd") or c.get("deferred"):
+            continue
+        i = {}
+        out, rc, _ = run_env.run_cached(root, baseline.limit_for(c["vcmd"], LIMIT_S[stage](), root), [c["vcmd"]], info=i, root=root)
+        claim = "criterion %s: %s" % (c["id"], c["vcmd"][:120])   # a ledger row's claim, no gate row
+        add(row(claim, c["vcmd"], rc, out, phase="criterion", criterion=c["id"], scenario=None, **run_env.row_fields(i)))
+        print("criterion %s: exit %d" % (c["id"], rc))
+        n += 1
+    return n
 
 
 def record(stage, rows, ran, root):

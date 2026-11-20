@@ -657,8 +657,8 @@ setup
 assert_eq "model plan defaults to agents/plan.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/plan.md")" \
   "$("$TEMPER" model plan)"
-assert_eq "model --all emits one stage=model line per agent stage, plus the task agent's two" "11" "$("$TEMPER" model --all | grep -c '^[a-z-]*=')"
-assert_eq "model --all covers every agent stage (incl. fix-command stages) and the task models" "intent plan design build review check pipeline rca fix task task-escalation" \
+assert_eq "model --all emits one stage=model line per agent stage, plus the task agent's two" "14" "$("$TEMPER" model --all | grep -c '^[a-z-]*=')"
+assert_eq "model --all covers every agent stage (incl. fix-command stages) and the task models" "intent plan plan-revise plan-review design acceptance build review check pipeline rca fix task task-escalation" \
   "$("$TEMPER" model --all | cut -d= -f1 | tr '\n' ' ' | sed 's/ $//')"
 assert_eq "model rca defaults to agents/rca.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/rca.md")" \

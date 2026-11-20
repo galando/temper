@@ -222,9 +222,13 @@ infrastructure any file no scenario touches.
 | Type | Example |
 |---|---|
 | `scenario` | `Validate: scenario — covered by "User resets password"` |
-| `code` | `Validate: code — endpoint exists at POST /api/reset` |
-| `metric` | `Validate: metric — measure support ticket volume post-deploy` |
+| `code` | ``Validate: code — `grep -q "POST /api/reset" src/routes.ts` `` |
+| `metric` | ``Validate: metric — `test "$(wc -c < dist/app.js)" -lt 200000` `` |
 | `manual` | `Validate: manual — UX review needed` |
+
+A `code` or `metric` criterion carries its command in backticks: a command that exits 0 when the criterion holds. The
+CLI runs it when Build ends and at Check and records the row itself (9.8.5); no agent records it. One with no command
+fails the intent gate's `criteria validate` row. A metric that can only be read after release is `manual`.
 
 You run headless and ask nobody. Where an uncertainty changes the outcome, write it into
 `intent.md`'s Open Questions as `Blocking`, with concrete choices ("integrate with the existing
@@ -329,10 +333,10 @@ group branch is merged.
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>
-${CLAUDE_PLUGIN_ROOT}/scripts/temper risk
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan
 ```
 
+The CLI runs `temper risk` itself after the planner (and the revise agent) returned, before the plan gate (9.8.5).
 `temper risk` computes the rating from the blast radius, so the same blast radius always gives the same rating:
 production files (declared files that are not tests or docs) up to 3 is L, up to 10 is M, more is H; a CRITICAL entry
 in `.temper/security-map.json` is H; a HIGH entry, or a `[CROSS-REPO]` row in the Blast Radius section, moves it up one

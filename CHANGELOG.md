@@ -243,6 +243,17 @@ All notable changes to Temper are documented here. The plugin version lives in
   Architecture, Approach Decisions, the diagram, the file tables, Patterns, Dependencies and Risk Level. Intent looks a
   fact up and never asks it: one search a question, and a fact it finds is a Decisions row
   `{the fact} -> as the project holds it ({file}:{line})`.
+- WP27: a change to a plan that exists is made by a narrow revise agent on Sonnet, `temper:temper-plan-revise`
+  (`agents/plan-revise.md`), which gets the reason, every finding or note whole and the task blocks they name
+  (`Affected tasks:`), and no project brief; a first plan and a changed intent get the planner. Each revise launch
+  spends one repeat (`temper budget revise`, key `plan-revise:<reason>`); a plan gate that fails after it gets one more
+  revise with the failed rows, then before the approval the planner, after it the question `run.budget`. A criterion
+  validated by `code` or `metric` carries its command in backticks, which the CLI runs when Build ends and at Check and
+  records itself: no record pass and no Check agent; one with no command is yours to confirm, and a draft with one
+  fails `criteria validate`. The approval card lists those commands. The CLI runs `temper risk` after the planner. One
+  table of models by tier and risk (`temper model --all --source`), with `models.<agent>` and `models.high.<agent>`
+  over it: the planner, Design and RCA stay on Opus, every other agent and the Build task agents run on Sonnet
+  (`models.task: haiku` for cents). ADR 0022: the acceptance tests keep their own writer, alone and first.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

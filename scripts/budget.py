@@ -8,6 +8,9 @@ one entry of `.temper/budget.json`: 2 for one failure (its key) and 6 for one ru
   python3 budget.py room <key>                        prints {"used", "limit", "run_used", "run_limit", "ok"} as JSON
   python3 budget.py grant --key K --reason R          the person's answer at the question run.budget: two more for K
                                                       and for the run
+  python3 budget.py revise --key plan-revise:R --reason T
+                                                      the before call of a launch of the narrow revise agent (WP27,
+                                                      `temper budget revise`): it spends one of plan-revise:<reason>
   python3 budget.py [show]                            the record, as text (`temper budget`)
 
 When a call spends is read from the recorded verdicts and skips (the Run class of the flow, so the rule exists once),
@@ -25,7 +28,7 @@ import sys
 TEMPER = ".temper"
 PATH = os.path.join(TEMPER, "budget.json")
 PER_FAILURE, PER_RUN, GRANT = 2, 6, 2
-KEY_RE = re.compile(r"^(?:gate:[a-z]+|group:G\d+|task:\d+|acceptance|pipeline)$")
+KEY_RE = re.compile(r"^(?:gate:[a-z]+|group:G\d+|task:\d+|acceptance|pipeline|plan-revise:[a-z][a-z-]*)$")
 
 # The calls that spend, by their first words: the kind of their entry, and when they spend (key_of holds the rule).
 SPENDS = (
@@ -50,6 +53,8 @@ SPENDS = (
     (("integrate",), "merge again", "the integration record is FAIL and no repeat of gate:build paid for it: gate:build"),
     (("check", "run"), "run anyway", "with --fresh (WP22, the person's Run it anyway): gate:check; `group gate G --fresh` "
                                      "spends group:<G>, `integrate --fresh` gate:build"),
+    (("budget", "revise"), "revise", "always: --key plan-revise:<reason> (WP27: a launch of the narrow revise agent, its "
+                                     "before call; the flow launches the planner after two before the approval)"),
     (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped, or it is Review: gate:<stage> (WP24: the repair "
                                     "in the stage, spent by scripts/repair_ops.py once every condition holds)"),
 )
@@ -154,6 +159,9 @@ def key_of(words, facts):
             return "group:" + held[0], "step back"
         plan = facts.run().plan or {}
         return ("gate:build", "step back") if plan.get("tasks") and not plan.get("groups") else None
+    if a == "budget" and b == "revise":
+        key = next((y for x, y in zip(words, list(words[1:])) if x == "--key"), "")
+        return (key, "revise") if key.startswith("plan-revise:") and KEY_RE.match(key) else None
     if a == "repair" and b == "start":
         st = next((y for x, y in zip(words, list(words[1:])) if x == "--stage"), "")
         return ("gate:" + st, "repair") if st and (facts.failed(st) or st == "review") else None   # a passed Review: the click
@@ -234,7 +242,8 @@ def what(key):
     """The key in the person's words."""
     kind, _, name = key.partition(":")
     return {"gate": name.capitalize(), "group": "Group %s's check" % name, "task": "Task %s" % name,
-            "acceptance": "The acceptance test", "pipeline": "The CI fix"}.get(kind, key)
+            "acceptance": "The acceptance test", "pipeline": "The CI fix",
+            "plan-revise": "The revision of the plan (%s)" % name.replace("-", " ")}.get(kind, key)
 
 
 def count_line(key, rm):
@@ -296,7 +305,8 @@ def grant(argv, facts):
     key = next((y for x, y in zip(argv, argv[1:]) if x == "--key"), "")
     reason = " ".join(next((y for x, y in zip(argv, argv[1:]) if x == "--reason"), "").split())
     if not KEY_RE.match(key) or not reason:
-        print("FAIL: usage: temper budget grant --key gate:<stage>|group:G<n>|task:<n>|acceptance|pipeline --reason '<why>'",
+        print("FAIL: usage: temper budget grant --key gate:<stage>|group:G<n>|task:<n>|acceptance|pipeline|plan-revise:<reason> "
+              "--reason '<why>'",
               file=sys.stderr)
         return 1
     d = record(facts)
@@ -343,6 +353,13 @@ def main(argv):
         return 0
     if sub == "grant":
         return grant(argv[2:], facts)
+    if sub == "revise":   # WP27: one launch of the revise agent; refused (exit 1, nothing written) at the limit
+        w = ["budget"] + argv[1:]
+        rc, line = spend(w, facts) if key_of(w, facts) else (1, "FAIL: usage: temper budget revise --key plan-revise:<reason> "
+                                                                "--reason R")
+        if line:
+            print(line)
+        return rc
     if sub == "show" and len(argv) <= 2:
         return show(facts)
     print("FAIL: usage: temper budget | temper budget grant --key K --reason R", file=sys.stderr)

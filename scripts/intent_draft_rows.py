@@ -100,9 +100,14 @@ add('criteria priority', not no_prio,
     else 'no [required]/[optional] on first line of: ' + ' | '.join(no_prio))
 
 bad_v = [label(c) for c in crits if not c['has_validate'] or c['vtype'] not in A.VALIDATE_TYPES]
-add('criteria validate', not bad_v,
-    'every criterion has a Validate: type' if not bad_v
-    else 'missing/unknown Validate: type on: ' + ' | '.join(bad_v))
+# WP27: the CLI runs a code or metric criterion's command, so the Validate line carries one in backticks
+no_cmd = [label(c) for c in crits if c['has_validate'] and c['vtype'] in ('code', 'metric') and not c.get('vcmd')
+          and not c.get('deferred')]
+add('criteria validate', not bad_v and not no_cmd,
+    'every criterion has a Validate: type' if not bad_v and not no_cmd
+    else ' | '.join((['missing/unknown Validate: type on: ' + ' | '.join(bad_v)] if bad_v else []) + (
+        ['no command on: %s: write the command that exits 0 when the criterion holds in backticks on the Validate '
+         'line, or use manual' % ' | '.join(no_cmd)] if no_cmd else [])))
 
 no_why = [label(c) for c in crits if not c['why']]
 add('criteria why', not no_why,

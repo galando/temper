@@ -95,11 +95,9 @@ class BuildPart:
         return out
 
     def task_model(self):
-        """The model of a Build task: the one `temper next` resolved (cli_ctx.resolve: the config, else sonnet for a complex
-        or risk H plan, else the brief's), and the same rule when it resolved none (9.8.4: it was haiku for any plan)."""
-        import cli_ctx
-        return self.r.ctx.get("task_model") or (cli_ctx.RISK_TASK_MODEL if (
-            str(self.r.state.get("complexity") or "").lower() == "complex" or str(self.r.state.get("risk") or "").upper() == "H") else "haiku")
+        """The model of a Build task: the one `temper next` resolved (WP27: the table of models of scripts/cli_ctx.py, with
+        the config keys over it), and the same rule when it resolved none."""
+        return self.r.ctx.get("task_model") or self.r.model("task")
 
     def ran_on(self, task):
         """The model of the running attempt: the one task start recorded, else (a run started before it did) the one the
@@ -107,7 +105,7 @@ class BuildPart:
         if task.get("model"):
             return task["model"]
         task_model = self.task_model()
-        esc = self.r.ctx.get("escalation_model") or "sonnet"
+        esc = self.r.ctx.get("escalation_model") or self.r.model("task-escalation")
         return task_model if int(task.get("attempt") or 1) <= 2 else esc
 
     def no_groups(self):

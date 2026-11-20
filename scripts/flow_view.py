@@ -54,24 +54,22 @@ PERSON_ROWS = ("blocking question open", "context map reviewed") + FRESH_ROWS
 
 
 def manual_ids(run):
-    """The ids of the intent's required criteria validated by hand."""
+    """The ids of the intent's required criteria the person confirms (WP27: by hand, or by code or a metric with no
+    command in backticks, acceptance.by_person)."""
     if not run.spec or not os.path.isfile(os.path.join(run.spec, "intent.md")):
         return set()
     try:
         import acceptance
         lines = open(os.path.join(run.spec, "intent.md"), encoding="utf-8").read().splitlines()
         return {c["id"] for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria"))
-                if c.get("id") and c.get("vtype") == "manual"}
+                if c.get("id") and acceptance.by_person(c)}
     except Exception:
         return set()
 
 
-def waits_on_person(row, stage, manual, records=()):
-    """True for a failed row that is no fault of the work: it waits for the person's answer, or for a record the CLI
-    writes itself next (Build's criteria with no CLI row yet)."""
+def waits_on_person(row, stage, manual):
+    """True for a failed row that is no fault of the work: it waits for the person's answer."""
     if row.get("name") in PERSON_ROWS:
-        return True
-    if stage == "build" and records and row.get("name") == "criteria validated":
         return True
     if stage == "check":
         ids = re.findall(r"\b([A-Z]+-\d+) has no supported passing evidence row", str(row.get("detail", "")))
@@ -102,9 +100,8 @@ def stage_marks(run, nxt):
         else:
             mark = "todo"
         manual = manual_ids(run) if s == "check" else set()
-        records = run.missing_records(s) if s == "build" else []
         row = {"id": s, "label": LABEL.get(s, s), "mark": mark, "verdict": v,
-               "failed": [dict({"name": x.get("name"), "detail": x.get("detail")}, **({"waits": True} if waits_on_person(x, s, manual, records) else {}))
+               "failed": [dict({"name": x.get("name"), "detail": x.get("detail")}, **({"waits": True} if waits_on_person(x, s, manual) else {}))
                           for x in run.failed_rows(s)] if s != "rca" else []}
         if sk:
             row["skipped"] = {"reason": sk.get("reason"), "by": sk.get("by")}

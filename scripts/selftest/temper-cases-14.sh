@@ -113,8 +113,8 @@ assert_eq "an open high finding fails the blockers row and names it" "False|1 op
 assert_eq "the plan question offers Revise the plan first, and the plan's accept question" "Revise the plan (Recommended)|Accept a finding|More options|1" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['options']) + '|' + str(int(d['ask']['accept']['options'][0]['calls'][0].endswith(\"evidence accept --stage plan --id 6 --reason '{reason}'\")))")"
 "$TEMPER" state redo plan --reason "fresh review" >/dev/null 2>&1
-assert_eq "after Revise the plan the Plan agent runs with the findings to answer" "temper:temper-plan|1" \
-  "$(nx "a = d['agents'][0]; a['type'] + '|' + str(int('#6 [high] [readiness] Task 1' in a['prompt']))")"
+assert_eq "after Revise the plan the revise agent runs with the findings to answer" "temper:temper-plan-revise|1" \
+  "$(nx "a = d['agents'][0]; a['type'] + '|' + str(int('Finding #6 [high]: [readiness] Task 1' in a['prompt']))")"
 for f in intent.md plan.md tasks.md; do
   cp ".temper/specs/demo/$f" "/tmp/fr-$$-$f"; echo "an edit" >> ".temper/specs/demo/$f"
   assert_eq "stale: an edit of $f after the launch makes the review stale" \

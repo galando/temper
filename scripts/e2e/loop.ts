@@ -63,6 +63,11 @@ function applyOption(w: World, script: Script, q: Json, label: string, note: str
   return option.stop === true
 }
 
+// WP27: a scenario with no scripted revise agent of its own revises the plan as its scripted planner writes it, so a
+// change to a plan that exists runs the same scripted work as the second planner pass it replaces
+const scripted = (script: Script, type: string): Agent | undefined =>
+  script.agents[type] ?? (type === 'temper:temper-plan-revise' ? script.agents['temper:temper-plan'] : undefined)
+
 export function orchestrate(w: World, script: Script, limit = 400): Json {
   return w.mode === 'driver' ? driven(w, script, limit) : loop(w, script, limit)
 }
@@ -156,7 +161,7 @@ function driven(w: World, script: Script, limit: number, start: (port: SyncPort)
       return r
     },
     spawn: a => {
-      const agent = script.agents[a.type]
+      const agent = scripted(script, a.type)
       if (agent === undefined) throw new Error(`no scripted agent for ${a.type}`)
       w.guardAgent(a as Json)
       agent(w, a as Json)
@@ -260,7 +265,7 @@ function loop(w: World, script: Script, limit = 400): Json {
       if (!runCalls(w, n.calls ?? [], {}, '', true)) continue
       for (const a of (n.agents ?? []) as Json[]) {
         runCalls(w, a.before ?? [])
-        const agent = script.agents[a.type]
+        const agent = scripted(script, a.type)
         if (agent === undefined) throw new Error(`no scripted agent for ${a.type}`)
         w.guardAgent(a)
         agent(w, a)

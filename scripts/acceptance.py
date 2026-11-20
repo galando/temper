@@ -177,9 +177,27 @@ def parse_criteria(lines):
         c["has_validate"] = bool(vm)
         c["vtype"] = vm.group(1).lower() if vm else None
         c["vdetails"] = blank_placeholders(vm.group(2)).strip() if vm else ""
+        # WP27: a criterion validated by code or a metric carries its command, the first span in backticks of its
+        # Validate details: a command that exits 0 when the criterion holds, which the CLI runs (check_run.run_criteria)
+        cm = re.search(r"`([^`]+)`", vm.group(2)) if vm and c["vtype"] in ("code", "metric") else None
+        c["vcmd"] = cm.group(1).strip() if cm and cm.group(1).strip() else ""
         wm = re.search(r"Why:\s*(.*)", "\n".join(c["block"]))
         c["why"] = blank_placeholders(wm.group(1)).strip() if wm else ""
     return crits
+
+
+def by_person(c):
+    """WP27: a criterion the person confirms at the Check question: one validated by hand, or by code or a metric with no
+    command in backticks."""
+    return c.get("vtype") == "manual" or (c.get("vtype") in ("code", "metric") and not c.get("vcmd"))
+
+
+def cli_pass(rows, c):
+    """The latest row the CLI ran of a criterion's own command, and whether it exited 0 (WP27: an agent's row, or a run
+    of another command, proves nothing)."""
+    row = latest_by_key([r for r in rows if isinstance(r, dict) and r.get("executed_by") == "cli" and r.get("cmd") == c.get("vcmd")],
+                        "criterion").get(c["id"])
+    return row, bool(row) and row.get("exit_code") == 0
 
 
 def load_evidence(path):
@@ -276,7 +294,6 @@ def build_report(intent_path, ev_path):
     rows = [r for r in load_evidence(ev_path) if isinstance(r, dict)]
     cli_rows = [r for r in rows if r.get("executed_by") == "cli"]
     by_scenario = latest_by_key(cli_rows, "scenario")
-    by_criterion = latest_by_key(rows, "criterion")
     out, failed = [], 0
     for c in real:
         cid, vtype = c["id"], c.get("vtype")
@@ -299,15 +316,17 @@ def build_report(intent_path, ev_path):
                 out.append("%s FAIL: %s." % (cid, "; ".join(bad)))
             else:
                 out.append("%s PASS: %d scenario(s) ran green" % (cid, len(names)))
-        elif vtype == "code":
-            row = by_criterion.get(cid)
-            if row and supported_pass(row):
-                out.append("%s PASS: %s" % (cid, row.get("claim") or "recorded"))
+        elif c.get("vcmd"):   # WP27: code or metric, by its command, from a row the CLI ran
+            row, ok = cli_pass(rows, c)
+            if ok:
+                out.append("%s PASS: %s exit 0" % (cid, c["vcmd"]))
             else:
                 failed += 1
-                out.append("%s FAIL: Validate: code, and no passing row records it." % cid)
-        elif vtype == "manual":
-            out.append("%s CONFIRM: the person confirms it at Check" % cid)
+                out.append("%s FAIL: %s." % (cid, "%s exit %s" % (c["vcmd"], row.get("exit_code")) if row
+                                              else "its command has no row run by the CLI (%s)" % c["vcmd"]))
+        elif by_person(c):
+            out.append("%s CONFIRM: the person confirms it at Check%s" % (
+                cid, "" if vtype == "manual" else " (Validate: %s with no command in backticks)" % vtype))
         else:
             out.append("%s SKIP: %s is checked at Check" % (cid, vtype or "no Validate type"))
     return out, failed
@@ -415,6 +434,12 @@ def main():
             # A deferred optional criterion is skipped here as in the Build report (9.8.0: Check asked evidence for it).
             if c.get("id") and c["has_validate"] and c["vtype"] in ("code", "manual", "metric") \
                     and not (c.get("deferred") and c.get("optional")):
+                if c.get("vcmd"):   # WP27: only a row the CLI ran of its command counts
+                    row, ok = cli_pass(rows, c)
+                    if not ok:
+                        errors.append("%s: %s" % (c["id"], "%s exit %s" % (c["vcmd"], row.get("exit_code")) if row
+                                                  else "its command has no row run by the CLI (%s)" % c["vcmd"]))
+                    continue
                 row = latest_crit.get(c["id"])
                 if not row or not supported_pass(row):
                     errors.append(f"{c['id']} has no supported passing evidence row")

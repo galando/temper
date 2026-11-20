@@ -270,8 +270,8 @@ Shows live scenario verification status, MCP tool availability, and evidence rat
 
 ## Build runs in groups
 
-Plan writes `tasks.md` as groups of small tasks. Build runs each task as one Haiku agent
-(`claude-haiku-5-5`, escalating to Sonnet after two failed attempts), each task in its own
+Plan writes `tasks.md` as groups of small tasks. Build runs each task as one task agent
+(`sonnet`, or `models.task: haiku` for cents), each task in its own
 git worktree, with one human gate per group. See [Grouped Build](grouped-build.md) for the
 loop and the tuning keys (`build.grouped.*`). It
 writes `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/`; like the other

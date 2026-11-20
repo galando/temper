@@ -1,15 +1,15 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
 # Build runs in groups of small tasks: the one Build (ADR 0013)
 setup
-assert_eq "model --all prints the 9 stage lines plus task= and task-escalation=" "11|1|1" \
+assert_eq "model --all prints the 9 stage lines plus task= and task-escalation=" "14|1|1" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
 
 # Scenario: Task and escalation models resolve from config with defaults [AC-06, AC-01]
 setup
 printf 'build:\n  mode: grouped\n' >> .claude/temper.config
-assert_eq "model task defaults to claude-haiku-5-5" "claude-haiku-5-5" "$("$TEMPER" model task)"
+assert_eq "model task defaults to claude-haiku-5-5" "sonnet" "$("$TEMPER" model task)"
 assert_eq "model task-escalation defaults to sonnet" "sonnet" "$("$TEMPER" model task-escalation)"
-assert_eq "grouped on: model --all appends task= and task-escalation=" "11|task=claude-haiku-5-5|task-escalation=sonnet" \
+assert_eq "grouped on: model --all appends task= and task-escalation=" "14|task=sonnet|task-escalation=sonnet" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep '^task=')|$("$TEMPER" model --all | grep '^task-escalation=')"
 setup
 printf 'build:\n  mode: grouped\n  grouped:\n    task-model: haiku\n    escalation-model: opus\n' >> .claude/temper.config
@@ -260,7 +260,7 @@ assert_eq "schedule: schedule writes nothing" "no" "$([[ -e .temper/groups.json 
 sg_setup; sg_state '{}'
 assert_eq "schedule: independent tasks of started groups are ready, ordered by task" "1,3" "$(sg_ready)"
 assert_eq "schedule: a ready line carries task, group, the task's own worktree, project, model and attempt" \
-  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "agent_model": "haiku", "attempt": 1, "manual": false}' \
+  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "sonnet", "agent_model": "sonnet", "attempt": 1, "manual": false}' \
   "$("$TEMPER" schedule | head -1)"
 
 # agent_model: the alias the Agent tool takes, derived from the model id (feedback #4)
@@ -312,7 +312,7 @@ assert_eq "schedule: with every group parked the last line lists them" "1" "$(sg
 
 # attempt and model: a failed task is offered again with its next attempt; attempt 3 uses the escalation model
 sg_setup; sg_state '{"1":{"group":"G1","status":"failed","attempt":1,"attempts":[{"n":1,"outcome":"FAIL"}]}}'
-assert_eq "schedule: attempt 2 is offered on the task model" "claude-haiku-5-5|2" \
+assert_eq "schedule: attempt 2 is offered on the task model" "sonnet|2" \
   "$("$TEMPER" schedule | head -1 | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print('%s|%s' % (d['model'], d['attempt']))")"
 sg_state '{"1":{"group":"G1","status":"failed","attempt":2,"attempts":[{"n":1,"outcome":"FAIL"},{"n":2,"outcome":"FAIL"}]}}'
 assert_eq "schedule: attempt 3 is offered on the escalation model" "sonnet|3" \
@@ -708,7 +708,7 @@ st_attempt() { # st_attempt <model> <ms>: start Task 1, write a declared file an
 }
 st_setup
 out="$(st_attempt claude-haiku-5-5 41000)"; rc=$?
-assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on claude-haiku-5-5" \
+assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on sonnet" \
   "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 assert_eq "retry: the failed attempt's worktree and branch are discarded, the group worktree never saw its files" "no|no|no" \
   "$([[ -d $T1W ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/T1 && echo yes || echo no)|$([[ -e "$ST_WT/src/a.sh" || -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
@@ -1090,7 +1090,7 @@ assert_eq "group report: a parked group is listed" '["G1"]' "$(gr_json parked)"
 gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh; "$TEMPER" group gate G1 >/dev/null 2>&1
 "$TEMPER" gate plan >/dev/null 2>&1
 "$TEMPER" state archive >/dev/null 2>&1
-assert_eq "state archive: gate-ledger.json gets a grouped block with the report and the models" "1|claude-haiku-5-5|sonnet|2" \
+assert_eq "state archive: gate-ledger.json gets a grouped block with the report and the models" "1|sonnet|sonnet|2" \
   "$(python3 -c "
 import json
 g=json.load(open('.temper/specs/demo/gate-ledger.json')).get('grouped') or {}
@@ -1178,9 +1178,9 @@ TB_MAX="$(grep -m1 '^TASK_BRIEF_MAX_BYTES=' "$TEMPER" | sed 's/^[^=]*=//' | tr -
 assert_eq "task brief: agents/build-task.md exists" "1" "$([[ -f "$TB" ]] && echo 1 || echo 0)"
 assert_eq "task brief: within TASK_BRIEF_MAX_BYTES (read from the script)" "1" \
   "$([[ -f "$TB" && -n "$TB_MAX" && "$(wc -c < "$TB" | tr -d ' ')" -le "$TB_MAX" ]] && echo 1 || echo 0)"
-assert_eq "task brief: frontmatter name and model" "temper-build-task|claude-haiku-5-5" \
+assert_eq "task brief: frontmatter name and model" "temper-build-task|sonnet" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^name:/{sub(/^name:[[:space:]]*/,""); a=$0} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); b=$0} END{print a "|" b}' "$TB" 2>/dev/null)"
-assert_eq "model task reads the brief frontmatter as the default" "claude-haiku-5-5" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
+assert_eq "model task reads the brief frontmatter as the default" "sonnet" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
 assert_eq "plugin.json lists ./agents/build-task.md" "1" "$(python3 -c "import json; print(int('./agents/build-task.md' in json.load(open('$REPO_ROOT/.claude-plugin/plugin.json'))['agents']))")"
 # Scenario: Grouped logic stays in the briefs and the CLI [AC-05]
 assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plugin folder rule" "1|1" \
@@ -1188,7 +1188,7 @@ assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plug
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
-assert_eq "model --all has 10 lines with the task brief present" "11" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
+assert_eq "model --all has 10 lines with the task brief present" "14" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0): plan brief, plan reference and templates for grouped output ---

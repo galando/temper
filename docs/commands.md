@@ -440,7 +440,7 @@ that run up ([Entering at a stage](#stage-commands-are-doors)).
 ```
 
 **Note:** tasks with no dependency between them, and with files that do not overlap, run at the same
-time, each as its own Haiku task agent in its own worktree ([Haiku Build](grouped-build.md)).
+time, each as its own task agent in its own worktree ([Grouped Build](grouped-build.md)).
 
 ---
 
@@ -486,10 +486,10 @@ there everything happens as `/temper` does it ([Entering at a stage](#stage-comm
 
 **What it does:**
 
-Build runs the plan's groups ([Haiku Build](grouped-build.md)). `temper next --json` drives it:
+Build runs the plan's groups ([Grouped Build](grouped-build.md)). `temper next --json` drives it:
 
 - It starts each group whose dependencies passed, in its own worktree.
-- It hands out the ready tasks; each runs as a small Haiku task agent in its own worktree, writes the
+- It hands out the ready tasks; each runs as a small task agent (Sonnet) in its own worktree, writes the
   test of each listed case first (RED), then the code (GREEN).
 - The CLI gates each task from its own recorded test runs, commits it on the task branch and merges it
   into the group branch. A failed task is retried, then escalated, then parks its group.
@@ -899,6 +899,6 @@ which is what lets the loop begin and end without a person starting it.
 | `temper evidence escalate --stage S --id N --reason '<why>'` | 9.7.6: the evidence is outside every file; the person decides. |
 | `temper drift [--run] [--json]` | 9.7.6: each finished spec compared with the tree as it is now (a planned file gone, a scenario test gone, a planned file changed since). `--run` also runs each scenario's `Test:` command and names the ones that fail now (behavior drift). Never a gate. |
 | `temper plan fresh request\|start\|again` | 9.7.6: the fresh review of the plan: the person asks for it (`plan.fresh-review: ask`), the orchestrator marks a launch (only rows recorded after it count), a reviewer that did not finish runs again. |
-| `temper model --all --source` | Each stage's model and whether it comes from a config override or a brief default. |
+| `temper model --all --source` | 9.8.5: every agent's model from the one table of models (`scripts/cli_ctx.py`), and whether it comes from the `config` or the `table`. The table has two columns: `standard`, and `high` for a run of tier complex or of risk H; `plan`, `design` and `rca` are on Opus in both, every other agent and the task agents on Sonnet. The keys, in the order they win: `models.high.<agent>` (when the class is high), `models.<agent>`, for the task agents the old `build.grouped.task-model` and `build.grouped.escalation-model`, then the table. The first planner launch of a run has no risk and no final tier yet, so its class is `standard`: the `high` column decides later launches and every agent after the plan (`models.plan: sonnet` with `models.high.plan: opus` keeps Opus at risk H). `temper model <agent>` prints one. |
 | `temper guards uninstall` | Removes the Temper commit hook and its folder; unsets `core.hooksPath` when it names that folder. |
 | `temper gate commit --from-hook` | The hook's call: it gates a commit on the run's branch only. |

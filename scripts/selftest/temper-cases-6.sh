@@ -209,7 +209,7 @@ done
 out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
 GL="$(printf '%s\n' "$out" | grep -E '^NEXT: temper task gate 2' | head -1 | sed -E "s#^NEXT: temper#$TEMPER#; s# *\(.*##")"
 assert_eq "M3: after a retry-chain park and reopen, the reopen offers the gate of the finished sibling" "0|1" "$rc|$([[ -n "$GL" ]] && echo 1 || echo 0)"
-assert_eq "M3: the gate line of the sibling carries the model its agent ran on" "1" "$(grep -c -- '--model claude-haiku-5-5' <<<"$GL")"
+assert_eq "M3: the gate line of the sibling carries the model its agent ran on" "1" "$(grep -c -- '--model sonnet' <<<"$GL")"
 assert_exit "M3: the printed gate line passes the sibling" 0 bash -c "$GL"
 assert_eq "M3: the sibling is passed" "passed" "$(st_field 2 status)"
 
@@ -512,7 +512,7 @@ st_setup
 "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 3 >/dev/null 2>&1
 out="$("$TEMPER" schedule 2>&1)"
 assert_eq "None FAIL: both running tasks wait for their agents in the schedule" "1|1" \
-  "$(grep -c 'Task 1 (running on claude-haiku-5-5: wait for its agent' <<<"$out")|$(grep -c 'Task 3 (running on claude-haiku-5-5: wait for its agent' <<<"$out")"
+  "$(grep -c 'Task 1 (running on sonnet: wait for its agent' <<<"$out")|$(grep -c 'Task 3 (running on sonnet: wait for its agent' <<<"$out")"
 assert_eq "None FAIL: the schedule names no task gate for a running task" "0" "$(grep -c 'task gate' <<<"$out")"
 WT1="$(st_field 1 worktree)"
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?

@@ -10,8 +10,8 @@
 # used here, and the builders below are this file's own. Token: w27. A call the CLI does not have yet stays inside
 # $( ... ) or ends in || true, so the file always runs to its end.
 
-# The words of the record pass, spelled so that `git grep "Record only" scripts` (the package's Done when) does not find
-# this file.
+# The words of the record pass, spelled in two parts so that the package's Done when (a git grep of the two words in
+# scripts) does not find this file.
 _RO71="Record"; _RO71+=" only"
 
 # --- the helpers of this file ---
@@ -341,7 +341,7 @@ _w27_5b+="|agents for it=$(_named71 "$_RO71" AC-02)"
 assert_eq "w27 a code criterion is run by the CLI: with the text missing the CLI's row has exit 1, the Build gate fails naming AC-02 and its command (an agent's passing row does not count), and no agent is named for it" \
   "rows=1|row=False,AC-02=yes,command=yes|agents for it=0" "$_w27_5b"
 assert_eq "w27 a code criterion is run by the CLI: no script holds the words of the record pass" "none" \
-  "$(git -C "$REPO_ROOT" grep -n -F "$_RO71" -- scripts | cut -d: -f1,2 | head -10 | tr '\n' ' ' | sed 's/ $//;s/^$/none/')"
+  "$({ git -C "$REPO_ROOT" grep -n -F "$_RO71" -- scripts | cut -d: -f1,2 | head -10 | tr '\n' ' '; echo; } | sed 's/ $//;s/^$/none/')"
 
 # --- 6. a metric criterion ---
 _build71 "metric — \`test \"\$(wc -c < out.txt)\" -lt 2000\`" out.txt 'a short output'

@@ -269,7 +269,7 @@ Honest list, in rough adoption order:
 - **Eval reach**: Temper ships no eval suite (removed in v9.5.0); nothing scaffolds an
   eval harness for a user project's own agent config (their CLAUDE.md, their packs).
 - **Parallel-session execution**: grouped Build runs the ready tasks of a plan as
-  parallel Haiku task agents, each in its own worktree (the task agent carries only
+  parallel task agents, each in its own worktree (the task agent carries only
   Read, Edit, Write, Bash, Glob and Grep); whole sessions per worktree are not spawned,
   and the other stage agents carry no `tools:` restrictions (report only roles are
   prompt enforced).

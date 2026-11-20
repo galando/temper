@@ -109,11 +109,11 @@ phases:
   pipeline: true               # false: no Pipeline stage after a Commit that opened a pull request
 
 # Build runs in groups: Plan writes tasks.md in groups, each task gets its own worktree, and a
-# cheaper model (Haiku) runs the small tasks in parallel. These keys tune it; with the block
+# small task agent (on Sonnet) runs each task, in parallel. These keys tune it; with the block
 # absent the defaults below apply. `temper model task` and `model task-escalation` resolve them.
 # build:
 #   grouped:
-#     task-model: claude-haiku-5-5     # model of the task agents (default: the build-task brief)
+#     task-model: claude-haiku-5-5     # model of the task agents (default: sonnet; models.task wins)
 #     escalation-model: sonnet         # the one retry after two failed attempts
 #     max-parallel: 4                  # tasks running at once
 #     max-groups: 2                    # groups working at once (a whole number, at least 1)

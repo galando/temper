@@ -3,7 +3,6 @@
 # every mode, e2e:<scenario>:<mode> in one. A line leaves in the commit that makes its check pass, and never comes back.
 # suite:name                   passes after   promise
 # case file 46: migration, the front, the surface, and the README (WP07)
-selftest:D28                   WP27           D28
 selftest:D29a                  WP28           D29
 selftest:D29b                  WP28           D29
 selftest:D29c                  WP31           D29
@@ -20,6 +19,4 @@ selftest:D102                  WP31           D102
 selftest:D103                  WP31           D103
 selftest:D104                  WP30           D104
 selftest:D108                  WP31           D108
-e2e:criteria-by-cli            WP27           D10
-e2e:revise-narrow              WP27           D24
 selftest:D34a                  WP30           D34

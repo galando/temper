@@ -632,7 +632,8 @@
       "temper:temper-build": 1,
       "temper:temper-build-task": 1,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2
+      "temper:temper-plan": 1,
+      "temper:temper-plan-revise": 1
      },
      "launch_total": 6,
      "auto": 5,
@@ -657,7 +658,8 @@
       "temper:temper-build": 1,
       "temper:temper-build-task": 1,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2
+      "temper:temper-plan": 1,
+      "temper:temper-plan-revise": 1
      },
      "launch_total": 6,
      "auto": 5,
@@ -682,10 +684,11 @@
       "temper:temper-build": 1,
       "temper:temper-build-task": 1,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2
+      "temper:temper-plan": 1,
+      "temper:temper-plan-revise": 1
      },
      "launch_total": 6,
-     "auto": 12,
+     "auto": 11,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 1
@@ -995,6 +998,32 @@
      },
      "launch_total": 7,
      "auto": 12,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   }
+  },
+  "criteria-by-cli": {
+   "plain": {
+    "now": {
+     "dialogs": 2,
+     "by_stage": {
+      "commit": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 2
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 7,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 2
@@ -1756,8 +1785,9 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 1,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 8,
@@ -1781,8 +1811,9 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 1,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 8,
@@ -1806,12 +1837,13 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 1,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 8,
-     "auto": 19,
+     "auto": 18,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 2
@@ -1910,8 +1942,9 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 2,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 9,
@@ -1935,8 +1968,9 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 2,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 9,
@@ -1960,12 +1994,13 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 2,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 2,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 9,
-     "auto": 19,
+     "auto": 18,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 2
@@ -2750,8 +2785,9 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 3,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 2,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 10,
@@ -2777,8 +2813,9 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 3,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 2,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 10,
@@ -2804,12 +2841,13 @@
       "temper:temper-acceptance": 1,
       "temper:temper-build-task": 3,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 2,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 1
      },
      "launch_total": 10,
-     "auto": 24,
+     "auto": 23,
      "back": 1,
      "handbacks": 0,
      "suite_runs": 0
@@ -2838,8 +2876,9 @@
       "temper:temper-build-task": 2,
       "temper:temper-fix": 1,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 4,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 3
      },
      "launch_total": 15,
@@ -2870,8 +2909,9 @@
       "temper:temper-build-task": 2,
       "temper:temper-fix": 1,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 4,
+      "temper:temper-plan-revise": 1,
       "temper:temper-review": 3
      },
      "launch_total": 15,
@@ -2902,13 +2942,14 @@
       "temper:temper-build-task": 2,
       "temper:temper-fix": 1,
       "temper:temper-intent": 1,
-      "temper:temper-plan": 2,
+      "temper:temper-plan": 1,
       "temper:temper-plan-review": 4,
+      "temper:temper-plan-revise": 1,
       "temper:temper-rca": 1,
       "temper:temper-review": 3
      },
      "launch_total": 16,
-     "auto": 22,
+     "auto": 21,
      "back": 0,
      "handbacks": 0,
      "suite_runs": 0
@@ -3137,6 +3178,34 @@
      "back": 0,
      "handbacks": 0,
      "suite_runs": 3
+    }
+   }
+  },
+  "revise-narrow": {
+   "plain": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "commit": 1,
+      "plan": 2
+     },
+     "by_kind": {
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-plan-review": 2,
+      "temper:temper-plan-revise": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 9,
+     "auto": 7,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
     }
    }
   },

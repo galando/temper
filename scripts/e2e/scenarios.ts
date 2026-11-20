@@ -1133,15 +1133,19 @@ const designAgent: Agent = wd => wd.write(`${SPEC}/design.md`, '# Design: CI rep
 export const freshReview = (w: World): void => {
   startProject(w, 'plan:\n  fresh-review: auto')
   const prompts: string[] = []
+  const revised: string[] = []
   let reviews = 0
   const agents: Record<string, Agent> = {
     ...AGENTS,
     'temper:temper-plan': (wd, a) => {
       prompts.push(String(a.prompt))
       mediumPlan(wd, a)
-      if (String(a.prompt).includes('Fresh review findings to answer'))
-        wd.write(`${SPEC}/tasks.md`, wd.read(`${SPEC}/tasks.md`).replace('- two stages are written in the order the ledger holds them',
-          '- two stages are written in the order the ledger holds them: build first, then review, as a JSON array'))
+    },
+    // WP27: the revision of the plan is the narrow revise agent's: it fixes the task the finding names
+    'temper:temper-plan-revise': (wd, a) => {
+      revised.push(String(a.prompt))
+      wd.write(`${SPEC}/tasks.md`, wd.read(`${SPEC}/tasks.md`).replace('- two stages are written in the order the ledger holds them',
+        '- two stages are written in the order the ledger holds them: build first, then review, as a JSON array'))
     },
     'temper:temper-plan-review': (wd, a) => { reviews++; freshReviewer(wd, a, reviews === 1 ? [FIX_FINDING] : []) },
     'temper:temper-design': designAgent,
@@ -1150,7 +1154,8 @@ export const freshReview = (w: World): void => {
   orchestrate(w, script({ agents, person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) } }))
   expect(reviews === 2, `the fresh review ran twice, once on each tasks.md (${reviews})`)
   expect(asked.some(q => q.startsWith('Plan: the check failed') && q.includes('no open plan blockers') && q.includes('Revise the plan?')), 'the plan question named the blocker and offered Revise the plan')
-  expect(prompts.length === 2 && prompts[1]!.includes('Fresh review findings to answer') && prompts[1]!.includes('names no expected value'), 'the Plan agent ran again with the finding')
+  expect(prompts.length === 1 && revised.length === 1 && /^Finding #\d+ \[high\]: .*names no expected value/m.test(revised[0]!) && /^Affected tasks: 2$/m.test(revised[0]!),
+    'the revise agent ran with the finding whole and the task it names, and the planner ran once')
   expect(asked.some(q => q.startsWith('Plan: the check passed. A reader with no context took it as: two modules build a CI report')), 'the plan question showed the paraphrase')
   expect(!w.exists('.temper/build-state.json'), 'the run went to its end')
 }

@@ -97,10 +97,10 @@ orchestrator's conversation carries over except the prompt you were launched wit
 **Your panel is drawn by the CLI** (9.8.5): the CLI draws the card (`temper card`) of the approval from intent.md,
 tasks.md and plan.md, and the orchestrator prints it. Draw no panel and no box, and write no script to draw one.
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the risk is the letter it prints,
-never your own estimate. When the change adds or changes a data model or a stored schema, moves money, changes who may
-do what (roles, permissions), or calls an external system, raise it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk
---raise H --reason '<which of these>'`: a plan of risk H gets the fresh review.
+The CLI rates the plan's risk after you return (9.8.5); it is never your own estimate. When the change adds or changes a
+data model or a stored schema, moves money, changes who may do what (roles, permissions), or calls an external system,
+raise it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk --raise H --reason '<which of these>'`: a plan of risk H gets
+the fresh review.
 
 **Design runs only when the person asks for it** (WP14). A policy conflict or a product call you meet is one line under
 intent.md's `### Open Questions`: `- Blocking: {question} choices: {the answer the plan assumes} | {another} | ...`.
