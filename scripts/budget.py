@@ -37,7 +37,10 @@ SPENDS = (
     (("group", "reopen"), "tasks again", "the group's gate is FAIL or the group is parked: group:<G>"),
     (("group", "gate"), "more time", "with --timeout-s, at a group gate that is FAIL already, when the base did not measure "
                                      "the group's suite (WP20): group:<G>"),
-    (("plan", "patch"), "plan patch", "always: group:<G>, task:<N>, or gate:build for the Integration line"),
+    (("plan", "patch"), "plan patch", "always: group:<G>, task:<N>, or gate:build for the Integration line (WP25: spent by "
+                                      "scripts/plan_patch.py once every check of the patch holds)"),
+    (("plan", "amend"), "plan amend", "always: task:<N> (WP25: the amendment by rule, spent by scripts/plan_amend.py once "
+                                      "every check of it holds)"),
     (("task", "retry"), "task again", "always: task:<N>"),
     (("task", "test"), "check again", "--phase green of a task that holds env_fault: task:<N>"),
     (("acceptance", "reopen"), "test corrected", "always: acceptance"),
@@ -187,6 +190,8 @@ def key_of(words, facts):
         key = "task:" + e if c == "task" and e.isdigit() else "gate:build" if c == "integration" else (
             "group:" + c if re.fullmatch(r"G\d+", c) else None)
         return (key, "plan patch") if key else None
+    if a == "plan" and b == "amend":
+        return ("task:" + e, "plan amend") if c == "task" and e.isdigit() else None
     if a == "task" and b == "retry":
         return ("task:" + c, "task again") if c.isdigit() else None
     if a == "task" and b == "test":

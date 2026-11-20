@@ -148,7 +148,9 @@ OPTION_IDS = frozenset((
     # WP22
     "run-anyway",
     # WP24
-    "repair-again", "revert-repair"))
+    "repair-again", "revert-repair",
+    # WP25: a file no task declares, added to the blocked task by the person's plan patch
+    "add-file"))
 
 
 def question_entry(qid):

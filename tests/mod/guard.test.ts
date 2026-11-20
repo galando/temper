@@ -674,3 +674,45 @@ describe('WP24: the repair window is read from the view', () => {
     expect(denyText(await $.tool.call({ tool: 'Write', file_path: 'src/billing.ts', content: 'x', agentId: 'agent' } as never))).toBe('')
   })
 })
+
+// 9.8.5 (WP25): `plan patch` stays the person's in every form (a command line, a file outside the approved set); `plan
+// amend` is no person only call: its whole effect is bounded by the CLI whoever calls it (blocker B3 of
+// docs/plans/one-go/evidence/red-safety.md), so an agent's call passes the guard and the CLI's own refusals hold it.
+// The record of the amendments and patches is the CLI's to write.
+describe('WP25: the plan amendment and the plan patch', () => {
+  const PATCHES = [
+    `${CLI} plan patch G1 --cmd 'make test-g1'`,
+    `${CLI} plan patch task 2 --cmd 'make test-2'`,
+    `${CLI} plan patch integration --cmd 'make all'`,
+    `${CLI} plan patch task 2 --add-file src/billing.ts`,
+  ]
+  test('plan patch typed by an agent or the session stays refused, in every form, at Plan and at Build', () => {
+    for (const stage of ['plan', 'build'] as const) {
+      for (const cmd of PATCHES) expect(isDeny(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+    }
+    // the answer for one patch is no answer for another
+    const picked = `${CLI} plan patch task 2 --add-file src/billing.ts`
+    expect(isDeny(bash(ctx('build', { allowed: [picked] }), `${CLI} plan patch task 2 --add-file src/other.ts`))).toBe(true)
+    expect(isDeny(bash(ctx('build', { allowed: [picked] }), `${CLI} plan patch task 3 --add-file src/billing.ts`))).toBe(true)
+  })
+  test('plan patch task N --add-file F passes as the call of the person\'s answer, word for word', () => {
+    const picked = `${CLI} plan patch task 2 --add-file src/billing.ts`
+    expect('allow' in bash(ctx('build', { allowed: [picked] }), picked)).toBe(true)
+  })
+  test('plan amend typed by an agent passes the guard: the CLI\'s own refusals are what hold it', () => {
+    for (const cmd of [`${CLI} plan amend task 2 --add-file src/app.ts`, `${CLI} plan amend task 2 --add-file src/app.ts --failure F3`]) {
+      expect('allow' in bash(ctx('build'), cmd), cmd).toBe(true)
+    }
+  })
+  test('during a run a write of .temper/evidence/amendments.json is refused: an editing tool, a redirect, an rm', () => {
+    const f = '.temper/evidence/amendments.json'
+    const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ')
+    for (const stage of ['plan', 'build', 'review', 'check'] as const) {
+      for (const tool of ['Write', 'Edit']) expect(guarded(write(ctx(stage), f, tool)), `${stage} ${tool}`).toBe(true)
+      expect(guarded(write(ctx(stage), `/repo/${f}`)), `${stage} absolute`).toBe(true)
+      for (const cmd of [`echo '[]' > ${f}`, `printf x >> ${f}`, `rm -f ${f}`]) {
+        expect(guarded(bash(ctx(stage), cmd)), `${stage}: ${cmd}`).toBe(true)
+      }
+    }
+  })
+})

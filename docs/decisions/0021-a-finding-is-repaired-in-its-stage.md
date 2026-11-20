@@ -43,6 +43,15 @@ and until this record no commit was ever one `evidence resolve` takes).
 6. **A verdict is of the tree it judged.** The commit gate's row `checked tree` passes a Review verdict of an older tree
    only when the difference is repair commits the CLI recorded, whose checks ran again and whose recheck completed.
 
+7. **A plan fault a narrow change repairs costs no replan (WP25).** `temper plan amend task N --add-file F` is the
+   amendment by rule: it only adds to a task a file another task of its own group declares, and that task to its
+   Depends line, and it is no person only call, because its whole effect is bounded by the CLI (blocker B3 of the red
+   team). `temper plan patch` stays the person's: every command line, and every file outside the approved set (`task N
+   --add-file F`). Both run the plan gate's static rows on the result and refuse a row it newly fails, spend one repeat,
+   append to `.temper/evidence/amendments.json` and move `plan_hash`; neither writes the approved record. Neither
+   ledger row claims who called: only the mod checks the click (`docs/trust.md`). A full replan keeps the built tasks
+   whose approved fields did not change (`temper group keep`).
+
 ## Amendments
 
 - **ADR-0009** gains a second carve out of the commit gate: the row `repair commit` passes the one commit of a repair

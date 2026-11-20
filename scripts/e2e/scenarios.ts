@@ -1671,3 +1671,144 @@ export const planCommandFails = (w: World): void => {
   expect(end.action === 'none' && !w.exists('.temper/build-state.json') && w.run('git show HEAD:src/ci_bytes.py').code === 0 &&
     w.run('git show HEAD:src/ci_shape.py').code === 0, `Build went on with both tasks to the commit (last action ${end.action})`)
 }
+
+// WP25: a task blocked on a file its own group owns is amended by rule (D26). The plan puts both tasks in one group;
+// the scripted agent of Task 2 records `task blocked 2 --needs src/ci_shape.py` while its declared files lack that file
+// (Task 1 of the same group declares it). The CLI's own action is `plan amend task 2 --add-file src/ci_shape.py`: no
+// question, no second planner, Task 2 runs again with the file and passes, and the commit card lists the amendment.
+// blocked-outside-plan (plain): the file is declared by no task. The run asks; the first option is Add the file to the
+// task (`add-file`), the person's `plan patch task 2 --add-file src/ci_util.py`, and the run goes on to the commit.
+const ONE_GROUP_MD = TASKS_MD
+  .replace('\n## Group G2: Bytes\n**Depends:** G1\n**Validate:** `python3 -m unittest unit.test_ci_bytes`\n**Context:**\nPlain python, standard library only.\n', '')
+  .replace('**Validate:** `python3 -m unittest unit.test_ci_shape`', '**Validate:** `python3 -m unittest unit.test_ci_shape unit.test_ci_bytes`')
+type Blocked = { runs: number; said: string[]; record: string }
+// The build agent of the two scenarios: Task 1 as every scenario builds it; Task 2 records the block while its declared
+// files lack `needs`, and builds as planned (with `write`) once they hold it.
+const blockedBuilder = (b: Blocked, needs: string, write?: (wd: World, wt: string) => void): Agent => chained((wd, n) => {
+  if (n !== 2) return buildOne(wd, n)
+  b.runs++
+  const show = t(wd, 'task show 2').out
+  const wt = path.relative(wd.dir, worktreeOf(show))
+  const declared = (/^DECLARED FILES:\s*(.*)$/m.exec(show)?.[1] ?? '').split(',').map(x => x.trim())
+  if (!declared.includes(needs)) {
+    if (b.record === '' && wd.exists('.temper/evidence/approved-tasks.json')) b.record = wd.read('.temper/evidence/approved-tasks.json')
+    wd.write(path.join(wt, 'unit/test_ci_bytes.py'), BYTES_TEST)
+    wd.write(path.join(wt, 'src/ci_bytes.py'), BYTES_STUB)
+    t(wd, 'task test 2 --phase red')
+    b.said.push(t(wd, `task blocked 2 --needs ${needs} --reason 'the byte order reads the stage objects, and they are written in ${needs}'`).out)
+    return
+  }
+  write?.(wd, wt)
+  buildOne(wd, 2)
+})
+const sectionText = (card: Json | null, id: string): string =>
+  JSON.stringify(((card?.sections ?? []) as Json[]).find(s => s.id === id) ?? '')
+const jsonOr = (wd: World, rel: string, fallback: Json): Json => (wd.exists(rel) ? wd.json(rel) : fallback)
+
+export const blockedTaskAmended = (w: World): void => {
+  startProject(w)
+  const b: Blocked = { runs: 0, said: [], record: '' }
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/tasks.md`, ONE_GROUP_MD)
+    },
+    'temper:temper-build-task': blockedBuilder(b, 'src/ci_shape.py'),
+  }
+  let approved = false
+  const after: string[] = []
+  let atCommit: { card: Json | null; record: string; amendments: Json; failures: Json } | null = null
+  const end = orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      const id = String(ask.id ?? '')
+      if (id === 'plan.approve') {
+        approved = true
+        return recommended(ask, wd)
+      }
+      if (!approved || atCommit !== null) return recommended(ask, wd)
+      if (id !== 'commit.confirm') {
+        after.push(`${id}: ${String(ask.question?.question ?? '').slice(0, 160)}`)
+        return null   // a question between the approval and the commit: the scenario ends there and says which
+      }
+      atCommit = {
+        card: (wd.json('.temper/view.json').card ?? null) as Json | null,
+        record: wd.exists('.temper/evidence/approved-tasks.json') ? wd.read('.temper/evidence/approved-tasks.json') : '',
+        amendments: jsonOr(wd, '.temper/evidence/amendments.json', []),
+        failures: jsonOr(wd, '.temper/evidence/failures.json', []),
+      }
+      return recommended(ask, wd)
+    },
+  }))
+  const flow = w.trace.join('\n')
+  expect(/OK: Task 2 is blocked: its test needs src\/ci_shape\.py \(declared by Task 1\)/.test(b.said[0] ?? ''),
+    `the CLI records the block and names Task 1 (${(b.said[0] ?? 'no block').slice(0, 160)})`)
+  expect(after.length === 0, `D26 no question between the approval and the commit (${after.join(' / ')})`)
+  expect((w.counts.launches['temper:temper-plan'] ?? 0) === 1, `D26 no second launch of the planner (${w.counts.launches['temper:temper-plan'] ?? 0})`)
+  expect(/call temper plan amend task 2 --add-file src\/ci_shape\.py\b/.test(flow), 'D26 the amendment is the CLI\'s own call: plan amend task 2 --add-file src/ci_shape.py')
+  expect(b.runs === 2, `D26 Task 2 runs again after the amendment (${b.runs} runs of Task 2)`)
+  const c = atCommit as { card: Json | null; record: string; amendments: Json; failures: Json } | null
+  const log = sectionText(c?.card ?? null, 'rule_log')
+  expect(/src\/ci_shape\.py/.test(log) && /amend/i.test(log), `D39c the commit card lists the amendment by rule (${log.slice(0, 240)})`)
+  expect(c !== null && b.record !== '' && c.record === b.record, 'D26 the approved record (approved-tasks.json) is byte equal before and after the amendment')
+  const entries = (Array.isArray(c?.amendments) ? c!.amendments : []) as Json[]
+  const fails = (Array.isArray(c?.failures) ? c!.failures : []) as Json[]
+  const e = entries.find(x => x?.kind === 'amend')
+  expect(entries.length === 1 && e !== undefined && /Task 2 gains src\/ci_shape\.py/.test(String(e.what ?? '')),
+    `D26 amendments.json holds the one amendment (${JSON.stringify(entries).slice(0, 240)})`)
+  // WP23: the block is a failure record of kind blocked-task, and the amendment names it
+  expect(e !== undefined && fails.some(f => f?.id === e.failure && f?.kind === 'blocked-task'),
+    `the amendment names the failure record of the block, kind blocked-task (${String(e?.failure ?? 'no failure named')})`)
+  expect(end.action === 'none' && w.run('git show HEAD:src/ci_bytes.py').code === 0 && w.run('git show HEAD:src/ci_shape.py').code === 0,
+    `the run ends with a commit that holds both tasks (last action ${end.action})`)
+}
+
+export const blockedOutsidePlan = (w: World): void => {
+  startProject(w)
+  const b: Blocked = { runs: 0, said: [], record: '' }
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/tasks.md`, ONE_GROUP_MD)
+    },
+    'temper:temper-build-task': blockedBuilder(b, 'src/ci_util.py', (wd, wt) => wd.write(path.join(wt, 'src/ci_util.py'), 'ORDER = "ledger"\n')),
+  }
+  let approved = false
+  const asked: string[] = []
+  let first: Json | null = null
+  let approvedFiles: string[] = []
+  const end = orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      const id = String(ask.id ?? '')
+      if (id === 'plan.approve') {
+        approved = true
+        return recommended(ask, wd)
+      }
+      if (!approved) return recommended(ask, wd)
+      asked.push(id)
+      const opts = (ask.options ?? []) as Json[]
+      if (id === 'commit.confirm') {
+        approvedFiles = ((wd.json('.temper/build-state.json').approved_files ?? []) as string[]).map(String)
+        return recommended(ask, wd)
+      }
+      if (first === null && /src\/ci_util\.py/.test(String(ask.question?.question ?? ''))) {
+        first = opts[0] ?? {}
+        if (opts.some(o => o.id === 'add-file')) return pickId(wd, ask, 'add-file')
+        return null   // no Add the file to the task: the scenario ends at the question and the checks below say so
+      }
+      return recommended(ask, wd)
+    },
+  }))
+  const f = (first ?? {}) as Json
+  const calls = ((f.calls ?? []) as string[]).map(c => c.replace(/^\S*\/scripts\/temper /, 'temper '))
+  expect(first !== null, `the blocked task is asked about, naming src/ci_util.py (asked ${asked.join(', ')})`)
+  expect(f.id === 'add-file' && calls.includes('temper plan patch task 2 --add-file src/ci_util.py'),
+    `the first option is add-file, the call plan patch task 2 --add-file src/ci_util.py (${String(f.id ?? 'none')}: ${calls.join(' ; ')})`)
+  expect(!/call temper plan amend\b/.test(w.trace.join('\n')), 'no amendment by rule for a file no task declares')
+  expect((w.counts.launches['temper:temper-plan'] ?? 0) === 1, `no second launch of the planner (${w.counts.launches['temper:temper-plan'] ?? 0})`)
+  expect(b.runs === 2 && approvedFiles.includes('src/ci_util.py'), `Task 2 runs again and src/ci_util.py is in the approved files (${b.runs} runs; ${approvedFiles.join(', ')})`)
+  expect(end.action === 'none' && w.run('git show HEAD:src/ci_util.py').code === 0, `the run ends with a commit that holds src/ci_util.py (last action ${end.action})`)
+}

@@ -213,6 +213,7 @@ assert_eq "D25 after a trivial exit a commit of one file and 10 lines passes the
 git reset -q 2>/dev/null; git checkout -q -- src 2>/dev/null
 
 # --- D26a to D26d: the plan amendment by rule, the plan patch by the person, the record and the replan ---
+# (WP25: each task of _tasks46 has two cases, so the plan passes every static row an amendment and a patch run)
 _tasks46() { cat <<'TASKS'
 # Tasks: demo
 
@@ -230,6 +231,7 @@ The core.
 **Test:** `true`
 **Cases:**
 - a holds
+- a bad input is refused
 - [ ] done
 
 ### Task 2: second
@@ -238,6 +240,7 @@ The core.
 **Test:** `true`
 **Cases:**
 - b holds
+- a bad input is refused
 - [ ] done
 
 ## Group G2: Later
@@ -252,6 +255,7 @@ The later work.
 **Test:** `true`
 **Cases:**
 - c holds
+- a bad input is refused
 - [ ] done
 TASKS
 }
@@ -337,7 +341,7 @@ _d26d_c1="$(_task46 1 commit)"
 _replan46 | sed '/^### Task 2/,$s/^\*\*Test:\*\* `true`/**Test:** `bash unit-b.sh`/' > .temper/specs/demo/tasks.md
 gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 for _i in 1 2 3; do   # the first Build actions after the new approval: the CLI's own calls, or the before calls of its agents
-  _d26d_calls="$(_ev "r = d.get('calls') or [] if d.get('action') == 'auto' else [c for x in d.get('agents') or [] for c in x.get('before') or []]; chr(10).join(r)" "$("$TEMPER" next --json 2>/dev/null)")"
+  _d26d_calls="$(_ev "r = ((d.get('calls') or []) + [c for x in d.get('agents') or [] for c in x.get('before') or []]) if d.get('action') in ('auto', 'work') else []; chr(10).join(r)" "$("$TEMPER" next --json 2>/dev/null)")"
   [[ -n "$_d26d_calls" ]] || break
   while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done <<<"$_d26d_calls"
 done

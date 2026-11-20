@@ -193,3 +193,6 @@ for g in groups:
             shared.append('%s: %s and %s all declare %s; merge them into one task' % (g['id'], ', '.join(names[:-1]), names[-1], f))
 row('shared production files', shared, 'no production file is declared by more than two tasks of one group')
 row('integration command', [] if m['integration'] else ['no **Integration:** line'], 'integration command declared')
+# 9.8.5 (WP25): a group with no **Validate:** line fails here, at the plan gate, not first at its group gate in Build
+row('group validate command', ['%s: no **Validate:** line (the command its group gate runs)' % g['id'] for g in groups if not g.get('validate')],
+    'every group declares its Validate command')

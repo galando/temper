@@ -1,15 +1,25 @@
 """plan_patch.py: `temper plan patch`, the person's change of one command line of the plan (9.8.5, S6; WP21: also
-before the approval, as the answer at plan.command, when the plan's line changes and no hash moves).
+before the approval, as the answer at plan.command, when the plan's line changes and no hash moves; WP25: a file outside
+the approved set).
 
-  python3 plan_patch.py SPEC STATE GROUPS LEDGER G<n> --cmd '<command>'        a group's **Validate:** line
+  python3 plan_patch.py SPEC STATE GROUPS LEDGER G<n> --cmd '<command>'        a group's **Validate:** line (inserted
+                                                                              after its **Depends:** line when it has none)
   python3 plan_patch.py SPEC STATE GROUPS LEDGER task <N> --cmd '<command>'    a task's **Test:** line
   python3 plan_patch.py SPEC STATE GROUPS LEDGER integration --cmd '<command>' the plan's **Integration:** line
+  python3 plan_patch.py SPEC STATE GROUPS LEDGER task <N> --add-file F         a file on Task N's **File:** line, and in
+                                                                              approved_files
 
 A wrong command line (a suite that cannot finish in the time limit, a filter that can never meet a coverage rule) used to
 need a loop back to Plan: Plan, Design and every passed task again, and the run's one loop. A patch changes that one
 line of tasks.md and nothing else, keeps every passed task, and spends no loop. It is the person's (the mod lets only
 the answer to the CLI's question run it). The approved plan's hash moves with it, so Build does not refuse the plan;
-the plan ledger records the old and the new line; a patched group's check runs again. Standard library only.
+the plan ledger records the old and the new line; a patched group's check runs again, with its failure marks reset.
+WP25: the static rows of the plan gate run on the result first, and a row the result newly fails refuses the patch with
+tasks.md as it was; the budget is spent here, once every check holds (one repeat: group:<G>, task:<N> or gate:build); an
+approved plan's patch is appended to .temper/evidence/amendments.json (the approved record is never written); a passed
+task whose Test line changed is reopened (the CLI's group reopen runs after this, on the REOPEN line it prints); a task
+that gained a file and is neither running nor passed runs again. The ledger row says what changed, never who called: the
+CLI cannot know it (docs/trust.md; with the mod, only the person's answer runs it). Standard library only.
 """
 import json
 import os
@@ -18,6 +28,8 @@ import sys
 import time
 
 import approval
+import budget
+import plan_amend
 import tasks_md
 
 MAX_CMD = 400
@@ -67,6 +79,10 @@ def patch_lines(lines, target, num, cmd):
             lines = list(lines)
             lines[i] = "%s`%s`%s" % (m.group(1), cmd, m.group(3))
             return lines, old
+    if target == "group":   # WP25: a group with no Validate line gets one, after its **Depends:** line
+        dep = next((i for i in range(start, end) if re.match(r"^\s*\*\*Depends:\*\*", lines[i])), None)
+        if dep is not None:
+            return list(lines[:dep + 1]) + ["**Validate:** `%s`" % cmd] + list(lines[dep + 1:]), ""
     return None, "no **%s:** line with a backticked command there" % key
 
 
@@ -83,55 +99,113 @@ def main(argv):
     elif re.match(r"^G\d+$", rest[0]):
         target, num, rest = "group", rest[0], rest[1:]
     else:
-        return fail("usage: temper plan patch G<n>|task <N>|integration --cmd '<command>'")
-    if len(rest) != 2 or rest[0] != "--cmd":
-        return fail("temper plan patch needs --cmd '<command>'")
-    cmd = " ".join(rest[1].split())
-    if not cmd or len(cmd) > MAX_CMD or "`" in cmd:
-        return fail("the command is one line of at most %d characters, with no backquote" % MAX_CMD)
+        return fail("usage: temper plan patch G<n>|task <N>|integration --cmd '<command>' | task <N> --add-file F")
+    add = target == "task" and len(rest) == 2 and rest[0] == "--add-file"
+    if add:
+        if not num.isdigit() or not plan_amend.norm(rest[1]) or "`" in rest[1] or re.search(r"[\s*?\[]", rest[1]):
+            return fail("temper plan patch task <N> --add-file F takes one exact path")
+        cmd = plan_amend.norm(rest[1])
+    else:
+        if len(rest) != 2 or rest[0] != "--cmd":
+            return fail("temper plan patch needs --cmd '<command>' (or task <N> --add-file F)")
+        cmd = " ".join(rest[1].split())
+        if not cmd or len(cmd) > MAX_CMD or "`" in cmd:
+            return fail("the command is one line of at most %d characters, with no backquote" % MAX_CMD)
     st = load(state)
     if st is None:
         return fail("no active run (temper state init)")
     approved = bool(st.get("plan_hash"))   # WP21: before the approval, the answer at plan.command changes the plan's line
     path = os.path.join(spec, "tasks.md")
-    lines = open(path, encoding="utf-8").read().split("\n")
-    new, old = patch_lines(lines, target, num, cmd)
-    if new is None:
-        return fail(old)
+    text = open(path, encoding="utf-8").read()
+    lines = text.split("\n")
+    if add:
+        plan = tasks_md.parse(path)
+        t = next((x for x in plan["tasks"] if str(x["n"]) == num), None)
+        if t is None:
+            return fail("tasks.md has no Task %s" % num)
+        if cmd in [plan_amend.norm(x) for x in t.get("files") or []]:
+            return fail("Task %s declares %s already" % (num, cmd))
+        new_text, old = plan_amend.with_file(text, int(num), cmd), ""
+        if new_text is None:
+            return fail("Task %s has no **File:** line to add to" % num)
+        new = new_text.split("\n")
+    else:
+        new, old = patch_lines(lines, target, num, cmd)
+        if new is None:
+            return fail(old)
     if approved and digest(tasks_md.parse(path)) != st.get("plan_hash"):
         return fail("tasks.md differs from the approved plan in more than this line; loop back to Plan")
-    tmp = path + ".tmp.%d" % os.getpid()
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write("\n".join(new))
-    os.replace(tmp, path)
-    h = digest(tasks_md.parse(path))
+    bad = plan_amend.new_faults(spec, text, "\n".join(new))
+    if bad:
+        return fail("the result fails the plan row %s: %s; tasks.md is as it was" % bad[0])
+    words = ["plan", "patch"] + (["task", num] if target == "task" else [num] if target == "group" else ["integration"])
+    rc, line = budget.spend(words, budget.Facts())
+    if rc != 0:
+        return fail(line.replace("BLOCKED: ", "BLOCKED: the budget has no room: ", 1))
+    before = st.get("plan_hash")
+    plan_amend.write_text(path, "\n".join(new))
+    after = tasks_md.parse(path)
+    h = digest(after)
     if approved:
         st["plan_hash"] = h
-        save(state, st)
+    if add and cmd not in (st.get("approved_files") or []):
+        st["approved_files"] = list(st.get("approved_files") or []) + [cmd]
+    save(state, st)
     g = load(groups) if approved else None
+    reopen, again = [], []
     if g is not None:
         if g.get("plan_hash"):
             g["plan_hash"] = h
-        if target == "group" and isinstance((g.get("groups") or {}).get(num), dict):
-            g["groups"][num].pop("gate", None)   # the patched group's check runs again
+        gs = g.get("groups") or {}
+        tasks = g.get("tasks") or {}
+        gid = num if target == "group" else next((x.get("group") for x in after["tasks"] if str(x["n"]) == num), None)
+        if target == "group" and isinstance(gs.get(num), dict):
+            gs[num].pop("gate", None)   # the patched group's check runs again
+            for k in ("fails", "fix_tries", "fix_empty"):   # U1: and the marks of its earlier failures go with it
+                gs[num].pop(k, None)
         if target == "integration":
             g.pop("integration", None)
         save(groups, g)
+        st_n = ((tasks.get(num) or {}).get("status") or "pending") if target == "task" else ""
+        if target == "task" and not add and st_n == "passed" and gid:
+            reopen = [int(num)] + reopen_with(after, g, int(num))   # a new Test line: the task is built against it again
+        elif add and gid and st_n not in ("passed", "running") and plan_amend.reopen_unbuilt(groups, int(num), gid):
+            again = [int(num)]
     what = {"group": "%s Validate" % num, "task": "Task %s Test" % num, "integration": "Integration"}[target]
-    try:
-        rows = json.load(open(ledger, encoding="utf-8"))
-        rows = rows if isinstance(rows, list) else []
-    except (OSError, ValueError):
-        rows = []
-    rows.append({"claim": "plan patch by the person: %s: `%s` -> `%s`" % (what, old, cmd), "cmd": None, "exit_code": None,
-                 "artifact": None, "sha256": None, "value": None, "severity": None, "phase": "note",
-                 # before the approval the plan is checked again (an edit); after it, Build takes the note (an input)
-                 "kind": "input" if approved else "edit",
-                 "scenario": None, "criterion": None, "label": "PERSON", "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
-    os.makedirs(os.path.dirname(os.path.abspath(ledger)), exist_ok=True)
-    save(ledger, rows)
-    print("OK: %s is now `%s` (was `%s`); the passed tasks keep their work" % (what, cmd, old))
+    if add:
+        what = "Task %s gains %s" % (num, cmd)
+    if approved:
+        plan_amend.append_entry("patch", what, old, cmd, before, h, None, reopen + again)
+    claim = "plan patch: %s" % what if add else "plan patch: %s: `%s` -> `%s`" % (what, old, cmd)
+    plan_amend.ledger_row(ledger, claim, approved)
+    if add:
+        print("OK: %s, and it is in the approved files; %s %s" % (what, "the task runs again." if again else "", line))
+    else:
+        print("OK: %s is now `%s` (was `%s`); the passed tasks keep their work. %s" % (what, cmd, old or "none", line))
+    if reopen:
+        print("REOPEN: %s %s" % (gid, " ".join("--task %d" % n for n in reopen)))
     return 0
+
+
+def reopen_with(plan, run, n):
+    """The tasks that must reopen with Task n (the rule of the group reopen): a task of its group that ran, depends on it,
+    directly or not, and shares a declared file with it."""
+    by_n = {t["n"]: t for t in plan["tasks"]}
+    grp = (by_n.get(n) or {}).get("group")
+
+    def ups(m, seen):
+        out = set()
+        for d in (by_n.get(m) or {}).get("depends") or []:
+            if d not in seen:
+                out |= {d} | ups(d, seen | {d})
+        return out
+    out = []
+    for m, t in sorted(by_n.items()):
+        st = ((run.get("tasks") or {}).get(str(m)) or {}).get("status")
+        if m != n and t.get("group") == grp and st in ("passed", "running") and n in ups(m, {m}) \
+                and set(t.get("files") or []) & set(by_n[n].get("files") or []):
+            out.append(m)
+    return out
 
 
 if __name__ == "__main__":

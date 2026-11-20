@@ -133,6 +133,10 @@ class BuildPart:
         plan = r.plan or {"groups": [], "tasks": []}
         if plan.get("tasks") and not plan.get("groups"):
             return self.no_groups()
+        import group_keep
+        if group_keep.pending(r.state, r.groups):   # WP25: after a replan's approval, first what the replan keeps
+            return {"action": "auto", "stage": "build", "calls": [self.c("group keep")],
+                    "say": "Build keeps the built tasks of the earlier plan whose approved fields did not change."}
         acc = self.acceptance_work()
         if acc:
             return acc
@@ -584,7 +588,7 @@ class BuildPart:
                      "environment is (temper doctor shows the environment).")
         elif tried and fixable:
             text += " A fix of its merged work did not make it pass" + (": the plan is the likelier cause." if back else ".")
-        text += (" Change the group's command?" if cmd_cause else " Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
+        text += (" Change the group's command (now: %s)?" % (g.get("validate") or "none") if cmd_cause else " Fix its merged work?" if fix_rec else " Loop back to Plan?" if plan_rec else
                  " Save the run for later?" if save_rec else " Run its tasks again?")
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="group.fail")}
 
@@ -614,6 +618,20 @@ class BuildPart:
         return {"action": "work", "stage": "build", "calls": [], "agents": [a],
                 "say": "Build: one fix agent works on group %s's merged tree%s. %s" % (gid, on_model([a]), goes_on(False))}
 
+    def amend_calls(self, blocked):
+        """WP25: the CLI's own `plan amend` calls for the blocked tasks of a parked group, when every record names an owner
+        and scripts/plan_amend.py would take each amendment now (`can`); else None (the run asks, or stops)."""
+        import plan_amend
+        calls = []
+        for x, n in blocked:
+            ok = bool(x.get("owners")) and plan_amend.can(self.r, n, str(x.get("needs") or ""))[0]
+            if not ok:
+                return None
+            rec = [f for f in failure.open_records(scope="task:%d" % n) if f.get("kind") == "blocked-task"]
+            calls.append(self.c("plan amend task %d --add-file %s%s" % (n, shlex.quote(str(x.get("needs"))),
+                                                                       " --failure %s" % rec[-1]["id"] if rec else "")))
+        return calls or None
+
     def parked(self, gid):
         r = self.r
         g = r.groups.get("groups", {}).get(gid) or {}
@@ -621,6 +639,12 @@ class BuildPart:
                        if isinstance(v, dict) and v.get("group") == gid and v.get("status") in ("failed", "running"))
         targs = " ".join("--task %d" % n for n in tasks) or "--task {N}"
         foreign = g.get("parked_foreign") or []
+        blocked = [(x, n) for n in tasks for x in [(r.groups.get("tasks", {}).get(str(n)) or {}).get("blocked")] if isinstance(x, dict)]
+        amend = self.amend_calls(blocked) if blocked and not foreign else None
+        if amend:   # WP25: a file its own group owns is added by rule, in every mode (the CLI's own call; the card lists it)
+            return {"action": "auto", "stage": "build", "calls": amend,
+                    "say": "Group %s is parked on a blocked task whose file its own group owns: the rule adds the file to the "
+                           "task, and the task runs again." % gid}
         if r.armed():
             return {"action": "auto", "stage": "build",
                     "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s is parked: %s" % (gid, str(g.get("parked_reason", ""))[:200])))],
@@ -641,24 +665,30 @@ class BuildPart:
                              reason=["The commits are right", "I accept the risk"], oid="keep-commits"),
                     self.save()]
             text = "Group %s is parked: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
-        elif any(isinstance((r.groups.get("tasks", {}).get(str(n)) or {}).get("blocked"), dict) for n in tasks):
+        elif blocked:
             # 9.8.4: a task whose test needs a file it does not declare: no attempt on any model can build it as planned
-            # (a benchmark run spent two Haiku and two Sonnet attempts on one), so the plan comes first
-            b = [((r.groups.get("tasks", {}).get(str(n)) or {}).get("blocked"), n) for n in tasks]
-            b = [(x, n) for x, n in b if isinstance(x, dict)]
+            # (a benchmark run spent two Haiku and two Sonnet attempts on one). WP25: a file its own group owns was added by
+            # rule above; a file no task declares is the person's patch (Add to plan); a file of another group, a later
+            # task's, or one the rule may not add, the plan first (Loop back to Plan)
             what = "; ".join("Task %d needs %s, which %s (%s)" % (
                 n, x.get("needs"), ("Task %s declares" % ", ".join(str(o) for o in x.get("owners") or []) if x.get("owners") else "no task declares"),
-                x.get("reason") or "no reason given") for x, n in b)
+                x.get("reason") or "no reason given") for x, n in blocked)
             back = r.can_loop("build", "plan")
             rerun = self.opt("Run the task again", "The blocked tasks run again as planned.", move="redo", calls=[self.c("group reopen %s %s" % (gid, targs))], oid="redo")
             save = self.save()
-            if back:
-                opts = [self.opt("Loop back to Plan" + " (Recommended)", "Plan moves the change or the test into the task that owns the file.", move="back",
-                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back"), rerun, save]
+            new = next(((x, n) for x, n in blocked if not x.get("owners") and r.room("task:%d" % n)["ok"]), None)
+            if new:
+                x, n = new
+                add = self.opt("Add to plan (Recommended)", "%s goes on Task %d's File line and into the approved files; the task "
+                               "runs again. It counts as one repeat." % (x.get("needs"), n), move="redo",
+                               calls=[self.c("plan patch task %d --add-file %s" % (n, shlex.quote(str(x.get("needs")))))], oid="add-file")
+                opts = [add] + ([self.plan_loop(False, "Task %d needs %s" % (n, x.get("needs")))] if back else []) + [rerun, save]
+            elif back:
+                opts = [self.plan_loop(True, "The plan cannot be built"), rerun, save]
             else:
                 opts = [self.set_rec(save, True), rerun]
             text = "Group %s is parked: %s. No attempt can build it as planned. %s" % (
-                gid, what, "Loop back to Plan?" if back else "Save the run for later?")
+                gid, what, "Add %s to Task %d?" % (new[0].get("needs"), new[1]) if new else "Loop back to Plan?" if back else "Save the run for later?")
         else:
             # 9.8.0 (round 5): a group that parks again after the person ran it again failed every model twice over: the
             # plan is the likelier cause, so Loop back to Plan is the recommended answer then (a measured run reran a
@@ -668,8 +698,7 @@ class BuildPart:
                              calls=[self.c("group reopen %s %s" % (gid, targs))], oid="redo")
             opts = [] if again else [rerun]
             if r.can_loop("build", "plan"):
-                opts.append(self.opt("Loop back to Plan" + (" (Recommended)" if again else ""), "The plan cannot be built as written.", move="back",
-                                     calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"], oid="back"))
+                opts.append(self.plan_loop(again))
             if again:
                 opts.append(rerun)
             opts.append(self.save())
