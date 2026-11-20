@@ -521,17 +521,19 @@ class AskPart:
                 # keeps one. A typed change is no fix here, since Review writes no code.
                 grill = self.skill("grill-me", "Grill Me", "Stress test the change.")
                 keep = [self.accept_opt()] if opens else []
-                # 9.8.5 (Q2, F1 of WP08): an open finding at high or above is repaired by default: the loop back to Build is
-                # recommended. A Medium one goes on to Check, listed in the Check question where the person commits.
-                repair = back_opt(rec=True) if any(f["severity"] in ("critical", "high") for f in opens) else []
+                # 9.8.5 (Q2, F1 of WP08): an open finding at high or above is repaired by default: Repair again first while its
+                # call may start (WP24, mechanism 14), else the loop back to Build is recommended. A Medium one goes on to
+                # Check, listed in the Check question where the person commits.
+                high = any(f["severity"] in ("critical", "high") for f in opens)
+                repair = ([self.repair_opt(stage, rep)] if high and rep is not None else []) + (back_opt(rec=not rep) if high else [])
                 if repair:
                     first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go, oid="continue"), arch]
                 else:
                     first = [self.opt("Continue to Check" + " (Recommended)", "Start Check.", move="advance", calls=go, oid="continue")] + (back_opt() if opens else []) + [arch]
                 rest = [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()]
                 q = self.with_more(GATE_HEADER, "Review: %s%s. %s" % (state_of, self.finding_counts(opens),
-                                   "Loop back to Build to repair them?" if repair else "Continue to Check?"), stage,
-                                   first + ([] if opens else [grill]), keep + ([grill] if opens else []) + rest, "Review: more options.", qid="review.pass")
+                                   ("Repair them in the stage?" if rep is not None else "Loop back to Build to repair them?") if repair else "Continue to Check?"), stage,
+                                   first[:3] + ([] if opens else [grill]), first[3:] + keep + ([grill] if opens else []) + rest, "Review: more options.", qid="review.pass")
                 if keep:
                     q["accept"] = self.accept_question(opens, qid="review.pass.accept")
                 return q

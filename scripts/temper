@@ -1317,7 +1317,7 @@ cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-
   _ensure_dirs
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
-  fixed_by="$(python3 -I "$SCRIPTS_DIR/findings.py" fixed-by "$fixed_by" "$STATE_FILE" "$GROUPS_FILE")" || return 1
+  fixed_by="$(python3 -I "$SCRIPTS_DIR/findings.py" fixed-by "$fixed_by" "$STATE_FILE" "$GROUPS_FILE" "$stage" "$id")" || return 1
   _lock_acquire
   python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-resolve "$file" "$id" "$fixed_by" "$(_now)"
   local rc=$?

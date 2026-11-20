@@ -163,7 +163,7 @@ describe('what only the person may cause, at the step the run is at', () => {
   })
 
   test('a step back needs the person\'s step back to that stage', () => {
-    const back = optionCalls('review-fail', 'Loop back to Build')
+    const back = optionCalls('review-fail', 'Loop back to Build (Recommended)')
     expect('allow' in bash(ctx('review', { allowed: back }), `${CLI} state loop review build --reason "a real bug"`)).toBe(true)
     expect(isDeny(bash(ctx('review', { allowed: back }), `${CLI} state loop review plan --reason x`))).toBe(true)
     expect(isDeny(bash(ctx('review'), `${CLI} state loop review build --reason x`))).toBe(true)
@@ -312,7 +312,7 @@ describe('review of the one flow: what goes around a gate', () => {
 
   test('a step back and a move on in one command: the mod lets the step back through, the CLI refuses the move on', () => {
     // After the loop the run is at Build; `state advance check_complete commit` then fails in the CLI (advance_ok).
-    const back = ctx('check', { allowed: optionCalls('check-fail', 'Loop back to Build') })
+    const back = ctx('check', { allowed: optionCalls('check-fail', 'Loop back to Build (Recommended)') })
     expect('allow' in bash(back, `${CLI} state loop check build --reason x && ${CLI} state advance check_complete commit`)).toBe(true)
     expect(isDeny(bash(back, `${CLI} state loop check plan --reason x`))).toBe(true)
   })
@@ -415,7 +415,7 @@ describe('the budget: only the person grants more, and its record is the CLI\'s'
       expect(bash(ctx(stage), grant(`gate:${stage}`, 'the next try is different')), stage).toEqual({ deny: ONLY_USER })
     }
     // no other call of an answer lets it through: the step back of the same question is not a grant
-    const back = optionCalls('check-fail', 'Loop back to Build')
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
     expect(bash(ctx('check', { allowed: back }), grant('gate:check'))).toEqual({ deny: ONLY_USER })
   })
 
@@ -468,7 +468,7 @@ describe('the red base: only the person goes on anyway', () => {
       expect(bash(ctx(stage), accept()), stage).toEqual({ deny: ONLY_USER })
     }
     // the call of another answer does not let it through
-    const back = optionCalls('check-fail', 'Loop back to Build')
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
     expect(bash(ctx('check', { allowed: back }), accept())).toEqual({ deny: ONLY_USER })
   })
 
@@ -497,7 +497,7 @@ describe('run it anyway: only the person runs a check whatever the store holds',
     for (const stage of ['build', 'review', 'check', 'commit'] as const) {
       for (const cmd of FRESH) expect(bash(ctx(stage), cmd), `${stage}: ${cmd}`).toEqual({ deny: ONLY_USER })
     }
-    const back = optionCalls('check-fail', 'Loop back to Build')
+    const back = optionCalls('check-fail', 'Loop back to Build (Recommended)')
     expect(bash(ctx('check', { allowed: back }), `${CLI} check run --fresh`)).toEqual({ deny: ONLY_USER })
   })
 
