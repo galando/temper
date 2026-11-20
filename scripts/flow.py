@@ -344,7 +344,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart, RevisePart):
             if fresh_review.need_launch(fr) and ready:
                 out.update(self.fresh_work(fr))
                 return out
-            again = self.revise_again()   # WP27: a failed plan gate after a revise launch
+            again = self.tier_step() or self.revise_again()   # the CLI records the tier the bound asks; WP27: a revise again
             if again:
                 out.update(again)
                 return out

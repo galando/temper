@@ -12,6 +12,7 @@ import time
 
 import budget
 import decisions
+import plan_ops
 
 from flow_base import LABEL, TEMPER, goes_on, loop_at, on_model
 
@@ -32,12 +33,13 @@ class RevisePart:
     def revise_items(self):
         """(reason, items) of a change to the plan that exists, else None: a loop back into Plan that does not pass through
         Intent, the open fresh findings, an answer the tasks do not follow, the person's notes, in that order for the
-        reason; every item whole, one a line. A loop back through Intent, or a plan with no tasks.md, is the planner's."""
+        reason; every item whole, one a line. A plan with no tasks.md is the planner's, and so is the pass that answers a
+        loop back through Intent (no planner launch since it: its brief call is older), never a later revision."""
         r = self.r
         if r.command != "temper" or not r.spec or not os.path.isfile(os.path.join(r.spec, "tasks.md")):
             return None
         back, through = r.loop_into("plan"), r.loop_through("plan")
-        if through and (not back or loop_at(through) > loop_at(back)):
+        if through and (not back or loop_at(through) > loop_at(back)) and loop_at(through) >= brief_at():
             return None
         one = lambda x: " ".join(str(x).split())
         found = [f for f in r.fresh()["findings"] if f["state"] not in ("resolved", "accepted")]
@@ -125,10 +127,29 @@ class RevisePart:
         if r.room(last["key"])["used"] < 2 or r.state.get("plan_hash"):
             return self.revise_agent(got[0], items, last["key"])
         out = self.stage_work_planner(items)
+        # the fall back is one more launch for the failed gate: Plan runs again, and spends one entry of gate:plan (rule 9)
+        out["calls"].insert(0, self.c("state redo plan --reason %s" % shlex.quote(
+            "two revisions left the check failing: " + ", ".join(str(x.get("name")) for x in rows))))
         out["agents"][0]["after"].insert(1, self.c("state set revise_fallback %s" % last["key"]))
         out["say"] = "Plan: two revisions left the check failing; the Plan agent writes the plan again%s. %s" % (
             on_model(out["agents"]), goes_on(False))
         return out
+
+    def tier_step(self):
+        """The plan gate failed only on the bound of the simple tier (WP26, plan_ops.tier_bound): the CLI records the tier
+        above, as the row says, and checks the plan again. No agent: the revise agent runs no state set, and a tier is no
+        reason to plan again."""
+        r = self.r
+        rows = r.failed_rows("plan")
+        if (r.verdict("plan") != "FAIL" or [x.get("name") for x in rows] != ["tier recorded"]
+                or str(r.state.get("complexity") or "").strip().lower() != "simple"):
+            return None
+        bound = plan_ops.tier_bound(r.spec, "simple", os.path.join(TEMPER, "build-state.json")) if r.spec else ""
+        if not bound or rows[0].get("detail") != bound:
+            return None   # a Complexity line that names another tier: which tier is right is the planner's or the person's
+        why = bound.split(", and ", 1)[-1].split(": temper state set", 1)[0]
+        return {"action": "work", "stage": "plan", "calls": [self.c("state set complexity medium"), self.c("gate plan")],
+                "agents": [], "say": "Plan: the plan is above the simple tier (%s); the CLI records medium and checks it again." % why}
 
     def stage_work_planner(self, items):
         """The planner's launch with these items (the fall back of revise_again): stage_work's, with the items as lines."""

@@ -180,12 +180,17 @@ step back is `Left open: Loop back from <Stage>: <reason>.` and each thing it le
 <n>. <item>`, in the words the planner's prompt uses),
 `Affected tasks:` (the tasks a `Task N` names, the tasks of a group named, the tasks that declare a file named, or `not
 named`), the decisions and the plugin line. It has no project brief line, and its action has no `brief` call. Its
-`before` call is `temper budget revise --key plan-revise:<reason>`, one repeat of the run's budget; its `after` calls
-are the planner's: the usage row, `temper risk`, `temper baseline plan` and `temper gate plan`.
+`before` call is `temper budget revise --key plan-revise:<reason>`, one repeat of the run's budget; a launch that the
+person's run again at a failed plan gate, or a step back into Plan, already paid for counts for its reason and not again
+for the run (`paid_by` in its entry): one launch, one spend. Its `after` calls are the planner's: the usage row,
+`temper risk`, `temper baseline plan` and `temper gate plan`. A loop back through Intent gets the planner for the pass that
+answers the changed intent; a revision after that pass is the revise agent's again.
 
 When the plan gate fails after a revise launch, the flow's own action is one more revise, with the failed rows added as
 items. After the second, before the approval, the next launch is the planner with the same items, once
-(`revise_fallback` in the run state). After the approval the same launch is refused by the budget, so the question is
+(`revise_fallback` in the run state); its first call is `temper state redo plan`, which spends one entry of `gate:plan`
+like any run again of a failed gate. When the only failed row is `tier recorded` with the bound of the simple tier, the
+flow's action is the CLI's own `temper state set complexity medium` and `temper gate plan`, with no agent. After the approval the same launch is refused by the budget, so the question is
 `run.budget`: a rule never plans again. A row that waits on the person (a Blocking question, the context check, a
 reviewer that did not finish, or only contested findings) is the question's, never a revision's.
 

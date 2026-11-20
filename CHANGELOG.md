@@ -246,8 +246,12 @@ All notable changes to Temper are documented here. The plugin version lives in
 - WP27: a change to a plan that exists is made by a narrow revise agent on Sonnet, `temper:temper-plan-revise`
   (`agents/plan-revise.md`), which gets the reason, every finding or note whole and the task blocks they name
   (`Affected tasks:`), and no project brief; a first plan and a changed intent get the planner. Each revise launch
-  spends one repeat (`temper budget revise`, key `plan-revise:<reason>`); a plan gate that fails after it gets one more
-  revise with the failed rows, then before the approval the planner, after it the question `run.budget`. A criterion
+  spends one repeat (`temper budget revise`, key `plan-revise:<reason>`), and once only: a launch your run again or a
+  step back paid for counts for its reason, not again for the run. A plan gate that fails after it gets one more
+  revise with the failed rows, then before the approval the planner, which spends one repeat of `gate:plan`, after it
+  the question `run.budget`. A plan gate that fails only on the bound of the simple tier gets the CLI's own
+  `temper state set complexity medium`, never a revise. After a loop back through Intent the planner takes only the
+  pass that answers the changed intent. A criterion
   validated by `code` or `metric` carries its command in backticks, which the CLI runs when Build ends and at Check and
   records itself: no record pass and no Check agent; one with no command is yours to confirm, and a draft with one
   fails `criteria validate`. The approval card lists those commands. The CLI runs `temper risk` after the planner. One
