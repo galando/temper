@@ -321,7 +321,8 @@ finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for lat
 resolved only when four things hold: COMMIT is a commit; it is an ancestor of HEAD; it is no ancestor of the reviewed
 HEAD (the `head` of `review_snapshot`, written as the run enters Review; with no snapshot the call is refused); and
 it is in `cli_commits` of `.temper/groups.json`. WP24 adds a fifth: the run state records COMMIT as a repair commit, and
-a `recheck #<id>` row was written after it; for a repair commit the reviewed HEAD is the repair's base. The mark stores
+a `recheck #<id>` row was written after it; for a repair commit the reviewed HEAD is the repair's base. The call names
+its finding, so it takes none while the repair is open and, after `repair close`, only one the close resolved. The mark stores
 the full id. Each refusal is one `FAIL:` line that names the check and the short ids. No model calls it: the CLI
 resolves a finding itself, in `temper repair close` (below). With the mod, the call is refused as a tool call in a
 `/temper` or `/temper:fix` run; with no run, the mod lets it through and the CLI refuses it.
@@ -332,11 +333,13 @@ row, `acceptance evidence`, a measured coverage drop, a locked acceptance test t
 is the CLI's own `auto` call `temper repair start --stage review|check`, in every mode, when every condition of
 `can_start` in `scripts/repair_ops.py` holds: Review completed with its read list; HEAD is the reviewed HEAD and the tree
 is clean; no stage was skipped; the budget has room; the run is a `/temper:temper` run on its own branch whose Build was
-integrated; no finding is contested or on a sensitive path, and the plan touches none; no repair ran at the stage since
+integrated; no finding is contested, on a sensitive path or on a file outside the plan, and the plan touches no
+sensitive path; no repair ran at the stage since
 the run came to it. The window (`adhoc` with `kind: repair`) then holds Build's write rule. `next` is `work` with a
 fresh `temper:temper-build` agent whose prompt has the line `Repair in place:` and each finding whole (claim, detail,
 suggested fix, proof field; at Check the failed row with its whole kept output); its after call is `temper repair
-commit`. The CLI commits only the changed files that are approved or a test (never the spec folder, the config, the git
+commit`. It reads the changed files and what is staged, since the commit takes the whole index. The CLI commits
+only the changed files that are approved or a test (never the spec folder, the config, the git
 folder, a locked acceptance test, a lockfile or manifest, a CI file or a sensitive path: those ask `scope.drift`, with
 nothing committed, for a file no answer can let through first, and offer Add to plan and Allow once only for a file
 outside the plan). The fixer may also ask with `temper drift ask`, as at Build: `repair commit` then commits nothing,
@@ -352,7 +355,11 @@ Check). `repair close` resolves each finding a `recheck #<id>: fixed` row confir
 completed, the checks passed and, for `proof: test`, a RED and a GREEN of `temper repair test` held on unchanged test
 files; it reverts the repair (the CLI's own commit back to the reviewed tree) and asks `repair.stop` when a row that
 passed fails, the open blocking findings are not fewer, the recheck names a new blocking finding or did not complete.
-A failed Review or Check whose rows a repair may answer offers `repair-again` ("Repair again", move `repair`, the call
+That revert takes back only the repair commit, on a clean tree: with HEAD moved or the tree dirty it refuses and the run
+asks. A repair taken back before its commit puts back each file a repair may never change (the spec folder, the config,
+the git hooks) from the copy taken when the window opened, and says which file is still not as it was.
+A failed Review or Check, and a passed Review with an open finding at high or above, offer `repair-again` exactly
+where its call may start (`can_start` with `--again`) ("Repair again", move `repair`, the call
 `repair start --stage S --again`): first and recommended while no repair of that failure ran at the stage, offered
 once more after one, then gone. `repair.stop` offers `back`, `repair-again` while allowed, `accept-finding`,
 `override` and `save`; after a diff that removed test lines it offers `revert-repair` (recommended), `back` and

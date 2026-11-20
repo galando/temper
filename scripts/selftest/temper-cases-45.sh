@@ -209,6 +209,30 @@ assert_eq "D37f a recheck row written before the repair commit, or before the re
   "before the commit=open|before the mark=open|in order=resolved" \
   "before the commit=$_d37f_early|before the mark=$_d37f_nomark|in order=$(_resolved45)"
 
+_hand45() { "$TEMPER" evidence resolve --stage review --id "$1" --fixed-by "$2" >/dev/null 2>&1 && echo taken || echo refused; }
+_review45 high
+"$TEMPER" repair start --stage review >/dev/null 2>&1 || true
+echo 'echo fixed >&2; exit 1' > src/demo.sh
+"$TEMPER" repair commit >/dev/null 2>&1 || true
+"$TEMPER" evidence add --stage review --claim 'recheck #1: not fixed' --exit 1 --label PROVEN >/dev/null 2>&1
+_d37f_open="$(_hand45 1 "$(git rev-parse HEAD)"),$(_resolved45)"
+_review45 high
+"$TEMPER" evidence add --stage review --claim 'src/demo.sh:2 the demo exits 0 on error' --severity high --label PROVEN >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1
+"$TEMPER" repair start --stage review >/dev/null 2>&1 || true
+echo 'echo fixed >&2; exit 1' > src/demo.sh
+"$TEMPER" repair commit >/dev/null 2>&1 || true
+_d37f_sha="$(git rev-parse HEAD)"
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done \
+  < <(_x45 "r = '\n'.join(c for a in d.get('agents') or [] for c in a.get('before') or [])")
+"$TEMPER" evidence add --stage review --claim 'recheck #1: fixed' --exit 0 --label PROVEN >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'recheck #3: not fixed' --exit 1 --label PROVEN >/dev/null 2>&1
+_done45 src/demo.sh
+"$TEMPER" repair close >/dev/null 2>&1 || true
+assert_eq "D37f evidence resolve by hand takes no finding the recheck did not confirm: not while the repair is open, not one its close left open" \
+  "open repair=refused,open|closed repair=#1 resolved,#3 refused,open" \
+  "open repair=$_d37f_open|closed repair=#1 $(_resolved45),#3 $(_hand45 3 "$_d37f_sha"),$(_ledger45 review "'resolved' if (e[2].get('resolved') or {}).get('fixed_by') else 'open'")"
+
 # --- D38a, D38b, D38c, D38e: rule 9, every repeat is counted against one budget ---
 _used45() { # _used45 [key [kind]]: the entries of the budget record, of that key and kind when given
   python3 - "${1:-}" "${2:-}" <<'PY'

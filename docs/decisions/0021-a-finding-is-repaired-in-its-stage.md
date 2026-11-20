@@ -27,7 +27,8 @@ and until this record no commit was ever one `evidence resolve` takes).
    `recheck #<id>: fixed` row was written after the commit and after the recheck's launch mark (`temper repair mark`),
    the recheck completed, the checks passed on the repair tree, and, for a finding marked `proof: test`, the CLI ran a
    RED before the fix and a GREEN after it on unchanged test files. `evidence resolve` takes a commit only when the run
-   state records it as a repair and a recheck row follows it. No model calls it.
+   state records it as a repair and a recheck row follows it, and a hand call takes only a finding `repair close`
+   resolved. No model calls it.
 3. **A repair that made things worse is reverted.** A row that passed before fails after, the open blocking findings
    are not fewer, the recheck names a new blocking finding, or the recheck did not complete: the CLI commits the tree
    Review read again, through the same carve out, and the run asks `repair.stop`, which names what broke.

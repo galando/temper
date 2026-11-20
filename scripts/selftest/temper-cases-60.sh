@@ -220,9 +220,10 @@ print(sum(1 for x in e.get('requirements') or [] if 'mutation' in str(x.get('nam
 # --- a failed coverage row is a measured drop, a defect of the code: no Run Check again for it ---
 fresh; gpass intent plan build review; _at check
 gfail check "coverage" "recorded coverage 'none' vs threshold 80%"
-# WP24: a defect of the code is repaired in its stage first (Repair again, while the budget allows); the loop back stays
-assert_eq "WP24 w19 a failed coverage row is no measurement gap: the repair in the stage first, the loop back offered, and no Run Check again" \
-  "repair-again,True|back offered|0" \
+# WP24: a defect of the code is repaired in its stage where the repair may start; this run has no reviewed HEAD, so the
+# loop back is first
+assert_eq "WP24 w19 a failed coverage row is no measurement gap: with no reviewed HEAD the loop back first, and no Run Check again" \
+  "back,True|back offered|0" \
   "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + ('back offered' if any(x['id'] == 'back' for x in a) else 'no back') + '|' + str(sum(1 for x in a if x['label'].startswith('Run Check again')))")"
 
 # --- the suite's owner one folder down: the report's paths are that folder's, and the changed lines still match ---

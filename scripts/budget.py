@@ -50,8 +50,8 @@ SPENDS = (
     (("integrate",), "merge again", "the integration record is FAIL and no repeat of gate:build paid for it: gate:build"),
     (("check", "run"), "run anyway", "with --fresh (WP22, the person's Run it anyway): gate:check; `group gate G --fresh` "
                                      "spends group:<G>, `integrate --fresh` gate:build"),
-    (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped: gate:<stage> (WP24: the repair in the stage, "
-                                    "spent by scripts/repair_ops.py once every condition holds)"),
+    (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped, or it is Review: gate:<stage> (WP24: the repair "
+                                    "in the stage, spent by scripts/repair_ops.py once every condition holds)"),
 )
 
 
@@ -156,7 +156,7 @@ def key_of(words, facts):
         return ("gate:build", "step back") if plan.get("tasks") and not plan.get("groups") else None
     if a == "repair" and b == "start":
         st = next((y for x, y in zip(words, list(words[1:])) if x == "--stage"), "")
-        return ("gate:" + st, "repair") if st and facts.failed(st) else None
+        return ("gate:" + st, "repair") if st and (facts.failed(st) or st == "review") else None   # a passed Review: the click
     if a == "state" and b == "set" and c == "pipeline_round":
         return "pipeline", "CI fix"
     if a == "state" and b == "set" and c == "next_stage":

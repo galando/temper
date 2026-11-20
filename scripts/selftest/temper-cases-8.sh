@@ -115,11 +115,11 @@ assert_exit "advance: a run whose person asked for Design may not skip it" 1 "$T
 fresh; gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 "$TEMPER" evidence add --stage review --claim "src/demo.sh:3 the input is not checked" --severity critical >/dev/null 2>&1
 gfail review "no blocking findings" "1 open finding"
-# WP24: the loop back to Build is no longer the first answer to a blocking finding: the repair in the stage is (Repair
-# again, while the budget allows); the loop back stays offered as the way out
-assert_eq "WP24 next: Review FAIL with an open finding: Repair again first and recommended, then the loop back, accept a finding, override" \
-  "repair-again,True,repair|back,accept-finding,override|back not recommended" \
-  "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); i = [x['id'] for x in a]; b = [x for x in a if x['id'] == 'back']; '%s,%s,%s' % (o['id'], bool(o.get('recommended')), o.get('move')) + '|' + ','.join(x for x in ('back', 'accept-finding', 'override') if x in i) + '|' + ('back not recommended' if b and not b[0].get('recommended') else 'back %s' % ('recommended' if b else 'not offered'))")"
+# WP24: Repair again is offered exactly where its call may start (repair_ops.can_start); this run has no reviewed HEAD,
+# so it is not, and the loop back is the first answer (case file 65 holds the question where the repair may start)
+assert_eq "WP24 next: Review FAIL with an open finding and no reviewed HEAD: no Repair again, the loop back first and recommended, accept a finding, override" \
+  "back,True,back|back,accept-finding,override|no repair-again" \
+  "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); i = [x['id'] for x in a]; '%s,%s,%s' % (o['id'], bool(o.get('recommended')), o.get('move')) + '|' + ','.join(x for x in ('back', 'accept-finding', 'override') if x in i) + '|' + ('repair-again offered' if 'repair-again' in i else 'no repair-again')")"
 assert_eq "next: the accept question lists the open finding by id, with its own reason question" \
   "Accept finding 1|accept|True|evidence accept --stage review --id 1 --reason '{reason}'" \
   "$(nx "o = d['ask']['accept']['options'][0]; '|'.join([o['label'], o['move'], str(o['reason']), o['calls'][0].split('temper ', 1)[1]])")"
@@ -182,7 +182,7 @@ assert_eq "next: an unattended run's failed Review with no blocking finding on r
 "$TEMPER" park --verdict PARKED-NEEDS-DECISION --reason "a test" >/dev/null 2>&1
 assert_eq "park: the run keeps its mode, is marked parked, and the report says where it waits (WP11)" "autonomous|review|1" \
   "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the gate it parked at' .temper/autonomy-report.md)"
-assert_eq "WP24 next: after a park the person gets the gate question, Repair again first and recommended" "ask|repair-again,True" \
+assert_eq "WP24 next: after a park the person gets the gate question, the loop back first and recommended where the repair may not start" "ask|back,True" \
   "$(nx "d['action'] + '|' + '%s,%s' % (d['ask']['options'][0]['id'], bool(d['ask']['options'][0].get('recommended')))")"
 
 # --- Run Build again ---
