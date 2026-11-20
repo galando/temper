@@ -104,10 +104,10 @@ describe('the view of the run', () => {
   })
 
   test('the loops with their budget and reason, and the person\'s decisions as sentences', () => {
-    const decisions: Decision[] = [{ ...answer('Loop back to Build', 'back', 'a real bug'), stage: 'review' }]
+    const decisions: Decision[] = [{ ...answer('Loop back to Build (Recommended)', 'back', 'a real bug'), stage: 'review' }]
     const v = buildView(input('build-work', { decisions }, { loops: [{ from: 'review', to: 'build', reason: 'a real bug', iteration: 1, max: 2, at: 't' }] }))
     expect(v.loops).toEqual(['Review to Build: 1 of 2 (a real bug)'])
-    expect(v.decisions).toEqual(['review: Loop back to Build (a real bug)'])
+    expect(v.decisions).toEqual(['review: Loop back to Build (Recommended) (a real bug)'])
   })
 })
 
@@ -212,14 +212,14 @@ describe('the bar above the prompt shows; it does not decide', () => {
 
 describe('the pane shows the whole run, read only', () => {
   test('the intent, the stages, the status, the criteria and the decisions; no button while Claude does not work', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'PASS', review: 'FAIL' } }), { answers: [{ label: 'Loop back to Build', note: 'a real bug' }] })
+    const w = world(on, runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'PASS', review: 'FAIL' } }), { answers: [{ label: 'Loop back to Build (Recommended)', note: 'a real bug' }] })
     await $.session.start(START)
     await (($ as unknown) as { tool: { call: (a: unknown) => Promise<unknown> } }).tool.call({ tool: 'AskUserQuestion', questions: [{ ...questionOf(viewText(w) ?? ''), multiSelect: false }] })
     expect(Object.keys(w.store).some(k => k.startsWith('dec:'))).toBe(true)
     const pane = await mount($, 'Pane', PANE, 'temper')
     const text = JSON.stringify(await pane.drawn())
     expect(text).toContain('Stages · Step 4 of 6: Review')
-    expect(text).toContain('Review: your choice (Loop back to Build). Claude carries it out.')
+    expect(text).toContain('Review: your choice (Loop back to Build (Recommended)). Claude carries it out.')
     expect(text).toContain('Your decisions')
     expect(text).toContain('Acceptance criteria')
     expect(await labels(pane)).toEqual([])

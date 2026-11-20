@@ -46,7 +46,7 @@ assert_eq "commands/temper.md names the CLI through the braced plugin root varia
   "$([[ "${CO_CLI:0:2}" == '${' ]] && echo yes || echo no)"
 OUT=$(python3 -c 'import json, sys; print(json.dumps({"tool_input": {"command": sys.argv[1] + " review --reason x"}}))' "$CO_CLI" | bash "$CONFIRM")
 assert_eq "confirm-override: a temper override command emits the ask decision" "yes" \
-  "$(echo "$OUT" | grep -q '"permissionDecision": "ask"' && echo yes || echo no)"
+  "$(grep -q '"permissionDecision": "ask"' <<<"$OUT" && echo yes || echo no)"
 OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CONFIRM")
 assert_eq "confirm-override: any other command stays silent" "" "$OUT"
 assert_exit "confirm-override: always exits 0 (ask is advisory, not a block)" 0 \
@@ -138,7 +138,7 @@ mkdir -p src/xzauthy && echo "park-false-$$" > src/xzauthy/client.js
 git add -A >/dev/null 2>&1 || true
 OUT=$("$TEMPER" gate commit 2>&1)
 assert_eq "park-on-touch: 'xzauthy' does NOT match the 'zauth' segment (no false park)" "yes" \
-  "$(echo "$OUT" | grep -q 'no changed file matches a park-on-touch' && echo yes || echo no)"
+  "$(grep -q 'no changed file matches a park-on-touch' <<<"$OUT" && echo yes || echo no)"
 setup
 _ran_unattended   # WP11: the state a run the person started at the approval leaves
 cat > .claude/temper.config <<'EOF'
@@ -150,7 +150,7 @@ mkdir -p src/zauth && echo "park-true-$$" > src/zauth/login.js
 git add -A >/dev/null 2>&1 || true
 OUT=$("$TEMPER" gate commit 2>&1)
 assert_eq "park-on-touch: the real 'zauth' segment still parks" "yes" \
-  "$(echo "$OUT" | grep -q 'src/zauth/login.js matches' && echo yes || echo no)"
+  "$(grep -q 'src/zauth/login.js matches' <<<"$OUT" && echo yes || echo no)"
 
 # block-protected-paths.sh: segment match (no substring false-positive), interior glob honored.
 setup
@@ -182,7 +182,7 @@ git config core.hooksPath .husky
 H_GIT_BEFORE="$(_git_list .git)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); H_RC=$?
 assert_eq "install.sh never writes into a core.hooksPath folder that is not Temper's, and leaves the value as it was" "1||.husky|yes" \
-  "$H_RC|$(ls -A .husky)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -qxF "FAIL: core.hooksPath is set to '.husky', a folder that is not Temper's, and this installer never writes into it." && echo yes || echo no)"
+  "$H_RC|$(ls -A .husky)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -cxF "FAIL: core.hooksPath is set to '.husky', a folder that is not Temper's, and this installer never writes into it." >/dev/null && echo yes || echo no)"
 assert_eq "install.sh writes nothing else in the git folder either; the hook is kept in .git/temper-gate" "yes|yes" \
   "$([[ "$(_git_list .git)" == "$H_GIT_BEFORE" ]] && echo yes || echo no)|$(grep -q 'installed by scripts/guards/install.sh' .git/temper-gate/pre-commit 2>/dev/null && echo yes || echo no)"
 git config --unset core.hooksPath 2>/dev/null || true
@@ -198,7 +198,7 @@ for cmd in \
   'bash /p/temper override check'; do
   esc=$(printf '%s' "$cmd" | sed 's/"/\\"/g')
   OUT=$(printf '{"tool_input": {"command": "%s"}}' "$esc" | bash "$CO")
-  assert_eq "confirm-override asks for: $cmd" "yes" "$(echo "$OUT" | grep -q '\"ask\"' && echo yes || echo no)"
+  assert_eq "confirm-override asks for: $cmd" "yes" "$(grep -q '\"ask\"' <<<"$OUT" && echo yes || echo no)"
 done
 OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CO")
 assert_eq "confirm-override stays silent on an unrelated command" "" "$OUT"
@@ -262,7 +262,7 @@ s = open('.temper/specs/demo/intent.md').read().replace('### Context Sources\n- 
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "no Source Traceability FAILs task context recorded" "yes" "$(echo "$OUT" | grep -q 'no consulted/unavailable/none line' && echo yes || echo no)"
+assert_eq "no Source Traceability FAILs task context recorded" "yes" "$(grep -q 'no consulted/unavailable/none line' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 printf '**Ticket:** PROJ-1\n' | cat - .temper/specs/demo/intent.md > "$WORKDIR/ti.md" && mv "$WORKDIR/ti.md" .temper/specs/demo/intent.md
@@ -272,7 +272,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "a recorded PROJ-12 does not satisfy a linked PROJ-1 (whole-token match)" "yes" \
-  "$(echo "$OUT" | grep -q 'PROJ-1' && echo yes || echo no)"
+  "$(grep -q 'PROJ-1' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -280,7 +280,7 @@ s = open('.temper/specs/demo/intent.md').read().replace('  Why: serves the real 
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "a placeholder Why: FAILs criteria why" "yes" "$(echo "$OUT" | grep -q 'no Why: line with real text on: AC-01' && echo yes || echo no)"
+assert_eq "a placeholder Why: FAILs criteria why" "yes" "$(grep -q 'no Why: line with real text on: AC-01' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -289,7 +289,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "WP26 a Target Users bullet with no action chain no longer fails the draft: the row target users action chain is gone" \
-  "exit=0|row=no" "exit=$("$TEMPER" gate intent >/dev/null 2>&1; echo $?)|row=$(echo "$OUT" | grep -q 'target users action chain' && echo yes || echo no)"
+  "exit=0|row=no" "exit=$("$TEMPER" gate intent >/dev/null 2>&1; echo $?)|row=$(grep -q 'target users action chain' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -297,7 +297,7 @@ s = open('.temper/specs/demo/intent.md').read().replace('- [ ] AC-01 [required]:
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "a criterion without AC-NN FAILs criteria ids" "yes" "$(echo "$OUT" | grep -q 'no AC-NN id' && echo yes || echo no)"
+assert_eq "a criterion without AC-NN FAILs criteria ids" "yes" "$(grep -q 'no AC-NN id' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -305,7 +305,7 @@ s = open('.temper/specs/demo/intent.md').read().replace('- [ ] AC-01 [required]:
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "a repeated AC id is named as a duplicate" "yes" "$(echo "$OUT" | grep -q 'duplicate id: AC-01' && echo yes || echo no)"
+assert_eq "a repeated AC id is named as a duplicate" "yes" "$(grep -q 'duplicate id: AC-01' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -314,7 +314,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "a criterion with no [required]/[optional] FAILs criteria priority" "yes" \
-  "$(echo "$OUT" | grep -q '\[x\] criteria priority' && echo yes || echo no)"
+  "$(grep -q '\[x\] criteria priority' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -322,7 +322,7 @@ s = open('.temper/specs/demo/intent.md').read().replace('  Validate: scenario �
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "an unknown Validate type FAILs criteria validate" "yes" "$(echo "$OUT" | grep -q 'missing/unknown Validate: type on: AC-01' && echo yes || echo no)"
+assert_eq "an unknown Validate type FAILs criteria validate" "yes" "$(grep -q 'missing/unknown Validate: type on: AC-01' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -330,7 +330,7 @@ s = open('.temper/specs/demo/intent.md').read().replace('### Open Questions\n', 
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "an unlabeled open question FAILs" "yes" "$(echo "$OUT" | grep -q 'neither blocking nor deferred' && echo yes || echo no)"
+assert_eq "an unlabeled open question FAILs" "yes" "$(grep -q 'neither blocking nor deferred' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -339,7 +339,7 @@ s = s.replace('### Decisions\n', '### Decisions\n- which database do we use in p
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "an open question re-asking a decided topic FAILs" "yes" "$(echo "$OUT" | grep -q 'already answered in ### Decisions' && echo yes || echo no)"
+assert_eq "an open question re-asking a decided topic FAILs" "yes" "$(grep -q 'already answered in ### Decisions' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -348,7 +348,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "9.8.0: a placeholder or missing Reviewer no longer fails header fields (the person at the gate approves)" "no" \
-  "$(echo "$OUT" | grep -q 'missing, empty, or placeholder' && echo yes || echo no)"
+  "$(grep -q 'missing, empty, or placeholder' <<<"$OUT" && echo yes || echo no)"
 python3 - <<'EOF2'
 s = open('.temper/specs/demo/intent.md').read()
 import re
@@ -356,7 +356,7 @@ s = re.sub(r'^\*\*Author:\*\*.*$', '**Author:** {name}', s, flags=re.M)
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF2
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "a placeholder Author still FAILs header fields" "yes" "$(echo "$OUT" | grep -q 'missing, empty, or placeholder: Author' && echo yes || echo no)"
+assert_eq "a placeholder Author still FAILs header fields" "yes" "$(grep -q 'missing, empty, or placeholder: Author' <<<"$OUT" && echo yes || echo no)"
 
 # 9.8.0: Carry forward on a Blocking open question turns it Deferred, so the Intent gate is not left red with no way out
 setup; good_draft
@@ -376,7 +376,7 @@ printf '## Scenarios (BDD)\nScenario: premature\n' >> .temper/specs/demo/intent.
 rm -f .temper/specs/demo/tasks.md   # WP13: before Plan wrote tasks.md a Scenario: line is the draft's own
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "a Scenario: line in a draft FAILs no scenarios in draft, naming the line" "yes" \
-  "$(echo "$OUT" | grep -q 'no scenarios in draft' && echo "$OUT" | grep -qE 'Scenario: line\(s\) at [0-9]+' && echo yes || echo no)"
+  "$(grep -q 'no scenarios in draft' <<<"$OUT" && grep -qE 'Scenario: line\(s\) at [0-9]+' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -398,7 +398,7 @@ EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_exit "a soft word in a criterion FAILs the draft intent gate" 1 "$TEMPER" gate intent
 assert_eq "the detail names the criterion and the word" "yes" \
-  "$(echo "$OUT" | grep -q 'soft word in: criterion AC-01 uses should' && echo yes || echo no)"
+  "$(grep -q 'soft word in: criterion AC-01 uses should' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -408,7 +408,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "several soft words are named and joined with ' | '" "yes" \
-  "$(echo "$OUT" | grep -q 'criterion AC-01 uses might | constraint "output may differ per run" uses may | constraint "no network (possibly offline)" uses possibly' && echo yes || echo no)"
+  "$(grep -q 'criterion AC-01 uses might | constraint "output may differ per run" uses may | constraint "no network (possibly offline)" uses possibly' <<<"$OUT" && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -449,7 +449,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate plan 2>&1; true)
 assert_eq "a non-gherkin fence does not protect a Scenario" "yes" \
-  "$(echo "$OUT" | grep -q 'scenarios in gherkin blocks' && echo "$OUT" | grep -q 'not inside a gherkin fence' && echo yes || echo no)"
+  "$(grep -q 'scenarios in gherkin blocks' <<<"$OUT" && grep -q 'not inside a gherkin fence' <<<"$OUT" && echo yes || echo no)"
 
 setup
 python3 - <<'EOF'
@@ -461,7 +461,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate plan 2>&1; true)
 assert_eq "bare Scenario: lines FAIL scenarios in gherkin blocks" "yes" \
-  "$(echo "$OUT" | grep -q 'Scenario: not inside a gherkin fence' && echo yes || echo no)"
+  "$(grep -q 'Scenario: not inside a gherkin fence' <<<"$OUT" && echo yes || echo no)"
 
 setup
 cat > .temper/specs/demo/plan.md <<'EOF'
@@ -490,14 +490,14 @@ cat > .temper/specs/demo/plan.md <<'EOF'
 EOF
 OUT=$("$TEMPER" gate plan 2>&1; true)
 assert_eq "WP26 a plan.md with no Cross-Repo Search section passes: the gate writes no row cross-repo search recorded" "exit=0|row=no" \
-  "exit=$("$TEMPER" gate plan >/dev/null 2>&1; echo $?)|row=$(echo "$OUT" | grep -q 'cross-repo search recorded' && echo yes || echo no)"
+  "exit=$("$TEMPER" gate plan >/dev/null 2>&1; echo $?)|row=$(grep -q 'cross-repo search recorded' <<<"$OUT" && echo yes || echo no)"
 
 setup
 printf '## Cross-Repo Search\n- used: {tool} — {query}\n' > .temper/specs/demo/plan.md
 OUT=$("$TEMPER" gate plan 2>&1; true)
 assert_eq "WP26 a plan.md an earlier version wrote, with a placeholder Cross-Repo Search line and no map, passes: nothing reads the section" \
   "exit=0|row=no" \
-  "exit=$("$TEMPER" gate plan >/dev/null 2>&1; echo $?)|row=$(echo "$OUT" | grep -q 'cross-repo search recorded' && echo yes || echo no)"
+  "exit=$("$TEMPER" gate plan >/dev/null 2>&1; echo $?)|row=$(grep -q 'cross-repo search recorded' <<<"$OUT" && echo yes || echo no)"
 
 # --- acceptance.py: internal links (plan) and supported evidence (check) ---
 setup
@@ -507,7 +507,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" plan .temper/specs/demo/intent.md .temper/evidence/plan.json 2>&1; true)
 assert_eq "acceptance.py rejects a Covers reference to an unknown criterion" "yes" \
-  "$(echo "$OUT" | grep -q 'unknown criterion AC-99' && echo yes || echo no)"
+  "$(grep -q 'unknown criterion AC-99' <<<"$OUT" && echo yes || echo no)"
 
 setup
 python3 - <<'EOF'
@@ -517,7 +517,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" plan .temper/specs/demo/intent.md .temper/evidence/plan.json 2>&1; true)
 assert_eq "a Deferred line on a required criterion is an error" "yes" \
-  "$(echo "$OUT" | grep -q 'required criteria can never be deferred' && echo yes || echo no)"
+  "$(grep -q 'required criteria can never be deferred' <<<"$OUT" && echo yes || echo no)"
 
 setup
 python3 - <<'EOF'
@@ -526,7 +526,7 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" plan .temper/specs/demo/intent.md .temper/evidence/plan.json 2>&1; true)
 assert_eq "a Validate: scenario criterion with no covering scenario is an error" "yes" \
-  "$(echo "$OUT" | grep -q 'no scenario Covers: it' && echo yes || echo no)"
+  "$(grep -q 'no scenario Covers: it' <<<"$OUT" && echo yes || echo no)"
 
 setup
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
@@ -534,7 +534,7 @@ setup
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null   # no cmd, no artifact -> unsupported
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
 assert_eq "an exit-0 row with no cmd and no artifact is NOT a supported pass" "yes" \
-  "$(echo "$OUT" | grep -q "scenario 'first' has no supported passing evidence" && echo yes || echo no)"
+  "$(grep -q "scenario 'first' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
 
 setup
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
@@ -549,11 +549,11 @@ assert_eq "artifact-sha and cmd rows are supported passes" "every criterion has 
 echo tampered > .temper/specs/demo/artifact.txt
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
 assert_eq "a changed artifact no longer supports its recorded sha" "yes" \
-  "$(echo "$OUT" | grep -q "scenario 'first' has no supported passing evidence" && echo yes || echo no)"
+  "$(grep -q "scenario 'first' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second re-run" --exit 1 --cmd "pytest -k second" >/dev/null
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
 assert_eq "the LATEST row wins — a newer failure is never hidden by an older pass" "yes" \
-  "$(echo "$OUT" | grep -q "scenario 'second' has no supported passing evidence" && echo yes || echo no)"
+  "$(grep -q "scenario 'second' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
 
 # --criterion is recorded on both evidence add and evidence run rows.
 setup
@@ -566,12 +566,12 @@ assert_eq "evidence add/run record the criterion field" "AC-01|AC-02" \
 setup
 OUT=$("$TEMPER" gate review 2>&1; true)
 assert_eq "an empty findings ledger is not a review" "yes" \
-  "$(echo "$OUT" | grep -q 'no review completion evidence' && echo yes || echo no)"
+  "$(grep -q 'no review completion evidence' <<<"$OUT" && echo yes || echo no)"
 review_done --cmd "review panel"
 "$TEMPER" evidence add --stage review --claim "sql injection in login" --severity critical >/dev/null
 OUT=$("$TEMPER" gate review 2>&1; true)
 assert_eq "the FAIL detail names each open blocking finding" "yes" \
-  "$(echo "$OUT" | grep -q 'sql injection in login' && echo yes || echo no)"
+  "$(grep -q 'sql injection in login' <<<"$OUT" && echo yes || echo no)"
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 1 --cmd "review panel" >/dev/null
 assert_exit "a latest nonzero completion row FAILs the gate" 1 "$TEMPER" gate review
 
@@ -589,7 +589,7 @@ assert_exit "feedback applied (with detail) answers the gate" 0 "$TEMPER" gate b
 "$TEMPER" evidence add --stage build --phase feedback-resolved --claim "feedback #2: declined" >/dev/null
 OUT=$("$TEMPER" gate build 2>&1; true)
 assert_eq "a decline with no reason is not an answer" "yes" \
-  "$(echo "$OUT" | grep -q 'feedback #2 (declined with no reason)' && echo yes || echo no)"
+  "$(grep -q 'feedback #2 (declined with no reason)' <<<"$OUT" && echo yes || echo no)"
 
 # --- gate commit: no active run degrades open ---
 setup
@@ -598,7 +598,7 @@ echo 'x' > plain.txt
 git add plain.txt >/dev/null 2>&1
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "a commit outside any run passes with the single 'active run' requirement" 0 "$TEMPER" gate commit
-assert_eq "the carve-out names itself" "yes" "$(echo "$OUT" | grep -q 'active run' && echo "$OUT" | grep -q 'no active run — nothing to gate' && echo yes || echo no)"
+assert_eq "the carve-out names itself" "yes" "$(grep -q 'active run' <<<"$OUT" && grep -q 'no active run — nothing to gate' <<<"$OUT" && echo yes || echo no)"
 
 # --- gate commit: build-checkpoint carve-out ---
 setup
@@ -612,7 +612,7 @@ git add src.js >/dev/null 2>&1
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "a GREEN checkpoint commit passes on the one carve-out requirement" 0 "$TEMPER" gate commit
 assert_eq "the checkpoint carve-out names the green run" "yes" \
-  "$(echo "$OUT" | grep -q 'build checkpoint commit' && echo "$OUT" | grep -q 'tests green task 1' && echo yes || echo no)"
+  "$(grep -q 'build checkpoint commit' <<<"$OUT" && grep -q 'tests green task 1' <<<"$OUT" && echo yes || echo no)"
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
@@ -623,7 +623,7 @@ _at build
 "$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 1 --cmd pytest >/dev/null
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "a RED latest test run fails the checkpoint commit, naming the claim" 1 "$TEMPER" gate commit
-assert_eq "the RED carve-out names the failing claim" "yes" "$(echo "$OUT" | grep -q 'tests green then regress' && echo yes || echo no)"
+assert_eq "the RED carve-out names the failing claim" "yes" "$(grep -q 'tests green then regress' <<<"$OUT" && echo yes || echo no)"
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
@@ -632,7 +632,7 @@ _at build
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "upstream gates unmet => full commit gate applies" 1 "$TEMPER" gate commit
 assert_eq "no checkpoint carve-out row when upstream is unmet" "no" \
-  "$(echo "$OUT" | grep -q 'build checkpoint commit' && echo yes || echo no)"
+  "$(grep -q 'build checkpoint commit' <<<"$OUT" && echo yes || echo no)"
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
@@ -642,7 +642,7 @@ _at review   # past build => no carve-out
 "$TEMPER" evidence add --stage build --claim "tests green" --phase green --exit 0 --cmd pytest >/dev/null
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "next_stage != build => the final completion commit faces every gate" "no" \
-  "$(echo "$OUT" | grep -q 'build checkpoint commit' && echo yes || echo no)"
+  "$(grep -q 'build checkpoint commit' <<<"$OUT" && echo yes || echo no)"
 
 # --- state init: never inherit the previous run's verdicts or overrides ---
 setup
@@ -677,7 +677,7 @@ rm -f .temper/specs/demo/tasks.md   # the count rule is for a run without tasks.
 mkdir -p src && echo a > src/a.js
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" \
-  "$(echo "$OUT" | grep -qE 'blast radius — [0-9]+ file' && echo "$OUT" | grep -qE 'blast radius' && echo yes || echo no)"
+  "$(grep -qE 'blast radius — [0-9]+ file' <<<"$OUT" && grep -qE 'blast radius' <<<"$OUT" && echo yes || echo no)"
 
 # --- mods: check.commands.* and the budget's config key (WP10: budget.per-failure, in the place of fix.max-loops) ---
 setup
@@ -765,7 +765,7 @@ assert_exit "a draft with an Out of scope line and no questions PASSes" 0 "$TEMP
 setup; scope_fixture draft "" ""
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_exit "a draft without an Out of scope line FAILs" 1 "$TEMPER" gate intent
-assert_eq "the FAIL names out of scope stated" "yes" "$(echo "$OUT" | grep -q 'out of scope stated' && echo yes || echo no)"
+assert_eq "the FAIL names out of scope stated" "yes" "$(grep -q 'out of scope stated' <<<"$OUT" && echo yes || echo no)"
 setup; scope_fixture draft "{what it explicitly does not touch}" ""
 assert_exit "a placeholder Out of scope line does not count in a draft" 1 "$TEMPER" gate intent
 status_fixture() { # status_fixture <Status value or "none">: a good draft with the Status header replaced or removed
@@ -784,8 +784,8 @@ PYX
 }
 setup; status_fixture "planning"
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "an unknown Status skips out of scope with a note" "yes" "$(echo "$OUT" | grep -q 'out of scope stated .*no recognized Status header' && echo yes || echo no)"
-assert_eq "an unknown Status does not fail out of scope stated" "no" "$(echo "$OUT" | grep -q '\[x\] out of scope stated' && echo yes || echo no)"
+assert_eq "an unknown Status skips out of scope with a note" "yes" "$(grep -q 'out of scope stated .*no recognized Status header' <<<"$OUT" && echo yes || echo no)"
+assert_eq "an unknown Status does not fail out of scope stated" "no" "$(grep -q '\[x\] out of scope stated' <<<"$OUT" && echo yes || echo no)"
 setup; status_fixture "none"
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_eq "a missing Status skips out of scope and open questions with a note" "2" \
@@ -801,14 +801,14 @@ assert_exit "a completed intent without an Out of scope line PASSes" 0 "$TEMPER"
 setup; scope_fixture draft "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_exit "a draft with a Blocking question open FAILs the Intent gate (9.7.5, F10)" 1 "$TEMPER" gate intent
-assert_eq "the gate names the Blocking question still open on the draft" "yes" "$(echo "$OUT" | grep -q 'Blocking question(s) still open on the draft' && echo yes || echo no)"
+assert_eq "the gate names the Blocking question still open on the draft" "yes" "$(grep -q 'Blocking question(s) still open on the draft' <<<"$OUT" && echo yes || echo no)"
 setup; scope_fixture accepted "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
 assert_exit "an accepted intent with a Blocking question PASSes (not revisited)" 0 "$TEMPER" gate intent
 setup; scope_fixture completed "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
 assert_exit "a completed intent with a Blocking question PASSes" 0 "$TEMPER" gate intent
 setup; scope_fixture draft "billing" "- Deferred: rename later; consequence: none; why work can proceed: cosmetic; needed by: v2."
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "a draft with only a Deferred question reports no Blocking question" "yes" "$(echo "$OUT" | grep -q 'no Blocking question remains' && echo yes || echo no)"
+assert_eq "a draft with only a Deferred question reports no Blocking question" "yes" "$(grep -q 'no Blocking question remains' <<<"$OUT" && echo yes || echo no)"
 
 assert_eq "the CLI header lists temper status exactly once" "1" "$(grep -c '^#   temper status' "$TEMPER")"
 

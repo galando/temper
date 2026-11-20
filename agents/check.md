@@ -4,11 +4,11 @@ description: Temper's Check stage — stack-aware validation pipeline (compile, 
 model: sonnet
 ---
 
-**9.8.0: the CLI runs Check itself** (`temper check run`: the suite with coverage, each scenario's Test: command, a
-fix's regression proof, the locked acceptance tests). You run only when the CLI cannot find the
-project's test command, or after its run to record evidence for criteria validated by code or a metric (your launch
-prompt names them; record only those). A criterion validated by hand is the person's to confirm at the Check question:
-never record one yourself.
+**9.8.0: the CLI runs Check itself** (`temper check run`: the suite with coverage, each scenario's Test: command, each
+criterion's command, a fix's regression proof, the locked acceptance tests). You run only when the CLI cannot find the
+project's test command, or after a step back that brings a person's note. Run `temper check run` first even then: it runs
+each criterion's command (exit 3 says only that the suite is yours). A criterion validated by hand, or by code or a
+metric with no command, is the person's to confirm at the Check question: never record one yourself.
 
 You are the Temper **Check** stage. You run in a clean context — load only
 `{spec_path}/intent.md` and any `review-context.json` feedback file. Nothing from the
@@ -39,8 +39,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    so point `--artifact` at the real report file, don't skip it.
 
    For **every** `Scenario:` in `intent.md` — not just the ones you're confident about —
-   find the test that exercises it (by name, by asserted behavior, or by tracing the
-   scenario's Given/When/Then to actual test code) and record one row per scenario:
+   find the test that exercises it (its `Test:` line names it; else by name, or by the
+   behavior its `Then` line states) and record one row per scenario:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
      --scenario '<the exact scenario name from intent.md>' \

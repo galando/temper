@@ -270,9 +270,29 @@ the call of that answer. See `docs/flow.md`, "A command the plan wrote".
 ### `temper plan patch` (9.8.5)
 
 `temper plan patch G1 --cmd 'bash scripts/selftest/run-selftest.sh --fast'` changes one command line of the approved
-plan (`G<n>` a group's Validate, `task N` a task's Test, `integration` the Integration line), keeps every passed task,
-and spends no loop. You give it as your answer to "Change the group's command" at the group question, or to "Change the
-command" at `plan.command` (WP21: there, before the approval, it changes the line of the plan, which is checked again).
+plan (`G<n>` a group's Validate, inserted after its Depends line, or after its head, when it has none; `task N` a task's
+Test, which reopens the task when it passed, and is refused before anything is written when that reopen cannot run
+(no worktree, a task it cannot reopen, a commit on the group's branch the CLI did not record, an upstream gate it needs);
+`integration` the Integration line), keeps every other passed task, and spends one repeat.
+`temper plan patch task N --add-file F` adds a file outside the approved set to Task N and to `approved_files` (a name
+with no dot and no slash is written `./F`, so the plan reads it as a file). The static rows of the plan gate run on the
+result first, and a row it newly fails refuses the patch. You give it as your answer to "Change the group's command" at
+the group question, to "Add to plan" at a task blocked on a file no task declares, or to "Change the command" at
+`plan.command` (WP21: there, before the approval, it changes the line of the plan, which is checked again).
+
+### `temper plan amend` (9.8.5, WP25)
+
+`temper plan amend task N --add-file F [--failure ID]` is the amendment by rule: it adds to Task N a file a task of its
+own group declares that precedes Task N or passed, and that task to its Depends line, and nothing else. The CLI writes
+both lines, refuses every other change (see `docs/flow.md`, "A blocked task and the plan amendment"), spends one repeat
+(`task:N`), appends to `.temper/evidence/amendments.json` and reopens the task. The flow calls it by itself when a task
+is blocked on such a file; any caller may, because its whole effect is bounded by the CLI.
+
+### `temper group keep` (9.8.5, WP25)
+
+`temper group keep` is the first Build action after a replan's approval: it restores the built tasks of the earlier
+plan whose files, Depends and Test did not change, with their group branches (see `docs/flow.md`, "What a replan
+keeps"). It runs once per replan and is a no op otherwise.
 
 ## `/temper:intent`
 
@@ -290,7 +310,7 @@ without starting the pipeline.
 - Interviews the originator the way an analyst would (scope, affected users,
   constraints, what better looks like) — no formal language required of them
 - Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (a name you
-  typed, else `the person`; never from git), Problem, measurable Success Criteria, Constraints, Target Users, and Open
+  typed, else `the person`; never from git), Problem, measurable Success Criteria, Constraints, Scope and Non-goals, and Open
   Questions — **no scenarios and no architecture**; those are Plan's job, derived from
   the measured blast radius later
 - Keeps criteria and constraints firm: `temper gate intent` fails a draft that uses
@@ -345,7 +365,7 @@ there everything happens as `/temper` does it ([Entering at a stage](#stage-comm
 
 ## `/temper:plan`
 
-Plan with blast radius analysis, mermaid diagrams, and interactive walkthrough.
+Plan with blast radius analysis and interactive walkthrough.
 
 A door into `/temper`: with no run active it starts one for the feature, and the Intent gate
 comes first, because the plan is derived from the accepted intent. With a run active it takes
@@ -359,10 +379,9 @@ that run up ([Entering at a stage](#stage-commands-are-doors)).
 
 - Analyzes which files will be affected
 - Identifies dependencies and risk areas
-- Generates mermaid architecture diagrams (flowchart, sequenceDiagram, etc.)
-- Derives BDD scenarios from requirements + blast radius — **before architecture**
-- Builds architecture from scenarios — every file traces to a behavior or infrastructure need
-- Generates intent.md with structured success criteria + Gherkin scenarios (medium+ complexity)
+- Derives the scenarios from the success criteria and the blast radius
+- Writes `tasks.md`, which declares each file; a scenario is owed by the task that writes its test file
+- Writes each scenario into `intent.md` in four lines: its name, one Then line, Covers: and Test:
 - Detects parallel tasks for optimized ordering
 - Offers interactive step-by-step plan walkthrough with Q&A at each section
 
@@ -391,8 +410,8 @@ that run up ([Entering at a stage](#stage-commands-are-doors)).
    • Token expiration handling
    • Email delivery failures
 
-📝 Generated: intent.md
-   Success criteria (3):
+📝 intent.md: the scenarios added under the accepted criteria
+   Success criteria (3, from Intent):
      ✓ Users can reset password without support → validate: scenario
      ✓ Reset completes in under 2 minutes       → validate: manual
      ✓ Support tickets decrease 30%              → validate: metric
@@ -420,7 +439,7 @@ that run up ([Entering at a stage](#stage-commands-are-doors)).
 ```
 
 **Note:** tasks with no dependency between them, and with files that do not overlap, run at the same
-time, each as its own Haiku task agent in its own worktree ([Haiku Build](grouped-build.md)).
+time, each as its own task agent in its own worktree ([Grouped Build](grouped-build.md)).
 
 ---
 
@@ -466,10 +485,10 @@ there everything happens as `/temper` does it ([Entering at a stage](#stage-comm
 
 **What it does:**
 
-Build runs the plan's groups ([Haiku Build](grouped-build.md)). `temper next --json` drives it:
+Build runs the plan's groups ([Grouped Build](grouped-build.md)). `temper next --json` drives it:
 
 - It starts each group whose dependencies passed, in its own worktree.
-- It hands out the ready tasks; each runs as a small Haiku task agent in its own worktree, writes the
+- It hands out the ready tasks; each runs as a small task agent (Sonnet) in its own worktree, writes the
   test of each listed case first (RED), then the code (GREEN).
 - The CLI gates each task from its own recorded test runs, commits it on the task branch and merges it
   into the group branch. A failed task is retried, then escalated, then parks its group.
@@ -534,11 +553,11 @@ Confidence: 91%
    └─ TokenService.ts:23 (UNCHANGED)
    → Suggestion: EXPIRATION_HOURS = 24
 
-📊 Intent Validation (IDD): 2/3 mechanically validated
+📊 Intent Validation (IDD): 2/3 (2 mechanical, 1 for the person)
    Problem: Users unable to reset passwords without support
    ✅ Users can reset password → validate: scenario → test_successful_reset PASS
-   ✅ Reset completes in < 2 min → validate: manual → requires human review
-   📊 Support ticket reduction → validate: metric → post-deploy monitoring required
+   🔍 Reset completes in < 2 min → validate: manual → the person confirms it at the Check question
+   ✅ Bundle stays under 200 KB → validate: metric → test "$(wc -c < dist/app.js)" -lt 200000 exit 0 (run by the CLI)
 
 📊 Scenario Coverage (BDD): 5/5 ✅
    ✅ Successful password reset → test_successful_reset (PASS)
@@ -874,11 +893,12 @@ which is what lets the loop begin and end without a person starting it.
 | `temper task gate N --model M --no-env` | 9.8.5: the person's answer "It is the code" at a task held on an environment fault: the gate reads the failed GREEN run it has and gives no ENV verdict, so the task fails and its attempt is spent. |
 | `temper group gate G<n> --timeout-s N` | A limit for the group's own runs; a timed out gate offers a rerun at double. |
 | `temper check run --fresh`, `temper group gate G<n> --fresh`, `temper integrate --fresh` | 9.8.5: the person's Run it anyway: the check runs whatever the reuse store keeps for this tree, its row is marked `forced`, and it spends one repeat of the budget. A run that goes on by itself is refused it (`BLOCKED`), and no environment variable stands in for the flag. |
+| `temper evidence add --stage check --criterion AC-NN --claim '<text>' --cmd '<how>' --exit 0 --person` | 9.8.5: the person's Confirmed at the Check question: a row marked `executed_by: person`, the only row a criterion validated by hand (or by `code` or `metric` with no command in backticks) counts from at Check. The CLI takes the flag only with a criterion and exit 0, and refuses it (`BLOCKED`) in a run that goes on by itself with no stop open; only the mod ties it to the person's click. |
 | `temper evidence add --phase note --kind input\|edit --claim '<text>'` | A note the next stage agent reads (`Task N:` and `Group G<n>:` prefixes scope it to Build tasks). |
 | `temper evidence contest --stage S --id N --cite <file>[:<line>\|:<symbol>] --quote '<text>' --reason '<why>'` | 9.7.6: the author answers a finding with evidence the reviewer could read; the CLI checks the file, the line or symbol, and that the quote is there. A comprehension finding is never contested. The finding stays open for the person. |
 | `temper evidence escalate --stage S --id N --reason '<why>'` | 9.7.6: the evidence is outside every file; the person decides. |
 | `temper drift [--run] [--json]` | 9.7.6: each finished spec compared with the tree as it is now (a planned file gone, a scenario test gone, a planned file changed since). `--run` also runs each scenario's `Test:` command and names the ones that fail now (behavior drift). Never a gate. |
 | `temper plan fresh request\|start\|again` | 9.7.6: the fresh review of the plan: the person asks for it (`plan.fresh-review: ask`), the orchestrator marks a launch (only rows recorded after it count), a reviewer that did not finish runs again. |
-| `temper model --all --source` | Each stage's model and whether it comes from a config override or a brief default. |
+| `temper model --all --source` | 9.8.5: every agent's model from the one table of models (`scripts/cli_ctx.py`), and whether it comes from the `config` or the `table`. The table has two columns: `standard`, and `high` for a run of tier complex or of risk H; `plan`, `design` and `rca` are on Opus in both, every other agent and the task agents on Sonnet. The keys, in the order they win: `models.high.<agent>` (when the class is high), `models.<agent>`, for the task agents the old `build.grouped.task-model` and `build.grouped.escalation-model`, then the table. The first planner launch of a run has no risk and no final tier yet, so its class is `standard`: the `high` column decides later launches and every agent after the plan (`models.plan: sonnet` with `models.high.plan: opus` keeps Opus at risk H). `temper model <agent>` prints one. |
 | `temper guards uninstall` | Removes the Temper commit hook and its folder; unsets `core.hooksPath` when it names that folder. |
 | `temper gate commit --from-hook` | The hook's call: it gates a commit on the run's branch only. |

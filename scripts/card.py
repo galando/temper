@@ -25,6 +25,7 @@ import textwrap
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import acceptance  # noqa: E402
 import budget  # noqa: E402
+import group_keep  # noqa: E402
 import output_ops  # noqa: E402
 import plan_ops  # noqa: E402
 import run_summary  # noqa: E402
@@ -201,6 +202,12 @@ def command_rows(r):
                 out.append(cell("Task %d: %s" % (n, t["test"])))
     if plan.get("integration"):
         out.append(cell("all: %s" % plan["integration"]))
+    # WP27: a criterion validated by code or a metric is a command the CLI runs at Build and at Check: the approval is of
+    # every command a gate will run
+    lines = (r.intent or "").splitlines()
+    for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria")):
+        if c.get("id") and c.get("vcmd") and not c.get("deferred"):
+            out.append(cell("%s: %s" % (c["id"], c["vcmd"])))
     return out
 
 
@@ -208,18 +215,17 @@ def launches(b):
     """How many agents of which kind the run launches after the click, with the model of each kind."""
     r = b.r
     plan = r.plan or {"tasks": []}
-    models = r.ctx.get("models") or {}
     short = lambda m: re.sub(r"^claude-(haiku|sonnet|opus|fable)-\d.*$", r"\1", str(m or "")) or "its model"
-    acc = r.cfg("models.acceptance", "") or models.get("acceptance") or "sonnet"
+    acc = r.model("acceptance")
     parts = []
     if r.command == "temper" and r.intent:
         parts.append("1 test writer (%s)" % short(acc))
     if r.stage == "plan" and r.has_design():
-        parts.append("1 designer (%s)" % short(models.get("design") or "opus"))
+        parts.append("1 designer (%s)" % short(r.model("design")))
     n = len(plan.get("tasks", []))
     if n:
         parts.append("%d builder%s (%s)" % (n, "" if n == 1 else "s", short(b.task_model())))
-    parts.append("1 reviewer (%s)" % short(models.get("review") or "sonnet"))
+    parts.append("1 reviewer (%s)" % short(r.model("review")))
     return [cell(", ".join(parts))]
 
 
@@ -411,6 +417,10 @@ def approval(b, nxt):
             if first.get("id") == "approve-run" else ["You are asked after every stage, and at the commit."])
     if paths:
         foot.append("Nothing under a sensitive path is repaired by rule.")
+    kept = group_keep.count(r.state, r.groups, r.plan or {}) if r.plan else None
+    if kept is not None:   # WP25: a replan keeps the built tasks whose approved fields did not change
+        foot.append("The replan keeps %d built task%s whose files, Depends and Test did not change; the others run again."
+                    % (kept, "" if kept == 1 else "s"))
     est = estimate()
     if est:
         foot.append(est)
@@ -540,8 +550,17 @@ def commit(b, nxt):
                                        x.get("what") or ""),
                     "by rule" if x.get("kind") in ("advance", "repair", "group fix", "covered", "amend") else None)
                 for x in log]
-        out.append(sec("rule_log", "DECIDED BY RULE", rows, "%d of %d repeats of the budget used" % (
+        out.append(sec("rule_log", "DECIDED BY RULE", rows, "repeats of the budget used: %d of %d" % (
             rm["run_used"], rm["run_limit"]), 8, os.path.join(TEMPER, "rule-log.json")))
+    # WP25: every change of the approved plan since the approval (.temper/evidence/amendments.json): an amendment by rule,
+    # and a patch with its new command word for word; the approved record itself is never written
+    amends = [x for x in load(os.path.join(TEMPER, "evidence", "amendments.json"), []) if isinstance(x, dict)]
+    if amends:
+        rows = [cell("amended by rule: %s" % x.get("what"), "by rule") if x.get("kind") == "amend" else
+                cell("patched: %s" % x.get("what") if not x.get("old") and str(x.get("what", "")).find(" gains ") > 0 else
+                     "patched: %s: %s (was %s)" % (x.get("what"), x.get("new"), x.get("old") or "none")) for x in amends]
+        out.append(sec("plan_changes", "THE PLAN SINCE THE APPROVAL", rows, "%d change%s; the approved record is kept" % (
+            len(rows), "" if len(rows) == 1 else "s"), 6, os.path.join(TEMPER, "evidence", "amendments.json")))
     skips = [o for o in r.overrides if isinstance(o, dict) and o.get("stage")]
     if skips:
         out.append(sec("skips", "SKIPPED", [cell("%s: %s" % (STAGE_NAMES.get(o["stage"], o["stage"]),

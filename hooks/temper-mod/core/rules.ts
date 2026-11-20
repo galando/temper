@@ -402,11 +402,16 @@ const TOO_MANY_DENY =
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
-  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', ...STAGES]
+  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', 'close', '--person', ...STAGES]
 
 const RESOLVE_DENY =
   'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
   `Next: ${ASK} for a decision on the finding.`
+
+// WP24: a repair window ends with the CLI's own `repair commit` (the fixer's after call), never as a small change.
+const REPAIR_CLOSE_DENY =
+  'Temper: a repair window is closed by temper repair commit, the fixer\'s after call: the CLI commits the fix, runs the checks again, and a reader rechecks it. ' +
+  'Do not close it as a small change. Next: finish the fix, commit nothing, and return.'
 
 const GLOB_DENY =
   'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
@@ -485,6 +490,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   // `--accept-for?ign`): bash expands it when a file of that name exists. Any other glob (`sonnet[1m]`) is no refusal.
   if (c.globWords.some(ws => ws.some(w => PERSON_WORDS.some(t => globCould(w, t) || globCould(w.split('=')[0] ?? w, t))))) return { deny: GLOB_DENY }
   const r = ctx.run
+  if (repairOpen(r) && c.calls.some(call => { const [a, b] = callWords(call); return a === 'adhoc' && b === 'close' })) return { deny: REPAIR_CLOSE_DENY }
   // WP20: one answer at base.red is one recorded skip: a second accept-red in the same command is not it
   let wentOn = false
   for (const call of c.calls) {
@@ -500,6 +506,14 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
         const form = /^[0-9a-f]{7,40}$/i.test(v) || v === '$(git rev-parse HEAD)' || v === '`git rev-parse HEAD`'
         if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(key) }
       }
+    }
+    // 9.8.5 (lane E): a Scope drift answer that widens the approved set (`drift P: Add to plan|Allow once`) is recorded
+    // only as the person's answer: their Scope drift answer for P, or the call of the gate answer they gave (the commit
+    // gate's Add to plan). The fixer of a repair never writes it (the CLI refuses an answer to no question in a repair).
+    const ans = driftAnswer(w)
+    if (ans !== null && !ctx.allowed.some(written => sameCall(written, w))) {
+      const given = ans.add ? ctx.drift.added : ctx.drift.allowOnce.map(x => x.path)
+      if (!given.some(p => normalizePath(p) === normalizePath(ans.path))) return { deny: DRIFT_ANSWER_DENY(ans.path) }
     }
     if (!personOnly(w, r)) continue
     // The person's answer at this step, or the CLI's own action, maps to this very call.
@@ -518,6 +532,20 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   return ALLOW
 }
 
+// The Scope drift answer an `evidence add` records, when it widens the approved set: its path, and whether it adds the file
+// to the plan (else it allows it once). Null for any other call.
+function driftAnswer(w: readonly string[]): { path: string; add: boolean } | null {
+  if (w[0] !== 'evidence' || w[1] !== 'add') return null
+  const at = w.findIndex(x => x === '--claim' || x.startsWith('--claim='))
+  const claim = at < 0 ? '' : w[at] === '--claim' ? (w[at + 1] ?? '') : (w[at] as string).slice('--claim='.length)
+  const m = /^drift (\S+): (Add to plan|Allow once)\b/i.exec(claim)
+  return m ? { path: m[1] as string, add: (m[2] as string).toLowerCase() === 'add to plan' } : null
+}
+
+const DRIFT_ANSWER_DENY = (path: string): string =>
+  `Temper: a Scope drift answer for ${path} is the user's, given at the Scope drift question; no agent records it. ` +
+  'Next: ask about the file with temper drift ask, stop, and return; the user answers the question.'
+
 // The temper calls only the person may cause (ADR 0013), by their words after the script: leaving Intent or Plan, a
 // skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, writing a setup block, more
 // repeats than the budget holds, going on from a red base, and starting over or ending the run before it is done.
@@ -533,8 +561,9 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   if (a === 'acceptance' && b === 'reopen') return true
   if (a === 'state' && b === 'set' && c === 'branch') return true
   if (a === 'group' && b === 'reopen') return w.some(x => x === '--accept-foreign' || x.startsWith('--accept-foreign='))
-  // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's.
-  if (a === 'evidence') return b === 'accept' || b === 'clear'
+  // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's. 9.8.5 (WP27 step 7): so
+  // is a row `--person`, the confirm option's call: the one row a criterion the person confirms at Check counts from.
+  if (a === 'evidence') return b === 'accept' || b === 'clear' || (b === 'add' && w.includes('--person'))
   // 9.8.5 (M13): a setup block runs before every command of every gate, so writing one to the config is the person's;
   // `doctor` and `doctor --propose` only read.
   if (a === 'doctor') return w.includes('--write')

@@ -16,7 +16,6 @@ The Intent section of `intent.md` contains:
 - **Problem** — What problem are we solving? For whom?
 - **Success Criteria** — Measurable outcomes, each with a **`Validate:` type** that tells review *how* to check it
 - **Constraints** — Technical or business limitations
-- **Target Users** — Who benefits
 
 ### Validate Types
 
@@ -25,32 +24,34 @@ Each success criterion gets a validation type. This is what makes IDD mechanical
 | Type | What It Means | How Review Checks It | Example |
 |------|--------------|---------------------|---------|
 | `scenario` | Criterion is satisfied when a linked BDD scenario's test passes | Finds the test, runs it, checks PASS | "Users can reset password" → linked to scenario "Successful password reset" |
-| `code` | Criterion is satisfied when specific code exists | Greps the codebase for the pattern | "POST /api/reset endpoint exists" → greps for route definition |
-| `metric` | Can't be verified before deployment | Flags for post-deploy monitoring | "Support tickets decrease 30%" → requires production data |
-| `manual` | Requires human judgment | Flags for human review, non-blocking | "Reset flow feels intuitive" → UX review needed |
+| `code` | Criterion is satisfied when specific code exists | The CLI runs the command in backticks on the Validate line, at Build and at Check, and reads its exit code | "POST /api/reset endpoint exists" → `grep -q "POST /api/reset" src/routes.ts` |
+| `metric` | Criterion is satisfied when a measured value is inside its bound | The CLI runs the command in backticks on the Validate line, at Build and at Check, and reads its exit code | "The bundle stays under 200 KB" → `test "$(wc -c < dist/app.js)" -lt 200000` |
+| `manual` | Requires human judgment, or a value that can be read only after release | The person confirms it at the Check question | "Reset flow feels intuitive" → UX review needed; "Support tickets decrease 30%" → read after release |
 
-**Why this matters:** Without validate types, "intent validation" means the AI reads your success criteria and subjectively judges "yeah, this looks met." With validate types, most criteria are mechanically verified — a test passes or it doesn't, code exists or it doesn't. Only `metric` and `manual` require judgment.
+A `code` or `metric` criterion with no command in backticks fails the Intent gate; one that can only be checked by a person is `manual`.
+
+**Why this matters:** Without validate types, "intent validation" means the AI reads your success criteria and subjectively judges "yeah, this looks met." With validate types, most criteria are mechanically verified: a test passes or it does not, a command exits 0 or it does not. Only `manual` requires judgment, and it is the person's.
 
 ### Intent Validation in Review
 
 When `/temper:review` runs, it produces:
 
 ```
-Intent Validation (IDD): 4/5 (3 mechanical, 1 deferred, 1 manual)
+Intent Validation (IDD): 3/5 (4 mechanical, 1 for the person)
   Problem: Users unable to reset passwords without support
 
   [x] Users can reset password without support
       validate: scenario -> test_successful_reset PASS
   [x] Reset endpoint exists at POST /api/reset
-      validate: code -> route found in AuthController.ts:23
+      validate: code -> grep -q "POST /api/reset" src/routes.ts exit 0 (run by the CLI)
   [x] Rate limiting prevents abuse
       validate: scenario -> test_rate_limiting PASS
-  [ ] Support ticket volume decreases 30%
-      validate: metric -> post-deploy monitoring required
+  [ ] The bundle stays under 200 KB
+      validate: metric -> test "$(wc -c < dist/app.js)" -lt 200000 exit 1 (run by the CLI)
   [ ] Reset flow completes in under 2 minutes
-      validate: manual -> requires human review
+      validate: manual -> the person confirms it at the Check question
 
-  Confidence: 3/5 mechanically verified
+  Confidence: 3/4 mechanically verified
 ```
 
 ---
@@ -82,6 +83,14 @@ Not the other way around. This prevents the AI from planning 15 files and then w
 ### File-to-Scenario Traceability
 
 Every file in the plan must justify its existence. If the AI plans a file that no scenario needs and isn't infrastructure — that file shouldn't exist.
+
+### What Plan writes (9.8.5)
+
+Plan writes only what a script, a gate row or a later agent reads. At the simple tier that is `tasks.md` and the
+scenarios of `intent.md`; above it a short `plan.md` as well, with a Context Map and a Blast Radius. Each scenario is
+one fenced `gherkin` block of four lines: its name, one `Then` line, `Covers:` and `Test:`. The task that declares the
+file a scenario's `Test:` command runs owes that scenario; no `Traced to:` line is written. The CLI bounds the simple
+tier: one group, at most 3 production files, a risk below H.
 
 ### Scenario Coverage Gate
 
@@ -117,9 +126,9 @@ TDD in Temper is **scenario-driven**. Instead of the AI deciding what to test, t
 
 | BDD Scenario | Becomes TDD |
 |-------------|-------------|
-| `Given` (preconditions) | Test setup |
-| `When` (action) | Method/endpoint call |
 | `Then` (expected outcome) | Assertions |
+| the Cases of the task that owns it | Further cases of the test |
+| `Test:` | The command that runs the test |
 | Scenario name | Test name |
 
 The cycle per scenario:
@@ -145,10 +154,9 @@ AI built password reset. All tests pass. But intent.md had:
 
 ```gherkin
 Scenario: Rate limiting on reset requests
-  Given a user has requested 3 resets in 10 minutes
-  When they request another reset
-  Then the request is rejected with 429
-  Note: unit
+  Then a fourth reset request within 10 minutes is rejected with 429
+  Covers: AC-03
+  Test: pytest tests/test_reset.py::test_rate_limiting -q
 ```
 
 The scenario coverage row at Check caught it: no test for rate limiting. The loop back to Build wrote the test. Test failed. Build implemented rate limiting. Test passed.

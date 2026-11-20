@@ -191,8 +191,8 @@ class AskPart:
         return self.question(header, text, first[:3] + [more_opt], stage, more=more, qid=qid)
 
     def revise_opt(self, description, why):
-        """Revise the plan: the Plan agent runs again for the reason (state redo plan)."""
-        return self.opt("Revise the plan%s" % "", description, move="redo", oid="revise-plan",
+        """Revise the plan: Plan runs again for the reason (state redo plan), by the revise agent (WP27)."""
+        return self.opt("Revise the plan", description, move="redo", oid="revise-plan",
                         calls=[self.c("state redo plan --reason %s" % shlex.quote(why[:300]))])
 
     def answers_reason(self):
@@ -392,7 +392,7 @@ class AskPart:
                     # prompt), so revising is offered after the ways on, never recommended: a revision is another round.
                     text = "Plan: %s.%s The fresh review left %d finding(s) open: %s%s. They go to the builder as notes. %s" % (
                         state_of, said, len(lesser), shown, "; and %d more" % (len(lesser) - 3) if len(lesser) > 3 else "", ask_text % nl)
-                    revise = self.revise_opt("The Plan agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
+                    revise = self.revise_opt("The revise agent fixes or contests each open finding of the fresh review; then the plan is checked again.",
                                              "fresh review: " + "; ".join(fresh_review.describe(f) for f in lesser))
                 # The approval (WP11): here when no Design follows, at the Design question when it does.
                 if not r.has_design():
@@ -422,7 +422,7 @@ class AskPart:
                 ov = self.set_reasons(override_opt(self.skip_then()), ["The tasks already agree"] + override_reasons)
                 return self.question(GATE_HEADER, "Plan: the check failed (%s).%s Revise the plan so the tasks follow your answers?" % (
                     why, said), stage=stage, qid="plan.fail", options=[self.set_rec(self.revise_opt(
-                        "The Plan agent writes the tasks under your answers; then the plan is checked again.", self.answers_reason() or why), True),
+                        "The revise agent writes the tasks under your answers; then the plan is checked again.", self.answers_reason() or why), True),
                         ov] + back_opt() + [self.save()])
             # WP20: the offer of the setup block moved to the red base question (base.red), before any agent; WP21: the
             # plan gate runs no command, so a command the plan wrote is the question plan.command, after the gate passed
@@ -521,17 +521,22 @@ class AskPart:
                 # keeps one. A typed change is no fix here, since Review writes no code.
                 grill = self.skill("grill-me", "Grill Me", "Stress test the change.")
                 keep = [self.accept_opt()] if opens else []
-                # 9.8.5 (Q2, F1 of WP08): an open finding at high or above is repaired by default: the loop back to Build is
-                # recommended. A Medium one goes on to Check, listed in the Check question where the person commits.
-                repair = back_opt(rec=True) if any(f["severity"] in ("critical", "high") for f in opens) else []
+                # 9.8.5 (Q2, F1 of WP08): an open finding at high or above is repaired by default: Repair again first while its
+                # call may start (WP24, mechanism 14), else the loop back to Build is recommended. A Medium one goes on to
+                # Check, listed in the Check question where the person commits.
+                high = any(f["severity"] in ("critical", "high") for f in opens)
+                repair = ([self.repair_opt(stage, rep)] if high and rep is not None else []) + (back_opt(rec=not rep) if high else [])
                 if repair:
-                    first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go, oid="continue"), arch]
+                    # With Repair again offered, Repair again, the loop back, Continue, Accept a finding, Grill Me, Teach Me and Save for
+                    # later fill the question and its More question: the Architecture Depth Review gives way, as M2 of WP08 has it (D42)
+                    first = repair + [self.opt("Continue to Check", "Start Check with the findings open.", move="advance", calls=go, oid="continue")] + \
+                        ([] if rep is not None else [arch])
                 else:
                     first = [self.opt("Continue to Check" + " (Recommended)", "Start Check.", move="advance", calls=go, oid="continue")] + (back_opt() if opens else []) + [arch]
                 rest = [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()]
                 q = self.with_more(GATE_HEADER, "Review: %s%s. %s" % (state_of, self.finding_counts(opens),
-                                   "Loop back to Build to repair them?" if repair else "Continue to Check?"), stage,
-                                   first + ([] if opens else [grill]), keep + ([grill] if opens else []) + rest, "Review: more options.", qid="review.pass")
+                                   ("Repair them in the stage?" if rep is not None else "Loop back to Build to repair them?") if repair else "Continue to Check?"), stage,
+                                   first[:3] + ([] if opens else [grill]), first[3:] + keep + ([grill] if opens else []) + rest, "Review: more options.", qid="review.pass")
                 if keep:
                     q["accept"] = self.accept_question(opens, qid="review.pass.accept")
                 return q
@@ -578,7 +583,7 @@ class AskPart:
             if manual:
                 calls = [self.c("evidence add --stage check --criterion %s --claim %s --cmd %s --exit 0" % (
                     c["id"], shlex.quote("confirmed by the person at the Check question: " + c["vdetails"][:150]),
-                    shlex.quote("the person, at the Check question"))) for c in manual] + [self.c("gate check")]
+                    shlex.quote("the person, at the Check question")) + " --person") for c in manual] + [self.c("gate check")]
                 text = "Check: %s %s your confirmation: %s. Confirm?" % (
                     ", ".join(c["id"] for c in manual), "needs" if len(manual) == 1 else "need",
                     "; ".join("%s: %s" % (c["id"], c["vdetails"][:150]) for c in manual))
@@ -714,7 +719,7 @@ class AskPart:
                 ", ".join(fr["missing"] + fr["lazy"]) or "no usable paraphrase"), move="redo", calls=[self.c("plan fresh again")], oid="fresh-again"))
         if opens and not fr["capped"]:
             first.append(self.opt("Revise the plan%s" % ("" if first else " (Recommended)"),
-                                  "The Plan agent fixes or contests each finding; the fresh review runs again on the changed files.",
+                                  "The revise agent fixes or contests each finding; the fresh review runs again on the changed files.",
                                   move="redo", calls=[self.c("state redo plan --reason %s" % shlex.quote(
                                       ("fresh review: " + "; ".join(fresh_review.describe(f) for f in opens))[:300]))], oid="revise-plan"))
         if opens:

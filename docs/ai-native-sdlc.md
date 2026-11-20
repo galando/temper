@@ -82,8 +82,8 @@ committed `docs(plan)` commit on the run's branch, which the approval makes; bef
 run makes no branch and no commit, and the approving call carries the digests of the
 intent and the plan as shown), so the diff has a committed baseline from the moment
 build starts; at the
-end, recorded deviations are written into plan.md as a `## Deviations` section in the
-same commit as the code. With the mod (Claude Code 2.1.287 or later), a source edit
+end, recorded deviations are written to `deviations.md` in the spec folder, which the
+commit of the run's record carries. With the mod (Claude Code 2.1.287 or later), a source edit
 before plan acceptance is refused at the tool layer: at Intent only `intent.md` may be
 written, at Plan and Design only the spec files. Without the mod a classic hook
 (`scripts/guards/hold_before_approval.py`) holds that rule for the tools that write a
@@ -221,9 +221,10 @@ dropped into `/temper:intent` (or a bands breach) enters the same loop.
 These are design decisions, not gaps — each traded the playbook's letter for its
 intent:
 
-1. **No `spec.md`.** `reference/plan.md`'s hard rule: exactly three artifacts.
-   Temper folds requirements (criteria with `Validate:` types) and behavior
-   (Gherkin scenarios) into `intent.md`, architecture into `plan.md`/`design.md`.
+1. **No `spec.md`.** `reference/plan.md`'s hard rule: Plan writes `tasks.md` and the
+   scenarios of `intent.md`, and a short `plan.md` (a Context Map and a Blast Radius) above
+   the simple tier; never another file. Temper folds requirements (criteria with `Validate:`
+   types) and behavior (Gherkin scenarios) into `intent.md`, architecture into `design.md`.
    The playbook's intent→spec pair is Temper's intent(draft)→intent(accepted) +
    design — same audit chain, fewer files for a gate to check.
 2. **Scenarios after intent, from the measured blast radius.** The pipeline now runs
@@ -268,7 +269,7 @@ Honest list, in rough adoption order:
 - **Eval reach**: Temper ships no eval suite (removed in v9.5.0); nothing scaffolds an
   eval harness for a user project's own agent config (their CLAUDE.md, their packs).
 - **Parallel-session execution**: grouped Build runs the ready tasks of a plan as
-  parallel Haiku task agents, each in its own worktree (the task agent carries only
+  parallel task agents, each in its own worktree (the task agent carries only
   Read, Edit, Write, Bash, Glob and Grep); whole sessions per worktree are not spawned,
   and the other stage agents carry no `tools:` restrictions (report only roles are
   prompt enforced).

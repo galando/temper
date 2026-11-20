@@ -17,7 +17,7 @@ THE CHECKS RUN
  G2: npm test
  all: npm test
 
-LAUNCHES: 1 test writer (sonnet), 3 builders (haiku), 1 reviewer (sonnet)
+LAUNCHES: 1 test writer (sonnet), 3 builders (sonnet), 1 reviewer (sonnet)
 BASELINE: unknown: not run in the selftest [not measured]
 You are asked again only if a check still fails after one repair, and at the
 commit. Nothing is pushed.

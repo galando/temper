@@ -36,11 +36,12 @@ from flow_work import WorkPart
 from flow_build import BuildPart
 from flow_commit import CommitPart
 from flow_repair import RepairPart
+from flow_revise import RevisePart
 
 
 # ---- building the answer ---------------------------------------------------------------------
 
-class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart):
+class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart, RevisePart):
     def __init__(self, run):
         self.r = run
         self.cli = run.ctx.get("cli") or "temper"
@@ -337,20 +338,15 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart):
                 out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % (r.gate_of(stage) or stage))], "agents": [],
                             "say": "%s is checked again after your change." % LABEL[stage]})
                 return out
-        records = r.missing_records(stage) if verdict == "FAIL" and not skipped and r.command == "temper" else []
-        if records and r.state.get("record_pass") != r.round_id():
-            a = self.agent("build", ["Record only: write the rows below with `temper evidence run`; change no code, no test and no plan file."] + records)
-            a["after"].append(self.c("state set record_pass %s" % shlex.quote(r.round_id())))
-            a["after"].append(self.c("gate build"))
-            a["gate"] = a["after"][-1]
-            out.update({"action": "work", "stage": "build", "calls": [], "agents": [a],
-                        "say": "Build: the record pass is working%s. %s" % (on_model([a]), goes_on(False))})
-            return out
         if stage == "plan" and verdict is not None and not skipped:
             fr = r.fresh()
             ready = all(x.get("name") in FRESH_ROWS + ("context map reviewed",) for x in r.failed_rows("plan"))
             if fresh_review.need_launch(fr) and ready:
                 out.update(self.fresh_work(fr))
+                return out
+            again = self.tier_step() or self.revise_again()   # the CLI records the tier the bound asks; WP27: a revise again
+            if again:
+                out.update(again)
                 return out
             redo = self.answers_redo()
             if redo:

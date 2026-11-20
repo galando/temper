@@ -11,7 +11,9 @@ Usage:
   temper panel design | rca <rca.md> | task <N>...   (the stage's panel, drawn from its files)
   temper card                                (the card of the question: the approval, the commit or a stop)
   temper brief [--text TEXT | --stdin]   (.temper/brief.md: the code the request reaches, for Plan, Design, RCA)
-  temper model <intent|plan|design|build|review|check|rca|fix> | --all
+  temper model <agent> | --all [--source]   (the table of models by tier and risk, config keys over it; an agent:
+                                            intent, plan, plan-revise, plan-review, design, acceptance, build, review,
+                                            check, pipeline, rca, fix, or a task model below)
   temper override <stage> --reason "..."
   temper report [--json]
   temper status [--json] [--spec-path P]
@@ -41,6 +43,7 @@ Usage:
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)
   temper budget | budget grant --key K --reason R  (the repeats of the run; the person's two more at run.budget)
+  temper budget revise --key plan-revise:R --reason T  (the before call of a revise launch: one repeat)
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper repair start --stage review|check [--again] | test ID --phase red|green -- CMD | commit | mark | close |
     revert | status   (WP24: a finding repaired in its stage; start and close are the CLI's own actions)
@@ -57,7 +60,7 @@ Usage:
                                           after the planner; skip is the person's, with a reason, at plan.command)
   temper plan fresh request|start|again   (the fresh review of the plan: the person asks for it, a launch, a rerun)
   temper go                               (the CLI runs its own steps; prints the next agent launch, question or steps, compact)
-  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; Deviations into plan.md; a commit)
+  temper spec branch | deviations | commit '<message>' [-- FILE...]  (the run's branch; deviations.md; a commit)
   temper spec branch --carry NAME | --if-protected  (switch carrying the spec files; a fix run's branch off main)
   temper check run [--fresh]|detect       (Check by the CLI: suite, coverage, scenarios, a fix's regression proof;
                                            --fresh runs whatever the reuse store holds, one repeat)

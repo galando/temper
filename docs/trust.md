@@ -121,6 +121,22 @@ diff over 300 lines, or one that touches a file no finding names, gets a full Re
 changed files. No more: the CLI cannot see the reading. The row turns skipping a file from silence into a false
 statement in the ledger.
 
+**What a repair may commit (9.8.5).** A repair commits by rule only the plan's files, the tests, and a file you added
+to the plan or allowed once by answering a question the CLI asked: a Scope drift question about a file a drift ask
+named, the stop of a repair on that file, or the commit gate's failed scope row. The CLI marks such an answer as it
+writes it, and refuses an answer to no question while a repair is open. That you gave the answer, and not the fixer,
+only the mod holds: it refuses an agent's call that records an answer you did not give. With the mod off, nothing
+checks who ran the answer's call.
+
+**A criterion you confirm (9.8.5).** A criterion validated by hand, or by `code` or `metric` with no command in
+backticks, passes Check only from the row your Confirmed answer at the Check question writes: `temper evidence add
+--person`, a row marked `executed_by: person`. A row an agent records, or a CLI run of a command an agent chose, does
+not count for it. That the answer was yours only the mod holds: it lets a `--person` call through only as the call of
+the option you picked, word for word, as it does Run it anyway. With the mod off, nothing checks who ran it: the Check
+brief tells the agent never to record one, the CLI takes the flag only with a criterion and exit 0 and never in a run
+that goes on by itself with no stop open, and the row stays in the ledger as the person's, where `temper evidence list
+--stage check` marks it. A field list passed through `--read` is refused, so no other call marks a row as yours.
+
 
 ## Pull requests and the Pipeline stage (9.7.5)
 

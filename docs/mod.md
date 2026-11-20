@@ -108,6 +108,8 @@ shows the file, why the task needs it and the change. You choose one answer:
 
 This question is the same with the mod and without it. The mod also refuses the write until you answer.
 The mod reads your answer from the result of the question, not from what Claude sends.
+The record of an Add to plan or Allow once answer is yours too: the mod refuses a call that records one you did not
+give, so an agent cannot widen the plan by writing the answer itself.
 
 ## Where enforcement works
 
@@ -177,8 +179,8 @@ Claude set on getting around a gate through Bash can do it. The hard guarantees 
 The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
 - **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
-  step back, accepting a finding, arming autonomy, keeping an agent's commits, overriding the commit
-  gate, starting over during a run) needs your answer in the question dialog, at the run and the step
+  step back, accepting a finding, confirming a criterion at Check (`evidence add --person`), arming autonomy,
+  keeping an agent's commits, overriding the commit gate, starting over during a run) needs your answer in the question dialog, at the run and the step
   the CLI is at. The guard finds the call when it is written out in the command
   (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word
   before its reason (`temper o?erride`) is refused, since bash may expand it to a file's name.
@@ -402,6 +404,7 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
 
 - **The small change window.** An open window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only
   there (Pipeline included). `adhoc close` needs no answer; `adhoc open` is the person's, as the call their answer maps to.
+  Inside a repair window (WP24) `adhoc close` is refused: the CLI's `repair commit` ends that window.
 - **Person only calls.** `plan review`, `task confirm`, `task accept`, `adhoc open` and `state set branch` pass only as the call the
   person's answer to the CLI's question maps to, word for word. A typed answer to the Context check maps to `plan review --answer` with
   that text, quoted ([ADR 0016](decisions/0016-the-mod-answer-audit.md)).

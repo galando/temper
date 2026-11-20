@@ -9,7 +9,8 @@
   "scripts/flow_build.py",
   "scripts/flow_commit.py",
   "scripts/flow_view.py",
-  "scripts/flow_repair.py"
+  "scripts/flow_repair.py",
+  "scripts/flow_revise.py"
  ],
  "caps": {
   "question_sites": {
@@ -18,14 +19,14 @@
    "measure": "measure_question_sites: calls of self.question( and self.with_more( in the flow files"
   },
   "option_sites": {
-   "now": 91,
+   "now": 90,
    "final": 89,
    "measure": "measure_option_sites: calls of self.opt( in the flow files"
   },
   "option_labels": {
-   "now": 72,
+   "now": 82,
    "final": 71,
-   "measure": "measure_option_labels: distinct first arguments (a string) of those calls"
+   "measure": "measure_option_labels: distinct labels of those calls, seen through a tuple, a variable or a format string"
   },
   "question_ids": {
    "now": 38,
@@ -33,12 +34,12 @@
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
   "gate_rows": {
-   "now": 54,
+   "now": 82,
    "final": 55,
-   "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row( names of the Python scripts, name lines of gate_rows.py"
+   "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, a printed dict of a name and a pass, or an add( call and a name of its skip tuple where add(name, ok, detail) is defined), name lines of gate_rows.py"
   },
   "agent_briefs": {
-   "now": 12,
+   "now": 13,
    "final": 13,
    "measure": "measure_agent_briefs: files of agents/*.md"
   },
@@ -63,22 +64,22 @@
    "measure": "measure_config_comment_keys: commented key lines of the config template"
   },
   "config_lines": {
-   "now": 158,
+   "now": 157,
    "final": 60,
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 306610,
+   "now": 304238,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
   "pack_skill_bytes": {
-   "now": 79656,
+   "now": 79650,
    "final": 79658,
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 219695,
+   "now": 215609,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

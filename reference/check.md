@@ -62,12 +62,11 @@ reads `intent.md` and checks behavior against what was promised.
 1. Resolve `{spec}`: the `--spec-path` this run was given, else
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`. Neither gives a spec path → SKIP
    this level entirely (never pick a spec folder by guessing).
-2. Extract every `Scenario:` (name + Given/When/Then) from `intent.md`.
-3. Match each scenario to a test: MCP `query_graph_tool` by name annotation → `[PROVEN]`;
-   else grep test files for the scenario name (snake_case/camelCase) → `[HEURISTIC]`; no
-   match → UNMATCHED. `check.live-scenarios` (`prompt`|`always`|`never`, default
-   `prompt`) controls whether to ask before running matched tests for real; `never` falls
-   back to heuristic-only.
+2. Extract every `Scenario:` (name, its `Then` line and its `Test:` line) from `intent.md`.
+3. Match each scenario to a test: the test its `Test:` line names → `[PROVEN]`; else MCP `query_graph_tool` by name
+   annotation → `[PROVEN]`; else grep test files for the scenario name (snake_case/camelCase) → `[HEURISTIC]`; no match
+   → UNMATCHED. `check.live-scenarios` (`prompt`|`always`|`never`, default `prompt`) controls whether to ask before
+   running matched tests for real; `never` falls back to heuristic-only.
 4. Run each matched test individually (`jest --testNamePattern`, `pytest ::test_name`,
    `mvn -Dtest=`, `go test -run`, `cargo test name --`, etc.) and capture PASS/FAIL/time
    — label `[PROVEN]`, real runner output.

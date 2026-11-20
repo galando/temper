@@ -145,7 +145,7 @@ Temper will analyze the blast radius:
    • Token refresh logic (complex state)
 
 📝 intent.md: 5 scenarios (3 happy, 1 error, 1 edge case)
-   • Each scenario defines Given/When/Then
+   • Each scenario has one Then line, Covers: and Test:
    • Tests must cover all scenarios before build completes
 
 📋 Plan: 7 steps with test gates
@@ -201,7 +201,7 @@ Temper will:
 🟡 WARN: Method exceeds 30 lines
    └─ UserService.java:112
 
-   Intent Validation: 5/5 (3 mechanical, 1 deferred, 1 manual)
+   Intent Validation: 5/5 (4 mechanical, 1 for the person)
    Scenario Coverage: 5/5
 
 ✅ All tests passing
@@ -270,8 +270,8 @@ Shows live scenario verification status, MCP tool availability, and evidence rat
 
 ## Build runs in groups
 
-Plan writes `tasks.md` as groups of small tasks. Build runs each task as one Haiku agent
-(`claude-haiku-5-5`, escalating to Sonnet after two failed attempts), each task in its own
+Plan writes `tasks.md` as groups of small tasks. Build runs each task as one task agent
+(`sonnet`, or `models.task: haiku` for cents), each task in its own
 git worktree, with one human gate per group. See [Grouped Build](grouped-build.md) for the
 loop and the tuning keys (`build.grouped.*`). It
 writes `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/`; like the other
@@ -323,7 +323,8 @@ refusal names the run, the stage and the way out. Separate work gets its own fol
 - **A worktree per intent.** Start the other work with `claude --worktree <name>`; `/temper:temper` there is a run of its own.
 - **Make a small change.** At the Build, Review, Check and Commit questions, choose it to change the work yourself with no loop back:
   `temper adhoc open --stage <stage> --reason '<why>'`, make the change, `temper adhoc close`. The change re-runs only what it
-  touches: Review of the changed files, then Check, then the commit gate (a change of docs only re-runs the stage's gate).
+  touches: Review of the changed files, then Check, then the commit gate (a change of docs only re-runs the stage's gate, but at
+  Check or Commit, after Review judged the tree, it runs all three).
 - **The commit gate is branch scoped.** The hook gates a commit on the run's branch only. A commit on another branch passes with one
   line and records nothing.
 - **Turning Temper off.** Disable the plugin, then run `temper guards uninstall` (it removes the Temper hook and its folder, unsets

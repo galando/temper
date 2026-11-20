@@ -181,8 +181,8 @@ the spec folder's name.
 1. **A run is active:** the run is where the CLI says, and a door never moves it. When it is at
    another stage, say in one line where it is ("The run is at Review."). Then run the loop.
 2. **No run, the Plan door:** start a run for the feature as Start says; Intent comes first.
-3. **No run, a later door:** the run is for the folder in `.temper/specs` that holds `plan.md` and
-   `tasks.md` (the one the arguments name, the only one, or else ask the person; with none, say in
+3. **No run, a later door:** the run is for the folder in `.temper/specs` that holds `tasks.md`
+   (the one the arguments name, the only one, or else ask the person; with none, say in
    one line that this stage needs a planned feature and that `/temper:temper "<feature>"` starts one,
    and stop). Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --enter {stage}` (it takes the
    tier from the Complexity line of `plan.md`, else of `intent.md`).

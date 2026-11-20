@@ -2,7 +2,7 @@
 
 With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 
-Build runs in groups of small tasks, each handed to a slim Haiku agent, with one human gate
+Build runs in groups of small tasks, each handed to a slim task agent (on Sonnet since 9.8.5), with one human gate
 per group. It is the one Build since 9.7.0: in the baseline measurement (galando/temper#97) the
 Haiku task agents cost about a fourteenth of a Sonnet build agent ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
 
@@ -13,7 +13,7 @@ Haiku task agents cost about a fourteenth of a Sonnet build agent ([ADR 0013](de
   its files, its dependencies and its own scoped `**Test:**` command. Plan writes one
   `**Context:**` block per group (shared files, interfaces, conventions, and the pack rules
   that apply, security rules always).
-- **Each task is one launch of a slim Haiku agent** (`claude-haiku-5-5` by default). The
+- **Each task is one launch of a slim task agent** (`sonnet` by default, `models.task: haiku` for cents). The
   agent reads only its task (with the test cases Plan wrote for it), its group's Context and one
   existing test of the project as a pattern (a launch carries at most about 14 KB), writes a RED
   then a GREEN test run, and stops. It does not commit.
@@ -31,20 +31,20 @@ re-run: the Build brief (`agents/build.md`) runs once on the feature branch as a
 In `.claude/temper.config` (all optional; the defaults are shown):
 
 ```yaml
+models:
+  task: sonnet                       # the task agents (the table's default)
+  task-escalation: sonnet            # the third attempt after two failed ones
 build:
   grouped:
-    task-model: claude-haiku-5-5     # the task agents (unset: haiku, or sonnet for a complex or risk H plan)
-    escalation-model: sonnet         # the third attempt after two failed ones
     max-parallel: 4                  # tasks running at once
 ```
 
-`temper model --all` prints the stage lines plus `task=` and `task-escalation=`.
-
-To keep groups but run the tasks on another model (no Haiku), set `task-model: sonnet`.
-
-9.8.4: when `task-model` is not set, a plan whose complexity is `complex` or whose risk is `H` builds its
-tasks on sonnet (`temper model --all --source` prints `task=sonnet (risk)`); an explicit `task-model` still
-wins. The plan gate's `shared production files` row fails when more than two tasks of one group declare the
+9.8.5: the builders run on Sonnet by default, from the one table of models (`scripts/cli_ctx.py`); `temper model --all
+--source` prints every agent's model and whether it comes from `config` or the `table`. For cents, set
+`models.task: haiku`: in nine runs an arm (`docs/evidence/haiku-sonnet-task-agents.md`) the task agents cost $0.07 a run
+on Haiku against $0.33 on Sonnet, and took 259 s against 134 s, with the same hidden tests passed. The old keys
+`build.grouped.task-model` and `build.grouped.escalation-model` are still read, below `models.task` and
+`models.task-escalation`. The plan gate's `shared production files` row fails when more than two tasks of one group declare the
 same production file (a test file does not count): merge them into one task.
 
 A task whose test needs a change in a file it does not declare cannot be built as planned on any model. Its agent records
@@ -81,7 +81,7 @@ escalation, and the question recommends the loop back to Plan.
    passes only with RED then GREEN evidence for that task and only declared files changed in its worktree. On PASS the CLI
    commits the declared files on the task branch, merges it into the group branch (a fast-forward
    when it can) and removes the task's worktree. On FAIL the task's worktree is discarded and the
-   task is retried once on Haiku in a fresh one, then escalated once to Sonnet. If that also fails, the group stops and the run parks
+   task is retried once on the task model in a fresh one, then escalated once to the escalation model. If that also fails, the group stops and the run parks
    for a human; independent groups finish first. Every attempt, its model and outcome are recorded.
 
    **A park after a commit the CLI did not make.** Task agents must not run `git commit`. If one
@@ -193,6 +193,14 @@ usage page.
   `refs/temper/kept/{slug}/{earlier or replan}-{time}/{G or Tn}`, with its commits; `git branch NAME REF` brings one back. A
   leftover worktree with uncommitted work is never removed. `temper state clear` (the end of a run, and Start over) moves such
   branches of older versions there too, and drops what was kept longer than `build.grouped.keep-days` (30; 0 keeps it all).
+- **A replan keeps** (9.8.5): after the new approval `temper group keep` brings back each task whose files, Depends and
+  Test are those of the plan it was built from, when the tasks it depends on are kept and its group's Depends, and the
+  groups those name, are unchanged and fully kept: its group branch comes back from the kept ref at the commit of the
+  last kept task, and the records come back as passed. A group's verdict is kept only when every task of it is kept and
+  its Validate and Interfaces are equal; every other task runs again.
+- **A blocked task** whose file an earlier or passed task of its own group owns is amended by rule
+  (`temper plan amend`): the file and the Depends entry on its owner, and the task runs again. A file no task declares is
+  the person's `temper plan patch task N --add-file F`.
 - **Timeouts.** The group gate takes `--timeout-s`; the integration suite has its own limit (`TEMPER_INTEGRATION_TIMEOUT_S`).
 - **Maven.** `scripts/maven_loop.py` runs the declared test classes offline and needs a new surefire report per class; a Maven group
   validates with `mvn verify` and JaCoCo.

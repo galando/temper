@@ -13,11 +13,13 @@ Modes (python3 plan_ops.py <mode> ...):
   row SPEC_DIR MODE            the plan gate row `context map reviewed` as JSON; MODE is plan.context-check: auto, always or off
   review SPEC_DIR --answer TEXT [--focus AREA]...   write the person's answer into the map and set `- reviewed: human`
   map SPEC_DIR                 the map as JSON for `temper next` and the view
+  tier-bound SPEC_DIR TIER STATE   WP26: why a run recorded as simple is above the simple tier, or nothing (the row
+                               `tier recorded` of the plan gate prints it)
 
 9.8.5 (WP13): the person is asked only about a map with an `ignore` or a `gap` line (auto), every map (always) or none
 (off). A clean pending map passes its row unasked; a flagged one under auto whose lines the approval card shows whole
 is folded into it (WP15), and the approving option records the answer (`plan review --answer 'As planned (at the
-approval, N flagged lines shown)'`).
+approval, N flagged lines shown)'`). WP26: a plan.md with no map, or a map with no entry, flags nothing and passes.
 
 The CLI writes the `reviewed:` line, never Plan and never a model by hand: auto mode may refuse an edit of it
 (docs/auto-mode.md). Text is data: one line, at most 100 characters (an answer: 2000, shown cut to the line). Standard library only.
@@ -119,10 +121,8 @@ def norm_mode(mode):
 def gate_row(spec, mode):
     mode = norm_mode(mode)
     m = parse(spec)
-    if m is None:
-        return row(False, "plan.md has no ## Context Map at the top: list the sources of context (use, ignore, gap), then the reviewed line")
-    if not m["entries"]:
-        return row(False, "the Context Map has no use, ignore or gap entry")
+    if m is None:   # 9.8.5 (WP26): a plan.md with no map, or no plan.md, flags nothing
+        return row(True, "no map: nothing flagged")
     if len(m["entries"]) > MAX_ENTRIES:
         return row(False, "the Context Map has %d entries; keep it to %d, one line per source (group an area: src/auth/ (12 files))" % (len(m["entries"]), MAX_ENTRIES))
     if m["long"]:
@@ -141,6 +141,37 @@ def gate_row(spec, mode):
         if kinds:
             return row(False, "the map has an %s entry, so the person reviews it (reviewed: auto is not accepted)" % kinds[0])
     return row(True, "%d source(s) listed, reviewed: %s" % (len(m["entries"]), m["reviewed"]))
+
+
+# 9.8.5 (WP26): the simple tier is bounded by the CLI. A simple plan is tasks.md and the scenarios, with no plan.md: one
+# group, at most SIMPLE_FILES production files (the L band of scripts/risk.py), and a risk below H.
+SIMPLE_FILES = 3
+
+
+def tier_bound(spec, tier, state_file):
+    """The bounds of the simple tier a run recorded as simple crosses, as one detail naming the call that records medium;
+    '' when it crosses none, or when the tier is not simple."""
+    if str(tier or "").strip().lower() != "simple":
+        return ""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import risk
+    import tasks_md
+    groups = len(tasks_md.parse(os.path.join(spec, "tasks.md"))["groups"])
+    prod = [f for f in risk.declared_files(spec) if risk.is_production(f)]
+    try:
+        level = str((json.load(open(state_file, encoding="utf-8")) or {}).get("risk") or "").upper()
+    except (OSError, ValueError, AttributeError):
+        level = ""
+    out = []
+    if groups > 1:
+        out.append("tasks.md has %d groups (a simple plan has one group)" % groups)
+    if len(prod) > SIMPLE_FILES:
+        out.append("tasks.md declares %d production files (a simple plan declares at most %d)" % (len(prod), SIMPLE_FILES))
+    if level == "H":
+        out.append("the run's risk is H (a simple plan is below risk H)")
+    if not out:
+        return ""
+    return "the run records simple, and %s: temper state set complexity medium records the tier above" % "; ".join(out)
 
 
 def table(m):
@@ -194,6 +225,9 @@ def main(argv):
     try:
         if len(argv) == 4 and argv[1] == "row":
             print(json.dumps(gate_row(argv[2], argv[3])))
+            return 0
+        if len(argv) == 5 and argv[1] == "tier-bound":
+            print(tier_bound(argv[2], argv[3], argv[4]))
             return 0
         if len(argv) == 3 and argv[1] == "map":
             print(json.dumps(map_json(argv[2])))
