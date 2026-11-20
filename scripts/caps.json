@@ -23,9 +23,9 @@
    "measure": "measure_option_sites: calls of self.opt( in the flow files"
   },
   "option_labels": {
-   "now": 72,
+   "now": 82,
    "final": 71,
-   "measure": "measure_option_labels: distinct first arguments (a string) of those calls"
+   "measure": "measure_option_labels: distinct labels of those calls, seen through a tuple, a variable or a format string"
   },
   "question_ids": {
    "now": 38,
@@ -33,9 +33,9 @@
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
   "gate_rows": {
-   "now": 54,
+   "now": 73,
    "final": 55,
-   "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row( names of the Python scripts, name lines of gate_rows.py"
+   "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, or a printed dict of a name and a pass), name lines of gate_rows.py"
   },
   "agent_briefs": {
    "now": 12,

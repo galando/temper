@@ -79,7 +79,7 @@ _review65() { # _review65 [plan file...]: a feature run of a git repository at R
               # integrated: the base commit holds the config (its test command the suite), a CI file and a lockfile; the
               # Build commit adds src/demo.sh, its test src/demo_test.sh and src/lib.sh (and each plan file named). The
               # plan declares all of them; the Review snapshot names the Build commit; the tree is clean. The budget
-              # allows four repeats a failure
+              # allows four repeats a failure ($B65_BUDGET when set: build it with a plan file, so no kept fixture is read)
   local f extra=""
   [[ $# -eq 0 ]] && _load65 review && return 0
   fresh; rm -rf .git src unit .github package-lock.json README
@@ -87,12 +87,12 @@ _review65() { # _review65 [plan file...]: a feature run of a git repository at R
   git config user.email t@example.com; git config user.name T
   sed -i '/block-on/d' .claude/temper.config   # the default: a critical or a high finding blocks
   _progs65
-  python3 -B - "$P65" <<'PY'
+  python3 -B - "$P65" "${B65_BUDGET:-4}" <<'PY'
 import sys
 p = ".claude/temper.config"
 s = open(p).read()
 s = s.replace("  coverage-threshold: 80\n", '  coverage-threshold: 80\n  commands:\n    test: "%s/suite"\n' % sys.argv[1], 1)
-open(p, "w").write(s + "budget:\n  per-failure: 4\n")
+open(p, "w").write(s + "budget:\n  per-failure: %s\n" % sys.argv[2])
 PY
   mkdir -p .github/workflows; echo base > README; printf '{}\n' > package-lock.json; printf 'on: push\n' > .github/workflows/ci.yml
   git add -A -- . ':(exclude).temper'; git commit -q -m base
@@ -428,6 +428,42 @@ git reset -q 2>/dev/null; git checkout -q -- src/demo.sh 2>/dev/null
 assert_eq "repair: the hook passes exactly the commit the CLI staged: not a hand commit, not a second one, never at the commit stage" \
   "hand refused|CLI passed|second refused|commit stage refused" "$_c65_hand|$_c65_cli|$_c65_second|$_c65_final"
 
+# --- trap 2: one repair with the guardrails pack's hooks: each PreToolUse hook of the pack, run as Claude Code runs it,
+# on the run's own calls, on the fixer's edit and on a commit the fixer types; the CLI's own git commit is no tool call ---
+_pack65() { # _pack65 <tool> <input JSON>: every PreToolUse hook of packs/guardrails/settings-guardrails.json whose matcher
+            # takes the tool, with the plugin's folder in the place of its variable; prints the highest exit
+  python3 -B - "$REPO_ROOT" "$1" "$2" <<'PY'
+import json, re, subprocess, sys
+root, tool, inp = sys.argv[1:4]
+worst = 0
+for e in json.load(open(root + "/packs/guardrails/settings-guardrails.json"))["hooks"]["PreToolUse"]:
+    for h in e["hooks"] if re.fullmatch(e["matcher"], tool) else []:
+        p = subprocess.run(["bash", "-c", h["command"].replace("${CLAUDE_PLUGIN_ROOT}", '"%s"' % root)], capture_output=True,
+                           input=json.dumps({"tool_name": tool, "tool_input": json.loads(inp)}), text=True)
+        worst = max(worst, p.returncode)
+print(worst)
+PY
+}
+_bash65() { _pack65 Bash "$(python3 -c 'import json, sys; print(json.dumps({"command": sys.argv[1]}))' "$1")"; }
+_open65 none; "$TEMPER" guards install >/dev/null 2>&1 || true
+_c65_pack=""
+_run65() { # _run65 <python list of calls over d> [JSON of next]: each call checked by the pack's hooks (the exit added to
+           # _c65_pack), then run as the orchestrator runs it
+  local c
+  while IFS= read -r c; do [[ -n "$c" ]] || continue; _c65_pack+="$(_bash65 "$c")"; bash -c "$c" >/dev/null 2>&1; done \
+    < <(_x65 "r = '\n'.join($1)" "${2:-}")
+}
+_run65 "d.get('calls') or []"   # the CLI's own action: repair start
+_c65_work="$("$TEMPER" next --json 2>/dev/null)"   # the fixer's launch
+_c65_pack+="|"; _run65 "[c for a in d.get('agents') or [] for c in a.get('before') or []]" "$_c65_work"
+_c65_pack+="|$(_pack65 Write "$(python3 -c 'import json, sys; print(json.dumps({"file_path": sys.argv[1], "content": "echo demo"}))' "$PWD/src/demo.sh")")"
+_fix65
+_c65_pack+="|$(_bash65 'git add src/demo.sh && git commit -m "fix: the demo"')|"
+_run65 "[c for a in d.get('agents') or [] for c in a.get('after') or []]" "$_c65_work"   # its after calls: repair commit
+assert_eq "repair: with the guardrails pack's hooks the run's calls and the CLI's commit pass, and a commit the fixer types is refused" \
+  "temper:temper-build|0||0|2|00|fix(demo): repair 1 at review" \
+  "$(_x65 "r = (d.get('agents') or [{}])[0].get('type')" "$_c65_work")|$_c65_pack|$(_subj65)"
+
 # --- the checks ran again on the new tree ---
 _open65 none; _start65; _fix65; _commit65
 assert_eq "repair: the checks ran again on the new tree: the integration record names the repair commit, the Build verdict the new tree" \
@@ -500,7 +536,7 @@ _worse65() { # _worse65 <row|same|new|incomplete>: one repair that makes things 
   esac
   _close65
   printf '%s|%s|%s' "$repaired" \
-    "$([[ "$(_tree65)" == "$tree" ]] && grep -q 'repair 1 at review' <<<"$(git log --format=%s -3)" && echo 'reverted to the reviewed tree' || echo 'not reverted')" \
+    "$([[ "$(_tree65)" == "$tree" ]] && git log --format=%s -3 | grep -c 'repair 1 at review' >/dev/null && echo 'reverted to the reviewed tree' || echo 'not reverted')" \
     "$(_x65 "q = d.get('ask') or {}; r = 'repair.stop' if q.get('id') == 'repair.stop' else 'asked %s' % q.get('id')")"
 }
 WORSE65='repaired|reverted to the reviewed tree|repair.stop'
@@ -529,8 +565,8 @@ assert_eq "repair: a large diff gets a full Review, not a revert; so does a diff
 _round65() { # one repair that changes nothing the finding asks for: the recheck says not fixed, and the CLI reverts it
   echo '# a comment of the repair' >> src/demo.sh; _commit65; _recheck65 'not fixed'; _close65
 }
-# (the budget of the case config has room for the step back after both repairs, four repeats a failure, so what ends
-# the repairs is the repair's own rule, one by rule and one on the click, and Loop back to Build stays a call it takes)
+# (the budget of the case config has room after both repairs, four repeats a failure, so what ends the repairs here is
+# the repair's own rule, one by rule and one on the click)
 _open65 none
 _c65_first="$(_follow65)"
 _round65
@@ -540,13 +576,21 @@ while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done 
 _c65_click="$(_st65 "'window %s' % w.get('n') if w and s.get('adhoc') else 'no window'")"
 _round65
 _c65_after2="$(_x65 "r = '%s, repair-again %s, no repair start' % (d.get('action'), 'offered' if opt(d, 'repair-again') else 'gone') if not any(re.match(r'repair start', c) for c in calls(d)) else 'next runs %s' % calls(d)[:1]")"
-_c65_ways="$(_st65 "'%d repairs' % len({x.get('n') for x in s.get('repairs') or [] if isinstance(x, dict)})")|$(_x65 "r = ','.join(i for i in ('accept-finding', 'override', 'back', 'save') if i in ids(d) or (i == 'accept-finding' and (d.get('ask') or {}).get('accept')))")"
 assert_eq "repair: one by rule, one more on the click, then gone" \
   "auto repair start|ask|move repair, calls ['repair start --stage review --again']|window 2|ask, repair-again gone, no repair start" \
   "$_c65_first|$(sed 's/, repair-again.*//' <<<"$_c65_after1")|$_c65_again|$_c65_click|$_c65_after2"
 assert_eq "repair: the same finding open after a repair is not recommended again" "ask, repair-again offered, not recommended" "$_c65_after1"
-assert_eq "repair: a spent budget still offers the four ways on: Accept a finding, Override and continue, Loop back to Build and Save for later" \
-  "2 repairs|accept-finding,override,back,save" "$_c65_ways"
+# the budget spent: the default of two repeats a failure, which the repair by rule and the one on the click use up
+_ways65() { _x65 "r = ','.join(i for i in ('accept-finding', 'override', 'back', 'save') if i in ids(d) or (i == 'accept-finding' and (d.get('ask') or {}).get('accept')))"; }
+B65_BUDGET=2 _open65 none src/b65.sh
+_follow65 >/dev/null; _round65
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done < <(_x65 "r = '\n'.join((opt(d, 'repair-again') or {}).get('calls') or [])")
+_round65
+_c65_ways="$(_st65 "'%d repairs' % len({x.get('n') for x in s.get('repairs') or [] if isinstance(x, dict)})")|$("$TEMPER" budget 2>/dev/null | grep -o 'gate:review: [0-9]* of [0-9]*')|$(_x65 "r = (d.get('ask') or {}).get('id')")|$(_ways65)|$(_x65 "r = 'grant offered' if opt(d, 'grant-more') else 'no grant'")"
+# rule 9 (D38): only the person grants more, so the step back, a repeat of the failed Review, waits for the grant
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done < <(_x65 "r = '\n'.join(c.replace('{reason}', 'The next try is different') for c in (opt(d, 'grant-more') or {}).get('calls') or [])")
+assert_eq "repair: a spent budget still offers the four ways on: Accept a finding, Override and continue and Save for later, and Loop back to Build once the person grants more" \
+  "2 repairs|gate:review: 2 of 2|run.budget|accept-finding,override,save|grant offered|accept-finding,override,back,save" "$_c65_ways|$(_ways65)"
 
 # --- a failure at Check: one assertion a row of the table of mechanism 11 ---
 _check65() { # _check65 [suite mode] [coverage total]: _review65 with Review passed and the run at Check; the suite in that

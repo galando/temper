@@ -76,7 +76,7 @@ assert_exit "D-08: a task in another group still starts" 0 "$TEMPER" task start 
 S_BEFORE="$(d_state)"
 out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
 assert_eq "D-08: reopen is refused while the foreign sha is on the branch, naming it and both ways out" "1|1|1|1" \
-  "$rc|$(printf '%s' "$out" | grep -q "${FSHA:0:7}" && echo 1)|$(printf '%s' "$out" | grep -c -- '--accept-foreign')|$(printf '%s' "$out" | grep -c 'rebase --autostash --onto')"
+  "$rc|$(printf '%s' "$out" | grep -c "${FSHA:0:7}" >/dev/null && echo 1)|$(printf '%s' "$out" | grep -c -- '--accept-foreign')|$(printf '%s' "$out" | grep -c 'rebase --autostash --onto')"
 assert_eq "D-08: the refused reopen changed nothing (group still parked, task still failed, branch untouched)" "parked|failed|$S_BEFORE" \
   "$(d_pfield status)|$(st_field 1 status)|$(d_state)"
 out="$("$TEMPER" group reopen G1 --task 1 --accept-foreign "${FSHA:0:7}" 2>&1)"; rc=$?
@@ -421,7 +421,7 @@ d_setup
 FSHA="$(git -C "$T1W" rev-parse HEAD)"; d_green 1; "$TEMPER" task gate 1 --model m >/dev/null 2>&1
 out="$("$TEMPER" group reopen G1 --task 2 2>&1)"; rc=$?
 assert_eq "reopen: naming another task is refused while the parked commit is in Task 1's kept worktree" "1|1|parked" \
-  "$rc|$(printf '%s' "$out" | grep -q "^FAIL: group G1 is parked on.*${FSHA:0:7}" && echo 1)|$(d_pfield status)"
+  "$rc|$(printf '%s' "$out" | grep -c "^FAIL: group G1 is parked on.*${FSHA:0:7}" >/dev/null && echo 1)|$(d_pfield status)"
 out="$("$TEMPER" group reopen G1 --task 2 --accept-foreign "${FSHA:0:7}" --reason "reviewed, it stays" 2>&1)"; rc=$?
 assert_eq "reopen: a sha accepted from any kept worktree of the group is accepted" "0|running" "$rc|$(d_pfield status)"
 # pytest at the start of the Test command: exit 2 is no RED

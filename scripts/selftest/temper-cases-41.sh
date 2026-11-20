@@ -79,6 +79,41 @@ assert_eq "caps: a final deleted with its cap, or set to null, fails as a raised
      grep -q 'readme_lines: final null is no number, its first committed value is' <<< "$_c41_null" && echo -n yes
      echo " ${_c41_null##*$'\n'}")"
 
+# a cap that cannot see a label or a row cannot fail (phase 6 fixes): in a made up tree, the option_labels measure sees
+# a label in a tuple, a variable, a module list, a parameter and both arms of a choice, and a format string with fixed
+# arguments as the text it gives; the gate_rows measure sees a row name in single quotes and one a dict prints
+_c41_m="$_c41_dir/measure"; mkdir -p "$_c41_m/scripts"; cp "$_c41_caps" "$_c41_m/scripts/"; git -C "$_c41_m" init -q .
+printf '%s\n' '_req "cli row" 1 x' > "$_c41_m/scripts/temper"
+printf '%s\n' 'class R:' '    name = "named row"' > "$_c41_m/scripts/gate_rows.py"
+cat > "$_c41_m/scripts/rows_x.py" <<'PY'
+row("plain row", [], "x")
+row('quoted row', [], 'x')
+print(json.dumps([{"name": "dict row", "pass": True, "detail": "x"}]))
+PY
+cat > "$_c41_m/scripts/flow_x.py" <<'PY'
+OPTS = ["Listed one", "Listed two"]
+class X:
+    def a(self, back, more):
+        own = [("Tuple label", "d")]
+        opts = [self.opt(label, d) for label, d in own] + [self.opt(t, "d") for t, i in zip(OPTS, OPTS)]
+        label = "Variable label"
+        opts += [self.opt(label, "d"), self.opt("Revise%s" % "", "d"), self.opt("Revise", "d")]
+        opts += [self.opt("Back to %s" % "Fix", "d"), self.opt("Back to %s" % back, "d"), self.opt("Yes" if more else "No", "d")]
+        return opts + [self.skill("x", "Param label")]
+    def skill(self, name, label):
+        return self.opt(label, "d")
+PY
+assert_eq "caps: the measures see a label through a tuple, a variable or a format string, and a row in single quotes or a dict" \
+  "Back to %s|Back to Fix|Listed one|Listed two|No|Param label|Revise|Tuple label|Variable label|Yes|rows 5" \
+  "$(python3 -I - "$_c41_m/scripts/check_caps.py" <<'PY'
+import importlib.util as u, sys
+s = u.spec_from_file_location("check_caps_m", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)
+doc = {"flow_files": ["scripts/flow_x.py"]}
+labels = sorted(m.option_labels(doc)) if hasattr(m, "option_labels") else ["count %d" % m.measure_option_labels(doc)]
+print("|".join(labels) + "|rows %d" % m.measure_gate_rows(doc))
+PY
+)"
+
 # --- floor ---
 _c41_hist "$_c41_dir/hf" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
 _c41_edit "$_c41_dir/hf/floor.json" 'd["scenarios"]["default-run"]["plain"]["final"]["dialogs"] += 1'

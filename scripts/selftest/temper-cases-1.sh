@@ -119,7 +119,7 @@ assert_exit "check gate FAILs on a quote-bearing coverage threshold" 1 "$TEMPER"
 assert_eq "a quote-bearing coverage threshold writes no file" "no" "$([[ -e threshold-injected ]] && echo yes || echo no)"
 OUT=$("$TEMPER" gate check 2>&1; true)
 assert_eq "the FAIL names the coverage row" "yes" \
-  "$(echo "$OUT" | grep -q '\[x\] coverage — ' && echo yes || echo no)"
+  "$(grep -q '\[x\] coverage — ' <<<"$OUT" && echo yes || echo no)"
 assert_eq "still no file after the gate runs again" "no" "$([[ -e threshold-injected ]] && echo yes || echo no)"
 rm -f threshold-injected
 
@@ -135,7 +135,7 @@ assert_exit "check gate PASSes once every scenario is traced (2/2 covered)" 0 "$
 # --- evidence: PROVEN downgrade on missing artifact ---
 setup
 OUT=$("$TEMPER" evidence add --stage check --claim "x" --exit 0 --artifact does/not/exist --label PROVEN 2>&1)
-assert_eq "PROVEN downgrades to HEURISTIC when artifact is missing" "yes" "$(echo "$OUT" | grep -q 'downgraded to HEURISTIC' && echo yes || echo no)"
+assert_eq "PROVEN downgrades to HEURISTIC when artifact is missing" "yes" "$(grep -q 'downgraded to HEURISTIC' <<<"$OUT" && echo yes || echo no)"
 
 # --- commit gate: aggregates prior gate verdicts + honors overrides ---
 setup
@@ -201,7 +201,7 @@ echo 'fix' > loopfix.js; git add loopfix.js >/dev/null 2>&1
 "$TEMPER" evidence add --stage build --claim "fix tests" --phase green --exit 0 --cmd pytest >/dev/null
 assert_eq "state loop check build: next_stage is build" "build" "$("$TEMPER" state get next_stage)"
 assert_eq "after a loop back to build, a fix commit rides the checkpoint carve-out" "yes" \
-  "$("$TEMPER" gate commit 2>&1 | grep -q 'build checkpoint commit' && echo yes || echo no)"
+  "$("$TEMPER" gate commit 2>&1 | grep -c 'build checkpoint commit' >/dev/null && echo yes || echo no)"
 
 # --- state loop: a /temper:fix run clears build, review and check on a loop back to fix (woningscout #984) ---
 setup
@@ -234,9 +234,9 @@ assert_eq "state get (bare) falls back to {} on a corrupted state file" "yes" "$
 setup
 OUT=$("$TEMPER" state advance 2>&1)
 assert_eq "state advance with zero args exits 1" "1" "$("$TEMPER" state advance >/dev/null 2>&1; echo $?)"
-assert_eq "state advance with zero args prints a usage message, not an unbound-variable crash" "yes" "$(echo "$OUT" | grep -q 'usage: temper state advance' && ! echo "$OUT" | grep -q 'unbound variable' && echo yes || echo no)"
+assert_eq "state advance with zero args prints a usage message, not an unbound-variable crash" "yes" "$(grep -q 'usage: temper state advance' <<<"$OUT" && ! grep -q 'unbound variable' <<<"$OUT" && echo yes || echo no)"
 OUT=$("$TEMPER" state advance build_complete 2>&1)
-assert_eq "state advance with one arg prints a usage message, not an unbound-variable crash" "yes" "$(echo "$OUT" | grep -q 'usage: temper state advance' && ! echo "$OUT" | grep -q 'unbound variable' && echo yes || echo no)"
+assert_eq "state advance with one arg prints a usage message, not an unbound-variable crash" "yes" "$(grep -q 'usage: temper state advance' <<<"$OUT" && ! grep -q 'unbound variable' <<<"$OUT" && echo yes || echo no)"
 
 # --- state advance: stage vocabulary is scoped per command (temper vs fix) ---
 setup
@@ -271,7 +271,7 @@ mkdir -p src/auth && echo x > src/auth/login.js
 git add -A >/dev/null 2>&1 || true
 assert_exit "autonomous commit gate parks on a park-on-touch path" 1 "$TEMPER" gate commit
 OUT=$("$TEMPER" gate commit 2>&1)
-assert_eq "park reason names the matched path" "yes" "$(echo "$OUT" | grep -q 'src/auth/login.js' && echo yes || echo no)"
+assert_eq "park reason names the matched path" "yes" "$(grep -q 'src/auth/login.js' <<<"$OUT" && echo yes || echo no)"
 
 # --- native pre-commit hook: does `git commit` actually get blocked/allowed for
 # real, not just gate_commit()'s decision logic in isolation? Everything above tests
@@ -286,13 +286,13 @@ P_GIT_BEFORE="$(_git_list .git)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); P_RC=$?
 assert_eq "install.sh in a plain repository keeps the hook in .git/temper-gate and points core.hooksPath at that folder" \
   "0|yes|$WORKDIR/.git/temper-gate|yes" \
-  "$P_RC|$([[ -x .git/temper-gate/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -qxF "Installed Temper pre-commit hook -> $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at that folder, so every worktree of this repository runs it)." && echo yes || echo no)"
+  "$P_RC|$([[ -x .git/temper-gate/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -cxF "Installed Temper pre-commit hook -> $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at that folder, so every worktree of this repository runs it)." >/dev/null && echo yes || echo no)"
 assert_eq "install.sh writes nothing else in the git folder: its listing is the same before and after" "$P_GIT_BEFORE" "$(_git_list .git)"
 assert_eq "install.sh ends with how to uninstall, naming the command" "yes" \
   "$(printf '%s\n' "$OUT" | tail -1 | grep -qF "To uninstall: run 'temper guards uninstall'" && echo yes || echo no)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); P_RC=$?
 assert_eq "a second run in the plain repository says the hook is already installed" "0|yes" \
-  "$P_RC|$(printf '%s\n' "$OUT" | grep -qxF "The Temper pre-commit hook is already installed: $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at its folder)." && echo yes || echo no)"
+  "$P_RC|$(printf '%s\n' "$OUT" | grep -cxF "The Temper pre-commit hook is already installed: $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at its folder)." >/dev/null && echo yes || echo no)"
 echo '{"command": "temper", "run_mode": "interactive"}' > .temper/build-state.json
 echo 'x' > file.txt
 git add file.txt >/dev/null 2>&1
@@ -696,7 +696,7 @@ assert_exit "shield: no recorded regression test => edit passes" 0 \
 assert_exit "shield: editing the recorded regression test is BLOCKED" 2 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"test/regression.spec.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
 OUT=$(echo '{"tool_input": {"file_path": "test/regression.spec.js"}}' | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$SHIELD" 2>&1; true)
-assert_eq "shield: the block names the human release valve" "yes" "$(echo "$OUT" | grep -q 'temper state set regression_test' && echo yes || echo no)"
+assert_eq "shield: the block names the human release valve" "yes" "$(grep -q 'temper state set regression_test' <<<"$OUT" && echo yes || echo no)"
 
 assert_exit "shield: an absolute path to the same file is also BLOCKED" 2 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/test/regression.spec.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
@@ -732,7 +732,7 @@ setup
 rm -f .temper/metrics.json
 assert_exit "bands: no metrics.json is INSUFFICIENT-DATA, exit 0" 0 "$TEMPER" bands
 OUT=$("$TEMPER" bands 2>&1)
-assert_eq "bands: no metrics.json reports INSUFFICIENT-DATA" "yes" "$(echo "$OUT" | grep -q 'INSUFFICIENT-DATA' && echo yes || echo no)"
+assert_eq "bands: no metrics.json reports INSUFFICIENT-DATA" "yes" "$(grep -q 'INSUFFICIENT-DATA' <<<"$OUT" && echo yes || echo no)"
 
 echo 'this is not json' > .temper/metrics.json
 assert_exit "bands: malformed metrics.json degrades to insufficient data, never crashes" 0 "$TEMPER" bands
@@ -744,8 +744,8 @@ json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 85, 86], 'test_count_his
 "
 assert_exit "bands: an in-band latest point is OK, exit 0" 0 "$TEMPER" bands
 OUT=$("$TEMPER" bands 2>&1)
-assert_eq "bands: in-band verdict is OK" "yes" "$(echo "$OUT" | grep -q 'temper bands -> OK' && echo yes || echo no)"
-assert_eq "bands: a metric with no points reports insufficient data without failing the run" "yes" "$(echo "$OUT" | grep -q 'tests — insufficient data' && echo yes || echo no)"
+assert_eq "bands: in-band verdict is OK" "yes" "$(grep -q 'temper bands -> OK' <<<"$OUT" && echo yes || echo no)"
+assert_eq "bands: a metric with no points reports insufficient data without failing the run" "yes" "$(grep -q 'tests — insufficient data' <<<"$OUT" && echo yes || echo no)"
 
 # A collapsed latest point (85-86 baseline, then 60) is far beyond 3 sigma.
 python3 -c "
@@ -755,9 +755,9 @@ json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 85, 86, 60]},
 "
 assert_exit "bands: a 3sigma coverage collapse is a BREACH, exit 1" 1 "$TEMPER" bands
 OUT=$("$TEMPER" bands 2>&1; true)
-assert_eq "bands: the breach names the metric and tier" "yes" "$(echo "$OUT" | grep -q '\[3sigma\] coverage' && echo yes || echo no)"
-assert_eq "bands: the 3sigma tier maps to the propose action by default" "yes" "$(echo "$OUT" | grep -q 'action=propose' && echo yes || echo no)"
-assert_eq "bands: a breach names the closing-the-loop next step (intent.md)" "yes" "$(echo "$OUT" | grep -q 'intent.md' && echo yes || echo no)"
+assert_eq "bands: the breach names the metric and tier" "yes" "$(grep -q '\[3sigma\] coverage' <<<"$OUT" && echo yes || echo no)"
+assert_eq "bands: the 3sigma tier maps to the propose action by default" "yes" "$(grep -q 'action=propose' <<<"$OUT" && echo yes || echo no)"
+assert_eq "bands: a breach names the closing-the-loop next step (intent.md)" "yes" "$(grep -q 'intent.md' <<<"$OUT" && echo yes || echo no)"
 
 # A flat baseline (sigma = 0) treats ANY deviation as 3sigma — documented behavior.
 python3 -c "
@@ -775,7 +775,7 @@ json.dump({'coverage_history': [10, 10, 10, 10, 11, 11, 11, 11, 11, 11]},
 "
 assert_exit "bands: a 6-point same-side run is a drift BREACH" 1 "$TEMPER" bands
 OUT=$("$TEMPER" bands 2>&1; true)
-assert_eq "bands: drift is labeled as drift" "yes" "$(echo "$OUT" | grep -q 'drift' && echo yes || echo no)"
+assert_eq "bands: drift is labeled as drift" "yes" "$(grep -q 'drift' <<<"$OUT" && echo yes || echo no)"
 
 # 1 sigma logs but does not breach: baseline mean 82.5, sigma ~2.5, latest ~1.4 sigma out.
 python3 -c "
@@ -784,7 +784,7 @@ json.dump({'coverage_history': [80, 85, 80, 85, 80, 85, 79]}, open('.temper/metr
 "
 assert_exit "bands: a 1sigma excursion logs but is not a breach" 0 "$TEMPER" bands
 OUT=$("$TEMPER" bands 2>&1)
-assert_eq "bands: the 1sigma excursion is reported with the log action" "yes" "$(echo "$OUT" | grep -q 'action=log' && echo yes || echo no)"
+assert_eq "bands: the 1sigma excursion is reported with the log action" "yes" "$(grep -q 'action=log' <<<"$OUT" && echo yes || echo no)"
 
 # History points as objects ({value: N}) parse the same as bare numbers.
 python3 -c "
@@ -813,8 +813,8 @@ import json
 json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 60]}, open('.temper/metrics.json', 'w'))
 "
 OUT=$("$TEMPER" bands 2>&1; true)
-assert_eq "bands: config tier action overrides the default" "yes" "$(echo "$OUT" | grep -q 'action=page-a-human' && echo yes || echo no)"
-assert_eq "bands: metrics list from config drops the tests series" "no" "$(echo "$OUT" | grep -q 'tests' && echo yes || echo no)"
+assert_eq "bands: config tier action overrides the default" "yes" "$(grep -q 'action=page-a-human' <<<"$OUT" && echo yes || echo no)"
+assert_eq "bands: metrics list from config drops the tests series" "no" "$(grep -q 'tests' <<<"$OUT" && echo yes || echo no)"
 
 # --json emits the persisted verdict file, machine-readable.
 OUT=$("$TEMPER" bands --json 2>&1; true)
@@ -833,7 +833,7 @@ bands:
 EOF
 assert_exit "bands: an unknown metric name is skipped, not fatal" 0 "$TEMPER" bands
 OUT=$("$TEMPER" bands 2>&1)
-assert_eq "bands: the unknown metric is named in a skip notice" "yes" "$(echo "$OUT" | grep -q 'made-up-series — unknown metric' && echo yes || echo no)"
+assert_eq "bands: the unknown metric is named in a skip notice" "yes" "$(grep -q 'made-up-series — unknown metric' <<<"$OUT" && echo yes || echo no)"
 
 # --- v9: intent gate — the fail-fast gate ---
 # intent.md absent => trivial path => PASS. Present => Problem stated (not template
@@ -925,10 +925,10 @@ s = re.sub(r'(?m)(^#+ *Problem *\n\s*)\{[^{}]*\}',
 open('.temper/specs/demo/intent.md','w').write(s)
 "
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "the filled Problem counts as content" "yes" "$(echo "$OUT" | grep -q '\[v\] problem stated' && echo yes || echo no)"
+assert_eq "the filled Problem counts as content" "yes" "$(grep -q '\[v\] problem stated' <<<"$OUT" && echo yes || echo no)"
 assert_exit "a template-verbatim intent with only the Problem filled still FAILs" 1 "$TEMPER" gate intent
-assert_eq "placeholder criteria bullets are not counted" "yes" "$(echo "$OUT" | grep -q 'no real success criteria' && echo yes || echo no)"
-assert_eq "the placeholder Status line is not accepted" "yes" "$(echo "$OUT" | grep -q 'placeholder doesn.t count' && echo yes || echo no)"
+assert_eq "placeholder criteria bullets are not counted" "yes" "$(grep -q 'no real success criteria' <<<"$OUT" && echo yes || echo no)"
+assert_eq "the placeholder Status line is not accepted" "yes" "$(grep -q 'placeholder doesn.t count' <<<"$OUT" && echo yes || echo no)"
 
 # temper report renders the intent stage (verdict + requirement rows).
 setup
@@ -1030,7 +1030,7 @@ echo "# Intent: demo" > .temper/specs/demo/captured.md
 git add .temper/specs/demo/ >/dev/null 2>&1
 assert_exit "an all-specs staged set passes the commit gate mid-run (no stage verdicts)" 0 "$TEMPER" gate commit
 OUT=$("$TEMPER" gate commit 2>&1)
-assert_eq "the artifact-only carve-out names itself" "yes" "$(echo "$OUT" | grep -q 'artifact-only commit' && echo yes || echo no)"
+assert_eq "the artifact-only carve-out names itself" "yes" "$(grep -q 'artifact-only commit' <<<"$OUT" && echo yes || echo no)"
 echo 'code' > src.js
 git add src.js >/dev/null 2>&1
 assert_exit "one staged file outside .temper/specs/ restores every gate requirement" 1 "$TEMPER" gate commit
