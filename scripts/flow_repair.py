@@ -181,3 +181,106 @@ class RepairPart:
         if opens:
             q["accept"] = self.accept_question(opens, qid="repair.stop.accept")
         return q
+
+    # The small change window (moved from flow_ask.py, which passed its 64 KiB): its option, its place in a gate question,
+    # the steps it touches once closed, and the question when Review of it failed. A repair window is a window of this kind.
+    def adhoc_option(self, stage):
+        # Claude makes it, here in the conversation (a person read "change the work yourself" as their own edit).
+        return self.opt("Make a small change", "Claude makes one small change here, with no loop back to %s: the one you describe, " % (
+                        "Fix" if self.r.command == "fix" else "Build") +
+                        "or the one the review asked for. Only what it touches is checked again.",
+                        move="adhoc", calls=[self.c("adhoc open --stage %s --reason '{reason}'" % stage)],
+                        do="Make the small change: for a fix the person describes, ask them in one line what to change first; for the "
+                           "review's, take what the review asked for. Then run %s, then run %s again." % (self.c("adhoc close"), self.c("next --json")),
+                        reason=["A small fix I will describe", "A change the review asked for"], oid="small-change", needs="small-change")
+
+    def add_adhoc(self, out, stage):
+        """Add Make a small change to the gate question of Build, Review, Check or Commit, before Save for later. Four options
+        at most: when the question is full it goes under More options. Not offered while a window is open, nor at a fix
+        run's Fix stage (its change is the fix itself)."""
+        r = self.r
+        if stage not in self.ADHOC_OPTION_STAGES or r.state.get("adhoc") or (r.command == "fix" and r.stage == "fix"):
+            return out
+        q = out.get("ask") if "ask" in out else out
+        if not isinstance(q, dict) or "options" not in q or any(o["label"] == "Make a small change" for o in q["options"]) \
+                or (r.command == "fix" and q.get("id") == "commit.confirm"):   # WP17: commit, back to Fix, or save
+            return out
+        more = q.get("more")
+        if stage == "review" and len(q["options"]) >= 4 and more and len(more["options"]) >= 4 and r.verdict("review") == "PASS" and \
+                any(f["state"] == "open" for f in r.findings()):
+            # M2 of WP08: at a passed Review with an open finding both questions are full. The Architecture Depth Review gives
+            # way to the small change, and Teach Me takes its place, so Accept a finding, Grill Me, Teach Me and Save for
+            # later all stay in reach (row D42).
+            teach = next((o for o in more["options"] if o["label"] == "Teach Me"), None)
+            at = next((i for i, o in enumerate(q["options"]) if o.get("id") == "depth-review"), None)
+            if teach is not None and at is not None:
+                q["options"][at] = teach
+                more["options"] = [o for o in more["options"] if o is not teach]
+                more["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in more["options"]]
+        opt = self.adhoc_option(stage)
+        self.follow_ups(opt, q["id"])
+
+        def put(options):
+            keep = [o for o in options if o["label"] == "Save for later"]
+            rest = [o for o in options if o["label"] != "Save for later"]
+            return rest + [opt] + keep
+
+        if len(q["options"]) < 4:
+            q["options"] = put(q["options"])
+        elif q.get("more") and len(q["more"]["options"]) < 4:
+            q["more"]["options"] = put(q["more"]["options"])
+            q["more"]["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["more"]["options"]]
+        elif q.get("more"):
+            return out   # M2 of WP08: a full More question is never built again from the visible options
+        else:
+            first, rest = q["options"][:3], q["options"][3:]
+            more = self.question(q["question"]["header"], q["question"]["question"].split("?")[0] + "? More options.", put(rest), stage,
+                                 qid=q["id"] + ".more")
+            q["options"] = first + [self.more_opt(more["options"])]
+            q["more"] = more
+        for o in q["options"]:   # the description of More options lists what is behind it, as it is now
+            if o["label"] == "More options" and q.get("more"):
+                o["description"] = ", ".join(x["label"] for x in q["more"]["options"])
+        q["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["options"]]
+        return out
+
+    def small_change_work(self, done):
+        """A small change is closed: run the steps it touches, in order (review of the changed files, check, the commit gate;
+        or only the stage's own gate), before the stage's question is asked again."""
+        r = self.r
+        step = (done.get("steps") or [""])[0]
+        files = ", ".join(done.get("files") or [])
+        if step == "review":
+            a = self.agent("review", ["Ad-hoc change: review only %s." % files])
+            a["after"].append(self.c("gate review"))
+            a["gate"] = a["after"][-1]
+            return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
+                    "say": "%s: the Review agent checks your small change%s. %s" % (LABEL.get(r.stage, r.stage), on_model([a]), goes_on(False))}
+        if step == "check" and self.cli_check():
+            # M7 of WP08: the CLI checks the tree itself, with no agent, as stage_work does (a claimed run counts for nothing)
+            return {"action": "work", "stage": r.stage, "calls": [self.c("check run"), self.c("gate check")], "agents": [],
+                    "say": "%s: the CLI checks the tree after your small change (no agent)." % LABEL.get(r.stage, r.stage)}
+        if step == "check":
+            a = self.agent("check", ["Ad-hoc change: check the tree as it is now; the change touched %s." % files])
+            a["after"].append(self.c("gate check"))
+            a["gate"] = a["after"][-1]
+            return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
+                    "say": "%s: the Check agent checks the tree after your small change%s. %s" % (LABEL.get(r.stage, r.stage), on_model([a]), goes_on(False))}
+        gate = {"commit": "commit"}.get(step) or (r.gate_of(done.get("stage") or r.stage) or r.stage)
+        return {"action": "work", "stage": r.stage, "calls": [self.c("gate %s" % gate)], "agents": [],
+                "say": "%s is checked again after your small change." % LABEL.get(done.get("stage") or r.stage, r.stage)}
+
+    def side_review_failed(self, done):
+        """Review of a change made at Check or Commit failed: the run has left Review, so it never offers to advance from it."""
+        r = self.r
+        why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("review")[:3])
+        opts = []
+        work = "fix" if r.command == "fix" else "build"
+        if r.can_loop(r.stage, work):
+            opts.append(self.opt("Loop back to %s (Recommended)" % LABEL[work], "Do %s again; the stages after it are redone too." % LABEL[work], move="back",
+                                 calls=[self.c("state loop %s %s --reason '{reason}'" % (r.stage, work))], reason=["The review found a real problem"], oid="back"))
+        opts.append(self.opt("Override and continue", "Skip the Review of your change with your reason; the report shows it.", move="override",
+                             calls=[self.c("override review --reason '{reason}'")], reason=["I accept the risk", "It is not a real issue"], oid="override"))
+        opts.append(self.save())
+        return {"action": "ask", "stage": r.stage, "ask": self.question(GATE_HEADER, "%s: Review of your small change failed (%s). %s" % (
+            LABEL.get(r.stage, r.stage), why, "Loop back to %s?" % LABEL[work] if len(opts) > 2 else "Override it?"), stage=r.stage, options=opts, qid="adhoc.fail")}
