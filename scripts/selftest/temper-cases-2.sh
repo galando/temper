@@ -288,7 +288,8 @@ s = open('.temper/specs/demo/intent.md').read().replace('- developer: uses the f
 open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "a Target Users bullet with no action chain FAILs" "yes" "$(echo "$OUT" | grep -q 'no action chain' && echo yes || echo no)"
+assert_eq "WP26 a Target Users bullet with no action chain no longer fails the draft: the row target users action chain is gone" \
+  "exit=0|row=no" "exit=$("$TEMPER" gate intent >/dev/null 2>&1; echo $?)|row=$(echo "$OUT" | grep -q 'target users action chain' && echo yes || echo no)"
 
 setup; good_draft
 python3 - <<'EOF'
@@ -385,8 +386,8 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_exit "an accepted intent PASSes even where the draft would FAIL" 0 "$TEMPER" gate intent
-assert_eq "each draft-only requirement records a skip detail, never revisited" "13/13" \
-  "$(echo "$OUT" | grep -c 'skipped — intent is accepted; this check applies to drafts only')/13"
+assert_eq "each draft-only requirement records a skip detail, never revisited" "12/12" \
+  "$(echo "$OUT" | grep -c 'skipped — intent is accepted; this check applies to drafts only')/12"
 
 # --- gate intent: no soft words (should / may / might / possibly) ---
 setup; good_draft
@@ -488,14 +489,15 @@ cat > .temper/specs/demo/plan.md <<'EOF'
 - none
 EOF
 OUT=$("$TEMPER" gate plan 2>&1; true)
-assert_eq "a plan.md with no Cross-Repo Search section FAILs" "yes" \
-  "$(echo "$OUT" | grep -q 'cross-repo search recorded' && echo "$OUT" | grep -q 'no heading matching' && echo yes || echo no)"
+assert_eq "WP26 a plan.md with no Cross-Repo Search section passes: the gate writes no row cross-repo search recorded" "exit=0|row=no" \
+  "exit=$("$TEMPER" gate plan >/dev/null 2>&1; echo $?)|row=$(echo "$OUT" | grep -q 'cross-repo search recorded' && echo yes || echo no)"
 
 setup
 printf '## Cross-Repo Search\n- used: {tool} — {query}\n' > .temper/specs/demo/plan.md
 OUT=$("$TEMPER" gate plan 2>&1; true)
-assert_eq "a placeholder used: line does not count as a record" "yes" \
-  "$(echo "$OUT" | grep -q 'no .*used.* line with real text' && echo yes || echo no)"
+assert_eq "WP26 a plan.md an earlier version wrote, with a placeholder Cross-Repo Search line and no map, passes: nothing reads the section" \
+  "exit=0|row=no" \
+  "exit=$("$TEMPER" gate plan >/dev/null 2>&1; echo $?)|row=$(echo "$OUT" | grep -q 'cross-repo search recorded' && echo yes || echo no)"
 
 # --- acceptance.py: internal links (plan) and supported evidence (check) ---
 setup

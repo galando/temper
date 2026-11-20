@@ -127,7 +127,9 @@ m_setup() { # m_setup <tasks.md text on stdin>: a fresh repository on the run's 
 
 m_field() { python3 -c "import json,sys; print(json.load(open('.temper/groups.json'))['tasks'][sys.argv[1]].get(sys.argv[2],''))" "$1" "$2"; }
 
-f9_tasks() { cat <<'TASKS'
+f9_tasks() { # a plan in the shape of 9.8.4 and the base, with its Traced to: lines; WP26: Plan writes that line no more,
+           # and a plan that has it still reads (case 70, w26 an old plan still reads)
+  cat <<'TASKS'
 # Tasks: demo
 
 **Integration:** `true`

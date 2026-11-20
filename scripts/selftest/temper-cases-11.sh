@@ -431,7 +431,8 @@ assert_eq "F6: pending fails where the person is asked and says the answer is no
     _crow auto | grep -c 'not asked: no flagged line')"
 assert_eq "F6: off mode passes pending — nobody is asked" "True" "$(_crow off | cut -d'|' -f1)"
 _cmap human
-assert_eq "F6: a map with no use, ignore or gap entry fails" "False" "$(_crow auto | cut -d'|' -f1)"
+assert_eq "WP26 F6: a map with no use, ignore or gap entry passes, as no map does: nothing is flagged" "True|True" \
+  "$(_crow auto | cut -d'|' -f1)|$(printf '# Plan\n\n## Blast Radius\n\nnone\n' > .temper/specs/demo/plan.md; _crow auto | cut -d'|' -f1)"
 { printf '# Plan\n\n## Context Map\n'; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13; do printf -- '- use: source %s\n' "$i"; done; printf -- '- reviewed: human\n'; } > .temper/specs/demo/plan.md
 assert_eq "F6: more than 12 entries fails, naming the cap" "False|1" "$(_crow auto | cut -d'|' -f1)|$(_crow auto | grep -c '12')"
 { printf '# Plan\n\n## Context Map\n- use: %s\n- reviewed: human\n' "$(printf 'x%.0s' $(seq 1 120))"; } > .temper/specs/demo/plan.md

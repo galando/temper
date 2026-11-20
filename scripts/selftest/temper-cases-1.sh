@@ -12,26 +12,34 @@ EOF
 assert_exit "build gate PASSes with zero unchecked tasks (no double-count)" 1 "$TEMPER" gate build
 # (still FAILs on the RED/GREEN requirement — no test evidence yet — but must not crash)
 
-# --- plan gate: criteria -> scenarios coverage ---
+# --- plan gate: every criterion is tied to what proves it (criteria -> validation; WP26: no count of scenarios) ---
 setup
 assert_exit "plan gate PASSes: 2 scenarios for 2 criteria" 0 "$TEMPER" gate plan
 
 setup
-cat > .temper/specs/demo/intent.md <<'EOF'
-## Success Criteria
-- one
-- two
-- three
-
-Scenario: first
+python3 - <<'EOF'
+p = '.temper/specs/demo/intent.md'
+s = open(p).read().replace('### Constraints', '- [ ] AC-03 [required]: demo criterion three\n  Why: a third outcome\n  Validate: scenario — traced to a test below\n\n### Constraints')
+open(p, 'w').write(s)
 EOF
-assert_exit "plan gate FAILs: 1 scenario for 3 criteria" 1 "$TEMPER" gate plan
+"$TEMPER" gate plan >/dev/null 2>&1
+assert_eq "WP26 plan gate FAILs a scenario criterion no scenario covers on criteria -> validation, and writes no row criteria -> scenarios" \
+  "FAIL|validation=False|scenarios row=absent" \
+  "$(python3 -c "
+import json
+g = json.load(open('.temper/gates.json')).get('plan') or {}
+rows = {x['name']: x for x in g.get('requirements') or []}
+print('%s|validation=%s|scenarios row=%s' % (g.get('verdict'), (rows.get('criteria -> validation') or {}).get('pass'),
+      'present' if 'criteria -> scenarios' in rows else 'absent'))")"
 
-# --- plan gate: blast radius required for medium/complex, not for trivial/simple ---
+# --- plan gate: no tier needs a plan.md or a Blast Radius section (WP26) ---
 setup
 assert_exit "plan gate PASSes without a Blast Radius section (no complexity set)" 0 "$TEMPER" gate plan
 "$TEMPER" state set complexity medium >/dev/null
-assert_exit "plan gate FAILs: medium complexity needs a Blast Radius section" 1 "$TEMPER" gate plan
+fresh_reviewed   # 9.7.6: a medium plan also needs its fresh review
+assert_exit "WP26 plan gate PASSes at medium complexity with no plan.md: no tier needs a Blast Radius section" 0 "$TEMPER" gate plan
+setup
+"$TEMPER" state set complexity medium >/dev/null
 cat > .temper/specs/demo/plan.md <<'EOF'
 ## Context Map
 - use: intent.md - the accepted scope
@@ -39,9 +47,6 @@ cat > .temper/specs/demo/plan.md <<'EOF'
 
 ## Blast Radius
 - no external consumers
-
-## Cross-Repo Search
-- not available: no cross-repo search tool connected
 EOF
 fresh_reviewed   # 9.7.6: a medium plan also needs its fresh review
 assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPER" gate plan

@@ -98,8 +98,8 @@ assert_eq "9.8.0: spec commit -- FILE commits the files named (the record commit
 printf '# Plan\n\n## Tasks\nx\n' > .temper/specs/demo/plan.md
 printf '{"deviations": {"unplanned_files": ["src/b.sh"], "skipped_tasks": [], "approach_changes": ["a queue, not a cron"]}}\n' > .temper/specs/demo/build-context.json
 "$TEMPER" spec deviations >/dev/null 2>&1; "$TEMPER" spec deviations >/dev/null 2>&1
-assert_eq "9.8.0: spec deviations writes plan.md's Deviations from build-context.json, once however often it runs" "1|1|1" \
-  "$(grep -c '^## Deviations$' .temper/specs/demo/plan.md)|$(grep -c '^- Files outside the plan: src/b.sh$' .temper/specs/demo/plan.md)|$(grep -c '^- Approach changes: a queue, not a cron$' .temper/specs/demo/plan.md)"
+assert_eq "WP26 spec deviations writes deviations.md from build-context.json, once however often it runs, and never touches plan.md" "0|1|1" \
+  "$(grep -c '^## Deviations$' .temper/specs/demo/plan.md)|$(grep -c '^- Files outside the plan: src/b.sh$' .temper/specs/demo/deviations.md 2>/dev/null || echo 0)|$(grep -c '^- Approach changes: a queue, not a cron$' .temper/specs/demo/deviations.md 2>/dev/null || echo 0)"
 rm -rf .git src README.demo; git init -q . 2>/dev/null
 
 # --- 3b. The Intent agent's prompt carries the request as typed, one period after it ---
@@ -260,6 +260,9 @@ MD
 printf '# Tasks: demo\n\n## Group G1: Core\n**Depends:** none\n**Validate:** `true`\n**Context:**\nc\n\n### Task 1: the refund module\n**File:** `ledger/refunds.py`, `unit/test_refunds.py`\n**Depends:** none\n**Test:** `python3 -m unittest unit/test_refunds.py`\n**Cases:**\n- x\n**Traced to:** Scenario: "an admin refunds a paid invoice"\n- [ ] done\n\n### Task 2: the route\n**File:** `ledger/api.py`, `unit/test_refunds_api.py`\n**Depends:** Task 1\n**Test:** `python3 -m unittest unit/test_refunds_api.py`\n**Cases:**\n- y\n- [ ] done\n' > .temper/specs/demo/tasks.md
 assert_eq "9.8.0: a scenario traced to a task is owed by the later task that writes the test file it runs" "0|1" \
   "$(python3 -E -s "$REPO_ROOT/scripts/scenario_ops.py" owed .temper/specs/demo/intent.md .temper/specs/demo/tasks.md 1 | wc -l | tr -d ' ')|$(python3 -E -s "$REPO_ROOT/scripts/scenario_ops.py" owed .temper/specs/demo/intent.md .temper/specs/demo/tasks.md 2 | grep -c '^an admin refunds a paid invoice')"
+sed -i '/^\*\*Traced to:\*\*/d' .temper/specs/demo/tasks.md   # WP26: Plan writes no Traced to line
+assert_eq "WP26 with no Traced to line the scenario is owed by the one task that writes the test file it runs" "0|1|0" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/scenario_ops.py" owed .temper/specs/demo/intent.md .temper/specs/demo/tasks.md 1 | wc -l | tr -d ' ')|$(python3 -E -s "$REPO_ROOT/scripts/scenario_ops.py" owed .temper/specs/demo/intent.md .temper/specs/demo/tasks.md 2 | grep -c '^an admin refunds a paid invoice')|$(grep -c 'Traced to' .temper/specs/demo/tasks.md)"
 f9_tasks | m_setup
 python3 - <<'PY'
 import json; p='.temper/groups.json'; d=json.load(open(p))

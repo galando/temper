@@ -133,6 +133,7 @@ Run files:
 | `.temper/evidence/failures.json` | the failure record | WP23 | written only through `scripts/failure.py` |
 | `failures` of `.temper/specs/<slug>/gate-ledger.json`; `records` of a loop of `.temper/feedback-loops.json`; `failures` of a line of `.temper/runs.jsonl` | the archived failure records; the ids of the open records of the stage a step back leaves; the count of records by class | WP23 | WP24, WP25 |
 | `.temper/evidence/amendments.json` | amendments and patches, appended | WP25 | the commit card |
+| `.temper/specs/<slug>/deviations.md` | the deviations of `build-context.json` that `temper spec deviations` writes, replacing an earlier file; `plan.md` holds no `## Deviations` | WP26 | the commit of the run's record, which takes the whole spec folder |
 | `.temper/notice.json` | the one time notice was said | WP31 | none |
 | `.claude/temper.config.before-9.8.5` | the copy the config question keeps, of a config of 9.8.4 or of the base | WP29 | none |
 
