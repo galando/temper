@@ -365,7 +365,7 @@ there everything happens as `/temper` does it ([Entering at a stage](#stage-comm
 
 ## `/temper:plan`
 
-Plan with blast radius analysis, mermaid diagrams, and interactive walkthrough.
+Plan with blast radius analysis and interactive walkthrough.
 
 A door into `/temper`: with no run active it starts one for the feature, and the Intent gate
 comes first, because the plan is derived from the accepted intent. With a run active it takes
@@ -379,10 +379,9 @@ that run up ([Entering at a stage](#stage-commands-are-doors)).
 
 - Analyzes which files will be affected
 - Identifies dependencies and risk areas
-- Generates mermaid architecture diagrams (flowchart, sequenceDiagram, etc.)
-- Derives BDD scenarios from requirements + blast radius — **before architecture**
-- Builds architecture from scenarios — every file traces to a behavior or infrastructure need
-- Generates intent.md with structured success criteria + Gherkin scenarios (medium+ complexity)
+- Derives the scenarios from the success criteria and the blast radius
+- Writes `tasks.md`, which declares each file; a scenario is owed by the task that writes its test file
+- Writes each scenario into `intent.md` in four lines: its name, one Then line, Covers: and Test:
 - Detects parallel tasks for optimized ordering
 - Offers interactive step-by-step plan walkthrough with Q&A at each section
 

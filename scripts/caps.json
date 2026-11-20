@@ -34,9 +34,9 @@
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
   "gate_rows": {
-   "now": 70,
+   "now": 82,
    "final": 55,
-   "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, or a printed dict of a name and a pass), name lines of gate_rows.py"
+   "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, a printed dict of a name and a pass, or an add( call and a name of its skip tuple where add(name, ok, detail) is defined), name lines of gate_rows.py"
   },
   "agent_briefs": {
    "now": 13,
@@ -64,12 +64,12 @@
    "measure": "measure_config_comment_keys: commented key lines of the config template"
   },
   "config_lines": {
-   "now": 158,
+   "now": 157,
    "final": 60,
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 303834,
+   "now": 303843,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },

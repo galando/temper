@@ -147,8 +147,8 @@ before. A house rule is a default for the new feature, so it stays a question.
    fix any FAIL it reports (an empty Problem, no real criteria, a missing header
    field, an unlabeled open question, a criterion without a `Why:`).
 
-7. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
-   orchestrator; it owns the human-facing gate.
+7. Do NOT show an `AskUserQuestion` gate — you run headless. Return as the last paragraph
+   says; the orchestrator owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - Never write a placeholder `Scenario:` block. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` demands a passing
