@@ -513,3 +513,55 @@ assert_eq "w27 the acceptance writer is alone and first: at the start of Build t
   "first=temper:temper-acceptance|before the lock=temper:temper-acceptance" "$_w27_10"
 assert_eq "w27 the acceptance writer is alone and first: no brief but agents/acceptance.md holds acceptance start or acceptance lock" \
   "agents/acceptance.md" "$(git -C "$REPO_ROOT" grep -l -e 'acceptance start' -e 'acceptance lock' -- agents | tr '\n' ' ' | sed 's/ $//')"
+
+# --- 11. the phase 7 review, lane A: the tier the CLI records, and one launch spends once ---
+_room71() { # _room71 <key>: used=<launches of the key>,run=<entries this run spent>, from the CLI's own count
+  "$TEMPER" budget room "$1" 2>/dev/null | python3 -B -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except ValueError:
+    d = {}
+print('used=%s,run=%s' % (d.get('used'), d.get('run_used')))"
+}
+_two71() { # a run at Plan recorded simple whose tasks.md has two groups (above the simple tier the CLI bounds, WP26)
+  fresh; _tasks71; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; rm -f .temper/specs/demo/plan.md
+  printf '\n## Group G2: Later\n**Depends:** G1\n**Validate:** `true`\n**Context:**\nThe later work.\n\n### Task 4: later\n**File:** `src/later.sh`\n**Depends:** Task 3\n**Test:** `true`\n**Cases:**\n- the later step prints its line\n- an empty input prints nothing\n- [ ] done\n' >> .temper/specs/demo/tasks.md
+  "$TEMPER" state set complexity simple >/dev/null 2>&1
+}
+# F1: a run recorded simple that the bound refuses, stepped back into Plan after the approval, is not left to the revise
+# agent (which may not run state set): when the bound is the only failed row the CLI records medium itself
+_two71; gpass plan; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+"$TEMPER" state loop build plan --reason 'Task 2 cannot be built as written: the refund needs the ledger first' >/dev/null 2>&1
+_w27_11="after the approval=$(_drive71 4 x | sed 's/|items=.*//')|tier=$("$TEMPER" state get complexity 2>/dev/null)"
+_two71; "$TEMPER" gate plan >/dev/null 2>&1
+_w27_11+="|first plan=$(nx "'%s,agents=%d,%s' % (d.get('action'), len(d.get('agents') or []), ';'.join(__import__('re').sub(r'^\S*/temper ', '', c) for c in d.get('calls') or []))")"
+assert_eq "w27 the tier bound: a simple run with two groups gets temper state set complexity medium from the CLI when the bound is the only failed row, after one revise of a step back and at a first plan alike; never a second revise or run.budget" \
+  "after the approval=work temper:temper-plan-revise|ask plan.approve|tier=medium|first plan=work,agents=0,state set complexity medium;gate plan" "$_w27_11"
+# WP27-R1: the planner launched as the fall back after two revises spends one entry, as any repeat of a failed gate does
+_plan71; fresh_reviewed
+"$TEMPER" evidence add --stage plan --phase fresh --severity high --claim "$_W27_4" >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1
+_w27_11b="$(_drive71 2 "$_W27_4" | sed 's/|items=.*//')|before=$(_room71 gate:plan)"
+_w27_11b+="|$(_drive71 1 "$_W27_4" | sed 's/|items=.*//')|after=$(_room71 gate:plan)"
+assert_eq "w27 the fall back planner spends: after two revise launches the planner's launch writes one entry of gate:plan" \
+  "work temper:temper-plan-revise|work temper:temper-plan-revise|before=used=1,run=2|work temper:temper-plan|after=used=2,run=3" "$_w27_11b"
+# WP27-R2: the revise the person picks at a failed plan gate is one launch and one spend: the run again paid for it, and
+# the launch still counts for its reason (the fall back comes after two)
+_plan71 one-case; "$TEMPER" gate plan >/dev/null 2>&1
+"$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71" >/dev/null 2>&1
+"$TEMPER" state redo plan --reason "$_NOTE71" >/dev/null 2>&1
+_w27_11c="redo=$(_room71 plan-revise:note)|$(_drive71 1 x | sed 's/|items=.*//')|launch=$(_room71 plan-revise:note)"
+_w27_11c+="|$(_drive71 1 x | sed 's/|items=.*//')|again=$(_room71 plan-revise:note)"
+assert_eq "w27 one launch, one spend: the revise after the person's run again at a failed plan gate spends nothing more of the run, counts for its reason, and the second revise by rule spends one" \
+  "redo=used=0,run=1|work temper:temper-plan-revise|launch=used=1,run=1|work temper:temper-plan-revise|again=used=2,run=2" "$_w27_11c"
+# WP27-R3: a loop back through Intent gives the planner the pass that answers the changed intent, and only that one
+_plan71; "$TEMPER" gate plan >/dev/null 2>&1
+"$TEMPER" state loop plan intent --reason 'the intent misses the rule for a partial refund' >/dev/null 2>&1
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+_w27_11d="changed intent=$(_agent71 "a.get('type')")"
+sleep 1; "$TEMPER" brief >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1; sleep 1
+"$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71" >/dev/null 2>&1
+"$TEMPER" state redo plan --reason "$_NOTE71" >/dev/null 2>&1
+_w27_11d+="|a later note=$(_agent71 "a.get('type')")"
+assert_eq "w27 a changed intent gets the planner once: after the planner answered the loop back through Intent, a later note gets the revise agent" \
+  "changed intent=temper:temper-plan|a later note=temper:temper-plan-revise" "$_w27_11d"

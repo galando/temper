@@ -10,7 +10,9 @@ one entry of `.temper/budget.json`: 2 for one failure (its key) and 6 for one ru
                                                       and for the run
   python3 budget.py revise --key plan-revise:R --reason T
                                                       the before call of a launch of the narrow revise agent (WP27,
-                                                      `temper budget revise`): it spends one of plan-revise:<reason>
+                                                      `temper budget revise`): it spends one of plan-revise:<reason>;
+                                                      a launch the call before it paid for (paid_by) counts for its
+                                                      reason and not again for the run: one launch, one spend
   python3 budget.py [show]                            the record, as text (`temper budget`)
 
 When a call spends is read from the recorded verdicts and skips (the Run class of the flow, so the rule exists once),
@@ -54,7 +56,9 @@ SPENDS = (
     (("check", "run"), "run anyway", "with --fresh (WP22, the person's Run it anyway): gate:check; `group gate G --fresh` "
                                      "spends group:<G>, `integrate --fresh` gate:build"),
     (("budget", "revise"), "revise", "always: --key plan-revise:<reason> (WP27: a launch of the narrow revise agent, its "
-                                     "before call; the flow launches the planner after two before the approval)"),
+                                     "before call; the flow launches the planner after two before the approval). A launch "
+                                     "that the person's run again or a step back into Plan paid for counts for its reason, "
+                                     "not again for the run (paid_by)"),
     (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped, or it is Review: gate:<stage> (WP24: the repair "
                                     "in the stage, spent by scripts/repair_ops.py once every condition holds)"),
 )
@@ -214,6 +218,34 @@ def key_of(words, facts):
     return None
 
 
+def paid_by(facts):
+    """The entry that already paid for this launch of the revise agent, else None (one launch, one spend). The person's run
+    again at a failed plan gate, or a step back into Plan that answers a failure, spent one entry, and the revise agent is
+    what that call launches. It is the record's latest entry, written by the latest step into Plan (the same reason), and
+    no launch of Plan ran since (the plan gate has no verdict)."""
+    used = record(facts)["used"]
+    e = used[-1] if used else {}
+    if e.get("kind") not in ("run again", "step back") or str(e.get("key") or "").startswith("plan-revise:"):
+        return None
+    from flow_base import loop_at
+    r = facts.run()
+    redo = facts.state().get("redo") if isinstance(facts.state().get("redo"), dict) else {}
+    back = r.loop_into("plan")
+    steps = ([(str(redo.get("ts") or ""), redo.get("reason"))] if redo.get("stage") == "plan" else []) + (
+        [(loop_at(back), back.get("reason"))] if back else [])
+    if not steps or r.verdict("plan") is not None:
+        return None
+    why = max(steps, key=lambda x: x[0])[1]
+    return e if " ".join(str(why or "").split())[:200] == e.get("why") else None
+
+
+def fits(key, kind, facts):
+    """(room of the key, whether one more entry of it fits): the key's own limit, and the run's unless the launch was paid."""
+    rm = room(key, facts)
+    paid = kind == "revise" and paid_by(facts) is not None
+    return rm, rm["used"] < rm["limit"] and (paid or rm["run_used"] < rm["run_limit"])
+
+
 def record(facts):
     """The record of this run: a record of another run id, or one that cannot be read, counts as empty."""
     rid = facts.state().get("run_id") or ""
@@ -229,7 +261,8 @@ def room(key, facts):
     n = lambda x: int(x.get("n") or 0) if str(x.get("n") or 0).isdigit() else 0
     used = sum(1 for x in d["used"] if x.get("key") == key)
     limit = facts.limit("budget.per-failure", PER_FAILURE) + sum(n(x) for x in d["grants"] if x.get("key") == key)
-    run_used, run_limit = len(d["used"]), facts.limit("budget.per-run", PER_RUN) + sum(n(x) for x in d["grants"])
+    run_used = sum(1 for x in d["used"] if not x.get("paid_by"))   # a paid launch counts for its key only
+    run_limit = facts.limit("budget.per-run", PER_RUN) + sum(n(x) for x in d["grants"])
     return {"used": used, "limit": limit, "run_used": run_used, "run_limit": run_limit,
             "ok": used < limit and run_used < run_limit}
 
@@ -275,6 +308,9 @@ def entry(key, kind, words, facts):
     mark = integration(facts) if key == "gate:build" else failure("pipeline", facts) if key == "pipeline" else None
     if mark:
         e["of"] = mark
+    paid = paid_by(facts) if kind == "revise" else None
+    if paid:
+        e["paid_by"] = "%s %s" % (paid.get("key"), paid.get("ts"))
     return e
 
 
@@ -286,19 +322,21 @@ def spend(words, facts):
     key, kind = hit
     if kind == "run anyway" and facts.run().armed():   # WP22 step 11: the person's option; a run on its own never takes it
         return 1, "BLOCKED: Run it anyway (--fresh) is the person's answer at a question; a run that goes on by itself never takes it"
-    rm = room(key, facts)
+    rm, ok = fits(key, kind, facts)
     if rm["used"] >= rm["limit"]:
         return 1, "BLOCKED: %s was repeated %d times (limit %d); the person grants more at the question" % (
             key, rm["used"], rm["limit"])
-    if not rm["ok"]:
+    if not ok:
         return 1, "BLOCKED: this run made %d repeats (limit %d); the person grants more at the question" % (
             rm["run_used"], rm["run_limit"])
     d = record(facts)
-    d["used"].append(entry(key, kind, words, facts))
+    e = entry(key, kind, words, facts)
+    d["used"].append(e)
     os.makedirs(TEMPER, exist_ok=True)
     save(d)
-    return 0, "OK: repeat %d of %d for %s (%d of %d in this run)" % (rm["used"] + 1, rm["limit"], key,
-                                                                     rm["run_used"] + 1, rm["run_limit"])
+    return 0, "OK: repeat %d of %d for %s (%d of %d in this run%s)" % (
+        rm["used"] + 1, rm["limit"], key, rm["run_used"] + (0 if e.get("paid_by") else 1), rm["run_limit"],
+        "; paid by %s" % e["paid_by"] if e.get("paid_by") else "")
 
 
 def grant(argv, facts):
@@ -392,7 +430,7 @@ def refused(calls, cli, facts):
         for call in calls:
             w = words_of(call, cli)
             hit = key_of(w, facts) if w is not None else None
-            if hit and not room(hit[0], facts)["ok"]:
+            if hit and not fits(hit[0], hit[1], facts)[1]:
                 return hit[0]
             if hit:
                 facts.pending = facts.pending + [entry(hit[0], hit[1], w, facts)]
