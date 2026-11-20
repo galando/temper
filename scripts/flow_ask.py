@@ -192,7 +192,7 @@ class AskPart:
 
     def revise_opt(self, description, why):
         """Revise the plan: the Plan agent runs again for the reason (state redo plan)."""
-        return self.opt("Revise the plan%s" % "", description, move="redo", oid="revise-plan",
+        return self.opt("Revise the plan", description, move="redo", oid="revise-plan",
                         calls=[self.c("state redo plan --reason %s" % shlex.quote(why[:300]))])
 
     def answers_reason(self):

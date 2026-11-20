@@ -196,7 +196,7 @@ class CommitPart:
                 calls=[self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote("drift %s: Add to plan: the person, at the commit gate" % f))
                        for f in outside] + [self.c("gate commit")], oid="add-to-plan"))
         if r.command == "fix" and "check" in failing and r.can_loop("check", "fix"):
-            opts.append(self.opt("Loop back to %s (Recommended)" % "Fix", "Write the fix again; Review and Check run again.", move="back",
+            opts.append(self.opt("Loop back to Fix (Recommended)", "Write the fix again; Review and Check run again.", move="back",
                                  calls=[self.c("state loop check fix --reason '{reason}'")], reason=["The check found a real problem"], oid="back"))
         if own and not outside:
             # M11 of WP08: the question says "then check again", and this option does it (first, with no mark: what the

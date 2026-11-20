@@ -82,9 +82,81 @@ def measure_option_sites(doc):
     return len(re.findall(r"self\.opt\(", flow_text(doc)))
 
 
+def option_labels(doc):
+    """The labels of the self.opt( calls of the flow files, read from the syntax tree so a label is seen however it
+    reaches the call (phase 6): a string; a format string, as the text it gives when its arguments are fixed, else as
+    written; the left part of a sum (a suffix keeps the label); both arms of a choice; a name, through what the
+    function assigns to it, a loop over a list of tuples or a zip of lists (the function's own or a module's), or a
+    parameter, through the self.NAME( calls that pass it."""
+    consts, calls = {}, []
+    for t in [ast.parse(text(f)) for f in doc.get("flow_files") or []]:
+        consts.update({n.targets[0].id: n.value for n in t.body if isinstance(n, ast.Assign) and len(n.targets) == 1
+                       and isinstance(n.targets[0], ast.Name)})
+        for fn in ast.walk(t):
+            if isinstance(fn, ast.FunctionDef):
+                calls += [(c, fn) for c in ast.walk(fn) if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                          and getattr(c.func.value, "id", "") == "self"]
+
+    def bound(name, fn):
+        got = [n.value for n in ast.walk(fn) if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == name for t in n.targets)]
+        return got or ([consts[name]] if name in consts else [])
+
+    def items(node, fn, depth):
+        if isinstance(node, (ast.List, ast.Tuple)):
+            return node.elts
+        return [e for v in bound(node.id, fn) for e in items(v, fn, depth + 1)] if isinstance(node, ast.Name) and depth < 9 else []
+
+    def vals(node, fn, depth=0):
+        if depth > 9:
+            return set()
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return {node.value}
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Mod, ast.Add)):
+            left = vals(node.left, fn, depth + 1)
+            args = node.right.elts if isinstance(node.right, ast.Tuple) else [node.right]
+            if isinstance(node.op, ast.Add) or not all(isinstance(a, ast.Constant) for a in args):
+                return left
+            out = set()
+            for s in left:
+                try:
+                    out.add(s % tuple(a.value for a in args))
+                except (TypeError, ValueError):
+                    out.add(s)
+            return out
+        if isinstance(node, ast.IfExp):
+            return vals(node.body, fn, depth + 1) | vals(node.orelse, fn, depth + 1)
+        if not isinstance(node, ast.Name):
+            return set()
+        out = set().union(*[vals(v, fn, depth + 1) for v in bound(node.id, fn)])
+        for g in ast.walk(fn):
+            if not isinstance(g, (ast.For, ast.comprehension)):
+                continue
+            names = [getattr(e, "id", None) for e in getattr(g.target, "elts", [g.target])]
+            if node.id not in names:
+                continue
+            i = names.index(node.id)
+            if isinstance(g.iter, ast.Call) and getattr(g.iter.func, "id", "") == "zip":
+                rows = items(g.iter.args[i], fn, depth + 1) if i < len(g.iter.args) else []
+            elif isinstance(g.target, ast.Tuple):
+                rows = [e.elts[i] for e in items(g.iter, fn, depth + 1) if isinstance(e, ast.Tuple) and i < len(e.elts)]
+            else:
+                rows = items(g.iter, fn, depth + 1)
+            out = out.union(*[vals(e, fn, depth + 1) for e in rows])
+        params = [a.arg for a in fn.args.args]
+        if not out and node.id in params:
+            i = params.index(node.id) - 1
+            for c, caller in calls:
+                if c.func.attr == fn.name:
+                    passed = ([c.args[i]] if 0 <= i < len(c.args) else []) + [k.value for k in c.keywords if k.arg == node.id]
+                    out = out.union(*[vals(a, caller, depth + 1) for a in passed])
+        return out
+
+    return set().union(*[vals(c.args[0], fn) for c, fn in calls if c.func.attr == "opt" and c.args])
+
+
 def measure_option_labels(doc):
-    """distinct first arguments (a string) of those calls"""
-    return len(set(re.findall(r'self\.opt\(\s*f?"([^"]+)"', flow_text(doc))))
+    """distinct labels of those calls, seen through a tuple, a variable or a format string (option_labels)"""
+    return len(option_labels(doc))
 
 
 def measure_question_ids(doc):
@@ -105,11 +177,17 @@ def measure_handback_kinds(doc):
 
 
 def measure_gate_rows(doc):
-    """distinct _req names of the CLI, distinct row( names of the Python scripts, name lines of gate_rows.py"""
+    """distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, or a
+    dict of a name and a pass a script prints), name lines of gate_rows.py"""
     req = set(re.findall(r'_req "([^"$]+)"', text("scripts/temper")))
     rows = set()
     for f in in_folder("scripts", ".py"):
-        rows |= set(re.findall(r'\brow\("([^"]+)"', text(f)))
+        src = text(f)
+        rows |= {name for _, name in re.findall(r'''\brow\((["'])(.+?)\1''', src)}
+        for d in ast.walk(ast.parse(src)) if re.search(r"[\"']pass[\"']", src) else []:
+            keys = [getattr(k, "value", None) for k in d.keys] if isinstance(d, ast.Dict) else []
+            if "name" in keys and "pass" in keys and isinstance(d.values[keys.index("name")], ast.Constant):
+                rows.add(d.values[keys.index("name")].value)
     named = len(re.findall(r'(?m)^\s+name = "', text("scripts/gate_rows.py")))
     return len(req) + len(rows) + named
 
