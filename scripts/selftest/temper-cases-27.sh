@@ -32,7 +32,7 @@ assert_eq "9.8.5 propose (WP21): so the config with its block is unchanged" "$be
 rm -rf .git
 rm -rf backend scripts fakepg; fresh
 assert_eq "9.8.5 propose: a project with no such facts gets no proposal" "True" \
-  "$("$TEMPER" doctor --propose 2>&1 | grep -q '^Nothing to propose' && echo True || echo False)"
+  "$("$TEMPER" doctor --propose 2>&1 | grep -c '^Nothing to propose' >/dev/null && echo True || echo False)"
 
 # --- 9.8.5: a fault of the environment offers the proposed block first. WP20: the offer moved from the failed plan
 #     question to the red base question (base.red), which the environment check asks before any agent ---

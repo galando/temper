@@ -330,7 +330,7 @@ d.setdefault("cli_commits", []).append(sys.argv[1])
 json.dump(d, open(p, "w"))
 PY
   # WP24: and as a repair the CLI closed after its recheck completed (the run state's repairs), the fifth condition of
-  # evidence resolve (scripts/repair_ops.py recheck_after)
+  # evidence resolve (scripts/repair_ops.py recheck_after); its close resolved the ids a case resolves by hand (1 to 99)
   python3 - "$sha" "$(git rev-parse 'HEAD^{tree}')" <<'PY'
 import json, os, sys, time
 ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -338,7 +338,8 @@ p = ".temper/build-state.json"
 d = json.load(open(p)) if os.path.exists(p) else {}
 reps = d.setdefault("repairs", [])
 reps.append({"n": len(reps) + 1, "stage": "review", "step": d.get("step"), "commit": sys.argv[1], "base_tree": sys.argv[2],
-             "tree": sys.argv[2], "committed": ts, "reruns": "passed", "complete": True, "outcome": "resolved"})
+             "tree": sys.argv[2], "committed": ts, "reruns": "passed", "complete": True, "outcome": "resolved",
+             "resolved": list(range(1, 100))})
 json.dump(d, open(p, "w"), indent=2)
 PY
   echo "$sha"

@@ -43,11 +43,8 @@ its system prompt, so its brief says nothing about enforcement.
    source the request links (ticket, MR/PR, doc) read-only and record each under
    `### Context Sources` (`consulted:` / `unavailable:` / `none:`). Then interview
    with the full question bank — current vs desired behavior, scope and non-goals,
-   acceptance, post-release outcome, blocking vs deferred decisions — and always ask
-   **who reviews the intent** (the `**Reviewer:**` header: a name, not a role). Two
-   probes are mandatory: *"what business outcome or risk does each criterion
-   address?"* (the `Why:` line) and *"who acts on the result, and what happens
-   next?"* (the Target Users action chain). Ask only where the uncertainty changes
+   acceptance, blocking vs deferred decisions. One probe is mandatory: *"what business
+   outcome or risk does each criterion address?"* (the `Why:` line). Ask only where the uncertainty changes
    the outcome — no fixed round count, one question at a time, via
    `AskUserQuestion`. No formal language is required of the originator; producing
    structure is your job, not theirs. Write every answer into `### Decisions`
@@ -67,12 +64,11 @@ its system prompt, so its brief says nothing about enforcement.
    - Header: `**Author:**` (a name the person typed, else
      `the person`; never ask git or the system for a name or email),
      `**Status:** draft`, `**Created:**`, `**Ticket:**` if one was given,
-     `**Reviewer:**` (from step 1), `**Complexity:**` (a first guess).
+     `**Complexity:**` (a first guess).
    - Fill **Problem** (who is affected, current → desired with one concrete example,
      facts separated from assumptions), **Success Criteria** (stable `AC-NN` ids,
      each `[required]`/`[optional]`, each with `Why:` and `Validate:` lines),
-     **Constraints** (each `(source: …)` or `(proposed)`), **Scope and Non-goals**,
-     **Target Users** (action chains `{user}: {what} → {what next}`), and **Open
+     **Constraints** (each `(source: …)` or `(proposed)`), **Scope and Non-goals**, and **Open
      Questions** (each labeled `Blocking:` or `Deferred:` — carrying a question
      forward honestly beats resolving it by guess).
    - **Do not write Scenarios or pick an architecture.** BDD scenarios are derived

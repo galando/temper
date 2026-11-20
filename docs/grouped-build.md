@@ -193,6 +193,14 @@ usage page.
   `refs/temper/kept/{slug}/{earlier or replan}-{time}/{G or Tn}`, with its commits; `git branch NAME REF` brings one back. A
   leftover worktree with uncommitted work is never removed. `temper state clear` (the end of a run, and Start over) moves such
   branches of older versions there too, and drops what was kept longer than `build.grouped.keep-days` (30; 0 keeps it all).
+- **A replan keeps** (9.8.5): after the new approval `temper group keep` brings back each task whose files, Depends and
+  Test are those of the plan it was built from, when the tasks it depends on are kept and its group's Depends, and the
+  groups those name, are unchanged and fully kept: its group branch comes back from the kept ref at the commit of the
+  last kept task, and the records come back as passed. A group's verdict is kept only when every task of it is kept and
+  its Validate and Interfaces are equal; every other task runs again.
+- **A blocked task** whose file an earlier or passed task of its own group owns is amended by rule
+  (`temper plan amend`): the file and the Depends entry on its owner, and the task runs again. A file no task declares is
+  the person's `temper plan patch task N --add-file F`.
 - **Timeouts.** The group gate takes `--timeout-s`; the integration suite has its own limit (`TEMPER_INTEGRATION_TIMEOUT_S`).
 - **Maven.** `scripts/maven_loop.py` runs the declared test classes offline and needs a new surefire report per class; a Maven group
   validates with `mvn verify` and JaCoCo.

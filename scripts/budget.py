@@ -37,7 +37,10 @@ SPENDS = (
     (("group", "reopen"), "tasks again", "the group's gate is FAIL or the group is parked: group:<G>"),
     (("group", "gate"), "more time", "with --timeout-s, at a group gate that is FAIL already, when the base did not measure "
                                      "the group's suite (WP20): group:<G>"),
-    (("plan", "patch"), "plan patch", "always: group:<G>, task:<N>, or gate:build for the Integration line"),
+    (("plan", "patch"), "plan patch", "always: group:<G>, task:<N>, or gate:build for the Integration line (WP25: spent by "
+                                      "scripts/plan_patch.py once every check of the patch holds)"),
+    (("plan", "amend"), "plan amend", "always: task:<N> (WP25: the amendment by rule, spent by scripts/plan_amend.py once "
+                                      "every check of it holds)"),
     (("task", "retry"), "task again", "always: task:<N>"),
     (("task", "test"), "check again", "--phase green of a task that holds env_fault: task:<N>"),
     (("acceptance", "reopen"), "test corrected", "always: acceptance"),
@@ -47,8 +50,8 @@ SPENDS = (
     (("integrate",), "merge again", "the integration record is FAIL and no repeat of gate:build paid for it: gate:build"),
     (("check", "run"), "run anyway", "with --fresh (WP22, the person's Run it anyway): gate:check; `group gate G --fresh` "
                                      "spends group:<G>, `integrate --fresh` gate:build"),
-    (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped: gate:<stage> (WP24: the repair in the stage, "
-                                    "spent by scripts/repair_ops.py once every condition holds)"),
+    (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped, or it is Review: gate:<stage> (WP24: the repair "
+                                    "in the stage, spent by scripts/repair_ops.py once every condition holds)"),
 )
 
 
@@ -153,7 +156,7 @@ def key_of(words, facts):
         return ("gate:build", "step back") if plan.get("tasks") and not plan.get("groups") else None
     if a == "repair" and b == "start":
         st = next((y for x, y in zip(words, list(words[1:])) if x == "--stage"), "")
-        return ("gate:" + st, "repair") if st and facts.failed(st) else None
+        return ("gate:" + st, "repair") if st and (facts.failed(st) or st == "review") else None   # a passed Review: the click
     if a == "state" and b == "set" and c == "pipeline_round":
         return "pipeline", "CI fix"
     if a == "state" and b == "set" and c == "next_stage":
@@ -187,6 +190,8 @@ def key_of(words, facts):
         key = "task:" + e if c == "task" and e.isdigit() else "gate:build" if c == "integration" else (
             "group:" + c if re.fullmatch(r"G\d+", c) else None)
         return (key, "plan patch") if key else None
+    if a == "plan" and b == "amend":
+        return ("task:" + e, "plan amend") if c == "task" and e.isdigit() else None
     if a == "task" and b == "retry":
         return ("task:" + c, "task again") if c.isdigit() else None
     if a == "task" and b == "test":

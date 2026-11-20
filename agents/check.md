@@ -39,8 +39,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    so point `--artifact` at the real report file, don't skip it.
 
    For **every** `Scenario:` in `intent.md` — not just the ones you're confident about —
-   find the test that exercises it (by name, by asserted behavior, or by tracing the
-   scenario's Given/When/Then to actual test code) and record one row per scenario:
+   find the test that exercises it (its `Test:` line names it; else by name, or by the
+   behavior its `Then` line states) and record one row per scenario:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
      --scenario '<the exact scenario name from intent.md>' \

@@ -270,9 +270,29 @@ the call of that answer. See `docs/flow.md`, "A command the plan wrote".
 ### `temper plan patch` (9.8.5)
 
 `temper plan patch G1 --cmd 'bash scripts/selftest/run-selftest.sh --fast'` changes one command line of the approved
-plan (`G<n>` a group's Validate, `task N` a task's Test, `integration` the Integration line), keeps every passed task,
-and spends no loop. You give it as your answer to "Change the group's command" at the group question, or to "Change the
-command" at `plan.command` (WP21: there, before the approval, it changes the line of the plan, which is checked again).
+plan (`G<n>` a group's Validate, inserted after its Depends line, or after its head, when it has none; `task N` a task's
+Test, which reopens the task when it passed, and is refused before anything is written when that reopen cannot run
+(no worktree, a task it cannot reopen, a commit on the group's branch the CLI did not record, an upstream gate it needs);
+`integration` the Integration line), keeps every other passed task, and spends one repeat.
+`temper plan patch task N --add-file F` adds a file outside the approved set to Task N and to `approved_files` (a name
+with no dot and no slash is written `./F`, so the plan reads it as a file). The static rows of the plan gate run on the
+result first, and a row it newly fails refuses the patch. You give it as your answer to "Change the group's command" at
+the group question, to "Add to plan" at a task blocked on a file no task declares, or to "Change the command" at
+`plan.command` (WP21: there, before the approval, it changes the line of the plan, which is checked again).
+
+### `temper plan amend` (9.8.5, WP25)
+
+`temper plan amend task N --add-file F [--failure ID]` is the amendment by rule: it adds to Task N a file a task of its
+own group declares that precedes Task N or passed, and that task to its Depends line, and nothing else. The CLI writes
+both lines, refuses every other change (see `docs/flow.md`, "A blocked task and the plan amendment"), spends one repeat
+(`task:N`), appends to `.temper/evidence/amendments.json` and reopens the task. The flow calls it by itself when a task
+is blocked on such a file; any caller may, because its whole effect is bounded by the CLI.
+
+### `temper group keep` (9.8.5, WP25)
+
+`temper group keep` is the first Build action after a replan's approval: it restores the built tasks of the earlier
+plan whose files, Depends and Test did not change, with their group branches (see `docs/flow.md`, "What a replan
+keeps"). It runs once per replan and is a no op otherwise.
 
 ## `/temper:intent`
 
@@ -290,7 +310,7 @@ without starting the pipeline.
 - Interviews the originator the way an analyst would (scope, affected users,
   constraints, what better looks like) — no formal language required of them
 - Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (a name you
-  typed, else `the person`; never from git), Problem, measurable Success Criteria, Constraints, Target Users, and Open
+  typed, else `the person`; never from git), Problem, measurable Success Criteria, Constraints, Scope and Non-goals, and Open
   Questions — **no scenarios and no architecture**; those are Plan's job, derived from
   the measured blast radius later
 - Keeps criteria and constraints firm: `temper gate intent` fails a draft that uses

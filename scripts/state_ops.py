@@ -335,9 +335,21 @@ def state_init(argv):
         pass
 
 
+def _amendments_close(p):
+    """WP25: an approval starts the list of the plan since the approval again: the amendments and patches of the plan
+    before it go to .temper/archive/ (the commit card lists .temper/evidence/amendments.json whole)."""
+    import os, time
+    src = os.path.join(os.path.dirname(os.path.abspath(p)), 'evidence', 'amendments.json')
+    if os.path.isfile(src):
+        dst = os.path.join(os.path.dirname(os.path.abspath(p)), 'archive')
+        os.makedirs(dst, exist_ok=True)
+        os.replace(src, os.path.join(dst, 'amendments-%s.json' % time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())))
+
+
 def approve_plan(argv):
     import json, os, sys
     p = argv[1]
+    _amendments_close(p)
     d = json.load(open(p))
     try:
         files = json.loads(argv[2])
@@ -372,6 +384,7 @@ def approve_design_tasks(argv):
         d['approved_files'] = files
     d['plan_hash'] = argv[3]
     d['tasks_changed_by_design'] = True
+    _amendments_close(p)
     tmp = '%s.tmp.%d' % (p, os.getpid())
     with open(tmp, 'w') as f:
         json.dump(d, f, indent=2)

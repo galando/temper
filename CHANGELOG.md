@@ -213,7 +213,36 @@ All notable changes to Temper are documented here. The plugin version lives in
   CLI and asked (`repair.stop`); a diff that removes test lines, a file outside the plan, the spec folder, the config,
   a lockfile, a CI file or a sensitive path is never committed by rule. One repair by rule a stage, one more on your
   click (`Repair again`), counted in the one budget; the rule's loop back to Build is gone, and the loop back stays
-  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs.
+  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs, in
+  every run. The fixer asks about a file outside the plan with `temper drift ask`, as at Build, and `adhoc close`
+  never closes a repair window.
+- WP25: a plan fault a narrow change repairs costs no replan (ADR 0019, ADR 0021). A task blocked on a file an earlier
+  or passed task of its own group declares is amended by rule, in every mode, with no question: the CLI's own
+  `temper plan amend task N --add-file F` adds the file and one Depends entry on its owner, and nothing else, refuses
+  every other change (a file no task or another group declares, a test file, a locked acceptance test, a sensitive path,
+  a running or passed task, a row the result newly fails, no room in the budget), spends one repeat (`task:N`) and runs
+  the task again; the commit card lists it under `THE PLAN SINCE THE APPROVAL`. A file no task declares is offered as
+  `Add to plan` (`add-file`), your `temper plan patch task N --add-file F`, which also adds it to the approved files.
+  `plan patch` resets a patched group's failure marks, inserts a missing Validate line, reopens a passed task whose
+  Test line changed, runs the plan gate's static rows on the result, spends its repeat only once it holds, and its
+  ledger row no longer says "by the person"; the group question names the command the plan has now. Both calls append
+  to `.temper/evidence/amendments.json` and move `plan_hash`; the approved record is never overwritten. The plan gate
+  gains the row `group validate command`. A replan keeps the built tasks whose files, Depends and Test did not change
+  (`temper group keep`), and its approval card says how many. The budget note of the commit card reads
+  `repeats of the budget used: N of M`.
+- WP26: Plan writes only what a script, a gate row or a later agent reads. At the simple tier a plan is `tasks.md` and
+  the scenarios, with no `plan.md`; above it `plan.md` holds a Context Map and a Blast Radius, and no tier needs one.
+  Each scenario is one `gherkin` block of four lines (its name, one `Then` line, `Covers:`, `Test:`), and Review, Check
+  and Build judge a test against that `Then` line. No `Traced to:` line is written: a scenario is owed by the task that
+  declares the file its `Test:` command runs (a plan with the line still reads). The plan gate loses the rows
+  `criteria -> scenarios`, `cross-repo search recorded` and `blast radius documented`, the Intent gate the row
+  `target users action chain`; a plan.md with no Context Map passes its row; the row `tier recorded` bounds the simple
+  tier (one group, at most 3 production files, risk below H) and names `temper state set complexity medium`.
+  `temper spec deviations` writes `deviations.md` in the spec folder and never touches plan.md. The templates and the
+  briefs lose the Reviewer line, Business Outcome, Target Users, the Scenario Coverage Checklist, the intent's panel,
+  Architecture, Approach Decisions, the diagram, the file tables, Patterns, Dependencies and Risk Level. Intent looks a
+  fact up and never asks it: one search a question, and a fact it finds is a Decisions row
+  `{the fact} -> as the project holds it ({file}:{line})`.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

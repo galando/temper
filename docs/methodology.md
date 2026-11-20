@@ -16,7 +16,6 @@ The Intent section of `intent.md` contains:
 - **Problem** — What problem are we solving? For whom?
 - **Success Criteria** — Measurable outcomes, each with a **`Validate:` type** that tells review *how* to check it
 - **Constraints** — Technical or business limitations
-- **Target Users** — Who benefits
 
 ### Validate Types
 
@@ -83,6 +82,14 @@ Not the other way around. This prevents the AI from planning 15 files and then w
 
 Every file in the plan must justify its existence. If the AI plans a file that no scenario needs and isn't infrastructure — that file shouldn't exist.
 
+### What Plan writes (9.8.5)
+
+Plan writes only what a script, a gate row or a later agent reads. At the simple tier that is `tasks.md` and the
+scenarios of `intent.md`; above it a short `plan.md` as well, with a Context Map and a Blast Radius. Each scenario is
+one fenced `gherkin` block of four lines: its name, one `Then` line, `Covers:` and `Test:`. The task that declares the
+file a scenario's `Test:` command runs owes that scenario; no `Traced to:` line is written. The CLI bounds the simple
+tier: one group, at most 3 production files, a risk below H.
+
 ### Scenario Coverage Gate
 
 The Check gate holds the scenario coverage row (`scenarios traced to tests`):
@@ -117,9 +124,9 @@ TDD in Temper is **scenario-driven**. Instead of the AI deciding what to test, t
 
 | BDD Scenario | Becomes TDD |
 |-------------|-------------|
-| `Given` (preconditions) | Test setup |
-| `When` (action) | Method/endpoint call |
 | `Then` (expected outcome) | Assertions |
+| the Cases of the task that owns it | Further cases of the test |
+| `Test:` | The command that runs the test |
 | Scenario name | Test name |
 
 The cycle per scenario:
@@ -145,10 +152,9 @@ AI built password reset. All tests pass. But intent.md had:
 
 ```gherkin
 Scenario: Rate limiting on reset requests
-  Given a user has requested 3 resets in 10 minutes
-  When they request another reset
-  Then the request is rejected with 429
-  Note: unit
+  Then a fourth reset request within 10 minutes is rejected with 429
+  Covers: AC-03
+  Test: pytest tests/test_reset.py::test_rate_limiting -q
 ```
 
 The scenario coverage row at Check caught it: no test for rate limiting. The loop back to Build wrote the test. Test failed. Build implemented rate limiting. Test passed.

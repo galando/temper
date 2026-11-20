@@ -25,6 +25,7 @@ import textwrap
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import acceptance  # noqa: E402
 import budget  # noqa: E402
+import group_keep  # noqa: E402
 import output_ops  # noqa: E402
 import plan_ops  # noqa: E402
 import run_summary  # noqa: E402
@@ -411,6 +412,10 @@ def approval(b, nxt):
             if first.get("id") == "approve-run" else ["You are asked after every stage, and at the commit."])
     if paths:
         foot.append("Nothing under a sensitive path is repaired by rule.")
+    kept = group_keep.count(r.state, r.groups, r.plan or {}) if r.plan else None
+    if kept is not None:   # WP25: a replan keeps the built tasks whose approved fields did not change
+        foot.append("The replan keeps %d built task%s whose files, Depends and Test did not change; the others run again."
+                    % (kept, "" if kept == 1 else "s"))
     est = estimate()
     if est:
         foot.append(est)
@@ -540,8 +545,17 @@ def commit(b, nxt):
                                        x.get("what") or ""),
                     "by rule" if x.get("kind") in ("advance", "repair", "group fix", "covered", "amend") else None)
                 for x in log]
-        out.append(sec("rule_log", "DECIDED BY RULE", rows, "%d of %d repeats of the budget used" % (
+        out.append(sec("rule_log", "DECIDED BY RULE", rows, "repeats of the budget used: %d of %d" % (
             rm["run_used"], rm["run_limit"]), 8, os.path.join(TEMPER, "rule-log.json")))
+    # WP25: every change of the approved plan since the approval (.temper/evidence/amendments.json): an amendment by rule,
+    # and a patch with its new command word for word; the approved record itself is never written
+    amends = [x for x in load(os.path.join(TEMPER, "evidence", "amendments.json"), []) if isinstance(x, dict)]
+    if amends:
+        rows = [cell("amended by rule: %s" % x.get("what"), "by rule") if x.get("kind") == "amend" else
+                cell("patched: %s" % x.get("what") if not x.get("old") and str(x.get("what", "")).find(" gains ") > 0 else
+                     "patched: %s: %s (was %s)" % (x.get("what"), x.get("new"), x.get("old") or "none")) for x in amends]
+        out.append(sec("plan_changes", "THE PLAN SINCE THE APPROVAL", rows, "%d change%s; the approved record is kept" % (
+            len(rows), "" if len(rows) == 1 else "s"), 6, os.path.join(TEMPER, "evidence", "amendments.json")))
     skips = [o for o in r.overrides if isinstance(o, dict) and o.get("stage")]
     if skips:
         out.append(sec("skips", "SKIPPED", [cell("%s: %s" % (STAGE_NAMES.get(o["stage"], o["stage"]),

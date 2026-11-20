@@ -306,7 +306,7 @@ assert_eq "w26 no page asks for a cut part: agents, reference and templates name
   "$(git -C "$REPO_ROOT" grep -n -F -e 'Cross-Repo Search' -e 'Files to Create' -e 'Files to Modify' -e 'Patterns to Follow' \
       -e 'Risk Level:' -e 'Scenario Coverage Checklist' -e 'Target Users' -e 'Business Outcome' -e 'Traced to' \
       -e 'Given/When/Then' -e 'Approach Decisions' -e '## Diagram' -- agents reference templates | cut -d: -f1,2 | head -20 \
-      | tr '\n' ' ' | sed 's/ $//;s/^$/none/')|mermaid=$(grep -c mermaid "$REPO_ROOT/templates/plan.md" 2>/dev/null)"
+      | { tr '\n' ' '; echo; } | sed 's/ $//;s/^$/none/')|mermaid=$(grep -c mermaid "$REPO_ROOT/templates/plan.md" 2>/dev/null)"
 
 # --- 14. Intent looks a fact up and never asks it (the owner's addition of 2026-11-19) ---
 assert_eq "w26 intent looks a fact up: agents/intent.md holds the paragraph A fact is looked up, never asked, after The request decides first, naming one search a question and the Decisions row" \
