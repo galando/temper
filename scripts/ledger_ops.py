@@ -116,7 +116,8 @@ def evidence_entry(argv):
         e['read'] = list(dict.fromkeys(os.path.normpath(os.path.relpath(r) if os.path.isabs(r) else r) for r in reads if r.strip()))
     # WP24: a finding of Review carries its whole text: --detail, --fix and --proof test|none (the reviewer's, never the fixer's)
     more = dict(r[1:].split('=', 1) for r in argv[15:] if r.startswith('\x1f') and '=' in r)
-    more.pop('answer', None)
+    if set(more) - {'detail', 'fix', 'proof'}:   # phase 7 recheck (B-R1): no other key, executed_by above all, comes this way
+        sys.exit("FAIL: --detail, --fix and --proof are the only fields of a finding")
     # lane B of phase 7 (WP27 step 7): --person is the call of the person's confirm option at the Check question, the one
     # row a criterion the person confirms counts from (acceptance.py check); only the mod ties it to the person's click.
     # As Run it anyway (budget.py), a run that goes on by itself with no stop open never records it (flow_run.armed)
@@ -157,6 +158,8 @@ def evidence_list(argv):
             line += f" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})"
         if e.get('scenario'):
             line += f" [scenario: {e.get('scenario')}]"
+        if e.get('executed_by') == 'person':   # phase 7 recheck (B-R2): the row of the person's Confirmed answer
+            line += " [the person's]"
         print(line)
 
 

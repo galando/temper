@@ -135,7 +135,7 @@ not count for it. That the answer was yours only the mod holds: it lets a `--per
 the option you picked, word for word, as it does Run it anyway. With the mod off, nothing checks who ran it: the Check
 brief tells the agent never to record one, the CLI takes the flag only with a criterion and exit 0 and never in a run
 that goes on by itself with no stop open, and the row stays in the ledger as the person's, where `temper evidence list
---stage check` shows it.
+--stage check` marks it. A field list passed through `--read` is refused, so no other call marks a row as yours.
 
 
 ## Pull requests and the Pipeline stage (9.7.5)

@@ -410,8 +410,8 @@ that run up ([Entering at a stage](#stage-commands-are-doors)).
    • Token expiration handling
    • Email delivery failures
 
-📝 Generated: intent.md
-   Success criteria (3):
+📝 intent.md: the scenarios added under the accepted criteria
+   Success criteria (3, from Intent):
      ✓ Users can reset password without support → validate: scenario
      ✓ Reset completes in under 2 minutes       → validate: manual
      ✓ Support tickets decrease 30%              → validate: metric

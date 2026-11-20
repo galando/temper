@@ -388,6 +388,10 @@ _w27_7c="before=$(_ac71)"
 _w27_7c+="|agent add=$(_ac71)"
 "$TEMPER" evidence run --stage check --criterion AC-01 --claim 'it holds' -- true >/dev/null 2>&1
 _w27_7c+="|agent run=$(_ac71)"
+# (phase 7 recheck, B-R1) a field list passed through --read cannot mark a row as the person's: the call is refused,
+# and the criterion stays open
+_w27_7e="field=$("$TEMPER" evidence add --stage check --criterion AC-01 --claim 'I looked' --cmd true --exit 0 --severity low \
+  --read $'\x1f'executed_by=person >/dev/null 2>&1 && echo taken || echo refused)|after=$(_ac71)"
 _w27_7c+="|bare --person=$("$TEMPER" evidence add --stage check --claim 'a note' --person >/dev/null 2>&1 && echo taken || echo refused)"
 _w27_7c+="|option=$(nx "$_cf71; 'person' if any('--criterion AC-01' in c and ' --person' in c for c in o.get('calls') or []) else 'no person'")"
 while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "$_cf71; chr(10).join(o.get('calls') or [])")
@@ -397,6 +401,11 @@ rows = [x for x in json.load(open('.temper/evidence/check.json')) if isinstance(
 print(rows[-1].get('executed_by') if rows else 'none')" 2>/dev/null)"
 assert_eq "w27 no command means the person confirms: in the Check branch an agent's row (evidence add, or evidence run of another command) leaves the criterion open; the confirm option's call carries --person, writes executed_by person, and the criterion counts; a bare --person is refused" \
   "before=open|agent add=open|agent run=open|bare --person=refused|option=person|after confirm=counted|by=person" "$_w27_7c"
+assert_eq "w27 no command means the person confirms: a field list passed through --read never marks a row as the person's (the call is refused, the criterion stays open)" \
+  "field=refused|after=open" "$_w27_7e"
+# (phase 7 recheck, B-R2) the plain list shows the person's row as the person's, as docs/trust.md says
+assert_eq "w27 no command means the person confirms: temper evidence list --stage check marks the confirmed row as the person's" \
+  "1" "$("$TEMPER" evidence list --stage check 2>/dev/null | grep -c "\[the person's\]")"
 # as Run it anyway: a run the person started at the approval that goes on by itself, with no stop open, never records the
 # person's row; at its stop (the park call, then the Check question) the confirm option's call does
 _unattended check; sed -i '0,/Validate: scenario — traced to a test below/s//Validate: code — the module exports one builder function/' .temper/specs/demo/intent.md

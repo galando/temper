@@ -74,12 +74,12 @@
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
   "pack_skill_bytes": {
-   "now": 79656,
+   "now": 79650,
    "final": 79658,
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 215503,
+   "now": 215609,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },
