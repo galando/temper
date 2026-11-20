@@ -86,6 +86,9 @@ setup() {
   cd "$WORKDIR" || exit 1   # never run the deletes below anywhere but the throwaway folder
   rm -rf .temper .claude .gitignore   # no case ignores .temper for the next one
   mkdir -p .claude .temper/specs/demo
+  # WP31: the one time notice was said (.temper/notice.json, the version as its key), as `temper init` writes it for a
+  # new project; a case of the notice makes its project without setup (temper-cases-75.sh, D102 of temper-cases-46.sh)
+  printf '{"9.8.5": "the selftest"}\n' > .temper/notice.json
   git init -q . 2>/dev/null || true
   cat > .claude/temper.config <<'EOF'
 stack: auto
