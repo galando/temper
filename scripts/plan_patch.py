@@ -3,7 +3,8 @@ before the approval, as the answer at plan.command, when the plan's line changes
 the approved set).
 
   python3 plan_patch.py SPEC STATE GROUPS LEDGER G<n> --cmd '<command>'        a group's **Validate:** line (inserted
-                                                                              after its **Depends:** line when it has none)
+                                                                              after its **Depends:** line, or its head,
+                                                                              when it has none)
   python3 plan_patch.py SPEC STATE GROUPS LEDGER task <N> --cmd '<command>'    a task's **Test:** line
   python3 plan_patch.py SPEC STATE GROUPS LEDGER integration --cmd '<command>' the plan's **Integration:** line
   python3 plan_patch.py SPEC STATE GROUPS LEDGER task <N> --add-file F         a file on Task N's **File:** line, and in
@@ -17,7 +18,8 @@ the plan ledger records the old and the new line; a patched group's check runs a
 WP25: the static rows of the plan gate run on the result first, and a row the result newly fails refuses the patch with
 tasks.md as it was; the budget is spent here, once every check holds (one repeat: group:<G>, task:<N> or gate:build); an
 approved plan's patch is appended to .temper/evidence/amendments.json (the approved record is never written); a passed
-task whose Test line changed is reopened (the CLI's group reopen runs after this, on the REOPEN line it prints); a task
+task whose Test line changed is reopened (the CLI's group reopen runs after this, on the REOPEN line it prints; a patch
+whose reopen could not run is refused first, before anything is written or spent); a task
 that gained a file and is neither running nor passed runs again. The ledger row says what changed, never who called: the
 CLI cannot know it (docs/trust.md; with the mod, only the person's answer runs it). Standard library only.
 """
@@ -70,8 +72,8 @@ def patch_lines(lines, target, num, cmd):
         start = next((i for i, l in enumerate(lines) if re.match(head, l)), None)
         if start is None:
             return None, "tasks.md has no %s %s" % ("group" if target == "group" else "task", num)
-        lvl = 2 if target == "group" else 3
-        end = next((i for i in range(start + 1, len(lines)) if re.match(r"^#{1,%d}\s" % lvl, lines[i])), len(lines))
+        # a group's own lines end at its first task's head, a task's lines at the next head
+        end = next((i for i in range(start + 1, len(lines)) if re.match(r"^#{1,3}\s", lines[i])), len(lines))
     for i in range(start, end):
         m = re.match(r"^(\s*\*\*%s:\*\*\s*)`([^`]*)`(.*)$" % key, lines[i])
         if m:
@@ -79,10 +81,9 @@ def patch_lines(lines, target, num, cmd):
             lines = list(lines)
             lines[i] = "%s`%s`%s" % (m.group(1), cmd, m.group(3))
             return lines, old
-    if target == "group":   # WP25: a group with no Validate line gets one, after its **Depends:** line
-        dep = next((i for i in range(start, end) if re.match(r"^\s*\*\*Depends:\*\*", lines[i])), None)
-        if dep is not None:
-            return list(lines[:dep + 1]) + ["**Validate:** `%s`" % cmd] + list(lines[dep + 1:]), ""
+    if target == "group":   # WP25: a group with no Validate line gets one, after its **Depends:** line (or its head)
+        dep = next((i for i in range(start, end) if re.match(r"^\s*\*\*Depends:\*\*", lines[i])), start)
+        return list(lines[:dep + 1]) + ["**Validate:** `%s`" % cmd] + list(lines[dep + 1:]), ""
     return None, "no **%s:** line with a backticked command there" % key
 
 
@@ -114,7 +115,9 @@ def main(argv):
     st = load(state)
     if st is None:
         return fail("no active run (temper state init)")
-    approved = bool(st.get("plan_hash"))   # WP21: before the approval, the answer at plan.command changes the plan's line
+    # WP21: before the approval, the answer at plan.command changes the plan's line (a step back to Plan keeps plan_hash
+    # until the next approval writes it: the run at Plan is before an approval too)
+    approved = bool(st.get("plan_hash")) and st.get("next_stage") not in ("intent", "plan")
     path = os.path.join(spec, "tasks.md")
     text = open(path, encoding="utf-8").read()
     lines = text.split("\n")
@@ -135,6 +138,14 @@ def main(argv):
             return fail(old)
     if approved and digest(tasks_md.parse(path)) != st.get("plan_hash"):
         return fail("tasks.md differs from the approved plan in more than this line; loop back to Plan")
+    got = plan_amend.parse_text("\n".join(new))   # the plan must read the change as the call wrote it
+    if (add and cmd not in [plan_amend.norm(f) for t in got["tasks"] if str(t["n"]) == num for f in t.get("files") or []]) or \
+            (target == "group" and next((x.get("validate") for x in got["groups"] if x["id"] == num), None) != cmd):
+        return fail("the plan would not read %s as written there; tasks.md is as it was" % cmd)
+    if approved and target == "task" and not add:   # the CLI's group reopen runs after this call: what refuses it, first
+        why = reopen_refusal(groups, num, got)
+        if why:
+            return fail("%s; tasks.md is as it was" % why)
     bad = plan_amend.new_faults(spec, text, "\n".join(new))
     if bad:
         return fail("the result fails the plan row %s: %s; tasks.md is as it was" % bad[0])
@@ -185,6 +196,29 @@ def main(argv):
     if reopen:
         print("REOPEN: %s %s" % (gid, " ".join("--task %d" % n for n in reopen)))
     return 0
+
+
+def reopen_refusal(groups, num, plan):
+    """Why the group reopen of passed Task num, whose Test line the patch changes, could not run (the group has no
+    worktree, or scripts/task_ops.py reopencheck refuses), checked before anything is written or spent; None when it can
+    run or no reopen is needed."""
+    g = load(groups) or {}
+    if ((g.get("tasks") or {}).get(num) or {}).get("status") != "passed":
+        return None
+    gid = next((x.get("group") for x in plan["tasks"] if str(x["n"]) == num), None)
+    if not gid:
+        return None
+    if not ((g.get("groups") or {}).get(gid) or {}).get("worktree"):
+        return ("Task %s passed and must be built again against the new Test line, but group %s is not started: its "
+                "reopen cannot run" % (num, gid))
+    import subprocess
+    r = subprocess.run([sys.executable, "-E", "-s", os.path.join(os.path.dirname(os.path.abspath(__file__)), "task_ops.py"),
+                        "reopencheck", json.dumps(plan), groups, gid] + [str(n) for n in [int(num)] + reopen_with(plan, g, int(num))],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL)
+    if r.returncode != 0:
+        lines = r.stderr.decode("utf-8", "replace").strip().splitlines() or ["reopencheck failed"]
+        return "the reopen of Task %s cannot run: %s" % (num, lines[-1].replace("FAIL: ", "", 1))
+    return None
 
 
 def reopen_with(plan, run, n):

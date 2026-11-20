@@ -299,10 +299,10 @@ assert_eq "D38e the old loop keys are read by nothing: set high they change no r
 # with this plan approved (m_setup), started at the approval as approve-run starts it (_ran_unattended). Each task has
 # two cases, so the plan passes every static row the amendment runs on its result.
 printf '%s\n' '# Tasks: demo' '' '**Integration:** `true`' '' '## Group G1: Core' '**Depends:** none' '**Validate:** `true`' '**Context:**' 'x' '' \
-  '### Task 1: first' '**File:** `src/demo.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- a' '- a bad input is refused' '- [ ] done' '' \
-  '### Task 2: second' '**File:** `src/other.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- b' '- a bad input is refused' '- [ ] done' | m_setup
+  '### Task 1: first' '**File:** `src/other.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- a' '- a bad input is refused' '- [ ] done' '' \
+  '### Task 2: second' '**File:** `src/demo.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- b' '- a bad input is refused' '- [ ] done' | m_setup
 _ran_unattended
-"$TEMPER" plan amend task 1 --add-file src/other.sh >/dev/null 2>&1 || true
+"$TEMPER" plan amend task 2 --add-file src/other.sh >/dev/null 2>&1 || true   # Task 1, before it, declares the file
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 "$TEMPER" evidence add --stage review --claim 'src/demo.sh:3 a missing null check' --severity medium --label HEURISTIC >/dev/null 2>&1
 _done45 src/demo.sh src/other.sh

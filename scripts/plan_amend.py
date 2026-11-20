@@ -7,16 +7,17 @@ decision 3 and ADR 0021).
 A task whose test needs a file its own group already owns (`temper task blocked N --needs F`, Task M of the same group
 declares F) is no fault of the plan's shape: one more file on the task and one Depends entry on its owner build it. The
 amendment does only that, and its whole effect is bounded here, whoever calls it: the caller passes no text, the CLI
-writes Task N's **File:** line with F added and its **Depends:** line with the owner added. It refuses unless the plan is
-approved and tasks.md is that plan; another task of the same group declares F and F is in approved_files; F is no test
-file of that task, no locked acceptance test and under no sensitive path; Task N is neither running nor passed; the
-result differs from the plan only in those two lines; the static rows of the plan gate (scripts/plan_rows.py and
-gate_rows.py plan-rows) pass on the result where they passed before; and the budget of WP10 has room (one repeat, the key
-task:N, the kind plan amend). Then it writes tasks.md in one rename, moves plan_hash in the run state and in groups.json
-(so the approval still binds the plan Build runs), appends an entry to .temper/evidence/amendments.json (the approved
-record, approved-tasks.json, is never written here), writes the plan ledger row `plan amended by rule: ...` (never a
-person's label: the CLI cannot know who called it, docs/trust.md), writes the rule log entry of the kind amend, and
-reopens Task N (its blocked mark, the group's park, gate and failure marks go; the task runs again).
+writes Task N's **File:** line with F added and its **Depends:** line with the owner added. It refuses unless the plan
+is approved (the run is past Plan) and tasks.md is that plan; a task of the same group that precedes Task N, or that
+passed, declares F and F is in approved_files; F is no test file of that task, no locked acceptance test and under no
+sensitive path; Task N is neither running nor passed; the result differs from the plan only in those two lines; the
+static rows of the plan gate (scripts/plan_rows.py and gate_rows.py plan-rows) pass on the result where they passed
+before; and the budget of WP10 has room (one repeat, the key task:N, the kind plan amend). Then it writes tasks.md in
+one rename, moves plan_hash in the run state and in groups.json (so the approval still binds the plan Build runs),
+appends an entry to .temper/evidence/amendments.json (the approved record, approved-tasks.json, is never written here),
+writes the plan ledger row `plan amended by rule: ...` (never a person's label: the CLI cannot know who called it,
+docs/trust.md), writes the rule log entry of the kind amend, and reopens Task N (its blocked mark, the group's park,
+gate and failure marks go; the task runs again).
 
 The helpers here (the static rows on a result, the record of the amendments, the reopen of a task that holds no work on
 the group branch) are scripts/plan_patch.py's too. The flow asks `can` before it offers the call, so it never offers an
@@ -216,8 +217,9 @@ def with_file(text, n, f, owners=()):
         if not inside:
             continue
         fm = re.match(r"^(\*\*Files?:\*\*)(\s*)(.*?)\s*$", l)
-        if fm and not done_file:
-            lines[i] = "%s %s`%s`" % (fm.group(1), fm.group(3) + ", " if fm.group(3) else "", f)
+        if fm and not done_file:   # a path with no slash and no dot (Makefile) is read as a file only as ./Makefile
+            tok = f if "/" in f or "." in f else "./" + f
+            lines[i] = "%s %s`%s`" % (fm.group(1), fm.group(3) + ", " if fm.group(3) else "", tok)
             done_file = True
         dm = re.match(r"^(\*\*Depends:\*\*)\s*(.*?)\s*$", l)
         if dm and not done_dep:
@@ -245,6 +247,9 @@ def check(r, n, f):
     st = r.state
     if not st.get("plan_hash"):
         return "the plan is not approved: an amendment changes an approved plan only", None
+    if st.get("next_stage") in ("intent", "plan"):   # a step back keeps plan_hash until the next approval writes it
+        return "the plan is not approved: the run is at %s again, and an amendment changes an approved plan only" % (
+            st["next_stage"].capitalize()), None
     if not r.spec or not r.plan or approval.plan_digest(r.plan) != st.get("plan_hash"):
         return "tasks.md differs from the approved plan (a change since the approval): restore it, or loop back to Plan", None
     by_n = {t["n"]: t for t in r.plan.get("tasks") or []}
@@ -262,6 +267,12 @@ def check(r, n, f):
         return ("only a task of another group declares %s (%s): an amendment adds a file its own group %s owns, and "
                 "nothing else" % (f, ", ".join("Task %d of %s" % (m, by_n[m].get("group")) for m in owners),
                                   t.get("group"))), None
+    run = r.groups.get("tasks") or {}
+    later = [m for m in own if m > n and (run.get(str(m)) or {}).get("status") != "passed"]
+    own = [m for m in own if m not in later]   # only a task that precedes Task n, or that passed, owns it for the rule
+    if not own:
+        return ("only a later task of the group declares %s (%s): the plan orders it first, so loop back to Plan" % (
+            f, ", ".join("Task %d" % m for m in later))), None
     if r.spec and (f + "/").startswith(norm(os.path.join(os.path.relpath(r.spec), "acceptance")) + "/"):
         return "%s is under the acceptance folder of the spec: a locked acceptance test is no task's to change" % f, None
     if commit_rows.TEST_RE.search(f):

@@ -506,5 +506,23 @@ _RP20_HOOK='for _r in $(git for-each-ref --format="%(refname)" "refs/temper/kept
 _replan20 's|^\*\*Test:\*\* `test -f src/b.sh`|**Test:** `test -s src/b.sh`|'
 _RP20_HOOK=""
 assert_eq "replan: a kept task whose commit is no longer in the kept ref is not restored" "task1=not passed|task3=passed" "$(_st20 1 3)"
+# two tasks of G1 that ran beside each other: the second to pass joined the group branch by a merge commit of the CLI's
+_rp20 's|^\*\*Depends:\*\* Task 1$|**Depends:** none|' | m_setup
+for _n in 1 2; do "$TEMPER" task start "$_n" >/dev/null 2>&1; "$TEMPER" task test "$_n" --phase red >/dev/null 2>&1; done
+mkdir -p .claude/worktrees/temper-demo-T1/src .claude/worktrees/temper-demo-T2/src
+echo 'echo 1' > .claude/worktrees/temper-demo-T1/src/a.sh; echo 'echo 2' > .claude/worktrees/temper-demo-T2/src/b.sh
+for _n in 1 2; do "$TEMPER" task test "$_n" --phase green >/dev/null 2>&1; "$TEMPER" task gate "$_n" --model m >/dev/null 2>&1; done
+"$TEMPER" group gate G1 >/dev/null 2>&1
+_replan20 's|^\*\*Depends:\*\* Task 1$|**Depends:** none|;s|^\*\*Test:\*\* `test -f src/c.sh`|**Test:** `test -s src/c.sh`|'
+assert_eq "replan: an unchanged task whose pass joined the group branch by a merge commit is kept" \
+  "task1=passed|task2=passed|G1=PASS|merges=1|merge in cli_commits=True" \
+  "$(_st20 1 2)|G1=$(_t20 "(d.get('groups', {}).get('G1') or {}).get('gate', {}).get('verdict') or 'not kept'")|merges=$(git rev-list --first-parent --merges --count feature/demo..temper/demo/G1 2>/dev/null)|merge in cli_commits=$(_t20 "'$(git rev-list --first-parent --merges -1 feature/demo..temper/demo/G1 2>/dev/null)' in (d.get('cli_commits') or [])")"
+# a step back whose archive has no stamp (tasks.md was edited after the approval) keeps nothing of an older replan
+_built20
+_replan20 's|^\*\*Test:\*\* `test -f src/b.sh`|**Test:** `test -s src/b.sh`|'
+sed -i 's|^\*\*Test:\*\* `test -f src/d.sh`|**Test:** `test -e src/d.sh`|' .temper/specs/demo/tasks.md
+_replan20 's|^\*\*Test:\*\* `test -f src/b.sh`|**Test:** `test -s src/b.sh`|'
+assert_eq "replan: a newer archive with no stamp keeps nothing of an older replan's archive" \
+  "task1=not passed|task2=not passed|task3=not passed|task4=not passed" "$(_st20 1 2 3 4)"
 cd "$WORKDIR" || true
 rm -rf "$T20"

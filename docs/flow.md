@@ -56,7 +56,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto` and the person is asked about it (9.8.5, WP13: a flagged map under `auto`, every map under `always`, none under `off`, and not a map folded into the approval; else `null`): the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; 9.8.5: id `plan.context`, kind `context`, options `as-planned`, `include-left-out`, `type` and `carry`; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
 | `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
 | `guard.adhoc_kind` | WP24, only while a window of a kind is open: `repair` for a repair in the stage (the mod holds Build's write rule there); absent for a small change |
-| `card` | 9.8.5 (WP15), with `ask`: the card of a question that decides, or `null` for any other question. `{kind, run_id, step, title, tag, sections: [{id, title, note, rows: [{text, mark}], total, file}], foot}`; `kind` is `approval` (`plan.approve`, `rca.approve`, and `design.pass`, the approval when the person asked for Design), `commit` (`commit.confirm`, and `check.pass` of a run that asks at every stage) or `stop` (any other question at a stage whose check failed and is not skipped, or a stop of a run that goes on by itself); `run_id` and `step` are the question's. A section is cut when `total` is larger than the count of its rows, and `file` says where the rest is; `mark` is one of `proposed`, `create`, `modify`, `sensitive`, `left out`, `not found`, `not measured`, `open`, `skipped`, `by rule`, or `null`. The sections of the approval, in order: `request`, `assumptions`, `criteria`, `out_of_scope`, `answers`, `files`, `commands` (word for word, never cut), `context` (every flagged line whole), `launches`, `risk`, `baseline`; of the commit: `criteria`, `suite`, `coverage`, `planted_bugs`, `review`, `files`, `rule_log`, `skips`, `tree`, `run`, `message` (the message the click uses); of a stop: `what_fails`, `tried` (the budget used for the failure and the run), `reading`, `still_green`, `spent`. A section with no source is left out. No card holds dollars; a time is in minutes, and the approval's estimate is the median of the finished runs `.temper/runs.jsonl` keeps. The card is built by `scripts/card.py` in the same call as the question, and never goes into the question text. `temper card` prints its rows (76 columns), `temper go` gives them as `card` |
+| `card` | 9.8.5 (WP15), with `ask`: the card of a question that decides, or `null` for any other question. `{kind, run_id, step, title, tag, sections: [{id, title, note, rows: [{text, mark}], total, file}], foot}`; `kind` is `approval` (`plan.approve`, `rca.approve`, and `design.pass`, the approval when the person asked for Design), `commit` (`commit.confirm`, and `check.pass` of a run that asks at every stage) or `stop` (any other question at a stage whose check failed and is not skipped, or a stop of a run that goes on by itself); `run_id` and `step` are the question's. A section is cut when `total` is larger than the count of its rows, and `file` says where the rest is; `mark` is one of `proposed`, `create`, `modify`, `sensitive`, `left out`, `not found`, `not measured`, `open`, `skipped`, `by rule`, or `null`. The sections of the approval, in order: `request`, `assumptions`, `criteria`, `out_of_scope`, `answers`, `files`, `commands` (word for word, never cut), `context` (every flagged line whole), `launches`, `risk`, `baseline`; of the commit: `criteria`, `suite`, `coverage`, `planted_bugs`, `review`, `files`, `rule_log`, `plan_changes`, `skips`, `tree`, `run`, `message` (the message the click uses); of a stop: `what_fails`, `tried` (the budget used for the failure and the run), `reading`, `still_green`, `spent`. A section with no source is left out. No card holds dollars; a time is in minutes, and the approval's estimate is the median of the finished runs `.temper/runs.jsonl` keeps. The card is built by `scripts/card.py` in the same call as the question, and never goes into the question text. `temper card` prints its rows (76 columns), `temper go` gives them as `card` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
 
 The stages are Intent, Plan, Design, Build, Review, Check and Commit, and an optional **Pipeline** stage after a Commit that opened a pull
@@ -504,10 +504,11 @@ The mod lets a patch run only as the person's answer.
 ### A blocked task and the plan amendment (9.8.5, WP25)
 
 A task whose test needs a file it does not declare records `temper task blocked N --needs F --reason R`; its gate fails
-once and parks the group. When every blocked task of the group needs a file another task of the same group declares,
-the next action is the CLI's own `temper plan amend task N --add-file F [--failure ID]`, in every mode
+once and parks the group. When every blocked task of the group needs a file another task of the same group declares, the
+next action is the CLI's own `temper plan amend task N --add-file F [--failure ID]`, in every mode
 (`scripts/plan_amend.py`): Task N gains F on its File line and the owner on its Depends line, and nothing else. It
-refuses unless the plan is approved and `tasks.md` is that plan, F is declared by a task of the same group and is in
+refuses unless the plan is approved (the run is past Plan: a step back to Plan waits for the new approval) and
+`tasks.md` is that plan, F is declared by a task of the same group that precedes Task N or passed and is in
 `approved_files`, F is no test file of that task, no locked acceptance test and under no sensitive path, Task N is
 neither running nor passed, the static rows pass on the result, and the budget has room (one repeat, `task:N`, kind
 `plan amend`). It moves `plan_hash` in the run state and in `groups.json`, appends an entry to
@@ -515,10 +516,11 @@ neither running nor passed, the static rows pass on the result, and the budget h
 patch), writes the plan ledger row `plan amended by rule: Task N gains F (Task M declares it)` and the rule log entry of
 the kind `amend`, and reopens the task: its blocked mark, the group's park, gate and failure marks go, and no file is
 restored, so the work of the task it now depends on stays. The commit card lists every amendment and patch under
-`THE PLAN SINCE THE APPROVAL`. When the rule does not hold the run asks (a run that goes on by itself stops): a file no
-task declares first offers `Add to plan` (the id `add-file`, the person's `plan patch task N --add-file F`); a file of
-another group, a file the rule may not add, or a group parked twice with no blocked record first offers Loop back to
-Plan, which is the person's.
+`THE PLAN SINCE THE APPROVAL`; an approval moves the list of the plan before it to `.temper/archive/`. When the rule
+does not hold the run asks (a run that goes on by itself stops): a file no task declares first offers `Add to plan` (the id
+`add-file`, the person's `plan patch task N --add-file F`); a file of another group or of a later task of the group, a
+file the rule may not add, or a group parked twice with no blocked record first offers Loop back to Plan, which is the
+person's.
 
 ### What a replan keeps (9.8.5, WP25)
 
@@ -526,9 +528,11 @@ A step back to Plan archives `groups.json` with the plan its tasks were built fr
 kept ref. After the new approval the first Build action is `temper group keep` (`scripts/group_keep.py`): a task is kept
 when its files, Depends and Test are those of the archived plan, every task it depends on is kept, and its group's
 Depends, and the groups those name, are unchanged and fully kept. A kept group's branch comes back from its kept ref, at
-the commit of its last kept task; the task records come back as passed, with their entries of `cli_commits`. The
-group's verdict is kept only when every task of it is kept and its Validate and Interfaces are equal. Everything else
-runs as a new group does. The approval card of the replan says how many built tasks it keeps.
+the commit of its last kept task (the CLI's merge commit of a task that ran beside another counts as that task's); the
+task records come back as passed, with their entries of `cli_commits`. Only the newest archive of the run is read: one
+written while `tasks.md` differed from the approved plan keeps nothing. The group's verdict is kept only when every task
+of it is kept and its Validate and Interfaces are equal. Everything else runs as a new group does. The approval card of
+the replan says how many built tasks it keeps.
 
 ### The budget (9.8.5, ADR 0019)
 
