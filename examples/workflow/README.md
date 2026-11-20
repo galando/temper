@@ -38,7 +38,7 @@ first gate question.
 /temper:temper "BKNG-4521"
 → Intent: the problem and the criteria → the Intent question: Continue to Plan
 → Plan: blast radius, scenarios, tasks.md in groups → the Plan question: Continue to Build
-→ Build: each ready task as a Haiku task agent in its own worktree, RED then GREEN;
+→ Build: each ready task as a task agent (Sonnet by default) in its own worktree, RED then GREEN;
   one question per group
 → Review (confidence-scored findings) → the Review question
 → Check (all green, coverage 91%) → the Check question: Commit

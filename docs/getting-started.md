@@ -145,7 +145,7 @@ Temper will analyze the blast radius:
    • Token refresh logic (complex state)
 
 📝 intent.md: 5 scenarios (3 happy, 1 error, 1 edge case)
-   • Each scenario defines Given/When/Then
+   • Each scenario has one Then line, Covers: and Test:
    • Tests must cover all scenarios before build completes
 
 📋 Plan: 7 steps with test gates

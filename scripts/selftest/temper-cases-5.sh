@@ -1,13 +1,13 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
 # Build runs in groups of small tasks: the one Build (ADR 0013)
 setup
-assert_eq "model --all prints the 9 stage lines plus task= and task-escalation=" "14|1|1" \
+assert_eq "model --all prints a line for each of the 14 agents of the table, task= and task-escalation= among them" "14|1|1" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
 
 # Scenario: Task and escalation models resolve from config with defaults [AC-06, AC-01]
 setup
 printf 'build:\n  mode: grouped\n' >> .claude/temper.config
-assert_eq "model task defaults to claude-haiku-5-5" "sonnet" "$("$TEMPER" model task)"
+assert_eq "model task defaults to sonnet, the table's value" "sonnet" "$("$TEMPER" model task)"
 assert_eq "model task-escalation defaults to sonnet" "sonnet" "$("$TEMPER" model task-escalation)"
 assert_eq "grouped on: model --all appends task= and task-escalation=" "14|task=sonnet|task-escalation=sonnet" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep '^task=')|$("$TEMPER" model --all | grep '^task-escalation=')"
@@ -310,9 +310,11 @@ assert_eq "schedule: the waiting line is absent while tasks are ready" "0" "$("$
 sg_state '{}' '"G1":{"status":"parked","worktree":".claude/worktrees/temper-demo-G1"},"G2":{"status":"parked","worktree":".claude/worktrees/temper-demo-G2"}'
 assert_eq "schedule: with every group parked the last line lists them" "1" "$(sg_last | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(1 if d.get('parked')==['G1','G2'] and d.get('done') is False else 0)")"
 
-# attempt and model: a failed task is offered again with its next attempt; attempt 3 uses the escalation model
-sg_setup; sg_state '{"1":{"group":"G1","status":"failed","attempt":1,"attempts":[{"n":1,"outcome":"FAIL"}]}}'
-assert_eq "schedule: attempt 2 is offered on the task model" "sonnet|2" \
+# attempt and model: a failed task is offered again with its next attempt; attempt 3 uses the escalation model. The task
+# model is set apart from the escalation model (models.task: haiku, the key of row D28), since both are sonnet by default
+sg_setup; printf 'models:\n  task: haiku\n' >> .claude/temper.config
+sg_state '{"1":{"group":"G1","status":"failed","attempt":1,"attempts":[{"n":1,"outcome":"FAIL"}]}}'
+assert_eq "schedule: attempt 2 is offered on the task model" "haiku|2" \
   "$("$TEMPER" schedule | head -1 | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print('%s|%s' % (d['model'], d['attempt']))")"
 sg_state '{"1":{"group":"G1","status":"failed","attempt":2,"attempts":[{"n":1,"outcome":"FAIL"},{"n":2,"outcome":"FAIL"}]}}'
 assert_eq "schedule: attempt 3 is offered on the escalation model" "sonnet|3" \
@@ -706,9 +708,9 @@ st_attempt() { # st_attempt <model> <ms>: start Task 1, write a declared file an
   st_edit src/a.sh; st_edit stray.txt
   "$TEMPER" task gate 1 --model "$1" --ms "$2" 2>&1
 }
-st_setup
+st_setup; printf 'models:\n  task: haiku\n' >> .claude/temper.config   # the task model apart from the escalation model
 out="$(st_attempt claude-haiku-5-5 41000)"; rc=$?
-assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on sonnet" \
+assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on haiku" \
   "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 assert_eq "retry: the failed attempt's worktree and branch are discarded, the group worktree never saw its files" "no|no|no" \
   "$([[ -d $T1W ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/T1 && echo yes || echo no)|$([[ -e "$ST_WT/src/a.sh" || -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
@@ -1180,7 +1182,7 @@ assert_eq "task brief: within TASK_BRIEF_MAX_BYTES (read from the script)" "1" \
   "$([[ -f "$TB" && -n "$TB_MAX" && "$(wc -c < "$TB" | tr -d ' ')" -le "$TB_MAX" ]] && echo 1 || echo 0)"
 assert_eq "task brief: frontmatter name and model" "temper-build-task|sonnet" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^name:/{sub(/^name:[[:space:]]*/,""); a=$0} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); b=$0} END{print a "|" b}' "$TB" 2>/dev/null)"
-assert_eq "model task reads the brief frontmatter as the default" "sonnet" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
+assert_eq "model task defaults to the table's sonnet, the model line of the brief" "sonnet" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
 assert_eq "plugin.json lists ./agents/build-task.md" "1" "$(python3 -c "import json; print(int('./agents/build-task.md' in json.load(open('$REPO_ROOT/.claude-plugin/plugin.json'))['agents']))")"
 # Scenario: Grouped logic stays in the briefs and the CLI [AC-05]
 assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plugin folder rule" "1|1" \
@@ -1188,7 +1190,7 @@ assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plug
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
-assert_eq "model --all has 10 lines with the task brief present" "14" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
+assert_eq "model --all has 14 lines with the task brief present" "14" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0): plan brief, plan reference and templates for grouped output ---

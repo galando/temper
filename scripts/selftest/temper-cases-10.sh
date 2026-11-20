@@ -10,7 +10,7 @@ assert_eq "F5: cli_ctx models gives the same model for every name" \
   "$("$TEMPER" model --all | sort | tr '\n' ' ')" \
   "$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config | sort | tr '\n' ' ')"
 OUT="$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config --source | grep '^task=')"
-assert_eq "F5: --source says the task model comes from its brief" "task=sonnet (table)" "$OUT"
+assert_eq "F5: --source says the task model comes from the table" "task=sonnet (table)" "$OUT"
 rm -f .temper/view.json
 "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "F5: one next call writes .temper/view.json" "run-ok" \
@@ -54,7 +54,7 @@ PYT
 
 # --- F2. The model of each stage, and of the running attempt, is named ---
 fresh
-assert_eq "F2: model --all --source says a stage's model comes from its brief" "1" "$("$TEMPER" model --all --source | grep -c '^plan=.* (table)$')"
+assert_eq "F2: model --all --source says a stage's model comes from the table" "1" "$("$TEMPER" model --all --source | grep -c '^plan=.* (table)$')"
 printf 'models:\n  plan: opus\nbuild:\n  grouped:\n    task-model: sonnet\n' > .claude/temper.config
 assert_eq "F2: a config override is named as one" "plan=opus (config)|task=sonnet (config)" \
   "$("$TEMPER" model --all --source | grep -E '^(plan|task)=' | tr '\n' '|' | sed 's/|$//')"
@@ -64,11 +64,18 @@ assert_eq "F2: status --json holds the models" "opus|config" \
   "$("$TEMPER" status --json | python3 -c "import json,sys; m=[x for x in json.load(sys.stdin)['models'] if x['stage']=='plan'][0]; print(m['model']+'|'+m['source'])")"
 printf 'stack: auto\n' > .claude/temper.config
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf 'models:\n  task: haiku\n' >> .claude/temper.config   # the task model apart from the escalation model (both sonnet by default)
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "status": "started"}}, "tasks": {"1": {"status": "running", "attempt": 3, "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F2: the wait action of attempt 3 names the escalation model, in the task and in its gate call" "wait|sonnet|1" \
   "$(nx "'|'.join([d['action'], d['tasks'][0]['model'], str(d['tasks'][0]['after'][0].count('--model sonnet '))])")"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "status": "started"}}, "tasks": {"1": {"status": "running", "attempt": 1, "group": "G1"}}}\n' > .temper/groups.json
-assert_eq "F2: attempt 1 names the task model" "sonnet" "$(nx "d['tasks'][0]['model']")"
+assert_eq "F2: attempt 1 names the task model" "haiku" "$(nx "d['tasks'][0]['model']")"
+# a ctx with no escalation model (flow.py next --ctx, a documented entry) takes it from the one resolver, never a literal
+printf 'models:\n  task-escalation: opus\n' >> .claude/temper.config
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "status": "started"}}, "tasks": {"1": {"status": "failed", "attempt": 2, "group": "G1", "attempts": [{"n": 1, "outcome": "FAIL"}, {"n": 2, "outcome": "FAIL"}]}}}\n' > .temper/groups.json
+assert_eq "F2: with no escalation model in its ctx, the flow launches attempt 3 on the resolved escalation model (p7 lane C)" \
+  "opus|3|Model: opus.|opus|3|Model: opus." \
+  "$(nx "a = d['agents'][0]; '|'.join([a['model'], str(a['attempt']), a['prompt'].splitlines()[-1]])")|$(_ev "a = d['agents'][0]; '|'.join([a['model'], str(a['attempt']), a['prompt'].splitlines()[-1]])" "$(python3 -E -s "$REPO_ROOT/scripts/flow.py" next --ctx '{}' --plugin "$REPO_ROOT" --config-file .claude/temper.config 2>/dev/null)")"
 
 # --- F3. Every say is a sentence for the person ---
 _banned_say() { # prints the first word of an instruction for Claude found in the text, or nothing

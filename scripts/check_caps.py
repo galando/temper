@@ -209,13 +209,19 @@ def measure_handback_kinds(doc):
 
 
 def measure_gate_rows(doc):
-    """distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, or a
-    dict of a name and a pass a script prints), name lines of gate_rows.py"""
+    """distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, a
+    dict of a name and a pass a script prints, or, in a script that defines add(name, ok, detail), an add( call in
+    either quotes and a name of a tuple a for loop hands to add), name lines of gate_rows.py"""
     req = set(re.findall(r'_req "([^"$]+)"', text("scripts/temper")))
     rows = set()
     for f in in_folder("scripts", ".py"):
         src = text(f)
         rows |= {name for _, name in re.findall(r'''\brow\((["'])(.+?)\1''', src)}
+        if re.search(r"(?m)^def add\(name, ok, detail\)", src):   # the Intent gate's rows (p7 lane C)
+            rows |= {name for _, name in re.findall(r'''\badd\((["'])(.+?)\1''', src)}
+            for d in ast.walk(ast.parse(src)):
+                if isinstance(d, ast.For) and isinstance(d.iter, ast.Tuple) and "add(" in ast.unparse(d):
+                    rows |= {e.value for e in d.iter.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
         for d in ast.walk(ast.parse(src)) if re.search(r"[\"']pass[\"']", src) else []:
             keys = [getattr(k, "value", None) for k in d.keys] if isinstance(d, ast.Dict) else []
             if "name" in keys and "pass" in keys and isinstance(d.values[keys.index("name")], ast.Constant):

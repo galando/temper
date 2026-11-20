@@ -179,7 +179,7 @@ assert_exit "9.8.4 3b: a replan (state redo plan) that changes tasks.md earns on
 # --- 5. Build model by risk: a complex or risk H plan builds its tasks on sonnet; an explicit task-model still wins ---
 fresh
 _tm() { echo "$("$TEMPER" model task)|$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config | sed -n 's/^task=//p')"; }
-assert_eq "9.8.4 5: a simple plan keeps the brief's model for its tasks (the CLI and the flow agree)" "sonnet|sonnet" "$(_tm)"
+assert_eq "9.8.4 5: a simple plan keeps the table's model for its tasks (the CLI and the flow agree)" "sonnet|sonnet" "$(_tm)"
 "$TEMPER" state set complexity complex >/dev/null 2>&1
 assert_eq "9.8.4 5: a complex plan builds its tasks on sonnet" "sonnet|sonnet" "$(_tm)"
 "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH

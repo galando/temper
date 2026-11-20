@@ -871,7 +871,7 @@ export const reviseNarrow = (w: World): void => {
   expect(revise.length === 1 && launchesOf(w, 'temper:temper-plan').length === 1,
     `D24 one narrow revise launch and one planner launch (${revise.length} revise, ${launchesOf(w, 'temper:temper-plan').length} planner)`)
   const prompt = revise[0]?.prompt ?? ''
-  expect(prompt.includes(REVISE_FINDING.claim) && /^Affected tasks:[^\n]*\b2\b/m.test(prompt) && !/^Project brief:/m.test(prompt),
+  expect(prompt.includes(REVISE_FINDING.claim) && /^Affected tasks: 2$/m.test(prompt) && !/^Project brief:/m.test(prompt),
     `D24 the revise agent gets the finding whole and the task it names, and no project brief (${prompt.slice(0, 200)})`)
   expect(ended(w), 'D24 the run reaches its commit and ends')
   ownAutos(w)

@@ -301,6 +301,11 @@ assert_eq "next: an unattended run takes the recommended repair of a failed grou
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_reason": "Task 1 failed on haiku, haiku and sonnet"}}, "tasks": {"1": {"status": "failed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a group parked on failed attempts" "Run the task again (Recommended)|group reopen G1 --task 1" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+_p8_run_again() { nx "d['ask']['options'][0]['description']"; }
+_p8_default="$(_p8_run_again)"; printf 'models:\n  task: opus\n' >> .claude/temper.config
+assert_eq "next: Run the task again names the task model its tasks run on again, the table's or the config's (WP27)" \
+  "The tasks run again from their first attempt, on sonnet.|The tasks run again from their first attempt, on opus." \
+  "$_p8_default|$(_p8_run_again)"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_foreign": ["abcdef1234567890"]}}, "tasks": {"1": {"status": "failed", "group": "G1", "worktree": "wt1"}}}\n' > .temper/groups.json
 assert_eq "next: a group parked on an agent's commits: take them out, or keep them with a reason" \
   "Take the commits out and run the task again (Recommended)|Keep the agent's commits|Save for later|keep|True|group reopen G1 --task 1 --accept-foreign abcdef1" \

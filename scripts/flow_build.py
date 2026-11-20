@@ -197,7 +197,7 @@ class BuildPart:
         except ValueError:
             mx = 4
         sched = tasks_md.schedule(plan, r.groups, mx if mx > 0 else 4, self.task_model(),
-                                  r.ctx.get("escalation_model") or "sonnet", os.getcwd()) if plan.get("tasks") else []
+                                  r.ctx.get("escalation_model") or r.model("task-escalation"), os.getcwd()) if plan.get("tasks") else []
         ready = [x for x in sched if "task" in x]
         if ready:
             agents = []
@@ -692,7 +692,9 @@ class BuildPart:
             # plan is the likelier cause, so Loop back to Plan is the recommended answer then (a measured run reran a
             # task whose gate ran a test a later task writes, and parked five times).
             again = r.can_loop("build", "plan") and any((r.groups.get("tasks", {}).get(str(n)) or {}).get("reopened") for n in tasks)
-            rerun = self.opt("Run the task again" + ("" if again else " (Recommended)"), "The parked tasks run again, from Haiku.", move="redo",
+            # a reopen starts each task at attempt 1 again, on the task model (WP27: the table's, or the config's)
+            rerun = self.opt("Run the task again" + ("" if again else " (Recommended)"),
+                             "The tasks run again from their first attempt, on %s." % short_model(self.task_model()), move="redo",
                              calls=[self.c("group reopen %s %s" % (gid, targs))], oid="redo")
             opts = [] if again else [rerun]
             if r.can_loop("build", "plan"):

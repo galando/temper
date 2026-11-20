@@ -114,6 +114,26 @@ print("|".join(labels) + "|rows %d" % m.measure_gate_rows(doc))
 PY
 )"
 
+# the rows of the Intent gate are built by a helper, add('name', ok, detail), and the draft skip names them in a
+# tuple (scripts/intent_draft_rows.py): the gate_rows measure sees both, so a new add( row moves it (p7 lane C)
+printf '%s\n' 'def add(name, ok, detail):' '    pass' "for name in ('skip row',):" '    add(name, True, d)' \
+  "add('helper row', True, 'x')" > "$_c41_m/scripts/rows_add.py"
+_c41_ra="$(python3 -I - "$_c41_m/scripts/check_caps.py" <<'PY'
+import importlib.util as u, sys
+s = u.spec_from_file_location("check_caps_a", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)
+print("rows %d" % m.measure_gate_rows({}))
+PY
+)"
+printf '%s\n' "add(\"new row\", False, 'x')" >> "$_c41_m/scripts/rows_add.py"
+assert_eq "caps: the gate_rows measure sees an add( row and a name of the skip tuple, and a new add( row moves it" \
+  "rows 7|rows 8" \
+  "$_c41_ra|$(python3 -I - "$_c41_m/scripts/check_caps.py" <<'PY'
+import importlib.util as u, sys
+s = u.spec_from_file_location("check_caps_b", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)
+print("rows %d" % m.measure_gate_rows({}))
+PY
+)"
+
 # a label written as an f-string or built with .format() counts as written, as the measure before phase 6 counted it
 # (lane E, RE7)
 cat > "$_c41_m/scripts/flow_y.py" <<'PY'
@@ -134,8 +154,8 @@ PY
 # growth since the base and the part that was always there (lane E, RE6): the base measures are fixed numbers
 _c41_rep="$(python3 -I "$_c41_caps" 2>&1)"
 assert_eq "caps: the report gives each cap's measure on the base 10e965a beside its own" \
-  "16 lines|gate_rows base 73|option_labels base 74|cli_bytes base" \
-  "$(grep -c 'base 10e965a' <<<"$_c41_rep") lines|$(grep -o 'gate_rows: now [0-9]*, base 10e965a 73' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a/ base/')|$(grep -o 'option_labels: now [0-9]*, base 10e965a 74' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a/ base/')|$(grep -o 'cli_bytes: now [0-9]*, base 10e965a [0-9]' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a [0-9]/ base/')"
+  "16 lines|gate_rows base 86|option_labels base 74|cli_bytes base" \
+  "$(grep -c 'base 10e965a' <<<"$_c41_rep") lines|$(grep -o 'gate_rows: now [0-9]*, base 10e965a 86' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a/ base/')|$(grep -o 'option_labels: now [0-9]*, base 10e965a 74' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a/ base/')|$(grep -o 'cli_bytes: now [0-9]*, base 10e965a [0-9]' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a [0-9]/ base/')"
 
 # --- floor ---
 _c41_hist "$_c41_dir/hf" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
