@@ -15,6 +15,8 @@ the file holds that statement more than once. So a name identifies its statement
 A package that changes or removes such an assertion adds its line here in the same commit. It never changes what a check
 of `done.md` asserts: only a name may be corrected, and the line says so.
 
+The table goes on in `changed-tests-2.md` (256 KiB limit); new lines go to the last page.
+
 ## The table
 
 | Name | File | What changed | Why | Package |
