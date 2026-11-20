@@ -8,6 +8,7 @@ import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
 import { FEATURE_DENY, SESSION_AGENT_DENY, SESSION_ASK_DENY, SESSION_WRITE_DENY, bashWhy, evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from '../../hooks/temper-mod/core/session'
 import type { SessionFacts } from '../../hooks/temper-mod/core/session'
+import { HELP, parseArgs } from '../../hooks/temper-mod/core/commands'
 import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
 import { stateAt } from './helpers'
@@ -275,5 +276,37 @@ describe('w27 the narrow revise agent the view names', () => {
   test('w27 the same launch on another model, or as the planner, is refused', () => {
     expect(isDeny(launch({ model: 'haiku' }))).toBe(true)
     expect(isDeny(launch({ subagent_type: 'temper:temper-plan', model: 'opus' }))).toBe(true)
+  })
+})
+
+// WP28: two listed commands, and the words of /temper:temper. A first word is a word only in its documented form: alone
+// (status, report, timeline, help, init, pack, mode, enforcement, pane and the wish words), or with text after it
+// (draft <idea>, discuss <text>, chose <label>, pack enable guardrails, pack disable guardrails). Anything else is a
+// request, so a request that only starts with a word starts a run.
+describe('w28 a first word is a word only in its documented form', () => {
+  test('w28 requestOf: status alone is a word; status with text after it is a request', () => {
+    expect(requestOf('status')).toBe(null)
+    expect(requestOf('status badge on the order page')).toBe('status badge on the order page')
+  })
+  test('w28 requestOf: draft with an idea, init, pack and pack enable guardrails are words; pack with other text is a request', () => {
+    expect(requestOf('draft a refund flow')).toBe(null)
+    expect(requestOf('init')).toBe(null)
+    expect(requestOf('pack')).toBe(null)
+    expect(requestOf('pack enable guardrails')).toBe(null)
+    expect(requestOf('pack disable guardrails')).toBe(null)
+    expect(requestOf('pack the response with gzip')).toBe('pack the response with gzip')
+  })
+  test('w28 requestOf: a word the rule takes alone, with text after it, is a request', () => {
+    for (const w of ['report the refunds by month', 'help text for the refund form', 'init the cache on start']) expect(requestOf(w)).toBe(w)
+  })
+  test('w28 parseArgs gives a word only when nothing follows it', () => {
+    expect(parseArgs('status')?.word).toBe('status')
+    expect(parseArgs('status badge')).toBe(null)
+    expect(parseArgs('report the refunds by month')).toBe(null)
+  })
+  test('w28 HELP lists draft, init and pack, and says that any other text is a request', () => {
+    const lines = HELP.split('\n')
+    for (const w of ['draft', 'init', 'pack']) expect(lines.some(l => new RegExp(`^\\s+${w}\\b`).test(l))).toBe(true)
+    expect(lines.some(l => /\b(other|else)\b/i.test(l) && /\brequest\b/i.test(l))).toBe(true)
   })
 })

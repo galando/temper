@@ -581,11 +581,11 @@ setup
 MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
 VERIFY="$REPO_ROOT/scripts/guards/verify-stage-gate.sh"
 
-echo '{"prompt": "/temper:intent add a thing"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft add a thing"}' | bash "$MARKER"
 assert_eq "stage-marker records the owed stage" "intent" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
 
 rm -f .temper/pending-stage.json
-echo '{"prompt": "please run /temper:intent for me"}' | bash "$MARKER"
+echo '{"prompt": "please run /temper:temper draft an idea for me"}' | bash "$MARKER"
 assert_eq "stage-marker ignores a mid-sentence mention" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
 echo '{"prompt": "/temper add login"}' | bash "$MARKER"
 assert_eq "stage-marker ignores the unified /temper command" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
@@ -599,7 +599,7 @@ assert_exit "stage-marker fails open on garbage stdin" 0 bash -c "echo garbage |
 
 assert_exit "verify-stage-gate passes with no marker" 0 bash "$VERIFY"
 
-echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x"}' | bash "$MARKER"
 assert_exit "verify-stage-gate BLOCKS when no verdict exists" 2 bash "$VERIFY"
 assert_eq "block is counted in the marker" "1" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['blocks'])")"
 
@@ -608,7 +608,7 @@ assert_exit "a FAIL verdict satisfies the guarantee (gate ran)" 0 bash "$VERIFY"
 assert_eq "marker cleared once the verdict exists" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
 
 rm -f .temper/gates.json
-echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x"}' | bash "$MARKER"
 bash "$VERIFY" >/dev/null 2>&1; bash "$VERIFY" >/dev/null 2>&1
 assert_exit "loop guard fails open on the third stop attempt" 0 bash "$VERIFY"
 assert_eq "loop-guard fail-open clears the marker" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
@@ -620,11 +620,11 @@ assert_exit "corrupt marker fails open" 0 bash "$VERIFY"
 # rather than loop. (Regression: the harness JSON must travel as argv; piping it into
 # `python3 - <<heredoc` silently discards it, since the heredoc owns stdin.)
 rm -f .temper/pending-stage.json .temper/gates.json
-echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x"}' | bash "$MARKER"
 assert_exit "stop_hook_active with a stuck counter fails open" 0 \
   bash -c "echo '{\"stop_hook_active\": true}' | bash '$VERIFY'"
 rm -f .temper/pending-stage.json
-echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x"}' | bash "$MARKER"
 assert_exit "stop_hook_active=false still blocks normally" 2 \
   bash -c "echo '{\"stop_hook_active\": false}' | bash '$VERIFY'"
 
@@ -632,7 +632,7 @@ assert_exit "stop_hook_active=false still blocks normally" 2 \
 # satisfy this session's debt; one recorded after it must.
 rm -f .temper/gates.json .temper/pending-stage.json
 echo '{"intent": {"verdict": "PASS", "ts": "2020-01-01T00:00:00Z"}}' > .temper/gates.json
-echo '{"prompt": "/temper:intent a new feature"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft a new feature"}' | bash "$MARKER"
 assert_exit "a pre-marker verdict does NOT pay this session's debt" 2 bash "$VERIFY"
 python3 -c "
 import json; g=json.load(open('.temper/gates.json'))
@@ -647,7 +647,7 @@ assert_exit "verdict without ts + old marker format still clears" 0 bash "$VERIF
 
 # End-to-end with the real CLI: marker -> real `temper gate plan` FAIL -> stop allowed.
 rm -f .temper/gates.json .temper/pending-stage.json
-echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x"}' | bash "$MARKER"
 "$TEMPER" gate intent --spec-path .temper/specs/empty >/dev/null 2>&1 || true
 assert_exit "a real gate verdict unblocks the stop" 0 bash "$VERIFY"
 
@@ -983,10 +983,10 @@ assert_exit "a /temper run accepts intent_complete" 0 "$TEMPER" state advance in
 assert_eq "state init points a temper run at the intent stage first" "intent" \
   "$(rm -f .temper/build-state.json; "$TEMPER" state init demo2 --command temper >/dev/null; "$TEMPER" state get next_stage)"
 
-# stage-marker marks /temper:intent sessions (they owe a gate intent verdict).
+# stage-marker marks a session that captured a draft with /temper:temper draft (it owes a gate intent verdict; WP28).
 setup
 MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
-echo '{"prompt": "/temper:intent capture this idea"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft capture this idea"}' | bash "$MARKER"
 assert_eq "stage-marker records the owed intent stage" "intent" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
 
 # --- v9: design gate is no longer vacuous ---

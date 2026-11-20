@@ -173,7 +173,7 @@ rm -f "$WORKDIR/spec-dir-ok.sh"
 # prefix test misses it; a device and inode comparison does not.
 assert_exit "the CLI refuses a folder inside the plugin folder reached by other path text" 1 \
   bash -c "cd '/$LNK_PLUG/inner/sub' && '$LNK_T' init"
-echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="/$LNK_PLUG/inner/sub" bash "$LNK_PLUG/scripts/guards/stage-marker.sh"
+echo '{"prompt": "/temper:temper draft x"}' | CLAUDE_PROJECT_DIR="/$LNK_PLUG/inner/sub" bash "$LNK_PLUG/scripts/guards/stage-marker.sh"
 assert_eq "stage-marker writes nothing in a folder inside the plugin folder reached by other path text" "no" \
   "$([[ -e "$LNK_PLUG/inner/sub/.temper" ]] && echo yes || echo no)"
 mkdir -p "$LNK_PLUG/inner/sub/.temper"
@@ -187,7 +187,7 @@ rm -rf "$LNK_PLUG/inner/sub/.temper"
 link_project
 mkdir -p "$LNK_PROJ/.temper"
 ln -s "$LNK_PLUG/shipped/settings.json" "$LNK_PROJ/.temper/gates.json"
-echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$LNK_PROJ" bash "$LNK_PLUG/scripts/guards/stage-marker.sh"
+echo '{"prompt": "/temper:temper draft x"}' | CLAUDE_PROJECT_DIR="$LNK_PROJ" bash "$LNK_PLUG/scripts/guards/stage-marker.sh"
 assert_eq "stage-marker marks nothing in a .temper folder that holds a symlink" "no" \
   "$([[ -e "$LNK_PROJ/.temper/pending-stage.json" ]] && echo yes || echo no)"
 
@@ -196,7 +196,7 @@ assert_eq "a relative CLI call with CDPATH exported still resolves a model" "$("
   "$(cd "$LNK_PLUG" && CDPATH="$LNK_PLUG:." scripts/temper model plan 2>/dev/null)"
 assert_exit "a relative CLI call with CDPATH exported still refuses the installed plugin folder as a project" 1 \
   bash -c "cd '$LNK_PLUG' && CDPATH='$LNK_PLUG:.' scripts/temper init"
-(cd "$LNK_PLUG" && echo '{"prompt": "/temper:intent x"}' | CDPATH="$LNK_PLUG:." CLAUDE_PROJECT_DIR="$LNK_PLUG/inner/sub" bash scripts/guards/stage-marker.sh)
+(cd "$LNK_PLUG" && echo '{"prompt": "/temper:temper draft x"}' | CDPATH="$LNK_PLUG:." CLAUDE_PROJECT_DIR="$LNK_PLUG/inner/sub" bash scripts/guards/stage-marker.sh)
 assert_eq "stage-marker called by a relative path with CDPATH exported still writes nothing inside the plugin" "no" \
   "$([[ -e "$LNK_PLUG/inner/sub/.temper" ]] && echo yes || echo no)"
 assert_eq "none of these cases wrote anything in the plugin folder" "$LNK_BEFORE" "$(plugin_state)"
@@ -207,7 +207,7 @@ SP_PLUG="$WORKDIR/spaced plugin"
 rm -rf "$SP_PLUG"
 mkdir -p "$SP_PLUG/scripts/guards"
 cp "$REPO_ROOT/scripts/guards/stage-marker.sh" "$REPO_ROOT/scripts/guards/verify-stage-gate.sh" "$SP_PLUG/scripts/guards/"
-echo '{"prompt": "/temper:intent x"}' | bash "$SP_PLUG/scripts/guards/stage-marker.sh"
+echo '{"prompt": "/temper:temper draft x"}' | bash "$SP_PLUG/scripts/guards/stage-marker.sh"
 OUT=$(echo '{}' | bash "$SP_PLUG/scripts/guards/verify-stage-gate.sh" 2>&1; true)
 LINE="$(echo "$OUT" | grep ' gate intent --spec-path .temper/specs/<feature-slug>')"
 CLI_TEXT="${LINE#  }"
@@ -718,7 +718,7 @@ setup
 MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
 VERIFY="$REPO_ROOT/scripts/guards/verify-stage-gate.sh"
 rm -f .temper/pending-stage.json .temper/stage-gate.log
-echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:temper draft x"}' | bash "$MARKER"
 OUT=$(echo '{}' | bash "$VERIFY" 2>&1; true)
 assert_eq "verify-stage-gate logs each firing to .temper/stage-gate.log" "yes" \
   "$(grep -q 'blocked stop (stage=intent' .temper/stage-gate.log && echo yes || echo no)"
@@ -733,7 +733,7 @@ rm -rf "$FAKE_PLUGIN"
 mkdir -p "$FAKE_PLUGIN/scripts/guards" "$FAKE_PLUGIN/sub"
 cp "$MARKER" "$VERIFY" "$REPO_ROOT/scripts/guards/run-formatter.sh" "$FAKE_PLUGIN/scripts/guards/"
 cp "$TEMPER" "$FAKE_PLUGIN/scripts/temper"
-echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN/sub" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
+echo '{"prompt": "/temper:temper draft x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN/sub" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
 assert_eq "stage-marker writes nothing in a project folder inside the plugin's own folder" "no" \
   "$([[ -e "$FAKE_PLUGIN/sub/.temper" ]] && echo yes || echo no)"
 mkdir -p "$FAKE_PLUGIN/sub/.temper"
@@ -742,7 +742,7 @@ assert_exit "verify-stage-gate skips a project folder inside the plugin's own fo
   bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$FAKE_PLUGIN/sub' bash '$FAKE_PLUGIN/scripts/guards/verify-stage-gate.sh'"
 assert_eq "the skipped stop hook writes, changes and deletes nothing there" "no|0" \
   "$([[ -e "$FAKE_PLUGIN/sub/.temper/stage-gate.log" ]] && echo yes || echo no)|$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['blocks'])" "$FAKE_PLUGIN/sub/.temper/pending-stage.json")"
-echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
+echo '{"prompt": "/temper:temper draft x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
 assert_eq "stage-marker skips an installed copy of the plugin folder (no .git of its own)" "no" \
   "$([[ -e "$FAKE_PLUGIN/.temper" ]] && echo yes || echo no)"
 mkdir -p "$FAKE_PLUGIN/.temper"
@@ -753,7 +753,7 @@ assert_eq "the skipped stop hook leaves the installed copy's marker and log as t
   "$([[ -e "$FAKE_PLUGIN/.temper/stage-gate.log" ]] && echo yes || echo no)|$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['blocks'])" "$FAKE_PLUGIN/.temper/pending-stage.json")"
 rm -rf "$FAKE_PLUGIN/.temper"
 git init -q "$FAKE_PLUGIN"
-echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
+echo '{"prompt": "/temper:temper draft x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
 assert_eq "stage-marker still marks the plugin folder itself as a project (its own git repository)" "intent" \
   "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['stage'])" "$FAKE_PLUGIN/.temper/pending-stage.json")"
 assert_exit "verify-stage-gate blocks in the plugin folder's own repository like in any project" 2 \
@@ -987,11 +987,11 @@ G_PROJ="$WORKDIR/guard-project"
 rm -rf "$G_PROJ"
 mkdir -p "$G_PROJ"
 ln -s "$G_PLUG/inner/code" "$G_PROJ/.temper"
-echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$G_PROJ" bash "$G_PLUG/scripts/guards/stage-marker.sh"
+echo '{"prompt": "/temper:temper draft x"}' | CLAUDE_PROJECT_DIR="$G_PROJ" bash "$G_PLUG/scripts/guards/stage-marker.sh"
 rm -f "$G_PROJ/.temper"
 mkdir -p "$G_PROJ/.temper"
 ln -s "$G_PLUG/inner/code/marker.json" "$G_PROJ/.temper/pending-stage.json"
-echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$G_PROJ" bash "$G_PLUG/scripts/guards/stage-marker.sh"
+echo '{"prompt": "/temper:temper draft x"}' | CLAUDE_PROJECT_DIR="$G_PROJ" bash "$G_PLUG/scripts/guards/stage-marker.sh"
 assert_eq "stage-marker writes nothing through a symlinked .temper folder or marker" "" "$(ls "$G_PLUG/inner/code")"
 rm -f "$G_PROJ/.temper/pending-stage.json"
 echo '{"stage": "plan", "blocks": 0}' > "$G_PROJ/.temper/pending-stage.json"
