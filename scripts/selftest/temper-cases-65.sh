@@ -358,6 +358,38 @@ _open65 none
 assert_eq "repair: commit refuses a CI file" "$DRIFT65" "$(_drift65 .github/workflows/ci.yml)"
 _open65 none
 assert_eq "repair: commit refuses a sensitive path" "$DRIFT65" "$(_drift65 src/auth/token_test.sh)"
+_open65 none
+assert_eq "repair: commit refuses a shell file named like a test outside the plan, and so does the commit gate's scope row (the test pattern of the base)" \
+  "$DRIFT65|FAIL changed outside declared files: src/other_test.sh" \
+  "$(_drift65 src/other_test.sh)|$(printf 'src/other_test.sh\n' | python3 -I "$REPO_ROOT/scripts/commit_rows.py" blast-radius '{"tasks": []}' '' /dev/null 2>&1)"
+
+# a lockfile and a file outside the plan both changed: the question names the file no answer can let through, and
+# offers only what can end it (Add to plan or Allow once of the other file would meet the same question again)
+_open65 none; _start65; _fix65; mkdir -p lib; echo 'echo other' > lib/other.sh
+printf '{"changed": 1}\n' > package-lock.json; _commit65
+assert_eq "repair: with a lockfile and a file outside the plan both changed, scope.drift names the lockfile and offers no answer that cannot end it" \
+  "scope.drift|package-lock.json|revert,save" \
+  "$(_x65 "q = d.get('ask') or {}; r = '%s|%s|%s' % (q.get('id'), 'package-lock.json' if 'Outside the plan: package-lock.json' in json.dumps(q) else 'names %s' % json.dumps(q)[:120], ','.join(ids(d)))")"
+
+# --- a small change's close never closes a repair window ---
+_open65 none; _start65; _fix65
+_c65_out="$("$TEMPER" adhoc close 2>&1)"; _c65_rc=$?
+assert_eq "repair: adhoc close inside a repair window is refused: the window stays open, nothing is committed, and the refusal names repair commit" \
+  "refused|window repair 1 open|says repair commit|next fixer or recheck, no small change" \
+  "$([[ $_c65_rc -ne 0 ]] && echo refused || echo "rc 0: ${_c65_out:0:60}")|$(_st65 "'window repair %s open' % w.get('n') if w and not w.get('commit') and (s.get('adhoc') or {}).get('kind') == 'repair' and not s.get('adhoc_done') else 'window %s adhoc %s done %s' % (w.get('n'), s.get('adhoc'), s.get('adhoc_done'))")|$(grep -q 'repair commit' <<<"$_c65_out" && echo 'says repair commit' || echo "says: ${_c65_out:0:80}")|$(_x65 "r = 'next fixer or recheck, no small change' if not any('Ad-hoc change' in str(a.get('prompt')) for a in d.get('agents') or []) else 'a small change review'")"
+
+# --- the fixer's drift ask in a repair window (the mod's Build write rule names it): scope.drift, then the fixer again ---
+_open65 none; _start65; _c65_head="$(git rev-parse HEAD)"
+_c65_ask="$("$TEMPER" drift ask --path src/other.sh --why 'the fix needs a helper' --change 'one new line' 2>&1 && echo asked || echo refused)"
+_commit65
+_c65_q="$(_x65 "q = d.get('ask') or {}; r = '%s %s' % (q.get('id'), ','.join(i for i in ids(d) if i in ('add-to-plan', 'revert', 'allow-once'))) if 'src/other.sh' in json.dumps(q) else 'asked %s' % q.get('id')")"
+_c65_kept="$([[ "$(git rev-parse HEAD)" == "$_c65_head" ]] && _st65 "'window open' if w and not w.get('commit') else 'window closed'" || echo "committed $(_subj65)")"
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done < <(_x65 "r = '\n'.join((opt(d, 'add-to-plan') or {}).get('calls') or [])")
+_c65_again="$(_x65 "a = (d.get('agents') or [{}])[0] if d.get('action') == 'work' else {}; p = str(a.get('prompt') or ''); r = '%s|%s|%s' % (a.get('type'), 'Repair in place:' if 'Repair in place:' in p else 'no line', 'Drift decision: src/other.sh: add' if 'Drift decision: src/other.sh: add' in p else 'no decision')")"
+_mark65 2>/dev/null; _fix65; echo 'echo other' > src/other.sh; _commit65
+assert_eq "repair: a drift ask of the fixer in a repair window is taken, asked as scope.drift before any commit, and the fixer runs again with the answer; the CLI then commits the file" \
+  "asked|window open|scope.drift add-to-plan,revert,allow-once|temper:temper-build|Repair in place:|Drift decision: src/other.sh: add|repair commit with src/other.sh" \
+  "$(tail -1 <<<"$_c65_ask")|$_c65_kept|$_c65_q|$_c65_again|$([[ "$(_subj65)" == 'fix(demo): repair 1 at review' ]] && grep -qx src/other.sh <<<"$(git show --name-only --format= HEAD)" && echo 'repair commit with src/other.sh' || echo "HEAD $(_subj65)")"
 
 # --- repair commit refuses when HEAD moved since the window opened ---
 _open65 none; _start65; _c65_open="$(_st65 "'opened' if w else 'not opened'")"; _fix65
@@ -411,19 +443,19 @@ b = json.load(open('.temper/gates.json')).get('build') or {}
 print('build %s of the new tree' % b.get('verdict') if b.get('tree') == t else 'build %s of tree %s' % (b.get('verdict'), str(b.get('tree'))[:7]))" 2>/dev/null)|$([[ "$(grep -c suite "$P65/log" 2>/dev/null)" -ge 1 ]] && echo 'suite ran' || echo 'suite not run')"
 
 # --- a behaviour finding needs a RED and a GREEN of the CLI on an unchanged test file ---
-_err65() { printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q error' > src/err_test.sh; }   # fails until the fix
+_err65() { mkdir -p unit; printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q error' > unit/err_test.sh; }   # fails until the fix
 _proof65() { # _proof65 <none|changed|order>: a repair of a finding marked proof: test, with no test run, with the test file
              # changed between the RED and the GREEN, or in order; the recheck says fixed. Prints the finding's state
   _open65 test; _start65
   case "$1" in
-    changed|order) _err65; "$TEMPER" repair test 1 --phase red -- sh src/err_test.sh >/dev/null 2>&1 || true ;;
+    changed|order) _err65; "$TEMPER" repair test 1 --phase red -- sh unit/err_test.sh >/dev/null 2>&1 || true ;;
   esac
   _fix65
   case "$1" in
     none) _err65 ;;
-    changed) printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q demo' > src/err_test.sh ;;
+    changed) printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q demo' > unit/err_test.sh ;;
   esac
-  [[ "$1" == none ]] || "$TEMPER" repair test 1 --phase green -- sh src/err_test.sh >/dev/null 2>&1 || true
+  [[ "$1" == none ]] || "$TEMPER" repair test 1 --phase green -- sh unit/err_test.sh >/dev/null 2>&1 || true
   _commit65; _recheck65 fixed; _close65
   _res65 1 | sed 's/:.*//'
 }
@@ -468,7 +500,7 @@ _worse65() { # _worse65 <row|same|new|incomplete>: one repair that makes things 
   esac
   _close65
   printf '%s|%s|%s' "$repaired" \
-    "$([[ "$(_tree65)" == "$tree" ]] && git log --format=%s -3 | grep -q 'repair 1 at review' && echo 'reverted to the reviewed tree' || echo 'not reverted')" \
+    "$([[ "$(_tree65)" == "$tree" ]] && grep -q 'repair 1 at review' <<<"$(git log --format=%s -3)" && echo 'reverted to the reviewed tree' || echo 'not reverted')" \
     "$(_x65 "q = d.get('ask') or {}; r = 'repair.stop' if q.get('id') == 'repair.stop' else 'asked %s' % q.get('id')")"
 }
 WORSE65='repaired|reverted to the reviewed tree|repair.stop'
@@ -610,5 +642,8 @@ _open65 none; _c65_tree="$(_tree65)"; _start65; _fix65; _commit65
 _c65_fail="$([[ "$(_subj65)" == 'fix(demo): repair 1 at review' ]] && echo 'repair commit' || echo "HEAD $(_subj65)")|$(_gates65 "$_c65_tree" 1)"
 assert_eq "repair: the commit gate passes a Review verdict that differs from the commit by closed repairs only, and fails it when a repair between them has no completed recheck" \
   "closed|tree row passes|repair commit|tree row fails naming both trees" "$_c65_pass|$_c65_fail"
+_open65 none; _c65_tree="$(_tree65)"; echo 'echo later' >> src/demo.sh; git commit -q -am 'a change after the Review, no repair'
+assert_eq "repair: the commit gate fails a Review verdict of another tree in a run with no repair, naming both trees" \
+  "tree row fails naming both trees" "$(_gates65 "$_c65_tree")"
 cd "$WORKDIR" || true
 rm -rf "$T65"

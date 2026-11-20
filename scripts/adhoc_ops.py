@@ -116,6 +116,8 @@ def close_window(state_path):
     w = d.get("adhoc")
     if not w:
         raise ValueError("no small change is open (temper adhoc open --stage <stage> --reason '<why>')")
+    if w.get("kind") == "repair":   # WP24: the CLI's own commit, the checks and the recheck end a repair, never this call
+        raise ValueError("a repair window is closed by temper repair commit, not as a small change")
     now = dirty()
     changed = set()
     for p, h in now.items():

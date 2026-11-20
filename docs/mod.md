@@ -402,6 +402,7 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
 
 - **The small change window.** An open window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only
   there (Pipeline included). `adhoc close` needs no answer; `adhoc open` is the person's, as the call their answer maps to.
+  Inside a repair window (WP24) `adhoc close` is refused: the CLI's `repair commit` ends that window.
 - **Person only calls.** `plan review`, `task confirm`, `task accept`, `adhoc open` and `state set branch` pass only as the call the
   person's answer to the CLI's question maps to, word for word. A typed answer to the Context check maps to `plan review --answer` with
   that text, quoted ([ADR 0016](decisions/0016-the-mod-answer-audit.md)).

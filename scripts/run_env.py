@@ -775,7 +775,7 @@ def main(argv):
             gr, st = {}, {}
         rv = str(gr.get('tree') or '') if isinstance(gr, dict) and stage in ('check', 'commit') else ''
         now = now or (tree_key(argv[3], root=argv[3]) if rv else '')
-        if rv and now and rv != now and (st.get('repairs') or (st.get('repair') or {}).get('commit')):
+        if rv and now and rv != now:   # in every run: a run with no repair has no chain, so any difference fails
             import repair_ops
             if not repair_ops.closed_chain(st, rv, now):
                 print('FAIL the Review verdict judged the tree %s, the project is now the tree %s, and the difference is not '
