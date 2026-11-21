@@ -3682,6 +3682,10 @@ main() {
     "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"task retry "*|"task test "*|\
 "acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*|"check run "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
   esac
+  case "$sub ${1:-} ${2:-}" in   # WP32: a person only call, refused where the CLI can tell (scripts/person_call.py)
+    "plan patch"*|"budget grant"*|"evidence clear"*|"state clear"*|"state archive"*|"state init"*|"guards uninstall"*|\
+"state set branch"|"state set base_sha") python3 -E -s "$SCRIPTS_DIR/person_call.py" "$sub" "$@" || return 1 ;;
+  esac
   case "$sub" in
     init) cmd_init "$@" ;;
     budget) python3 -E -s "$SCRIPTS_DIR/budget.py" "$@" ;;

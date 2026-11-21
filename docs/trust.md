@@ -137,6 +137,18 @@ brief tells the agent never to record one, the CLI takes the flag only with a cr
 that goes on by itself with no stop open, and the row stays in the ledger as the person's, where `temper evidence list
 --stage check` marks it. A field list passed through `--read` is refused, so no other call marks a row as yours.
 
+**A call only you may cause, with the mod off (9.8.5).** The mod refuses such a call unless your answer to the CLI's
+question maps to it. With the mod off the CLI holds what it can tell from the run's files (`scripts/person_call.py`).
+In a run that goes on by itself with no stop open, it refuses a plan patch, a budget grant, clearing a ledger, ending
+or starting over the run (`state clear`, `archive`, `init`) and `temper guards uninstall`. At a stop the run is
+parked, and the option you picked runs. In every mode it refuses to clear a
+ledger that holds an open finding (only `temper repair close` resolves one, and you keep one with your accept), a
+start of the run that goes on by itself where the approval offers none (risk H with no fresh review), a move of the
+run's branch after the approval off the branch checked out, and a base for the diff (`base_sha`) that is not the full
+id of a commit of the history of HEAD. A group fix the CLI commits never holds a change of the config, a git hook,
+a sensitive path, a manifest or a CI file: such a fix is not committed, and the group's question asks you.
+Outside a run that goes on by itself, these calls pass when typed: that you, not the model, typed a plan patch, a
+budget grant, `state clear` or `guards uninstall` only the mod holds.
 
 **What only the mod holds.** The rules of a run hold in the CLI or in the commit hook with the mod off, within the
 limits this page names, but one: that a person, not the model, picked an option. With the mod off, nothing but the
@@ -155,6 +167,6 @@ when the header, the question and the label match what the CLI wrote, at the run
   pushes. Temper pushes only after the person chose a pull request option at the commit question; the run stops there.
 - **The commit hook** gates the run's branch only. A commit on another branch passes with one line. That is a known
   limit.
-- **Turning Temper off.** After you disable the plugin, run `temper guards uninstall`. The hook also passes on its own,
-  with one line that names the command, once the plugin's files are gone. Temper reads no settings file to find out that
-  a plugin is disabled.
+- **Turning Temper off.** After you disable the plugin, run `temper guards uninstall` (the CLI refuses it while a run
+  goes on by itself with no stop open). The hook also passes on its own, with one line that names the command, once
+  the plugin's files are gone. Temper reads no settings file to find out that a plugin is disabled.

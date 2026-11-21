@@ -107,3 +107,12 @@ _r82_cfg+="|threshold=$("$TEMPER" config get check.coverage-threshold 2>/dev/nul
 assert_eq "review 2: no call an unattended run makes by itself commits or merges a change of the config" \
   "rule=auto group fix|cli-commits=0|threshold=80" "$_r82_cfg"
 
+# --- review 2: rule 3, an accepted finding ends the unattended run: clearing the Review ledger would drop the finding as
+#     surely as accepting it, with no reason recorded. The CLI refuses the clear (only repair close resolves a finding,
+#     and the person keeps one with evidence accept), so the finding stays. Corrected from the reviewer's check, which
+#     wanted the clear taken and the run ended: the lane's rule refuses a clear of a ledger with an open finding ---
+_unattended review
+"$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
+_r82_clr="$("$TEMPER" evidence clear --stage review >/dev/null 2>&1 && echo taken || echo refused)"
+assert_eq "review 2: clearing the Review ledger with an open finding is refused, so the finding is never dropped in silence" \
+  "clear=refused|findings=1,autonomous" "clear=$_r82_clr|findings=$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))'),$(_mode82)"
