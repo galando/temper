@@ -98,3 +98,20 @@ sed -i 's/the reset mail arrives/nothing at all/' .temper/specs/pw/tasks.md
 "$TEMPER" gate commit >/dev/null 2>&1 || true
 assert_eq "review 8, lane: a saved run of 9.8.4 with a manual Test goes on after the upgrade, and its confirm text is bound" \
   "True|False" "$_m88|$(_row88 commit "intent unchanged since the approval")"
+
+# --- review 8, D102: the one time notice is for a project that ran 9.8.4 or the base, never for one that only ran 9.8.5 ---
+# A project set up by 9.8.5 (temper init wrote the mark) commits a run's spec folder, as the run's own commit does. A
+# second worktree of it (claude --worktree, the way Getting Started says to start other work), or a fresh clone, has the
+# committed .temper/specs but not the ignored mark, so its first next says "Temper 9.8.5 asks twice" to a project that
+# never ran an earlier Temper.
+_clean88; mkdir -p p; cd p || exit 1; _git88
+printf 'x\n' > README.md; git add README.md; git commit -q -m init
+"$TEMPER" config init >/dev/null 2>&1; "$TEMPER" init >/dev/null 2>&1
+mkdir -p .temper/specs/done1; printf '# Intent: a finished run\n' > .temper/specs/done1/intent.md
+git add -A; git commit -q -m 'docs(done1): record the run' 2>/dev/null
+_d102_88="first=$(_ev "'told' if str(d.get('say') or '').startswith('Temper 9.8.5 asks twice') else 'quiet'" "$("$TEMPER" next --json 2>/dev/null)")"
+git worktree add -q "$WORKDIR/wt" 2>/dev/null; cd "$WORKDIR/wt" || exit 1
+_d102_88+="|worktree=$(_ev "'told' if str(d.get('say') or '').startswith('Temper 9.8.5 asks twice') else 'quiet'" "$("$TEMPER" next --json 2>/dev/null)")"
+cd "$WORKDIR" || exit 1
+assert_eq "review 8: a worktree of a project that only ran 9.8.5 is never told Temper 9.8.5 asks twice" \
+  "first=quiet|worktree=quiet" "$_d102_88"

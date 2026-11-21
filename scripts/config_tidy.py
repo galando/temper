@@ -95,6 +95,15 @@ def template_text():
         return f.read()
 
 
+def current(text):
+    """WP32 (review findings R8-2, R8-3): the config of a project this version set up or asked: upgrade.asked of this
+    version or a later one, or the first line of this version's template, which config init and Remove them write."""
+    if vtuple(config_yaml.get(config_yaml.parse_yaml_subset(text), "upgrade.asked", "")) >= vtuple(defaults.VERSION):
+        return True
+    head = template_text().split("\n", 1)[0]
+    return bool(head.strip()) and text.split("\n", 1)[0].rstrip() == head.rstrip()
+
+
 def stale(text, every=False):
     """The lines the question offers to remove, [{path, raw, what}], the four that change a run first; none when the
     config already answered the question of that version (upgrade.asked). every: each such line whatever upgrade.asked
