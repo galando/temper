@@ -67,6 +67,23 @@ against the pass lines of part H of `docs/plans/one-go/done.md` (`bug`, `clear`,
 one more dialog for every four Blocking answers. A line with no data says so and is not a pass. A missed line is
 reported with its numbers; it is never tuned.
 
+Two figures show a weak plan before it fails hard. `amendments` counts the entries of the run's amendments record
+(`.temper/evidence/amendments.json`), and apart those made by rule (`amendments_by_rule`, `temper plan amend`) and
+those the person made (`amendments_by_person`, `temper plan patch`). `first_review_high` counts the findings of level
+high or critical that the first Review of the run recorded in its ledger, up to that Review's `review completed` row.
+`temper state clear` deletes both records when a run ends, so `run.mjs` keeps every entry it sees while the run goes
+on, in the run's folder under `records/`. A run with no such record gives `null`, never 0: plain Claude Code, and a
+CLI that writes no amendments record, as the round before on the base (`10e965a`). Both are in each run and, as a
+spread with the number of runs that had the record, in each cell, and the printed table shows their means.
+
+The model test (the build of 9.8.5, WP32) runs the same tasks once more on the result with the planner on Sonnet below
+risk H, in a results folder of its own (round (c)), against the round on the default config (round (b)). Its rule was
+fixed before round (c) ran: the default table changes to Sonnet below risk H only if, against round (b), the hidden
+tests are equal, the rules met stay at least 95%, the blocked tasks and the steps back to Plan do not rise, and the
+means of `amendments` and of `first_review_high` are not above those of round (b). Else Opus stays. Round (a) has
+neither record, so the two figures compare round (c) with round (b) only; with three runs a cell one finding moves a
+mean, so the number of runs stands beside each figure.
+
 ## Running it
 
 It costs real model calls and is never part of CI. It runs the arms unattended with permissions bypassed inside a
@@ -77,6 +94,7 @@ cd bench && npm install
 node run.mjs --task login-lockout --arm temper --rep 1     # one run
 python3 grade.py ~/temper-bench-results/login-lockout__temper__1           # grade it
 bash run-all.sh 3                                           # every task x every arm x 3 reps, graded
+BENCH_CONFIG_YAML='models:\n  plan: sonnet' bash run-all.sh 3 temper   # the same, with more config lines each run
 python3 report.py                                           # the tables, also in ~/temper-bench-results/report.md
 ```
 

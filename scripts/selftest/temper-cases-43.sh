@@ -104,6 +104,10 @@ TS
   printf '%s\n' "export const SCENARIOS = { 'full-run': fullRun }" > "$d/scripts/e2e/scenarios.ts"
   printf '%s\n' '{"version": 1, "caps": {"things": {"now": 5, "final": 5}}}' > "$d/scripts/caps.json"
   printf '%s\n' '# suite:name   passes after   promise' > "$d/scripts/selftest/expected-fail.txt"
+  # WP32: --final also reads the table Packages of PROGRESS.md (every package before WP32 done or blocked)
+  { printf '%s\n' '## Packages' '' '| Id | State | Commit | Date | Note |' '|---|---|---|---|---|'
+    for n in $(seq 0 31); do printf '| WP%02d | done | `abc1234` | 2026-11-21 | made up |\n' "$n"; done
+  } > "$d/docs/plans/one-go/PROGRESS.md"
   _c43_commit "$d" "the made up root"
 }
 _c43_done() { # _c43_done [--final]: check_done.py on the made up root, its output in $_c43/done.out; prints its exit code

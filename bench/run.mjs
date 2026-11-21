@@ -18,6 +18,9 @@
 //   person.jsonl       every question and the answer given
 //   run.json           arm, task, rep, model, cost, time, turns, how it ended, and which code ran (the plugin's
 //                      version and commit, the Claude Code version, the mod on or off)
+//   records/           amendments.json and review.json: every entry of the run's amendments record and of its Review
+//                      ledger the harness saw while the run went on (`temper state clear` deletes both files when a run
+//                      ends), each once, in the order first seen; bench/scorecard.py reads them (WP32)
 //   work/              the repository as the arm left it (grade.py reads it)
 // The out folder defaults to $TEMPER_BENCH_RESULTS/<task>__<arm>__<rep>, else ~/temper-bench-results/...
 // It is never part of CI: it costs real model calls. Requires `npm install` in bench once.
@@ -71,6 +74,47 @@ function seed(taskDir, work) {
   sh("git", ["add", "-A"], work);
   sh("git", ["commit", "-qm", "base"], work);
   return sh("git", ["rev-parse", "HEAD"], work).trim();
+}
+
+// WP32: the records of the plan's quality the scorecard reads. The CLI deletes .temper/evidence at the end of a run, and an
+// approval moves the amendments record to .temper/archive, so the harness keeps each entry it sees in <out>/records.
+const KEEP = {
+  "amendments.json": (r) => [r.n, r.ts, r.kind, r.what],
+  "review.json": (r) => [r.ts, r.claim, r.severity, r.cmd, r.phase],
+};
+function keepRecords(work, out, kept) {
+  for (const [name, keyOf] of Object.entries(KEEP)) {
+    const files = [path.join(work, ".temper", "evidence", name)];
+    const arch = path.join(work, ".temper", "archive");
+    if (name === "amendments.json" && fs.existsSync(arch)) {
+      for (const f of fs.readdirSync(arch).sort()) if (/^amendments-.*\.json$/.test(f)) files.push(path.join(arch, f));
+    }
+    const k = (kept[name] ??= { keys: new Set(), rows: [], found: false, changed: false });
+    for (const f of files) {
+      let rows;
+      try {
+        rows = JSON.parse(fs.readFileSync(f, "utf8"));
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(rows)) continue;
+      if (!k.found) k.changed = true;
+      k.found = true;
+      for (const r of rows) {
+        const key = JSON.stringify(keyOf(r ?? {}));
+        if (r && typeof r === "object" && !k.keys.has(key)) {
+          k.keys.add(key);
+          k.rows.push(r);
+          k.changed = true;
+        }
+      }
+    }
+    if (k.changed) {
+      fs.mkdirSync(path.join(out, "records"), { recursive: true });
+      fs.writeFileSync(path.join(out, "records", name), JSON.stringify(k.rows, null, 1) + "\n");
+      k.changed = false;
+    }
+  }
 }
 
 // The moves of the options Temper's CLI offers right now (label -> move), so person.mjs answers a gate
@@ -163,6 +207,7 @@ async function main() {
   const briefPath = path.join(taskDir, "brief.md");
   const brief = fs.existsSync(briefPath) ? fs.readFileSync(briefPath, "utf8").trim() : null;
   const elicited = new Set();
+  const kept = {};   // WP32: the records keepRecords holds for this run
   let personCost = 0;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), Number(a["timeout-min"]) * 60_000);
@@ -183,6 +228,7 @@ async function main() {
       if (toolName !== "AskUserQuestion") return { behavior: "allow", updatedInput: input };
       questions++;
       if (questions > 60) return { behavior: "deny", message: "The person has left: too many questions.", interrupt: true };
+      if (a.arm === "temper") keepRecords(work, out, kept);
       const ctx = a.arm === "temper" ? temperMoves(work) : { moves: {}, tos: {}, qids: {}, action: null, stage: null };
       // each line: the dialog it was asked in (a dialog of four Blocking questions is four lines with one index), the
       // question's id, the move of the answer and the stage a step back goes to, when the CLI gave them
@@ -232,6 +278,7 @@ async function main() {
       let lastText = "";
       for await (const m of query({ prompt: p, options: { ...options, ...(sessionId ? { resume: sessionId } : {}) } })) {
         tx.write(JSON.stringify(m) + "\n");
+        if (a.arm === "temper" && m.type === "user") keepRecords(work, out, kept);   // a tool ran: a record may have grown
         if (m.session_id) sessionId = m.session_id;
         if (m.type === "system" && m.subtype === "init" && m.claude_code_version) claudeCode = m.claude_code_version;
         if (m.type === "result") results.push(m);
@@ -260,6 +307,7 @@ async function main() {
     ended = abort.signal.aborted ? "timeout" : `error: ${e?.message || e}`;
   } finally {
     clearTimeout(timer);
+    if (a.arm === "temper") keepRecords(work, out, kept);
   }
 
   const sum = (k) => results.reduce((s, r) => s + (Number(r[k]) || 0), 0);

@@ -744,8 +744,9 @@ describe('WP24: the repair window is read from the view', () => {
 })
 
 // 9.8.5 (WP25): `plan patch` stays the person's in every form (a command line, a file outside the approved set); `plan
-// amend` is no person only call: its whole effect is bounded by the CLI whoever calls it (blocker B3 of
-// docs/plans/one-go/evidence/red-safety.md), so an agent's call passes the guard and the CLI's own refusals hold it.
+// amend` is no person only call: its whole effect is bounded by the CLI whoever calls it (blocker B3 of the red team
+// report on safety, red-safety.md, a working paper of the build), so an agent's call passes the guard and the CLI's
+// own refusals hold it.
 // The record of the amendments and patches is the CLI's to write.
 describe('WP25: the plan amendment and the plan patch', () => {
   const PATCHES = [
