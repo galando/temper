@@ -39,9 +39,9 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    so point `--artifact` at the real report file, don't skip it.
 
    For **every** `Scenario:` in `intent.md` — not just the ones you're confident about —
-   find the test that exercises it (its `Test:` line names it; else by name, or by the
-   behavior its `Then` line states) and let the CLI run it, one row per scenario (a scenario row written with
-   `evidence add` counts at no gate):
+   find the test that exercises it (its `Test:` line names it, and then only a run of that command counts; else by
+   name, or by the behavior its `Then` line states) and let the CLI run it, one row per scenario (a scenario row
+   written with `evidence add` counts at no gate):
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage check \
      --scenario '<the exact scenario name from intent.md>' \

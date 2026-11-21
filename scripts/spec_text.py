@@ -145,7 +145,7 @@ def uncovered_scenarios(argv):
                                                                                  'ledger_ops.py'))
         ledger_ops = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(ledger_ops)
-        covered = ledger_ops.covered_scenarios(json.load(open(ev_path)))
+        covered = ledger_ops.covered_scenarios(json.load(open(ev_path)), intent_path)
     except Exception:
         pass
     missing = [n for n in names if n not in covered]

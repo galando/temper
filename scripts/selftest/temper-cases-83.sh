@@ -30,3 +30,13 @@ _t83_tree="$(_g83 "r = g.get('tree')")"
 assert_eq "review 3: tests pass is not passed by a run of true when the CLI's run of the configured suite failed on the tree the verdict names" \
   "verdict=FAIL|tests=False|same tree=True" \
   "verdict=$(_g83 "r = g.get('verdict')")|tests=$(_g83 "r = row('tests pass').get('pass')")|same tree=$([[ "$(_g83 "r = g.get('tree')")" == "$_t83_tree" ]] && echo True || echo False)"
+
+# --- rule 5: a scenario whose own Test: command failed is traced by a CLI run of another command ---
+fresh; _repo83; sed -i '0,/  Test: true/s//  Test: false/' .temper/specs/demo/intent.md
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1
+"$TEMPER" evidence run --stage check --scenario first --claim 'scenario: first' -- true >/dev/null 2>&1
+"$TEMPER" gate check >/dev/null 2>&1
+assert_eq "review 3: a scenario whose Test: command failed in the CLI's run is not traced by a run of another command" \
+  "scenarios=False|acceptance=False" \
+  "scenarios=$(_g83 "r = row('scenarios traced').get('pass')")|acceptance=$(_g83 "r = row('acceptance evidence').get('pass')")"

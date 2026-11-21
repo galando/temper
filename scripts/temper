@@ -1436,7 +1436,7 @@ _ev_scenarios_covered() { # _ev_scenarios_covered <stage> -> count of DISTINCT s
   local stage="$1"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo 0; return; }
-  python3 -I "$SCRIPTS_DIR/ledger_ops.py" scenarios-covered "$file"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" scenarios-covered "$file" "$(_spec_path "")/intent.md"
 }
 
 _intent_uncovered_scenarios() { # _intent_uncovered_scenarios <intent.md> <stage>

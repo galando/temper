@@ -36,3 +36,22 @@ assert_eq "review 7: a passing evidence run of another command under the suite's
   "before=FAIL|after=FAIL|no state advance by rule" \
   "before=$_f1_before|after=$_f1_after|$([[ "$_f1_next" == auto*"state advance check_complete"* ]] && echo "$_f1_next" || echo 'no state advance by rule')"
 
+# The same for a scenario: its declared Test fails, and a passing run of `true` under the scenario's name covers it.
+fresh; sed -i '0,/^  Test: true$/s//  Test: sh src\/first_test.sh/' .temper/specs/demo/intent.md
+_prev87=intent
+for _s87 in plan build review check; do
+  gpass "$_prev87"; [[ "$_prev87" == plan ]] && "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+  "$TEMPER" state advance "${_prev87}_complete" "$_s87" >/dev/null 2>&1; _prev87="$_s87"
+done
+_repo87; echo 'exit 1' > src/first_test.sh; git add src/first_test.sh; git commit -q -m test
+"$TEMPER" check run >/dev/null 2>&1
+_f1s_row() { python3 -c "
+import json
+g = json.load(open('.temper/gates.json'))['check']
+print(next((str(r.get('pass')) for r in g.get('requirements') or [] if r.get('name') == 'scenarios traced to tests'), 'absent'))" 2>/dev/null; }
+"$TEMPER" gate check >/dev/null 2>&1; _f1s_before="$(_f1s_row)"
+"$TEMPER" evidence run --stage check --scenario first --claim 'scenario: first -> sh src/first_test.sh' -- true >/dev/null 2>&1
+"$TEMPER" gate check >/dev/null 2>&1; _f1s_after="$(_f1s_row)"
+assert_eq "review 7: a passing evidence run of another command under a scenario's name does not cover the scenario whose Test fails" \
+  "before=False|after=False" "before=$_f1s_before|after=$_f1s_after"
+
