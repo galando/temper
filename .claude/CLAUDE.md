@@ -62,7 +62,8 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
   orchestrator file); new commands and agents must be listed in `.claude-plugin/plugin.json`;
   a finding is resolved by `temper repair close` (scripts/repair_ops.py), never by a brief or an agent's
   call; the person decides only in a question dialog, so never add a button that decides to the
-  mod, and never add a command (a new word is a row of the Arguments table of `commands/temper.md`, with a page in `reference/`);
+  mod, and never add a command (a new word is a row of the Arguments table of `commands/temper.md`,
+  with a page in `reference/`);
   before a fault adds a row, a question, a key or an agent, show that the failing step cannot be removed or merged;
   a cap of `scripts/caps.json` is raised only in a pull request of its own, never by a building session (`now`
   follows the measure, `final` never moves), and a count of the floor (`scripts/e2e/floor.json`) moves only in the
