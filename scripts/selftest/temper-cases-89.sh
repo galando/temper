@@ -78,3 +78,23 @@ _fb89="$("$TEMPER" state get next_stage 2>/dev/null)|hash=$([[ -n "$("$TEMPER" s
 assert_eq "round 2 reviewer 1: rule 11 after a fix run's approval the run's branch is not moved off the branch checked out" \
   "fix|hash=bound|set=refused|branch=fix/bug" "$_fb89|branch=$("$TEMPER" state get branch 2>/dev/null)"
 
+# --- round 2 reviewer 1: rule 2, a fix run saved by an older Temper binds its root cause as found, as a feature run does ---
+# approval.py saved (commit 1809748) binds intent.md as found for a saved /temper:temper run past its approval, so a
+# change after the upgrade fails the row "intent unchanged since the approval". A saved /temper:fix run past its root
+# cause question is left out (command == temper): 9.8.4 and the base recorded no digest of rca.md and no plan_hash, so
+# binding_row passes it with "no digest was recorded" whatever rca.md says after the upgrade.
+_l89=""
+_fixrun89   # this version's run: the control
+printf '\nThe rounding, and a second cause found later.\n' >> .temper/specs/bug/rca.md
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+_l89+="this=$(_row89 commit "intent unchanged since the approval")"
+_fixrun89; _older89
+"$TEMPER" next --json >/dev/null 2>&1 || true   # taken up by this version (migrate_legacy stamps it)
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+_l89+="|older=$(_row89 commit "intent unchanged since the approval")"
+printf '\nThe rounding, and a second cause found later.\n' >> .temper/specs/bug/rca.md
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+_l89+=",$(_row89 commit "intent unchanged since the approval")"
+assert_eq "round 2 reviewer 1: rule 2 a fix run saved by an older Temper goes on as saved, and a root cause changed after the upgrade fails the row" \
+  "this=False|older=True,False" "$_l89"
+
