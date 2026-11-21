@@ -56,18 +56,26 @@ def own_suite(root="", spec=""):
     return {c for c in (o.get("test"), o.get("run")) if c}
 
 
-def suite_runs(rows, own=()):
+def verdict_tree(rows):
+    """The tree Check's verdict names (ledger_ops.write_verdict): of the latest row the CLI ran that has one; None when
+    none has (a project outside git)."""
+    trees = [r.get("tree") for r in rows if isinstance(r, dict) and r.get("executed_by") == "cli" and r.get("tree")]
+    return trees[-1] if trees else None
+
+
+def suite_runs(rows, own=(), tree=None):
     """The runs the row `tests pass` reads (rule 5): a run the CLI made or the person confirmed, of a test claim, no
     scenario's trace and no acceptance run (a correction names its tests: 'corrected after the lock: test_...'), and,
     when the suite is known, a run of the suite's own command: a run of another command under the suite's claim (an
-    agent's `evidence run --claim tests -- true`) stands for no run of the suite."""
+    agent's `evidence run --claim tests -- true`) stands for no run of the suite; with a tree, a run on that tree: a
+    pass of the tree before stands for no run of this one."""
     return [r for r in rows if counts(r) and not r.get("scenario") and isinstance(r.get("exit_code"), int)
             and is_test(r) and not (r.get("claim") or "").startswith("acceptance (written before Build)")
-            and (not own or r.get("cmd") in own)]
+            and (not own or r.get("cmd") in own) and (not tree or r.get("tree") == tree)]
 
 
 def check(rows, own=()):
-    runs = suite_runs(rows, own)
+    runs = suite_runs(rows, own, verdict_tree(rows))
     last = {}
     for r in runs:
         last[" ".join(str(r.get("claim")).lower().split())] = r

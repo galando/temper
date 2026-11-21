@@ -1261,13 +1261,14 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
     fi
   fi
   _ensure_dirs
+  local tree=""; [[ "$stage" == check ]] && tree="$(python3 -E -s "$SCRIPTS_DIR/run_env.py" tree "$REPO_ROOT" 2>/dev/null)"
   "$@"
   local exit_code=$?
   local cmd_str="$*"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || (set -C; echo '[]' > "$file") 2>/dev/null || true
   local entry
-  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" run-entry "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" run-entry "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)" "$tree")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim (cli-executed, exit $exit_code)"
   return 0

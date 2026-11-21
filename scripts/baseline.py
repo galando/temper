@@ -914,7 +914,7 @@ def skip_row(root, ledger, config=""):
         return ""
     import runs
     last = {}
-    for r in runs.suite_runs(rows, runs.own_suite(root)):   # the runs the row reads (rule 5)
+    for r in runs.suite_runs(rows, runs.own_suite(root), runs.verdict_tree(rows)):   # the runs the row reads (rule 5)
         last[" ".join(str(r.get("claim")).lower().split())] = r
     red = [r for r in last.values() if r.get("exit_code") != 0]
     if not red:

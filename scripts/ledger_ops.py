@@ -181,11 +181,13 @@ def evidence_list(argv):
 
 def run_entry(argv):
     import json, sys
-    claim, cmd, exit_code, severity, label, phase, scenario, criterion, ts = argv[1:]
+    claim, cmd, exit_code, severity, label, phase, scenario, criterion, ts = argv[1:10]
     e = {'claim': claim, 'cmd': cmd, 'exit_code': int(exit_code), 'artifact': None,
          'sha256': None, 'value': None, 'severity': severity or None,
          'phase': phase or None, 'scenario': scenario or None, 'criterion': criterion or None,
          'label': label, 'executed_by': 'cli', 'ts': ts}
+    if len(argv) > 10 and argv[10]:   # a run at Check: the tree it ran on (run_env.tree_key), as Check's own rows carry it
+        e['tree'] = argv[10]
     print(json.dumps(e))
 
 
@@ -222,11 +224,10 @@ def write_verdict(argv):
             pass
     if stage == 'check':   # rule 5: Check judged the tree its latest CLI run ran on, not the tree at the gate's moment
         try:
-            ran = [x.get('tree') for x in json.load(open(os.path.join(os.path.dirname(f), 'evidence', 'check.json')))
-                   if isinstance(x, dict) and x.get('executed_by') == 'cli' and x.get('tree')]
+            ran = _runs().verdict_tree(json.load(open(os.path.join(os.path.dirname(f), 'evidence', 'check.json'))))
         except (OSError, ValueError, TypeError):
-            ran = []
-        d[stage]['tree'] = ran[-1] if ran else d[stage].get('tree')
+            ran = None
+        d[stage]['tree'] = ran or d[stage].get('tree')
     tmp = '%s.tmp.%d' % (f, os.getpid())
     with open(tmp, 'w') as fh:
         json.dump(d, fh, indent=2)

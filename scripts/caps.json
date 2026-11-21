@@ -79,7 +79,7 @@
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 206493,
+   "now": 206625,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },
