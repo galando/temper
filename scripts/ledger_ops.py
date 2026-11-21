@@ -191,6 +191,14 @@ def run_entry(argv):
     print(json.dumps(e))
 
 
+def shell_join(argv):
+    """The text of the command `temper evidence run` ran: its words as the shell reads them back (rule 5). The words run
+    with no shell, so `echo a; false` passed as words is echo's run: recorded quoted (`echo 'a;' false`), it equals no
+    shell text of a suite or a Test: line that runs another command; plain words read as they were typed."""
+    import shlex
+    print(shlex.join(argv[1:]))
+
+
 def feedback_resolved_row(argv):
     import json, sys, time
     print(json.dumps({'claim': 'feedback #%s: applied — Task %s re-ran after group reopen and passed its task gate' % (argv[1], argv[2]),
@@ -294,6 +302,7 @@ WORDS = {n.replace("_", "-"): f for n, f in (
     ('evidence_entry', evidence_entry),
     ('evidence_list', evidence_list),
     ('run_entry', run_entry),
+    ('shell_join', shell_join),
     ('feedback_resolved_row', feedback_resolved_row),
     ('confirm_row', confirm_row),
     ('write_verdict', write_verdict),

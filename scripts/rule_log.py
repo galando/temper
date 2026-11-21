@@ -2,11 +2,13 @@
 """rule_log.py: the record of what a rule decided in a run that goes on by itself (9.8.5, WP11, ADR 0019 decision 3).
 
   python3 rule_log.py append KIND STAGE WHAT     adds {"kind", "stage", "what", "ts"} to .temper/rule-log.json
+  python3 rule_log.py append KIND STAGE WHAT --by-rule    the same, for a step a rule takes in every mode (see append)
   python3 rule_log.py show                       prints the record as JSON
 
 The kinds `advance`, `repair`, `group fix`, `covered` and `amend` (WP25) are what a rule did: they are written only while the run state
 says the run goes on by itself (run_mode autonomous, started at an earlier stage than STAGE) and no stop is open, or,
-for a repair in the stage (scripts/repair_ops.py), in every mode while no stop is open, since a rule starts it. The
+for a step a rule takes in every mode (a repair in the stage, scripts/repair_ops.py; the run again of a timed out group
+check; the acceptance tests the flow skips, scripts/check_run.py), in every mode while no stop is open (--by-rule). The
 kinds `stop`, `answer` and `ended` are always written: a stop, the person's answer to it, and the end of the unattended
 run. Nothing but the CLI calls this; the record is the CLI's (the mod guards the file). Runs in the project folder;
 standard library only. A record that cannot be read or written never stops the call that writes it.
@@ -71,9 +73,9 @@ def append(kind, stage, what, by_rule=False):
 
 
 def main(argv):
-    if len(argv) == 5 and argv[1] == "append":
+    if len(argv) in (5, 6) and argv[1] == "append" and argv[5:] in ([], ["--by-rule"]):
         try:
-            return append(argv[2], argv[3], argv[4])
+            return append(argv[2], argv[3], argv[4], by_rule=argv[5:] == ["--by-rule"])
         except OSError as e:
             print("WARN: the rule log could not be written (%s)" % e, file=sys.stderr)
             return 0

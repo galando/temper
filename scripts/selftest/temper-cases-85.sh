@@ -5,14 +5,15 @@
 # A call the CLI does not have yet stays inside $( ... ) or ends in || true, so the file always runs to its end.
 
 # --- the helpers of this file ---
-_used85() { # _used85 [key]: the entries of the budget record, of that key when given
-  python3 - "${1:-}" <<'PY'
+_used85() { # _used85 [key [kind]]: the entries of the budget record, of that key and of that kind when given
+  python3 - "${1:-}" "${2:-}" <<'PY'
 import json, sys
 try:
     u = json.load(open(".temper/budget.json")).get("used") or []
 except (OSError, ValueError, AttributeError):
     u = []
-print(sum(1 for x in u if isinstance(x, dict) and (not sys.argv[1] or x.get("key") == sys.argv[1])))
+print(sum(1 for x in u if isinstance(x, dict) and (not sys.argv[1] or x.get("key") == sys.argv[1])
+          and (not sys.argv[2] or x.get("kind") == sys.argv[2])))
 PY
 }
 _log85() { # _log85 <ERE>: how many entries of the rule log (the record the commit card lists) match the ERE
@@ -92,7 +93,7 @@ done
 _r9a_rounds=$(( $(_ncli85) - _r9a_before ))
 assert_eq "review 5: a fix of a failed group check committed by the CLI and checked again spends a repeat, or is refused when no fix was asked" \
   "check failed first=FAIL|fix commits of the CLI no repeat paid for=0" \
-  "check failed first=$_r9a_first|fix commits of the CLI no repeat paid for=$(( _r9a_rounds - $(_used85 group:G1) ))"
+  "check failed first=$_r9a_first|fix commits of the CLI no repeat paid for=$(( _r9a_rounds - $(_used85 group:G1 'group fix') ))"
 
 
 # --- rule 10: the commit question lists what a rule decided at a failed group check ---

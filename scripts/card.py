@@ -430,9 +430,12 @@ def approval(b, nxt):
 
 # ---- the commit ------------------------------------------------------------------------------------------------------
 
-def last_check(name):
+def last_check(name, spec=""):
     rows = [x for x in load(os.path.join(TEMPER, "evidence", "check.json"), [])
             if isinstance(x, dict) and not x.get("scenario")]
+    if name == "tests":   # rule 5: THE SUITE is the run the row `tests pass` reads (runs.gate_runs), never another
+        import runs
+        rows = runs.gate_runs(rows, os.getcwd(), spec)
     rx = {"tests": r"\btests?\b|unittest|pytest|jest", "coverage": r"coverage", "mutation": r"mutation|planted"}[name]
     hits = [x for x in rows if re.search(rx, str(x.get("claim", "")), re.I)]
     return hits[-1] if hits else None
@@ -488,7 +491,7 @@ def commit(b, nxt):
                 for c in crit if c.get("status") != "passed"]
         out.append(sec("criteria", "WHAT IS TRUE", rows, "%d of %d met" % (len(met), len(crit)), 8,
                        os.path.join(r.spec, "intent.md")))
-    t = last_check("tests")
+    t = last_check("tests", r.spec or "")
     skip = next((x for x in r.rows("check") if x.get("name") == "tests pass" and x.get("state") == "skipped"), None)
     if skip is not None:   # WP20: the person went on from a red base: the failures before and after, as a skip
         out.append(sec("suite", "THE SUITE", [cell(str(skip.get("detail") or "skipped"), "skipped")]))

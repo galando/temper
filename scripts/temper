@@ -1265,7 +1265,7 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
   local tree=""; [[ "$stage" == check ]] && tree="$(python3 -E -s "$SCRIPTS_DIR/run_env.py" tree "$REPO_ROOT" 2>/dev/null)"
   "$@"
   local exit_code=$?
-  local cmd_str="$*"
+  local cmd_str; cmd_str="$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" shell-join "$@")"   # rule 5: the words as they ran
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || (set -C; echo '[]' > "$file") 2>/dev/null || true
   local entry
@@ -1786,7 +1786,7 @@ cmd_group_gate() {
     echo "FAIL: usage: temper group gate G<n> [--timeout-s N] [--fresh]" >&2
     return 1
   fi
-  [[ -n "$tmo" && "$(python3 -I "$SCRIPTS_DIR/groups_ops.py" gate-verdict "$GROUPS_FILE" "$g")" == FAIL ]] && _rule_log repair build "group $g checked again with ${tmo}s"   # rule 10
+  [[ -n "$tmo" && "$(python3 -I "$SCRIPTS_DIR/groups_ops.py" gate-verdict "$GROUPS_FILE" "$g")" == FAIL ]] && { python3 -I "$SCRIPTS_DIR/rule_log.py" append repair build "group $g checked again with ${tmo}s" --by-rule >/dev/null 2>&1 || true; }   # rule 10, every mode
   local spec_path plan chk validate notpassed wt
   spec_path="$(_spec_path "")"
   if [[ -z "$spec_path" || ! -f "$spec_path/tasks.md" ]]; then

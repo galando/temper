@@ -129,11 +129,14 @@ OUT="$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/inten
 assert_eq "F7: with no row each criterion says why: code FAIL, scenario FAIL naming the Test: cut at 60, manual CONFIRM" \
   "AC-01 FAIL: its command has no row run by the CLI (test -f unit/test_cli.py).|AC-02 FAIL: scenario 'the CLI lists categories in color' ($F7CUT) has no row run by the CLI.|AC-03 CONFIRM: the person confirms it at Check" \
   "$(echo "$OUT" | paste -sd'|' -)"
-"$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- bash -c 'exit 4' >/dev/null 2>&1
+# rule 5: only a run of the scenario's own Test: command traces it, so the CLI runs that command (a stand in for pytest)
+mkdir -p "$WORKDIR/.f7bin"; printf '#!/bin/sh\nexit "${F7_EXIT:-0}"\n' > "$WORKDIR/.f7bin/pytest"; chmod +x "$WORKDIR/.f7bin/pytest"
+PATH="$WORKDIR/.f7bin:$PATH" F7_EXIT=4 "$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- $F7CMD >/dev/null 2>&1
 OUT="$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/intent.md .temper/evidence/build.json | sed -n 2p)"
 assert_eq "F7: a failed scenario line names the scenario, its command cut at 60 characters, and the exit" \
   "AC-02 FAIL: scenario 'the CLI lists categories in color' ($F7CUT) exit 4." "$OUT"
-"$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- true >/dev/null 2>&1
+PATH="$WORKDIR/.f7bin:$PATH" "$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- $F7CMD >/dev/null 2>&1
+rm -rf "$WORKDIR/.f7bin"
 "$TEMPER" evidence add --stage build --scenario 'the CLI lists categories in color' --claim 'an agent says it passed' --cmd true --exit 0 >/dev/null 2>&1
 assert_eq "F7: a CLI-run row with exit 0 passes the scenario criterion" "AC-02 PASS: 1 scenario(s) ran green" \
   "$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/intent.md .temper/evidence/build.json | sed -n 2p)"
