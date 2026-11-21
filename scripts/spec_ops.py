@@ -20,6 +20,10 @@ commit had to go in a Bash call of its own (the in-agent commit hook judges a co
 in the same call is not staged yet when it looks). That was two or three turns per accepted stage, each rereading the
 whole conversation. Run here, the commit goes through the native pre-commit hook like any other, and every call of the
 answer is a `temper` call, so the session runs them with `temper go` in one Bash call. Standard library only.
+
+Rule 1 (row D30): before the approval (a /temper:temper run at Intent or Plan, a fix run at its root cause) `branch` and
+`commit` are refused unless the approving answer's first call passed its digest check at this step (scripts/approval.py
+held): the approval's own calls go on, and no other branch or commit is made before it.
 """
 import subprocess
 import sys
@@ -169,6 +173,12 @@ def main(argv):
     """argv: the word, the run's branch, the run's spec folder ('' with no run), then the word's own arguments."""
     word, name, spec = (list(argv[:3]) + ["", "", ""])[:3]
     rest = list(argv[3:])
+    if word in ("branch", "commit"):
+        import approval
+        why = approval.held(".temper/build-state.json", spec)
+        if why:
+            print("FAIL: spec %s: %s" % (word, why), file=sys.stderr)
+            return 1
     if word == "branch":
         if rest[:1] == ["--carry"] and len(rest) == 2:
             return carry(spec, rest[1], name)

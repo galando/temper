@@ -2,12 +2,14 @@
 """notice.py: the one time notice of 9.8.5 (WP31), said once to a project that ran an earlier Temper.
 
 A project of 9.8.4 (what users have), or one that ran the head of pull request #115, holds `.temper/specs` or
-`.temper/archive` and no mark. The first `temper next` puts the notice in front of its `say` and writes the mark,
+`.temper/archive`, no mark, and a config that is not of this version (WP32: neither upgrade.asked of 9.8.5 nor the
+first line of its template, config_tidy.current; a new worktree or clone of a 9.8.5 project has its committed spec
+folders but not the ignored mark). The first `temper next` puts the notice in front of its `say` and writes the mark,
 `.temper/notice.json`, with the version as its key; `temper go` keeps it in front of the `say` it prints, so both
 carriers show it once, as a line of text and never in a question. `temper init` writes the mark for a new project
 (neither folder there), so a new project is never told. `state clear` keeps the mark; git ignores it (`_RUN_FILES`).
 
-  python3 notice.py init    write the mark when the project has neither .temper/specs nor .temper/archive
+  python3 notice.py init    write the mark when the project is not an older one (neither folder, or a config of 9.8.5)
 
 Standard library only. Fail open: a mark that cannot be read or written never stops a command.
 """
@@ -23,7 +25,18 @@ MARK = os.path.join(TEMPER, "notice.json")
 
 
 def _older():
-    return any(os.path.isdir(os.path.join(TEMPER, d)) for d in ("specs", "archive"))
+    """A spec or archive folder, and a config this version did not set up or ask (WP32, review finding R8-2): the folders
+    are committed, so a new worktree or clone of a project that ran only 9.8.5 has them, and its config says 9.8.5."""
+    if not any(os.path.isdir(os.path.join(TEMPER, d)) for d in ("specs", "archive")):
+        return False
+    try:
+        with open(os.path.join(".claude", "temper.config"), encoding="utf-8") as f:
+            text = f.read()
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import config_tidy
+        return not config_tidy.current(text)
+    except Exception:
+        return True
 
 
 def _marked():

@@ -417,7 +417,7 @@ def main(argv):
             print("OK: %d open area(s) of concern recorded in design.md as accepted at the Design question" % n)
         return 0
     if len(argv) >= 3 and argv[1] == "plan-files":
-        print(json.dumps(plan_files(argv[2])))
+        print(json.dumps(plan_files(argv[2], tables=False)))   # the approval records what its card showed (WP32)
         return 0
     if len(argv) < 2 or argv[1] not in ("next", "view"):
         print(__doc__, file=sys.stderr)

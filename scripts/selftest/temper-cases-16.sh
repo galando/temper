@@ -83,6 +83,7 @@ assert_eq "9.8.0: gate --brief prints the verdict and the failed rows, no passed
 fresh; rm -rf .git src; git init -q . 2>/dev/null
 git config user.email t@t; git config user.name t
 echo base > README.demo; git add README.demo; git commit -qm base --no-verify >/dev/null 2>&1; git checkout -q -B main
+_at build   # WP32, rule 1 (D30): the run's branch and its commits come after the approval (temper-cases-81.sh)
 assert_eq "9.8.0: spec branch switches to the run's branch, creating it" "0|feature/demo" \
   "$("$TEMPER" spec branch >/dev/null 2>&1; echo $?)|$(git branch --show-current)"
 assert_eq "9.8.0: spec branch on the run's branch already changes nothing" "0|feature/demo" \

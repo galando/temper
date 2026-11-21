@@ -122,6 +122,7 @@ assert_eq "F28: a branch with no extra commits keeps the plain switch" "1|0" \
 git branch -f feature/demo main; git checkout -q feature/demo; echo old > old.txt; git add old.txt; git commit -qm "earlier"; git checkout -q plain
 mkdir -p .temper/specs/demo; echo "# new intent" > .temper/specs/demo/intent.md
 CALL="$(_q12 "next(x for x in o('ask-every-stage')['calls'] if ' spec branch --carry ' in x)")"
+bash -c "$(_q12 "o('ask-every-stage')['calls'][0]")" >/dev/null 2>&1   # WP32, rule 1 (D30): the option's bind goes first
 bash -c "$CALL" >/dev/null 2>&1
 assert_eq "F28: the carry call lands on the branch with the new spec file in place, and no temp folder is left" "feature/demo|# new intent|yes" \
   "$(git branch --show-current)|$(cat .temper/specs/demo/intent.md)|$([[ -f old.txt ]] && echo yes || echo no)"

@@ -57,6 +57,8 @@ def migrate_legacy(argv):
                 with os.fdopen(fd, "w") as f:
                     json.dump(gates, f, indent=2); f.write("\n")
                 os.replace(tmp, gp)
+        if "saved_by" not in d:
+            d.update(_bind_saved(p))
         d["saved_by"] = SAVED_BY;            changed = True
     if not changed:
         sys.exit(0)
@@ -64,6 +66,19 @@ def migrate_legacy(argv):
     with os.fdopen(fd, "w") as f:
         json.dump(d, f, indent=2); f.write("\n")
     os.replace(tmp, p)                  # atomic: a truncated migration would LOSE state
+
+
+def _bind_saved(p):
+    """WP32: what a run saved by 9.8.4 or by the base binds once this version takes it up (scripts/approval.py saved):
+    intent_hash and a moved plan_hash, or nothing. Run as its own process, so this module stays isolated."""
+    import json, os, subprocess
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "approval.py")
+    try:
+        r = subprocess.run([sys.executable, "-I", here, "saved", p], capture_output=True, text=True, timeout=60)
+        u = json.loads(r.stdout or "{}")
+    except Exception:
+        return {}
+    return {k: v for k, v in u.items() if k in ("intent_hash", "plan_hash") and isinstance(v, str)} if isinstance(u, dict) else {}
 
 
 def may_start(argv):

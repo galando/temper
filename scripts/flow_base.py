@@ -292,14 +292,15 @@ def advance_ok(run, done, nxt):
             "temper override %s --reason '...'" % (stage, run.gate_of(stage)))
 
 
-def plan_files(run_or_spec):
+def plan_files(run_or_spec, tables=True):
     """The files a plan allows: the backticked paths of the **File:** lines of tasks.md, and of the two file tables of
     plan.md that a plan approved by 9.8.4 or by the base holds (WP26: Plan writes those tables no more, so a new plan
-    has none and its files are the **File:** lines alone)."""
+    has none and its files are the **File:** lines alone). tables False: the **File:** lines alone, the files the
+    approval card shows, which the approval records (`flow.py plan-files`; WP32, review finding R2d)."""
     spec = run_or_spec
     out = []
     active, level = False, 0
-    for line in read_text(os.path.join(spec, "plan.md")).split("\n"):
+    for line in read_text(os.path.join(spec, "plan.md")).split("\n") if tables else []:
         h = re.match(r"^(#{2,6})\s+(.*?)\s*$", line)
         if h:
             if active and len(h.group(1)) <= level:

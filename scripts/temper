@@ -617,7 +617,7 @@ cmd_state_set() {
   fi
   # ADR 0013: the files the person approved, and the digest of the tasks they approved, are recorded when the run
   # leaves Plan, and Build is held to them.
-  if [[ "$1" == "approved_files" || "$1" == "plan_hash" || "$1" == "intent_hash" || "$1" == "from_branch" ]]; then
+  if [[ "$1" == "approved_files" || "$1" == "plan_hash" || "$1" == "intent_hash" || "$1" == "from_branch" || "${1%%.*}" == approval_shown ]]; then
     echo "FAIL: $1 is kept by the CLI (state advance plan_complete records what the person approved)" >&2
     return 1
   fi
@@ -2987,6 +2987,7 @@ gate_commit() {
   # top of its repository has its spec folder at .temper/specs/ too
   staged_specs=$(git -C "$REPO_ROOT" diff --cached --name-only --no-renames --relative 2>/dev/null | grep -c '^\.temper/specs/')
   if [[ "${staged_all:-0}" -gt 0 && "$staged_all" -eq "${staged_specs:-0}" ]]; then
+    local why; why="$(python3 -I "$SCRIPTS_DIR/approval.py" held "$STATE_FILE" "$(_spec_path "")" 2>/dev/null)" && { echo "[$(_req "artifact-only commit" 0 "$why")]" 0; return 1; }   # rule 1, D30
     reqs+=("$(_req "artifact-only commit" 1 "$staged_all staged file(s), all under .temper/specs/ — the artifact chain passes the fence; code commits still need every gate")")
     local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
     echo "$reqs_json" 1

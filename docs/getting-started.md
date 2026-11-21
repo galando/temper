@@ -138,7 +138,8 @@ Its options are Commit, Loop back to Build, Commit and open PR, and More options
   asks its own question.
 - **Stop the run.** Press Esc. Then type `/temper:temper` with no words: the run is taken up where it stopped, and the
   question of its stage is asked once.
-- **Save for later.** Every question offers it; `/temper:temper` with no words takes the run up again.
+- **Save for later.** Most questions offer it. The one time config question after the upgrade does not: each of
+  its two answers is one call. `/temper:temper` with no words takes the run up again.
 - **Several things at once.** A run owns the folder it is started in. Start other work in its own worktree
   (`claude --worktree <name>`), where `/temper:temper` is a run of its own. Build itself runs in groups of tasks, each
   task in its own worktree: `docs/grouped-build.md`.
