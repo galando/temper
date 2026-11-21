@@ -142,3 +142,31 @@ _done84 src/demo.sh
 "$TEMPER" repair close >/dev/null 2>&1 || true
 assert_eq "review 4: R7c a behaviour finding (proof test) is not resolved by a RED run after the fix that never ran the test" \
   "#3 open" "#3 $(_ledger84 review "'resolved' if (e[2].get('resolved') or {}).get('fixed_by') else 'open'")"
+
+# --- rule 8 (row D37): a new finding of a later Review round is resolved by hand with an old repair commit ---
+# Repair 1 resolves finding #1 in order (commit, checks, mark, recheck, close). The person loops back to Build, which
+# empties Review's ledger; the second Review records a new High finding, again #1. `evidence resolve --fixed-by` the old
+# repair commit takes it (recheck_after reads only that #1 is in the old repair's resolved list), and Review passes: a
+# finding nobody repaired, checked or rechecked is resolved.
+_review84 high
+"$TEMPER" repair start --stage review >/dev/null 2>&1 || true
+echo 'echo fixed >&2; exit 1' > src/demo.sh
+"$TEMPER" repair commit >/dev/null 2>&1 || true
+_r84_sha="$(git rev-parse HEAD)"
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done \
+  < <(_x84 "r = '\n'.join(c for a in d.get('agents') or [] for c in a.get('before') or [])")
+"$TEMPER" evidence add --stage review --claim 'recheck #1: fixed' --exit 0 --label PROVEN >/dev/null 2>&1
+_done84 src/demo.sh
+"$TEMPER" repair close >/dev/null 2>&1 || true
+_r84_first="$(_ledger84 review "'resolved' if (e[0].get('resolved') or {}).get('fixed_by') else 'open'")"
+"$TEMPER" state loop review build --reason 'the person wants another build' >/dev/null 2>&1
+gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo writes the token to stderr' --severity high --label PROVEN >/dev/null 2>&1
+_done84 src/demo.sh
+"$TEMPER" gate review >/dev/null 2>&1
+_r84_second="$(_verdict84 review)"
+_r84_hand="$("$TEMPER" evidence resolve --stage review --id 1 --fixed-by "$_r84_sha" >/dev/null 2>&1 && echo taken || echo refused)"
+"$TEMPER" gate review >/dev/null 2>&1
+assert_eq "review 4: R8b a finding of a later Review round is not resolved by hand with an earlier repair's commit" \
+  "repair 1=resolved|second Review=FAIL|hand resolve=refused|after=FAIL" \
+  "repair 1=$_r84_first|second Review=$_r84_second|hand resolve=$_r84_hand|after=$(_verdict84 review)"
