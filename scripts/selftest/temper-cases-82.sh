@@ -78,3 +78,32 @@ _r82_arm+=",$("$TEMPER" state set run_mode autonomous >/dev/null 2>&1 && echo ta
 assert_eq "review 2: at risk H with no fresh review the approval offers no approve-run, and the typed call cannot start the unattended run" \
   "riskH-offered=False,refused,interactive" "$_r82_arm"
 
+
+# --- review 2: rule 4, an unattended run never writes the config: the group fix the rule takes commits and merges
+#     whatever the fix agent changed, the project's .claude/temper.config too ---
+setup
+rm -rf .git README src; git init -q . 2>/dev/null; git checkout -q -B master 2>/dev/null
+git config user.email t@example.com; git config user.name T
+mkdir -p src; echo 'echo demo' > src/demo.sh; echo base > README
+git add README src .claude/temper.config; git commit -q -m base; git checkout -q -B feature/demo
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+"$TEMPER" group start G1 >/dev/null 2>&1
+python3 -c "
+import json
+p = '.temper/groups.json'; d = json.load(open(p))
+d['tasks'] = {'1': {'status': 'passed', 'group': 'G1'}}; d.pop('integration', None)
+d['groups']['G1'].update(fails=1, gate={'verdict': 'FAIL', 'reason': 'group G1 Validate failed (exit 1): make test', 'ran': True, 'fail_lines': ['FAIL: test_a']})
+json.dump(d, open(p, 'w'), indent=2)"
+_r82_cfg="rule=$(_x82 "r = 'auto group fix' if d.get('action') == 'auto' and any(c.endswith('group fix G1') for c in d.get('calls') or []) else d.get('action')")"
+_go82   # the rule takes the group fix; next launches the fix agent
+_wt82=.claude/worktrees/temper-demo-G1
+sed -i 's/coverage-threshold: 80/coverage-threshold: 0/' "$_wt82/.claude/temper.config"   # what the fix agent changed
+while IFS= read -r _c82; do [[ -n "$_c82" ]] && bash -c "${_c82//\{ms\}/1}" >/dev/null 2>&1; done \
+  < <(_x82 "r = '\n'.join(c for a in d.get('agents') or [] for c in a.get('after') or [])")   # the agent's after calls
+_go82   # the group check, Continue, the merge and the Build check, as the run makes them by itself
+_r82_cfg+="|cli-commits=$(git log --format=%s feature/demo -- .claude/temper.config 2>/dev/null | grep -c 'G1 group check')"
+_r82_cfg+="|threshold=$("$TEMPER" config get check.coverage-threshold 2>/dev/null)"
+assert_eq "review 2: no call an unattended run makes by itself commits or merges a change of the config" \
+  "rule=auto group fix|cli-commits=0|threshold=80" "$_r82_cfg"
+
