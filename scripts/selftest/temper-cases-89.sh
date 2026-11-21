@@ -98,3 +98,16 @@ _l89+=",$(_row89 commit "intent unchanged since the approval")"
 assert_eq "round 2 reviewer 1: rule 2 a fix run saved by an older Temper goes on as saved, and a root cause changed after the upgrade fails the row" \
   "this=False|older=True,False" "$_l89"
 
+# --- round 2 reviewer 1: rule 4 and 5, the person's patch of the Integration command is the command Check runs ---
+# Commit 0443f0e made tasks_md.parse the one reader of the Integration line: the LAST line is the plan's, and Check, the
+# card, the baseline and the digest run or show it. plan_patch.py, which writes the person's answer to the Integration
+# command question, still replaces the FIRST such line: with two lines the patch says "Integration is now X" while every
+# reader goes on with the other line.
+fresh
+printf '\n**Integration:** `echo second`\n' >> .temper/specs/demo/tasks.md
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" plan patch integration --cmd 'echo patched' >/dev/null 2>&1; _p89=$?
+assert_eq "round 2 reviewer 1: rule 4 a plan patch of the Integration command changes the line every reader runs" \
+  "patch=0|runs=echo patched" \
+  "patch=$_p89|runs=$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import check_run; print(check_run.plan_line('.temper/specs/demo'))" "$REPO_ROOT/scripts" 2>/dev/null)"
+
