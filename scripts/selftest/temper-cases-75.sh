@@ -346,6 +346,19 @@ _clean75; _git75; mkdir -p .temper/archive/older; printf '{}\n' > .temper/archiv
 _n75+="archive=$(_told75)"
 assert_eq "w31 the notice is said once: a project with .temper/specs or .temper/archive of an earlier run and no notice mark is told in the say of the first next, which starts with the notice, never in a question, and the mark is written" \
   "9.8.4=told,quiet,mark,no dialog|base=told,quiet,mark,no dialog|specs=told,quiet,mark,no dialog|archive=told,quiet,mark,no dialog" "$_n75"
+# lane B of phase 8 (P8-T1): temper go carries it too, in front of its say and in its key notice, once
+_restore75 7c7a1c1 parked
+_g75='import json,sys
+try:
+    d = json.loads(sys.argv[1] or "{}")
+except ValueError:
+    d = {}
+print("%s,%s" % ("say" if str(d.get("say") or "").startswith(sys.argv[2]) else "no say",
+                 "notice" if d.get("notice") == sys.argv[2] else "no notice"))'
+_n75="first=$(python3 -I -c "$_g75" "$("$TEMPER" go 2>/dev/null)" "$_NOTICE75")"
+_n75+="|second=$(python3 -I -c "$_g75" "$("$TEMPER" go 2>/dev/null)" "$_NOTICE75")"
+assert_eq "w31 temper go carries the notice once: its say starts with it and its key notice holds it, and a second go has neither" \
+  "first=say,notice|second=no say,no notice" "$_n75"
 _clean75; _git75; "$TEMPER" init >/dev/null 2>&1
 _n75="init=$([[ -f .temper/notice.json ]] && echo mark || echo no mark)"
 "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known

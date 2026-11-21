@@ -416,14 +416,27 @@ assert_eq "D29a the manifest lists two commands, /temper:temper and /temper:fix,
   "manifest=./commands/fix.md,./commands/temper.md|tracked=commands/fix.md,commands/temper.md" \
   "manifest=$(python3 -I -c "import json,sys; print(','.join(sorted(json.load(open(sys.argv[1])).get('commands') or [])))" "$REPO_ROOT/.claude-plugin/plugin.json")|tracked=$(git -C "$REPO_ROOT" ls-files commands | sort | tr '\n' ',' | sed 's/,$//')"
 assert_eq "D29b draft, status, report, init and pack are rows of the Arguments table, and a word with text after it is a request" \
-  "draft,init,pack,report,status|rule=yes" "$(python3 -I - "$REPO_ROOT/commands/temper.md" <<'PY'
+  "draft,init,pack,report,status|rule=yes|driver=yes" \
+  "$(python3 -I - "$REPO_ROOT/commands/temper.md" "$REPO_ROOT/$(git -C "$REPO_ROOT" ls-files '*driver-wiring.test.ts')" <<'PY'
 import re, sys
 text = open(sys.argv[1], encoding="utf-8").read()
 sec = text.split("## Arguments", 1)[1].split("\n## ", 1)[0] if "## Arguments" in text else ""
 first = [l.split("|")[1] for l in sec.splitlines() if l.startswith("|") and l.count("|") >= 3]
 have = sorted(w for w in ("draft", "status", "report", "init", "pack") if any(re.search(r"`%s\b" % w, c) for c in first))
 low = " ".join(sec.lower().split())
-print("%s|rule=%s" % (",".join(have), "yes" if "alone" in low and "is a request" in low else "no"))
+# lane B of phase 8 (P8-T2, WP28-3): the behaviour too. The mod test w28 runs /temper:temper with a request that starts
+# with the word status, and wants it to reach the driver whole, as the feature of state init; it is not skipped.
+try:
+    mod = open(sys.argv[2], encoding="utf-8").read()
+except OSError:
+    mod = ""
+m = re.search(r"\n  test\('w28 /temper:temper status badge on the order page reaches the driver as a request"
+              r"[^\n]*\n(.*?)\n  \}\)", mod, re.S)
+body = m.group(1) if m else ""
+drive = ("args: 'status badge on the order page'" in body and "expect(ran.some(c => / state init \\S+ --feature "
+         "'status badge on the order page'$/.test(c))).toBe(true)" in body)
+print("%s|rule=%s|driver=%s" % (",".join(have), "yes" if "alone" in low and "is a request" in low else "no",
+                                "yes" if drive else "no"))
 PY
 )"
 assert_eq "D29c armed and parked are in no text of a fixture view and on no page a user reads" "none" "$(python3 -I - "$REPO_ROOT" <<'PY'

@@ -420,10 +420,10 @@ assert_exit "9.8.0: and it is locked once more" 1 "$TEMPER" acceptance lock --cm
 gpass build review; "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state advance review_complete check >/dev/null 2>&1
 # The corrected tests fail again (a measured run: a second wrong test): the acceptance row alone fails. The tests row reads
 # the suite's runs only, so the person still gets the triage and the way to correct a test, not a step back to Build
-# that cannot make right code pass a wrong test.
+# that cannot make right code pass a wrong test. The row carries executed_by cli, as check_run.py writes it (WP30-3).
 cat > .temper/evidence/check.json <<'JSON'
 [{"claim": "acceptance (written before Build), corrected after the lock: The test asks for what the intent does not say", "cmd": "x", "exit_code": 1,
-  "output": "FAIL: test_ac05 AssertionError: 401 != 423"}]
+  "output": "FAIL: test_ac05 AssertionError: 401 != 423", "executed_by": "cli"}]
 JSON
 ev_green check "tests: the suite (run by the CLI)"   # WP30: the suite's run, made by the CLI (a claimed one counts nowhere)
 assert_eq "9.8.0: a corrected acceptance run that fails again fails its own row, never the tests row" "yes|yes" \

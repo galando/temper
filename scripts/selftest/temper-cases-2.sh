@@ -578,6 +578,26 @@ OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "a RED latest test run fails the checkpoint commit, naming the claim" 1 "$TEMPER" gate commit
 assert_eq "the RED carve-out names the failing claim" "yes" "$(grep -q 'tests green then regress' <<<"$OUT" && echo yes || echo no)"
 
+# lane B of phase 8 (WP30-1, rule 5): the checkpoint counts only a run the CLI saw; a claimed or a voided green never passes it
+for how in claimed voided; do
+  setup
+  "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
+  _at build
+  "$TEMPER" gate intent >/dev/null
+  "$TEMPER" gate plan >/dev/null
+  if [[ "$how" == claimed ]]; then
+    "$TEMPER" evidence add --stage build --phase green --exit 0 --claim "tests green task 1" >/dev/null 2>&1
+  else
+    ev_green build "tests green task 1"
+    "$TEMPER" evidence void --stage build --id 1 --reason "the pass was false" >/dev/null 2>&1
+  fi
+  echo 'code' > src.js
+  git add src.js >/dev/null 2>&1
+  OUT=$("$TEMPER" gate commit 2>&1; true)
+  assert_eq "a $how green at Build gives no build checkpoint commit pass" "no|1" \
+    "$(grep -c 'build checkpoint commit' <<<"$OUT" >/dev/null && echo yes || echo no)|$("$TEMPER" gate commit >/dev/null 2>&1; echo $?)"
+done
+
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
 _at build
