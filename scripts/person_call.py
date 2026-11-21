@@ -87,7 +87,8 @@ def refusal(words):
             return ("FAIL: at risk H the run goes on by itself only after the fresh review ran on the plan as it is and "
                     "left no open finding at high; the approval offers no such option")
     state = load(os.path.join(TEMPER, "build-state.json"), {})
-    if w[:3] == ["state", "set", "branch"] and len(w) > 3 and state.get("plan_hash"):
+    # after the approval: a feature run's records plan_hash and intent_hash, a fix run's (rca_complete) intent_hash alone
+    if w[:3] == ["state", "set", "branch"] and len(w) > 3 and (state.get("plan_hash") or "intent_hash" in state):
         here = git("rev-parse", "--abbrev-ref", "HEAD")[1]
         if w[3] != here:
             return ("FAIL: after the approval the run's branch is the branch it stands on (%s): the commit hook gates it, "

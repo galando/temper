@@ -68,3 +68,13 @@ assert_eq "round 2 reviewer 1: rule 11 base_sha typed as a path below it (base_s
   "set=refused|review=src/outside.sh" \
   "set=$([[ $_b89 -ne 0 ]] && echo refused || echo "taken:$("$TEMPER" state get base_sha 2>/dev/null)")|review=$_rv89"
 
+# --- round 2 reviewer 1: rule 11, after the approval the run's branch stays the branch checked out, in a fix run too ---
+# person_call.py takes "after the approval" from plan_hash, which only a feature run's plan_complete records. A fix run's
+# approval (rca_complete) records intent_hash, the digest of rca.md, and no plan_hash: `temper state set branch X` passes
+# after it, and the commit hook then gates X, so a commit on the branch the run stands on passes with one line.
+_fixrun89
+_fb89="$("$TEMPER" state get next_stage 2>/dev/null)|hash=$([[ -n "$("$TEMPER" state get intent_hash 2>/dev/null)" ]] && echo bound || echo none)"
+"$TEMPER" state set branch elsewhere >/dev/null 2>&1; _fb89+="|set=$([[ $? -ne 0 ]] && echo refused || echo taken)"
+assert_eq "round 2 reviewer 1: rule 11 after a fix run's approval the run's branch is not moved off the branch checked out" \
+  "fix|hash=bound|set=refused|branch=fix/bug" "$_fb89|branch=$("$TEMPER" state get branch 2>/dev/null)"
+
