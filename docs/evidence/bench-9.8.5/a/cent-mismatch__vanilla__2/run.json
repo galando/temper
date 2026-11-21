@@ -1,0 +1,24 @@
+{
+  "task": "cent-mismatch",
+  "arm": "vanilla",
+  "rep": 2,
+  "base": "00cd455be3a177bd4760aa801b08eb6916e49917",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "10e965a71c66ef3d9868fc93acd760825209f47c",
+  "mod": false,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-opus-5-5": 0.23533959999999998
+  },
+  "cost_usd": 0.2353,
+  "cost_results": "sum",
+  "wall_s": 33,
+  "api_s": 28,
+  "turns": 7,
+  "sessions": 1,
+  "questions": 0,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": null
+}

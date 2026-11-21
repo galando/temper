@@ -1,0 +1,25 @@
+{
+  "task": "cent-mismatch",
+  "arm": "temper",
+  "rep": 2,
+  "base": "6e86b2c71d0d2f88411ef7bcc88ee0accb79e24a",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "10e965a71c66ef3d9868fc93acd760825209f47c",
+  "mod": true,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-opus-5-5": 0.3533632,
+    "claude-sonnet-5-5": 0.9500188000000003
+  },
+  "cost_usd": 1.3034,
+  "cost_results": "last (cumulative)",
+  "wall_s": 236,
+  "api_s": 361,
+  "turns": 27,
+  "sessions": 2,
+  "questions": 10,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": "none"
+}

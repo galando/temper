@@ -1,0 +1,44 @@
+{
+  "task": "tenant-leak",
+  "arm": "vanilla",
+  "rep": 3,
+  "hidden_pass": 6,
+  "hidden_total": 6,
+  "hidden_rate": 1.0,
+  "hidden_all": true,
+  "hidden": {
+    "bench_hidden.test_acceptance.Leak.test_customer_of_other_tenant_is_404": "pass",
+    "bench_hidden.test_acceptance.Leak.test_export_names_only_own_customers": "pass",
+    "bench_hidden.test_acceptance.Leak.test_id_beta_does_not_have_is_404": "pass",
+    "bench_hidden.test_acceptance.Leak.test_rename_and_delete_seen_at_once": "pass",
+    "bench_hidden.test_acceptance.Leak.test_same_invoice_id_each_tenant_sees_its_own": "pass",
+    "bench_hidden.test_acceptance.Leak.test_writes_use_own_invoice_state": "pass"
+  },
+  "suite_ok": true,
+  "suite": {
+    "bench_suite.test_invoices.InvoiceTest.test_credit_note_full_amount": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_export": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_idempotent_replay": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_issue_sets_dates_in_tenant_timezone": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_other_tenant_is_404": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_pay_in_full": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_tax_per_line_half_even": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_viewer_cannot_write": "pass"
+  },
+  "code_files": 2,
+  "code_lines": 55,
+  "tool_files": 0,
+  "outside_expected": [],
+  "files": [
+    {
+      "path": "ledger/store.py",
+      "added": 6,
+      "removed": 5
+    },
+    {
+      "path": "unit/test_tenant_isolation.py",
+      "added": 44,
+      "removed": 0
+    }
+  ]
+}
