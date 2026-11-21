@@ -159,7 +159,7 @@ class Run:
     def may_run_alone(self):
         """WP14 (ADR 0019 decision 2): whether the approval may offer the run that goes on by itself. At risk H only when
         the fresh review ran on the plan as it is (every lens of the round completed) and left no open finding at high.
-        flow.may_run_alone offers the option by it, and state_ops.may_start refuses a typed start by it (WP32)."""
+        flow.may_run_alone offers the option by it, and person_call.py refuses a typed start by it (WP32)."""
         if (self.state.get("risk") or "").upper() != "H":
             return True
         fr = self.fresh()

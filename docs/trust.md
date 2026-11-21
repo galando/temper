@@ -139,16 +139,19 @@ that goes on by itself with no stop open, and the row stays in the ledger as the
 
 **A call only you may cause, with the mod off (9.8.5).** The mod refuses such a call unless your answer to the CLI's
 question maps to it. With the mod off the CLI holds what it can tell from the run's files (`scripts/person_call.py`).
-In a run that goes on by itself with no stop open, it refuses a plan patch, a budget grant, clearing a ledger, ending
-or starting over the run (`state clear`, `archive`, `init`), `temper guards uninstall`, and a Scope drift answer to no
-question asked. At a stop the run is parked, and the option you picked runs. In every mode it refuses to clear a
+In a run that goes on by itself with no stop open, it refuses a plan patch, a budget grant, clearing a ledger,
+archiving or starting the run over (`state archive`, `init`), `temper guards uninstall`, and a Scope drift answer to
+no question asked. At a stop the run is parked, and the option you picked runs. A session can record a stop itself
+(`temper park`); the commit question lists every stop. `state clear` passes in every mode: the Start over option of
+the restart question runs it, and that question is open whenever a run is. In every mode it refuses to clear a
 ledger that holds an open finding (only `temper repair close` resolves one, and you keep one with your accept), a
 start of the run that goes on by itself where the approval offers none (risk H with no fresh review), a move of the
 run's branch after the approval off the branch checked out, and a base for the diff (`base_sha`) that is not the full
 id of a commit of the history of HEAD. A group fix the CLI commits never holds a change of the config, a git hook,
 a sensitive path, a manifest or a CI file: such a fix is not committed, and the group's question asks you.
 Outside a run that goes on by itself, these calls pass when typed: that you, not the model, typed a plan patch, a
-budget grant, `state clear` or `guards uninstall` only the mod holds. Before the approval the classic hook refuses a
+budget grant, `state clear` or `guards uninstall` only the mod holds; with the mod off, a `state clear` mid run
+leaves the commit hook with no run to gate. Before the approval the classic hook refuses a
 write of a decision record under `docs/decisions/` as of any project file: Design writes the record into `design.md`.
 
 **What only the mod holds.** The rules of a run hold in the CLI or in the commit hook with the mod off, within the

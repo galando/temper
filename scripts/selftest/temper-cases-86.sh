@@ -145,25 +145,19 @@ assert_eq "review 6: rule 4 an unattended run with no drift question open cannot
   "answer=$([[ $_r6_drift -ne 0 ]] && echo refused || echo taken)|$_r6_mode|blast=$(_row86 commit "blast radius" | cut -d: -f1)"
 
 # --- review 6: rule 11, the commit hook is what holds the rules with the mod off; no CLI call of a session takes it away ---
-# Mid run, with no question open, an unattended run's session can end the run (`state clear`) or remove the hook (`guards
-# uninstall`): the CLI takes both, and then a commit of a file no gate saw passes. Only the mod refuses them (rules.ts:
-# UNINSTALL_DENY, personOnly state clear); docs/trust.md tells to run `guards uninstall` after the plugin is disabled, and
-# names no limit for a run in progress.
-_unattended build; _repo86; git checkout -q -B feature/demo; "$TEMPER" state set branch feature/demo >/dev/null 2>&1
-bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
-"$TEMPER" state clear >/dev/null 2>&1; _r6_clear=$?
-echo 'echo unseen' > src/unseen.sh; git add src/unseen.sh; git commit -q -m unseen >/dev/null 2>&1
-_r6_c1="$(git rev-list --count HEAD)"
-git config --unset core.hooksPath 2>/dev/null
+# Mid run, with no question open, an unattended run's session can remove the hook (`guards uninstall`): the CLI took it,
+# and then a commit of a file no gate saw passed. Only the mod refused it (rules.ts: UNINSTALL_DENY). The reviewer's check
+# also wanted `state clear` refused there; that part is left out: the restart question's Start over runs `state clear`,
+# and that question is open whenever a run is, so the CLI cannot refuse it without refusing the person (docs/trust.md
+# names it as held by the mod only).
 _unattended build; _repo86; git checkout -q -B feature/demo; "$TEMPER" state set branch feature/demo >/dev/null 2>&1
 bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
 "$TEMPER" guards uninstall >/dev/null 2>&1; _r6_un=$?
 echo 'echo unseen' > src/unseen.sh; git add src/unseen.sh; git commit -q -m unseen >/dev/null 2>&1
 _r6_c2="$(git rev-list --count HEAD)"
 git config --unset core.hooksPath 2>/dev/null
-assert_eq "review 6: rule 11 mid run, with no question open, state clear and guards uninstall are refused and the unseen file is not committed" \
-  "clear=refused:1|uninstall=refused:1" \
-  "clear=$([[ $_r6_clear -ne 0 ]] && echo refused || echo taken):$_r6_c1|uninstall=$([[ $_r6_un -ne 0 ]] && echo refused || echo taken):$_r6_c2"
+assert_eq "review 6: rule 11 mid run, with no question open, guards uninstall is refused and the unseen file is not committed" \
+  "uninstall=refused:1" "uninstall=$([[ $_r6_un -ne 0 ]] && echo refused || echo taken):$_r6_c2"
 
 # --- review 6: the run's branch, which the commit hook gates, is a CLI call the mod alone holds after the approval ---
 # The commit hook gates a commit on the run's branch only (state branch). `state set branch` is the answer at the branch

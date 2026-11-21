@@ -3,13 +3,17 @@
   python3 -E -s person_call.py WORD ARG...     the words of a temper call; exit 1 and the reason on stderr when the CLI
                                                refuses it, else exit 0 with nothing printed
 
-The mod refuses these calls unless the person's answer to the CLI's question maps to them (hooks/temper-mod/core/rules.ts,
-personOnly). With the mod off, the CLI holds what it can compute from the run's files:
+The mod refuses these calls unless the person's answer to the CLI's question maps to them (the list personOnly of its
+rules). With the mod off, the CLI holds what it can compute from the run's files:
 
   - while the run goes on by itself and no stop is open (Run.armed), a person only call is refused: a plan patch, a
-    budget grant, clearing a ledger, ending or starting over the run (state clear, archive, init) and the commit hook's
+    budget grant, clearing a ledger, archiving or starting over the run (state archive, init) and the commit hook's
     removal (guards uninstall). At a stop the run is parked, so the person's option at the question passes (as budget.py
-    refuses Run it anyway in such a run), and so does a Scope drift answer to the question asked (repair_ops.answer_of);
+    refuses Run it anyway in such a run), and so does a Scope drift answer to the question asked (repair_ops.answer_of).
+    `state clear` is not refused: the restart question (Start over) is open whenever a run is, so the CLI cannot tell
+    the person's answer from a session's call; only the mod holds it;
+  - a start of the run that goes on by itself (state set run_mode autonomous) where the approval offers none: at risk H
+    with no fresh review of the plan as it is (flow_run.Run.may_run_alone, the one reading the flow offers it by);
   - clearing a ledger that holds an open finding, in every mode: the CLI resolves a finding (repair close), and the
     person keeps one with evidence accept; a cleared ledger would only erase it;
   - after the approval, the run's branch (the branch the commit hook gates) is never moved off the branch checked out;
@@ -27,8 +31,8 @@ import sys
 
 TEMPER = ".temper"
 # the person only calls this file refuses in a run that goes on by itself (the words after the script)
-UNATTENDED = (("plan", "patch"), ("budget", "grant"), ("evidence", "clear"), ("state", "clear"), ("state", "archive"),
-              ("state", "init"), ("guards", "uninstall"))
+UNATTENDED = (("plan", "patch"), ("budget", "grant"), ("evidence", "clear"), ("state", "archive"), ("state", "init"),
+              ("guards", "uninstall"))
 
 
 def load(path, default):
@@ -76,6 +80,11 @@ def refusal(words):
             return ("FAIL: the %s ledger holds %d open finding(s) (%s); a cleared ledger would erase them. The CLI resolves a "
                     "finding (temper repair close), and the person keeps one with temper evidence accept"
                     % (stage, len(opens), str(opens[0].get("claim"))[:120]))
+    if w[:4] == ["state", "set", "run_mode", "autonomous"]:
+        from flow_run import Run
+        if not Run({}).may_run_alone():
+            return ("FAIL: at risk H the run goes on by itself only after the fresh review ran on the plan as it is and "
+                    "left no open finding at high; the approval offers no such option")
     state = load(os.path.join(TEMPER, "build-state.json"), {})
     if w[:3] == ["state", "set", "branch"] and len(w) > 3 and state.get("plan_hash"):
         here = git("rev-parse", "--abbrev-ref", "HEAD")[1]
