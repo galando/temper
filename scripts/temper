@@ -3649,7 +3649,8 @@ cmd_acceptance() {
     case "$1" in --cmd|--reason) text="${2:-}"; shift 2 ;; *) shift ;; esac
   done
   case "$sub" in
-    lock|skip|start|reopen|restore|triage|triaged) python3 -E -s "$SCRIPTS_DIR/check_run.py" acceptance "$REPO_ROOT" "$spec" "$sub" "$text" ;;
+    lock|skip|start|reopen|restore|triage|triaged) python3 -E -s "$SCRIPTS_DIR/check_run.py" acceptance "$REPO_ROOT" "$spec" "$sub" "$text" \
+      && { [[ "$sub" != skip || -z "$(_json_get_path "$STATE_FILE" parked "")" ]] || _unattended_end "the person skipped the acceptance tests"; } ;;
     *) echo "FAIL: usage: temper acceptance lock --cmd '<command>' | skip --reason '<why>' | start | reopen --reason '<why>' | restore | triage --reason 'code|test: <why>'" >&2; return 1 ;;
   esac
 }
@@ -3680,6 +3681,10 @@ main() {
   case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
     "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"task retry "*|"task test "*|\
 "acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*|"check run "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
+  esac
+  case "$sub ${1:-} ${2:-}" in   # WP32: a person only call, refused where the CLI can tell (scripts/person_call.py)
+    "plan patch"*|"budget grant"*|"evidence clear"*|"state archive"*|"state init"*|"guards uninstall"*|"state set branch"|\
+"state set base_sha"|"state set run_mode") python3 -E -s "$SCRIPTS_DIR/person_call.py" "$sub" "$@" || return 1 ;;
   esac
   case "$sub" in
     init) cmd_init "$@" ;;

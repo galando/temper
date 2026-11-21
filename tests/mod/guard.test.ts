@@ -58,9 +58,10 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
     }
   })
 
-  test('Plan allows the spec files, ADRs and context files but not other spec files', () => {
-    for (const p of [`${SPEC}/intent.md`, `${SPEC}/tasks.md`, `${SPEC}/design.md`, `${SPEC}/plan-context.json`, 'docs/decisions/0009-mods.md']) expect('allow' in write(ctx('plan'), p)).toBe(true)
+  test('Plan allows the spec files and context files but not other spec files, nor a decision record (rule 1)', () => {
+    for (const p of [`${SPEC}/intent.md`, `${SPEC}/tasks.md`, `${SPEC}/design.md`, `${SPEC}/plan-context.json`]) expect('allow' in write(ctx('plan'), p)).toBe(true)
     expect(isDeny(write(ctx('plan'), `${SPEC}/report.md`))).toBe(true)
+    for (const s of ['plan', 'design'] as const) expect(isDeny(write(ctx(s), 'docs/decisions/0009-mods.md'))).toBe(true)
   })
 
   test('Build allows test files, plan globs and folders', () => {

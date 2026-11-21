@@ -5,7 +5,9 @@
   python3 group_fix.py GROUPS.json NOW SLUG G --commit   after that agent: the CLI commits what it changed in the worktree on
                                                          the group's branch, records the commit as its own (cli_commits, so
                                                          the foreign commit check never parks on it), clears the request and
-                                                         the group's gate, so the next action checks the group again
+                                                         the group's gate, so the next action checks the group again;
+                                                         a change of the config, a hook, a sensitive path, a manifest or
+                                                         a CI file is not committed (exit 1, WP32)
 
 The fix works on the merged tree of the group (every task's work, on the group's branch), so the whole is mended once
 instead of every task running again. The agent commits nothing itself; the CLI does, and `temper group gate G` checks the
@@ -42,6 +44,21 @@ def byproducts(wt):
         return [":(exclude,top,literal)%s" % x.rstrip("/") for x in out]
     except Exception:
         return []
+
+
+def refused(staged):
+    """WP32 (rule 4): why a staged path is no fix agent's to commit, as for a repair commit (repair_ops.refused_file): the
+    config, a git hook, Temper's own files, a locked acceptance test, a sensitive path, a manifest or a CI file; '' for
+    none. The group's own files are the agent's (the approved set is not asked here: the commit gate's scope row holds
+    it). A check that cannot run refuses nothing."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import repair_ops
+        from flow_run import Run
+        r, config = Run({}), os.path.relpath(os.environ.get("TEMPER_CONFIG") or os.path.join(".claude", "temper.config"))
+        return next((w for w in (repair_ops.refused_file(p, r, "", config, {os.path.normpath(p)}) for p in staged) if w), "")
+    except Exception:
+        return ""
 
 
 def git(wt, *args):
@@ -97,6 +114,12 @@ def main(argv):
     rc, out = git(wt, "add", "-A", "--", ".", *(EXCLUDE + byproducts(wt)))
     if rc != 0:
         return fail("git add in %s failed: %s" % (wt, out.splitlines()[-1] if out else "no output"))
+    why = refused([p for p in git(wt, "diff", "--cached", "--name-only", "--no-renames", "-z")[1].split("\0") if p])
+    if why:   # nothing is committed, the request goes, and the group's check stays failed: its question asks the person
+        git(wt, "reset", "-q")
+        g.pop("fix", None)
+        save(path, d)
+        return fail("group %s: the fix is not committed: %s, which a fix agent never changes" % (gid, why))
     # the group is checked again by the next action, as an ordinary call of the CLI: its gate goes (the count stays)
     if git(wt, "diff", "--cached", "--quiet")[0] == 0:
         # 9.8.5 (S8): no change means the cause is not in the group's code. The same tree would fail the same way, so its

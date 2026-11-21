@@ -148,11 +148,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart, RevisePart):
     def may_run_alone(self):
         """WP14 (ADR 0019 decision 2): whether the approval may offer the run that goes on by itself. At risk H only when
         the fresh review ran on the plan as it is (every lens of the round completed) and left no open finding at high."""
-        r = self.r
-        if (r.state.get("risk") or "").upper() != "H":
-            return True
-        fr = r.fresh()
-        return bool(fr["applies"] and fr["launched"] and not fr["stale"] and not fr["missing"] and not fresh_review.blockers(fr))
+        return self.r.may_run_alone()   # WP32: the one reading, which state set run_mode autonomous checks too
 
     def answers_redo(self):
         """WP14: the plan gate failed only on answers the tasks do not follow yet (and on rows the person answers): the CLI

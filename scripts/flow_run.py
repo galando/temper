@@ -156,6 +156,15 @@ class Run:
                                    self.cfg("plan.fresh-review"), self.cfg("plan.fresh-review-twice"),
                                    self.cfg("plan.fresh-review-rounds"))
 
+    def may_run_alone(self):
+        """WP14 (ADR 0019 decision 2): whether the approval may offer the run that goes on by itself. At risk H only when
+        the fresh review ran on the plan as it is (every lens of the round completed) and left no open finding at high.
+        flow.may_run_alone offers the option by it, and person_call.py refuses a typed start by it (WP32)."""
+        if (self.state.get("risk") or "").upper() != "H":
+            return True
+        fr = self.fresh()
+        return bool(fr["applies"] and fr["launched"] and not fr["stale"] and not fr["missing"] and not fresh_review.blockers(fr))
+
     def has_design(self):
         """WP14 (ADR 0019 decision 2): a run of /temper:temper has the Design stage only when the person asked for it
         (the option run-design of the approval sets want_design), when design.md exists, or when the run is at Design or

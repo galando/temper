@@ -307,8 +307,7 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
     case 'design': {
       const ok =
         ['intent.md', 'plan.md', 'tasks.md', 'design.md', 'config-suggestions.json'].some(specFile) ||
-        (inSpec && /-context\.json$/.test(path)) ||
-        (path.startsWith('docs/decisions/') && path.endsWith('.md'))
+        (inSpec && /-context\.json$/.test(path))
       if (ok) return ALLOW
       return {
         deny:

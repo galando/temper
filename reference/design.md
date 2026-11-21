@@ -86,11 +86,14 @@ contract design (REST vs GraphQL, versioning), infrastructure/deployment changes
 security architecture (auth flow, encryption), external-system integration. **Not**
 styling/naming/code-organization/test-structure choices — those never get an ADR.
 
-For each qualifying decision, write the project's `docs/decisions/NNNN-{slug}.md` (`NNNN`
+For each qualifying decision, write its record into `design.md`, under a heading `## ADR NNNN-{slug}` (`NNNN`
 sequential, check existing ADRs for the next number starting at 0001; `{slug}` kebab-case:
-lowercase letters, digits and hyphens only, no `/`, no `..`) from
+lowercase letters, digits and hyphens only, no `/`, no `..`), with the fields of
 `${CLAUDE_PLUGIN_ROOT}/templates/adr.md` — Status (Proposed), Date, Context, Decision, Alternatives
-Considered, Consequences. Never delete an ADR; supersede it with a new one referencing
+Considered, Consequences. Write no file under `docs/decisions/`: before the approval a run writes only its spec
+folder (the hook and the mod refuse a project file), and the spec folder is committed when the run leaves Design.
+`docs/decisions/NNNN-{slug}.md` is then a change of the project like any other: a task of the plan writes it.
+Never delete an ADR; supersede it with a new one referencing
 `Supersedes: ADR-{NNNN}`. No qualifying decision → skip ADR generation entirely.
 
 ## Skip Conditions

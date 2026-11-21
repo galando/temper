@@ -334,6 +334,7 @@ assert_eq "run: the record steps open the pull request after that option" "captu
 
 _nogit52; _unattended commit; _repo52; "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
 mkdir -p src/auth; echo 'echo token' > src/auth/token.sh
+"$TEMPER" park --verdict PARKED-NEEDS-DECISION --reason 'the commit asks' >/dev/null 2>&1   # WP32: the person answers at a stop
 "$TEMPER" evidence add --stage build --phase feedback --claim 'drift src/auth/token.sh: Allow once' >/dev/null 2>&1
 "$TEMPER" gate commit >/dev/null 2>&1
 _ex52="before=$(_rowpass52 commit 'park-on-touch paths' 'sensitive paths')"

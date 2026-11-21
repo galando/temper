@@ -14,8 +14,9 @@ DEGRADATION CONTRACT:
   - the folder is not in a Temper project (no `.temper` folder in it or above)    => no output, exit 0
   - no run, a fix run, a run from Build on, a state file it cannot read           => no output, exit 0
   - a run at Intent whose state holds the trivial verdict (WP17: its one write)    => no output, exit 0
-  - a path under `.temper/` (the run's spec folder is there), a worktree of the run, a path outside the project, or
-    a decision record at Plan or Design                                           => no output, exit 0
+  - a path under `.temper/` (the run's spec folder is there), a worktree of the run, or a path outside the
+    project (a decision record of docs/decisions too is a project file: Design drafts it in the spec folder)
+                                                                                  => no output, exit 0
   - a project file written at Intent, Plan or Design of a feature run             => the deny answer on stdout, exit 0
   - anything else, an input it cannot parse and an internal error included        => no output, exit 0 (FAIL-OPEN)
 """
@@ -43,8 +44,6 @@ def held(root, stage, path):
     """True when the mod's stage rule refuses the write too: a project file, outside Temper's own files."""
     rel = os.path.relpath(path, root).replace(os.sep, "/")
     if rel == "." or rel.startswith(".temper/") or rel.startswith(".claude/worktrees/"):
-        return False
-    if stage in ("plan", "design") and rel.startswith("docs/decisions/") and rel.endswith(".md"):
         return False
     return True
 
