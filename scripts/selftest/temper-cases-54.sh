@@ -2,7 +2,7 @@
 # intent.md and nothing open is a `work` action of the CLI with the one call `state advance intent_complete plan`; the
 # person accepts the intent with the plan, in one click (`intent accept --digest <H1>` among the approval's calls). The
 # Intent question stays when the gate failed or was skipped, intent.md is missing, a Blocking question is open, the run
-# came back to Intent, the person typed a note at Intent, or a door walked Intent: each case below holds the clean run
+# came back to Intent, or the person typed a note at Intent (WP28: no door walks Intent any more): each case below holds the clean run
 # beside it, so it shows the condition is what keeps the question. The Context check asks nothing for a clean map, and
 # a flagged map whose lines fit the approval is folded into it. Sourced by test-temper.sh; its helpers (fresh, gpass,
 # gfail) are used here, and the builders below are this file's own. The intent of the fixture is accepted, so a case
@@ -135,11 +135,6 @@ fresh; gpass intent
 "$TEMPER" evidence add --stage intent --phase note --claim 'keep the demo to one screen' >/dev/null 2>&1
 assert_eq "intent rule: the question stays when the person typed a note at Intent" \
   "clean=work|note=ask:intent.accept" "clean=$_clean54|note=$(_how54)"
-
-# A door that walks Intent checks it and asks its own question (run.walked), as today.
-fresh; "$TEMPER" state init demo --feature "the demo thing" --enter plan >/dev/null 2>&1; _base_known; gpass intent
-assert_eq "intent rule: the question stays when a door walked Intent" \
-  "clean=work|door=ask:run.walked" "clean=$_clean54|door=$(_how54)"
 
 # An answer to a Blocking question is no note: once the gate passes again the rule moves on (a trap of the spec).
 fresh; _blocking54

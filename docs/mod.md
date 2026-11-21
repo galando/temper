@@ -64,7 +64,7 @@ tests, coverage, lint, security, with the lines that failed), the acceptance cri
 and your decisions. It has no button. `minimal` draws the stages only; `off` draws nothing.
 
 In full mode the pane opens by itself: when you type `/temper:temper` with a feature description (or
-any word that goes on to the run), when a run starts later in the session (a door, or a run Claude
+any word that goes on to the run), when a run starts later in the session (a run Claude
 started), and when a session starts during a run. Your own `/temper:temper` opens it at any terminal
 width; Claude Code shows a pane the mod opens on its own only from 144 columns (110 once you have opened
 it yourself, until you close it by hand). Once you close it by hand, it stays closed for the rest of the session;
@@ -108,6 +108,8 @@ shows the file, why the task needs it and the change. You choose one answer:
 
 This question is the same with the mod and without it. The mod also refuses the write until you answer.
 The mod reads your answer from the result of the question, not from what Claude sends.
+The record of an Add to plan or Allow once answer is yours too: the mod refuses a call that records one you did not
+give, so an agent cannot widen the plan by writing the answer itself.
 
 ## Where enforcement works
 
@@ -177,8 +179,8 @@ Claude set on getting around a gate through Bash can do it. The hard guarantees 
 The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
 - **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
-  step back, accepting a finding, arming autonomy, keeping an agent's commits, overriding the commit
-  gate, starting over during a run) needs your answer in the question dialog, at the run and the step
+  step back, accepting a finding, confirming a criterion at Check (`evidence add --person`), arming autonomy,
+  keeping an agent's commits, overriding the commit gate, starting over during a run) needs your answer in the question dialog, at the run and the step
   the CLI is at. The guard finds the call when it is written out in the command
   (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word
   before its reason (`temper o?erride`) is refused, since bash may expand it to a file's name.
@@ -214,7 +216,7 @@ The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mo
   request, word for word: the mod keeps what they typed after `/temper:temper` (in its plugin store, with one pair of
   quotes around all of it taken off) and refuses a `temper state init` whose `--feature` differs from it, whitespace
   aside (round 5: a session started a run of a dozen rules with a one line summary, and every agent planned from it).
-  A door (`/temper:plan "..."`) or another temper command clears what was kept. A `/temper:fix` run is left to
+  Another temper command (`/temper:fix`) clears what was kept. A `/temper:fix` run is left to
   `commands/fix.md`, as before.
 
 The guard reads a Bash command as text: it splits it into statements and words and honours quotes
@@ -319,8 +321,9 @@ call's own FAIL line), and the run is where the CLI says. Scope drift is the CLI
 asked as any other; a run whose state cannot be read asks the restart question. A Cancel in the accept question asks
 the gate question again; a name question is asked until a name is typed or Cancel. `/temper:fix <bug>` with no run
 active is carried the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop), and
-`/temper:fix` with no words takes an active fix run up. A run word (`approve`, `next`, ...) and a request while another
-run is active go to the conversation as before. Without the mod, the conversation carries every run, as before.
+`/temper:fix` with no words takes an active fix run up. A run word (`approve`, `next`, ...), the words `draft <idea>`,
+`init` and `pack`, and a request while another run is active go to the conversation as before. A word counts only in
+its documented form (9.8.5): `status badge on the order page` is a request, and the driver starts a run for it. Without the mod, the conversation carries every run, as before.
 
 ## What the mod reads and writes
 
@@ -402,6 +405,7 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
 
 - **The small change window.** An open window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only
   there (Pipeline included). `adhoc close` needs no answer; `adhoc open` is the person's, as the call their answer maps to.
+  Inside a repair window (WP24) `adhoc close` is refused: the CLI's `repair commit` ends that window.
 - **Person only calls.** `plan review`, `task confirm`, `task accept`, `adhoc open` and `state set branch` pass only as the call the
   person's answer to the CLI's question maps to, word for word. A typed answer to the Context check maps to `plan review --answer` with
   that text, quoted ([ADR 0016](decisions/0016-the-mod-answer-audit.md)).

@@ -165,6 +165,16 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# --- Every key of the config has a reader, and no agent is sent to the config (9.8.5, WP29) ---
+if keys_out="$(python3 -B "$REPO_ROOT/scripts/check_config_keys.py" 2>&1)"; then
+  echo "[PASS] Config keys (scripts/check_config_keys.py): ${keys_out##*$'\n'}"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] Config keys (scripts/check_config_keys.py):"
+  printf '%s\n' "$keys_out" | sed 's/^/  /'
+  FAIL=$((FAIL+1))
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Summary ==="

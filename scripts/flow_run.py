@@ -115,43 +115,30 @@ class Run:
         at = str(g.get("ts") or "") if isinstance(g, dict) else ""
         return [x for x in self.notes(stage, kind) if at and str(x.get("ts") or "") > at]
 
-    def missing_records(self, stage):
-        """When the stage's gate fails only for success criteria that lack a row the CLI could record (a scenario with no CLI
-        run row or no Test: line, a Validate: code criterion with no row), the lines of those rows; else []. A row that
-        exists and failed (an exit code) is not one of them: that keeps the gate question."""
-        rows = self.failed_rows(stage)
-        if stage != "build" or len(rows) != 1 or rows[0].get("name") != "criteria validated":
-            return []
-        found = []
-        for m in re.finditer(r"(AC-\d+) FAIL: (.*?)(?<=\.)(?:\s|$)", str(rows[0].get("detail") or "")):
-            what = m.group(2)
-            sm = re.match(r"scenario '(.*?)' \((.*)\) has no row run by the CLI\.?$", what)
-            if sm:
-                found.append("Record scenario: %s (%s)." % (sm.group(1), sm.group(2)))
-            elif "no passing row records it" in what:
-                found.append("Record criterion: %s (Validate: code)." % m.group(1))
-            else:
-                return []
-        return found
-
     def round_id(self):
         """What marks one round of a stage: the latest Run Build again and the latest step back."""
         return "%s|%s" % ((self.state.get("redo") or {}).get("ts", ""), (self.latest_loop() or {}).get("at") or (self.latest_loop() or {}).get("started", ""))
 
-    def cfg(self, key, default=""):
-        v = config_yaml.get(self.config, key, default)
-        return default if v is None or v == "" else str(v)
+    def model(self, name):
+        """WP27: the model of an agent as `temper next` resolved it (scripts/cli_ctx.py: the config keys over the table of
+        models, by the class of the run), else by the same rule here."""
+        m = (self.ctx.get("models") or {}).get(name)
+        if m:
+            return m
+        import cli_ctx
+        return cli_ctx.resolve("", self.config, state=self.state).get(name, ("", ""))[0]
 
-    def on(self, key, default=False):
-        v = self.cfg(key, "true" if default else "false").lower()
-        return v in ("true", "yes", "on", "1")
+    def cfg(self, key):
+        """A config value as text; a key the config lacks gets the table's default (scripts/defaults.py, WP29)."""
+        v = config_yaml.get(self.config, key)
+        return "" if v is None else str(v)
 
     def seq(self):
         s = list(SEQ.get(self.command, SEQ["temper"]))
         if self.command == "temper" and not self.has_design():
             s.remove("design")
         # Pipeline follows a Commit that opened a pull request, unless phases.pipeline is false
-        if self.command == "temper" and self.cfg("phases.pipeline", "true").lower() != "false" and (
+        if self.command == "temper" and self.cfg("phases.pipeline").lower() != "false" and (
                 self.state.get("pr") in ("one", "stacked") or self.stage == "pipeline"):
             s.append("pipeline")
         return s
@@ -166,12 +153,12 @@ class Run:
             return {"applies": False, "offer": False, "launched": False, "stale": False, "capped": False, "missing": [], "need": [],
                     "lazy": [], "findings": [], "contests": [], "paraphrase": "", "paraphrase_short": False, "rounds": 0, "cap": 0}
         return fresh_review.status(self.spec, os.path.join(TEMPER, "evidence", "plan.json"), os.path.join(TEMPER, "build-state.json"),
-                                   self.cfg("plan.fresh-review", "ask"), self.cfg("plan.fresh-review-twice", "true"),
-                                   self.cfg("plan.fresh-review-rounds", "3"))
+                                   self.cfg("plan.fresh-review"), self.cfg("plan.fresh-review-twice"),
+                                   self.cfg("plan.fresh-review-rounds"))
 
     def has_design(self):
         """WP14 (ADR 0019 decision 2): a run of /temper:temper has the Design stage only when the person asked for it
-        (the option run-design of the approval sets want_design, or the Design door), when design.md exists, or when the run is at Design or
+        (the option run-design of the approval sets want_design), when design.md exists, or when the run is at Design or
         has a Design verdict (a run saved there by 9.8.4 keeps it). No tier, risk or setting adds it: what Design asked is
         now Blocking questions Plan writes, answered in front of the approval."""
         if self.command != "temper":
@@ -180,8 +167,8 @@ class Run:
             return True
         if "design" in self.gates or self.stage == "design":
             return True
-        # the person's ask: the option run-design, or the Design door (/temper:design enters the run at Design)
-        return str(self.state.get("want_design")).strip().lower() == "true" or self.state.get("enter") == "design"
+        # the person's ask: the option run-design
+        return str(self.state.get("want_design")).strip().lower() == "true"
 
     def next_of(self, stage):
         s = self.seq()
@@ -224,7 +211,7 @@ class Run:
         an unknown value is ask."""
         v = str(config_yaml.get(self.config, "run.default", "") or "").strip().lower()
         if not v:
-            return "ask" if self.cfg("autonomy.enabled", "").strip().lower() == "false" else "to-commit"
+            return "ask" if self.cfg("autonomy.enabled").strip().lower() == "false" else "to-commit"
         return v if v in ("to-commit", "ask", "never-unattended") else "ask"
 
     def armed(self):
@@ -239,7 +226,7 @@ class Run:
         """The files the plan declares under a sensitive path (autonomy.park-on-touch, scripts/sensitive.py): nothing there
         is repaired by rule."""
         files = [f for t in (self.plan or {}).get("tasks", []) for f in t.get("files", [])]
-        return [f for f, _ in sensitive.declared(files, self.cfg("autonomy.park-on-touch", ""))]
+        return [f for f, _ in sensitive.declared(files, self.cfg("autonomy.park-on-touch"))]
 
     def active_loops(self):
         return [l for l in (self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []) if isinstance(l, dict)]
@@ -330,7 +317,7 @@ class Run:
 
     def context_mode(self):
         """plan.context-check as the plan gate reads it: auto, always or off (an unknown value is auto)."""
-        return plan_ops.norm_mode(self.cfg("plan.context-check", "auto"))
+        return plan_ops.norm_mode(self.cfg("plan.context-check"))
 
     def context_folded(self, cm=None):
         """9.8.5 (WP13): the map is answered at the approval, not by a question of its own (scripts/plan_ops.py folds).
@@ -377,7 +364,7 @@ class Run:
         return out
 
     def open_findings(self):
-        block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", self.cfg("review.block-on", "critical, high")) if s.strip()]
+        block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", self.cfg("review.block-on")) if s.strip()]
         return [f for f in self.findings() if f["state"] == "open" and f["severity"] in block]
 
     def spec_ignored(self):

@@ -13,8 +13,8 @@ the plugin folder.
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/fix.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/fix.md` once — the full fix methodology. Follow
-   it exactly; nothing here overrides it. Load the enabled packs and validate the fix
-   approach against their rules before implementing. Before writing framework-specific
+   it exactly; nothing here overrides it. Read the pack files your prompt lists on its `Packs:` line and
+   validate the fix approach against their rules before implementing. Before writing framework-specific
    code, apply the `source-driven-development` skill (verify calls against current
    docs, don't trust trained-in memory).
 2. Write a regression test for the scenario `rca.md` names — it MUST FAIL before the

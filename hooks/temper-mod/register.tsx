@@ -271,7 +271,7 @@ async function refresh($: Api): Promise<Snapshot> {
 }
 
 // A run the mod first sees after it saw none in this session (a run started with /temper:temper,
-// a door or `temper state init`): the pane opens for it as it does at a session start.
+// /temper:fix or `temper state init`): the pane opens for it as it does at a session start.
 function startedHere(snap: Snapshot): boolean {
   return lastStage === null && !snap.inert && snap.run !== null && snap.run.stage !== 'commit'
 }
@@ -745,7 +745,7 @@ export const register: Register = (on, opts) => {
   // goes on to the prompt based command unchanged.
   on('command.run', async ($, e, next) => {
     if (e.command !== 'temper' && e.command !== 'temper:temper') {
-      // A door (/temper:plan "...") or another command: no request is held to it.
+      // Another command (/temper:fix): no request is held to it.
       if (/^temper:/.test(e.command)) await dropRequest($)
       // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; WP16: so is /temper:fix with no
       // words while a fix run is active (taken up again). The one step of a hand back goes to fix.md.

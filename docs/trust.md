@@ -10,15 +10,15 @@ committed artifacts (intent, plan, design, gate ledger and diff) are the audit t
 ## What Temper runs and changes
 
 Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project and its git
-folder. Apart from the mod's plugin store, Temper reads only one place in your home folder that git does not
-name: its global pack folder `~/.claude/packs`, if you made one. Through git it reads the hooks folder your git
+folder. Apart from the mod's plugin store, Temper reads no place in your home folder that git does not name (since
+9.8.5 not even a pack folder there). Through git it reads the hooks folder your git
 config names, which may be in your home folder; it reads no name or email from git (an accepted intent or an
 override records that the person decided it at the gate). It reads no key, login, transcript, settings or other
 Claude Code file. A pack's link targets come from the skills and commands your session lists.
 
 - **Plugin hooks.** The plugin's hooks file registers four classic hooks and the mod module.
-  `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes that a `/temper:intent`
-  session owes an intent gate (the other stage commands are doors into `/temper` and owe none).
+  `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes that a `/temper:temper draft`
+  session owes an intent gate (a run of `/temper:temper` owes none).
   `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. `PreToolUse` on Bash runs
   `scripts/guards/block_stdin_wait.py` (9.8.0; a Python file since 9.8.1, answering deny as JSON), which refuses, in a folder with a `.temper` folder at or above it, a
@@ -89,11 +89,11 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none
   from your system account), and uses the fixed `Temper <temper@localhost>` when none is.
 - **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`
-  set to `auto` or `require` and `ocr` on your `PATH`, `/temper:review` uses it, and `ocr` sends the diff to
+  set to `auto` or `require` and `ocr` on your `PATH`, Review uses it, and `ocr` sends the diff to
   the provider you set up. Temper adds no tool; the guardrails pack and autonomy run only when you ask.
-- **Guardrails pack (opt in).** `/temper:pack enable guardrails` prints the guard hooks, with the plugin
+- **Guardrails pack (opt in).** `/temper:temper pack enable guardrails` prints the guard hooks, with the plugin
   folder's absolute path written in, for you to add to the project's `.claude/settings.local.json` or
-  `.claude/settings.json`; `/temper:pack disable guardrails` says which to remove. Temper never opens a Claude Code
+  `.claude/settings.json`; `/temper:temper pack disable guardrails` says which to remove. Temper never opens a Claude Code
   settings file, the project's or your home folder's.
 - **Sharing a plan.** Share HTML review publishes the plan review only as a Claude artifact, after you confirm.
 
@@ -120,6 +120,22 @@ lines is caught only by the CLI's own runs: a project with a thin suite gets les
 diff over 300 lines, or one that touches a file no finding names, gets a full Review again. Review's completion row names the files the reviewer says it read, and the CLI compares those names with the
 changed files. No more: the CLI cannot see the reading. The row turns skipping a file from silence into a false
 statement in the ledger.
+
+**What a repair may commit (9.8.5).** A repair commits by rule only the plan's files, the tests, and a file you added
+to the plan or allowed once by answering a question the CLI asked: a Scope drift question about a file a drift ask
+named, the stop of a repair on that file, or the commit gate's failed scope row. The CLI marks such an answer as it
+writes it, and refuses an answer to no question while a repair is open. That you gave the answer, and not the fixer,
+only the mod holds: it refuses an agent's call that records an answer you did not give. With the mod off, nothing
+checks who ran the answer's call.
+
+**A criterion you confirm (9.8.5).** A criterion validated by hand, or by `code` or `metric` with no command in
+backticks, passes Check only from the row your Confirmed answer at the Check question writes: `temper evidence add
+--person`, a row marked `executed_by: person`. A row an agent records, or a CLI run of a command an agent chose, does
+not count for it. That the answer was yours only the mod holds: it lets a `--person` call through only as the call of
+the option you picked, word for word, as it does Run it anyway. With the mod off, nothing checks who ran it: the Check
+brief tells the agent never to record one, the CLI takes the flag only with a criterion and exit 0 and never in a run
+that goes on by itself with no stop open, and the row stays in the ledger as the person's, where `temper evidence list
+--stage check` marks it. A field list passed through `--read` is refused, so no other call marks a row as yours.
 
 
 ## Pull requests and the Pipeline stage (9.7.5)

@@ -215,9 +215,8 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   no bar for the fix run, `/temper:temper status` says the mod stands aside, nothing is refused,
   and a clean bug run asks two dialogs: the root cause with its card (Approve and fix), then the
   commit. Without the mod: the same dialogs.
-- [ ] **A stage command.** After a commit cleared the run, run `/temper:build` on a spec with an
-  approved plan. Expect it to start `/temper` at Build: the same gates as above, and with the
-  mod nothing else is refused.
+- [ ] **A word.** Run `/temper:temper status badge on the order page` with no run active. Expect it
+  to start a run for that feature: a word counts only alone.
 
 ## 5. Modes
 
@@ -248,7 +247,7 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
 
 The plugin must still load on old Claude Code versions and fall back to the prompt based
 phases. For each version below, use a copy of Claude Code at that version, set up apart
-from your own so it stays untouched, and ask it for `/temper:status` from `<clone>` with
+from your own so it stays untouched, and ask it for `/temper:temper status` from `<clone>` with
 the clone loaded (`-p --plugin-dir .`).
 
 | Version | Expect |
@@ -261,10 +260,10 @@ the clone loaded (`-p --plugin-dir .`).
   plugin load error. The message `Temper enforcement is off here (no mods support)` is
   correct and expected when a skill runs.
 - [ ] **Enforcement turned off.** On a version that loads the mod, set Temper enforcement to `off`
-  in `/config`, then run `/temper:status`. Expect the answer to open once with
+  in `/config`, then run `/temper:temper status`. Expect the answer to open once with
   `Temper enforcement is off (turned off by the user)`, not the "no mods support" sentence.
   Set it back to `on`.
-- [ ] **`claude -p` on your version.** Run `claude -p --plugin-dir . "/temper:status"`.
+- [ ] **`claude -p` on your version.** Run `claude -p --plugin-dir . "/temper:temper status"`.
   Expect an answer and no question asked of you.
 
 ## 8. The desktop app

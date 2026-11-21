@@ -119,7 +119,7 @@ class CommitPart:
                          "since the state is gone after state clear." % self.plugin)
             steps.append("Follow %s/reference/pr.md, section %s: every pull request is a draft, and Temper never marks one ready. "
                          "A pull request that cannot be opened never fails the commit." % (self.plugin, "One PR" if pr == "one" else "Stacked PRs"))
-        if r.command == "temper" and r.cfg("phases.pipeline", "true").lower() != "false" and pr in ("one", "stacked") and not r.armed():
+        if r.command == "temper" and r.cfg("phases.pipeline").lower() != "false" and pr in ("one", "stacked") and not r.armed():
             steps.append("If a pull request was opened, run %s: Pipeline reads its checks. Otherwise run %s." % (
                 self.c("state advance commit_complete pipeline"), self.c("state clear")))
         else:
@@ -196,7 +196,7 @@ class CommitPart:
                 calls=[self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote("drift %s: Add to plan: the person, at the commit gate" % f))
                        for f in outside] + [self.c("gate commit")], oid="add-to-plan"))
         if r.command == "fix" and "check" in failing and r.can_loop("check", "fix"):
-            opts.append(self.opt("Loop back to %s (Recommended)" % "Fix", "Write the fix again; Review and Check run again.", move="back",
+            opts.append(self.opt("Loop back to Fix (Recommended)", "Write the fix again; Review and Check run again.", move="back",
                                  calls=[self.c("state loop check fix --reason '{reason}'")], reason=["The check found a real problem"], oid="back"))
         if own and not outside:
             # M11 of WP08: the question says "then check again", and this option does it (first, with no mark: what the
@@ -256,12 +256,12 @@ class CommitPart:
     def intent_by_rule(self):
         """WP13 (ADR 0019 decision 5): the run leaves Intent with no question, as the CLI's own action, only when a
         /temper:temper run's Intent check passed (not skipped), intent.md exists, no Blocking question is open, the run did
-        not come back to Intent, the person typed no note there, and no door walked it. The intent stays a draft; the
+        not come back to Intent, and the person typed no note there. The intent stays a draft; the
         person accepts it with the plan, at the approval (accept_draft). Else the Intent question is asked as before."""
         r = self.r
         return (r.command == "temper" and r.verdict("intent") == "PASS" and r.skip("intent") is None and bool(r.intent)
                 and not r.blocking() and not r.loop_into("intent") and not r.loop_through("intent")
-                and not r.notes("intent", "input") and not self.walked("intent"))
+                and not r.notes("intent", "input"))
 
     def fold_calls(self, cm):
         """WP13: the folded Context check is answered by the approving option the person picks: plan.md records that the

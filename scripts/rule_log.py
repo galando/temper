@@ -4,7 +4,7 @@
   python3 rule_log.py append KIND STAGE WHAT     adds {"kind", "stage", "what", "ts"} to .temper/rule-log.json
   python3 rule_log.py show                       prints the record as JSON
 
-The kinds `advance`, `repair`, `group fix` and `covered` are what a rule did: they are written only while the run state
+The kinds `advance`, `repair`, `group fix`, `covered` and `amend` (WP25) are what a rule did: they are written only while the run state
 says the run goes on by itself (run_mode autonomous, started at an earlier stage than STAGE) and no stop is open. The
 kinds `stop`, `answer` and `ended` are always written: a stop, the person's answer to it, and the end of the unattended
 run. Nothing but the CLI calls this; the record is the CLI's (the mod guards the file). Runs in the project folder;
@@ -18,7 +18,7 @@ import sys
 TEMPER = ".temper"
 PATH = os.path.join(TEMPER, "rule-log.json")
 STATE = os.path.join(TEMPER, "build-state.json")
-RULE_KINDS = ("advance", "repair", "group fix", "covered")
+RULE_KINDS = ("advance", "repair", "group fix", "covered", "amend")   # WP25: amend, the plan amendment by rule
 ALWAYS = ("stop", "answer", "ended")
 
 

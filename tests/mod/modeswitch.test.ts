@@ -15,12 +15,14 @@ const ENFORCEMENT_WHERE = 'Change it in /config: Temper enforcement (on or off).
 const COMPOSE = { model: 'm', promptModel: 'm', surfaces: [], tools: [], outputStyle: null, traits: [] }
 
 describe('/temper:temper mode', () => {
-  test('says the mode and where to change it, with or without a word after it, and changes nothing', async ($, on) => {
+  test('says the mode and where to change it, and changes nothing; with a word after it, it is a request (WP28)', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START)
-    for (const args of ['mode', 'mode minimal', 'mode off', 'mode loud']) {
-      expect((await $.command.run(run(args))).text).toBe(`Temper mode: full. ${MODE_WHERE}`)
+    expect((await $.command.run(run('mode'))).text).toBe(`Temper mode: full. ${MODE_WHERE}`)
+    for (const args of ['mode minimal', 'mode off', 'mode loud']) {
+      expect((await $.command.run(run(args))).text).not.toBe(`Temper mode: full. ${MODE_WHERE}`)
     }
+    expect(w.commandRuns.map(c => c.args)).toEqual(['mode minimal', 'mode off', 'mode loud'])
     expect(w.configSets).toEqual([])
     expect(w.asked).toEqual([])
     expect(w.closed).toEqual([])
@@ -46,8 +48,10 @@ describe('/temper:temper enforcement', () => {
     const w = world(on, runFiles({ nextStage: 'plan' }))
     await $.session.start(START)
     expect('deny' in (await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x' }))).toBe(true)
-    for (const args of ['enforcement', 'enforcement off', 'enforcement maybe']) {
-      expect((await $.command.run(run(args))).text).toBe(`Temper enforcement: on. ${ENFORCEMENT_WHERE}`)
+    expect((await $.command.run(run('enforcement'))).text).toBe(`Temper enforcement: on. ${ENFORCEMENT_WHERE}`)
+    // WP28: with a word after it, it is a request that goes on to the prompt based command
+    for (const args of ['enforcement off', 'enforcement maybe']) {
+      expect((await $.command.run(run(args))).text).not.toBe(`Temper enforcement: on. ${ENFORCEMENT_WHERE}`)
     }
     expect('deny' in (await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x' }))).toBe(true)
     expect(w.configSets).toEqual([])
@@ -66,8 +70,9 @@ describe('/temper:temper enforcement', () => {
     const w = world(on, runFiles({ nextStage: 'plan' }))
     await $.session.start(START)
     for (const kind of ['sdk', 'plugin', 'bridge'] as const) {
-      const r = await $.command.run({ command: 'temper', args: 'enforcement off', origin: { kind, name: 'x' } } as never)
+      const r = await $.command.run({ command: 'temper', args: 'enforcement', origin: { kind, name: 'x' } } as never)
       expect(r.text).toBe(`Temper enforcement: on. ${ENFORCEMENT_WHERE}`)
+      await $.command.run({ command: 'temper', args: 'enforcement off', origin: { kind, name: 'x' } } as never)
     }
     expect(w.configSets).toEqual([])
     expect('deny' in (await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x' }))).toBe(true)

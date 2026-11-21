@@ -13,7 +13,7 @@
 #                                                 archive writes gate-ledger.json in the spec folder
 #   temper evidence <add|run|list|resolve|accept|clear> ...  append/execute-and-record/read/mark-fixed/clear the ledger
 #   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
-#   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
+#   temper model <agent> | --all [--source]       an agent's model (config keys > the table of cli_ctx.py)
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
 #   temper status [--json] [--spec-path P]        per-criterion passed/open view; writes .temper/status.json
@@ -453,108 +453,21 @@ _json_append() { # _json_append <file> <entry-json>  (file holds a JSON array)
 # The v7 config is ~25 lines; this parser is intentionally not general-purpose YAML.
 # ---
 
-_cfg_get() { # _cfg_get <dot.path> [default]
-  local path="$1" default="${2:-}"
-  [[ -f "$CONFIG_FILE" ]] || { echo "$default"; return; }
-  python3 "$SCRIPTS_DIR/config_yaml.py" "$CONFIG_FILE" "$path" "$default" 2>/dev/null || echo "$default"
+_cfg_get() { # _cfg_get <dot.path> [default]: with no default, the table's (scripts/defaults.py, WP29)
+  python3 "$SCRIPTS_DIR/config_yaml.py" "$CONFIG_FILE" "$@" 2>/dev/null || echo "${2:-}"
 }
 
 # ---
-# model — resolve which model a stage runs on.
-#
-# v7 replaced the v6 `models.routing`/`models.tiers` config with fixed `model:`
-# frontmatter in each stage brief (see _agent_file), because the old block was a *resolution algorithm* a
-# prompt had to execute correctly on every run. That diagnosis still holds; what it cost
-# was the ability to change a model without editing plugin-owned files, which matters
-# every time a new model generation ships.
-#
-# So: the frontmatter stays the source of truth for defaults (no table to drift out of
-# sync with it), an optional flat `models.{stage}` config key overrides it, and the
-# lookup lives here — one deterministic call, no algorithm in prose.
+# model: which model an agent runs on. WP27: one table in scripts/cli_ctx.py (by agent, and by the class of the run:
+# standard, or high for a complex tier or risk H), with the keys models.<agent> and models.high.<agent> over it. The
+# lookup is one deterministic call, no algorithm in prose; each brief's model line equals the table's standard value.
 # ---
 
-_agent_file() { # <stage> -> its brief, each path written out in full (an unknown stage has none)
-  case "$1" in
-    intent) echo "$PLUGIN_ROOT/agents/intent.md" ;;
-    plan)   echo "$PLUGIN_ROOT/agents/plan.md" ;;
-    design) echo "$PLUGIN_ROOT/agents/design.md" ;;
-    build)  echo "$PLUGIN_ROOT/agents/build.md" ;;
-    review) echo "$PLUGIN_ROOT/agents/review.md" ;;
-    check)  echo "$PLUGIN_ROOT/agents/check.md" ;;
-    pipeline) echo "$PLUGIN_ROOT/agents/pipeline.md" ;;
-    rca)    echo "$PLUGIN_ROOT/agents/rca.md" ;;
-    fix)    echo "$PLUGIN_ROOT/agents/fix.md" ;;
-    *)      echo "" ;;
-  esac
-}
-
-_agent_default_model() { # <stage> -> the `model:` line in that stage brief's frontmatter
-  local f; f="$(_agent_file "$1")"
-  [[ -n "$f" && -f "$f" ]] || { echo ""; return; }
-  awk '
-    /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
-    n == 1 && /^model:/ { sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
-  ' "$f" 2>/dev/null
-}
-
-_resolve_model() { # <stage> -> config override, else frontmatter default, else ""
-  local override; override="$(_cfg_get "models.${1}" "")"
-  [[ -n "$override" ]] && { echo "$override"; return; }
-  _agent_default_model "$1"
-}
-
-_resolve_task_model() { # grouped task agent: config, else agents/build-task.md frontmatter, else the constant
-  local m; m="$(_cfg_get build.grouped.task-model "")"
-  [[ -n "$m" ]] && { echo "$m"; return; }
-  # 9.8.4: a complex or risk H plan builds on sonnet (cli_ctx.py risky_run, RISK_TASK_MODEL)
-  [[ -f "$STATE_FILE" ]] && [[ "$(_json_get_path "$STATE_FILE" complexity "")" == complex || "$(_json_get_path "$STATE_FILE" risk "")" == H ]] && { echo sonnet; return; }
-  local f="$PLUGIN_ROOT/agents/build-task.md"
-  [[ -f "$f" ]] && m="$(awk '
-    /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
-    n == 1 && /^model:/ { sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
-  ' "$f" 2>/dev/null)"
-  echo "${m:-claude-haiku-5-5}"
-}
-
-_resolve_task_escalation_model() {
-  local m; m="$(_cfg_get build.grouped.escalation-model "")"
-  echo "${m:-sonnet}"
-}
-
-cmd_model() {
-  local stage="${1:-}"
-  if [[ "${2:-}" == "--source" && "$stage" == "--all" ]]; then   # each model and where it comes from (cli_ctx.py)
-    python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --source
-    return
-  fi
-  if [[ -z "$stage" || "$stage" == "--all" ]]; then
-    local s m rc=0
-    for s in $AGENT_STAGES; do
-      m="$(_resolve_model "$s")"
-      [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$s' (is its brief in the plugin's agents folder?)" >&2; rc=1; continue; }
-      echo "${s}=${m}"
-    done
-    echo "task=$(_resolve_task_model)"
-    echo "task-escalation=$(_resolve_task_escalation_model)"
-    return $rc
-  fi
-
-  case "$stage" in
-    task) _resolve_task_model; return 0 ;;
-    task-escalation) _resolve_task_escalation_model; return 0 ;;
-  esac
-
-  case " $AGENT_STAGES " in
-    *" $stage "*) ;;
-    *) echo "FAIL: unknown stage '$stage' (one of: $AGENT_STAGES, or --all)" >&2; return 1 ;;
-  esac
-
-  local m; m="$(_resolve_model "$stage")"
-  # Fail loudly rather than printing an empty string the orchestrator would paste into
-  # an Agent launch. That is only reachable if the plugin's files are incomplete.
-  [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$stage' (is its brief in the plugin's agents folder?)" >&2; return 1; }
-  echo "$m"
-}
+# WP27: one resolver, the table of models of scripts/cli_ctx.py with the config keys over it; no default of its own
+cmd_model() { python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --state-file "$STATE_FILE" "$@"; }
+_resolve_model() { cmd_model "$1"; }
+_resolve_task_model() { cmd_model task; }
+_resolve_task_escalation_model() { cmd_model task-escalation; }
 
 # ---
 # init
@@ -616,21 +529,16 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
     return 1
   fi
   _ensure_dirs
-  local command="temper" branch="" feature="" enter=""
+  local command="temper" branch="" feature=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --command) command="$2"; shift 2 ;;
       --branch) branch="$2"; shift 2 ;;
       --feature) feature="${2:-}"; shift 2 ;;
-      --enter) enter="${2:-}"; shift 2 ;;
+      --enter) echo "FAIL: the doors are gone: a run starts at Intent, and /temper:temper with no words takes up the active run" >&2; return 1 ;;
       *) shift ;;
     esac
   done
-  # ADR 0013: a door into a later stage starts its run there; the stages before it are checked and asked, not run again
-  case "$enter" in
-    ""|intent|plan|design|build|review|check) ;;
-    *) echo "FAIL: --enter takes a stage of a /temper run (plan, design, build, review or check); got '$enter'" >&2; return 1 ;;
-  esac
   # A new run must not inherit the previous run's overrides or gate verdicts — an
   # old override once satisfied a gate the new run never earned. Same discipline
   # as `state clear`: archive first, then remove runtime state. specs/ untouched.
@@ -666,7 +574,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
   [[ -n "$branch" ]] || branch="feature/$slug"
   [[ "$command" == "fix" ]] && [[ "$branch" == "feature/$slug" ]] && branch="fix/$slug"
-  python3 -I "$SCRIPTS_DIR/state_ops.py" state-init "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
+  python3 -I "$SCRIPTS_DIR/state_ops.py" state-init "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature"
   _from_branch
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
   echo "Note: the run $slug owns this folder; separate work goes in a worktree (claude --worktree <name>), which gives it its own run."
@@ -728,7 +636,7 @@ cmd_state_set() {
     return 1
   fi
   if [[ "$1" == "enter" || "$1" == "built_before" || "$1" == "review_snapshot" || "$1" == fresh || "$1" == fresh.* ]]; then
-    echo "FAIL: $1 is kept by the CLI (a door's stage, what an earlier run built, the code as Review starts and the fresh review's marks are its records)" >&2
+    echo "FAIL: $1 is kept by the CLI (a door's stage and what an earlier run built, both gone, the code as Review starts and the fresh review's marks are its records)" >&2
     return 1
   fi
   if [[ "$1" == "end_report" || "$1" == "ran_unattended" || "$1" == "unattended_from" || "$1" == "saved_by" ]]; then
@@ -823,7 +731,7 @@ cmd_state_set() {
   _json_set_path "$STATE_FILE" "$1" "$2" '{}'
   _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
   echo "OK: $1 = $2"
-  # The tier is recorded where a later door reads it: the Complexity line of intent.md and of plan.md, when they have one.
+  # The tier is recorded where the gates read it: the Complexity line of intent.md and of plan.md, when they have one.
   if [[ "$1" == "complexity" ]]; then
     local sp; sp="$(_spec_path "")"
     [[ -n "$sp" ]] && _tier_lines "$sp" write "$2"
@@ -832,7 +740,7 @@ cmd_state_set() {
 }
 
 # _tier_lines <spec_path> check <tier> | write <tier>: the Complexity lines of intent.md and plan.md, read as
-# `state init --enter` reads them. check prints each file whose line names another tier ("intent.md says simple");
+# the Plan gate reads them. check prints each file whose line names another tier ("intent.md says simple");
 # write sets each such line to the tier (a tier outside the four is not written) and prints what it changed.
 _tier_lines() {
   python3 -I "$SCRIPTS_DIR/spec_text.py" tier-lines "$1" "$2" "${3:-}"
@@ -886,24 +794,6 @@ _redo_from() { # _redo_from <stage>: the run goes back to <stage>, so <stage> an
   return $rc
 }
 
-_door_base() { # _door_base <slug>: where the work of a run that entered at Review or Check started: the parent of the
-               # commit that added the spec's intent.md, else where HEAD left main or master; nothing when neither is known
-  local slug="$1" first b mb cur
-  first="$(git log --format=%H --no-renames --diff-filter=A -- ".temper/specs/$slug/intent.md" 2>/dev/null | tail -1)"
-  if [[ -n "$first" ]] && git rev-parse --verify -q "${first}^" >/dev/null 2>&1; then
-    git rev-parse "${first}^"
-    return 0
-  fi
-  cur="$(git branch --show-current 2>/dev/null || true)"
-  for b in main master; do
-    [[ "$cur" == "$b" ]] && continue
-    git rev-parse --verify -q "refs/heads/$b" >/dev/null 2>&1 || continue
-    mb="$(git merge-base HEAD "refs/heads/$b" 2>/dev/null || true)"
-    [[ -n "$mb" ]] && { echo "$mb"; return 0; }
-  done
-  return 0
-}
-
 _from_branch() { # WP12: the branch the run stands on before its approval, which the commit hook gates (cmd_gate)
   local b; b="$(git branch --show-current 2>/dev/null)"
   [[ -z "$b" ]] || _json_set_path "$STATE_FILE" from_branch "$b" '{}' >/dev/null
@@ -950,11 +840,6 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     _lock_release
     if [[ -z "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
       local head; head="$(git rev-parse HEAD 2>/dev/null || true)"
-      # A run that entered at Review or Check reviews work already made, often committed already: its diff starts where
-      # the feature started, not at HEAD, or Review would read an empty diff.
-      case "$(_json_get_path "$STATE_FILE" enter "")" in
-        review|check) local db; db="$(_door_base "$(_json_get_path "$STATE_FILE" spec "")")"; [[ -n "$db" ]] && head="$db" ;;
-      esac
       [[ -n "$head" ]] && _json_set_path "$STATE_FILE" "base_sha" "$head" '{}' >/dev/null
     fi
   fi
@@ -1051,7 +936,6 @@ _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state 
   # - the code an earlier run built no longer stands for the plan, and the run asks at every stage again (M5 of WP08;
   #   ran_unattended stays)
   if [[ -f "$STATE_FILE" && -n "$pre" ]]; then
-    [[ -n "$(cmd_state_get built_before "")" ]] && _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
     _unattended_end "a step back to $to" >/dev/null
     _json_set_path "$STATE_FILE" run_mode interactive '{}' >/dev/null
   fi
@@ -1060,9 +944,6 @@ _go_back() { # _go_back <stage>: the run goes back to an earlier <stage> (state 
   #   build-checkpoint commit carve-out applies to it (_state_next also rewrites the bookkeeping `stage`)
   _redo_from "$to"
   _state_next "$to" >/dev/null
-  # - a run a door started at a later stage runs the stage it goes back to, and every stage after it
-  local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
-  if [[ -n "$enter" ]] && _stage_before "$to" "$enter"; then _json_set_path "$STATE_FILE" enter "$to" '{}' >/dev/null; fi
   return 0
 }
 
@@ -1085,7 +966,7 @@ _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.js
       _task_py keep "$slug" replan "$ts" "$g" "$branch" >/dev/null \
         || echo "WARN: could not move $branch aside; delete it before the re-planned run starts $g" >&2
     fi
-  done < <(python3 -I "$SCRIPTS_DIR/groups_ops.py" groups-reset-rows "$GROUPS_FILE")
+  done < <(python3 -I "$SCRIPTS_DIR/group_keep.py" archive "$GROUPS_FILE")   # WP25: the plan the tasks were built from goes with it
   mkdir -p .temper/archive
   mv "$GROUPS_FILE" ".temper/archive/groups-$ts.json" && echo "OK: grouped run reset for the re-plan (groups.json -> .temper/archive/groups-$ts.json)"
 }
@@ -1173,7 +1054,7 @@ cmd_state_clear() {
   rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,decisions,budget,rule-log}.json
   _base_clean
   # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
-  _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
+  _task_py tidy "$(_cfg_get build.grouped.keep-days)" 2>/dev/null || true
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
 
@@ -1192,12 +1073,8 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
   _fresh_grant "$stage"
   [[ "$stage" == "pipeline" ]] && rm -f "$(_json_get_path "$STATE_FILE" spec_path "")/pipeline-context.json"   # CI is read again
   [[ "$stage" == "review" ]] && _review_code save
-  # A run a door started at a later stage checks the stages before it instead of running them: one run again is run,
-  # and so is every stage after it (the door's entry moves to it).
-  local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
-  [[ -n "$enter" ]] && ! _stage_before "$stage" "$enter" && enter=""
   local held; held="$(_json_get_path "$STATE_FILE" parked "")"
-  python3 -I "$SCRIPTS_DIR/state_ops.py" state-redo "$STATE_FILE" "$stage" "$reason" "$(_now)" "$enter" || return 1
+  python3 -I "$SCRIPTS_DIR/state_ops.py" state-redo "$STATE_FILE" "$stage" "$reason" "$(_now)" || return 1
   [[ -z "$held" ]] && _rule_log repair "$stage" "$stage runs again: $reason"
   echo "OK: $stage runs again${reason:+ ($reason)}"
 }
@@ -1222,12 +1099,12 @@ cmd_state() {
 # ---
 
 cmd_evidence_add() {
-  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind="" reads=()
+  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind="" by="" reads=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
       --detail|--fix|--proof) reads+=($'\x1f'"${1#--}=$2"); shift 2 ;;   # WP24: the whole finding (ledger_ops.py)
-      --read) reads+=("$2"); shift 2 ;;
+      --read) [[ "$2" != $'\x1f'* ]] || { echo "FAIL: a --read path never starts with the field mark" >&2; return 1; }; reads+=("$2"); shift 2 ;;
       --claim) claim="$2"; shift 2 ;;
       --confidence) confidence="$2"; shift 2 ;;
       --cmd) cmd="$2"; shift 2 ;;
@@ -1240,6 +1117,7 @@ cmd_evidence_add() {
       --scenario) scenario="$2"; shift 2 ;;
       --criterion) criterion="$2"; shift 2 ;;
       --kind) kind="$2"; shift 2 ;;
+      --person) by=person; shift ;;   # the person's confirmation of a criterion at Check (ledger_ops.py)
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
@@ -1249,6 +1127,7 @@ cmd_evidence_add() {
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   [[ ${#reads[@]} -eq 0 || "$stage $claim $severity" == "review review completed " || "${reads[*]}" == $'\x1f'* ]] || { echo "FAIL: --read goes only with --stage review --claim 'review completed': the files Review read whole" >&2; return 1; }
+  local ans=""; [[ "$stage" != build ]] || ans="$(python3 -E -s "$SCRIPTS_DIR/repair_ops.py" "" "" answer "$claim")" || return 1   # lane E: a Scope drift answer's question
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
   if [[ -n "$confidence" ]] && ! [[ "$confidence" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
     echo "FAIL: --confidence takes a number from 0 to 1 (0.85), got '$confidence'" >&2; return 1
@@ -1274,7 +1153,7 @@ cmd_evidence_add() {
     artifact_hash="$(python3 -I -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
   fi
   local entry
-  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"}) || return 1
+  entry=$(TEMPER_ANSWER="$ans" TEMPER_BY="$by" TEMPER_STATE="$STATE_FILE" python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-entry "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)" ${reads[@]+"${reads[@]}"}) || return 1
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -1317,7 +1196,7 @@ cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-
   _ensure_dirs
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
-  fixed_by="$(python3 -I "$SCRIPTS_DIR/findings.py" fixed-by "$fixed_by" "$STATE_FILE" "$GROUPS_FILE")" || return 1
+  fixed_by="$(python3 -I "$SCRIPTS_DIR/findings.py" fixed-by "$fixed_by" "$STATE_FILE" "$GROUPS_FILE" "$stage" "$id")" || return 1
   _lock_acquire
   python3 -I "$SCRIPTS_DIR/ledger_ops.py" evidence-resolve "$file" "$id" "$fixed_by" "$(_now)"
   local rc=$?
@@ -1450,12 +1329,13 @@ cmd_config() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     get) [[ -n "${1:-}" ]] || { echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1; }
-         _cfg_get "$1" "${2:-}" ;;
+         _cfg_get "$@" ;;
+    show|tidy) python3 -E -s "$SCRIPTS_DIR/config_tidy.py" "$sub" "${1:-}" "$CONFIG_FILE" "$STATE_FILE" ;;   # WP29 (ADR 0023)
     # 9.8.1: the project's config from the plugin's default, when it has none (a setup call; idempotent).
     init) local own="$REPO_ROOT/.claude/temper.config"
           [[ -f "$own" ]] && { echo "OK: $own is already there"; return 0; }
           mkdir -p "$REPO_ROOT/.claude" && cp "$PLUGIN_ROOT/templates/temper.config.default" "$own" && echo "OK: wrote $own" ;;
-    *) echo "FAIL: usage: temper config get <dot.path> [default] | temper config init" >&2; return 1 ;;
+    *) echo "FAIL: usage: temper config get <dot.path> [default] | init | show [--markdown] | tidy --apply|--keep" >&2; return 1 ;;
   esac
 }
 
@@ -1677,10 +1557,6 @@ _unfenced_scenarios() { # _unfenced_scenarios <intent.md> -> \x1f-joined "lineno
   python3 -I "$SCRIPTS_DIR/spec_text.py" unfenced-scenarios "$1"
 }
 
-_cross_repo_recorded() { # _cross_repo_recorded <plan.md> -> "ok" or a FAIL detail
-  python3 -I "$SCRIPTS_DIR/spec_text.py" cross-repo-recorded "$1"
-}
-
 # Grouped Build (9.7.0): the tasks.md parser. One embedded python parser shared by every grouped
 # subcommand, JSON out: {groups:[{id,title,depends,validate,interfaces,context,context_bytes,tasks}],
 # tasks:[{n,title,group,files,depends,test,block_bytes,block}], integration}.
@@ -1718,7 +1594,7 @@ cmd_schedule() { # temper schedule [--json]
     echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
     return 1
   fi
-  local max; max="$(_cfg_get build.grouped.max-parallel 4)"
+  local max; max="$(_cfg_get build.grouped.max-parallel)"
   [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
   python3 "$SCRIPTS_DIR/tasks_md.py" schedule "$GROUPS_FILE" "$max" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$PWD" "$spec_path/tasks.md"
 }
@@ -2242,12 +2118,13 @@ cmd_group() {
     gate) cmd_group_gate "$@" ;;
     reopen) cmd_group_reopen "$@" ;;
     report) cmd_group_report "$@" ;;
+    keep) _lock_acquire; python3 -I "$SCRIPTS_DIR/group_keep.py" keep "$GROUPS_FILE"; local rc=$?; _lock_release; return $rc ;;   # WP25: what a replan keeps
     fix) _lock_acquire; TEMPER_PREFIX="$(_prefix)" python3 -E -s "$SCRIPTS_DIR/group_fix.py" "$GROUPS_FILE" "$(_now)" "$(_spec_slug "$(_spec_path "")")" "$@"
          local rc=$?; _lock_release
          [[ $rc -eq 0 && -z "$(_json_get_path "$STATE_FILE" parked "")" && "$*" != *--commit* ]] && _rule_log "group fix" build "group ${1:-} fixed on its merged work"
          return $rc ;;   # 9.8.4: one fix agent on a failed group's merged tree
     take-out|feedback) python3 -E -s "$SCRIPTS_DIR/cli_words.py" "$GROUPS_FILE" "$sub" "$@" ;;   # WP16
-    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|fix|take-out|feedback> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report|keep|fix|take-out|feedback> ..." >&2; return 1 ;;
   esac
 }
 
@@ -2325,7 +2202,7 @@ _task_start_body() {
     local ready max
     ready="$(cmd_schedule 2>/dev/null | python3 -I "$SCRIPTS_DIR/groups_ops.py" task-ready "$n")"
     if [[ "$ready" != "1" ]]; then
-      max="$(_cfg_get build.grouped.max-parallel 4)"; [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
+      max="$(_cfg_get build.grouped.max-parallel)"; [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
       why="$(_task_py why "$_T_PLAN" "$GROUPS_FILE" "$n" "$max")"
       [[ -n "$why" ]] || why="it is not in the ready set"
     fi
@@ -2479,7 +2356,7 @@ _task_gate_body() {
     return 1
   fi
   local v verdict reason
-  v="$(TEMPER_RED_BEFORE_CODE="$(_cfg_get build.red-before-code false)" _task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
+  v="$(TEMPER_RED_BEFORE_CODE="$(_cfg_get build.red-before-code)" _task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
   verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
   [[ -n "${TEMPER_ACCEPT_COVERED:-}" && "$verdict" == "COVERED" ]] && verdict=PASS   # the person accepted it (task accept)
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
@@ -2792,17 +2669,6 @@ gate_plan() {
     all_pass=0
   fi
   if [[ -f "$spec_path/intent.md" ]]; then
-    local criteria scenarios
-    # Section parsing: a heading at any level opens, the next heading of any level
-    # closes — so `### Constraints` bullets after `### Success Criteria` never count.
-    criteria=$(awk 'tolower($0) ~ /^#+[ \t]*success criteria/ {f=1; next} f && /^#/ {f=0} f && /^- /{c++} END{print c+0}' "$spec_path/intent.md")
-    scenarios=$(_count_lines_matching '^[[:space:]]*Scenario:' "$spec_path/intent.md")
-    if [[ "$criteria" -gt 0 && "$scenarios" -ge "$criteria" ]]; then
-      reqs+=("$(_req "criteria -> scenarios" 1 "$scenarios scenario(s) for $criteria success criterion/criteria")")
-    else
-      reqs+=("$(_req "criteria -> scenarios" 0 "$scenarios scenario(s) for $criteria success criterion/criteria — need >=1 scenario per criterion")")
-      all_pass=0
-    fi
     # Every criterion is explicitly tied to the scenario/evidence that proves it.
     local acc_out acc_rc
     acc_out="$(python3 "$ACCEPTANCE_PY" plan "$spec_path/intent.md" "$(_evidence_file plan)" 2>&1)"; acc_rc=$?
@@ -2836,35 +2702,19 @@ gate_plan() {
       fi
     fi
   fi
-  # Cross-repo code search: absence of the tool never fails; a missing record does.
-  if [[ ! -f "$spec_path/plan.md" ]]; then
-    reqs+=("$(_req "cross-repo search recorded" 1 "no plan.md — nothing to record yet")")
-  else
-    local cr_out; cr_out="$(_cross_repo_recorded "$spec_path/plan.md")"
-    if [[ "$cr_out" == "ok" ]]; then
-      reqs+=("$(_req "cross-repo search recorded" 1 "plan.md records the cross-repo search (or why none ran)")")
-    else
-      reqs+=("$(_req "cross-repo search recorded" 0 "$cr_out")")
-      all_pass=0
-    fi
-  fi
   local complexity; complexity="$(cmd_state_get complexity "")"
-  if [[ "$complexity" == "medium" || "$complexity" == "complex" ]]; then
-    if [[ -f "$spec_path/plan.md" ]] && grep -qiE '^#+ .*blast radius' "$spec_path/plan.md"; then
-      reqs+=("$(_req "blast radius documented" 1 "plan.md has a Blast Radius section ($complexity change)")")
-    else
-      reqs+=("$(_req "blast radius documented" 0 "plan.md missing a Blast Radius section — required for $complexity complexity")")
-      all_pass=0
-    fi
-  fi
-  # The tier the run records is the one its files record: a door reads it from their Complexity lines.
+  # The tier the run records is the one its files record (their Complexity lines). WP26: the CLI
+  # bounds the simple tier (one group, at most 3 production files, risk below H).
   if [[ -n "$complexity" ]]; then
-    local tier_off; tier_off="$(_tier_lines "$spec_path" check "$complexity" | paste -sd';' - | sed 's/;/; /g')"
-    if [[ -z "$tier_off" ]]; then
-      reqs+=("$(_req "tier recorded" 1 "no Complexity line names another tier than the run's ($complexity)")")
-    else
+    local tier_off tier_cap; tier_off="$(_tier_lines "$spec_path" check "$complexity" | paste -sd';' - | sed 's/;/; /g')"
+    tier_cap="$(python3 -I "$SCRIPTS_DIR/plan_ops.py" tier-bound "$spec_path" "$complexity" "$STATE_FILE")"
+    if [[ -n "$tier_off" ]]; then
       reqs+=("$(_req "tier recorded" 0 "$tier_off, while the run records $complexity: temper state set complexity <tier> records one tier in the run and in those lines")")
       all_pass=0
+    elif [[ -n "$tier_cap" ]]; then
+      reqs+=("$(_req "tier recorded" 0 "$tier_cap")"); all_pass=0
+    else
+      reqs+=("$(_req "tier recorded" 1 "no Complexity line names another tier than the run's ($complexity)")")
     fi
   fi
   # Grouped Build (the default): the grouped requirement rows of the run's tasks.md
@@ -2875,52 +2725,29 @@ gate_plan() {
       reqs+=("$g_line")
       g_ok="$(python3 -I -c "import json,sys; print(1 if json.loads(sys.argv[1])['pass'] else 0)" "$g_line")"
       [[ "$g_ok" == "1" ]] || all_pass=0
-    done <<<"$(_grouped_plan_reqs "$spec_path/tasks.md" "$(_cfg_get autonomy.max-blast-radius 15)")"
+    done <<<"$(_grouped_plan_reqs "$spec_path/tasks.md" "$(_cfg_get autonomy.max-blast-radius)")"
     # the rows scripts/gate_rows.py adds (F8: every scenario has a Test: line)
     while IFS= read -r g_line; do
       [[ -n "$g_line" ]] || continue
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
-    done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)" "$(_cfg_get plan.context-check auto)")"
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)" "$(_cfg_get plan.context-check)")"
     # 9.7.6: the fresh review of the plan (scripts/fresh_review.py; medium and complex tiers by default)
     while IFS= read -r g_line; do
       [[ -n "$g_line" ]] || continue
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
-    done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$STATE_FILE" "$(_cfg_get plan.fresh-review ask)" "$(_cfg_get plan.fresh-review-twice true)" "$(_cfg_get plan.fresh-review-rounds 3)")"
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$STATE_FILE" "$(_cfg_get plan.fresh-review)" "$(_cfg_get plan.fresh-review-twice)" "$(_cfg_get plan.fresh-review-rounds)")"
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
 }
 
-_earlier_build() { # _earlier_build <spec_path>: prints the commit of the spec folder's newest committed gate-ledger.json that
-                   # records Build PASS (not skipped); exit 0 when no file of the plan changed since, exit 2 (the commit, a
-                   # tab, and what changed) when one did, exit 1 (why) when no such ledger is committed
-  python3 -I "$SCRIPTS_DIR/earlier_build.py" "$1" "$(_grouped_parse "$1/tasks.md" 2>/dev/null)"
-}
-
 gate_build() {
   local spec_path="$1"
   local reqs=() all_pass=1
-  # A door into Review or Check walks Build in a run that built nothing: the Build PASS of the earlier run that built
-  # the code counts, as its committed ledger records it, while no file of the plan changed since.
-  case "$(cmd_state_get enter "")" in
-    review|check)
-      local before brc
-      before="$(_earlier_build "$spec_path")"; brc=$?
-      if [[ $brc -eq 0 ]]; then
-        reqs+=("$(_req "built in an earlier run" 1 "the spec folder's gate-ledger.json, committed in ${before:0:7}, records Build PASS, and no file of the plan changed since")")
-      elif [[ $brc -eq 2 ]]; then
-        # the plan was built, and its code changed since: Run Build mends and checks that code (the fix pass)
-        reqs+=("$(_req "built in an earlier run" 0 "${before#*$'\t'}")")
-      fi
-      if [[ $brc -ne 1 ]]; then
-        echo "$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"${reqs[0]}")" "$(( brc == 0 ? 1 : 0 ))"
-        return 0
-      fi ;;
-  esac
   local red_n green_n after_n   # runs the CLI ran or the person confirmed; a claim counts only with evidence.claimed-runs: count (Q3)
-  read -r red_n green_n after_n <<<"$(python3 -E -s "$SCRIPTS_DIR/runs.py" build "$(_evidence_file build)" "$(_cfg_get evidence.claimed-runs ignore)")"
+  read -r red_n green_n after_n <<<"$(python3 -E -s "$SCRIPTS_DIR/runs.py" build "$(_evidence_file build)" "$(_cfg_get evidence.claimed-runs)")"
   if [[ -f "$spec_path/tasks.md" ]] && python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
     reqs+=("$(_req "RED then GREEN" 1 "every task is manual: the person confirms each by hand, there is no test to run")")
   elif [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
@@ -2960,8 +2787,6 @@ gate_build() {
     integ="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" integration-verdict "$GROUPS_FILE")"
     if [[ "${integ%%|*}" == "PASS" ]]; then
       reqs+=("$(_req "integration" 1 "groups merged, suite and interfaces verified (temper integrate)")")
-    elif [[ -z "${integ%%|*}" && -n "$(cmd_state_get built_before "")" ]]; then
-      reqs+=("$(_req "integration" 1 "the groups were built and merged in an earlier run (its ledger, committed in $(cmd_state_get built_before "" | cut -c1-7)); this run's fix pass works on that code")")
     elif [[ -n "${integ%%|*}" ]]; then
       reqs+=("$(_req "integration" 0 "integration FAIL: ${integ#*|}")")
       all_pass=0
@@ -3011,7 +2836,7 @@ _review_code() { # _review_code save|compare: the tracked files of the project (
 
 gate_review() {
   local block_on sev_csv
-  block_on="$(_cfg_get review.block-on critical,high)"
+  block_on="$(_cfg_get review.block-on)"
   sev_csv="$(printf '%s' "$block_on" | tr $'\x1f' ',')"
   local n; n=$(_ev_count_severity_in review "$sev_csv")
   local resolved; resolved=$(_ev_count_resolved_in review "$sev_csv")
@@ -3061,7 +2886,7 @@ gate_check() {
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
   # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
-  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$(_cfg_get evidence.claimed-runs ignore)" 2>/dev/null || echo 0)"
+  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$(_cfg_get evidence.claimed-runs)" 2>/dev/null || echo 0)"
   tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
   local skip=""; [[ -n "$tests_red" ]] && skip="$(_baseline skip-row "$(_evidence_file check)")"   # WP20: a red base gone on from
   if [[ -n "$skip" ]]; then
@@ -3266,7 +3091,7 @@ gate_commit() {
     fi
   fi
   if [[ "$run_mode" == "autonomous" || "$(cmd_state_get ran_unattended "")" == "true" ]]; then
-    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius 15)"
+    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius)"
     if [[ -z "$gspec" || ! -f "$gspec/tasks.md" ]]; then
       local changed_n; changed_n=$(_changed_since_base | grep -c .)
       if [[ "$changed_n" -le "$max_blast" ]]; then
@@ -3280,7 +3105,7 @@ gate_commit() {
     # change to such a path parked, so a billing feature parked at once and the unattended option was of no use there.
     # WP11: one matcher (scripts/sensitive.py) over the changed files; a file the person confirmed at the failed commit
     # question (temper override sensitive-path:<path>) passes
-    local patterns; patterns="$(_cfg_get autonomy.park-on-touch "")"
+    local patterns; patterns="$(_cfg_get autonomy.park-on-touch)"
     local touched=""
     if [[ -n "$patterns" ]]; then
       touched="$(_changed_since_base | python3 -I "$SCRIPTS_DIR/sensitive.py" touched "$patterns" \
@@ -3313,7 +3138,7 @@ cmd_gate() {
   [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <intent|plan|design|build|review|check|commit>" >&2; return 1; }
 
   local spec_path; spec_path="$(_spec_path "$spec_path_override")"
-  # A verdict of the active run is computed from the run's own spec folder. Another folder's (a draft /temper:intent
+  # A verdict of the active run is computed from the run's own spec folder. Another folder's (a draft that /temper:temper draft
   # captures beside the run) is checked and printed, and recorded nowhere: it never stands for the run.
   local record=1 run_spec=""
   [[ -f "$STATE_FILE" ]] && run_spec="$(cmd_state_get spec_path "")"
@@ -3370,14 +3195,6 @@ cmd_gate() {
   local wrote=0
   if [[ "$record" == "1" ]] && _gate_write_verdict "$stage" "$verdict" "$reqs_json"; then
     wrote=1
-    # The walked Build of a door's run passed on the earlier run's ledger: a loop back to Build mends that code (the fix
-    # pass), it does not build the plan again.
-    if [[ "$stage" == "build" && -z "$(cmd_state_get built_before "")" ]]; then
-      case "$(cmd_state_get enter "")" in
-        review|check) local bb brc; bb="$(_earlier_build "$spec_path")"; brc=$?
-          [[ $brc -ne 1 ]] && _json_set_path "$STATE_FILE" built_before "${bb%%$'\t'*}" '{}' >/dev/null ;;
-      esac
-    fi
     # Per-criterion status for the live view. Fail open: never changes the verdict.
     _status_write "$spec_path" >/dev/null 2>&1 || true
     # A gate the orchestrator runs marks the small change's step done; one the commit hook runs neither marks nor closes it.
@@ -3390,7 +3207,7 @@ cmd_gate() {
   echo "temper gate $stage -> $verdict"
   if [[ "$record" != "1" ]]; then
     echo "  (not recorded: a run of $run_spec is active, and this verdict is of $spec_path_override)"
-    # The gate of a standalone /temper:intent ran: the debt its session owes (verify-stage-gate.sh) is paid.
+    # The gate of a draft (/temper:temper draft) ran: the debt its session owes (verify-stage-gate.sh) is paid.
     python3 -I "$SCRIPTS_DIR/state_ops.py" pending-done "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
   fi
   # --brief (9.8.0, the gate call after an agent): the failed rows only; the question that follows names them, and every
@@ -3589,15 +3406,15 @@ cmd_park() {
 # changes the plan: it is recorded as the person's note for Plan, and Plan runs again with it.
 cmd_plan() {
   _state_migrate_legacy
-  if [[ "${1:-}" == "patch" ]]; then   # the person's change of one command line (scripts/plan_patch.py)
-    local rc; _lock_acquire; python3 -E -s "$SCRIPTS_DIR/plan_patch.py" "$(_spec_path "")" "$STATE_FILE" "$GROUPS_FILE" "$(_evidence_file plan)" "${@:2}"; rc=$?; _lock_release; return $rc
+  if [[ "${1:-}" =~ ^(patch|amend)$ ]]; then   # the person's patch, the amendment by rule (WP25: scripts/plan_patch.py, plan_amend.py); a passed task they reopen goes back through the reopen
+    local rc o; _lock_acquire; o="$(python3 -E -s "$SCRIPTS_DIR/plan_$1.py" "$(_spec_path "")" "$STATE_FILE" "$GROUPS_FILE" "$(_evidence_file plan)" "${@:2}")"; rc=$?; [[ -n "$o" ]] && grep -v '^REOPEN: ' <<<"$o"; [[ $rc == 0 && "$o" == *"REOPEN: "* ]] && { _group_reopen_body $(sed -n 's/^REOPEN: //p' <<<"$o") || rc=1; }; _lock_release; return $rc
   fi
   if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
     local rc; _lock_acquire
-    python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds 3)" "$(_now)" "$(_evidence_file plan)"; rc=$?
+    python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds)" "$(_now)" "$(_evidence_file plan)"; rc=$?
     _lock_release; return $rc
   fi
-  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan patch" >&2; return 1; }
+  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan patch | plan amend" >&2; return 1; }
   shift
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
@@ -3650,7 +3467,7 @@ cmd_risk() {
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
   local out rc=0
   out="$(python3 -E -s "$SCRIPTS_DIR/risk.py" compute "$spec" "$TEMPER_DIR/security-map.json" "$@" --prior "$(_json_get_path "$STATE_FILE" risk_raise "")" \
-    --sensitive "$(_cfg_get autonomy.park-on-touch "")")" || rc=$?
+    --sensitive "$(_cfg_get autonomy.park-on-touch)")" || rc=$?
   [[ $rc -eq 0 ]] || return $rc
   head -1 <<<"$out"
   python3 -I -c "
@@ -3858,7 +3675,7 @@ PY
 # Detection is entirely deterministic — this subcommand never invokes a model,
 # reads the network, or edits code. What a breach *triggers* is tiered in
 # config (`bands:` in .claude/temper.config — log / diagnose / propose) and
-# always lands in the normal pipeline: /temper:status renders the verdict, and
+# always lands in the normal pipeline: /temper:temper status renders the verdict, and
 # a `propose`-tier breach is drafted into a `.temper/specs/<slug>/intent.md`
 # for /temper to run — through every ordinary gate, never around them.
 #
@@ -3874,14 +3691,14 @@ cmd_bands() {
   local as_json=false
   [[ "${1:-}" == "--json" ]] && as_json=true
   local window min_points drift_run metrics t1 t2 t3
-  window="$(_cfg_get bands.window 10)"
-  min_points="$(_cfg_get bands.min-points 4)"
-  drift_run="$(_cfg_get bands.drift-run 6)"
-  metrics="$(_cfg_get bands.metrics "")"
+  window="$(_cfg_get bands.window)"
+  min_points="$(_cfg_get bands.min-points)"
+  drift_run="$(_cfg_get bands.drift-run)"
+  metrics="$(_cfg_get bands.metrics)"
   [[ -n "$metrics" ]] || metrics="coverage"$'\x1f'"tests"
-  t1="$(_cfg_get bands.tiers.1sigma log)"
-  t2="$(_cfg_get bands.tiers.2sigma diagnose)"
-  t3="$(_cfg_get bands.tiers.3sigma propose)"
+  t1="$(_cfg_get bands.tiers.1sigma)"
+  t2="$(_cfg_get bands.tiers.2sigma)"
+  t3="$(_cfg_get bands.tiers.3sigma)"
   local out rc
   out=$(python3 -I "$SCRIPTS_DIR/bands.py" "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" </dev/null)
   rc=$?
@@ -3972,7 +3789,7 @@ main() {
        _config_pin ;;
   esac
   case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
-    "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"plan patch "*|"task retry "*|"task test "*|\
+    "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"task retry "*|"task test "*|\
 "acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*|"check run "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
   esac
   case "$sub" in
@@ -3982,6 +3799,7 @@ main() {
     evidence) cmd_evidence "$@" ;;
     gate) cmd_gate "$@" ;;
     model) cmd_model "$@" ;;
+    packs) python3 "$SCRIPTS_DIR/cli_ctx.py" packs --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" "$@" ;;   # WP29
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
     status) cmd_status "$@" ;;

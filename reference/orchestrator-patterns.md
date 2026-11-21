@@ -26,8 +26,8 @@ The plugin folder is the folder Temper is installed in: the folder that holds
 Only if the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall
 it." Never search the disk for the plugin folder and never guess another one. The temper
 CLI is always called by its full path, `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every
-path that does not start with the plugin folder (`.temper/`, the spec files,
-`.claude/temper.config`) is in the user's project, the current directory.
+path that does not start with the plugin folder (`.temper/`, the spec files, the project's config) is in the
+user's project, the current directory.
 
 ## The run files
 
@@ -40,7 +40,7 @@ stop, show its one line reason, and wait for the person. Never remove, replace o
 { "stage": "{stage}_complete", "spec": "{slug}", "spec_path": ".temper/specs/{slug}",
   "branch": "{feature|fix}/{slug}", "command": "temper|fix", "next_stage": "{next}",
   "run_mode": "interactive|autonomous", "run_id": "{16 hex}", "step": 0,
-  "feature": "{as the person typed it}", "enter": "{a door's stage}", "base_sha": "{sha}",
+  "feature": "{as the person typed it}", "base_sha": "{sha}",
   "approved_files": ["{the plan's files when the person approved it}"], "parked": "{stage}",
   "redo": {"stage": "build", "reason": "{what to mend}"}, "started": "{ISO}", "updated": "{ISO}" }
 ```
@@ -50,9 +50,7 @@ on branch `feature/{slug}`; `/temper:fix` is rca, fix, review, check, commit, on
 Every change of `next_stage` counts one `step`; a step back clears the verdicts of the stages it redoes.
 A run moves forward only by `state advance` (a forward `state set next_stage`, and a `state loop` to a
 later stage, are refused), and entering Commit clears any earlier commit verdict, so the commit gate
-runs for the run itself. `base_sha` is recorded when the run leaves Plan: HEAD, or, for a door into
-Review or Check, where the feature started (before the commit that added its `intent.md`, else where
-the branch left main or master), so the work the door reviews is in the diff.
+runs for the run itself. `base_sha` is recorded when the run leaves Plan: HEAD.
 
 The other run files are the CLI's too: `.temper/gates.json` (each stage's verdict and rows),
 `.temper/overrides.json` (the person's skips), `.temper/budget.json` (the repeats),
@@ -75,9 +73,8 @@ status and gate verdict; each task's status, attempts and commit; the integratio
 
 ## MCP Tool-First Pattern
 
-`tools.mode`: `auto` (default — try MCP, fall back to grep-based heuristic) /
-`heuristic-only` (never call MCP, forces `[HEURISTIC]`) / `require` (fail if MCP
-unavailable, no fallback). Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
+An agent uses a connected MCP tool when there is one and falls back to a grep based heuristic when there is none.
+Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
 
 | Label | Meaning |
 |---|---|

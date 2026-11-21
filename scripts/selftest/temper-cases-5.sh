@@ -1,15 +1,15 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
 # Build runs in groups of small tasks: the one Build (ADR 0013)
 setup
-assert_eq "model --all prints the 9 stage lines plus task= and task-escalation=" "11|1|1" \
+assert_eq "model --all prints a line for each of the 14 agents of the table, task= and task-escalation= among them" "14|1|1" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
 
 # Scenario: Task and escalation models resolve from config with defaults [AC-06, AC-01]
 setup
 printf 'build:\n  mode: grouped\n' >> .claude/temper.config
-assert_eq "model task defaults to claude-haiku-5-5" "claude-haiku-5-5" "$("$TEMPER" model task)"
+assert_eq "model task defaults to sonnet, the table's value" "sonnet" "$("$TEMPER" model task)"
 assert_eq "model task-escalation defaults to sonnet" "sonnet" "$("$TEMPER" model task-escalation)"
-assert_eq "grouped on: model --all appends task= and task-escalation=" "11|task=claude-haiku-5-5|task-escalation=sonnet" \
+assert_eq "grouped on: model --all appends task= and task-escalation=" "14|task=sonnet|task-escalation=sonnet" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep '^task=')|$("$TEMPER" model --all | grep '^task-escalation=')"
 setup
 printf 'build:\n  mode: grouped\n  grouped:\n    task-model: haiku\n    escalation-model: opus\n' >> .claude/temper.config
@@ -260,7 +260,7 @@ assert_eq "schedule: schedule writes nothing" "no" "$([[ -e .temper/groups.json 
 sg_setup; sg_state '{}'
 assert_eq "schedule: independent tasks of started groups are ready, ordered by task" "1,3" "$(sg_ready)"
 assert_eq "schedule: a ready line carries task, group, the task's own worktree, project, model and attempt" \
-  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "agent_model": "haiku", "attempt": 1, "manual": false}' \
+  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "sonnet", "agent_model": "sonnet", "attempt": 1, "manual": false}' \
   "$("$TEMPER" schedule | head -1)"
 
 # agent_model: the alias the Agent tool takes, derived from the model id (feedback #4)
@@ -310,9 +310,11 @@ assert_eq "schedule: the waiting line is absent while tasks are ready" "0" "$("$
 sg_state '{}' '"G1":{"status":"parked","worktree":".claude/worktrees/temper-demo-G1"},"G2":{"status":"parked","worktree":".claude/worktrees/temper-demo-G2"}'
 assert_eq "schedule: with every group parked the last line lists them" "1" "$(sg_last | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(1 if d.get('parked')==['G1','G2'] and d.get('done') is False else 0)")"
 
-# attempt and model: a failed task is offered again with its next attempt; attempt 3 uses the escalation model
-sg_setup; sg_state '{"1":{"group":"G1","status":"failed","attempt":1,"attempts":[{"n":1,"outcome":"FAIL"}]}}'
-assert_eq "schedule: attempt 2 is offered on the task model" "claude-haiku-5-5|2" \
+# attempt and model: a failed task is offered again with its next attempt; attempt 3 uses the escalation model. The task
+# model is set apart from the escalation model (models.task: haiku, the key of row D28), since both are sonnet by default
+sg_setup; printf 'models:\n  task: haiku\n' >> .claude/temper.config
+sg_state '{"1":{"group":"G1","status":"failed","attempt":1,"attempts":[{"n":1,"outcome":"FAIL"}]}}'
+assert_eq "schedule: attempt 2 is offered on the task model" "haiku|2" \
   "$("$TEMPER" schedule | head -1 | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print('%s|%s' % (d['model'], d['attempt']))")"
 sg_state '{"1":{"group":"G1","status":"failed","attempt":2,"attempts":[{"n":1,"outcome":"FAIL"},{"n":2,"outcome":"FAIL"}]}}'
 assert_eq "schedule: attempt 3 is offered on the escalation model" "sonnet|3" \
@@ -706,9 +708,9 @@ st_attempt() { # st_attempt <model> <ms>: start Task 1, write a declared file an
   st_edit src/a.sh; st_edit stray.txt
   "$TEMPER" task gate 1 --model "$1" --ms "$2" 2>&1
 }
-st_setup
+st_setup; printf 'models:\n  task: haiku\n' >> .claude/temper.config   # the task model apart from the escalation model
 out="$(st_attempt claude-haiku-5-5 41000)"; rc=$?
-assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on claude-haiku-5-5" \
+assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on haiku" \
   "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 assert_eq "retry: the failed attempt's worktree and branch are discarded, the group worktree never saw its files" "no|no|no" \
   "$([[ -d $T1W ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/T1 && echo yes || echo no)|$([[ -e "$ST_WT/src/a.sh" || -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
@@ -1090,7 +1092,7 @@ assert_eq "group report: a parked group is listed" '["G1"]' "$(gr_json parked)"
 gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh; "$TEMPER" group gate G1 >/dev/null 2>&1
 "$TEMPER" gate plan >/dev/null 2>&1
 "$TEMPER" state archive >/dev/null 2>&1
-assert_eq "state archive: gate-ledger.json gets a grouped block with the report and the models" "1|claude-haiku-5-5|sonnet|2" \
+assert_eq "state archive: gate-ledger.json gets a grouped block with the report and the models" "1|sonnet|sonnet|2" \
   "$(python3 -c "
 import json
 g=json.load(open('.temper/specs/demo/gate-ledger.json')).get('grouped') or {}
@@ -1178,9 +1180,9 @@ TB_MAX="$(grep -m1 '^TASK_BRIEF_MAX_BYTES=' "$TEMPER" | sed 's/^[^=]*=//' | tr -
 assert_eq "task brief: agents/build-task.md exists" "1" "$([[ -f "$TB" ]] && echo 1 || echo 0)"
 assert_eq "task brief: within TASK_BRIEF_MAX_BYTES (read from the script)" "1" \
   "$([[ -f "$TB" && -n "$TB_MAX" && "$(wc -c < "$TB" | tr -d ' ')" -le "$TB_MAX" ]] && echo 1 || echo 0)"
-assert_eq "task brief: frontmatter name and model" "temper-build-task|claude-haiku-5-5" \
+assert_eq "task brief: frontmatter name and model" "temper-build-task|sonnet" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^name:/{sub(/^name:[[:space:]]*/,""); a=$0} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); b=$0} END{print a "|" b}' "$TB" 2>/dev/null)"
-assert_eq "model task reads the brief frontmatter as the default" "claude-haiku-5-5" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
+assert_eq "model task defaults to the table's sonnet, the model line of the brief" "sonnet" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
 assert_eq "plugin.json lists ./agents/build-task.md" "1" "$(python3 -c "import json; print(int('./agents/build-task.md' in json.load(open('$REPO_ROOT/.claude-plugin/plugin.json'))['agents']))")"
 # Scenario: Grouped logic stays in the briefs and the CLI [AC-05]
 assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plugin folder rule" "1|1" \
@@ -1188,7 +1190,7 @@ assert_eq "task brief: says the CLI draws its panel (9.8.0), and states the plug
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
-assert_eq "model --all has 10 lines with the task brief present" "11" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
+assert_eq "model --all has 14 lines with the task brief present" "14" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0): plan brief, plan reference and templates for grouped output ---
@@ -1205,28 +1207,31 @@ assert_eq "plan brief: one step points at the grouped format, and none at a buil
   "$(grep -c 'in the grouped format' "$REPO_ROOT/agents/plan.md" | tr -d ' ')|$(grep -c 'config get build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
 assert_eq "plan reference: documents the grouped format, budgets and pack distilling" "4" \
   "$(for k in '^## Grouped tasks' '4096' '2048' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"
-assert_eq "config default: commented build block names every grouped key" "4" \
-  "$(for k in '^# build:' 'task-model' 'escalation-model' 'max-parallel'; do grep -qE -- "$k" "$REPO_ROOT/templates/temper.config.default" && echo x; done | wc -l | tr -d ' ')"
+# WP29: the template keeps 10 live lines, and every grouped key has its default in the table of the CLI: docs/commands.md
+# holds that table (temper config show --markdown) and names the two old model keys among what became of an old key
+assert_eq "config default: the key table of docs/commands.md names every grouped key" "5" \
+  "$(for k in 'build.grouped.max-parallel' 'build.grouped.max-groups' 'build.grouped.keep-days' 'build.grouped.task-model' 'build.grouped.escalation-model'; do grep -qF -- "\`$k" "$REPO_ROOT/docs/commands.md" && echo x; done | wc -l | tr -d ' ')"
 setup
 
 # --- the orchestrator is a loop over temper next (ADR 0013); grouped Build's loop is the CLI's ---
 OT="$REPO_ROOT/commands/temper.md"
 OF="$REPO_ROOT/commands/fix.md"
-# /temper:build is a door into the orchestrator (ADR 0012): it reads commands/temper.md and enters at Build.
-assert_eq "orchestrator: the loop runs temper go (9.8.0), and /temper:build is a door into it" "1|1" \
-  "$(grep -c 'scripts/temper go` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
+# WP28: no door into the orchestrator is left: /temper:temper takes up the active run, and no page enters at a stage.
+assert_eq "orchestrator: the loop runs temper go (9.8.0), and no door into it is left (WP28)" "1|1" \
+  "$(grep -c 'scripts/temper go` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$([[ ! -e "$REPO_ROOT/commands/build.md" ]] && ! grep -qF 'Entering at a stage' "$OT" && echo 1 || echo 0)"
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "orchestrator: an agent's after calls run with its time filled in, and no agent id or token count" "yes|0|0" \
-  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{ms}` (how long the agent ran, in milliseconds) comes from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")|$(grep -ciE 'subagent_tokens|token_count' "$OT")"
+  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -cF 'run its `after` calls: `{ms}` (how long the agent ran, in milliseconds) comes from the Agent result' >/dev/null && echo yes || echo no)|$(grep -c '{agent}' "$OT")|$(grep -ciE 'subagent_tokens|token_count' "$OT")"
 assert_eq "orchestrator: fix.md records the RCA launch, and the loop records the rest" "yes|yes" \
   "$(grep -qF 'usage add --stage rca' "$OF" && echo yes || echo no)|$(grep -qF 'scripts/temper next --json' "$OF" && echo yes || echo no)"
 assert_eq "orchestrator-patterns: the run files list groups.json and usage.json" "2" \
   "$(for k in 'groups.json' 'usage.json'; do grep -qF -- "$k" "$REPO_ROOT/reference/orchestrator-patterns.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "autonomy.md: narrowed invariant and group rules" "4" \
   "$(for k in 'final feature commit' 'never pushes' 'answered Continue' 'max-blast-radius'; do grep -qiF -- "$k" "$REPO_ROOT/reference/autonomy.md" && echo x; done | wc -l | tr -d ' ')"
+# WP29: the template holds only the person's choices; the invariant is stated in the grouped Build guide
 assert_eq "config default: hardcoded invariant states the narrowed wording" "yes|0" \
-  "$(grep -qiF 'final feature commit' "$REPO_ROOT/templates/temper.config.default" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
+  "$(grep -qiF 'final feature commit' "$REPO_ROOT/docs/grouped-build.md" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0), review loop 1: the task gate verdict and its restore path [H1, H2, H5, M2] ---

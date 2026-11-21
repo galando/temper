@@ -9,20 +9,18 @@ estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) car
 (`evidence run` for a test run, `evidence add` for a measured value); this doc is the methodology behind what to run
 and how to interpret it.
 
-**Mode:** Check runs as a stage of `/temper` (also when `/temper:check` starts it: the
-command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
+**Mode:** Check runs as a stage of `/temper`, in a clean subprocess with no `AskUserQuestion` gate:
 return the summary, the orchestrator owns the gate and the commit. Load `.temper/specs/{feature}/review-context.json` if present.
 
 ## Step 1: Detect Stack
 
-Apply the temper-core skill's detection order. A company preset (`.claude/temper.config`,
-or a YAML preset file in the project's `.claude/presets` folder) overrides auto-detected
-commands.
+Apply the temper-core skill's detection order. A YAML preset file in the project's `.claude/presets` folder
+overrides auto-detected commands.
 
 **Configured commands first.** Before using the table below, run
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get check.commands.test`, then the same call for
-`check.commands.lint` and for `check.commands.typecheck`. A key that prints a command replaces the detected command
-for that level; a key that prints nothing keeps stack detection.
+`check.commands.coverage`. A key that prints a command replaces the detected command for that level; a key that
+prints nothing keeps stack detection.
 
 | Manifest | Stack | test / lint / type / build |
 |---|---|---|
@@ -40,7 +38,7 @@ missing *optional* tool.
 
 | # | Level | On failure | Skip when |
 |---|---|---|---|
-| 0 | Environment, decided from a config key and file names only: never open a `.env` file or read what one holds. It fails when `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get check.environment` prints `production`, or, with that key unset, when the project's top folder holds a file named `.env.production` or `.env.prod` | STOP immediately; name the key or the file name that stopped it, and say that setting `check.environment` to the real environment (for example `development`) in temper.config clears it when that file is only a template | `check.environment` is set to anything but `production`, or it is unset and no such file name exists |
+| 0 | Environment, decided from file names only: never open a `.env` file or read what one holds. It fails when the project's top folder holds a file named `.env.production` or `.env.prod` | STOP immediately; name the file name that stopped it, and say that renaming the file clears it when it is only a template | no such file name exists |
 | 1 | Compile/build | STOP, show error, suggest fix | — |
 | 2 | Unit tests | STOP, show failing names | — |
 | 3 | Integration tests | STOP, show failing tests | none configured |
@@ -62,12 +60,10 @@ reads `intent.md` and checks behavior against what was promised.
 1. Resolve `{spec}`: the `--spec-path` this run was given, else
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`. Neither gives a spec path → SKIP
    this level entirely (never pick a spec folder by guessing).
-2. Extract every `Scenario:` (name + Given/When/Then) from `intent.md`.
-3. Match each scenario to a test: MCP `query_graph_tool` by name annotation → `[PROVEN]`;
-   else grep test files for the scenario name (snake_case/camelCase) → `[HEURISTIC]`; no
-   match → UNMATCHED. `check.live-scenarios` (`prompt`|`always`|`never`, default
-   `prompt`) controls whether to ask before running matched tests for real; `never` falls
-   back to heuristic-only.
+2. Extract every `Scenario:` (name, its `Then` line and its `Test:` line) from `intent.md`.
+3. Match each scenario to a test: the test its `Test:` line names → `[PROVEN]`; else MCP `query_graph_tool` by name
+   annotation → `[PROVEN]`; else grep test files for the scenario name (snake_case/camelCase) → `[HEURISTIC]`; no match
+   → UNMATCHED.
 4. Run each matched test individually (`jest --testNamePattern`, `pytest ::test_name`,
    `mvn -Dtest=`, `go test -run`, `cargo test name --`, etc.) and capture PASS/FAIL/time
    — label `[PROVEN]`, real runner output.
@@ -98,24 +94,13 @@ report, don't imply stronger guarantees than they give:
 ### Level 7 — Security
 
 Dependency scan (`npm audit`, `pip-audit`, etc.) plus, if the semgrep MCP server is
-available and `tools.mode` isn't `heuristic-only`: `security_check` on changed files,
-then `semgrep_scan_with_custom_rule` using each enabled pack's rules (read the enabled
-packs' `rules.md` — project `.claude/packs/` shadows global `~/.claude/packs/` shadows
-the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`; keep rules whose `phases` is `all` or contains
-`check`). Map error→CRITICAL(BLOCK), warning→HIGH(WARN), info→MEDIUM(WARN). SAST findings
+available: `security_check` on changed files,
+then `semgrep_scan_with_custom_rule` using the rules of the pack files your prompt lists on its `Packs:` line (the
+CLI chose those of Check). Map error→CRITICAL(BLOCK), warning→HIGH(WARN), info→MEDIUM(WARN). SAST findings
 bypass confidence filtering — always shown, labeled `[PROVEN]`. No semgrep → fall back to
 the OWASP pattern-matching in `review.md` Step 2, labeled `[HEURISTIC]`.
 
-## Step 3: Debt Tracking + Config Suggestions
-
-If `debt-tracking: true`: record coverage %, test count, and lint-violation count via
-the CLI: `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append coverage <pct>`,
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append tests <count>` and
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append lint_violations <count>`, never by
-hand-editing `.temper/metrics.json`: these arrays are what `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` computes
-control bands from, so the monitor must read a ledger the spine wrote. (Full debt
-analysis is `/temper:status`'s job, not Check's — don't slow the pipeline down
-repeating it here.)
+## Step 3: Config Suggestions
 
 If every level passed and files changed: generate up to 5 config suggestions
 (confidence >= 0.6) comparing the diff against `CLAUDE.md`/`AGENTS.md`, write

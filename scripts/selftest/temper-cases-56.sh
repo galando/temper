@@ -534,7 +534,8 @@ _snap56() { "$TEMPER" next --json >/dev/null 2>&1; }   # a snap of the fixture: 
 setup; rm -rf "${WORKDIR:?}/pw56"; mkdir -p "$WORKDIR/pw56/.temper"; cd "$WORKDIR/pw56" || exit 1
 git init -q .; git config user.email t@example.com; git config user.name t
 echo x > README.md; git add README.md; git commit -q -m init
-mkdir -p .claude; printf 'review:\n  block-on: [critical]\n' > .claude/temper.config
+# WP29: the fixture keeps its old review level and has answered the one time config question, as the view fixtures have
+mkdir -p .claude; printf 'review:\n  block-on: [critical]\nupgrade:\n  asked: "9.8.5"\n' > .claude/temper.config
 _snap56; "$TEMPER" state init pw --feature "Password reset by email" >/dev/null 2>&1; _base_known; _snap56
 mkdir -p .temper/specs/pw; _pwfile56 intent > .temper/specs/pw/intent.md
 gfail intent "Success criteria" "AC-03 has no Validate line"; _snap56; gpass intent; _snap56

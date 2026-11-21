@@ -25,31 +25,6 @@ def unfenced_scenarios(argv):
     print('\x1f'.join(bad))
 
 
-def cross_repo_recorded(argv):
-    import re, sys
-    lines = open(argv[1]).read().splitlines()
-    sec, active = [], False
-    for l in lines:
-        h = re.match(r'^(#{1,6})\s', l)
-        if h:
-            if active:
-                break
-            if re.search(r'cross.?repo search', l, re.I):
-                active = True
-                continue
-        if active:
-            sec.append(l)
-    if not active:
-        print('no heading matching "Cross-Repo Search" in plan.md')
-        sys.exit(0)
-    for l in sec:
-        m = re.match(r'^\s*-\s*(used|not available):\s*(.+?)\s*$', l, re.I)
-        if m and re.search(r'[A-Za-z0-9]', re.sub(r'\{[^{}]*\}', '', m.group(2))):
-            print('ok')
-            sys.exit(0)
-    print('Cross-Repo Search section has no "- used:" / "- not available:" line with real text')
-
-
 def task_box(argv):
     import os, re, sys
     p, n, to = argv[1], argv[2], argv[3]
@@ -187,7 +162,6 @@ def plan_hash_recorded(argv):
 
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('unfenced_scenarios', unfenced_scenarios),
-    ('cross_repo_recorded', cross_repo_recorded),
     ('task_box', task_box),
     ('intent_carry', intent_carry),
     ('intent_status', intent_status),

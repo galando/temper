@@ -302,6 +302,17 @@ _c43_ct_listed 'T1 one'
 assert_eq "done: a name counts as listed only in the code span of the first cell of a row of changed-tests.md" \
   "1|1 0" "$r1 $(_c43_ct "$CT_BASE")"
 
+# the table goes on in changed-tests-2.md, read the same way, when the page nears the directory's 256 KiB limit; a
+# page with a gap before it (changed-tests-4.md with no 3) is not read
+CT_BASE="$(_c43_ct_repo)"
+sed -i '/T1 one/d' "$_c43/ct/scripts/selftest/temper-cases-11.sh"
+printf '| `%s` | `%s` | what | why | WP27 |\n' 'T1 one' 'scripts/selftest/temper-cases-11.sh' \
+  > "$_c43/ct/docs/plans/one-go/changed-tests-4.md"
+r1="$(_c43_ct "$CT_BASE")"
+mv "$_c43/ct/docs/plans/one-go/changed-tests-4.md" "$_c43/ct/docs/plans/one-go/changed-tests-2.md"
+assert_eq "done: a row of the continuation page changed-tests-2.md lists a name, a page after a gap does not" \
+  "1 0" "$r1 $(_c43_ct "$CT_BASE")"
+
 # a statement is compared whole line by whole line: an assertion commented out, or with a word added at its end, still
 # holds its old text as a part of a line and is a change all the same; so is a row of done.md with a cell added
 # (phase 2 review, F2)

@@ -9,8 +9,8 @@
                                        every worktree shares); with --if-protected (WP16, a fix run), switch to the
                                        run's branch only from main, master or the default branch, and on any other
                                        branch record that branch as the run's and switch nothing
-  spec_ops.py deviations BRANCH SPEC   `temper spec deviations`: the deviations build-context.json records, written into
-                                       plan.md as its `## Deviations` section (nothing when it records none)
+  spec_ops.py deviations BRANCH SPEC   `temper spec deviations`: the deviations build-context.json records, written to
+                                       deviations.md in the spec folder (WP26; nothing when it records none)
   spec_ops.py commit BRANCH SPEC MESSAGE [-- FILE...]
                                        `temper spec commit '<message>' [-- FILE...]`: stage the spec folder (and the files
                                        named after `--`, the run's record commit) and commit, when that holds a change
@@ -128,11 +128,13 @@ def commit(spec, message, files=()):
 
 
 def deviations(spec):
-    """build-context.json's deviations (unplanned files, skipped tasks, approach changes) as plan.md's `## Deviations`
-    section, replacing one an earlier call wrote. Earlier this was an instruction the session carried out itself."""
+    """build-context.json's deviations (unplanned files, skipped tasks, approach changes) as `deviations.md` in the spec
+    folder, replacing one an earlier call wrote. Earlier this was an instruction the session carried out itself.
+
+    9.8.5 (WP26): a file of its own, at every tier (a simple plan has no plan.md); plan.md and tasks.md stay as the
+    approval saw them. The commit of the run's record takes the whole spec folder, so the file is in it."""
     import json
     import os
-    import re
     try:
         d = (json.load(open(os.path.join(spec, "build-context.json"))) or {}).get("deviations") or {}
     except (OSError, ValueError, AttributeError):
@@ -143,21 +145,23 @@ def deviations(spec):
         for x in d.get(key) or [] if isinstance(d, dict) else []:
             text = x if isinstance(x, str) else "; ".join("%s: %s" % (k, v) for k, v in x.items()) if isinstance(x, dict) else str(x)
             rows.append("- %s: %s" % (title, " ".join(str(text).split())))
-    if not rows:
+    path = os.path.join(spec, "deviations.md")
+    if not rows:   # an earlier file goes, so the file always says what build-context.json holds
+        try:
+            os.remove(path)
+        except OSError:
+            pass
         print("OK: no deviations recorded")
         return 0
-    path = os.path.join(spec, "plan.md")
-    try:
-        text = open(path, encoding="utf-8").read()
-    except OSError:
-        print("FAIL: no plan.md in %s" % spec, file=sys.stderr)
-        return 1
-    text = re.sub(r"\n## Deviations\n.*?(?=\n## |\Z)", "", text, flags=re.S).rstrip("\n")
     tmp = "%s.tmp.%d" % (path, os.getpid())
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text + "\n\n## Deviations\n\n" + "\n".join(rows) + "\n")
-    os.replace(tmp, path)
-    print("OK: %d deviation(s) written into plan.md" % len(rows))
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("# Deviations\n\n" + "\n".join(rows) + "\n")
+        os.replace(tmp, path)
+    except OSError as e:
+        print("FAIL: cannot write %s: %s" % (path, e), file=sys.stderr)
+        return 1
+    print("OK: %d deviation(s) written into deviations.md" % len(rows))
     return 0
 
 

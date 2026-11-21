@@ -18,6 +18,11 @@ import { asksEveryStage, chained, expect, recommended, t, worktreeOf } from './s
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Json } from './world'
 
+// WP29: the config with lines at the top of its `check:` block, made when the template has none (the template of
+// 9.8.5 holds the block only as a comment)
+const checkLines = (text: string, lines: string): string =>
+  /^check:\n/m.test(text) ? text.replace(/^check:\n/m, `check:\n${lines}`) : `${text.replace(/\n*$/, '\n')}check:\n${lines}`
+
 const SPEC = '.temper/specs/pyjokes'
 const SUITE = 'python3 -m unittest discover -s unit -t .'
 const EXPORTS = 'from .core import CategoryNotFoundError, get_joke, get_jokes\n\n__all__ = ["CategoryNotFoundError", "get_joke", "get_jokes"]\n'
@@ -177,7 +182,7 @@ function startPyjokes(w: World): void {
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
   const cfg = path.join(w.dir, '.claude/temper.config')
   // WP19: the commands go at the top of the check block, whatever the template holds there
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace(/^check:\n/m, `check:\n  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'\n`))
+  fs.writeFileSync(cfg, checkLines(fs.readFileSync(cfg, 'utf8'), `  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'\n`))
   fs.appendFileSync(cfg, '\nplan:\n  fresh-review: auto\n')
   w.sh('git add -A && git commit -qm config')
   w.sh(`${TEMPER} init`)

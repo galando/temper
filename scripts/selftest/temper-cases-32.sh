@@ -59,7 +59,7 @@ assert_eq "tooling: the changelog starts at 9.7.0 and the older entries are in d
 
 _t32_out="$(bash "$REPO_ROOT/scripts/verify.sh" bogus 2>&1)"; _t32_rc=$?
 assert_eq "tooling: verify.sh names quick and full and refuses another word" "2|1|1" \
-  "$_t32_rc|$(printf '%s' "$_t32_out" | grep -q 'quick' && echo 1 || echo 0)|$(printf '%s' "$_t32_out" | grep -q 'full' && echo 1 || echo 0)"
+  "$_t32_rc|$(printf '%s' "$_t32_out" | grep -c 'quick' >/dev/null && echo 1 || echo 0)|$(printf '%s' "$_t32_out" | grep -c 'full' >/dev/null && echo 1 || echo 0)"
 
 _t32_wf="$REPO_ROOT/.github/workflows/quality.yml"
 assert_eq "tooling: the workflow cancels a superseded pull request run and ends in one gate job" "1|1|1|1" \

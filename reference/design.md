@@ -6,12 +6,10 @@ description: "System design exploration for complex features (optional stage)"
 
 **Goal:** Produce system design artifacts, when the person asked for Design at the plan approval (WP14).
 
-**Mode:** Design runs as a stage of `/temper` (also when `/temper:design` starts it: the
-command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
-return the summary, the orchestrator owns the gate. Load `intent.md`, `plan.md`, and the enabled packs' `rules.md`
-(project `.claude/packs/` shadows global `~/.claude/packs/` shadows
-the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains
-`design`), plus the project's `.claude/packs/stacks/{detected-stack}.md` if present.
+**Mode:** Design runs as a stage of `/temper`, in a clean subprocess with no `AskUserQuestion` gate:
+return the summary, the orchestrator owns the gate. Load `intent.md`, `plan.md`, and the pack files your prompt lists
+on its `Packs:` line (the CLI chose those of Design), plus the project's `.claude/packs/stacks/{detected-stack}.md` if
+present.
 
 ## Step 1: Analyze the Plan
 

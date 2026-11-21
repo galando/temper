@@ -78,13 +78,11 @@ Three you'll actually type. `/temper:temper` runs and routes the rest:
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper:temper "…"`](commands.html#temper-unified-command) | The whole pipeline, intent gate to commit |
+| [`/temper:temper "…"`](commands.html#tempertemper-the-run) | The whole pipeline, intent gate to commit |
 | [`/temper:fix "…"`](commands.html#temperfix) | Root cause → failing test (write-protected) → minimal fix |
-| [`/temper:intent "…"`](commands.html#temperintent) | Capture an idea as a committed draft, build it later |
 
-Each stage command (`/temper:plan`, `:build`, `:review`, `:check`) starts the same run at its
-stage, or takes up the one that is active; `:status`, `:pack` and `:init` stand alone. See the
-[commands reference](commands.html).
+`/temper:temper` also takes a few words: `draft <idea>` captures an idea as a committed draft to build later, and
+`status`, `report`, `init` and `pack` stand alone. See the commands reference.
 
 **Autonomy (opt-in):** after you approve the plan, `/temper` can run Build unattended; Review,
 Check and the commit still ask you. It never commits, pushes, or merges.

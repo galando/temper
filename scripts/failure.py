@@ -31,7 +31,7 @@ KINDS = {
     "no-tool": "not measured", "no-base": "not measured", "no-run": "not measured",
     "test-failed": "code", "coverage-drop": "code", "finding": "code",
 }
-CHECKS = ("suite", "validate", "task-test", "scenario", "acceptance", "coverage", "interfaces", "regression")
+CHECKS = ("suite", "validate", "task-test", "scenario", "criterion", "acceptance", "coverage", "interfaces", "regression")
 NO_TESTS = re.compile(r"NO TESTS RAN|no tests ran|collected 0 items|^Ran 0 tests", re.M)
 
 

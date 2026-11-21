@@ -22,6 +22,11 @@ import type { Script } from './loop'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json } from './world'
 
+// WP29: the config with lines at the top of its `check:` block, made when the template has none (the template of
+// 9.8.5 holds the block only as a comment)
+const checkLines = (text: string, lines: string): string =>
+  /^check:\n/m.test(text) ? text.replace(/^check:\n/m, `check:\n${lines}`) : `${text.replace(/\n*$/, '\n')}check:\n${lines}`
+
 const SPEC = '.temper/specs/report'
 const label = process.argv[2] ?? 'run'
 const NEW = fs.existsSync(path.join(ROOT, 'scripts/runs.py'))   // 9.8.5 and later: runs count only when the CLI ran them
@@ -268,8 +273,8 @@ function main(): void {
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
   const cfg = path.join(w.dir, '.claude/temper.config')
   // WP19: the commands go at the top of the check block, whatever the template holds there
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace(/^check:\n/m,
-    `check:\n  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'\n`))
+  fs.writeFileSync(cfg, checkLines(fs.readFileSync(cfg, 'utf8'),
+    `  commands:\n    test: ${INTEGRATION}\n    coverage: ${INTEGRATION} && echo 'TOTAL 100 5 95%'\n`))
   w.sh('git add -A && git commit -qm config')
   w.sh(`${TEMPER} init`)
   w.sh(`${TEMPER} state init report --feature 'CI report'`)

@@ -14,18 +14,16 @@ severity floors, filter bypasses, memory thresholds — not review technique.
 succeeds. Confidence scoring and review memory follow the temper-core skill's
 definitions.
 
-**Mode:** Review runs as a stage of `/temper` (also when `/temper:review` starts it: the
-command is a door into `/temper`), in a clean subprocess that never shows an
+**Mode:** Review runs as a stage of `/temper`, in a clean subprocess that never shows an
 `AskUserQuestion`: return the summary, the orchestrator owns the gate. Load the changed files (`${CLAUDE_PLUGIN_ROOT}/scripts/temper review files` prints them) plus
 `{spec}/intent.md` (if it exists),
 `build-context.json` (if it exists).
 
 ## Step 1: Gather Context
 
-`git diff --stat` + changed files; `.claude/temper.config` for `review.block-on` (default `[critical, high]`) /
-`review.confidence-threshold` / auto-fix; the enabled packs' `rules.md` (project
-`.claude/packs/` shadows global `~/.claude/packs/` shadows
-the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains `review`);
+`git diff --stat` + changed files; `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get review.block-on` for the levels
+that block (default `[critical, high]`); the pack files your prompt lists on its `Packs:` line (the CLI chose those
+of Review);
 `.temper/review-memory.json`; the active `intent.md` (in the spec folder your launch
 prompt's `Spec path:` line names).
 
@@ -42,7 +40,7 @@ gate. Absent → skip silently.
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get tools.ocr.mode off`. The default is `off`, and a config
 without the key reads as `off`: skip OCR silently and never run `ocr`. OCR sends the diff
 to the model provider the user set up for it, so it runs only when the user turns it on
-by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in `.claude/temper.config`.
+by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in the project's config.
 This page is the source of truth for how OCR behaves in a review:
 
 - **Probe (here, in Step 1).** Run `command -v ocr`, then `ocr review --preview`. Both
@@ -54,8 +52,7 @@ This page is the source of truth for how OCR behaves in a review:
 - **`ocr` present but the probe fails** (often no model provider set up for OCR). Both
   modes print a one-line warning and continue with Temper's own review; this never
   blocks.
-- **Run and merge (Step 2).** When `ocr_status` is ready, run OCR over the diff under
-  `tools.ocr.timeout` (minutes, default 10) and fold its findings in as `[OCR]`, or as
+- **Run and merge (Step 2).** When `ocr_status` is ready, run OCR over the diff (at most 10 minutes) and fold its findings in as `[OCR]`, or as
   `[OCR+TEMPER]` when a Temper finding matches; the merge mechanics are in
   `${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md`. A failure or a timeout during the run is
   handled like a failed probe: a one-line warning, then Temper's own review, never a
@@ -95,8 +92,7 @@ preferences that violate no pack rule. Classify each finding REGRESSION (was wor
 now broken — highest priority) / NEW ISSUE / PRE-EXISTING (lower priority).
 ```
 
-If `ocr_status == ready`, OCR owns line-level defect detection (unless
-`tools.ocr.replace-defect-subagent` is `false`); the subagent covers pack rules,
+If `ocr_status == ready`, OCR owns line-level defect detection; the subagent covers pack rules,
 security, AI-code detection, architecture drift, test gaps, and intent validation,
 folding in OCR's `[OCR]` findings.
 
@@ -105,8 +101,7 @@ sync I/O in a hot path, non-atomic shared-state mutation in a concurrent handler
 HIGH; unbounded recursion, O(n²) membership scan in a loop, concurrent access with no
 sync primitive at all → MEDIUM.
 
-**Security (MCP-first):** semgrep MCP available and `tools.mode` isn't
-`heuristic-only` → `security_check` on changed files, error→CRITICAL, warning→HIGH,
+**Security (MCP-first):** semgrep MCP available → `security_check` on changed files, error→CRITICAL, warning→HIGH,
 info→MEDIUM, label `[PROVEN]`. Else review heuristically, label `[HEURISTIC]`. For
 files the fingerprint flagged: trace call chains to the changed function and check each
 boundary — unauthenticated code needs rate limiting, authenticated needs an
@@ -136,16 +131,16 @@ never go silent because of a threshold.
 Every verdict is labeled **mechanical** (provable by tools) or **semantic** (judgment —
 directional, not proof).
 
-- **a. BDD (mechanical):** each `Scenario:` → a corresponding test → it passes.
-  Checklist.
-- **b. IDD (structured):** per Success Criterion, run its `Validate:` method —
-  `scenario` / `code` (grep) → ✅/❌, `metric` → 📊 deferred, `manual` → 🔍 flagged.
-  Verdict: satisfied / partially satisfied (name the gaps) / not satisfied, plus
-  "{N} mechanical, {N} deferred, {N} manual". No intent.md → same verdict against the
+- **a. BDD (mechanical):** each `Scenario:` → the test its `Test:` line names → it passes.
+- **b. IDD (structured):** per Success Criterion, read the row of its `Validate:` method:
+  `scenario`, and `code` or `metric` with a command in backticks → the row the CLI ran of that command
+  (✅ exit 0, ❌ otherwise, or no row yet); `code` or `metric` with no command, and `manual` → 🔍 the person
+  confirms it at the Check question. Verdict: satisfied / partially satisfied (name the gaps) / not satisfied, plus
+  "{N} mechanical, {N} for the person". No intent.md → same verdict against the
   linked ticket.
-- **c. Test quality (per covered scenario):** zero assertions → **TRIVIAL**; no
-  asserted variable appears in the Then clause's keywords → **WEAK** (mechanical);
-  otherwise judge Given→setup/When→action/Then→assertion alignment and depth — accept
+- **c. Test quality (per covered scenario):** judge each test against the scenario's `Then` line and the Cases of the
+  task that owns it. Zero assertions → **TRIVIAL**; no asserted variable appears in the Then line's keywords → **WEAK**
+  (mechanical); otherwise judge whether the assertions check the Then and the Cases, and how deeply; accept
   indirect assertions that semantically cover the Then; unsure → don't flag. STRONG
   counts full, WEAK half, TRIVIAL zero toward the verdict's evidence ratio; WEAK is a
   MEDIUM issue, TRIVIAL a LOW.
@@ -201,8 +196,7 @@ options), and the orchestrator then runs `${CLAUDE_PLUGIN_ROOT}/reference/archit
 ## Step 4: Confidence Filtering
 
 Pack-rule findings override the threshold (BLOCK→CRITICAL, WARN→HIGH/MEDIUM,
-SUGGEST→LOW — always shown). Otherwise: below `review.confidence-threshold` (default
-0.7) → discard entirely (not shown, not counted, not stored). From
+SUGGEST→LOW — always shown). Otherwise: below a confidence of 0.7 → discard entirely (not shown, not counted, not stored). From
 `review-memory.json`: 5+ prior dismissals of the pattern → suppress; 3-4 → downgrade
 one severity level.
 
@@ -270,7 +264,7 @@ memory, `.temper/review-memory.json.patterns[{key}]` (key = category + file-path
 `acceptance_rate = accepted/total_shown`. This one store drives both promotion and
 suppression:
 
-- **Promote** (surfaced at `/temper:status`, never auto-applied): 3+ accepted at
+- **Promote** (surfaced by the word `status`, never auto-applied): 3+ accepted at
   acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ at ≥ 80% in security or
   architecture → suggest a **BLOCK** rule. The human picks BLOCK / WARN /
   keep-advisory; an accepted rule is written into the project's copy of the active pack,

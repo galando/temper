@@ -71,13 +71,22 @@ describe('the plugin folder path in a prompt', () => {
 
 describe('the setting words say where the person changes the setting', () => {
   // ADR 0012: the decision words go on to the orchestrator (it asks the Temper gate question). 9.7.3: the mode and
-  // enforcement words change nothing from any origin; they name the /config option instead.
-  for (const word of ['mode off', 'enforcement off']) {
+  // enforcement words change nothing from any origin; they name the /config option instead. WP28: a word counts only
+  // alone, so `mode off` is a request (the run's restart question); it changes no setting either.
+  for (const word of ['mode', 'enforcement']) {
     test(`${word} from a model origin`, async ($, on) => {
       const w = world(on, runFiles({ nextStage: 'plan' }))
       await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: false })
       const r = await $.command.run({ command: 'temper', args: word, origin: { kind: 'sdk' } } as never)
       expect(r.text).toMatch(/Change it in \/config: Temper (UI mode|enforcement)/)
+      expect(w.configSets).toEqual([])
+    })
+  }
+  for (const word of ['mode off', 'enforcement off']) {
+    test(`${word} from a model origin changes no setting`, async ($, on) => {
+      const w = world(on, runFiles({ nextStage: 'plan' }))
+      await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: false })
+      await $.command.run({ command: 'temper', args: word, origin: { kind: 'sdk' } } as never)
       expect(w.configSets).toEqual([])
     })
   }

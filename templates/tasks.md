@@ -23,7 +23,6 @@ interfaces it must keep. Not the whole plan.
 - `parse "a,b"` returns two items, `a` and `b`
 - an empty input returns no items
 - an unclosed quote fails with the message `unclosed quote`
-**Traced to:** Scenario: "scenario name"
 - [ ] done
 
 ### Task 2: {description}
@@ -33,7 +32,6 @@ interfaces it must keep. Not the whole plan.
 **Cases:**
 - one parsed item prints one line
 - no items prints `nothing to report` and exits 0
-**Traced to:** Scenario: "name1", "name2"
 - [ ] done
 
 ## Group G2: {title}
@@ -49,7 +47,6 @@ Distilled rules and conventions for G2.
 **Cases:**
 - `main --help` prints the usage and exits 0
 - an unknown flag prints the usage and exits 2
-**Traced to:** Infrastructure: required by G1
 - [ ] done
 <!-- grouped-example:end -->
 

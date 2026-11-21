@@ -4,7 +4,7 @@
                                                                  project folder out, the ones that do not count left out
 
 Temper's own files never count as outside the declared files, nor toward autonomy.max-blast-radius: the project's
-.claude/temper.config, the .claude/settings.json that /temper:init may write (matched by its path only, never opened),
+.claude/temper.config, the .claude/settings.json that the word init may write (matched by its path only, never opened),
 .temper/ and .claude/worktrees/. Test and build output does not count either: coverage data, htmlcov/, .pytest_cache/,
 __pycache__/, *.pyc, .nyc_output/, JaCoCo and surefire output, the mypy and ruff caches. A real source file named like one
 (coverage.py) counts. Standard library only.
