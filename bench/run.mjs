@@ -134,8 +134,7 @@ async function main() {
   const taskText = fs.readFileSync(path.join(taskDir, "task.md"), "utf8").trim();
   // A bug task goes through Temper's bug flow (/temper:fix); a feature through the whole pipeline.
   const meta = JSON.parse(fs.readFileSync(path.join(taskDir, "meta.json"), "utf8"));
-  // meta.command: a task that starts at a door (a prepared plan entered with /temper:build) names it
-  const temperCmd = meta.command || (meta.kind === "bug" ? "/temper:fix" : "/temper:temper");
+  const temperCmd = meta.kind === "bug" ? "/temper:fix" : "/temper:temper";
   const out = path.resolve(a.out || path.join(RESULTS, `${a.task}__${a.arm}__${a.rep}`));
   fs.mkdirSync(out, { recursive: true });
   const work = path.join(out, "work");

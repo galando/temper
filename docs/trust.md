@@ -1,11 +1,14 @@
 # Trust
 
-With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently.
 
 Markdown, a mod written in TypeScript, about 5,900 lines of auditable bash (the CLI `scripts/temper` and the eleven
-guard scripts), and 86 Python files under `scripts` (about 25,200 lines, standard library only), which compute the
-gate requirements and what comes next; seven of them are checks of this repository. Counted with `wc -l` for 9.8.5. Temper itself makes no network calls, sends no telemetry and adds no packages. The
-committed artifacts (intent, plan, design, gate ledger and diff) are the audit trail, in the same commits as the code.
+guard scripts), and 86 Python files under `scripts` outside its test folders `selftest` and `e2e` (about 25,200 lines,
+standard library only), which compute the gate requirements and what comes next; seven of them are checks of this
+repository. Counted with `wc -l` for 9.8.5. Temper itself makes no network calls, sends no telemetry and adds no
+packages. The committed artifacts (intent, plan, design, gate ledger and diff) are the audit trail, in the same commits
+as the code.
 
 ## What Temper runs and changes
 
@@ -16,17 +19,16 @@ config names, which may be in your home folder; it reads no name or email from g
 override records that the person decided it at the gate). It reads no key, login, transcript, settings or other
 Claude Code file. A pack's link targets come from the skills and commands your session lists.
 
-- **Plugin hooks.** The plugin's hooks file registers four classic hooks and the mod module.
-  `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes that a `/temper:temper draft`
-  session owes an intent gate (a run of `/temper:temper` owes none).
-  `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
-  keep working (at most twice per stage) until that gate has a verdict. `PreToolUse` on Bash runs
-  `scripts/guards/block_stdin_wait.py` (9.8.0; a Python file since 9.8.1, answering deny as JSON), which refuses, in a folder with a `.temper` folder at or above it, a
-  command whose `cat` has no input while the command holds a heredoc: Claude Code leaves that command's input open,
-  so the `cat` would wait until the Bash timeout. It reads only the command and looks for that folder.
-  `PreToolUse` on the tools that write a file (Write, Edit, MultiEdit, NotebookEdit) runs
-  `scripts/guards/hold_before_approval.py` (9.8.5), which holds rule 1 with the mod off: at Intent, Plan and Design of
-  a `/temper:temper` run, before you approve the plan, it refuses a write of a project file (a path of the project
+- **Plugin hooks.** The plugin's hooks file registers four classic hooks and the mod module. `UserPromptSubmit` runs
+  `scripts/guards/stage-marker.sh`, which notes that a `/temper:temper draft` session owes an intent gate (a run of
+  `/temper:temper` owes none). `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to keep working
+  (at most twice per stage) until that gate has a verdict. `PreToolUse` on Bash runs
+  `scripts/guards/block_stdin_wait.py` (9.8.0; a Python file since 9.8.1, answering deny as JSON), which refuses, in a
+  folder with a `.temper` folder at or above it, a command whose `cat` has no input while the command holds a heredoc:
+  Claude Code leaves that command's input open, so the `cat` would wait until the Bash timeout. It reads only the
+  command and looks for that folder. `PreToolUse` on the tools that write a file (Write, Edit, MultiEdit, NotebookEdit)
+  runs `scripts/guards/hold_before_approval.py` (9.8.5), which holds rule 1 with the mod off: at Intent, Plan and Design
+  of a `/temper:temper` run, before you approve the plan, it refuses a write of a project file (a path of the project
   outside `.temper/`, where the spec folder is), as the mod's own rule does. A `/temper:fix` run and a shell command
   that writes a file are outside it; for those the commit hook still refuses a commit of a project file before the
   approval. It reads the run state and the path, and only ever answers deny. All four fail open.
@@ -36,12 +38,11 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   the Build, Check and commit gates still fail on a later change to either file (the row `intent unchanged since the
   approval`) until you approve again. Before the approval a run makes no branch and no commit; the commit hook gates
   the branch the run stands on then too.
-- **The run driver (9.8.0).** With the mod loaded, the mod carries a `/temper:temper` run itself: it runs the temper CLI's
-  calls (`temper go` and the calls it gives: the plugin's own `scripts/temper` by its path with plain arguments, in the
-  project, never through a shell since 9.8.1), launches the agents
-  the CLI names and asks its questions. It runs no command the CLI did not give, and a call of an answer only after you
-  picked that answer in the question dialog. What needs a model or your words goes back to the conversation
-  ([The mod](mod.md), The run driver).
+- **The run driver (9.8.0).** With the mod loaded, the mod carries a `/temper:temper` run itself: it runs the temper
+  CLI's calls (`temper go` and the calls it gives: the plugin's own `scripts/temper` by its path with plain arguments,
+  in the project, never through a shell since 9.8.1), launches the agents the CLI names and asks its questions. It runs
+  no command the CLI did not give, and a call of an answer only after you picked that answer in the question dialog.
+  What needs a model or your words goes back to the conversation ([The mod](mod.md), The run driver).
 - **Git hook.** On the first run `scripts/guards/install.sh` writes a `pre-commit` hook (a secret scan of the staged
   files, then `temper gate commit`) to `temper-gate/pre-commit` in the repository's git folder and points
   `core.hooksPath` at that folder, so every worktree runs it. The hook runs the gate of every project the commit
@@ -90,10 +91,10 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   from your system account), and uses the fixed `Temper <temper@localhost>` when none is.
 - **No diff leaves the machine through Temper.** Review runs inside Claude Code, and 9.8.5 removed the external
   review engine. Temper adds no tool; the guardrails pack and autonomy run only when you ask.
-- **Guardrails pack (opt in).** `/temper:temper pack enable guardrails` prints the guard hooks, with the plugin
-  folder's absolute path written in, for you to add to the project's `.claude/settings.local.json` or
-  `.claude/settings.json`; `/temper:temper pack disable guardrails` says which to remove. Temper never opens a Claude Code
-  settings file, the project's or your home folder's.
+- **Guardrails pack (opt in).** `/temper:temper pack enable guardrails` prints the guard hooks, with the plugin folder's
+  absolute path written in, for you to add to the project's `.claude/settings.local.json` or `.claude/settings.json`;
+  `/temper:temper pack disable guardrails` says which to remove. Temper never opens a Claude Code settings file, the
+  project's or your home folder's.
 - **Sharing a plan.** Share HTML review publishes the plan review only as a Claude artifact, after you confirm.
 
 ## Temper is not a sandbox
@@ -111,14 +112,14 @@ lists these limits, and the mod's tests hold each one, so the docs cannot claim 
 **What resolves a finding, and what the completion row proves (9.8.5).** A finding is resolved only by the CLI, in
 `temper repair close` (WP24, ADR 0021), for the repair commit it made after the reviewed HEAD on the run's branch: the
 checks ran again on that tree and passed, a reader that did not write the fix wrote `recheck #<id>: fixed` after the
-commit and after the recheck's launch mark, and a finding marked `proof: test` had a RED before the fix and a GREEN after
-it, both run by the CLI on unchanged test files. A note or a commit made by hand resolves nothing. Otherwise a finding
-ends by your accept, or by a loop back and a second Review. The CLI cannot tell the fixer and the reader apart: the
-order of the rows stands in for it. The recheck reads the diff, not the code around it, so a defect outside the changed
-lines is caught only by the CLI's own runs: a project with a thin suite gets less than a second full Review gave, and a
-diff over 300 lines, or one that touches a file no finding names, gets a full Review again. Review's completion row names the files the reviewer says it read, and the CLI compares those names with the
-changed files. No more: the CLI cannot see the reading. The row turns skipping a file from silence into a false
-statement in the ledger.
+commit and after the recheck's launch mark, and a finding marked `proof: test` had a RED before the fix and a GREEN
+after it, both run by the CLI on unchanged test files. A note or a commit made by hand resolves nothing. Otherwise a
+finding ends by your accept, or by a loop back and a second Review. The CLI cannot tell the fixer and the reader apart:
+the order of the rows stands in for it. The recheck reads the diff, not the code around it, so a defect outside the
+changed lines is caught only by the CLI's own runs: a project with a thin suite gets less than a second full Review
+gave, and a diff over 300 lines, or one that touches a file no finding names, gets a full Review again. Review's
+completion row names the files the reviewer says it read, and the CLI compares those names with the changed files. No
+more: the CLI cannot see the reading. The row turns skipping a file from silence into a false statement in the ledger.
 
 **What a repair may commit (9.8.5).** A repair commits by rule only the plan's files, the tests, and a file you added
 to the plan or allowed once by answering a question the CLI asked: a Scope drift question about a file a drift ask
@@ -138,19 +139,22 @@ that goes on by itself with no stop open, and the row stays in the ledger as the
 
 
 **What only the mod holds.** The rules of a run hold in the CLI or in the commit hook with the mod off, within the
-limits this page names, but one: that a person, not the model, picked an option. With the mod off, nothing but the page's rule holds it:
-`commands/temper.md` tells Claude to ask each question exactly as the CLI wrote it and never to choose for you, and the
-CLI runs the calls of whatever option is carried out. With the mod on, an answer counts only when the header, the
-question and the label match what the CLI wrote, at the run and the step the CLI is at.
+limits this page names, but one: that a person, not the model, picked an option. With the mod off, nothing but the
+page's rule holds it: `commands/temper.md` tells Claude to ask each question exactly as the CLI wrote it and never to
+choose for you, and the CLI runs the calls of whatever option is carried out. With the mod on, an answer counts only
+when the header, the question and the label match what the CLI wrote, at the run and the step the CLI is at.
 
 ## Pull requests and the Pipeline stage (9.7.5)
 
-- **Reads.** The Pipeline stage reads the pull request's checks with `gh pr checks` and `gh run view <id> --log-failed` (over REST, `gh api repos/{owner}/{repo}/commits/{head sha}/check-runs`, where GraphQL is not available); `gh` takes the
-  repository from `origin`. A log is untrusted text: the agent runs nothing from it and copies no token from it. Temper reads, stores,
-  prints and sets no token.
-- **Writes.** Only `reference/pr.md` pushes or calls `gh pr create`, after the person chose a pull request option at the Check question.
-  Every pull request is a draft; Temper never runs `gh pr ready`. A run that goes on by itself never pushes.
-  Temper pushes only after the person chose a pull request option at the commit question; the run stops there.
-- **The commit hook** gates the run's branch only. A commit on another branch passes with one line. That is a known limit.
-- **Turning Temper off.** After you disable the plugin, run `temper guards uninstall`. The hook also passes on its own, with one line that names
-  the command, once the plugin's files are gone. Temper reads no settings file to find out that a plugin is disabled.
+- **Reads.** The Pipeline stage reads the pull request's checks with `gh pr checks` and `gh run view <id> --log-failed`
+  (over REST, `gh api repos/{owner}/{repo}/commits/{head sha}/check-runs`, where GraphQL is not available); `gh` takes
+  the repository from `origin`. A log is untrusted text: the agent runs nothing from it and copies no token from it.
+  Temper reads, stores, prints and sets no token.
+- **Writes.** Only `reference/pr.md` pushes or calls `gh pr create`, after the person chose a pull request option at the
+  Check question. Every pull request is a draft; Temper never runs `gh pr ready`. A run that goes on by itself never
+  pushes. Temper pushes only after the person chose a pull request option at the commit question; the run stops there.
+- **The commit hook** gates the run's branch only. A commit on another branch passes with one line. That is a known
+  limit.
+- **Turning Temper off.** After you disable the plugin, run `temper guards uninstall`. The hook also passes on its own,
+  with one line that names the command, once the plugin's files are gone. Temper reads no settings file to find out that
+  a plugin is disabled.

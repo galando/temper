@@ -406,9 +406,10 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
 - **The small change window.** An open window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only
   there (Pipeline included). `adhoc close` needs no answer; `adhoc open` is the person's, as the call their answer maps to.
   Inside a repair window (WP24) `adhoc close` is refused: the CLI's `repair commit` ends that window.
-- **Person only calls.** `plan review`, `task confirm`, `task accept`, `adhoc open` and `state set branch` pass only as the call the
-  person's answer to the CLI's question maps to, word for word. A typed answer to the Context check maps to `plan review --answer` with
-  that text, quoted ([ADR 0016](decisions/0016-the-mod-answer-audit.md)).
+- **Person only calls.** Among them, `plan review`, `task confirm`, `task accept`, `adhoc open`, `state set branch` and
+  `doctor --propose --write --expect` (9.8.5) pass only as the call the person's answer to the CLI's question maps to,
+  word for word; `personOnly` in `hooks/temper-mod/core/rules.ts` holds the whole list. A typed answer to the Context
+  check maps to `plan review --answer` with that text, quoted ([ADR 0016](decisions/0016-the-mod-answer-audit.md)).
 - **Refusals** name the run and the stage, keep their `Next:` step and point at a worktree (`claude --worktree <name>`); from Build on they
   also point at `Make a small change`.
 - **Pipeline** refuses a code write unless its window is open. `gh pr create` without `--draft`, and any `gh pr ready`, are refused.

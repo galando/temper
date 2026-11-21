@@ -64,14 +64,15 @@ with TypeScript 5.6) and `bash scripts/check-mod-calls.sh`.
    - `## SUGGEST` — Informational improvements
 3. Add the pack to the built-in list in `reference/pack.md` and to `docs/packs.md`
 
-### Add a New Command
+### Add a word of `/temper:temper`
 
-1. Temper lists two commands, `/temper:temper` and `/temper:fix` (9.8.5). Prefer a word of
-   `/temper:temper` (a row of its Arguments table, with a page in `reference/`) to a new command; what
-   comes next belongs in `scripts/flow.py` and its `flow_*.py` modules
-2. Put long methodology in `reference/` and a stage agent's brief in `agents/`
-3. Update `.claude-plugin/plugin.json`
-4. Update the commands table in README.md and the command's section in `docs/commands.md`
+Temper has two commands, `/temper:temper` and `/temper:fix` (9.8.5), and no new command is added. A new thing to
+type is a word of `/temper:temper`:
+
+1. Add a row for the word to the Arguments table of `commands/temper.md`
+2. Add its page in `reference/`, which the row points to; a stage agent's brief goes in `agents/`, and what comes
+   next belongs in `scripts/flow.py` and its `flow_*.py` modules
+3. Add its section under "Words of `/temper:temper`" in `docs/commands.md`
 
 ### Improve Documentation
 

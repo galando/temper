@@ -39,15 +39,14 @@ Intent, Plan, Build, Review, Check
 - **The second question** is the commit, with everything a rule decided since the approval. A red gate blocks
   `git commit`. A trivial request ends with no question: its one change is yours to commit.
 
-**Cost and time:** a run costs more and takes longer than plain Claude Code; the earlier measurements are in [the bench](docs/evidence/bench-2026-11.md).
+**Cost and time:** a run costs more and is slower than plain Claude Code ([the bench](docs/evidence/bench-2026-11.md)).
 
 ## What the mod reads and writes
 
-Three command hooks and an optional mod (Claude Code 2.1.287 or later). Neither makes a network call or reads a
-credential. In short:
+Four command hooks and an optional mod (Claude Code 2.1.287 or later); neither calls the network or reads a credential:
 
-- **Hooks** note the intent gate a `/temper:temper draft` owes, ask Claude to finish it, and deny a Bash command that would hang; they never
-  approve a call or change its input.
+- **Hooks** note the intent gate a `/temper:temper draft` owes, ask Claude to finish it, refuse a project file write
+  before you approve the plan and deny a Bash command that would hang; they never approve a call or change its input.
 - **The mod** runs only the plugin's own `scripts/temper` (never a shell) and `sleep`, and starts the Temper stage
   agents the CLI names, with your permission mode.
 - **It changes** only what it denies (a write outside the stage, `--no-verify`, a changed hooks path) and the option
@@ -62,4 +61,5 @@ The full list: [The mod](docs/mod.md#what-the-mod-reads-and-writes) and [Trust](
 [Getting Started](docs/getting-started.md) walks a first run; [the flow](docs/flow.md) is what the CLI says next;
 [the decision records](docs/decisions/) say why it works this way.
 
-[Trust](docs/trust.md) · [CHANGELOG](CHANGELOG.md) · [Privacy](https://galando.github.io/temper/privacy.html) · MIT © [Gal Naor](https://github.com/galando)
+[Trust](docs/trust.md) · [CHANGELOG](CHANGELOG.md) · [Privacy](https://galando.github.io/temper/privacy.html) ·
+MIT © [Gal Naor](https://github.com/galando)

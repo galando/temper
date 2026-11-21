@@ -85,8 +85,8 @@ into folders named `<task>__temper-<model>__<rep>` (`--out`), grade each, then `
 The last comparison is in `docs/evidence/haiku-sonnet-task-agents.md`.
 
 `run.mjs` also takes `--config-yaml 'plan:\n  fresh-review: always'` (more lines for the project's config) and
-`--task-dir DIR` (a task folder outside `tasks/`; `grade.py` reads it from `run.json`). A task's `meta.json` may name a
-`command` (for example `/temper:build`), so a prepared plan in its `repo/.temper/specs` is entered at that door.
+`--task-dir DIR` (a task folder outside `tasks/`; `grade.py` reads it from `run.json`). A bug task (`kind: bug` in its
+`meta.json`) starts with `/temper:fix`, every other task with `/temper:temper`, so a run starts at Intent.
 
 ## Rules that keep it honest
 
