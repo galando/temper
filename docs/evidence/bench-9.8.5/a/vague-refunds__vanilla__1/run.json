@@ -1,0 +1,30 @@
+{
+  "task": "vague-refunds",
+  "arm": "vanilla",
+  "rep": 1,
+  "base": "cd6c7e7e5e6cf3cef8b41857acb1e803e0a8cc85",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "10e965a71c66ef3d9868fc93acd760825209f47c",
+  "mod": false,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-opus-5-5": 0.5082888
+  },
+  "cost_usd": 0.5083,
+  "cost_results": "last (cumulative)",
+  "wall_s": 99,
+  "api_s": 115,
+  "turns": 8,
+  "sessions": 2,
+  "questions": 0,
+  "facts_total": 5,
+  "facts_elicited": [
+    5
+  ],
+  "owner_replies": 1,
+  "person_cost_usd": 0.0256,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": null
+}
