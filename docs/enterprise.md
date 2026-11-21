@@ -55,7 +55,7 @@ Create `.claude/packs/{company}/rules.md`:
 In Claude Code, in your project:
 
 ```text
-/temper:pack
+/temper:temper pack
 ```
 
 At the menu, choose **Other** and describe the pack. Temper scans your codebase, interviews you about conventions, and generates the rules file.
@@ -93,11 +93,6 @@ packs:
 
 review:
   block-on: [critical, high]
-  auto-fix: true
-
-branch:
-  pattern: "feature/{ticket}-{description}"
-  commit-style: conventional
 ```
 
 ## Step 4: Distribute to Teams
@@ -135,7 +130,7 @@ Clone the project, start Claude Code in it, and accept the plugin when the proje
 offer it. Then run:
 
 ```text
-/temper:status    # See pre-configured packs and quality metrics
+/temper:temper status    # See pre-configured packs and quality metrics
 ```
 
 No other setup is needed: the project settings bring the plugin, and the project brings its packs.
@@ -144,37 +139,19 @@ No other setup is needed: the project settings bring the plugin, and the project
 
 ### temper.config
 
+Only your choices live in the config; every other setting has its default in the CLI, and `temper config show` prints
+each key, its value and where it comes from (the table is in `docs/commands.md`, "The config").
+
 ```yaml
-# Stack override (auto-detect by default)
-stack: auto
-
-# Enabled packs
-packs:
-  - quality
-  - tdd
-  - security
-  - git
-  - company    # Your company pack
-
-# Planning options
-plan:
-  default-depth: auto
-
-# Review options
+run:
+  default: to-commit          # to-commit | ask | never-unattended
+packs: [security, tdd, company]
 review:
-  block-on: [critical, high]  # Block on these severities
-  auto-fix: true
-  confidence-threshold: 0.7
-
-# Check options
+  block-on: [critical, high]
+autonomy:
+  park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
 check:
-  coverage-threshold: 85
-  debt-tracking: true
-
-# Branch conventions
-branch:
-  pattern: "feature/{COMPANY}-{ticket}-{description}"
-  commit-style: conventional
+  coverage-threshold: 85      # a fixed floor; with none, coverage may not drop against the base
 ```
 
 ## Governance
@@ -191,15 +168,10 @@ branch:
 - Graduate to WARN rules after team feedback
 - Use BLOCK rules only for critical security/architecture
 
-### Metrics Collection
+### Run Records
 
-Each project's `.temper/metrics.json` tracks:
-
-- Reviews run, issues found, auto-fixed
-- Coverage trends
-- Pattern frequencies
-
-Aggregate these across projects to measure improvement.
+Each project's `.temper/runs.jsonl` holds one line a run, and each spec folder keeps its committed gate ledger
+(`gate-ledger.json`). Aggregate these across projects to measure improvement.
 
 ## Support
 

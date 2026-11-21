@@ -13,11 +13,13 @@ resolve it, for that commit. A repair that made things worse is reverted, and th
   python3 repair_ops.py CLI CONFIG revert                                 the CLI's own commit back to the reviewed tree
   python3 repair_ops.py CLI CONFIG status                                 the open repair and the closed ones, as JSON
   python3 repair_ops.py CLI CONFIG carve                                  the commit gate's carve out (prints its rows, exit 0)
+  python3 repair_ops.py CLI CONFIG answer CLAIM                           the question a Scope drift answer answers (answer_of)
 
 CLI is the path of scripts/temper, which runs the checks again (integrate, gate build, check run); CONFIG the project's
 config file. The run state keeps `repair` (the open window), `repairs` (the closed ones, each with its number `n`) and
 `repair_stop` (what the run asks about, until the run moves). Run in the project folder; standard library only.
 """
+import base64
 import hashlib
 import json
 import os
@@ -52,6 +54,7 @@ MANIFEST = re.compile(r"(^|/)(package(-lock)?\.json|npm-shrinkwrap\.json|yarn\.l
                       r"settings\.gradle(\.kts)?|gradle\.lockfile|[^/]*\.csproj|packages\.lock\.json|mix\.(exs|lock))$")
 CI_FILE = re.compile(r"(^|/)(\.github/workflows/|\.circleci/|\.buildkite/)|(^|/)(\.gitlab-ci\.yml|Jenkinsfile|azure-pipelines\.yml|"
                      r"\.travis\.yml|bitbucket-pipelines\.yml|\.drone\.yml)$")
+ANSWER = r"^drift (\S+): (Add to plan|Allow once)\b"   # a Scope drift answer that widens the approved set
 RECHECK = re.compile(r"^\s*recheck #(\d+):\s*(fixed|not fixed)\b", re.I)
 
 
@@ -162,9 +165,12 @@ def cli(path, *words):
 
 # ---- what a repair reads -----------------------------------------------------------------------------------------------
 
-def is_test(p):
+def is_test(p, gate=False):
+    """A test file: with gate, the commit gate's pattern, what a repair may commit beside the plan (step 6.3) and so what
+    can_start lets stand outside the plan; else also a shell test, as task_ops reads it, for the one test rule and the
+    recheck (F8: the gate's pattern stays the base's)."""
     import commit_rows
-    return bool(commit_rows.TEST_RE.search(p))
+    return bool(commit_rows.TEST_RE.search(p) or (not gate and re.search(r"_test\.sh$", p)))
 
 
 def step_of(d):
@@ -178,14 +184,15 @@ def this_round(d, stage):
 
 
 def manual_ids(r):
-    """The ids of the required, open criteria of intent.md that only the person confirms (Validate type manual)."""
+    """The ids of the required, open criteria of intent.md that only the person confirms (Validate type manual, or code
+    or metric with no command in backticks: acceptance.by_person)."""
     if not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
         return []
     try:
         import acceptance
         lines = open(os.path.join(r.spec, "intent.md"), encoding="utf-8").read().splitlines()
         return [c["id"] for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria"))
-                if c.get("id") and c.get("vtype") == "manual" and not c.get("placeholder")]
+                if c.get("id") and acceptance.by_person(c) and not c.get("placeholder")]
     except Exception:
         return []
 
@@ -227,6 +234,16 @@ def failed_rows(r, stage):
     return [x for x in r.failed_rows(stage) if isinstance(x, dict)]
 
 
+def targets(r, stage):
+    """The findings a repair at the stage answers: the open ones at review.block-on; at a passed Review, the open ones at
+    high or above, which the person may repair on the click (mechanism 14)."""
+    if stage != "review":
+        return []
+    if r.verdict(stage) == "FAIL":
+        return r.open_findings()
+    return [f for f in r.findings() if f["state"] == "open" and f["severity"] in ("critical", "high")]
+
+
 def can_start(r, stage, again=False):
     """None when a repair may open at the stage now, else why not: the one place for every condition, which the flow,
     the question and the call all ask."""
@@ -242,7 +259,8 @@ def can_start(r, stage, again=False):
     if d.get("adhoc"):
         return "a small change is open at %s" % (d.get("adhoc") or {}).get("stage")
     v = r.verdict(stage)
-    if v != "FAIL" or r.skip(stage) is not None:
+    opens = targets(r, stage)
+    if (v != "FAIL" and not (again and v == "PASS" and opens)) or r.skip(stage) is not None:
         return ("the %s gate passed: there is nothing to repair" % stage.capitalize()) if v == "PASS" else (
             "the %s gate has no failed verdict (%s)" % (stage.capitalize(), "skipped by the person" if r.skip(stage) else v or "none"))
     rows = failed_rows(r, stage)
@@ -252,19 +270,27 @@ def can_start(r, stage, again=False):
         bad = [x.get("name") for x in rows if x.get("name") not in REVIEW_ROWS]
         if bad:
             return "the failed row %s is not on the repairable list (no blocking findings)" % bad[0]
-        opens = r.open_findings()
         if not opens:
             return "no open finding at review.block-on: no blocking finding on record to repair"
         hot = [f for f in opens if f.get("answer") in ("contested", "escalated")]
         if hot:
             return "finding #%d is %s: the person decides it" % (hot[0]["id"], hot[0]["answer"])
         import sensitive
-        pats = sensitive.patterns_of(r.cfg("autonomy.park-on-touch", ""))
+        pats = sensitive.patterns_of(r.cfg("autonomy.park-on-touch"))
         near = [f for f in opens if f.get("file") and any(sensitive.match(f["file"], p) for p in pats)]
         if near:
             return "finding #%d is on %s, a sensitive path (autonomy.park-on-touch): nothing there is repaired by rule" % (
                 near[0]["id"], near[0]["file"])
+        plan = allowed_files(r)
+        far = [f for f in opens if f.get("file") and os.path.normpath(f["file"]) not in plan and not is_test(f["file"], gate=True)]
+        if far:
+            return "finding #%d is on %s, a file outside the plan: its fix needs the plan changed, which no rule does" % (
+                far[0]["id"], far[0]["file"])
     else:
+        led = [x for x in load(os.path.join(TEMPER, "evidence", "check.json"), list) if isinstance(x, dict)]
+        last = max((i for i, x in enumerate(led) if str(x.get("claim", "")).startswith("tests: the suite")), default=-1)
+        if any(str(x.get("claim", "")).startswith("setup fault: ") for x in led[last + 1:]):
+            return "an environment fault (a setup fault: row after the last run of the suite): nothing in the code is wrong"
         for x in rows:
             cls = row_class(r, x)
             if cls != "code":
@@ -302,27 +328,12 @@ def can_start(r, stage, again=False):
 
 
 def offer(r, stage):
-    """Whether the gate question offers Repair again (the person's click): the failed rows are a repair's, the budget has
-    room and no second repair ran in this round. True when recommended (no repair of this failure ran yet), False when
-    offered only, None when not offered."""
-    if r.command != "temper" or stage not in STAGES or r.verdict(stage) != "FAIL" or r.skip(stage) is not None:
+    """Whether the gate question offers Repair again (the person's click): exactly where its call, `repair start --again`,
+    may start (can_start). True when recommended (no repair of this failure ran yet), False when offered only, None when
+    not offered."""
+    if r.command != "temper" or stage not in STAGES or can_start(r, stage, again=True):
         return None
-    d = r.state
-    if isinstance(d.get("repair"), dict) or r.sensitive():
-        return None
-    rows = failed_rows(r, stage)
-    if not rows:
-        return None
-    if stage == "review" and any(x.get("name") not in REVIEW_ROWS for x in rows):
-        return None
-    if stage == "check" and any(row_class(r, x) != "code" for x in rows):
-        return None
-    if stage == "review" and any(f.get("answer") for f in r.open_findings()):
-        return None
-    done = this_round(d, stage)
-    if len(done) >= 2 or not r.room("gate:%s" % stage)["ok"]:
-        return None
-    return not done
+    return not this_round(r.state, stage)
 
 
 # ---- the files a repair changed ----------------------------------------------------------------------------------------
@@ -359,6 +370,18 @@ def snapshot(spec, config):
     return digests(guarded_files(spec, config))
 
 
+def keep(spec, config):
+    """A copy of each file a repair may never change (the spec folder, the config, the git hooks): git cannot give back
+    one it does not track."""
+    out_ = {}
+    for p in guarded_files(spec, config):
+        try:
+            out_[p] = base64.b64encode(open(p, "rb").read()).decode("ascii")
+        except OSError:
+            pass
+    return out_
+
+
 def changed(w, spec, config):
     """The files changed since the window opened: what git status lists (adhoc_ops.dirty), what was committed since its
     base, and any file of the spec folder, the config or the git hooks whose digest moved."""
@@ -388,25 +411,67 @@ def refused_file(p, r, spec, config, allowed):
         return "%s is a file of Temper's own run state" % p
     if norm in (load(ACC_LOCK).get("files") or {}):
         return "%s is a locked acceptance test" % p
-    if any(sensitive.match(norm, x) for x in sensitive.patterns_of(r.cfg("autonomy.park-on-touch", ""))):
+    if any(sensitive.match(norm, x) for x in sensitive.patterns_of(r.cfg("autonomy.park-on-touch"))):
         return "%s is under a sensitive path (autonomy.park-on-touch)" % p
     if MANIFEST.search(norm):
         return "%s is a dependency manifest or lockfile" % p
     if CI_FILE.search(norm):
         return "%s is a CI file" % p
-    if norm in allowed or is_test(norm):
+    if norm in allowed or is_test(norm, gate=True):
         return None
     return "%s is outside the approved file set" % p
 
 
 def allowed_files(r):
+    """The approved set a repair commits by rule: the plan's files, approved_files, and each file the person added to the
+    plan or allowed once by answering a question the CLI asked (a row the CLI marked `answer` as it wrote it: answer_of),
+    never a row that only reads like one (lane E: the fixer could write that row itself)."""
     import flow_base
     files = set(r.state.get("approved_files") or []) | set(flow_base.plan_files(r.spec) if r.spec else [])
     for x in load(os.path.join(TEMPER, "evidence", "build.json"), list):
-        m = re.match(r"^drift (\S+): (Add to plan|Allow once)\b", str((x or {}).get("claim") or ""), re.I)
-        if m:
+        m = re.match(ANSWER, str((x or {}).get("claim") or ""), re.I)
+        if m and isinstance(x, dict) and x.get("answer"):
             files.add(m.group(1))
     return {os.path.normpath(f) for f in files}
+
+
+def answer_of(claim):
+    """The question a Scope drift answer that widens the approved set answers (`drift P: Add to plan|Allow once`, an
+    evidence add of the Build ledger), as the mark the CLI writes on its row: `scope.drift` for a drift ask of P with no
+    answer yet, `repair.stop` for the stop of an open repair on P, `commit.fail` for the commit gate's failed scope row
+    that names P; '' for any other claim. Inside a repair window that is not committed, such an answer to no question is
+    refused (ValueError): the fixer never writes the person's answer (outside one the row is kept unmarked, as before, and
+    no repair reads it). That a person gave the answer only the mod holds (docs/trust.md)."""
+    m = re.match(ANSWER, claim or "", re.I)
+    if not m:
+        return ""
+    path = m.group(1)
+    rows = [x for x in load(os.path.join(TEMPER, "evidence", "build.json"), list) if isinstance(x, dict)]
+    asked = [i for i, x in enumerate(rows) if x.get("phase") == "drift" and str(x.get("claim") or "").startswith("drift ask %s\n" % path)]
+    if asked and not any(re.match(r"drift %s: (Add to plan|Revert|Allow once)\b" % re.escape(path), str(x.get("claim") or ""))
+                         for x in rows[asked[-1] + 1:]):
+        return "scope.drift"
+    d = load(STATE)
+    st = d.get("repair_stop") if isinstance(d.get("repair_stop"), dict) else {}
+    if st.get("kind") == "drift" and st.get("path") == path:
+        return "repair.stop"
+    g = load(GATES).get("commit") or {}
+    for x in g.get("requirements") or [] if isinstance(g, dict) else []:
+        n = re.match(r"changed outside declared files: (.+)$", str((x or {}).get("detail") or ""))
+        if (x or {}).get("name") == "blast radius" and not x.get("pass") and n and path in [
+                f.strip() for f in re.sub(r"\s*\(and \d+ more\)$", "", n.group(1)).split(",")]:
+            return "commit.fail"
+    w = d.get("repair") if isinstance(d.get("repair"), dict) else {}
+    if w and not w.get("commit"):
+        raise ValueError("%s is a Scope drift answer to no question the CLI asked (no open drift ask of %s, no stop of the "
+                         "repair on it): inside repair %s only the person's answer to that question adds a file" % (
+                             claim, path, w.get("n")))
+    return ""
+
+
+def staged_files(*base):
+    """The staged paths (against base, else HEAD), read with -z so git quotes no name: as adhoc_ops.dirty reads them."""
+    return [p for p in git("diff", "--cached", "--name-only", "--no-renames", "-z", *base)[1].split("\0") if p]
 
 
 def removed_test_lines(base, files):
@@ -484,7 +549,7 @@ def start(r, stage, again):
     if rc:
         print(line, file=sys.stderr)
         return 1
-    opens = r.open_findings() if stage == "review" else []
+    opens = targets(r, stage)
     rows = [x.get("name") for x in failed_rows(r, stage)]
 
     def open_it(d):
@@ -499,7 +564,8 @@ def start(r, stage, again):
         d["repair"] = {"n": n, "stage": stage, "step": step_of(d), "again": bool(again), "base": out("rev-parse", "HEAD"),
                        "base_tree": out("rev-parse", "HEAD^{tree}"), "findings": [f["id"] for f in opens], "rows": rows,
                        "before": {"blocking": len(opens), "failed": rows, "passed": passed_now()},
-                       "ledger_rows": len(ledger()), "dirty": dirty, "snap": snapshot(r.spec, r.ctx.get("config_file")), "tests": [], "ts": now()}
+                       "ledger_rows": len(ledger()), "dirty": dirty, "snap": snapshot(r.spec, r.ctx.get("config_file")),
+                       "keep": keep(r.spec, r.ctx.get("config_file")), "tests": [], "ts": now()}
         return d["repair"]
     w = change_state(open_it)
     what = "; ".join(f["claim"] for f in opens[:3]) or "; ".join(rows)
@@ -558,7 +624,7 @@ def stop(kind, why, **extra):
 def close_window(d, outcome, **extra):
     """The open repair goes into `repairs` with its outcome; the window closes."""
     w = d.pop("repair", None) or {}
-    w = {k: v for k, v in w.items() if k not in ("snap", "token")}
+    w = {k: v for k, v in w.items() if k not in ("snap", "token", "keep")}
     w.update(extra, outcome=outcome, closed=now())
     d.setdefault("repairs", []).append(w)
     if isinstance(d.get("adhoc"), dict) and d["adhoc"].get("kind") == "repair":
@@ -575,6 +641,10 @@ def commit(r, cli_path):
     if w.get("commit"):
         print("OK: repair %s is committed already (%s)" % (w["n"], w["commit"][:7]))
         return 0
+    asked = [x["path"] for x in r.drifts() if not (x["choice"] and x["delivered"])]
+    if asked:   # the fixer asked about a file (temper drift ask): the person answers scope.drift and the fixer runs again first
+        print("OK: repair %s is not committed: the fixer asked about %s; the run asks the person first" % (w["n"], ", ".join(asked)))
+        return 0
     change_state(lambda d: d.pop("repair_stop", None))   # the person answered what it asked (scope.drift): commit again
     head = out("rev-parse", "HEAD")
     if head != w.get("base"):
@@ -584,7 +654,8 @@ def commit(r, cli_path):
         print("FAIL: %s" % why, file=sys.stderr)
         return 1
     config = r.ctx.get("config_file")
-    files = changed(w, r.spec, config)
+    staged = staged_files(w["base"])
+    files = sorted(set(changed(w, r.spec, config)) | set(staged))   # the commit takes the whole index: check all of it
     if not files:
         change_state(lambda d: close_window(d, "unchanged", changed=0))
         stop("unchanged", "repair %s changed nothing, so nothing was committed and no recheck runs" % w["n"])
@@ -593,7 +664,7 @@ def commit(r, cli_path):
         return 0
     allowed = allowed_files(r)
     bad = [(f, refused_file(f, r, r.spec, config, allowed)) for f in files]
-    bad = [(f, y) for f, y in bad if y]
+    bad = sorted([(f, y) for f, y in bad if y], key=lambda x: x[1].endswith("outside the approved file set"))   # F9: no answer lifts these
     if bad:
         stop("drift", "; ".join(y for _, y in bad), path=bad[0][0], files=[f for f, _ in bad])
         print("STOP: repair %s is not committed: %s; the change stays in the work tree and the run asks" % (
@@ -713,7 +784,7 @@ def close(r, cli_path):
         if m:
             verdicts[int(m.group(1))] = m.group(2).lower()
     complete = any(re.search("review completed", str(x.get("claim") or ""), re.I) and x.get("exit_code") == 0 for _, x in after)
-    block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", r.cfg("review.block-on", "critical, high")) if s.strip()]
+    block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", r.cfg("review.block-on")) if s.strip()]
     new = [x for _, x in after if str(x.get("severity") or "").lower() in block and not RECHECK.match(str(x.get("claim") or ""))]
     rows = ledger()
     fixed, held = [], []
@@ -734,7 +805,7 @@ def close(r, cli_path):
                 why = "a behaviour finding needs a RED before the fix and a GREEN after it, on unchanged test files"
         (held if why else fixed).append((fid, why))
     before = int((w.get("before") or {}).get("blocking") or 0)
-    left = len(run_of(r.ctx.get("config_file")).open_findings()) - len(fixed)
+    left = len(targets(run_of(r.ctx.get("config_file")), w["stage"])) - len(fixed)
     worse = broke(w)
     if w.get("reruns") != "passed" and not worse:
         g = load(GATES)
@@ -798,18 +869,34 @@ def revert(r, cli_path, why="the person reverted it"):
         return 1
     base_tree = w.get("base_tree")
     if not w.get("commit"):
-        files = [f for f in changed(w, r.spec, r.ctx.get("config_file")) if not f.startswith((".temper/", ".git/"))
-                 and not os.path.isabs(f)]
+        kept, config = w.get("keep") or {}, r.ctx.get("config_file")
+        # every path changed() names: what git status lists and each guarded file (the spec folder, the config, the git
+        # hooks) whose digest moved, a guarded file the fixer created among them (in neither kept nor snap: removed)
+        files = [f for f in changed(w, r.spec, config) if not os.path.isabs(f)]
         for f in files:
-            if git("cat-file", "-e", "%s:%s" % (w["base"], f))[0] == 0:
+            if f in kept:   # a file a repair may never change, as it was when the window opened
+                os.makedirs(os.path.dirname(f) or ".", exist_ok=True)
+                with open(f, "wb") as fh:
+                    fh.write(base64.b64decode(kept[f]))
+            elif git("cat-file", "-e", "%s:%s" % (w["base"], f))[0] == 0:
                 git("checkout", "-q", w["base"], "--", f)
-            elif os.path.isfile(f):
+            elif os.path.isfile(f) and f not in (w.get("snap") or {}) and f not in (w.get("dirty") or {}):
                 os.remove(f)
+        left = changed(w, r.spec, config)
         change_state(lambda d: close_window(d, "reverted", reverted="work tree", why=why))
-        stop("worse", "repair %s at %s was taken back before any commit: %s" % (w["n"], w["stage"].capitalize(), why))
-        print("OK: repair %s reverted: the work tree is the reviewed tree again" % w["n"])
+        stop("worse", "repair %s at %s was taken back before any commit: %s%s" % (
+            w["n"], w["stage"].capitalize(), why, "; still not as it was: %s" % ", ".join(left[:6]) if left else ""))
+        print("OK: repair %s reverted: the work tree is the reviewed tree again" % w["n"] if not left else
+              "STOP: repair %s reverted, but %s still differ from the reviewed tree; the run asks" % (w["n"], ", ".join(left[:6])))
         return 0
     head = out("rev-parse", "HEAD")
+    import run_env
+    if head != w["commit"] or run_env.tree_key(os.getcwd()) != out("rev-parse", "HEAD^{tree}"):
+        why_ = "the revert of repair %s takes back only its own commit on a clean tree: %s" % (w["n"], (
+            "HEAD %s is not the repair commit %s" % (head[:7], w["commit"][:7]) if head != w["commit"] else "the tree is dirty"))
+        stop("moved", why_)
+        print("FAIL: %s" % why_, file=sys.stderr)
+        return 1
     git("read-tree", "--reset", "-u", base_tree)
     change_state(lambda d: d["repair"].update(token={"parent": head, "tree": base_tree}))
     p = subprocess.run(["git"] + id_args() + ["commit", "-q", "--allow-empty", "-m",
@@ -845,11 +932,11 @@ def carve():
         return 1
     if out("rev-parse", "HEAD") != tok.get("parent") or out("write-tree") != tok.get("tree"):
         return 1
-    staged = [l for l in out("diff", "--cached", "--name-only", "--no-renames").splitlines() if l]
+    staged = staged_files()
     if not w.get("commit"):
         r = run_of(None)
         allowed = allowed_files(r)
-        if any(f not in allowed and not is_test(f) for f in staged):
+        if any(f not in allowed and not is_test(f, gate=True) for f in staged):
             return 1
     elif tok.get("tree") != w.get("base_tree"):
         return 1
@@ -874,12 +961,17 @@ def closed_chain(state, frm, to):
     return cur == to
 
 
-def recheck_after(state, sha):
+def recheck_after(state, sha, fid=None):
     """WP18's fifth condition of `evidence resolve`: the commit is one the CLI recorded as its repair, and a recheck row was
-    written after it (in the ledger, or the repair was closed with its recheck complete)."""
+    written after it (in the ledger, or the repair was closed with its recheck complete). A hand resolve names its finding
+    (fid): only `repair close` resolves one, so it takes no finding while the repair is open, and after the close only one
+    the close resolved (rule 8)."""
     w = [x for x in (state.get("repairs") or []) + [state.get("repair") or {}] if isinstance(x, dict) and x.get("commit") == sha]
     if not w:
         return "commit %s is not one the CLI recorded as its repair" % sha[:7]
+    if fid is not None and fid not in (w[-1].get("resolved") or []):
+        return "repair close resolves a finding by its repair commit %s, for what its recheck confirmed, and it did not resolve #%s" % (
+            sha[:7], fid)
     if w[-1].get("closed") or w[-1].get("outcome") in ("resolved", "closed"):
         return None if w[-1].get("complete") and w[-1].get("outcome") in ("resolved", "closed") else (
             "repair commit %s was closed with no completed recheck" % sha[:7])
@@ -891,7 +983,7 @@ def recheck_after(state, sha):
 
 def status():
     d = load(STATE)
-    print(json.dumps({"repair": {k: v for k, v in (d.get("repair") or {}).items() if k != "snap"} or None,
+    print(json.dumps({"repair": {k: v for k, v in (d.get("repair") or {}).items() if k not in ("snap", "keep")} or None,
                       "repairs": d.get("repairs") or [], "stop": d.get("repair_stop")}, indent=1))
     return 0
 
@@ -907,6 +999,13 @@ def main(argv):
         return status()
     if word == "test":
         return test(rest)
+    if word == "answer":   # `temper evidence add` of a Scope drift answer: the question it answers (answer_of)
+        try:
+            print(answer_of(" ".join(rest)))
+            return 0
+        except ValueError as e:
+            print("FAIL: %s" % e, file=sys.stderr)
+            return 1
     r = run_of(config)
     if not r.active:
         print("FAIL: no active run (temper state init first)", file=sys.stderr)

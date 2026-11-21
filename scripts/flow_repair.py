@@ -12,6 +12,7 @@ import shlex
 import failure
 import repair_ops
 
+from flow_build import DRIFT_WORDS
 from flow_base import (DRIFT_HEADER, DRIFT_IDS, DRIFT_OPTIONS, DRIFT_PREFIX, GATE_HEADER, LABEL, TEMPER, goes_on, on_model,
                        read_json)
 
@@ -35,8 +36,9 @@ class RepairPart:
             return {"action": "ask", "stage": stage, "ask": self.repair_question(stage, st)}
         w = d.get("repair") if isinstance(d.get("repair"), dict) else None
         if w and w.get("stage") == stage:
-            if not w.get("commit"):
-                return self.repair_work(w)
+            if not w.get("commit"):   # the fixer's drift ask is the person's scope.drift first, as at Build
+                drift = self.drift_next(stage)
+                return drift if drift is not None and drift.get("action") == "ask" else self.repair_work(w)
             if w.get("recheck") == "none":
                 gate = self.c("gate %s" % stage)
                 return {"action": "auto", "stage": stage, "calls": [self.c("repair close"), gate],
@@ -85,7 +87,10 @@ class RepairPart:
         others = [f for f in r.findings() if f["state"] == "open" and f["id"] not in (w.get("findings") or [])]
         if others:
             lines.append("Open findings this repair must not touch: %s." % "; ".join(f["claim"][:160] for f in others[:5]))
-        a = self.agent("build", lines)
+        given = [x for x in r.drifts() if x["choice"] and not x["delivered"]]
+        a = self.agent("build", lines + ["Drift decision: %s: %s" % (x["path"], DRIFT_WORDS[x["choice"]]) for x in given])
+        if given:
+            a["before"] = [self.c("evidence add --stage build --phase drift --claim 'drift decided'")]
         a["after"].append(self.c("repair commit"))
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
                 "say": "%s: repair %s: a fresh Build agent fixes it in the stage%s. %s" % (LABEL[stage], w["n"], on_model([a]), goes_on(False))}
@@ -113,7 +118,7 @@ class RepairPart:
                                       "%s: %s." % (answer, found)])
             say = "%s: repair %s changed more than a recheck reads; a full Review reads the change%s. %s"
         else:
-            models = r.ctx.get("models") or {}
+            model = r.model("review")
             others = [f for f in r.findings() if f["state"] == "open" and f["id"] not in (w.get("findings") or [])]
             lines = ["Follow %s/agents/review.md exactly." % self.plugin, "Spec path: %s." % r.spec,
                      "Re-check: repair %s at %s, commit %s. Read only the diff %s/repair-%s.diff (from the reviewed HEAD to the "
@@ -125,8 +130,8 @@ class RepairPart:
                      "%s; a new finding only on a changed line; then one row `review completed` with --cmd recheck, --value <the "
                      "count of ids checked> and one --read for each changed file: %s." % (answer, ", ".join(w.get("files") or [])),
                      self.plugin_line()]
-            a = {"type": "temper:temper-review", "model": models.get("review", ""), "prompt": "\n".join(lines),
-                 "after": [self.c("usage add --stage review --model %s --ms {ms}" % (models.get("review", "") or "unknown"))]}
+            a = {"type": "temper:temper-review", "model": model, "prompt": "\n".join(lines),
+                 "after": [self.c("usage add --stage review --model %s --ms {ms}" % (model or "unknown"))]}
             say = "%s: repair %s is committed and checked; a reader that did not write it rechecks the diff%s. %s"
         # the launch mark only: the CLI ran the suite on the repair tree already, and `check ahead` runs in the
         # background, where it would race the CLI's own revert commit on git's index
@@ -145,7 +150,7 @@ class RepairPart:
         revert = [self.c("repair revert")]
         # the options of the repair's own answers: (label, description, move, calls, id)
         if kind == "drift":
-            plan = "outside the approved file set" in str(st.get("why"))
+            plan = str(st.get("why")).startswith("%s is outside the approved file set" % path)   # the named file's own reason
             note = lambda label: [self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote(
                 "drift %s: %s: repair %s" % (path, label, n))), self.c("repair commit")]
             own = [(label, DRIFT_SAYS[label], "drift", revert if label == "Revert" else note(label), ids["id"])

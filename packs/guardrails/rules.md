@@ -12,7 +12,7 @@ review/check, these guard scripts are plain bash: they block on a *detected* vio
 non-model exit code and no-op when their inputs are absent. They are the determinism layer.
 
 **`phases: []` is deliberate.** This file is install-and-behaviour documentation read by
-`/temper:pack` and by humans — there is nothing here for a stage agent to apply, because
+the word `pack` and by humans — there is nothing here for a stage agent to apply, because
 enforcement happens in bash at edit- and commit-time whether or not any prompt mentions
 it. Loading it into Plan/Build/Review/Check would spend context on instructions no stage
 can act on.
@@ -23,8 +23,8 @@ per gate, rather than checking a single `build-state.json` stage field. `verify-
 is kept as a fallback for a project that installed only this pack, without the CLI.
 
 **Plugin-shipped subset (v8):** the stage gate pair (`stage-marker.sh` and
-`verify-stage-gate.sh`; since 9.7.0 it marks only `/temper:intent`, as the other stage commands are
-doors into `/temper`) ships in the plugin's own hooks file, so every install of the
+`verify-stage-gate.sh`; it marks only `/temper:temper draft`, as a run owes no gate there)
+ships in the plugin's own hooks file, so every install of the
 Temper plugin, `--plugin-dir` or marketplace, gets that guarantee with **no settings
 merge and no pack enablement**. Enabling this pack adds the other guards: secrets,
 protected paths, the regression test, the override prompt, the formatter, imports and
@@ -38,7 +38,7 @@ There are **two** layers, and both are needed for the full guarantee:
 ### 1. In-agent layer: project settings hooks (Edit, Write, Bash)
 
 ```
-/temper:pack enable guardrails
+/temper:temper pack enable guardrails
 ```
 
 This prints the hook entries for you to add yourself: Temper never opens, reads or writes a
@@ -65,13 +65,13 @@ entry instead of adding a second one. A Temper guard entry is a hook command tha
 one of the guard script files from a Temper plugin folder: the current one, an earlier
 one, or the guard scripts folder of versions before 9.6.5. A copy of a guard script
 inside your project, or one named through a relative path or the CLAUDE_PROJECT_DIR
-variable, is yours. To uninstall, run `/temper:pack disable guardrails`: it removes the
+variable, is yours. To uninstall, run `/temper:temper pack disable guardrails`: it removes the
 `packs:` entry and tells you which entries to remove from your settings files.
 
 The commands hold the plugin folder as it was when you added them. A plugin upgrade
 moves that folder, and the commands then run an old or missing copy of the guard scripts
 (Claude Code keeps an earlier version's folder for a while after an upgrade, so the old
-copy can go on running). Run `/temper:pack enable guardrails` again to print the current
+copy can go on running). Run `/temper:temper pack enable guardrails` again to print the current
 entries, and put them in place of the old ones.
 
 To copy the blocks by hand instead, take the `hooks` object of
@@ -91,7 +91,7 @@ is a real git hook. Install it:
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh"   # writes temper-gate/pre-commit in the git folder, sets core.hooksPath
 ```
 
-Run it from the project's folder, or let `/temper:init` run it for you. It writes the hook
+Run it from the project's folder, or let `/temper:temper init` run it. It writes the hook
 to `temper-gate/pre-commit` in the repository's git folder (the folder
 `git rev-parse --git-common-dir` names, with symlinks followed; git never commits it, and
 every linked worktree of the repository shares it), through a new file in that folder moved
@@ -217,7 +217,7 @@ line between the BEGIN and END lines to it). Every refusal prints a FAIL line, n
 A hook tool you add later needs `core.hooksPath` unset first: the pre-commit framework
 refuses to install while it is set, and lefthook installs into the folder it names, which is
 Temper's. So run `git config --unset core.hooksPath` before you install one. The next
-`/temper` or `/temper:init` then keeps the Temper hook and prints the line to add to that
+`/temper:temper` then keeps the Temper hook and prints the line to add to that
 tool's hook. If a tool has already written its `pre-commit` into Temper's folder, the
 installer never writes over it: it refuses and says how to move it out.
 To uninstall, run `git config --unset core.hooksPath` (when it points at the `temper-gate`
@@ -253,8 +253,8 @@ The single fail-closed path for each script is documented below. Everything else
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `${CLAUDE_PLUGIN_ROOT}/scripts/temper override`: it emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records that the person decided it (`by`) |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` FAILs (in-agent mirror of the native hook, below). A CLI refusal of an unsafe `.temper` folder (exit 3) blocks while a run is active (`.temper/build-state.json` exists, as a file or a link) and says to remove the symlink; with no run active it is a one-line warning, not a block |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:intent` prompt is submitted (the stage doors may end at any gate, ADR 0005 as amended), naming the session that owes the gate (`session_id` from the hook's input); the same session owing it again keeps the refusals already counted. It blocks nothing |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop (plugin hook, always on) | **BLOCK** | A `/temper:intent` session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage (see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`). Fails open after 2 refusals. A marker of another session neither blocks nor is removed; a marker older than a day is cleared; `stop_hook_active` with the count at 0 opens that one stop and keeps the marker |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:temper draft` prompt is submitted (a run may end at any gate, ADR 0005 as amended), naming the session that owes the gate (`session_id` from the hook's input); the same session owing it again keeps the refusals already counted. It blocks nothing |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop (plugin hook, always on) | **BLOCK** | A `/temper:temper draft` session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage (see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`). Fails open after 2 refusals. A marker of another session neither blocks nor is removed; a marker older than a day is cleared; `stop_hook_active` with the count at 0 opens that one stop and keeps the marker |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `${CLAUDE_PLUGIN_ROOT}/scripts/temper override` |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json`'s `stage` is not `check_complete` (or `commit_complete`, the one stage after it) — used only when the temper CLI isn't present |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate), kept in `temper-gate` in the repository's git folder with `core.hooksPath` pointing at that folder; it never writes into a folder named `hooks` |
@@ -348,7 +348,7 @@ state → `exit 0` (degrade; a repo not running `/temper` for this commit is nev
 
 Used only when the temper CLI isn't present. Reads `.temper/build-state.json`; if the
 latest stage is not `check_complete` (or `commit_complete`, the one stage after it: Commit
-opened a pull request and Pipeline's fix rounds commit too), `exit 2` with "run /temper:check".
+opened a pull request and Pipeline's fix rounds commit too), `exit 2` with "Run the Check stage".
 Missing/unreadable state → `exit 0` (fail-open).
 
 ## Beyond the Commit Fence: Approval Gates (example, not wired by default)

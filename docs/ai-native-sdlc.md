@@ -26,12 +26,12 @@ as what was asked and what was built.
 
 | Playbook stage | Playbook artifact | Temper |
 |---|---|---|
-| Plan | `intent.md` | Intent stage + gate **[NEW]** → `.temper/specs/{slug}/intent.md`, accepted by a human with the plan, before any code runs (`/temper:intent` for capture-only) |
+| Plan | `intent.md` | Intent stage + gate **[NEW]** → `.temper/specs/{slug}/intent.md`, accepted by a human with the plan, before any code runs (`/temper:temper draft` for capture-only) |
 | Design | `spec.md` | `intent.md` (criteria + scenarios) + `plan.md` + `design.md` — see [Deliberate divergences](#deliberate-divergences) |
 | Build | `plan.md`, the diff | plan gate → `plan.md`/`tasks.md`; Build's RED→GREEN evidence |
 | Test | tests + eval results | check gate: scenario-traced tests, coverage, live verification |
 | Deploy | PR + review findings | review gate pre-commit; `temper gate review`'s exit code is the merge check under any CI |
-| Maintain | incident → next intent | `temper bands` **[NEW]** → breach drafted as the next `intent.md` |
+| Maintain | incident → next intent | `/temper:fix` writes `.temper/lessons.md`; an incident write-up is drafted as the next `intent.md` |
 
 ## Play-by-play
 
@@ -48,7 +48,7 @@ from the intent, so an intent correction at this gate costs words, and the same
 correction after Plan costs the plan.
 `temper gate intent` is the deterministic floor (Problem stated, ≥1 criterion, Status
 header), and the commit gate requires an intent verdict whenever the artifact exists.
-`/temper:intent` remains the capture-only entry (an idea, a ticket, a bands breach —
+`/temper:temper draft` remains the capture-only entry (an idea, a ticket, an incident —
 possibly from someone who will never run the build); its draft is exactly what the
 pipeline's intent gate later presents. The lifecycle has named owners: `draft`
 (capture or the Intent stage) → `accepted` (the human's approval of the plan, which accepts the
@@ -82,8 +82,8 @@ committed `docs(plan)` commit on the run's branch, which the approval makes; bef
 run makes no branch and no commit, and the approving call carries the digests of the
 intent and the plan as shown), so the diff has a committed baseline from the moment
 build starts; at the
-end, recorded deviations are written into plan.md as a `## Deviations` section in the
-same commit as the code. With the mod (Claude Code 2.1.287 or later), a source edit
+end, recorded deviations are written to `deviations.md` in the spec folder, which the
+commit of the run's record carries. With the mod (Claude Code 2.1.287 or later), a source edit
 before plan acceptance is refused at the tool layer: at Intent only `intent.md` may be
 written, at Plan and Design only the spec files. Without the mod a classic hook
 (`scripts/guards/hold_before_approval.py`) holds that rule for the tools that write a
@@ -148,13 +148,13 @@ removed in v9.5.0 (ADR 0010): its CI job never ran, so it never gated a merge. T
 measurement runs used fixtures kept out of the plugin; their numbers are in the description
 of galando/temper#97. What guards Temper's own behavior is
 `scripts/selftest/test-temper.sh` (the gate logic, deterministically) plus the Stop
-hook of a `/temper:intent` session, which refuses to end it until its gate has run. Scaffolding an eval harness for a
+hook of a `/temper:temper draft` session, which refuses to end it until its gate has run. Scaffolding an eval harness for a
 *user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
 
 ### Stage 5 — Deploy
 
 **AI in the PR review loop.** Temper's review runs pre-commit — earlier than the
-playbook's PR review, with confidence scoring, review memory, intent validation.
+playbook's PR review, with confidence scoring and intent validation.
 **[NEW]** Two bridges to the review loop, both host-agnostic: `reference/review.md`
 reads a repo-root `REVIEW.md` as org review policy (passes, Important-vs-Nit, nit
 caps, do-not-report — which can re-aim the review but never lower the gate), and the
@@ -191,22 +191,9 @@ rehearsal are a project's pipeline concern.
 
 ### Stage 6 — Maintain
 
-**Closing the loop.** This was Temper's largest gap — `/temper:status` was a
-dashboard with, as its own doc said, "no separate alerting system". **[NEW]**
-`temper bands`: a deterministic control-band check (rolling mean ± k·sigma + a
-same-side-run drift rule) over the metric histories, with the response tiered in
-version-controlled config — 1σ logs, 2σ diagnoses, 3σ proposes — and the proposal is
-exactly the playbook's move: the breach is drafted as a Stage-1 `intent.md`
-(evidence verbatim, criteria with `Validate: metric`) that rides the ordinary
-pipeline through every gate. **[NEW]** Ingestion is CLI-owned and open-ended:
-`temper metrics append <series> <value>` feeds any series — the pipeline's own
-(coverage, tests, lint) or external production metrics (CI failure rate, post-deploy
-5xx appended by a pipeline step) — and bands watches any appended series by name.
-The trigger layer is **any scheduler you already run** (cron, a pipeline schedule):
-`temper bands` is stateless and token-free until a breach, exits 1 when one exists,
-and the breach is drafted into the ordinary pipeline — the loop begins and ends with
-no one starting it, and lands in the review gate, never around it. Dismissals tune
-the bands.
+**Closing the loop.** No scheduled monitor ships with Temper: the control bands of earlier versions were removed in
+9.8.5, because no run read them. A production signal enters the loop as an incident write-up drafted with
+`/temper:temper draft`, which rides the ordinary pipeline through every gate.
 
 **Claude on call (Claude Tag).** Channel-resident incident response is a platform
 capability, out of scope for a plugin — but the plugin-shaped half is now in:
@@ -214,16 +201,17 @@ capability, out of scope for a plugin — but the plugin-shaped half is now in:
 (root cause, trigger, fix, regression test, the generalized failure shape) and every
 future RCA *reads it first* — the playbook's "post-mortem to a version-controlled
 lessons file that future investigations can read", verbatim. An incident write-up
-dropped into `/temper:intent` (or a bands breach) enters the same loop.
+dropped into `/temper:temper draft` enters the same loop.
 
 ## Deliberate divergences
 
 These are design decisions, not gaps — each traded the playbook's letter for its
 intent:
 
-1. **No `spec.md`.** `reference/plan.md`'s hard rule: exactly three artifacts.
-   Temper folds requirements (criteria with `Validate:` types) and behavior
-   (Gherkin scenarios) into `intent.md`, architecture into `plan.md`/`design.md`.
+1. **No `spec.md`.** `reference/plan.md`'s hard rule: Plan writes `tasks.md` and the
+   scenarios of `intent.md`, and a short `plan.md` (a Context Map and a Blast Radius) above
+   the simple tier; never another file. Temper folds requirements (criteria with `Validate:`
+   types) and behavior (Gherkin scenarios) into `intent.md`, architecture into `design.md`.
    The playbook's intent→spec pair is Temper's intent(draft)→intent(accepted) +
    design — same audit chain, fewer files for a gate to check.
 2. **Scenarios after intent, from the measured blast radius.** The pipeline now runs
@@ -241,7 +229,7 @@ intent:
    `temper gate review` as a pipeline check adds the org-visible audit record
    without replacing the local pass.
 5. **No CI-platform files, on purpose.** Temper's automation surface is commands
-   and exit codes (`temper bands`, `temper gate review`, `temper metrics append`),
+   and exit codes (`temper gate review`, `temper gate check`),
    equally at home under GitHub Actions, GitLab CI, Jenkins, or cron — shipping any
    one host's workflow files would couple a host-agnostic spine to a vendor.
 
@@ -260,7 +248,7 @@ Honest list, in rough adoption order:
   repository conventions + connectors; the artifact shape is ready for it.
 - **Review-comment loops** — host-platform features (comment-driven fixes,
   babysit-to-merge) Temper composes with; human review comments never feed
-  review-memory today.
+  a later review today.
 - **Server-side gate verification** — the pre-commit hook is per-clone, so
   `git commit --no-verify` bypasses the spine locally; re-verifying the gates where
   your host's merge protection lives (e.g. from the committed `gate-ledger.json`)
@@ -268,7 +256,7 @@ Honest list, in rough adoption order:
 - **Eval reach**: Temper ships no eval suite (removed in v9.5.0); nothing scaffolds an
   eval harness for a user project's own agent config (their CLAUDE.md, their packs).
 - **Parallel-session execution**: grouped Build runs the ready tasks of a plan as
-  parallel Haiku task agents, each in its own worktree (the task agent carries only
+  parallel task agents, each in its own worktree (the task agent carries only
   Read, Edit, Write, Bash, Glob and Grep); whole sessions per worktree are not spawned,
   and the other stage agents carry no `tools:` restrictions (report only roles are
   prompt enforced).
@@ -281,7 +269,6 @@ Honest list, in rough adoption order:
 1. `/temper "…"` → sets itself up on first run (config, scaffold, commit gate) and
    runs the intent-gated pipeline.
 2. Packs + guardrails pack → skills-with-deterministic-backstops.
-3. `/temper:intent` → capture-first flow; commit the spec artifacts.
+3. `/temper:temper draft` → capture-first flow; commit the spec artifacts.
 4. Wire `temper gate review` into whatever CI you run → the review loop, org-visible.
 5. `autonomy:` block → longer unattended arcs, parked before commit.
-6. `bands:` + `temper bands` on any scheduler → the loop closes itself.

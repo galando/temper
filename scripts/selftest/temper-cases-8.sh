@@ -115,11 +115,11 @@ assert_exit "advance: a run whose person asked for Design may not skip it" 1 "$T
 fresh; gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 "$TEMPER" evidence add --stage review --claim "src/demo.sh:3 the input is not checked" --severity critical >/dev/null 2>&1
 gfail review "no blocking findings" "1 open finding"
-# WP24: the loop back to Build is no longer the first answer to a blocking finding: the repair in the stage is (Repair
-# again, while the budget allows); the loop back stays offered as the way out
-assert_eq "WP24 next: Review FAIL with an open finding: Repair again first and recommended, then the loop back, accept a finding, override" \
-  "repair-again,True,repair|back,accept-finding,override|back not recommended" \
-  "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); i = [x['id'] for x in a]; b = [x for x in a if x['id'] == 'back']; '%s,%s,%s' % (o['id'], bool(o.get('recommended')), o.get('move')) + '|' + ','.join(x for x in ('back', 'accept-finding', 'override') if x in i) + '|' + ('back not recommended' if b and not b[0].get('recommended') else 'back %s' % ('recommended' if b else 'not offered'))")"
+# WP24: Repair again is offered exactly where its call may start (repair_ops.can_start); this run has no reviewed HEAD,
+# so it is not, and the loop back is the first answer (case file 65 holds the question where the repair may start)
+assert_eq "WP24 next: Review FAIL with an open finding and no reviewed HEAD: no Repair again, the loop back first and recommended, accept a finding, override" \
+  "back,True,back|back,accept-finding,override|no repair-again" \
+  "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); i = [x['id'] for x in a]; '%s,%s,%s' % (o['id'], bool(o.get('recommended')), o.get('move')) + '|' + ','.join(x for x in ('back', 'accept-finding', 'override') if x in i) + '|' + ('repair-again offered' if 'repair-again' in i else 'no repair-again')")"
 assert_eq "next: the accept question lists the open finding by id, with its own reason question" \
   "Accept finding 1|accept|True|evidence accept --stage review --id 1 --reason '{reason}'" \
   "$(nx "o = d['ask']['accept']['options'][0]; '|'.join([o['label'], o['move'], str(o['reason']), o['calls'][0].split('temper ', 1)[1]])")"
@@ -182,7 +182,7 @@ assert_eq "next: an unattended run's failed Review with no blocking finding on r
 "$TEMPER" park --verdict PARKED-NEEDS-DECISION --reason "a test" >/dev/null 2>&1
 assert_eq "park: the run keeps its mode, is marked parked, and the report says where it waits (WP11)" "autonomous|review|1" \
   "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the gate it parked at' .temper/autonomy-report.md)"
-assert_eq "WP24 next: after a park the person gets the gate question, Repair again first and recommended" "ask|repair-again,True" \
+assert_eq "WP24 next: after a park the person gets the gate question, the loop back first and recommended where the repair may not start" "ask|back,True" \
   "$(nx "d['action'] + '|' + '%s,%s' % (d['ask']['options'][0]['id'], bool(d['ask']['options'][0].get('recommended')))")"
 
 # --- Run Build again ---
@@ -217,14 +217,6 @@ assert_exit "group continue: refused for a group that has not passed" 1 "$TEMPER
 assert_exit "group continue: recorded for a passed group" 0 "$TEMPER" group continue G1
 assert_eq "next: once every group continued, the groups are merged and Build is checked" "integrate|gate build" \
   "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'])")"
-
-# --- doors: a run started at a later stage checks the stages before it ---
-setup; "$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known
-assert_eq "next: a door's earlier stage is checked, not run" "work|gate intent|0" \
-  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(len(d['agents']))")"
-gpass intent
-assert_eq "next: and then asked, with Continue and Save for later" "Continue to Plan (Recommended)|Save for later" "$(labels)"
-assert_exit "state init: --enter takes a stage of the run" 1 "$TEMPER" state init demo --enter nowhere
 
 # --- intent accept and complete ---
 setup; sed -i.bak 's/^\*\*Status:\*\* accepted/**Status:** draft/' .temper/specs/demo/intent.md
@@ -285,8 +277,6 @@ assert_eq "next: Check FAIL on a missing measurement (no test run recorded) offe
 assert_eq "next: a question names the gate of its stage" "gate check" "$(nx "d['gate'].split('temper ', 1)[1]")"
 assert_eq "next: the question names the failed row" "1" "$(nx "int('no passing test-run evidence recorded' in d['ask']['question']['question'])")"
 
-setup; "$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gfail intent "problem stated" "missing"
-assert_eq "next: a door's failed earlier stage offers to run it, a skip with a reason, or Save for later" "Run Intent (Recommended)|Override and continue|Save for later" "$(labels)"
 
 # --- groups that stop: a failed group gate, a parked group ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -301,6 +291,11 @@ assert_eq "next: an unattended run takes the recommended repair of a failed grou
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_reason": "Task 1 failed on haiku, haiku and sonnet"}}, "tasks": {"1": {"status": "failed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a group parked on failed attempts" "Run the task again (Recommended)|group reopen G1 --task 1" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+_p8_run_again() { nx "d['ask']['options'][0]['description']"; }
+_p8_default="$(_p8_run_again)"; printf 'models:\n  task: opus\n' >> .claude/temper.config
+assert_eq "next: Run the task again names the task model its tasks run on again, the table's or the config's (WP27)" \
+  "The tasks run again from their first attempt, on sonnet.|The tasks run again from their first attempt, on opus." \
+  "$_p8_default|$(_p8_run_again)"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_foreign": ["abcdef1234567890"]}}, "tasks": {"1": {"status": "failed", "group": "G1", "worktree": "wt1"}}}\n' > .temper/groups.json
 assert_eq "next: a group parked on an agent's commits: take them out, or keep them with a reason" \
   "Take the commits out and run the task again (Recommended)|Keep the agent's commits|Save for later|keep|True|group reopen G1 --task 1 --accept-foreign abcdef1" \
@@ -346,9 +341,6 @@ setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1;
 "$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true; "$TEMPER" gate intent >/dev/null 2>&1
 assert_eq "review 9: the trivial window still holds after the Intent agent's gate ran (WP17: the verdict recorded)" "True" \
   "$(vw "d['guard']['trivial_exit']")"
-# 10. A door's walked stage that fails its check names the failed rows in its question.
-fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known; gfail intent "problem stated" "no Problem section"
-assert_eq "review 10: the walked stage's question names what failed" "1" "$(nx "int('problem stated: no Problem section' in d['ask']['question']['question'])")"
 
 # --- the independent review of 9.7.0, round 2: each finding, reproduced ---
 _walk_to_commit() { # a run of the demo spec with every stage passed, at the commit stage
@@ -418,10 +410,6 @@ _park8="$(nx "' '.join(d.get('calls') or [])")"; [[ "$_park8" == *" park --verdi
 assert_eq "round 2, 11b: only the commit gate's own row failed: Check again is first" "commit.fail|check-again|False|gate commit" \
   "$(nx "q = d.get('ask') or {}; o = (q.get('options') or [{}])[0]; '%s|%s|%s|%s' % (q.get('id'), o.get('id'), bool(o.get('recommended')), ((o.get('calls') or ['none'])[-1]).split('temper ', 1)[-1])")"
 git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
-# 12. The Design door is the person's ask for Design (WP14): the stages before it are walked, not run again.
-setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; _base_known; "$TEMPER" state set complexity simple >/dev/null 2>&1
-assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
-  "$(nx "d['action'] + '|' + (d['calls'][0].split('temper ', 1)[1] if d['calls'] else '') + '|' + str(len(d.get('agents') or []))")"
 # 13. Stop at a group question saves the run; it records no Build verdict.
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1; second_group
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
@@ -495,6 +483,26 @@ assert_eq "view fixtures: the module the mod's tests import is what the CLI writ
   "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" && echo same || echo differs)"
 assert_eq "view fixtures: the second module (the states 9.7.5 added) is what the CLI writes now (make-view-fixtures.sh extra)" "same" \
   "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" extra 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures-2.ts" && echo same || echo differs)"
+# trap 5 of WP24 (lane E, RE13): a fixture view stands where a repair may start, so the mod's audit of every option of
+# every fixture view makes the Repair again call with no matching answer
+assert_eq "view fixtures: a view offers Repair again (repair-again), with its call repair start --again" "yes" \
+  "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" "$REPO_ROOT/scripts/selftest/view-fixtures-2.ts" <<'PY'
+import json, sys
+found = []
+def walk(o):
+    if isinstance(o, dict):
+        if o.get("id") == "repair-again" and any("repair start --stage" in c and c.endswith("--again") for c in o.get("calls") or []):
+            found.append(o)
+        for v in o.values():
+            walk(v)
+    elif isinstance(o, list):
+        for v in o:
+            walk(v)
+for f in sys.argv[1:]:
+    walk(json.loads(open(f).read().split("= ", 1)[1]))
+print("yes" if found else "no")
+PY
+)"
 assert_eq "view fixtures: the next field carries the calls of the CLI's own action" "state advance build_complete review" \
   "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" <<'PY'
 import json, sys
@@ -670,7 +678,7 @@ assert_eq "9.8.4 3a: the Plan agent after Intent gets the reason and the open fr
 # 3c: a loop from Build to Plan puts the group gate's reason and FAIL lines first, and never the expected RED runs of the tasks
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22; do
-  "$TEMPER" evidence add --stage build --phase red --claim "Task $n unit test red" --cmd "pytest t$n" --exit 1 >/dev/null 2>&1
+  ev_red build "Task $n unit test red"
 done
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "fails": 3, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: cases 8 expect the old message"]}}}, "tasks": {}}\n' > .temper/groups.json
 "$TEMPER" state loop build plan --reason "G1 cannot pass" >/dev/null 2>&1

@@ -374,7 +374,7 @@ for _how73 in plan fix unattended; do
     fix) "$TEMPER" state init bug --command fix --feature "a bug" >/dev/null 2>&1; _base_known ;;
     unattended) python3 -I -c '
 import json
-p = ".temper/build-state.json"; d = json.load(open(p)); d.update(run_mode="autonomous"); json.dump(d, open(p, "w"), indent=2)' ;;
+p = ".temper/build-state.json"; d = json.load(open(p)); d.update(run_mode="autonomous", unattended_from="plan"); json.dump(d, open(p, "w"), indent=2)' ;;
   esac
   _x73="$(_qid73)"
   "$TEMPER" config tidy --apply >/dev/null 2>&1; _r1=$?

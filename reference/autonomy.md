@@ -45,7 +45,8 @@ and the run asks the red base question. "Go on anyway" there is a skip, so the r
 
 **What ends it.** A skip, an accepted finding, a step back to Plan or Intent, and "Ask me at every stage from here".
 
-**What it never does.** It never plans again or changes a gate's command, the intent or the approved files; it never
+**What it never does.** It never plans again (it may only add to a task a file the same group already owns: `temper plan
+amend`) or changes a gate's command, the intent or the approved files; it never
 skips a check, accepts a finding, answers a scope drift or writes the config; it never pushes, opens a pull request or
 makes the final feature commit: the commit question always asks, and a pull request is opened only after the person
 chose that option there. The commit gate holds a run that went on by itself (`ran_unattended`) to the plan's files

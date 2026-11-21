@@ -213,6 +213,7 @@ assert_eq "D25 after a trivial exit a commit of one file and 10 lines passes the
 git reset -q 2>/dev/null; git checkout -q -- src 2>/dev/null
 
 # --- D26a to D26d: the plan amendment by rule, the plan patch by the person, the record and the replan ---
+# (WP25: each task of _tasks46 has two cases, so the plan passes every static row an amendment and a patch run)
 _tasks46() { cat <<'TASKS'
 # Tasks: demo
 
@@ -230,6 +231,7 @@ The core.
 **Test:** `true`
 **Cases:**
 - a holds
+- a bad input is refused
 - [ ] done
 
 ### Task 2: second
@@ -238,6 +240,7 @@ The core.
 **Test:** `true`
 **Cases:**
 - b holds
+- a bad input is refused
 - [ ] done
 
 ## Group G2: Later
@@ -252,6 +255,7 @@ The later work.
 **Test:** `true`
 **Cases:**
 - c holds
+- a bad input is refused
 - [ ] done
 TASKS
 }
@@ -337,13 +341,26 @@ _d26d_c1="$(_task46 1 commit)"
 _replan46 | sed '/^### Task 2/,$s/^\*\*Test:\*\* `true`/**Test:** `bash unit-b.sh`/' > .temper/specs/demo/tasks.md
 gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 for _i in 1 2 3; do   # the first Build actions after the new approval: the CLI's own calls, or the before calls of its agents
-  _d26d_calls="$(_ev "r = d.get('calls') or [] if d.get('action') == 'auto' else [c for x in d.get('agents') or [] for c in x.get('before') or []]; chr(10).join(r)" "$("$TEMPER" next --json 2>/dev/null)")"
+  _d26d_calls="$(_ev "r = ((d.get('calls') or []) + [c for x in d.get('agents') or [] for c in x.get('before') or []]) if d.get('action') in ('auto', 'work') else []; chr(10).join(r)" "$("$TEMPER" next --json 2>/dev/null)")"
   [[ -n "$_d26d_calls" ]] || break
   while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done <<<"$_d26d_calls"
 done
 assert_eq "D26d the plan gate fails a group with no Validate, and a replan keeps a built task whose fields did not change" \
   "row=False|task1=passed|kept commit=True|task2=not passed" \
   "row=$_d26d_row|task1=$(_task46 1 status)|kept commit=$([[ -n "$_d26d_c1" && "$_d26d_c1" == "$(_task46 1 commit)" ]] && git merge-base --is-ancestor "$_d26d_c1" temper/demo/G1 2>/dev/null && echo True || echo False)|task2=$([[ "$(_task46 2 status)" == passed ]] && echo passed || echo 'not passed')"
+# the plan as approved has no Validate line for G1: plan patch adds the missing line, and the plan's row then passes
+_tasks46 | sed '/^## Group G1/,/^### /{/^\*\*Validate:\*\*/d}' | m_setup
+_d26e="patch=$(_amend46 patch G1 --cmd 'bash v.sh')|$(python3 -I - "$REPO_ROOT/scripts" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import plan_amend, tasks_md
+g = next(g for g in tasks_md.parse(".temper/specs/demo/tasks.md")["groups"] if g["id"] == "G1")
+row = plan_amend.static_rows(".temper/specs/demo", open(".temper/specs/demo/tasks.md").read()).get("group validate command")
+print("G1=%s|row=%s" % (g["validate"] or "none", row[0] if row else "absent"))
+PY
+)"
+assert_eq "D26e plan patch adds the missing Validate line of a group whose approved plan has none, and the plan's row then passes" \
+  "patch=taken|G1=bash v.sh|row=True" "$_d26e"
 
 # --- D27a to D27c: the simple tier writes tasks.md only, the briefs ask for nothing unread, and the CLI bounds the tier ---
 _tier46() { # a run at Plan, tier simple, the plan gate run on the plan as it stands
@@ -367,7 +384,7 @@ print(','.join(cut) or 'none')" 2>/dev/null)"
 assert_eq "D27b no brief, reference page or template asks for a part that nothing reads" "none|mermaid=0" \
   "$(git -C "$REPO_ROOT" grep -l -F -e 'Cross-Repo Search' -e 'Files to Create' -e 'Files to Modify' -e 'Patterns to Follow' \
       -e 'Risk Level:' -e 'Scenario Coverage Checklist' -e 'Target Users' -e 'Business Outcome' -e 'Traced to' \
-      -e 'Given/When/Then' -e 'Approach Decisions' -e '## Diagram' -- agents reference templates | tr '\n' ' ' | sed 's/ $//;s/^$/none/')|mermaid=$(cat "$REPO_ROOT/templates/plan.md" 2>/dev/null | grep -c mermaid)"
+      -e 'Given/When/Then' -e 'Approach Decisions' -e '## Diagram' -- agents reference templates | { tr '\n' ' '; echo; } | sed 's/ $//;s/^$/none/')|mermaid=$(cat "$REPO_ROOT/templates/plan.md" 2>/dev/null | grep -c mermaid)"
 _d27c=""
 _tier46; second_group; "$TEMPER" gate plan >/dev/null 2>&1; _d27c+="two groups=$(_row46 plan 'tier recorded')"
 _tier46; sed -i 's|^\*\*File:\*\* `src/demo.sh`|**File:** `src/demo.py`, `src/one.py`, `src/two.py`, `src/three.py`|' .temper/specs/demo/tasks.md
@@ -747,7 +764,7 @@ PY
 setup; printf 'review:\n  block-on: [critical, high]\n' > .claude/temper.config
 assert_eq "D104 no stack pack, the two skills grill-me and teach-me, no text on OCR, bands, review memory or metrics, and the default packs security and tdd" \
   "stacks=none|skills=./skills/grill-me,./skills/teach-me|dormant=none|packs=security,tdd" \
-  "stacks=$(git -C "$REPO_ROOT" ls-files packs/stacks | head -3 | tr '\n' ',' | sed 's/,$//;s/^$/none/')|skills=$(python3 -I -c "import json,sys; print(','.join(sorted(json.load(open(sys.argv[1])).get('skills') or [])))" "$REPO_ROOT/.claude-plugin/plugin.json")|dormant=$(git -C "$REPO_ROOT" grep -il -e 'review-memory' -e 'open-code-review' -e 'tools.ocr' -e 'metrics append' -e 'metrics.json' -e 'temper bands' -e 'claimed-runs' -- agents reference commands templates scripts README.md docs ':(exclude)docs/history' ':(exclude)docs/plans' ':(exclude)docs/evidence' ':(exclude)docs/decisions' ':(exclude)scripts/selftest' ':(exclude)scripts/e2e' ':(exclude)scripts/defaults.py' ':(exclude)scripts/config_tidy.py' ':(exclude)scripts/check_config_keys.py' ':(exclude)scripts/check_words.py' 2>/dev/null | head -4 | tr '\n' ',' | sed 's/,$//;s/^$/none/')|packs=$("$TEMPER" config get packs 2>/dev/null | grep -oE '[a-z][a-z-]*' | sort | tr '\n' ',' | sed 's/,$//')"
+  "stacks=$(git -C "$REPO_ROOT" ls-files packs/stacks | head -3 | { tr '\n' ','; echo; } | sed 's/,$//;s/^$/none/')|skills=$(python3 -I -c "import json,sys; print(','.join(sorted(json.load(open(sys.argv[1])).get('skills') or [])))" "$REPO_ROOT/.claude-plugin/plugin.json")|dormant=$(git -C "$REPO_ROOT" grep -il -e 'review-memory' -e 'open-code-review' -e 'tools.ocr' -e 'metrics append' -e 'metrics.json' -e 'temper bands' -e 'claimed-runs' -- agents reference commands templates scripts README.md docs ':(exclude)docs/history' ':(exclude)docs/plans' ':(exclude)docs/evidence' ':(exclude)docs/decisions' ':(exclude)scripts/selftest' ':(exclude)scripts/e2e' ':(exclude)scripts/defaults.py' ':(exclude)scripts/config_tidy.py' ':(exclude)scripts/check_config_keys.py' ':(exclude)scripts/check_words.py' 2>/dev/null | head -4 | { tr '\n' ','; echo; } | sed 's/,$//;s/^$/none/')|packs=$("$TEMPER" config get packs 2>/dev/null | grep -oE '[a-z][a-z-]*' | sort | tr '\n' ',' | sed 's/,$//')"
 
 # --- D108: the product's README.md is concise ---
 assert_eq "D108 README.md has at most 80 lines, Install before What the mod reads and writes, the two commands only, and no figure of cost or time but from the scorecard" \

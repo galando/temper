@@ -20,7 +20,7 @@ test is a RED then GREEN pair), then Review and Check are the ordinary stages.
 
 **Stages:** `/temper:fix` runs RCA, Fix, Review and Check, each as a stage agent that starts
 clean and returns a summary (no `AskUserQuestion`); the CLI judges each stage and gives the
-question the orchestrator asks. Apply the context-engineering skill for hierarchical loading.
+question the orchestrator asks.
 A clean bug run asks twice: the root cause question is the approval (its card shows `rca.md`;
 Approve and fix makes the fix branch off main or master and lets the run go on by itself), and
 the commit question. Between them a passed Fix, Review and Check move on by rule, and Check's run
@@ -43,8 +43,8 @@ when the codebase is large enough that reading it directly would crowd your cont
   After 3 dead ends, return a blocker naming what was tried; you run headless, so the
   orchestrator asks the user. Skip straight to investigation when there's one obvious
   cause or an exact stack trace.
-- **Trace the call chain** to the failing point. With the `code-review-graph` MCP server
-  (and `tools.mode` ≠ `heuristic-only`), `query_graph_tool` + `get_affected_flows_tool`
+- **Trace the call chain** to the failing point. With the `code-review-graph` MCP server,
+  `query_graph_tool` + `get_affected_flows_tool`
   give an AST-level chain and user-facing blast radius → `[PROVEN]`; else grep →
   `[HEURISTIC]`.
 - **Check git history** (`git log`/`git show` on the affected files) for the introducing
@@ -83,8 +83,8 @@ at once — you can't tell which worked.
    when the human says so), never the agent's. With the Temper mod loaded, the mod refuses that call from the
    agent during a fix run: the person runs it in their own terminal.
 
-2. **Validate the approach against enabled packs** before writing the fix (read
-   `.claude/temper.config` for the pack list + the stack pack): a BLOCK-rule violation
+2. **Validate the approach against the packs** before writing the fix (read the pack files your prompt lists on
+   its `Packs:` line): a BLOCK-rule violation
    (SQL concatenation, a logged secret, a bypassed auth check) means reconsider the
    approach, not implement it; a WARN is noted and proceeds.
 
@@ -135,9 +135,8 @@ Before that commit, the commit steps of `temper next` add one record, committed 
   - **Fix:** {commit hash or one line}
   - **Regression test:** {test file}#{test name}
   - **Watch for:** {the generalized failure shape a future RCA should recognize}
-  {- **Band change:** only if the fix came from a control-band breach: what was retuned}
   ```
-  Incident memory, distinct from review-memory (finding patterns): lessons record *what
+  Incident memory: lessons record *what
   broke and why*, so the next investigation starts from evidence, not zero.
 
 ## Rollback
@@ -148,5 +147,5 @@ Before that commit, the commit steps of `temper next` add one record, committed 
   the CLI refuses a repeat past it, and the run asks the person.
 - The attempts fail → keep the regression test (it proves the bug), show the RCA and
   what you tried, ask for context.
-- It's actually a design flaw, not a bug → "this needs `/temper:plan` for a redesign,
+- It's actually a design flaw, not a bug → "this needs a `/temper:temper` run for a redesign,
   not a patch"; offer a workaround with a TODO if one exists.

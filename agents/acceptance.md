@@ -13,8 +13,8 @@ cannot. `{spec_path}` is the project's `.temper/specs/{slug}` folder, never a pa
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/acceptance.md taken off). Wherever this brief writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
 1. **Read what was approved.** `{spec_path}/intent.md`: the Success Criteria (each `AC-NN`), the Decisions (every
-   answer the person gave), the Constraints and Scope. `{spec_path}/plan.md`: only to learn the entry points and
-   names the feature will have (routes, functions, files under an `Interfaces` heading or named in the tasks). Then
+   answer the person gave), the Constraints and Scope. `{spec_path}/tasks.md`: only to learn the entry points and
+   names the feature will have, from its `**Interfaces:**` and `**File:**` lines (routes, functions, files). Then
    read the project's existing tests and house rules (CONVENTIONS.md, CONTRIBUTING.md, CLAUDE.md, AGENTS.md) for the
    test framework, the helpers and the style.
 
@@ -22,7 +22,8 @@ cannot. `{spec_path}` is the project's `.temper/specs/{slug}` folder, never a pa
    framework. Test through the feature's entry point (the API handler, the public function, the command), never
    through a helper the plan may not keep. Each test asserts the behavior the criterion and the Decisions state, with
    exact values where they give them. Name each test after its criterion (`test_ac03_clerk_gets_403`). A criterion
-   that no automated test can check (`Validate: manual` or a metric) gets no test; list it in your panel.
+   that no automated test can check (`Validate: manual`), or one the CLI proves by its own command (`code` or `metric`
+   with a command in backticks), gets no test; list it in your panel.
 
    **Every state.** When intent.md has a `**States:**` line, write for each state a test that brings a record into it
    and reads it back through the feature's read path (a canceled subscription is still read as `canceled`, unless the

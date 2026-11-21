@@ -40,18 +40,17 @@ INTENT = "\n".join([
     "### Success Criteria",
     "",
 ] + ["- [ ] AC-0%d [required]: criterion %d (source: test)" % (n, n) for n in range(1, 6)] + [""])
-PLAN = "\n".join(["# Plan", "", "### Files to Modify", "", "| File | Change |", "|---|---|", "| `src/app.ts` | edit |",
-                  "| `unit/app.test.ts` | add |", "| `src/mail.ts` | edit |", ""])
+PLAN = "\n".join(["# Plan", "", "## Blast Radius", "", "- nothing outside the declared files", ""])   # WP26: the new shape
 TASKS = "\n".join([
     "# Tasks: Password reset by email", "", "**Integration:** `npm test`", "",
     "## Group G1: Tokens", "**Depends:** none", "**Validate:** `npm test`", "**Context:**", "Keep the token API.", "",
     "### Task 1: Issue a token", "**File:** `src/app.ts`, `unit/app.test.ts`", "**Depends:** none", "**Test:** `npm test`",
-    "**Cases:**", "- a token is issued", "**Traced to:** Scenario: \"reset\"", "- [ ] done", "",
+    "**Cases:**", "- a token is issued", "- [ ] done", "",
     "### Task 2: Expire a token", "**File:** `src/app.ts`", "**Depends:** Task 1", "**Test:** `npm test`",
-    "**Cases:**", "- an old token is refused", "**Traced to:** Scenario: \"reset\"", "- [ ] done", "",
+    "**Cases:**", "- an old token is refused", "- [ ] done", "",
     "## Group G2: Mail", "**Depends:** G1", "**Validate:** `npm test`", "**Context:**", "Send the mail.", "",
     "### Task 3: Send the mail", "**File:** `src/mail.ts`", "**Depends:** none", "**Test:** `npm test`",
-    "**Cases:**", "- the mail holds the link", "**Traced to:** Scenario: \"reset\"", "- [ ] done", ""])
+    "**Cases:**", "- the mail holds the link", "- [ ] done", ""])
 FINDINGS = [
     {"claim": "src/app.ts:12 the token never expires", "severity": "critical", "label": "PROVEN"},
     {"claim": "src/mail.ts:4 the subject is not localized", "severity": "low", "label": "HEURISTIC"},
@@ -94,7 +93,8 @@ def project(name):
     write(cwd, "README.md", "x\n")
     sh("git", "add", "README.md", cwd=cwd)
     sh("git", "commit", "-qm", "init", cwd=cwd)
-    write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\n")
+    # WP29: the old review level the views were made with, and the one time question answered (an old default)
+    write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\nupgrade:\n  asked: \"9.8.5\"\n")
     return cwd
 
 
@@ -331,7 +331,7 @@ write(c, ".temper/specs/pw/intent.md", INTENT)
 verdict(c, "intent", True)
 # WP13: the run leaves Intent by rule; the intent stays a draft until the approval accepts it
 cli(c, "state", "advance", "intent_complete", "plan")
-write(c, ".temper/specs/pw/plan.md", "# Plan\n\n## Context Map\n- use: intent.md - scope\n- gap: no rate limit policy\n- reviewed: pending\n\n## Files to Modify\n")
+write(c, ".temper/specs/pw/plan.md", "# Plan\n\n## Context Map\n- use: intent.md - scope\n- gap: no rate limit policy\n- reviewed: pending\n\n## Blast Radius\n")
 verdict(c, "plan", False, "context map reviewed", "the Context check is pending: the person's answer is not recorded yet")
 snap2(c, "context-check", "run-ctx")
 
@@ -438,6 +438,27 @@ write(bs, ".temper/evidence/baseline.json", json.dumps({
     "result": "red", "kind": "red-base", "cmd": "npm test", "run": "npm test", "source": "configured", "exit_code": 1,
     "seconds": 4.2, "fail_lines": ["FAIL test/totals.test.js > rounds a cent"], "env": [], "limits": {}, "plan": {}}))
 snap2(bs, "base-red", "run-baseline")
+
+# ---- 9.8.5 (WP24, trap 5): a passed Review with an open High finding where a repair may start (a reviewed HEAD on the
+# run's branch, Build integrated, a clean tree), so the Review question offers Repair again (repair-again) ----
+rp = project("repair")
+sh("git", "checkout", "-q", "-b", "feature/pw", cwd=rp)
+cli(rp, "state", "init", "pw", "--feature", "Password reset by email")
+cli(rp, "state", "set", "branch", "feature/pw")
+at_build(rp)
+write(rp, "src/app.ts", "export const token = () => 'x'\n")
+sh("git", "add", "src/app.ts", cwd=rp)
+sh("git", "commit", "-qm", "build: the token", cwd=rp)
+head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=rp, stdout=subprocess.PIPE, text=True).stdout.strip()
+write(rp, ".temper/groups.json", json.dumps({"version": 1, "slug": "pw", "cli_commits": [],
+      "groups": {"G1": {"status": "passed", "worktree": "", "confirmed": True, "gate": {"verdict": "PASS"}}},
+      "tasks": {"1": {"status": "passed", "group": "G1"}},
+      "integration": {"verdict": "PASS", "reason": "", "group": None, "files": [], "ts": "x", "head": head, "merged": True}}))
+verdict(rp, "build", True)
+cli(rp, "state", "advance", "build_complete", "review")
+write(rp, ".temper/evidence/review.json", json.dumps([{"claim": "src/app.ts:1 the token never expires", "severity": "high", "label": "PROVEN"}]))
+verdict(rp, "review", True)
+snap2(rp, "review-pass-repair", "run-repair")
 
 # ---- 9.8.5 (WP29): the one time config question: a new run at Intent, no agent launched yet, on the template of 9.8.4 ----
 ct = project("config-tidy")

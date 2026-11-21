@@ -209,6 +209,30 @@ assert_eq "D37f a recheck row written before the repair commit, or before the re
   "before the commit=open|before the mark=open|in order=resolved" \
   "before the commit=$_d37f_early|before the mark=$_d37f_nomark|in order=$(_resolved45)"
 
+_hand45() { "$TEMPER" evidence resolve --stage review --id "$1" --fixed-by "$2" >/dev/null 2>&1 && echo taken || echo refused; }
+_review45 high
+"$TEMPER" repair start --stage review >/dev/null 2>&1 || true
+echo 'echo fixed >&2; exit 1' > src/demo.sh
+"$TEMPER" repair commit >/dev/null 2>&1 || true
+"$TEMPER" evidence add --stage review --claim 'recheck #1: not fixed' --exit 1 --label PROVEN >/dev/null 2>&1
+_d37f_open="$(_hand45 1 "$(git rev-parse HEAD)"),$(_resolved45)"
+_review45 high
+"$TEMPER" evidence add --stage review --claim 'src/demo.sh:2 the demo exits 0 on error' --severity high --label PROVEN >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1
+"$TEMPER" repair start --stage review >/dev/null 2>&1 || true
+echo 'echo fixed >&2; exit 1' > src/demo.sh
+"$TEMPER" repair commit >/dev/null 2>&1 || true
+_d37f_sha="$(git rev-parse HEAD)"
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done \
+  < <(_x45 "r = '\n'.join(c for a in d.get('agents') or [] for c in a.get('before') or [])")
+"$TEMPER" evidence add --stage review --claim 'recheck #1: fixed' --exit 0 --label PROVEN >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'recheck #3: not fixed' --exit 1 --label PROVEN >/dev/null 2>&1
+_done45 src/demo.sh
+"$TEMPER" repair close >/dev/null 2>&1 || true
+assert_eq "D37f evidence resolve by hand takes no finding the recheck did not confirm: not while the repair is open, not one its close left open" \
+  "open repair=refused,open|closed repair=#1 resolved,#3 refused,open" \
+  "open repair=$_d37f_open|closed repair=#1 $(_resolved45),#3 $(_hand45 3 "$_d37f_sha"),$(_ledger45 review "'resolved' if (e[2].get('resolved') or {}).get('fixed_by') else 'open'")"
+
 # --- D38a, D38b, D38c, D38e: rule 9, every repeat is counted against one budget ---
 _used45() { # _used45 [key [kind]]: the entries of the budget record, of that key and kind when given
   python3 - "${1:-}" "${2:-}" <<'PY'
@@ -290,16 +314,20 @@ sed -i 's/max-per-type: 2/max-per-type: 9/; s/max-total-loops: 4/max-total-loops
 for _i in 1 2; do gfail check "tests pass" "the latest run of a test command failed: unit"; "$TEMPER" state redo check --reason 'again' >/dev/null 2>&1; done
 gfail check "tests pass" "the latest run of a test command failed: unit"
 _d38e_out="$("$TEMPER" state redo check --reason 'a third time' 2>&1)"; _d38e_rc=$?
-_d38e_readers="$(grep -lE 'max-per-type|max-loops|max-total-loops|max-stages|feedback\.enabled' "$TEMPER" $(find "$REPO_ROOT/scripts" "$REPO_ROOT/scripts/guards" -maxdepth 1 -type f \( -name '*.py' -o -name '*.sh' \)) 2>/dev/null | sed "s|^$REPO_ROOT/||" | paste -sd, -)"
+# WP29: scripts/defaults.py names each of them in GONE, the table of keys no longer read; it reads none of them
+_d38e_readers="$(grep -lE 'max-per-type|max-loops|max-total-loops|max-stages|feedback\.enabled' "$TEMPER" $(find "$REPO_ROOT/scripts" "$REPO_ROOT/scripts/guards" -maxdepth 1 -type f \( -name '*.py' -o -name '*.sh' \)) 2>/dev/null | sed "s|^$REPO_ROOT/||" | grep -vx 'scripts/defaults.py' | paste -sd, -)"
 assert_eq "D38e the old loop keys are read by nothing: set high they change no refusal, and no script names them" \
   "third=1:BLOCKED|readers=none" "third=$_d38e_rc:$(head -1 <<<"$_d38e_out" | cut -d: -f1)|readers=${_d38e_readers:-none}"
 
 # --- D39c, D39d: rule 10, every stop is a question or a recorded stop, and the commit card lists what a rule decided ---
-_unattended build
+# WP25: the amendment needs the plan it amends approved and its group started, so the run is a git repository at Build
+# with this plan approved (m_setup), started at the approval as approve-run starts it (_ran_unattended). Each task has
+# two cases, so the plan passes every static row the amendment runs on its result.
 printf '%s\n' '# Tasks: demo' '' '**Integration:** `true`' '' '## Group G1: Core' '**Depends:** none' '**Validate:** `true`' '**Context:**' 'x' '' \
-  '### Task 1: first' '**File:** `src/demo.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- a' '- [x] done' '' \
-  '### Task 2: second' '**File:** `src/other.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- b' '- [x] done' > .temper/specs/demo/tasks.md
-"$TEMPER" plan amend task 1 --add-file src/other.sh >/dev/null 2>&1 || true
+  '### Task 1: first' '**File:** `src/other.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- a' '- a bad input is refused' '- [ ] done' '' \
+  '### Task 2: second' '**File:** `src/demo.sh`' '**Depends:** none' '**Test:** `true`' '**Cases:**' '- b' '- a bad input is refused' '- [ ] done' | m_setup
+_ran_unattended
+"$TEMPER" plan amend task 2 --add-file src/other.sh >/dev/null 2>&1 || true   # Task 1, before it, declares the file
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 "$TEMPER" evidence add --stage review --claim 'src/demo.sh:3 a missing null check' --severity medium --label HEURISTIC >/dev/null 2>&1
 _done45 src/demo.sh src/other.sh
@@ -312,10 +340,12 @@ import json
 p = ".temper/gates.json"
 d = json.load(open(p))
 d["check"] = {"verdict": "PASS", "requirements": [{"name": "tests pass", "pass": True, "detail": "the suite passed"},
-              {"name": "coverage", "pass": None, "state": "not measured", "detail": "no coverage tool for this stack"}]}
+              {"name": "coverage", "pass": None, "state": "not measured", "detail": "not measured: no coverage tool for this stack"}]}
 json.dump(d, open(p, "w"))
 PY
 "$TEMPER" state advance check_complete commit >/dev/null 2>&1
+# WP25: the commit card is the card of the commit question; the run gets there by the commit gate and its own stop
+"$TEMPER" gate commit >/dev/null 2>&1; _park45 >/dev/null
 _d39c_card="$("$TEMPER" card 2>/dev/null)"
 assert_eq "D39c the commit card lists an amendment by rule, a carried Medium finding, a check not measured, a stop with its answer and the budget used" \
   "amend|medium|not measured|stop|answer|budget" "$(python3 - "$_d39c_card" <<'PY'
@@ -338,7 +368,7 @@ _d39d() { # _d39d <stop>: its state in an unattended run; the recorded stop is r
     gate.failed) _unattended build; gfail build "RED then GREEN" "have red=0 green=0" ;;
     review.unfinished) _unattended review; gfail review "review completed" "no review completed row" ;;
     check.setup) _unattended check
-      "$TEMPER" evidence add --stage check --claim 'tests: the suite (run by the CLI)' --exit 1 >/dev/null 2>&1
+      ev_red check 'tests: the suite (run by the CLI)'
       "$TEMPER" evidence add --stage check --claim 'setup fault: the JDK is 21 and pom.xml needs 24' --exit 1 >/dev/null 2>&1
       gfail check "tests pass" "the latest run of a test command failed: the suite" ;;
   esac
@@ -527,7 +557,7 @@ export PATH="${PATH#"$WORKDIR/.git/bin45:"}"
 
 # --- D50 (M10): an environment fault at Check does not recommend the same repair twice ---
 _setup45() { # the Check of the demo run met a fault of the environment
-  "$TEMPER" evidence add --stage check --claim "tests: the suite (run by the CLI)" --cmd "bash scripts/temper-check.sh" --exit 4 >/dev/null 2>&1
+  "$TEMPER" evidence run --stage check --claim "tests: the suite (run by the CLI)" -- sh -c 'exit 4' >/dev/null 2>&1
   "$TEMPER" evidence add --stage check --claim "setup fault: no Postgres answering on 127.0.0.1:5432" --cmd "bash scripts/temper-check.sh" --exit 1 >/dev/null 2>&1
   gfail check "tests pass" "the latest run of a test command failed"
 }
@@ -548,7 +578,7 @@ assert_eq "D51 only the commit gate's own row failed: the first option is check-
 _check45; mkdir -p backend scripts
 printf '<project><build><plugins><plugin><configuration><rules><requireJavaVersion><version>[24,)</version></requireJavaVersion></rules></configuration></plugin></plugins></build></project>\n' > backend/pom.xml
 printf '#!/usr/bin/env bash\n[[ "$1" == --export ]] && echo "export JAVA_HOME=/opt/jdk24"\n' > scripts/ensure-jdk24.sh; chmod +x scripts/ensure-jdk24.sh
-"$TEMPER" evidence add --stage check --claim "tests: the suite (run by the CLI)" --cmd "mvn verify" --exit 1 >/dev/null 2>&1
+ev_red check "tests: the suite (run by the CLI)"
 "$TEMPER" evidence add --stage check --claim "setup fault: needs JDK [24,) (found 21.0.12)" --cmd "mvn verify" --exit 1 >/dev/null 2>&1
 gfail check "tests pass" "the latest run of a test command failed"
 _d53_block="$("$TEMPER" doctor --propose 2>/dev/null | sed -n '/^setup:/,/^[^ ]/p' | grep -E '^(setup:|  )')"

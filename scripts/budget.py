@@ -8,6 +8,11 @@ one entry of `.temper/budget.json`: 2 for one failure (its key) and 6 for one ru
   python3 budget.py room <key>                        prints {"used", "limit", "run_used", "run_limit", "ok"} as JSON
   python3 budget.py grant --key K --reason R          the person's answer at the question run.budget: two more for K
                                                       and for the run
+  python3 budget.py revise --key plan-revise:R --reason T
+                                                      the before call of a launch of the narrow revise agent (WP27,
+                                                      `temper budget revise`): it spends one of plan-revise:<reason>;
+                                                      a launch the call before it paid for (paid_by) counts for its
+                                                      reason and not again for the run: one launch, one spend
   python3 budget.py [show]                            the record, as text (`temper budget`)
 
 When a call spends is read from the recorded verdicts and skips (the Run class of the flow, so the rule exists once),
@@ -25,7 +30,7 @@ import sys
 TEMPER = ".temper"
 PATH = os.path.join(TEMPER, "budget.json")
 PER_FAILURE, PER_RUN, GRANT = 2, 6, 2
-KEY_RE = re.compile(r"^(?:gate:[a-z]+|group:G\d+|task:\d+|acceptance|pipeline)$")
+KEY_RE = re.compile(r"^(?:gate:[a-z]+|group:G\d+|task:\d+|acceptance|pipeline|plan-revise:[a-z][a-z-]*)$")
 
 # The calls that spend, by their first words: the kind of their entry, and when they spend (key_of holds the rule).
 SPENDS = (
@@ -37,7 +42,10 @@ SPENDS = (
     (("group", "reopen"), "tasks again", "the group's gate is FAIL or the group is parked: group:<G>"),
     (("group", "gate"), "more time", "with --timeout-s, at a group gate that is FAIL already, when the base did not measure "
                                      "the group's suite (WP20): group:<G>"),
-    (("plan", "patch"), "plan patch", "always: group:<G>, task:<N>, or gate:build for the Integration line"),
+    (("plan", "patch"), "plan patch", "always: group:<G>, task:<N>, or gate:build for the Integration line (WP25: spent by "
+                                      "scripts/plan_patch.py once every check of the patch holds)"),
+    (("plan", "amend"), "plan amend", "always: task:<N> (WP25: the amendment by rule, spent by scripts/plan_amend.py once "
+                                      "every check of it holds)"),
     (("task", "retry"), "task again", "always: task:<N>"),
     (("task", "test"), "check again", "--phase green of a task that holds env_fault: task:<N>"),
     (("acceptance", "reopen"), "test corrected", "always: acceptance"),
@@ -47,8 +55,12 @@ SPENDS = (
     (("integrate",), "merge again", "the integration record is FAIL and no repeat of gate:build paid for it: gate:build"),
     (("check", "run"), "run anyway", "with --fresh (WP22, the person's Run it anyway): gate:check; `group gate G --fresh` "
                                      "spends group:<G>, `integrate --fresh` gate:build"),
-    (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped: gate:<stage> (WP24: the repair in the stage, "
-                                    "spent by scripts/repair_ops.py once every condition holds)"),
+    (("budget", "revise"), "revise", "always: --key plan-revise:<reason> (WP27: a launch of the narrow revise agent, its "
+                                     "before call; the flow launches the planner after two before the approval). A launch "
+                                     "that the person's run again or a step back into Plan paid for counts for its reason, "
+                                     "not again for the run (paid_by)"),
+    (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped, or it is Review: gate:<stage> (WP24: the repair "
+                                    "in the stage, spent by scripts/repair_ops.py once every condition holds)"),
 )
 
 
@@ -95,10 +107,10 @@ class Facts:
 
     def limit(self, key, default):
         if self._run is not None:
-            v = self._run.cfg(key, str(default))
+            v = self._run.cfg(key)
         else:
             import config_yaml
-            v = str(config_yaml.get(config_yaml.load(os.path.join(".claude", "temper.config")), key, default))
+            v = str(config_yaml.get(config_yaml.load(os.path.join(".claude", "temper.config")), key))
         return int(v) if re.fullmatch(r"\d+", v.strip()) else default
 
 
@@ -151,9 +163,12 @@ def key_of(words, facts):
             return "group:" + held[0], "step back"
         plan = facts.run().plan or {}
         return ("gate:build", "step back") if plan.get("tasks") and not plan.get("groups") else None
+    if a == "budget" and b == "revise":
+        key = next((y for x, y in zip(words, list(words[1:])) if x == "--key"), "")
+        return (key, "revise") if key.startswith("plan-revise:") and KEY_RE.match(key) else None
     if a == "repair" and b == "start":
         st = next((y for x, y in zip(words, list(words[1:])) if x == "--stage"), "")
-        return ("gate:" + st, "repair") if st and facts.failed(st) else None
+        return ("gate:" + st, "repair") if st and (facts.failed(st) or st == "review") else None   # a passed Review: the click
     if a == "state" and b == "set" and c == "pipeline_round":
         return "pipeline", "CI fix"
     if a == "state" and b == "set" and c == "next_stage":
@@ -187,6 +202,8 @@ def key_of(words, facts):
         key = "task:" + e if c == "task" and e.isdigit() else "gate:build" if c == "integration" else (
             "group:" + c if re.fullmatch(r"G\d+", c) else None)
         return (key, "plan patch") if key else None
+    if a == "plan" and b == "amend":
+        return ("task:" + e, "plan amend") if c == "task" and e.isdigit() else None
     if a == "task" and b == "retry":
         return ("task:" + c, "task again") if c.isdigit() else None
     if a == "task" and b == "test":
@@ -199,6 +216,34 @@ def key_of(words, facts):
         mark = integration(facts)
         return ("gate:build", "merge again") if mark and not paid("gate:build", mark, facts) else None
     return None
+
+
+def paid_by(facts):
+    """The entry that already paid for this launch of the revise agent, else None (one launch, one spend). The person's run
+    again at a failed plan gate, or a step back into Plan that answers a failure, spent one entry, and the revise agent is
+    what that call launches. It is the record's latest entry, written by the latest step into Plan (the same reason), and
+    no launch of Plan ran since (the plan gate has no verdict)."""
+    used = record(facts)["used"]
+    e = used[-1] if used else {}
+    if e.get("kind") not in ("run again", "step back") or str(e.get("key") or "").startswith("plan-revise:"):
+        return None
+    from flow_base import loop_at
+    r = facts.run()
+    redo = facts.state().get("redo") if isinstance(facts.state().get("redo"), dict) else {}
+    back = r.loop_into("plan")
+    steps = ([(str(redo.get("ts") or ""), redo.get("reason"))] if redo.get("stage") == "plan" else []) + (
+        [(loop_at(back), back.get("reason"))] if back else [])
+    if not steps or r.verdict("plan") is not None:
+        return None
+    why = max(steps, key=lambda x: x[0])[1]
+    return e if " ".join(str(why or "").split())[:200] == e.get("why") else None
+
+
+def fits(key, kind, facts):
+    """(room of the key, whether one more entry of it fits): the key's own limit, and the run's unless the launch was paid."""
+    rm = room(key, facts)
+    paid = kind == "revise" and paid_by(facts) is not None
+    return rm, rm["used"] < rm["limit"] and (paid or rm["run_used"] < rm["run_limit"])
 
 
 def record(facts):
@@ -216,7 +261,8 @@ def room(key, facts):
     n = lambda x: int(x.get("n") or 0) if str(x.get("n") or 0).isdigit() else 0
     used = sum(1 for x in d["used"] if x.get("key") == key)
     limit = facts.limit("budget.per-failure", PER_FAILURE) + sum(n(x) for x in d["grants"] if x.get("key") == key)
-    run_used, run_limit = len(d["used"]), facts.limit("budget.per-run", PER_RUN) + sum(n(x) for x in d["grants"])
+    run_used = sum(1 for x in d["used"] if not x.get("paid_by"))   # a paid launch counts for its key only
+    run_limit = facts.limit("budget.per-run", PER_RUN) + sum(n(x) for x in d["grants"])
     return {"used": used, "limit": limit, "run_used": run_used, "run_limit": run_limit,
             "ok": used < limit and run_used < run_limit}
 
@@ -229,7 +275,8 @@ def what(key):
     """The key in the person's words."""
     kind, _, name = key.partition(":")
     return {"gate": name.capitalize(), "group": "Group %s's check" % name, "task": "Task %s" % name,
-            "acceptance": "The acceptance test", "pipeline": "The CI fix"}.get(kind, key)
+            "acceptance": "The acceptance test", "pipeline": "The CI fix",
+            "plan-revise": "The revision of the plan (%s)" % name.replace("-", " ")}.get(kind, key)
 
 
 def count_line(key, rm):
@@ -261,6 +308,9 @@ def entry(key, kind, words, facts):
     mark = integration(facts) if key == "gate:build" else failure("pipeline", facts) if key == "pipeline" else None
     if mark:
         e["of"] = mark
+    paid = paid_by(facts) if kind == "revise" else None
+    if paid:
+        e["paid_by"] = "%s %s" % (paid.get("key"), paid.get("ts"))
     return e
 
 
@@ -272,26 +322,29 @@ def spend(words, facts):
     key, kind = hit
     if kind == "run anyway" and facts.run().armed():   # WP22 step 11: the person's option; a run on its own never takes it
         return 1, "BLOCKED: Run it anyway (--fresh) is the person's answer at a question; a run that goes on by itself never takes it"
-    rm = room(key, facts)
+    rm, ok = fits(key, kind, facts)
     if rm["used"] >= rm["limit"]:
         return 1, "BLOCKED: %s was repeated %d times (limit %d); the person grants more at the question" % (
             key, rm["used"], rm["limit"])
-    if not rm["ok"]:
+    if not ok:
         return 1, "BLOCKED: this run made %d repeats (limit %d); the person grants more at the question" % (
             rm["run_used"], rm["run_limit"])
     d = record(facts)
-    d["used"].append(entry(key, kind, words, facts))
+    e = entry(key, kind, words, facts)
+    d["used"].append(e)
     os.makedirs(TEMPER, exist_ok=True)
     save(d)
-    return 0, "OK: repeat %d of %d for %s (%d of %d in this run)" % (rm["used"] + 1, rm["limit"], key,
-                                                                     rm["run_used"] + 1, rm["run_limit"])
+    return 0, "OK: repeat %d of %d for %s (%d of %d in this run%s)" % (
+        rm["used"] + 1, rm["limit"], key, rm["run_used"] + (0 if e.get("paid_by") else 1), rm["run_limit"],
+        "; paid by %s" % e["paid_by"] if e.get("paid_by") else "")
 
 
 def grant(argv, facts):
     key = next((y for x, y in zip(argv, argv[1:]) if x == "--key"), "")
     reason = " ".join(next((y for x, y in zip(argv, argv[1:]) if x == "--reason"), "").split())
     if not KEY_RE.match(key) or not reason:
-        print("FAIL: usage: temper budget grant --key gate:<stage>|group:G<n>|task:<n>|acceptance|pipeline --reason '<why>'",
+        print("FAIL: usage: temper budget grant --key gate:<stage>|group:G<n>|task:<n>|acceptance|pipeline|plan-revise:<reason> "
+              "--reason '<why>'",
               file=sys.stderr)
         return 1
     d = record(facts)
@@ -338,6 +391,13 @@ def main(argv):
         return 0
     if sub == "grant":
         return grant(argv[2:], facts)
+    if sub == "revise":   # WP27: one launch of the revise agent; refused (exit 1, nothing written) at the limit
+        w = ["budget"] + argv[1:]
+        rc, line = spend(w, facts) if key_of(w, facts) else (1, "FAIL: usage: temper budget revise --key plan-revise:<reason> "
+                                                                "--reason R")
+        if line:
+            print(line)
+        return rc
     if sub == "show" and len(argv) <= 2:
         return show(facts)
     print("FAIL: usage: temper budget | temper budget grant --key K --reason R", file=sys.stderr)
@@ -370,7 +430,7 @@ def refused(calls, cli, facts):
         for call in calls:
             w = words_of(call, cli)
             hit = key_of(w, facts) if w is not None else None
-            if hit and not room(hit[0], facts)["ok"]:
+            if hit and not fits(hit[0], hit[1], facts)[1]:
                 return hit[0]
             if hit:
                 facts.pending = facts.pending + [entry(hit[0], hit[1], w, facts)]

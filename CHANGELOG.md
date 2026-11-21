@@ -213,7 +213,99 @@ All notable changes to Temper are documented here. The plugin version lives in
   CLI and asked (`repair.stop`); a diff that removes test lines, a file outside the plan, the spec folder, the config,
   a lockfile, a CI file or a sensitive path is never committed by rule. One repair by rule a stage, one more on your
   click (`Repair again`), counted in the one budget; the rule's loop back to Build is gone, and the loop back stays
-  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs.
+  yours. The commit gate's row `checked tree` passes a Review verdict of an older tree only across closed repairs, in
+  every run. The fixer asks about a file outside the plan with `temper drift ask`, as at Build, and `adhoc close`
+  never closes a repair window.
+- WP25: a plan fault a narrow change repairs costs no replan (ADR 0019, ADR 0021). A task blocked on a file an earlier
+  or passed task of its own group declares is amended by rule, in every mode, with no question: the CLI's own
+  `temper plan amend task N --add-file F` adds the file and one Depends entry on its owner, and nothing else, refuses
+  every other change (a file no task or another group declares, a test file, a locked acceptance test, a sensitive path,
+  a running or passed task, a row the result newly fails, no room in the budget), spends one repeat (`task:N`) and runs
+  the task again; the commit card lists it under `THE PLAN SINCE THE APPROVAL`. A file no task declares is offered as
+  `Add to plan` (`add-file`), your `temper plan patch task N --add-file F`, which also adds it to the approved files.
+  `plan patch` resets a patched group's failure marks, inserts a missing Validate line, reopens a passed task whose
+  Test line changed, runs the plan gate's static rows on the result, spends its repeat only once it holds, and its
+  ledger row no longer says "by the person"; the group question names the command the plan has now. Both calls append
+  to `.temper/evidence/amendments.json` and move `plan_hash`; the approved record is never overwritten. The plan gate
+  gains the row `group validate command`. A replan keeps the built tasks whose files, Depends and Test did not change
+  (`temper group keep`), and its approval card says how many. The budget note of the commit card reads
+  `repeats of the budget used: N of M`.
+- WP26: Plan writes only what a script, a gate row or a later agent reads. At the simple tier a plan is `tasks.md` and
+  the scenarios, with no `plan.md`; above it `plan.md` holds a Context Map and a Blast Radius, and no tier needs one.
+  Each scenario is one `gherkin` block of four lines (its name, one `Then` line, `Covers:`, `Test:`), and Review, Check
+  and Build judge a test against that `Then` line. No `Traced to:` line is written: a scenario is owed by the task that
+  declares the file its `Test:` command runs (a plan with the line still reads). The plan gate loses the rows
+  `criteria -> scenarios`, `cross-repo search recorded` and `blast radius documented`, the Intent gate the row
+  `target users action chain`; a plan.md with no Context Map passes its row; the row `tier recorded` bounds the simple
+  tier (one group, at most 3 production files, risk below H) and names `temper state set complexity medium`.
+  `temper spec deviations` writes `deviations.md` in the spec folder and never touches plan.md. The templates and the
+  briefs lose the Reviewer line, Business Outcome, Target Users, the Scenario Coverage Checklist, the intent's panel,
+  Architecture, Approach Decisions, the diagram, the file tables, Patterns, Dependencies and Risk Level. Intent looks a
+  fact up and never asks it: one search a question, and a fact it finds is a Decisions row
+  `{the fact} -> as the project holds it ({file}:{line})`.
+- WP27: a change to a plan that exists is made by a narrow revise agent on Sonnet, `temper:temper-plan-revise`
+  (`agents/plan-revise.md`), which gets the reason, every finding or note whole and the task blocks they name
+  (`Affected tasks:`), and no project brief; a first plan and a changed intent get the planner. Each revise launch
+  spends one repeat (`temper budget revise`, key `plan-revise:<reason>`), and once only: a launch your run again or a
+  step back paid for counts for its reason, not again for the run. A plan gate that fails after it gets one more
+  revise with the failed rows, then before the approval the planner, which spends one repeat of `gate:plan`, after it
+  the question `run.budget`. A plan gate that fails only on the bound of the simple tier gets the CLI's own
+  `temper state set complexity medium`, never a revise. After a loop back through Intent the planner takes only the
+  pass that answers the changed intent. A criterion
+  validated by `code` or `metric` carries its command in backticks, which the CLI runs when Build ends and at Check and
+  records itself: no record pass and no Check agent; one with no command is yours to confirm, and a draft with one
+  fails `criteria validate`. The approval card lists those commands. The CLI runs `temper risk` after the planner. One
+  table of models by tier and risk (`temper model --all --source`), with `models.<agent>` and `models.high.<agent>`
+  over it: the planner, Design and RCA stay on Opus, every other agent and the Build task agents run on Sonnet
+  (`models.task: haiku` for cents). ADR 0022: the acceptance tests keep their own writer, alone and first.
+- WP28: two listed commands, `/temper:temper` and `/temper:fix`. What the other nine did is a word of `/temper:temper`
+  or gone: `draft <idea>` captures a draft `intent.md` with no run (`reference/draft.md`), `status` and `report` show
+  the run, `init` runs `temper config init`, `temper init` and `temper guards install`, and `pack` (with `pack enable
+  guardrails` or `pack disable guardrails`) reads `reference/pack.md`. The five stage doors are gone, with `state init
+  --enter` (refused in one line: `/temper:temper` takes up the active run), the state keys `enter` and `built_before`
+  (still refused by `state set`), the question `run.walked`, `scripts/earlier_build.py` and `reference/status.md`. A
+  word counts only in its documented form, in the page and in the mod: `/temper:temper status badge on the order page`
+  starts a run for that feature. The stage hook marks `/temper:temper draft` (ADR 0005 is unchanged: a session that
+  captured a draft owes the intent gate). What is lost: a planned folder with no run is started from its intent, and
+  its plan is written again. A run saved by 9.8.4 or by the base after it came through a door keeps `enter` in its
+  state: the key is ignored, so a stage before the door with no verdict runs its agent. It is not an error.
+- WP29: defaults live in code (ADR 0023). One table, `scripts/defaults.py`, holds every key with its default, its
+  reader and its meaning; `config get` with no default reads it, and reads a renamed key under its old name
+  (`build.grouped.task-model` as `models.task`). The template is 10 live lines (`run.default`, `packs`,
+  `review.block-on`, `autonomy.park-on-touch`, `models.plan`, `models.task`) and two commented blocks, 21 lines in all.
+  `temper config show` prints each key, its value and its source, and names a key that is gone or not read, never as
+  an error; `--markdown` prints the table of `docs/commands.md`. The default packs are two, security and tdd. The CLI
+  names the pack files: `temper packs --stage S`, and a `Packs:` line in the prompt of Plan, Design, Build, Review,
+  Check, RCA and Fix; no brief reads the config for them. A pack under `~/.claude/packs` is no longer found: the CLI
+  reads nothing in the home folder, so copy such a pack into the project's `.claude/packs`. The first run of a project
+  whose config is an older template (9.8.4, or the base) asks once, before anything else, `config.tidy`: `Remove them
+  (Recommended)` runs `temper config tidy --apply` (the lines that only repeat old defaults or are no longer read go,
+  the lines you changed stay, `autonomy.enabled: false` becomes `run.default: ask`, and the old file is kept as
+  `.claude/temper.config.before-9.8.5`); `Keep my file` runs `temper config tidy --keep` (`upgrade.asked`, and the
+  old values still rule). Both calls are refused past Intent, in a fix run and in a run that goes on by itself, and
+  with the mod they are the person's only. A person's `block-on: [critical]` reads like the 9.8.4 default: the
+  question says high will block too. `scripts/check_config_keys.py` (in `scripts/quality-check.sh`) proves every key
+  has a reader. Gone from the pages: `tools.mode`, `tools.label-findings`, `tools.ocr.timeout`,
+  `tools.ocr.replace-defect-subagent`, `check.environment`, `check.live-scenarios`, `check.debt-tracking`,
+  `review.confidence-threshold`, `review.auto-fix`, `plan.default-depth`, `branch.pattern` and `branch.commit-style`.
+- WP30: what no default run reads is not shipped (ADR 0024, which amends ADR 0006). For a project of 9.8.4:
+  - A test run an agent only claimed (`temper evidence add --exit N`) counts at no gate, and no key makes it count: the
+    key `evidence.claimed-runs` and the `count` mode of `scripts/runs.py` are gone, and `temper config show` names the
+    key as not read. Record a run with `temper evidence run --stage S --claim C -- <command>`.
+  - The six stack packs are gone, and nothing loads a project's own stack file: write its rules as a pack of the
+    project (`.claude/packs/<name>/rules.md`) and list it in `packs:`. The eight packs stay shipped.
+  - Two skills are listed, `grill-me` and `teach-me`. `temper-core`, `context-engineering` and
+    `source-driven-development` are gone; the sentences the pages took from them are written where they are used.
+  - The external review engine is gone (its key `tools.ocr.mode` with it): no diff leaves the machine through Temper.
+  - `temper bands`, `scripts/bands.py` and the keys `bands.*` are gone, and so is `temper metrics append`: both
+    commands exit 1 as unknown. Nothing replaces them; a scheduler that ran `temper bands` should drop the job.
+  - Review memory is gone: no page reads or writes `.temper/review-memory.json`, and a rejected config suggestion is
+    simply not written. `.temper/metrics.json` and `.temper/review-memory.json` of an existing project are left where
+    they are: nothing reads them and nothing deletes them.
+  - The one time question offers to remove the lines of the keys that are gone.
+  - Grill Me asks in rounds: one question dialog of up to four questions, each with two or three concrete answers, the
+    first marked `(Recommended)`; at most 10 questions in at most 4 rounds, and a skipped question is listed as still
+    open.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

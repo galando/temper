@@ -83,7 +83,7 @@ Module-depth analysis (seams, locality, leverage) — do modules earn their comp
 
 ### `git`
 
-Git workflow — conventional commits, branching strategy. Enabled by default.
+Git workflow — conventional commits, branching strategy.
 
 **Rules include:**
 
@@ -95,7 +95,7 @@ Git workflow — conventional commits, branching strategy. Enabled by default.
 
 ## Creating Custom Packs
 
-**Recommended:** Use `/temper:pack` to create packs interactively. At its menu, choose **Other** and describe the pack: the full pack builder scans your codebase, asks about your conventions, and generates a custom `rules.md` tailored to your team. **Quick-create launcher pack** wraps a skill or command your session lists as a BLOCK-level pack.
+**Recommended:** Use `/temper:temper pack` to create packs interactively. At its menu, choose **Other** and describe the pack: the full pack builder scans your codebase, asks about your conventions, and generates a custom `rules.md` tailored to your team. **Quick-create launcher pack** wraps a skill or command your session lists as a BLOCK-level pack.
 
 ### Manual Creation
 
@@ -151,27 +151,26 @@ phases: [build, review]
 
 ## Enabling Packs
 
-Edit `.claude/temper.config`:
+Two packs are on by default, `security` and `tdd` (9.8.5): a config with no `packs:` line gets them, and the template
+states them. To change the list, edit the `packs:` line of `.claude/temper.config`:
 
 ```yaml
-packs:
-  - quality
-  - tdd
-  - security
-  - my-custom-pack  # Your pack
+packs: [security, tdd, quality, my-custom-pack]
 ```
 
+The CLI reads the list and names the rules files each agent reads on its prompt's `Packs:` line, kept by each pack's
+`phases:`; `temper packs --stage review` prints the files of one stage. No agent reads the config for them.
+
 The guardrails pack is different: its work is done by guard hooks in a project settings file,
-so adding it to `packs:` alone turns nothing on. Use `/temper:pack enable guardrails` and
-`/temper:pack disable guardrails` instead ([Guardrails](commands.md#guardrails)).
+so adding it to `packs:` alone turns nothing on. Use `/temper:temper pack enable guardrails` and
+`/temper:temper pack disable guardrails` instead ([Guardrails](commands.md#guardrails)).
 
 ## Pack Discovery
 
-Temper discovers packs in three places, highest priority first: the project's
-`.claude/packs/<name>/rules.md`, your global pack folder `~/.claude/packs/<name>/rules.md`, and
-the built-in packs. A pack name is lowercase letters, digits and hyphens. Just create the folder
-and add `rules.md`. Apart from the mod's plugin store, the global pack folder is the one place in
-your home folder Temper reads; it reads no other Claude Code file there.
+Temper finds a pack in two places, the first that has it winning: the project's `.claude/packs/<name>/rules.md`,
+then the built-in packs. A pack name is lowercase letters, digits and hyphens. Just create the folder and add
+`rules.md`. Since 9.8.5 Temper reads nothing in your home folder: a pack you kept in `~/.claude/packs` is no longer
+found, so copy its folder into the project's `.claude/packs`.
 
 ## Company Packs
 

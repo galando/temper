@@ -582,8 +582,8 @@ def spec_of(root, spec):
 
 def plan_of(root, spec):
     """(commands, every, declared): commands is [(cmd, where, default limit)] distinct, in plan order, the group
-    Validates then the Integration line; every is each command of the plan (the task and scenario Tests too); declared
-    is the files the tasks declare."""
+    Validates then the Integration line; every is each command of the plan (the task and scenario Tests and the criterion
+    commands too); declared is the files the tasks declare."""
     import acceptance
     import tasks_md
     sp = spec_of(root, spec)
@@ -604,8 +604,11 @@ def plan_of(root, spec):
         lines = open(os.path.join(sp, "intent.md"), encoding="utf-8").read().splitlines()
     except OSError:
         lines = []
+    # WP27: a criterion's command in backticks is run by the CLI at Build and at Check, so its programs are checked here too
+    crit = [c["vcmd"] for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria"))
+            if c.get("id") and c.get("vcmd") and not c.get("deferred")]
     every = list(dict.fromkeys([c for c in out] + [t["test"].strip() for t in plan["tasks"] if real(t.get("test"))]
-                               + [b["cmd"].strip() for b in acceptance.scenario_blocks(lines) if real(b.get("cmd"))]))
+                               + [b["cmd"].strip() for b in acceptance.scenario_blocks(lines) if real(b.get("cmd"))] + crit))
     return [tuple(v) for v in out.values()], every, sorted({f for t in plan["tasks"] for f in t["files"]})
 
 
@@ -912,7 +915,7 @@ def skip_row(root, ledger, config=""):
     import runs
     last = {}
     for r in rows:
-        if (isinstance(r, dict) and runs.counts(r, "ignore") and not r.get("scenario") and isinstance(r.get("exit_code"), int)
+        if (isinstance(r, dict) and runs.counts(r) and not r.get("scenario") and isinstance(r.get("exit_code"), int)
                 and runs.is_test(r) and not str(r.get("claim") or "").startswith("acceptance (written before Build)")):
             last[" ".join(str(r.get("claim")).lower().split())] = r
     red = [r for r in last.values() if r.get("exit_code") != 0]

@@ -305,7 +305,7 @@ else
 fi
 if [[ -f "$REPO_ROOT/scripts/selftest/test-temper.sh" ]]; then ok; else fail "scripts/selftest/test-temper.sh missing"; fi
 
-# --- pack-discover.py (v8): /temper:pack's Step 5a discovery scan, extracted from a
+# --- pack-discover.py (v8): /temper:temper pack's Step 5a discovery scan, extracted from a
 # prompt-embedded script into a testable one ---
 PACK_DISCOVER="$REPO_ROOT/scripts/pack-discover.py"
 if [[ ! -f "$PACK_DISCOVER" ]]; then
@@ -316,7 +316,7 @@ else
   ok
 fi
 
-# --- guardrails-snippet.py: prints the guardrails entries for /temper:pack enable guardrails ---
+# --- guardrails-snippet.py: prints the guardrails entries for /temper:temper pack enable guardrails ---
 GUARDRAILS_SNIPPET="$REPO_ROOT/scripts/guardrails-snippet.py"
 if [[ ! -f "$GUARDRAILS_SNIPPET" ]]; then
   fail "scripts/guardrails-snippet.py missing"

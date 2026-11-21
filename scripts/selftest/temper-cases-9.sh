@@ -35,33 +35,6 @@ OUT="$("$TEMPER" group start G1 2>&1)"; rc=$?
 assert_eq "round 4, 6: a Test command changed after the plan gate stops the first group start" "1|1|0" \
   "$rc|$(grep -c 'changed since the person approved it at the plan gate' <<<"$OUT")|$([[ -f .temper/groups.json ]] && echo 1 || echo 0)"
 
-# --- 7. A door into a later stage: the walked approvals commit only what changed, and a failed one can be run ---
-setup; rm -f .temper/build-state.json   # the earlier run is over: its spec is committed, no run is active
-git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm "the spec of an earlier run" >/dev/null 2>&1
-_b="$(git symbolic-ref -q HEAD)"; git branch -f temper-test-other HEAD >/dev/null 2>&1; git symbolic-ref HEAD refs/heads/temper-test-other   # on another branch than the run's, at the same commit
-"$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gpass intent
-assert_eq "round 4, 7: a walked Intent makes no branch and no commit: it accepts the intent and advances (WP12)" "intent accept|0|0|state advance intent_complete plan" \
-  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if ' spec branch' in x)) + '|' + str(sum(1 for x in c if ' spec commit ' in x)) + '|' + c[-1].split('temper ', 1)[1]")"
-git symbolic-ref HEAD "$_b"
-printf '\nA note.\n' >> .temper/specs/demo/intent.md
-_r47="$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if ' spec commit ' in x)")"
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan   # the walked Plan: its question is the approval
-assert_eq "round 4, 7: with a change in the spec folder leaving Intent commits nothing, and the approval commits it (WP12)" "0|1" \
-  "$_r47|$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if ' spec commit ' in x)")"
-_at intent
-git checkout -q -- .temper/specs/demo/intent.md
-assert_eq "round 4, 7: the view holds the same calls as next" "same" \
-  "$([[ "$(nx "d['ask']['options'][0]['calls']")" == "$(vw "d['ask']['options'][0]['calls']")" ]] && echo same || echo differs)"
-mv .temper/specs/demo/intent.md r4-intent.md
-assert_eq "round 4, 7: with no intent.md the approval accepts nothing" "0" \
-  "$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if 'intent accept' in x)")"
-mv r4-intent.md .temper/specs/demo/intent.md
-_at build; gfail build "RED then GREEN" "have red=0 green=0"
-assert_eq "round 4, 7: a walked stage whose check failed can be run now, or skipped" "Run Build (Recommended)|Override and continue|Make a small change|Save for later" "$(labels)"
-CALL="$(nx "d['ask']['options'][0]['calls'][0]")"; eval "$CALL" >/dev/null 2>&1
-assert_eq "round 4, 7: Run Build moves the door's entry to Build, so Build runs and is no longer walked" "build|work|1" \
-  "$("$TEMPER" state get enter)|$(nx "d['action'] + '|' + str(int(not any('gate build' == c.split('temper ', 1)[-1] for c in d.get('calls', []))))")"
-
 # --- 8. A commit the CLI did not make on a passed group's branch: the person takes it out or keeps it ---
 r4_grouped() { # a real grouped run of one group and one task, built through the CLI up to the group's Continue
   cd "$WORKDIR" || exit 1
@@ -152,11 +125,11 @@ rm -rf "$D9" "$WORKDIR/r4-base"
 fresh; "$TEMPER" state set base_sha 0123456 >/dev/null 2>&1
 assert_exit "round 4, 11: base_sha is recorded once; a second one is refused" 1 "$TEMPER" state set base_sha 89abcde
 setup
-"$TEMPER" evidence add --stage build --phase green --exit 0 --claim "unit tests" >/dev/null 2>&1
-"$TEMPER" evidence add --stage build --phase red --exit 1 --claim "unit tests" >/dev/null 2>&1
+ev_green build "unit tests"
+ev_red build "unit tests"
 assert_eq "round 4, low: a passing run recorded before the failing one is no RED then GREEN" "FAIL" \
   "$("$TEMPER" gate build >/dev/null 2>&1; python3 -c "import json; print([r for r in json.load(open('.temper/gates.json'))['build']['requirements'] if r['name'] == 'RED then GREEN'][0]['pass'] and 'PASS' or 'FAIL')")"
-"$TEMPER" evidence add --stage build --phase green --exit 0 --claim "unit tests" >/dev/null 2>&1
+ev_green build "unit tests"
 assert_eq "round 4, low: a passing run after the failing one is" "PASS" \
   "$("$TEMPER" gate build >/dev/null 2>&1; python3 -c "import json; print([r for r in json.load(open('.temper/gates.json'))['build']['requirements'] if r['name'] == 'RED then GREEN'][0]['pass'] and 'PASS' or 'FAIL')")"
 fresh; gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
@@ -235,7 +208,7 @@ setup
 "$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> unit/test_a.py:test_first' --exit 0 >/dev/null 2>&1
 assert_eq "re-audit: a scenario row that names its test does not count as a passing test run" "0" \
   "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
-"$TEMPER" evidence add --stage check --claim "tests" --cmd "pytest" --exit 0 >/dev/null 2>&1
+ev_green check "tests"
 assert_eq "re-audit: the test run row does" "1" "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
 
 # --- re-audit: a code file moved into the spec folder is no artifact only commit ---
@@ -259,7 +232,7 @@ rm -rf "$P6"
 setup; rm -f .temper/build-state.json
 sed -i 's/^\*\*Status:\*\* accepted$/**Status:** accepted (pending review)/' .temper/specs/demo/intent.md
 git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm "a committed spec" >/dev/null 2>&1
-"$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gpass intent
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known; gpass intent
 "$TEMPER" intent accept >/dev/null 2>&1; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 assert_eq "re-audit: a Status that is not exactly accepted is rewritten by the accept, so the approval commits it (WP12: at Plan)" "1" \
   "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if ' spec commit ' in c)")"
@@ -365,7 +338,7 @@ assert_eq "live run: the passed Review question offers Loop back to Build, and A
 
 # --- live run: the end of the run leaves the committed spec folder as it is, and the report prints first ---
 setup; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --cmd "true" --exit 0 --phase green --label PROVEN >/dev/null 2>&1
+ev_green build "tests"
 "$TEMPER" evidence add --stage build --claim "lint" --cmd "true" --exit 0 --label HEURISTIC >/dev/null 2>&1
 gpass commit; "$TEMPER" state archive >/dev/null 2>&1
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm "the change" >/dev/null 2>&1
@@ -446,34 +419,6 @@ assert_eq "live run 3: the passed Design question offers Loop back to Plan under
 assert_eq "live run 3: a loop back to Plan gives the Plan agent the person's reason" "plan|1" \
   "$(nx "d['stage'] + '|' + str(int('Loop back from Design: add the missing cases.' in d['agents'][0]['prompt']))")"
 
-# --- live run 6: a door into Review reads the run's diff from where the feature started, and takes Plan's tier ---
-setup; rm -rf .git bare; git init -q . 2>/dev/null; git checkout -q -B main 2>/dev/null
-git config user.email t@t; git config user.name t; rm -f .temper/build-state.json
-printf 'base\n' > r6-base.txt; git add r6-base.txt; git commit -qm base >/dev/null 2>&1; _r6b="$(git rev-parse HEAD)"
-git checkout -q -b feature/demo; git add .temper/specs/demo/intent.md; git commit -qm "docs(intent): accept demo" >/dev/null 2>&1
-printf '# Plan: demo\n\n**Complexity:** medium. Two modules.\n' > .temper/specs/demo/plan.md
-printf 'code\n' > r6-code.txt; git add r6-code.txt .temper/specs/demo/plan.md .temper/specs/demo/tasks.md
-git commit -qm "feat: the code" >/dev/null 2>&1
-"$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known
-assert_eq "live run 6: a door takes the tier from plan.md's Complexity line, not from intent.md's first guess" "medium" \
-  "$("$TEMPER" state get complexity)"
-gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
-assert_eq "live run 6: a Review door reads its diff from before the spec's first commit, so committed work is reviewed" "$_r6b|1" \
-  "$("$TEMPER" state get base_sha)|$(git diff --name-only "$("$TEMPER" state get base_sha)" | grep -cx r6-code.txt)"
-"$TEMPER" state init demo --enter build >/dev/null 2>&1; _base_known; gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
-assert_eq "live run 6: a Build door still reads its diff from HEAD (the work is still to come)" "$(git rev-parse HEAD)" \
-  "$("$TEMPER" state get base_sha)"
-git checkout -q main; git checkout -q -b feature/other; printf 'more\n' > r6-more.txt; git add r6-more.txt
-git commit -qm "feat: more" >/dev/null 2>&1
-git checkout -q feature/demo -- .temper/specs/demo; git rm -q --cached -r .temper/specs/demo >/dev/null 2>&1   # the spec, never committed here
-"$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gpass intent plan
-"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1; "$TEMPER" state advance plan_complete design >/dev/null 2>&1
-assert_eq "live run 6: with no spec commit, a Check door reads its diff from where the branch left main" "$_r6b" \
-  "$("$TEMPER" state get base_sha)"
-rm -rf .git r6-base.txt r6-code.txt r6-more.txt
-
 # --- live run 5: an armed run parked before the commit says so, and its report is local run state ---
 fresh; gpass intent plan build review check commit; _at commit
 "$TEMPER" park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed' >/dev/null 2>&1
@@ -482,59 +427,15 @@ assert_eq "live run 5: the parked commit question says the armed run parked ther
 assert_eq "live run 5: the park report is in the clone's info/exclude, so it is never an untracked file" "1|0" \
   "$([[ -f .temper/autonomy-report.md ]] && echo 1 || echo 0)|$(git status --porcelain --untracked-files=all | grep -c 'autonomy-report')"
 
-# --- live run 6: a door's walked Build counts the earlier run's committed Build PASS, and a loop back mends that code ---
-setup; rm -rf .git bare; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
-git config user.email t@t; git config user.name t; rm -f .temper/build-state.json
-mkdir -p src; printf 'echo demo\n' > src/demo.sh
-printf '{"gates": {"build": {"verdict": "PASS", "requirements": []}}, "overrides": []}\n' > .temper/specs/demo/gate-ledger.json
-git add src .temper/specs/demo; git commit -qm "the earlier run" >/dev/null 2>&1
-_r6door() { "$TEMPER" state init demo --enter "$1" >/dev/null 2>&1; _base_known; gpass intent plan
-  "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1; }
-_r6door review; "$TEMPER" gate build >/dev/null 2>&1
-assert_eq "live run 6: a Review door's Build passes on the Build PASS the committed ledger records" "PASS|built in an earlier run|1" \
-  "$(python3 -c "import json; g=json.load(open('.temper/gates.json'))['build']; print(g['verdict'] + '|' + g['requirements'][0]['name'])")|$([[ "$("$TEMPER" state get built_before)" == "$(git rev-parse HEAD)" ]] && echo 1 || echo 0)"
-assert_exit "live run 6: built_before is the CLI's" 1 "$TEMPER" state set built_before x
-assert_exit "live run 6: a door's stage is the CLI's" 1 "$TEMPER" state set enter build
-"$TEMPER" state advance build_complete review >/dev/null 2>&1; gpass review
-"$TEMPER" state loop review build --reason 'mend it' >/dev/null 2>&1
-assert_eq "live run 6: a loop back to Build from a door runs the fix pass on that code, with no integrate" "build|temper:temper-build|0" \
-  "$("$TEMPER" state get enter)|$(nx "d['agents'][0]['type']")|$(nx "sum(1 for c in d['agents'][0]['after'] if c.endswith(' integrate'))")"
-"$TEMPER" evidence add --stage build --phase red --claim 'test: the regression test fails' --exit 1 >/dev/null 2>&1
-"$TEMPER" evidence add --stage build --phase green --claim 'test: the suite passes' --exit 0 >/dev/null 2>&1
-_scen
-assert_exit "live run 6: the fix pass passes Build with its own red and green runs" 0 "$TEMPER" gate build
-gpass build review; "$TEMPER" state loop build plan --reason 'a case is missing' >/dev/null 2>&1
-assert_eq "live run 6: a loop back to Plan drops what the earlier run built, so Build builds the plan again" "|plan" \
-  "$("$TEMPER" state get built_before)|$("$TEMPER" state get next_stage)"
-printf 'echo changed\n' > src/demo.sh
-_r6door check
-OUT="$("$TEMPER" gate build 2>&1)"
-assert_eq "live run 8: a plan file changed since the ledger's commit fails the walked Build, naming the file" "1|1|0" \
-  "$(grep -c '\[x\] built in an earlier run — the ledger committed in .* records Build PASS, but a file of the plan changed since: src/demo.sh' <<<"$OUT")|$([[ "$("$TEMPER" state get built_before)" == "$(git rev-parse HEAD)" ]] && echo 1 || echo 0)|$(grep -c 'RED then GREEN' <<<"$OUT")"
-CALL="$(nx "d['ask']['options'][0]['calls'][0]")"
-assert_eq "live run 8: Run Build carries the failed row into the fix pass's reason" "1" "$(grep -c 'a file of the plan changed since: src/demo.sh' <<<"$CALL")"
-eval "$CALL" >/dev/null 2>&1
-assert_eq "live run 8: Run Build on changed code that an earlier run built is the fix pass, not the plan built again" "temper:temper-build|0|1" \
-  "$(nx "d['agents'][0]['type']")|$(nx "sum(1 for c in d.get('calls', []) if 'group start' in c)")|$(nx "int('a file of the plan changed since: src/demo.sh' in d['agents'][0]['prompt'])")"
-git checkout -q -- src/demo.sh
-printf '{"gates": {"build": {"verdict": "PASS", "requirements": []}}, "overrides": [{"stage": "build", "reason": "x"}]}\n' > .temper/specs/demo/gate-ledger.json
-git add .temper/specs/demo/gate-ledger.json; git commit -qm "an earlier door's record" >/dev/null 2>&1
-_r6door review
-assert_exit "live run 8: a later door's skipped Build hides no earlier Build PASS of the same code" 0 "$TEMPER" gate build
-printf 'echo other\n' > src/demo.sh; git add src/demo.sh; git commit -qm "a change after the earlier run" >/dev/null 2>&1
-_r6door review
-assert_exit "live run 8: a plan file changed since the newest Build PASS keeps the walked Build failing" 1 "$TEMPER" gate build
-rm -rf .git src
-
 # --- live run 7: each test command counts by its latest run, and a passed Check can still go back to Build ---
 fresh
-"$TEMPER" evidence add --stage check --claim 'unit tests' --exit 0 --label PROVEN >/dev/null 2>&1
-"$TEMPER" evidence add --stage check --claim 'integration tests' --exit 1 --label PROVEN >/dev/null 2>&1
+ev_green check 'unit tests'
+ev_red check 'integration tests'
 "$TEMPER" evidence add --stage check --claim coverage --value 90 --exit 0 >/dev/null 2>&1
 OUT="$("$TEMPER" gate check 2>&1)"
 assert_eq "live run 7: a failing integration run beside a passing unit run fails tests pass" "1" \
   "$(grep -c '\[x\] tests pass — the latest run of a test command failed: integration tests' <<<"$OUT")"
-"$TEMPER" evidence add --stage check --claim 'Integration  tests' --exit 0 --label PROVEN >/dev/null 2>&1
+ev_green check 'Integration  tests'
 assert_eq "live run 7: a later passing run of the same command clears it" "1" \
   "$("$TEMPER" gate check 2>&1 | grep -c '\[v\] tests pass')"
 _at check; gpass check
@@ -579,8 +480,8 @@ setup
 "$TEMPER" init --foreground-agents >/dev/null 2>&1; "$TEMPER" init >/dev/null 2>&1
 assert_eq "init: no settings file is made, with or without the old flag" "" \
   "$(ls .claude | grep -E '^settings' || true)"
-assert_eq "init: the CLI names no settings file, and /temper:init offers no settings edit" "0|0" \
-  "$(_cli_text | grep -c 'settings\.json')|$(grep -c 'foreground-agents' "$REPO_ROOT/commands/init.md")"
+assert_eq "init: the CLI names no settings file, and the word init offers no settings edit" "0|0" \
+  "$(_cli_text | grep -c 'settings\.json')|$(cat "$REPO_ROOT/commands/temper.md" "$REPO_ROOT/docs/commands.md" | grep -c 'foreground-agents')"
 
 # --- live runs: the Design question names the open areas of concern, leaving Design records them, design.md is committed ---
 fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state set want_design true >/dev/null 2>&1
@@ -674,7 +575,7 @@ assert_eq "design: under a numbered concern, the resolved line is indented to th
 assert_eq "design: both numbered concerns read as resolved afterwards" "0" \
   "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import flow; print(len(flow.open_concerns(sys.argv[2])))" "$(dirname "$TEMPER")" .temper/specs/demo/design.md)"
 
-# --- live run 11: the tier is recorded in the Complexity lines a door reads, and the plan gate checks they agree ---
+# --- live run 11: the tier is recorded in the Complexity lines, and the plan gate checks they agree ---
 fresh; printf '# Plan: demo\n\n**Complexity:** simple\n' > .temper/specs/demo/plan.md
 out="$("$TEMPER" state set complexity medium 2>&1)"
 assert_eq "tier: state set complexity writes the tier into the Complexity lines of intent.md and plan.md" "medium|medium|2" \
@@ -688,11 +589,6 @@ assert_eq "tier: state set complexity again records one tier, and the row passes
 cp .temper/specs/demo/intent.md tier-before.md; "$TEMPER" state set complexity huge >/dev/null 2>&1
 assert_eq "tier: a value that is no tier is not written into the files" "same" "$(cmp -s .temper/specs/demo/intent.md tier-before.md && echo same || echo changed)"
 rm -f tier-before.md
-# run 11's case: plan.md names no tier, and the person changes it at the plan gate; a later door takes the changed tier
-fresh; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state clear >/dev/null 2>&1
-"$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known
-assert_eq "tier: a door after a tier changed at the plan gate takes the changed tier, not Intent's first guess" "medium" \
-  "$("$TEMPER" state get complexity)"
 
 # --- 9.7.2: usage is the totals Claude Code gives; the CLI opens no file of Claude Code's ---
 # 9.7.0 read each agent's transcript in Claude Code's own folder for billed tokens and a cost. That folder is not

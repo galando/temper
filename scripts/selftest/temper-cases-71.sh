@@ -10,8 +10,8 @@
 # used here, and the builders below are this file's own. Token: w27. A call the CLI does not have yet stays inside
 # $( ... ) or ends in || true, so the file always runs to its end.
 
-# The words of the record pass, spelled so that `git grep "Record only" scripts` (the package's Done when) does not find
-# this file.
+# The words of the record pass, spelled in two parts so that the package's Done when (a git grep of the two words in
+# scripts) does not find this file.
 _RO71="Record"; _RO71+=" only"
 
 # --- the helpers of this file ---
@@ -211,8 +211,8 @@ for g in d.get("groups", {}).values():
 d["tasks"] = {"1": {"status": "passed", "group": "G1"}}
 json.dump(d, open(".temper/groups.json", "w"))
 PY
-  "$TEMPER" evidence add --stage build --phase red --claim 'unit tests' --cmd 'true' --exit 1 >/dev/null 2>&1
-  "$TEMPER" evidence add --stage build --phase green --claim 'unit tests' --cmd 'true' --exit 0 >/dev/null 2>&1
+  ev_red build 'unit tests'
+  ev_green build 'unit tests'
   mkdir -p "$(dirname "$2")"; printf '%s\n' "$3" > "$2"
   git add -- "$2" >/dev/null 2>&1; git commit -q -m "the file the criterion reads" -- "$2" >/dev/null 2>&1
 }
@@ -340,8 +340,22 @@ print('row=%s,AC-02=%s,command=%s' % (ok, 'yes' if 'AC-02' in detail else 'no', 
 _w27_5b+="|agents for it=$(_named71 "$_RO71" AC-02)"
 assert_eq "w27 a code criterion is run by the CLI: with the text missing the CLI's row has exit 1, the Build gate fails naming AC-02 and its command (an agent's passing row does not count), and no agent is named for it" \
   "rows=1|row=False,AC-02=yes,command=yes|agents for it=0" "$_w27_5b"
+# (lane B of phase 7) spec step 8 and row D22: the approval card shows the criterion's command, the approval is of every
+# command a gate will run; and the environment check before the approval (baseline.plan_of, doctor.needs) is given it
+fresh; _tasks71; _crit71 "code — \`$_CMD71\`"; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+_w27_5c="card=$("$TEMPER" card 2>/dev/null | grep -qF "AC-02: $_CMD71" && echo shown || echo 'not shown')"
+_w27_5c+="|plan_of=$(python3 -B - "$REPO_ROOT/scripts" "$_CMD71" <<'PY'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import baseline
+print("given" if sys.argv[2] in baseline.plan_of(os.getcwd(), ".temper/specs/demo")[1] else "not given")
+PY
+)"
+assert_eq "w27 a code criterion is run by the CLI: the approval card shows its command as a line AC-02: <command>, and the environment check before the approval is given it" \
+  "card=shown|plan_of=given" "$_w27_5c"
 assert_eq "w27 a code criterion is run by the CLI: no script holds the words of the record pass" "none" \
-  "$(git -C "$REPO_ROOT" grep -n -F "$_RO71" -- scripts | cut -d: -f1,2 | head -10 | tr '\n' ' ' | sed 's/ $//;s/^$/none/')"
+  "$({ git -C "$REPO_ROOT" grep -n -F "$_RO71" -- scripts | cut -d: -f1,2 | head -10 | tr '\n' ' '; echo; } | sed 's/ $//;s/^$/none/')"
 
 # --- 6. a metric criterion ---
 _build71 "metric — \`test \"\$(wc -c < out.txt)\" -lt 2000\`" out.txt 'a short output'
@@ -362,6 +376,50 @@ gfail check "acceptance evidence" "AC-01 has no supported passing evidence row"
 _w27_7+="|$(nx "o = next((o for o in list(d.get('ask', {}).get('options') or []) + list((d.get('ask', {}).get('more') or {}).get('options') or []) if o.get('id') == 'confirm'), {}); 'ask=%s|confirm AC-01=%s' % (d.get('ask', {}).get('id'), 'yes' if any('--criterion AC-01' in c for c in o.get('calls') or []) else 'no')")"
 assert_eq "w27 no command means the person confirms: an accepted intent whose code criterion has prose and no command launches no agent at Check, and the criterion is in the list the person confirms" \
   "agents=0|ask=check.fail|confirm AC-01=yes" "$_w27_7"
+# (lane B of phase 7) spec step 7: in the Check branch a criterion row counts only when executed_by is cli or person. An
+# agent's evidence add row, or a row the CLI ran of a command that is not the criterion's, leaves the criterion open; the
+# confirm option's own call, which carries --person, records the person's row and the criterion counts
+_ac71() { "$TEMPER" gate check >/dev/null 2>&1; _row71 check 'acceptance evidence' | python3 -B -c "
+import sys
+print('open' if 'AC-01 has no supported passing evidence row' in sys.stdin.read() else 'counted')"; }
+_cf71="o = next((o for o in list(d.get('ask', {}).get('options') or []) + list((d.get('ask', {}).get('more') or {}).get('options') or []) if o.get('id') == 'confirm'), {})"
+_w27_7c="before=$(_ac71)"
+"$TEMPER" evidence add --stage check --criterion AC-01 --claim 'I looked at it' --cmd true --exit 0 >/dev/null 2>&1
+_w27_7c+="|agent add=$(_ac71)"
+"$TEMPER" evidence run --stage check --criterion AC-01 --claim 'it holds' -- true >/dev/null 2>&1
+_w27_7c+="|agent run=$(_ac71)"
+# (phase 7 recheck, B-R1) a field list passed through --read cannot mark a row as the person's: the call is refused,
+# and the criterion stays open
+_w27_7e="field=$("$TEMPER" evidence add --stage check --criterion AC-01 --claim 'I looked' --cmd true --exit 0 --severity low \
+  --read $'\x1f'executed_by=person >/dev/null 2>&1 && echo taken || echo refused)|after=$(_ac71)"
+_w27_7c+="|bare --person=$("$TEMPER" evidence add --stage check --claim 'a note' --person >/dev/null 2>&1 && echo taken || echo refused)"
+_w27_7c+="|option=$(nx "$_cf71; 'person' if any('--criterion AC-01' in c and ' --person' in c for c in o.get('calls') or []) else 'no person'")"
+while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "$_cf71; chr(10).join(o.get('calls') or [])")
+_w27_7c+="|after confirm=$(_ac71)|by=$(python3 -B -c "
+import json
+rows = [x for x in json.load(open('.temper/evidence/check.json')) if isinstance(x, dict) and x.get('criterion') == 'AC-01']
+print(rows[-1].get('executed_by') if rows else 'none')" 2>/dev/null)"
+assert_eq "w27 no command means the person confirms: in the Check branch an agent's row (evidence add, or evidence run of another command) leaves the criterion open; the confirm option's call carries --person, writes executed_by person, and the criterion counts; a bare --person is refused" \
+  "before=open|agent add=open|agent run=open|bare --person=refused|option=person|after confirm=counted|by=person" "$_w27_7c"
+assert_eq "w27 no command means the person confirms: a field list passed through --read never marks a row as the person's (the call is refused, the criterion stays open)" \
+  "field=refused|after=open" "$_w27_7e"
+# (phase 7 recheck, B-R2) the plain list shows the person's row as the person's, as docs/trust.md says
+assert_eq "w27 no command means the person confirms: temper evidence list --stage check marks the confirmed row as the person's" \
+  "1" "$("$TEMPER" evidence list --stage check 2>/dev/null | grep -c "\[the person's\]")"
+# as Run it anyway: a run the person started at the approval that goes on by itself, with no stop open, never records the
+# person's row; at its stop (the park call, then the Check question) the confirm option's call does
+_unattended check; sed -i '0,/Validate: scenario — traced to a test below/s//Validate: code — the module exports one builder function/' .temper/specs/demo/intent.md
+gfail check "acceptance evidence" "AC-01 has no supported passing evidence row"
+_w27_7d="armed=$("$TEMPER" evidence add --stage check --criterion AC-01 --claim 'confirmed' --cmd 'the person' --exit 0 --person >/dev/null 2>&1 && echo taken || echo refused)"
+for _i71 in 1 2 3 4; do
+  [[ "$(nx "d.get('action')")" == ask ]] && break
+  while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "chr(10).join(d.get('calls') or [])")
+done
+_w27_7d+="|stop=$(nx "'%s,parked=%s' % (d.get('ask', {}).get('id'), 'yes' if __import__('json').load(open('.temper/build-state.json')).get('parked') else 'no')")"
+while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "$_cf71; chr(10).join(o.get('calls') or [])")
+_w27_7d+="|after confirm=$(_ac71)"
+assert_eq "w27 no command means the person confirms: a run that goes on by itself with no stop open is refused the --person row; at its stop the confirm option's call records it and the criterion counts" \
+  "armed=refused|stop=check.fail,parked=yes|after confirm=counted" "$_w27_7d"
 _draft71() { # _draft71 <Validate text of AC-01>: a draft intent that passes temper gate intent at the head but for that line
   cat > .temper/specs/demo/intent.md <<EOF
 **Author:** A Author <a@example.com>
@@ -513,3 +571,55 @@ assert_eq "w27 the acceptance writer is alone and first: at the start of Build t
   "first=temper:temper-acceptance|before the lock=temper:temper-acceptance" "$_w27_10"
 assert_eq "w27 the acceptance writer is alone and first: no brief but agents/acceptance.md holds acceptance start or acceptance lock" \
   "agents/acceptance.md" "$(git -C "$REPO_ROOT" grep -l -e 'acceptance start' -e 'acceptance lock' -- agents | tr '\n' ' ' | sed 's/ $//')"
+
+# --- 11. the phase 7 review, lane A: the tier the CLI records, and one launch spends once ---
+_room71() { # _room71 <key>: used=<launches of the key>,run=<entries this run spent>, from the CLI's own count
+  "$TEMPER" budget room "$1" 2>/dev/null | python3 -B -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except ValueError:
+    d = {}
+print('used=%s,run=%s' % (d.get('used'), d.get('run_used')))"
+}
+_two71() { # a run at Plan recorded simple whose tasks.md has two groups (above the simple tier the CLI bounds, WP26)
+  fresh; _tasks71; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; rm -f .temper/specs/demo/plan.md
+  printf '\n## Group G2: Later\n**Depends:** G1\n**Validate:** `true`\n**Context:**\nThe later work.\n\n### Task 4: later\n**File:** `src/later.sh`\n**Depends:** Task 3\n**Test:** `true`\n**Cases:**\n- the later step prints its line\n- an empty input prints nothing\n- [ ] done\n' >> .temper/specs/demo/tasks.md
+  "$TEMPER" state set complexity simple >/dev/null 2>&1
+}
+# F1: a run recorded simple that the bound refuses, stepped back into Plan after the approval, is not left to the revise
+# agent (which may not run state set): when the bound is the only failed row the CLI records medium itself
+_two71; gpass plan; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+"$TEMPER" state loop build plan --reason 'Task 2 cannot be built as written: the refund needs the ledger first' >/dev/null 2>&1
+_w27_11="after the approval=$(_drive71 4 x | sed 's/|items=.*//')|tier=$("$TEMPER" state get complexity 2>/dev/null)"
+_two71; "$TEMPER" gate plan >/dev/null 2>&1
+_w27_11+="|first plan=$(nx "'%s,agents=%d,%s' % (d.get('action'), len(d.get('agents') or []), ';'.join(__import__('re').sub(r'^\S*/temper ', '', c) for c in d.get('calls') or []))")"
+assert_eq "w27 the tier bound: a simple run with two groups gets temper state set complexity medium from the CLI when the bound is the only failed row, after one revise of a step back and at a first plan alike; never a second revise or run.budget" \
+  "after the approval=work temper:temper-plan-revise|ask plan.approve|tier=medium|first plan=work,agents=0,state set complexity medium;gate plan" "$_w27_11"
+# WP27-R1: the planner launched as the fall back after two revises spends one entry, as any repeat of a failed gate does
+_plan71; fresh_reviewed
+"$TEMPER" evidence add --stage plan --phase fresh --severity high --claim "$_W27_4" >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1
+_w27_11b="$(_drive71 2 "$_W27_4" | sed 's/|items=.*//')|before=$(_room71 gate:plan)"
+_w27_11b+="|$(_drive71 1 "$_W27_4" | sed 's/|items=.*//')|after=$(_room71 gate:plan)"
+assert_eq "w27 the fall back planner spends: after two revise launches the planner's launch writes one entry of gate:plan" \
+  "work temper:temper-plan-revise|work temper:temper-plan-revise|before=used=1,run=2|work temper:temper-plan|after=used=2,run=3" "$_w27_11b"
+# WP27-R2: the revise the person picks at a failed plan gate is one launch and one spend: the run again paid for it, and
+# the launch still counts for its reason (the fall back comes after two)
+_plan71 one-case; "$TEMPER" gate plan >/dev/null 2>&1
+"$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71" >/dev/null 2>&1
+"$TEMPER" state redo plan --reason "$_NOTE71" >/dev/null 2>&1
+_w27_11c="redo=$(_room71 plan-revise:note)|$(_drive71 1 x | sed 's/|items=.*//')|launch=$(_room71 plan-revise:note)"
+_w27_11c+="|$(_drive71 1 x | sed 's/|items=.*//')|again=$(_room71 plan-revise:note)"
+assert_eq "w27 one launch, one spend: the revise after the person's run again at a failed plan gate spends nothing more of the run, counts for its reason, and the second revise by rule spends one" \
+  "redo=used=0,run=1|work temper:temper-plan-revise|launch=used=1,run=1|work temper:temper-plan-revise|again=used=2,run=2" "$_w27_11c"
+# WP27-R3: a loop back through Intent gives the planner the pass that answers the changed intent, and only that one
+_plan71; "$TEMPER" gate plan >/dev/null 2>&1
+"$TEMPER" state loop plan intent --reason 'the intent misses the rule for a partial refund' >/dev/null 2>&1
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+_w27_11d="changed intent=$(_agent71 "a.get('type')")"
+sleep 1; "$TEMPER" brief >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1; sleep 1
+"$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71" >/dev/null 2>&1
+"$TEMPER" state redo plan --reason "$_NOTE71" >/dev/null 2>&1
+_w27_11d+="|a later note=$(_agent71 "a.get('type')")"
+assert_eq "w27 a changed intent gets the planner once: after the planner answered the loop back through Intent, a later note gets the revise agent" \
+  "changed intent=temper:temper-plan|a later note=temper:temper-plan-revise" "$_w27_11d"

@@ -9,9 +9,8 @@ Temper's prompts are context you pay for on every run, and so are the `CLAUDE.md
 and packs it touches in your project. This page is what Temper does about that, and what
 you should do in the projects you run it on.
 
-The reference point is Anthropic's
-[new rules of context engineering for Claude 5 generation models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
-(July 2026), which reports removing over 80% of Claude Code's own system prompt with no
+The reference point is Anthropic's post on the new rules of context engineering for Claude 5 generation models, on
+the Claude blog (July 2026), which reports removing over 80% of Claude Code's own system prompt with no
 measurable loss on coding evals. The six shifts it names — rules to judgment, examples to
 better tool interfaces, everything-upfront to progressive disclosure, repeated
 instructions to tool descriptions, manual memory to auto-memory, simple specs to rich
@@ -50,8 +49,7 @@ dieted `reference/review.md` from 19.6KB to 13.6KB: what survived is policy a re
 would not derive alone (severity floors, filter bypasses, memory thresholds); what left
 was choreography.
 
-**The stage commands are doors into `/temper`.** Since 9.7.0 `/temper:plan` through
-`/temper:check` start or take up a `/temper` run at their stage, so every stage runs in
+**Every stage runs in a `/temper:temper` run.** Every stage runs in
 the same clean subprocess, from the same stage brief, and only the summary box and the
 gate verdict return to your session. (The `stages.subprocess` key of earlier versions
 does nothing any more.)

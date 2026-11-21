@@ -1,158 +1,21 @@
-# Temper Configuration (v7)
-#
-# Everything with exactly one correct output — model routing, gate logic, state
-# bookkeeping — lives in the temper CLI now, not here. The CLI is
-# ${CLAUDE_PLUGIN_ROOT}/scripts/temper
-# This file holds only the decisions that are actually yours to make. Full
-# reference: ${CLAUDE_PLUGIN_ROOT}/docs/getting-started.md
-
-# Stack: auto-detect from project files. Override: spring-boot, react-ts,
-# node-express, fastapi, go, rust
-stack: auto
-
-# Packs enforced during build/review, described in ${CLAUDE_PLUGIN_ROOT}/docs/packs.md
-# Add a project pack under .claude/packs/<name>/rules.md and list it here. The guardrails pack
-# was called hooks before v9.6.5; an entry named hooks still means guardrails.
-packs: [quality, tdd, security, git, performance]
-
-# MCP tool-first analysis: auto (use MCP tools when available, else heuristic) |
-# heuristic-only | require. See ${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md
-tools:
-  mode: auto
-  # External review engine: open-code-review (ocr CLI). Off by default. /temper:review
-  # runs ocr only when mode is auto (use it when it is installed and ready) or require
-  # (block the review when it is not). When it runs, OCR takes over line-level defect
-  # detection and sends the diff to the model provider you set up for it.
-  # off | auto | require.
-  ocr:
-    mode: off
-
+# Temper configuration. Only your choices live here; every other setting has its default in the CLI.
+# `temper config show` prints each key, its value and where the value comes from.
+run:
+  default: to-commit          # to-commit | ask (a question at every stage) | never-unattended
+packs: [security, tdd]        # the rules the agents follow; more in docs/packs.md
 review:
-  block-on: [critical, high]  # severities that fail the review gate (9.8.5); a finding below them goes on to Check
-
-check:
-  # The environment Check runs in. Check stops at once when it is production. With it
-  # unset, Check stops when the project holds a .env.production or .env.prod file; it
-  # decides from the file name only and never opens a .env file. Set it to development
-  # when such a file is only a template.
-  # environment: development
-  # Commands Check runs instead of auto-detecting them for your stack. Any key left out
-  # keeps stack detection. The CLI reads it with `config get check.commands.test`.
-  # commands:
-  #   test: npm test
-  #   lint: npm run lint
-  #   typecheck: tsc --noEmit
-
-# The budget of repeats (ADR 0019). Every repeat after a failed check (a run again, a step back,
-# a group fix, a task retry, a CI fix round) is counted; past a limit the CLI refuses the call
-# and the run asks you once. Only you allow more.
-# budget:
-#   per-failure: 2             # repeats for one failed check
-#   per-run: 6                 # repeats in one run
-
-# Model per stage. With this block absent (the default), each stage runs on the model
-# declared in the model: line of that stage's brief in the plugin's agents folder.
-# Uncomment a key to override it — an alias
-# (opus, sonnet, haiku) or a full model ID. This is a flat lookup, not the v6 routing
-# table that v7 retired: resolution happens in the temper CLI, never in a prompt.
-# The CLI's `model --all` prints exactly what the orchestrator will launch each stage on.
-# models:
-#   plan: opus
-#   design: opus
-#   build: sonnet
-#   review: sonnet
-#   check: sonnet
-#   rca: opus      # /temper:fix stages
-#   fix: sonnet
-
-# The stage commands (/temper:plan, :design, :build, :review, :check) are doors into /temper
-# since 9.7.0: every stage runs in its own isolated subprocess, so the old `stages.subprocess`
-# key does nothing any more. /temper:intent stays inline: it is an interactive capture.
-
-# Control bands: closing the loop (the CLI's `bands` check). A deterministic check of the
-# history arrays in .temper/metrics.json against rolling mean ± k·sigma bands plus a
-# same-side-run drift rule. Detection never involves a model; the response to a breach
-# is tiered here and lands in the normal pipeline (/temper:status renders the verdict;
-# a propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to
-# run — through every ordinary gate, never around them). The block absent = these
-# defaults; the CLI's `bands` check in CI or cron is the trigger layer, never a daemon.
-# Any series fed via the CLI's `metrics append <name> <value>` is band-able by name,
-# including external ones (CI failure rate, post-deploy 5xx) appended by a pipeline step.
-# bands:
-#   window: 10            # rolling baseline: the last N points before the latest
-#   min-points: 4         # fewer recorded points -> INSUFFICIENT-DATA, never a breach
-#   drift-run: 6          # N consecutive same-side points counts as drift (>= 2sigma)
-#   metrics: [coverage, tests]
-#   tiers:
-#     1sigma: log         # in the report only
-#     2sigma: diagnose    # read-only diagnosis via /temper:status
-#     3sigma: propose     # draft an intent.md into .temper/specs/ for /temper to run
-
-# Edit-time protected paths (guardrails pack: block-protected-paths.sh). Same folder-name
-# pattern shape as autonomy.park-on-touch, but enforced when the agent EDITS, in every
-# mode — generated code, frozen legacy packages. The patterns match paths in your project
-# only. Empty/absent = no-op.
-# protect:
-#   paths: ["**/src/gen/**", "**/v1/**"]
-
-# Formatter run on each agent edit (guardrails pack: run-formatter.sh). {file} is replaced
-# with the path of the project file the agent edited. Never blocks; absent = no-op.
-# format:
-#   cmd: "npx --no-install prettier --write {file}"
-
-plan:
-  context-check: auto               # auto: ask when the Context Map has an ignore or a gap; always; off
-  fresh-review: ask                 # a reviewer with no context reads the plan: ask (offered; risk H gets it); auto (medium, complex); always; off
-  fresh-review-twice: true          # a risk H plan gets two independent fresh reviewers (A and B)
-  fresh-review-rounds: 3            # launches of the fresh review in one run, at most
-phases:
-  pipeline: true               # false: no Pipeline stage after a Commit that opened a pull request
-
-# Build runs in groups: Plan writes tasks.md in groups, each task gets its own worktree, and a
-# cheaper model (Haiku) runs the small tasks in parallel. These keys tune it; with the block
-# absent the defaults below apply. `temper model task` and `model task-escalation` resolve them.
-# build:
-#   grouped:
-#     task-model: claude-haiku-5-5     # model of the task agents (default: the build-task brief)
-#     escalation-model: sonnet         # the one retry after two failed attempts
-#     max-parallel: 4                  # tasks running at once
-#     max-groups: 2                    # groups working at once (a whole number, at least 1)
-#     keep-days: 30                    # days an earlier attempt's work is kept in refs/temper/kept/ (0: always)
-
-# ============================================================
-# The run to the commit (ADR 0019 decision 3): the first option of the approval,
-# "Approve and build", lets the run go on by itself to the commit question. A
-# passed check moves on, a failed check gets one repair and then asks you, every
-# other case asks you. Only your answer at the approval starts it.
-#
-# Hardcoded, not configurable (safety invariants, not preferences): it NEVER
-# pushes, merges to a remote, or makes the final feature commit (the commit
-# question always asks); the commits it allows are the CLI's own: grouped Build's
-# task commits, the `temper integrate` merge and a repair in its stage (ADR 0021);
-# NEVER re-plans by itself; nothing under park-on-touch is repaired by rule.
-# ============================================================
-# run:
-#   default: to-commit         # the approval's first option: to-commit, ask or never-unattended
+  block-on: [critical, high]  # finding levels that stop a run
 autonomy:
-  # enabled is no longer read (9.8.0); enabled: false with no run.default reads as run.default: ask.
-  max-blast-radius: 15         # the plan gate splits a group that declares more files than this
-  # Folder-name patterns over paths in your project only (any path before and after).
-  park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
-
-# build:
-#   red-before-code: false     # true: a task's failing run (RED) counts only on the code as the attempt found it, with
-#                              # no stub (for compiled languages, where a compile failure is the RED)
-# evidence:
-#   claimed-runs: ignore       # a test run counts at a gate only when the CLI ran it (evidence run, a task test, Check).
-#                              # count: also a run an agent only claimed with evidence add --exit (before 9.8.5).
-
-# The environment contract: what every command the CLI runs, and every agent, needs first. No block: as before.
-# The run line runs in the same shell before each command (keep it idempotent; it cannot hold " #"). A variable whose
-# name says it holds a credential (PASSWORD, TOKEN, KEY, SECRET, ...) is never set or shown. `temper doctor` reads it.
+  park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]  # sensitive paths
+models:
+  plan: opus                  # the planner
+  task: sonnet                # the builders; haiku costs less and takes longer
+# Your project's own commands and environment, when what the CLI detects is wrong:
+# check:
+#   commands:
+#     test: npm test
+#     coverage: npx c8 npm test
 # setup:
-#   run: eval "$(scripts/ensure-jdk24.sh --export)" && (pg_isready -q || pg_ctlcluster 16 main start)
-#   env:
-#     IT_POSTGRES_PORT: 5432
+#   run: nvm use
 #   services:
 #     postgres: 127.0.0.1:5432
-#   tools: [java, mvn]

@@ -56,7 +56,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto` and the person is asked about it (9.8.5, WP13: a flagged map under `auto`, every map under `always`, none under `off`, and not a map folded into the approval; else `null`): the CLI's own question (header `Temper gate`). 9.8.0: its text names what the plan leaves out and could not find (the map's `ignore` and `gap` lines); the options are `As planned (Recommended)` (runs `temper plan review --answer 'As planned'` then `temper gate plan`), `Include what is left out` (runs `temper plan review --answer '...' --redo`: the answer becomes the person's note and Plan runs again with it), `Something else` (typed) and `Carry forward`, each with the table as its preview; 9.8.5: id `plan.context`, kind `context`, options `as-planned`, `include-left-out`, `type` and `carry`; `answer` is the call a typed answer fills (`--redo` too). When the pending check is the plan gate's only failed row, `ask` is this question |
 | `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
 | `guard.adhoc_kind` | WP24, only while a window of a kind is open: `repair` for a repair in the stage (the mod holds Build's write rule there); absent for a small change |
-| `card` | 9.8.5 (WP15), with `ask`: the card of a question that decides, or `null` for any other question. `{kind, run_id, step, title, tag, sections: [{id, title, note, rows: [{text, mark}], total, file}], foot}`; `kind` is `approval` (`plan.approve`, `rca.approve`, and `design.pass`, the approval when the person asked for Design), `commit` (`commit.confirm`, and `check.pass` of a run that asks at every stage) or `stop` (any other question at a stage whose check failed and is not skipped, or a stop of a run that goes on by itself); `run_id` and `step` are the question's. A section is cut when `total` is larger than the count of its rows, and `file` says where the rest is; `mark` is one of `proposed`, `create`, `modify`, `sensitive`, `left out`, `not found`, `not measured`, `open`, `skipped`, `by rule`, or `null`. The sections of the approval, in order: `request`, `assumptions`, `criteria`, `out_of_scope`, `answers`, `files`, `commands` (word for word, never cut), `context` (every flagged line whole), `launches`, `risk`, `baseline`; of the commit: `criteria`, `suite`, `coverage`, `planted_bugs`, `review`, `files`, `rule_log`, `skips`, `tree`, `run`, `message` (the message the click uses); of a stop: `what_fails`, `tried` (the budget used for the failure and the run), `reading`, `still_green`, `spent`. A section with no source is left out. No card holds dollars; a time is in minutes, and the approval's estimate is the median of the finished runs `.temper/runs.jsonl` keeps. The card is built by `scripts/card.py` in the same call as the question, and never goes into the question text. `temper card` prints its rows (76 columns), `temper go` gives them as `card` |
+| `card` | 9.8.5 (WP15), with `ask`: the card of a question that decides, or `null` for any other question. `{kind, run_id, step, title, tag, sections: [{id, title, note, rows: [{text, mark}], total, file}], foot}`; `kind` is `approval` (`plan.approve`, `rca.approve`, and `design.pass`, the approval when the person asked for Design), `commit` (`commit.confirm`, and `check.pass` of a run that asks at every stage) or `stop` (any other question at a stage whose check failed and is not skipped, or a stop of a run that goes on by itself); `run_id` and `step` are the question's. A section is cut when `total` is larger than the count of its rows, and `file` says where the rest is; `mark` is one of `proposed`, `create`, `modify`, `sensitive`, `left out`, `not found`, `not measured`, `open`, `skipped`, `by rule`, or `null`. The sections of the approval, in order: `request`, `assumptions`, `criteria`, `out_of_scope`, `answers`, `files`, `commands` (word for word, never cut), `context` (every flagged line whole), `launches`, `risk`, `baseline`; of the commit: `criteria`, `suite`, `coverage`, `planted_bugs`, `review`, `files`, `rule_log`, `plan_changes`, `skips`, `tree`, `run`, `message` (the message the click uses); of a stop: `what_fails`, `tried` (the budget used for the failure and the run), `reading`, `still_green`, `spent`. A section with no source is left out. No card holds dollars; a time is in minutes, and the approval's estimate is the median of the finished runs `.temper/runs.jsonl` keeps. The card is built by `scripts/card.py` in the same call as the question, and never goes into the question text. `temper card` prints its rows (76 columns), `temper go` gives them as `card` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
 
 The stages are Intent, Plan, Design, Build, Review, Check and Commit, and an optional **Pipeline** stage after a Commit that opened a pull
@@ -66,7 +66,8 @@ its `after` calls) in `agents[]`.
 
 A **small change** (`temper adhoc open --stage S --reason R`, `adhoc close`) is offered at the Build, Review, Check and Commit questions as
 `Make a small change`. After `adhoc close`, `next` runs the steps the change touches: Review of the changed files, then Check, then the
-commit gate (a change made at Build, or of docs only, runs only the stage's gate).
+commit gate (a change made at Build, or of docs only, runs only the stage's gate; a change of docs only at Check or Commit that leaves
+the tree the Review verdict judged runs all three, since the commit gate holds Review and Check to the tree it commits).
 
 ### The actions
 
@@ -166,6 +167,33 @@ A loop back that changes neither earns nothing (the plan the earlier rounds read
 loop back before that round is taken earns no second one. The round is counted in the run state
 (`fresh.grant`, then `fresh.extra`), and the question names the limit with it.
 
+### A change to the plan: the revise agent (9.8.5)
+
+A change to a plan that exists is made by a small agent on Sonnet, `temper:temper-plan-revise`
+(`agents/plan-revise.md`), not by a second full planner pass (`scripts/flow_revise.py`). It is chosen when `tasks.md`
+exists, at least one item exists, no loop back passes through Intent, and fewer than two revise launches were made for
+the reason. A first plan, and a changed intent (a loop back to Intent that comes through Plan again), get the planner.
+Its prompt is a closed list of lines the CLI writes: `Spec path:`, `Reason:` (fresh findings, the person's note, the
+context answer, a decision against the plan, a failed plan row, or a loop back from a stage), every item whole, one a
+line (`Finding #<id> [<severity>]: <claim>`, `Person's note: <text>`, `Left open: <text>`, `Row <name>: <detail>`; a
+step back is `Left open: Loop back from <Stage>: <reason>.` and each thing it left `Left open: What <Stage> left open:
+<n>. <item>`, in the words the planner's prompt uses),
+`Affected tasks:` (the tasks a `Task N` names, the tasks of a group named, the tasks that declare a file named, or `not
+named`), the decisions and the plugin line. It has no project brief line, and its action has no `brief` call. Its
+`before` call is `temper budget revise --key plan-revise:<reason>`, one repeat of the run's budget; a launch that the
+person's run again at a failed plan gate, or a step back into Plan, already paid for counts for its reason and not again
+for the run (`paid_by` in its entry): one launch, one spend. Its `after` calls are the planner's: the usage row,
+`temper risk`, `temper baseline plan` and `temper gate plan`. A loop back through Intent gets the planner for the pass that
+answers the changed intent; a revision after that pass is the revise agent's again.
+
+When the plan gate fails after a revise launch, the flow's own action is one more revise, with the failed rows added as
+items. After the second, before the approval, the next launch is the planner with the same items, once
+(`revise_fallback` in the run state); its first call is `temper state redo plan`, which spends one entry of `gate:plan`
+like any run again of a failed gate. When the only failed row is `tier recorded` with the bound of the simple tier, the
+flow's action is the CLI's own `temper state set complexity medium` and `temper gate plan`, with no agent. After the approval the same launch is refused by the budget, so the question is
+`run.budget`: a rule never plans again. A row that waits on the person (a Blocking question, the context check, a
+reviewer that did not finish, or only contested findings) is the question's, never a revision's.
+
 ### A failed group check (9.8.4)
 
 The group gate keeps the first FAIL lines of its Validate output and counts its failures
@@ -183,11 +211,34 @@ To read a failure, the session runs `temper output G<n>` (the group's last Valid
 FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed
 run). It is read only; with the mod on, the session may run the CLI but not `printenv` or a test runner.
 
+### The one time config question (9.8.5, WP29, ADR 0023)
+
+The first question of a `/temper:temper` run at Intent, before the baseline and before any agent (no `intent.md` and
+no usage row of Intent yet), in a run that asks, when the project's config holds a line whose value an earlier template
+shipped (`OLD` of `scripts/defaults.py`) or a key no longer read (`GONE`) and no `upgrade.asked` of 9.8.5:
+`config.tidy`, header `Temper gate`. Its text counts the lines and says a copy is kept, then names at most eight with
+what changes (the coverage floor, `phases.design`, the five packs and `block-on: [critical]` first) and `and M more`.
+Its two options are one call of the CLI each:
+
+- `tidy-config`, `Remove them (Recommended)`: `temper config tidy --apply`. The old file is copied to
+  `.claude/temper.config.before-9.8.5`, and the new template is written with the lines the person changed, a renamed
+  key under its new name, and `autonomy.enabled: false` as `run.default: ask`.
+- `keep-config`, `Keep my file`: `temper config tidy --keep`, which appends `upgrade:` with `asked: "9.8.5"`.
+
+Both calls exit 1 and change nothing past Intent, in a fix run and in a run that goes on by itself; with the mod they
+pass only as the picked option of the question the view holds (a stop that must stay, `scripts/stops.json`). A project
+made by `config init` is never asked: its config is the template.
+
+The CLI also names the pack files of each agent (`temper packs --stage S`, `scripts/cli_ctx.py`): the prompt of the
+agents of Plan, Design, Build, Review, Check, RCA and Fix holds one line `Packs: <file>, <file>` (the project's
+`.claude/packs/<name>/rules.md`, else the plugin's, kept by its `phases:`; Plan also takes those of Build), and an entry
+of `packs:` in braces goes on a line `Pack entries:` as written.
+
 ### The environment check and the baseline (9.8.5, WP20)
 
 A fault of the environment or of the base is named before any agent is paid for. Before any other step of an active
 run, while `.temper/evidence/baseline.json` is absent, `next` is the CLI's own action `auto` with the one call
-`temper baseline start` (`--env-only` at a door into Review or Check). `state init` empties `.temper/evidence`, so every
+`temper baseline start`. `state init` empties `.temper/evidence`, so every
 new run starts one; a step back does not. The call always exits 0 and returns in seconds (`scripts/baseline.py`):
 
 - **The owner of the suite command** (`python3 scripts/check_run.py owner ROOT [SPEC]`): the config's
@@ -242,8 +293,8 @@ out. The locked acceptance tests take their limit from `limit_for` with Check's 
 ### A command the plan wrote, the setup block and an environment fault (9.8.5)
 
 **A command the plan wrote (WP21).** The plan gate runs no project command. After the planner returned, its last calls
-are `temper baseline plan` and then `temper gate plan` (a fresh reviewer, a revision and a changed command end the same
-way). `baseline plan` (`scripts/baseline.py`) runs each distinct group Validate and the Integration line once on the
+are `temper risk` (the CLI rates the plan, 9.8.5), `temper baseline plan` and then `temper gate plan` (a fresh reviewer,
+a revision and a changed command end with the last two). `baseline plan` (`scripts/baseline.py`) runs each distinct group Validate and the Integration line once on the
 current code, one after another in a process of its own, in the baseline's worktree `.claude/worktrees/temper-baseline`
 after the suite ended, each under the limit Build gives it: a Validate under the group gate's (`limit_for` of 600 s,
 `TEMPER_TASK_TEST_TIMEOUT_S`), the Integration line under `integrate`'s (3,600 s, `TEMPER_INTEGRATION_TIMEOUT_S`). A
@@ -256,7 +307,7 @@ removes the worktree. Each result is kept in `plan` of
 seconds is the least limit `limit_for` gives that command); 124 is `timeout`, never a fault of the environment; 125 (the
 setup line failed) and 127 or a first word that does not resolve are class `environment`; any other exit is `fails like
 the base` when the base is red, else `fail` (class `command`). No output text takes part. The same process resolves the
-first word of each step of every command of the plan, the task and scenario Tests too, in one shell call under the setup
+first word of each step of every command of the plan, the task and scenario Tests and the criterion commands too, in one shell call under the setup
 block (also when no command is left to run); a program that does not resolve turns the base red, so `base.red` names it
 before any agent. Once the plan gate passed, a `fail` or a `timeout` is the question `plan.command` (the scope of
 `base.red`'s function): the command, where the plan wrote it, the exit, the seconds and the first fail lines; `Allow it
@@ -292,8 +343,7 @@ is the code's, as before: it spends the attempt. Any status move clears the mark
 
 **Design runs only when asked (WP14, ADR 0019 decision 2).** A run of `/temper:temper` has the Design stage when the
 person chose `Run Design first` (id `run-design`, in the More list of the passed plan question; its calls are
-`temper state set want_design true` and then those that leave Plan, with `design` as the next stage), when the run was
-started by the Design door, when `design.md` exists, or when the run is at Design or has a Design verdict. No tier, no
+`temper state set want_design true` and then those that leave Plan, with `design` as the next stage), when `design.md` exists, or when the run is at Design or has a Design verdict. No tier, no
 risk and no setting adds it: `phases.design` and the state key `intent_asked` are gone. What Design asked is now a
 Blocking question Plan writes into intent.md, `- Blocking: {question} choices: {the answer the plan assumes} | ...`,
 with the tasks written under the first choice. `state advance plan_complete` is refused while one is open, so it is
@@ -311,17 +361,20 @@ recommended and `The tasks already agree` as the first reason of its skip. Each 
 newest first, as decisions that win over `tasks.md`. The Design gate has no such row.
 
 **High findings block.** `review.block-on` defaults to `[critical, high]`. A failed Review is repaired in the stage
-(below). A passed Review with an open finding at high or above recommends `Loop back to Build`; with a Medium one it recommends `Continue to Check`, and the passed Check
-question lists the open findings (`open findings: 1 medium` and the first three claims) where the person commits. Both
-Review questions name the open findings per level (`open findings: 1 high, 2 medium`). At a passed Review with an open
-finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for later` are under `More options`, and
-`Teach Me` takes the place of `Architecture Depth Review`.
+(below). A passed Review with an open finding at high or above offers `Repair again` first, recommended, where
+`repair start --again` may start, and otherwise recommends `Loop back to Build`; with a Medium one it recommends
+`Continue to Check`, and the passed Check question lists the open findings (`open findings: 1 medium` and the first
+three claims) where the person commits. Both Review questions name the open findings per level (`open findings: 1 high,
+2 medium`). At a passed Review with an open finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for
+later` are under `More options`, and `Teach Me` takes the place of `Architecture Depth Review`; when `Repair again` is
+shown, `Architecture Depth Review` moves under `More options` too.
 
 **What resolves a finding (WP18).** `temper evidence resolve --stage S --id N --fixed-by COMMIT` marks a finding
 resolved only when four things hold: COMMIT is a commit; it is an ancestor of HEAD; it is no ancestor of the reviewed
 HEAD (the `head` of `review_snapshot`, written as the run enters Review; with no snapshot the call is refused); and
 it is in `cli_commits` of `.temper/groups.json`. WP24 adds a fifth: the run state records COMMIT as a repair commit, and
-a `recheck #<id>` row was written after it; for a repair commit the reviewed HEAD is the repair's base. The mark stores
+a `recheck #<id>` row was written after it; for a repair commit the reviewed HEAD is the repair's base. The call names
+its finding, so it takes none while the repair is open and, after `repair close`, only one the close resolved. The mark stores
 the full id. Each refusal is one `FAIL:` line that names the check and the short ids. No model calls it: the CLI
 resolves a finding itself, in `temper repair close` (below). With the mod, the call is refused as a tool call in a
 `/temper` or `/temper:fix` run; with no run, the mod lets it through and the CLI refuses it.
@@ -332,13 +385,21 @@ row, `acceptance evidence`, a measured coverage drop, a locked acceptance test t
 is the CLI's own `auto` call `temper repair start --stage review|check`, in every mode, when every condition of
 `can_start` in `scripts/repair_ops.py` holds: Review completed with its read list; HEAD is the reviewed HEAD and the tree
 is clean; no stage was skipped; the budget has room; the run is a `/temper:temper` run on its own branch whose Build was
-integrated; no finding is contested or on a sensitive path, and the plan touches none; no repair ran at the stage since
+integrated; no finding is contested, on a sensitive path or on a file outside the plan, and the plan touches no
+sensitive path; no repair ran at the stage since
 the run came to it. The window (`adhoc` with `kind: repair`) then holds Build's write rule. `next` is `work` with a
 fresh `temper:temper-build` agent whose prompt has the line `Repair in place:` and each finding whole (claim, detail,
 suggested fix, proof field; at Check the failed row with its whole kept output); its after call is `temper repair
-commit`. The CLI commits only the changed files that are approved or a test (never the spec folder, the config, the git
+commit`. It reads the changed files and what is staged, since the commit takes the whole index. The CLI commits
+only the changed files that are approved or a test (never the spec folder, the config, the git
 folder, a locked acceptance test, a lockfile or manifest, a CI file or a sensitive path: those ask `scope.drift`, with
-nothing committed), refuses a commit when HEAD moved, records `changed: 0` and asks when nothing changed, and asks
+nothing committed, for a file no answer can let through first, and offer Add to plan and Allow once only for a file
+outside the plan). The fixer may also ask with `temper drift ask`, as at Build: `repair commit` then commits nothing,
+`next` asks `scope.drift`, and the fixer runs again with its `Drift decision:` line. The ask is refused for a file no
+answer lets a repair commit (a manifest, a CI file, the config, the spec folder, a sensitive path): the fix needs a
+step back. A repair commits a file outside the plan only for an answer the CLI marked as it wrote it (`answer` on the
+row: the question it answered), and refuses an answer to no question while the window is open. `temper adhoc close` is refused
+while a repair window is open. `repair commit` refuses a commit when HEAD moved, records `changed: 0` and asks when nothing changed, and asks
 `repair.stop` showing the lines when the diff removes a line of a test file that existed at the base. It commits as
 `fix(<slug>): repair N at <stage>` through the carve out `repair commit` of the commit gate, takes the Review snapshot
 again, and runs `integrate` and `gate build` (at Check also `check run` and `gate check`) on the new tree. Then `next`
@@ -349,7 +410,12 @@ Check). `repair close` resolves each finding a `recheck #<id>: fixed` row confir
 completed, the checks passed and, for `proof: test`, a RED and a GREEN of `temper repair test` held on unchanged test
 files; it reverts the repair (the CLI's own commit back to the reviewed tree) and asks `repair.stop` when a row that
 passed fails, the open blocking findings are not fewer, the recheck names a new blocking finding or did not complete.
-A failed Review or Check whose rows a repair may answer offers `repair-again` ("Repair again", move `repair`, the call
+That revert takes back only the repair commit, on a clean tree: with HEAD moved or the tree dirty it refuses and the run
+asks. A repair taken back before its commit puts back each file a repair may never change (the spec folder, the config,
+the git hooks) from the copy taken when the window opened, removes one the fixer created there, and says which file
+is still not as it was.
+A failed Review or Check, and a passed Review with an open finding at high or above, offer `repair-again` exactly
+where its call may start (`can_start` with `--again`) ("Repair again", move `repair`, the call
 `repair start --stage S --again`): first and recommended while no repair of that failure ran at the stage, offered
 once more after one, then gone. `repair.stop` offers `back`, `repair-again` while allowed, `accept-finding`,
 `override` and `save`; after a diff that removed test lines it offers `revert-repair` (recommended), `back` and
@@ -375,7 +441,17 @@ failed since in one prompt.
 (`scripts/check_run.py build-checks`), which records into the Build ledger, in this order: the suite in the owner's run
 text (WP20: `check.commands.coverage` or `check.commands.test`, else what `detect` finds, else the plan's
 `**Integration:**` line), with its coverage report, as the row `Integration suite` (phase `integration`; the plan's
-text in `plan_cmd` when it differs); the row `coverage` (WP19); one row per scenario test; the locked acceptance tests.
+text in `plan_cmd` when it differs); the row `coverage` (WP19); one row per scenario test; one row per criterion
+command (9.8.5: a criterion validated by `code` or `metric` carries its command in backticks; the row has phase
+`criterion`, the criterion's id, `scenario` null and `executed_by` cli, and only an accepted intent's commands run); the
+locked acceptance tests. `temper check run` records the same criterion rows into the Check ledger. The rows
+`criteria validated` (Build) and `acceptance evidence` (Check) pass such a criterion only from a row the CLI ran of its
+own command that exited 0 (`FAIL: <command> exit N`, or `its command has no row run by the CLI`); no agent records
+one, so no record pass and no Check agent are launched for it. One with no command is the person's to confirm at the
+Check question, as a `manual` one is, and a draft intent with such a line fails the row `criteria validate`. Such a
+criterion counts at Check only from a row of the person (`executed_by: person`), the one the confirm option's call
+`temper evidence add --criterion AC-NN --exit 0 --person` writes; the mod lets that call through only as the person's
+answer. An agent's row, or a CLI run of a command an agent chose, does not count.
 A suite that fails on its environment adds the row `setup fault: <why>`, as Check does. A failing suite fails the
 integration; a failing scenario test, acceptance test or coverage row leaves it PASS, and the Build gate fails on that
 row: `acceptance tests written before Build` and `coverage`, the names Check uses, from `scripts/gate_rows.py
@@ -487,25 +563,68 @@ failing lines from the records; a step back names the record ids it carries (`re
 
 `temper plan patch G<n>|task N|integration --cmd '<command>'` changes one command line of the approved `tasks.md`
 (a group's Validate, a task's Test, the Integration line) and nothing else (`scripts/plan_patch.py`). The passed tasks
-keep their work, the patch spends one repeat of the budget, the approved plan's hash follows the change, a patched group's check runs again, and
-the plan ledger records the old and the new line as the person's. It refuses a `tasks.md` that differs from the
-approved plan in anything else (that is a loop back to Plan). It is the person's: the group question offers `Change
-the group's command`, recommended when the cause is the command (a second time-out, or a fix agent that changed
-nothing), and the person types the command. The mod lets it run only as that answer.
+keep their work, the patch spends one repeat of the budget, the approved plan's hash follows the change, and a patched
+group's check runs again with its failure marks (`fails`, `fix_tries`, `fix_empty`) reset. A group with no Validate
+line gets one, after its Depends line. A passed task whose Test line changed is reopened, as the group reopen does it.
+`temper plan patch task N --add-file F` adds a file outside the approved set to Task N and to `approved_files`; a task
+that gained it and has not passed runs again. The static rows of the plan gate (`scripts/plan_rows.py` and
+`gate_rows.py plan-rows`) run on the result first: a row the result fails that the plan did not fail the same way
+refuses the patch, and `tasks.md` stays as it was. The plan ledger records `plan patch: <what>: <old> -> <new>`, with no
+claim of who called: the CLI cannot know it (`docs/trust.md`). It refuses a `tasks.md` that differs from the approved
+plan in anything else (that is a loop back to Plan). It is the person's: the group question offers `Change the group's
+command`, recommended when the cause is the command (a second time-out, or a fix agent that changed nothing), its
+question names the command the plan has now, and the person types the new one; the commit card shows it word for word.
+After a patch at Build the flow runs `temper baseline plan`, so the new command runs once on the base before its check.
+The mod lets a patch run only as the person's answer.
+
+### A blocked task and the plan amendment (9.8.5, WP25)
+
+A task whose test needs a file it does not declare records `temper task blocked N --needs F --reason R`; its gate fails
+once and parks the group. When every blocked task of the group needs a file another task of the same group declares, the
+next action is the CLI's own `temper plan amend task N --add-file F [--failure ID]`, in every mode
+(`scripts/plan_amend.py`): Task N gains F on its File line and the owner on its Depends line, and nothing else. It
+refuses unless the plan is approved (the run is past Plan: a step back to Plan waits for the new approval) and
+`tasks.md` is that plan, F is declared by a task of the same group that precedes Task N or passed and is in
+`approved_files`, F is no test file of that task, no locked acceptance test and under no sensitive path, Task N is
+neither running nor passed, the static rows pass on the result, and the budget has room (one repeat, `task:N`, kind
+`plan amend`). It moves `plan_hash` in the run state and in `groups.json`, appends an entry to
+`.temper/evidence/amendments.json` (the approved record `approved-tasks.json` is never written by an amendment or a
+patch), writes the plan ledger row `plan amended by rule: Task N gains F (Task M declares it)` and the rule log entry of
+the kind `amend`, and reopens the task: its blocked mark, the group's park, gate and failure marks go, and no file is
+restored, so the work of the task it now depends on stays. The commit card lists every amendment and patch under
+`THE PLAN SINCE THE APPROVAL`; an approval moves the list of the plan before it to `.temper/archive/`. When the rule
+does not hold the run asks (a run that goes on by itself stops): a file no task declares first offers `Add to plan` (the id
+`add-file`, the person's `plan patch task N --add-file F`); a file of another group or of a later task of the group, a
+file the rule may not add, or a group parked twice with no blocked record first offers Loop back to Plan, which is the
+person's.
+
+### What a replan keeps (9.8.5, WP25)
+
+A step back to Plan archives `groups.json` with the plan its tasks were built from, and moves each group branch to its
+kept ref. After the new approval the first Build action is `temper group keep` (`scripts/group_keep.py`): a task is kept
+when its files, Depends and Test are those of the archived plan, every task it depends on is kept, and its group's
+Depends, and the groups those name, are unchanged and fully kept. A kept group's branch comes back from its kept ref, at
+the commit of its last kept task (the CLI's merge commit of a task that ran beside another counts as that task's); the
+task records come back as passed, with their entries of `cli_commits`. Only the newest archive of the run is read: one
+written while `tasks.md` differed from the approved plan keeps nothing. The group's verdict is kept only when every task
+of it is kept and its Validate and Interfaces are equal. Everything else runs as a new group does. The approval card of
+the replan says how many built tasks it keeps.
 
 ### The budget (9.8.5, ADR 0019)
 
 Every repeat that follows a failed check is counted by the CLI in one record, `.temper/budget.json`, read only through
 `scripts/budget.py`: 2 for one failure (`budget.per-failure`) and 6 for one run (`budget.per-run`). A failure is the
 check that failed, its key: `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance` or `pipeline` (a failed `integrate`
-spends under `gate:build`). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
+spends under `gate:build`); a launch of the revise agent spends under `plan-revise:<reason>` (its before call
+`temper budget revise`, 9.8.5). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
 gate (from Build, a failed or parked group's key), a group fix, the group's tasks again, more time at a failed group
-check, a plan patch, a task retry, a task checked again after an environment fault, a reopened acceptance test, a CI
-fix round, and a merge again after a failed `integrate`. A step back by `state set next_stage` spends as a
-`state loop` does. One CI fix round is one entry, under `pipeline`: the `state redo pipeline` of its steps answers the
+check, a plan patch, a plan amendment, a task retry, a task checked again after an environment fault, a reopened
+acceptance test, a CI fix round, and a merge again after a failed `integrate`. A step back by `state set next_stage`
+spends as a `state loop` does. One CI fix round is one entry, under `pipeline`: the `state redo pipeline` of its steps answers the
 failure that round paid for and spends nothing more. A change at a passed gate spends nothing. The CLI's dispatcher
 checks the call before it runs: past a limit it prints `BLOCKED: ...`, exits 1 and writes nothing. No flag and no
-variable exempts a call, and a call refused later for its own reason has spent its repeat.
+variable exempts a call, and a call refused later for its own reason has spent its repeat. A plan patch and a plan
+amendment spend inside their own scripts, once every check of theirs holds, so a refused one spends nothing.
 
 `temper next` never offers a call the budget refuses: the calls and steps of one option are checked
 together, in order, against both limits. A question that would offer one becomes `run.budget` (header
@@ -587,7 +706,7 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   advance intent_complete plan`, when all of these hold (`Builder.intent_by_rule`): a `/temper:temper` run; the Intent
   check passed and was not skipped; `intent.md` exists (a trivial request has none); no Blocking question is open (an
   answer is no note: once the gate passes again the rule moves on); the run did not come back to Intent; the person
-  typed no note at Intent; no door walked Intent. Otherwise `intent.accept` (or `intent.fail`, or `run.walked`) is
+  typed no note at Intent. Otherwise `intent.accept` (or `intent.fail`) is
   asked as before. `temper go` runs that work by itself. The intent stays a draft.
 - **The approval accepts it.** Its first options run, in order: `state set run_mode autonomous` (or `interactive`,
   each with the `--shown` digests),
@@ -674,9 +793,9 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 - **The person's note** (`evidence add --phase note --kind input`) is labelled `PERSON`, not `HEURISTIC`.
 - **Runs the CLI saw.** The Build gate's `RED then GREEN` row and Check's `tests pass` row count a test run only when the CLI
   ran it (`temper evidence run`, a task test, a group check, integrate, Check) or the person confirmed it
-  (`scripts/runs.py`). A run an agent recorded with `evidence add --exit` is a claim and counts nowhere, unless the
-  config says `evidence.claimed-runs: count`. `temper evidence void --stage S --id N --reason R` marks a false pass void:
-  the row stays, `evidence list` shows `[void: R]`, and it counts in no mode. Only a pass is voided.
+  (`scripts/runs.py`). A run an agent recorded with `evidence add --exit` is a claim and counts nowhere; no
+  config key makes it count (9.8.5). `temper evidence void --stage S --id N --reason R` marks a false pass void:
+  the row stays, `evidence list` shows `[void: R]`, and it counts no more. Only a pass is voided.
 - **A note in the question.** `temper state set ask_note '<step>: <text>'` adds the orchestrator's note to the question
   of that step, marked `Note from Claude (not from Temper)`; the options stay the CLI's.
 
@@ -723,7 +842,10 @@ gate has passed. By default it writes `report.html` in the run's spec folder. At
 next` gives three actions in turn: steps that end with `temper report --end`, which prints the report for
 the orchestrator to show; `temper report --html`, which writes the page with no question (9.8.0; the run used to ask
 whether to write it); then the commit steps. The run's `end_report` records the first two (the CLI keeps it), and
-the page is carried by the commit. Every value is escaped, and it never writes inside the plugin's own folder.
+the page is carried by the commit. In a feature run the first steps hold `temper spec deviations` (WP26): the
+deviations `build-context.json` records go to `deviations.md` in the spec folder, replacing an earlier file (removed
+when none is recorded), at every tier; plan.md and tasks.md stay as the approval saw them, and the commit of the run's record carries the file. Every
+value is escaped, and it never writes inside the plugin's own folder.
 
 ## The run summary (9.8.5)
 
@@ -754,3 +876,11 @@ The end to end scenarios count the dialogs a person saw, the launches by agent t
 the steps back, the hand backs of the run driver and the runs of the whole suite; `scripts/e2e/floor.json` holds those
 counts for each scenario and mode, and `bun scripts/e2e/run.ts <mode> <name> --floor scripts/e2e/floor.json` compares
 them exactly (`scripts/check_floor.py`).
+
+## No door (9.8.5, WP28)
+
+A run starts at Intent and nowhere else: `temper state init` refuses `--enter` with one line, and `/temper:temper`
+with no words takes up the active run. The state keys `enter` and `built_before` are gone (`state set` still refuses
+both); `next` reads neither, so a run that an older Temper saved after it came through a door runs its agent at a
+stage before the door that has no verdict, and asks no question about a walked stage (the question `run.walked` is
+gone). `temper baseline start --env-only` stays a word of the CLI; the flow no longer calls it.

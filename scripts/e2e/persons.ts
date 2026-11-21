@@ -79,6 +79,8 @@ const CHANGES: Record<string, string[]> = {
   accepted: ['accept-finding'],
 }
 const PLANNER = 'temper:temper-plan'
+// WP27: the narrow revise agent plans again too: after the approval it is excused only as the planner is
+const PLANNERS = [PLANNER, 'temper:temper-plan-revise']
 
 // The config without its top level `setup:` block.
 export function withoutSetup(config: string): string {
@@ -154,7 +156,7 @@ export function worldFindings(rec: WorldRecord): string[] {
     const marks = rec.picks.map((p, i) => (APPROVALS.includes(p.question) && APPROVING_MOVES.includes(p.move) ? i : -1)).filter(i => i >= 0)
     const stepped = (a: AgentLaunch): boolean =>
       a.approvals < marks.length && rec.picks.slice(marks[a.approvals - 1]! + 1, a.picks).some(p => p.move === 'back')
-    const planners = rec.agents.filter(a => a.approvals > 0 && a.type === PLANNER && !stepped(a)).length
+    const planners = rec.agents.filter(a => a.approvals > 0 && PLANNERS.includes(a.type) && !stepped(a)).length
     if (planners > 0) found.push(`D105 the agent log holds ${planners} planner launch(es) after the approval`)
     const message = finalMessage(rec.lastAsk)
     if (message !== '' && last.subjects.includes(message)) found.push(`D105 a commit carries the final commit message before the commit question: ${message}`)

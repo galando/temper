@@ -4,7 +4,6 @@
 **Status:** {draft | accepted | completed}
 **Created:** {date}
 **Ticket:** {JIRA-XXX or #XXX or !XXX if linked}
-**Reviewer:** {name <email> (PM | EM | Engineer | both) — a name, not a role}
 **Complexity:** {trivial/simple/medium/complex}
 
 ---
@@ -23,7 +22,7 @@ to ### Decisions, it is never deleted silently.}
 
 - [ ] AC-01 [required]: {specific, measurable criterion} (source: {doc} §{section} | {TICKET})
   Why: {which business outcome, risk, or workflow this criterion serves}
-  Validate: {scenario | code | metric | manual} — {details}
+  Validate: {scenario | code | metric | manual} — {details; for code or metric, the `command` that exits 0 when it holds}
 - [ ] AC-02 [optional]: {criterion} (proposed)
   Why: {which business outcome, risk, or workflow this criterion serves}
   Validate: manual — {details}
@@ -41,19 +40,6 @@ to ### Decisions, it is never deleted silently.}
 - In scope: {what this change touches}
 - Out of scope: {what it explicitly does not touch}
 - Must keep working: {existing behavior this must not break}
-
-### Business Outcome
-
-{Optional. The post-release outcome — what improves in the world after this ships,
-how it is measured, who owns the measurement. Kept separate from pre-merge
-acceptance above. Never invent a baseline or an owner: state them only when known.}
-
-### Target Users
-
-{Each bullet is an action chain — who acts on the output and what closes the loop.}
-
-- {user}: {what they do with this} → {what happens next}
-- {user}: {what they do with this} → {what happens next}
 
 ### Open Questions
 
@@ -90,23 +76,17 @@ This is the only record that survives a session: the Intent stage runs in a clea
 context and reads only this file, so an answer not written here gets asked again.}
 
 - {question} -> {answer} ({who decided}, {date})
+- {a fact of the project, looked up} -> as the project holds it ({file}:{line})
 
 ---
 
 ## Scenarios (BDD)
 
-{Ships empty. Plan derives scenarios from the measured blast radius — one fenced
-```gherkin block per scenario, grouped under #### Happy Path / #### Error Paths /
-#### Edge Cases, each carrying Note: (unit|integration|mock|manual) and
-Covers: AC-NN and Test: lines. Test: is a scoped shell command that proves the scenario on the
-merged tree and names the test the plan's task writes (for example
-`Test: pytest unit/test_cli.py::test_color -q`). Do NOT write placeholder Scenario: blocks here: the check
-gate demands a passing test for every Scenario: line and cannot tell a
-placeholder from a real one.}
-
-## Scenario Coverage Checklist
-
-{Ships empty. Check fills it in: - [x] {Scenario} → {test name} per verified scenario.}
+{Ships empty. Plan writes one fenced ```gherkin block of four lines per scenario: the Scenario: line, one Then line
+(the result its test checks), Covers: AC-NN and Test:. Test: is a scoped shell command that proves the scenario on the
+merged tree and names the test the plan's task writes (for example `Test: pytest unit/test_cli.py::test_color -q`).
+Do NOT write placeholder Scenario: blocks here: the check gate demands a passing test for every Scenario: line and
+cannot tell a placeholder from a real one.}
 
 ## Source Traceability
 
