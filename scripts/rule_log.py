@@ -7,7 +7,8 @@
 
 The kinds `advance`, `repair`, `group fix`, `covered` and `amend` (WP25) are what a rule did: they are written only while the run state
 says the run goes on by itself (run_mode autonomous, started at an earlier stage than STAGE) and no stop is open, or,
-for a repair in the stage (scripts/repair_ops.py), in every mode while no stop is open, since a rule starts it. The
+for a step a rule takes in every mode (a repair in the stage, scripts/repair_ops.py; the run again of a timed out group
+check; the acceptance tests the flow skips, scripts/check_run.py), in every mode while no stop is open (--by-rule). The
 kinds `stop`, `answer` and `ended` are always written: a stop, the person's answer to it, and the end of the unattended
 run. Nothing but the CLI calls this; the record is the CLI's (the mod guards the file). Runs in the project folder;
 standard library only. A record that cannot be read or written never stops the call that writes it.

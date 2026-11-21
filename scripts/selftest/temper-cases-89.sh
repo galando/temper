@@ -154,3 +154,29 @@ assert_eq "round 2 reviewer 2: the view draws the Check's tests as the gate judg
   "gate=False|view=fail" \
   "gate=$(_r2r2_g "r = row('tests pass').get('pass')")|view=$(vw "next((x.get('state') for x in d.get('check_markers') or [] if x.get('name') == 'tests'), None)")"
 
+# --- rules 6 and 10 (fix 9f36cf5): the acceptance tests a rule skipped after the approval are on no record the commit card lists ---
+# 9f36cf5 shows a skipped acceptance row as skipped in the Check verdict. In a run that asks at every stage, after the
+# approval, two launches of the writer with no lock are no question: the flow's own `work` runs `acceptance skip` by rule
+# (flow_work.acceptance_work). acc_skip writes no entry of the rule log and no override, and the commit card has no
+# acceptance section, so the commit question names neither the skip nor the rule that made it.
+m_setup < <(f9_tasks); rm -f .temper/groups.json; f9_intent true true
+"$TEMPER" acceptance start >/dev/null 2>&1; "$TEMPER" acceptance start >/dev/null 2>&1
+_r2r2_f_next="$(nx "'%s:%s' % (d['action'], ' '.join(d['calls'][0].split('temper ', 1)[1].split()[:2]))")"
+bash -c "$(nx "d['calls'][0]")" >/dev/null 2>&1
+_r2r2_f_listed="$(python3 - <<'PY'
+import json, re
+def load(p):
+    try:
+        x = json.load(open(p))
+        return x if isinstance(x, list) else []
+    except (OSError, ValueError):
+        return []
+hit = [x for x in load(".temper/rule-log.json") + load(".temper/overrides.json")
+       if isinstance(x, dict) and re.search("acceptance", json.dumps(x), re.I)]
+print("yes" if hit else "no")
+PY
+)"
+assert_eq "round 2 reviewer 2: the acceptance tests a rule skipped after the approval are on the record the commit question lists" \
+  "mode=interactive|rule's move=work:acceptance skip|skipped=yes|listed=yes" \
+  "mode=$("$TEMPER" state get run_mode 2>/dev/null)|rule's move=$_r2r2_f_next|skipped=$(python3 -c 'import json; print("yes" if json.load(open(".temper/evidence/acceptance-lock.json")).get("skipped") else "no")' 2>/dev/null)|listed=$_r2r2_f_listed"
+

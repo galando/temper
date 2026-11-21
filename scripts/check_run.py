@@ -895,6 +895,11 @@ def acc_skip(spec, lockfile, reason):
         return 1
     acc_write(lockfile, {"spec": spec, "skipped": reason.strip(), "launches": d.get("launches", 0),
                          "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+    try:   # rule 10: with no stop open the skip is the flow's by rule (flow_work.acceptance_work), in every mode: on the
+        import rule_log   # record the commit question lists; the person's skip at a stop is the answer the stop records
+        rule_log.append("covered", "build", "acceptance tests skipped: %s" % reason.strip(), by_rule=True)
+    except Exception:
+        pass
     print("OK: no acceptance tests for this run: %s" % reason.strip())
     return 0
 
