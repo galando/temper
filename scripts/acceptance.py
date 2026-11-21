@@ -192,10 +192,16 @@ def by_person(c):
     return c.get("vtype") == "manual" or (c.get("vtype") in ("code", "metric") and not c.get("vcmd"))
 
 
+def ran_by(rows, *by):
+    """Rule 5 (ADR 0024): the rows a gate counts, those the CLI ran (`by` "cli") or the person gave ("person"); a row an
+    agent wrote with evidence add, or a void one, counts nowhere."""
+    return [r for r in rows if isinstance(r, dict) and r.get("executed_by") in by and not r.get("voided")]
+
+
 def cli_pass(rows, c):
     """The latest row the CLI ran of a criterion's own command, and whether it exited 0 (WP27: an agent's row, or a run
     of another command, proves nothing)."""
-    row = latest_by_key([r for r in rows if isinstance(r, dict) and r.get("executed_by") == "cli" and r.get("cmd") == c.get("vcmd")],
+    row = latest_by_key([r for r in ran_by(rows, "cli") if r.get("cmd") == c.get("vcmd")],
                         "criterion").get(c["id"])
     return row, bool(row) and row.get("exit_code") == 0
 
@@ -292,7 +298,7 @@ def build_report(intent_path, ev_path):
     real = [c for c in parse_criteria(section_lines(lines, "Success Criteria")) if not c.get("placeholder") and c.get("id")]
     blocks = scenario_blocks(lines)
     rows = [r for r in load_evidence(ev_path) if isinstance(r, dict)]
-    cli_rows = [r for r in rows if r.get("executed_by") == "cli"]
+    cli_rows = ran_by(rows, "cli")
     by_scenario = latest_by_key(cli_rows, "scenario")
     out, failed = [], 0
     for c in real:
@@ -424,14 +430,14 @@ def main():
 
     if stage == "check":
         rows = load_evidence(ev_path)
-        latest_scen = latest_by_key(rows, "scenario")
+        latest_scen = latest_by_key(ran_by(rows, "cli"), "scenario")   # as build_report: a claimed trace proves nothing
         for name in scen_names:
             row = latest_scen.get(name)
             if not row or not supported_pass(row):
                 errors.append(f"scenario '{name}' has no supported passing evidence row")
         # WP27 step 7: a row counts only when the CLI ran it (a criterion's own command, below) or the person gave it (the
         # confirm option's `evidence add --person`): an agent's row, or a CLI run of a command an agent chose, proves nothing
-        latest_crit = latest_by_key([r for r in rows if isinstance(r, dict) and r.get("executed_by") == "person"], "criterion")
+        latest_crit = latest_by_key(ran_by(rows, "person"), "criterion")
         for c in real:
             # A deferred optional criterion is skipped here as in the Build report (9.8.0: Check asked evidence for it).
             if c.get("id") and c["has_validate"] and c["vtype"] in ("code", "manual", "metric") \

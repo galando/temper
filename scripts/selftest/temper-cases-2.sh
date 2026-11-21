@@ -481,10 +481,27 @@ OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" plan .temper/specs/demo/intent.
 assert_eq "a Validate: scenario criterion with no covering scenario is an error" "yes" \
   "$(grep -q 'no scenario Covers: it' <<<"$OUT" && echo yes || echo no)"
 
+_cli_scen2() { # _cli_scen2 <scenario> <artifact|"">: a passing scenario row of the CLI's shape (executed_by cli) with no
+               # cmd, and the artifact with its sha when one is named: what supported_pass alone judges
+  python3 - "$1" "$2" <<'PY'
+import hashlib, json, sys
+p = ".temper/evidence/check.json"
+try:
+    rows = json.load(open(p))
+except (OSError, ValueError):
+    rows = []
+art = sys.argv[2] or None
+rows.append({"claim": "scenario: %s" % sys.argv[1], "cmd": None, "exit_code": 0, "artifact": art,
+             "sha256": hashlib.sha256(open(art, "rb").read()).hexdigest() if art else None, "phase": "scenario",
+             "scenario": sys.argv[1], "executed_by": "cli"})
+json.dump(rows, open(p, "w"))
+PY
+}
 setup
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null   # no cmd, no artifact -> unsupported
+# a row of the CLI's shape (executed_by cli; rule 5: a claimed row counts nowhere) with no cmd and no artifact -> unsupported
+_cli_scen2 first "" >/dev/null
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
 assert_eq "an exit-0 row with no cmd and no artifact is NOT a supported pass" "yes" \
   "$(grep -q "scenario 'first' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
@@ -493,8 +510,8 @@ setup
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 echo proof > .temper/specs/demo/artifact.txt
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --artifact .temper/specs/demo/artifact.txt >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+_cli_scen2 first .temper/specs/demo/artifact.txt
+ev_scen check second
 "$TEMPER" evidence add --stage check --criterion AC-01 --claim "criterion AC-01" --exit 0 --cmd "manual check" >/dev/null
 "$TEMPER" evidence add --stage check --criterion AC-02 --claim "criterion AC-02" --exit 0 --cmd "manual check" >/dev/null
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
@@ -503,10 +520,15 @@ echo tampered > .temper/specs/demo/artifact.txt
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
 assert_eq "a changed artifact no longer supports its recorded sha" "yes" \
   "$(grep -q "scenario 'first' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second re-run" --exit 1 --cmd "pytest -k second" >/dev/null
+"$TEMPER" evidence run --stage check --scenario "second" --claim "scenario: second re-run" -- false >/dev/null
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
 assert_eq "the LATEST row wins — a newer failure is never hidden by an older pass" "yes" \
   "$(grep -q "scenario 'second' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
+# rule 5 (lane B of the phase 8 recheck, B-R2): a pass an agent claims after the CLI's failed run hides nothing
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
+assert_eq "p8r B-R2 a scenario pass claimed with evidence add after the CLI's failed run leaves the scenario failed" "yes" \
+  "$(grep -c "scenario 'second' has no supported passing evidence" <<<"$OUT" >/dev/null && echo yes || echo no)"
 
 # --criterion is recorded on both evidence add and evidence run rows.
 setup

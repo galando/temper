@@ -212,6 +212,61 @@ assert_eq "re-audit: a scenario row that names its test does not count as a pass
 ev_green check "tests"
 assert_eq "re-audit: the test run row does" "1" "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
 
+# --- lane B of the phase 8 recheck (B-R1, B-R2): every gate row counts only a run the CLI made (rule 5, ADR 0024) ---
+_cli9() { # _cli9 <stage> <claim> <exit> [scenario]: a row as the CLI's checks write it (executed_by cli)
+  python3 - "$@" <<'PY'
+import json, sys
+p = ".temper/evidence/%s.json" % sys.argv[1]
+try:
+    rows = json.load(open(p))
+except (OSError, ValueError):
+    rows = []
+rows.append({"claim": sys.argv[2], "cmd": "x", "exit_code": int(sys.argv[3]), "output": "FAIL: test_ac01 AssertionError",
+             "scenario": sys.argv[4] if len(sys.argv) > 4 else None, "executed_by": "cli"})
+json.dump(rows, open(p, "w"))
+PY
+}
+_row9() { # _row9 <check|build> <row name>: the pass of each row of that name gate_rows.py gives the stage, or none
+  python3 - "$REPO_ROOT/scripts/gate_rows.py" "$1" "$2" <<'PY'
+import json, subprocess, sys
+args = ["check-rows", ".temper/evidence/check.json", ".temper/evidence/baseline.json", ""] if sys.argv[2] == "check" \
+    else ["build-rows", ".temper/specs/demo", ".temper/evidence/build.json", ""]
+out = subprocess.run([sys.executable, "-E", "-s", sys.argv[1]] + args, capture_output=True, text=True).stdout
+print("|".join(str(r.get("pass")) for r in map(json.loads, out.splitlines()) if r.get("name") == sys.argv[3]) or "none")
+PY
+}
+_fix9() { python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['command']='fix'; json.dump(d, open(p, 'w'))"; }
+setup
+_cli9 check "acceptance (written before Build)" 1
+"$TEMPER" evidence add --stage check --claim 'acceptance (written before Build)' --cmd x --exit 0 >/dev/null 2>&1
+_cli9 build "acceptance (written before Build)" 1
+"$TEMPER" evidence add --stage build --claim 'acceptance (written before Build)' --cmd x --exit 0 >/dev/null 2>&1
+assert_eq "p8r B-R1 a claimed acceptance pass after the CLI's failed run leaves the row failed, at Check and at Build" \
+  "False|False" "$(_row9 check 'acceptance tests written before Build')|$(_row9 build 'acceptance tests written before Build')"
+setup
+"$TEMPER" evidence add --stage check --claim 'acceptance (written before Build)' --cmd x --exit 0 >/dev/null 2>&1
+_cli9 build "acceptance (written before Build)" 0
+"$TEMPER" evidence void --stage build --id 1 --reason "the pass was false" >/dev/null 2>&1
+assert_eq "p8r B-R1 an acceptance pass only claimed, or one voided, fails the row" "False|False" \
+  "$(_row9 check 'acceptance tests written before Build')|$(_row9 build 'acceptance tests written before Build')"
+setup; _fix9
+_cli9 build "Integration suite" 1
+"$TEMPER" evidence add --stage build --claim 'Integration suite' --cmd suite --exit 0 >/dev/null 2>&1
+_cli9 check "regression proof" 0
+"$TEMPER" evidence void --stage check --id 1 --reason "the proof was false" >/dev/null 2>&1
+assert_eq "p8r B-R1 a fix run's claimed suite pass after the CLI's failed run fails tests pass; a voided proof fails its row" \
+  "False|False" "$(_row9 build 'tests pass')|$(_row9 check 'regression proof')"
+setup
+"$TEMPER" evidence run --stage check --scenario first --claim 'scenario: first' -- false >/dev/null 2>&1
+"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first' --cmd y --exit 0 >/dev/null 2>&1
+ev_scen check second
+OUT=$("$TEMPER" gate check 2>&1; true)
+assert_eq "p8r B-R2 a claimed scenario pass after the CLI's failed run fails the scenarios row and acceptance evidence" "1|1" \
+  "$(grep -c '\[x\] scenarios traced to tests — 1/2 covered — missing: first$' <<<"$OUT")|$(grep -c "\[x\] acceptance evidence — scenario 'first' has no supported passing evidence row" <<<"$OUT")"
+setup; _scen
+"$TEMPER" evidence void --stage build --id 1 --reason "the pass was false" >/dev/null 2>&1
+assert_eq "p8r B-R2 a voided scenario pass of the CLI fails the criteria it covers at Build" "False" "$(_row9 build 'criteria validated')"
+
 # --- re-audit: a code file moved into the spec folder is no artifact only commit ---
 setup
 git init -q . 2>/dev/null; mkdir -p src; echo 'x' > src/x.ts
@@ -352,7 +407,8 @@ rm -rf .git
 
 # --- live run: a scenario's trace row is no Check marker of the tests ---
 fresh
-"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> unit/test_a.py:test_first (3 tests)' --exit 0 >/dev/null 2>&1
+# the row as the CLI writes it (rule 5: a claimed one counts nowhere, so only the marker's scenario filter keeps it out)
+"$TEMPER" evidence run --stage check --scenario first --claim 'scenario: first -> unit/test_a.py:test_first (3 tests)' -- true >/dev/null 2>&1
 assert_eq "live run: the tests marker of the view reads no scenario row" "none" \
   "$(vw "next(m['state'] for m in d['check_markers'] if m['name'] == 'tests')")"
 

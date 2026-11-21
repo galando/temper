@@ -25,6 +25,7 @@ import intent_parse
 import tasks_md
 import maven_loop
 import plan_ops
+import runs
 
 
 def row(name, ok, detail):
@@ -66,7 +67,11 @@ def acceptance_row(rows):
     hits = [x for x in rows if re.match(r"acceptance \(written before Build\)", str(x.get("claim") or ""))]
     if not hits:
         return None
-    last, claim = hits[-1], str(hits[-1].get("claim") or "")
+    ran = [x for x in hits if runs.counts(x)]   # rule 5 (ADR 0024): a row an agent wrote, or a void one, counts nowhere
+    if not ran:
+        return row("acceptance tests written before Build", False, "no run of the acceptance tests the CLI made: a row "
+                   "written with evidence add counts nowhere")
+    last, claim = ran[-1], str(ran[-1].get("claim") or "")
     if last.get("exit_code") != 0:
         return row("acceptance tests written before Build", False, one_line(last.get("output")))
     ok = "they pass, unchanged since they were locked"
@@ -83,7 +88,7 @@ def regression_row(rows):
     hits = [x for x in rows if x.get("claim") == "regression proof"]
     if not hits:
         return None
-    cli = [x for x in hits if x.get("executed_by") == "cli"]
+    cli = [x for x in hits if x.get("executed_by") == "cli" and not x.get("voided")]
     if not cli:
         return row("regression proof", False, "no regression proof the CLI ran: a proof row written with evidence add counts nowhere")
     return row("regression proof", cli[-1].get("exit_code") == 0, one_line(cli[-1].get("output")))
@@ -110,8 +115,12 @@ def build_rows(spec, ledger, key):
         out.append(check_rows(ledger, os.path.join(".temper", "evidence", "baseline.json"), key))
     if fix_run():
         suite = [x for x in rows if x.get("claim") == "Integration suite"]
-        if suite:
-            s = suite[-1]
+        ran = [x for x in suite if runs.counts(x)]   # rule 5: only a run of the suite the CLI made (integrate) counts
+        if suite and not ran:
+            out.append(row("tests pass", False, "no run of the suite the CLI made: a row written with evidence add counts "
+                           "nowhere"))
+        elif ran:
+            s = ran[-1]
             out.append({"name": "tests pass", "pass": None, "state": "skipped", "detail": "skipped: the base's failures, which "
                         "you went on from"} if s.get("state") == "skipped" else
                        row("tests pass", s.get("exit_code") == 0, "the suite (%s) exited %s" % (one_line(s.get("cmd"), 160),

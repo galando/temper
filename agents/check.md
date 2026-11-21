@@ -40,16 +40,15 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
    For **every** `Scenario:` in `intent.md` — not just the ones you're confident about —
    find the test that exercises it (its `Test:` line names it; else by name, or by the
-   behavior its `Then` line states) and record one row per scenario:
+   behavior its `Then` line states) and let the CLI run it, one row per scenario (a scenario row written with
+   `evidence add` counts at no gate):
    ```
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage check \
      --scenario '<the exact scenario name from intent.md>' \
-     --claim 'scenario: <name> -> <test file>:<test name>' --exit 0 --label HEURISTIC
+     --claim 'scenario: <name> -> <test file>:<test name>' -- <the command that runs that one test>
    ```
-   If you cannot find a test for a scenario, record it anyway with `--exit 1` — either way
-   (no row, or a `--exit 1` row) the gate lists it by name in its FAIL detail, but an
-   explicit `--exit 1` row documents that you looked and didn't find one, not that you
-   forgot to check.
+   If you cannot find a test for a scenario, name it in your summary as a gap: the gate lists it by name in its
+   FAIL detail.
 3. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` yourself before returning and fix
    any FAIL it reports.
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
@@ -66,8 +65,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 - Point `--artifact` at the real coverage report. The CLI downgrades `PROVEN` when the
   file does not exist.
 - Trace every `Scenario:` to a test, not only the ones you are confident about, and
-  copy the scenario name exactly from `intent.md`. A scenario with no test gets an
-  explicit `--exit 1` row, never silence.
+  copy the scenario name exactly from `intent.md`. A scenario with no test is a gap your
+  summary names, never silence.
 - For acceptance criteria the latest evidence row wins, so an older pass never hides a
   newer failure.
 

@@ -1431,8 +1431,8 @@ _ev_count_accepted_in() { # _ev_count_accepted_in <stage> <comma-separated sever
 }
 
 _ev_scenarios_covered() { # _ev_scenarios_covered <stage> -> count of DISTINCT scenarios
-                           # recorded with exit_code 0 (an agent traces each Gherkin
-                           # scenario to a test via --scenario "<name>" --exit <code>)
+                           # with a pass the CLI ran (evidence run --scenario "<name>",
+                           # Check, integrate); a row written with evidence add counts nowhere
   local stage="$1"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo 0; return; }

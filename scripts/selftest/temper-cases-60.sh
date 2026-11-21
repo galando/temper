@@ -206,8 +206,8 @@ assert_eq "w19 the old key: the template and the plugin's own config hold no cov
 fresh
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null 2>&1
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null 2>&1
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null 2>&1
+ev_scen check first
+ev_scen check second
 "$TEMPER" evidence add --stage check --claim "mutation score" --value 40 >/dev/null 2>&1
 "$TEMPER" gate check >/dev/null 2>&1
 assert_eq "w19 mutation is no row: a mutation score of 40 in Check's ledger gives no row that names mutation, and PASS" \

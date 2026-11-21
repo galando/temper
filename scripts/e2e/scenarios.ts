@@ -118,7 +118,7 @@ export const AGENTS: Record<string, Agent> = {
     t(w, `evidence run --stage check --claim 'tests' -- python3 -m unittest discover -s unit -t .`)
     t(w, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
     for (const s of ['CI JSON shape is stable across a run', 'Override rows name the approver', 'Same ledger gives the same bytes'])
-      t(w, `evidence add --stage check --scenario '${s}' --claim 'scenario: ${s}' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
+      t(w, `evidence run --stage check --scenario '${s}' --claim 'scenario: ${s}' -- python3 -m unittest discover -s unit -t .`)
     t(w, `evidence add --stage check --criterion AC-02 --claim 'the override rows were read by hand' --exit 0 --cmd 'read the output'`)
   },
 }
