@@ -3685,7 +3685,7 @@ main() {
   esac
   case "$sub ${1:-} ${2:-}" in   # WP32: a person only call, refused where the CLI can tell (scripts/person_call.py)
     "plan patch"*|"budget grant"*|"evidence clear"*|"state archive"*|"state init"*|"guards uninstall"*|"state set branch"|\
-"state set base_sha"|"state set run_mode") python3 -E -s "$SCRIPTS_DIR/person_call.py" "$sub" "$@" || return 1 ;;
+"state set base_sha"|"state set run_mode") python3 -E -s "$SCRIPTS_DIR/person_call.py" "$sub" "$@"; [[ $? -ne 1 ]] || return 1 ;;
   esac
   case "$sub" in
     init) cmd_init "$@" ;;
