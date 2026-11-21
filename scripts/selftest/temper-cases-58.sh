@@ -269,7 +269,7 @@ PY2
 }
 _fixed58
 assert_eq "fix: the commit card starts with the regression test as the CLI ran it" \
-  "commit.confirm|first=regression|RED: sh -c exit 3: failed (exit 3)|GREEN: true: passed|proof=fails before, passes" \
+  "commit.confirm|first=regression|RED: sh -c 'exit 3': failed (exit 3)|GREEN: true: passed|proof=fails before, passes" \
   "$(_x58 "k = d.get('card') or {}; ids = [s.get('id') for s in k.get('sections') or []]
 t = [str(x.get('text')) for x in (sec(d, 'regression') or {}).get('rows') or []]
 r = '%s|first=%s|%s|proof=%s' % ((d.get('ask') or {}).get('id'), ids[0] if ids else 'none',

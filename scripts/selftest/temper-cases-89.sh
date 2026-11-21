@@ -82,3 +82,33 @@ assert_eq "round 2 reviewer 2: the rule's run of a timed out group check with tw
   "mode=interactive|rule's move=auto group gate G1 --timeout-s 1200|logged=1" \
   "mode=$("$TEMPER" state get run_mode 2>/dev/null)|rule's move=$_r2r2_a_next|logged=$(_r2r2_log 'G1')"
 
+# --- rule 5 (fix cd38d16): the suite's own text, run as words with no shell, is another command ---
+# cd38d16 counts a run under the suite's claim only when its recorded cmd is the suite's text. `temper evidence run`
+# records "$*" of the words it ran with "$@", no shell, so the words of the suite's own text run another command: with
+# the suite `echo FAIL: test_a; exit 1` (the CLI's run fails, through the shell), an agent's
+# `evidence run --claim tests -- echo FAIL: test_a\; exit 1` runs echo (exit 0), records the suite's text, and passes the
+# row `tests pass` on the tree the verdict names.
+fresh; _r2r2_repo; printf 'check:\n  commands:\n    test: "echo FAIL: test_a; exit 1"\n' >> .claude/temper.config
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+_r2r2_c_before="$(_r2r2_g "r = '%s:%s' % (g.get('verdict'), row('tests pass').get('pass'))")"
+"$TEMPER" evidence run --stage check --claim 'tests: the suite (run by the CLI)' -- echo FAIL: 'test_a;' exit 1 >/dev/null 2>&1
+"$TEMPER" gate check >/dev/null 2>&1
+assert_eq "round 2 reviewer 2: the words of the suite's text run with no shell are no run of the suite: tests pass stays failed" \
+  "before=FAIL:False|after=False" \
+  "before=$_r2r2_c_before|after=$(_r2r2_g "r = row('tests pass').get('pass')")"
+
+# --- rule 5 (fix 2b8953d): a scenario's own Test: text, run as words with no shell, traces it ---
+# The same gap in acceptance.scenario_runs: the scenario's Test: line is a shell command (`echo FAIL: first; false`, the
+# CLI's run fails), and `evidence run --scenario first -- echo FAIL: 'first;' false` records that very text and exit 0.
+fresh; _r2r2_repo; printf 'check:\n  commands:\n    test: "true"\n' >> .claude/temper.config
+sed -i '0,/  Test: true/s//  Test: echo FAIL: first; false/' .temper/specs/demo/intent.md
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+_r2r2_d_before="$(_r2r2_g "r = '%s:%s' % (row('scenarios traced').get('pass'), row('acceptance evidence').get('pass'))")"
+"$TEMPER" evidence run --stage check --scenario first --claim 'scenario: first' -- echo FAIL: 'first;' false >/dev/null 2>&1
+"$TEMPER" gate check >/dev/null 2>&1
+assert_eq "round 2 reviewer 2: the words of a scenario's Test: text run with no shell do not trace the scenario whose Test failed" \
+  "before=False:False|after=False:False" \
+  "before=$_r2r2_d_before|after=$(_r2r2_g "r = '%s:%s' % (row('scenarios traced').get('pass'), row('acceptance evidence').get('pass'))")"
+

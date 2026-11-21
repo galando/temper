@@ -1265,7 +1265,7 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
   local tree=""; [[ "$stage" == check ]] && tree="$(python3 -E -s "$SCRIPTS_DIR/run_env.py" tree "$REPO_ROOT" 2>/dev/null)"
   "$@"
   local exit_code=$?
-  local cmd_str="$*"
+  local cmd_str; cmd_str="$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" shell-join "$@")"   # rule 5: the words as they ran
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || (set -C; echo '[]' > "$file") 2>/dev/null || true
   local entry
