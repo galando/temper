@@ -170,3 +170,15 @@ _r84_hand="$("$TEMPER" evidence resolve --stage review --id 1 --fixed-by "$_r84_
 assert_eq "review 4: R8b a finding of a later Review round is not resolved by hand with an earlier repair's commit" \
   "repair 1=resolved|second Review=FAIL|hand resolve=refused|after=FAIL" \
   "repair 1=$_r84_first|second Review=$_r84_second|hand resolve=$_r84_hand|after=$(_verdict84 review)"
+
+# --- rule 8 (row D37): an open blocking finding is erased by `temper evidence clear --stage review` ---
+# No question offers the call (only the mod refuses it: tests/mod/final-review.test.ts); with the mod off the CLI empties
+# Review's ledger and the Review gate passes with the High finding gone: no repair commit, no checks, no recheck.
+_review84 high
+_r84_before="$(_verdict84 review)"
+_r84_clear="$("$TEMPER" evidence clear --stage review >/dev/null 2>&1 && echo taken || echo refused)"
+_done84 src/demo.sh src/demo_test.sh
+"$TEMPER" gate review >/dev/null 2>&1
+assert_eq "review 4: R8a an open High finding is not erased by evidence clear: the call is refused and the Review gate stays FAIL" \
+  "before=FAIL|clear=refused|after=FAIL|finding kept" \
+  "before=$_r84_before|clear=$_r84_clear|after=$(_verdict84 review)|$(_ledger84 review "'finding kept' if any(x.get('severity') == 'high' for x in e) else 'finding gone'")"

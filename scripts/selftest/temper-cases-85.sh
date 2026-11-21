@@ -155,3 +155,16 @@ assert_eq "review 5: a repair the rule starts after the approval in a run that a
   "mode=interactive|rule's move=auto repair start --stage review|ran=0|spent=1|logged=1" \
   "mode=$("$TEMPER" state get run_mode 2>/dev/null)|rule's move=$_r10c_next|ran=$_r10c_rc|spent=$(_used85 gate:review)|logged=$(_log85 'repair')"
 rm -rf .git src
+
+# --- rule 9: only the person grants more; a run that goes on by itself does not ---
+# The CLI refuses `--fresh` (Run it anyway) in a run that goes on by itself, since only the person takes it (budget.py
+# spend). `budget grant` has no such refusal: with the mod off the unattended run grants itself two more and spends them.
+# At the limit the run parks first (flow.py budget_guard), so the person's grant comes while no run goes on by itself.
+_armed85 '{"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): true", "ran": true, "fail_lines": ["x"]}'
+"$TEMPER" group fix G1 >/dev/null 2>&1; "$TEMPER" group fix G1 >/dev/null 2>&1
+"$TEMPER" group fix G1 >/dev/null 2>&1; _r9b_third=$?
+"$TEMPER" budget grant --key group:G1 --reason 'the run grants itself' >/dev/null 2>&1; _r9b_grant=$?
+"$TEMPER" group fix G1 >/dev/null 2>&1; _r9b_fourth=$?
+assert_eq "review 5: a run that goes on by itself cannot grant itself more repeats; the grant is the person's at a stop" \
+  "third=1|grant while unattended=1|fourth=1|spent=2" \
+  "third=$_r9b_third|grant while unattended=$_r9b_grant|fourth=$_r9b_fourth|spent=$(_used85 group:G1)"
