@@ -2,6 +2,7 @@
 """rule_log.py: the record of what a rule decided in a run that goes on by itself (9.8.5, WP11, ADR 0019 decision 3).
 
   python3 rule_log.py append KIND STAGE WHAT     adds {"kind", "stage", "what", "ts"} to .temper/rule-log.json
+  python3 rule_log.py append KIND STAGE WHAT --by-rule    the same, for a step a rule takes in every mode (see append)
   python3 rule_log.py show                       prints the record as JSON
 
 The kinds `advance`, `repair`, `group fix`, `covered` and `amend` (WP25) are what a rule did: they are written only while the run state
@@ -71,9 +72,9 @@ def append(kind, stage, what, by_rule=False):
 
 
 def main(argv):
-    if len(argv) == 5 and argv[1] == "append":
+    if len(argv) in (5, 6) and argv[1] == "append" and argv[5:] in ([], ["--by-rule"]):
         try:
-            return append(argv[2], argv[3], argv[4])
+            return append(argv[2], argv[3], argv[4], by_rule=argv[5:] == ["--by-rule"])
         except OSError as e:
             print("WARN: the rule log could not be written (%s)" % e, file=sys.stderr)
             return 0
