@@ -324,7 +324,7 @@ export function nextStep(v: View): string {
     case 'gate':
       return `ask the \`${v.next.header ?? 'Temper gate'}\` question exactly as \`temper next --json\` gives it, then wait`
     case 'armed':
-      return 'the run is armed: run the calls `temper next --json` gives, and never ask "Shall I...?"'
+      return 'the run goes on by itself: run the calls `temper next --json` gives, and never ask "Shall I...?"'
     default:
       return v.next.say ? `${v.next.say} Do what \`temper next --json\` says.` : 'do what `temper next --json` says'
   }

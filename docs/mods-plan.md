@@ -548,7 +548,7 @@ guarded in every phase.
 
 ```
 Temper enforcement: active
-Phase: Build (task 3 of 7) · Intent: "Password reset by email"
+Stage: Build (task 3 of 7) · Intent: "Password reset by email"
 Criteria: 2 of 5 passed (AC-01, AC-03)
 Next: ...
 ```
