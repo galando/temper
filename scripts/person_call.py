@@ -74,12 +74,13 @@ def refusal(words):
         return ("BLOCKED: temper %s is the person's answer at a question; a run that goes on by itself never makes it (no "
                 "stop is open)" % " ".join(w[:2]))
     if w[:2] == ["evidence", "clear"]:
-        stage = next((y for x, y in zip(w, w[1:]) if x == "--stage"), "")
-        opens = open_findings(stage) if re.fullmatch(r"[a-z]+", stage) else []
-        if opens:
-            return ("FAIL: the %s ledger holds %d open finding(s) (%s); a cleared ledger would erase them. The CLI resolves a "
-                    "finding (temper repair close), and the person keeps one with temper evidence accept"
-                    % (stage, len(opens), str(opens[0].get("claim"))[:120]))
+        # every --stage of the call: the CLI clears the stage its own loop reads, the last one, so each one is checked
+        for stage in [y for x, y in zip(w, w[1:]) if x == "--stage"]:
+            opens = open_findings(stage) if re.fullmatch(r"[a-z]+", stage) else []
+            if opens:
+                return ("FAIL: the %s ledger holds %d open finding(s) (%s); a cleared ledger would erase them. The CLI "
+                        "resolves a finding (temper repair close), and the person keeps one with temper evidence accept"
+                        % (stage, len(opens), str(opens[0].get("claim"))[:120]))
     if w[:4] == ["state", "set", "run_mode", "autonomous"]:
         from flow_run import Run
         if not Run({}).may_run_alone():
