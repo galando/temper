@@ -83,11 +83,11 @@ mv .claude/temper.config.keep .claude/temper.config
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 assert_eq "advance: leaving Plan keeps the plan's files as approved, and the commit the diff is read against" \
-  "README.md,src/demo.sh|yes" \
+  "src/demo.sh|yes" \
   "$(python3 -c "import json; d = json.load(open('.temper/build-state.json')); print(','.join(sorted(d.get('approved_files', []))) + '|' + ('yes' if d.get('base_sha') else 'no'))")"
 printf '| `src/widened.sh` | added during Build |\n' >> .temper/specs/demo/plan.md
 "$TEMPER" evidence add --stage build --claim "a row" >/dev/null 2>&1
-assert_eq "view: Build is held to the approved files, not to a plan.md edited since" "README.md,src/demo.sh|True" \
+assert_eq "view: Build is held to the approved files, not to a plan.md edited since" "src/demo.sh|True" \
   "$(vw "','.join(sorted(d['guard']['plan_files'])) + '|' + str(d['plan']['approved'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan

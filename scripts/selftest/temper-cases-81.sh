@@ -102,3 +102,19 @@ sed -i 's/the page shows the red banner/nothing at all/' .temper/specs/demo/task
 "$TEMPER" gate build >/dev/null 2>&1
 assert_eq "review 1: R2c a changed manual Test line of tasks.md, shown on the approval card, fails the Build gate after the approval" \
   "shown|False" "$([[ "$_r1_cmds" == *"red banner"* ]] && echo shown || echo "not shown: $_r1_cmds")|$(_r1_row build "$_R1_ROW")"
+
+# --- rule 2: the approved file set is the set the card showed ---
+_r1_at_plan
+printf '# Plan\n\n## Approach\nThe demo.\n\n## Files to modify\n| File | Why |\n|---|---|\n| `src/r1-hidden.sh` | in no task |\n' > .temper/specs/demo/plan.md
+_r1_files="$(_r1_card_section files)"
+_r1_run ask-every-stage
+_r1_appr="$("$TEMPER" state get approved_files 2>/dev/null)"
+assert_eq "review 1: R2d every file the approval records in approved_files is a file the approval card showed" \
+  "src/demo.sh" "$(python3 -c "
+import json, sys
+shown = sys.argv[2].split('|')
+try:
+    a = json.loads(sys.argv[1])
+except ValueError:
+    a = []
+print(','.join(sorted(f for f in a if f in shown)) + ''.join(' not shown: %s' % f for f in a if f not in shown))" "$_r1_appr" "$_r1_files")"
