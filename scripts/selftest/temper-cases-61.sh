@@ -467,8 +467,8 @@ import json
 r = [x for x in json.load(open('.temper/evidence/check.json')) if str(x.get('claim', '')).startswith('acceptance (written')]
 print(r[-1].get('exit_code') if r else 'no acceptance row')" 2>&1)"
 
-# --- w20 fix run and door: a red base of kind red-base in a fix run is recorded, a failing setup line asks; a door
-#     into Review checks the environment and runs no suite ---
+# --- w20 fix run and door: a red base of kind red-base in a fix run is recorded, a failing setup line asks (WP28: the
+#     door cases went with the doors) ---
 _fix61() { # _fix61 [config lines]: a fix run at its root cause, on a project whose suite fails on the base
   fresh; _clean61; _scripts61; _cmd61 "bash fail61.sh"
   [[ -z "${1:-}" ]] || printf '%s\n' "$1" >> .claude/temper.config
@@ -485,22 +485,4 @@ _f61+="|setup line=$(_b61 "'%s:%s' % (d.get('result'), d.get('kind'))"):$(_x61 "
 "$TEMPER" baseline clean >/dev/null 2>&1 || true
 assert_eq "w20 fix run and door: a fix run records a red base of kind red-base with the answer fix-run and asks nothing; a failing setup line asks" \
   "red-base=red:red-base:fix-run:not asked|setup line=red:setup-line:asked" "$_f61"
-fresh; _clean61; _scripts61; _cmd61 "bash pass61.sh"; _repo61
-"$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1
-rm -f .temper/evidence/baseline.json
-_d61="$(_x61 "c = [short(x) for x in d.get('calls') or []]
-r = '%s:%s' % (d.get('action'), 'env-only' if 'baseline start --env-only' in c else 'calls: %s' % c)")"
-while IFS= read -r _c61; do
-  [[ -n "$_c61" ]] && TEMPER_BASELINE_FOREGROUND=1 bash -c "$_c61" >/dev/null 2>&1
-done < <(_x61 "r = '\n'.join(d.get('calls') or []) if d.get('action') == 'auto' else ''")
-assert_eq "w20 fix run and door: a door into Review runs the environment check and no suite on the base" \
-  "auto:env-only|runs=0|file" "$_d61|runs=$(_runs61)|$([[ -f .temper/evidence/baseline.json ]] && echo file || echo 'no file')"
-"$TEMPER" baseline clean >/dev/null 2>&1 || true
-fresh; _clean61; _scripts61; _cmd61 "bash pass61.sh"; printf 'setup:\n  services:\n    db61: 127.0.0.1:1\n' >> .claude/temper.config
-_repo61; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1
-rm -f .temper/evidence/baseline.json; _settle61
-assert_eq "w20 fix run and door: a door into Review whose environment check finds a fault asks no red base question" \
-  "red:service-down:door|runs=0|asked=no" \
-  "$(_b61 "'%s:%s:%s' % (d.get('result'), d.get('kind'), 'door' if d.get('env_only') else 'no door')")|runs=$(_runs61)|asked=$(_x61 "r = 'base.red' if (d.get('ask') or {}).get('id') == 'base.red' else 'no'")"
-"$TEMPER" baseline clean >/dev/null 2>&1 || true
 _clean61; rm -f .git/count61 .git/where61; rm -rf .git/bin61

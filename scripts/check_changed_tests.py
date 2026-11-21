@@ -227,20 +227,31 @@ def listed_names(root):
     starting with `|`, and the files are the texts of the code spans of its second cell. A row covers a change only
     in a file it names, so a name two files share is listed for each on its own; a code span anywhere else on the page
     (its intro, the other columns) names nothing."""
-    path = os.path.join(root, LISTING)
-    if not os.path.isfile(path):
-        return {}
     names = {}
-    with open(path, encoding="utf-8") as f:
-        for line in f.read().split("\n"):
-            if not line.startswith("|"):
-                continue
-            row = cells(line)
-            m = SPAN.fullmatch(row[0]) if row else None
-            if m is not None:
-                files = set(x.group(2).strip() for x in SPAN.finditer(row[1])) if len(row) > 1 else set()
-                names.setdefault(m.group(2).strip(), set()).update(files)
+    for path in listing_pages(root):
+        with open(path, encoding="utf-8") as f:
+            for line in f.read().split("\n"):
+                if not line.startswith("|"):
+                    continue
+                row = cells(line)
+                m = SPAN.fullmatch(row[0]) if row else None
+                if m is not None:
+                    files = set(x.group(2).strip() for x in SPAN.finditer(row[1])) if len(row) > 1 else set()
+                    names.setdefault(m.group(2).strip(), set()).update(files)
     return names
+
+
+def listing_pages(root):
+    """The page and its continuation pages, `changed-tests-2.md` and on, read the same way: one page cannot pass
+    the plugin directory's 256 KiB limit for a file, so the table goes on in the next page."""
+    first = os.path.join(root, LISTING)
+    pages = [first] if os.path.isfile(first) else []
+    stem = first[:-len(".md")]
+    n = 2
+    while os.path.isfile("%s-%d.md" % (stem, n)):
+        pages.append("%s-%d.md" % (stem, n))
+        n += 1
+    return pages
 
 
 def is_comment(line):

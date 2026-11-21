@@ -148,5 +148,5 @@ Before that commit, the commit steps of `temper next` add one record, committed 
   the CLI refuses a repeat past it, and the run asks the person.
 - The attempts fail → keep the regression test (it proves the bug), show the RCA and
   what you tried, ask for context.
-- It's actually a design flaw, not a bug → "this needs `/temper:plan` for a redesign,
+- It's actually a design flaw, not a bug → "this needs a `/temper:temper` run for a redesign,
   not a patch"; offer a workaround with a TODO if one exists.

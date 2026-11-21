@@ -5,6 +5,9 @@
 # Plain-bash assertions, no test framework dependency (consistent with the rest of
 # Temper's tooling). Runs entirely in a throwaway tmp dir; never touches the repo.
 set -uo pipefail
+# grep -q stops at the first match, so a command before it that writes again (echo and printf too) can die of
+# SIGPIPE, and pipefail fails the pipe: a variable goes to grep as a here-string (`grep -q PATTERN <<<"$OUT"`), and
+# after a command grep reads its whole input (`grep -c PATTERN >/dev/null`).
 # No case reads the terminal: a hook a case runs with no input of its own reads an empty standard
 # input, also when the suite itself is started with one left open.
 exec </dev/null
@@ -243,7 +246,7 @@ _git_list() { # _git_list <git folder>: every file and folder in it, sorted, but
 _cli_files() { # _cli_files <folder>: copies the CLI and the files it runs into a throwaway plugin's scripts folder
   local m
   cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" \
-    "$REPO_ROOT/scripts/flow.py" "$REPO_ROOT/scripts/temper-help.txt" "$1"
+    "$REPO_ROOT/scripts/flow.py" "$REPO_ROOT/scripts/repair_ops.py" "$REPO_ROOT/scripts/temper-help.txt" "$REPO_ROOT/scripts/cli_ctx.py" "$1"   # repair_ops: evidence add asks it of a Scope drift answer; cli_ctx: the models
   for m in $CLI_MODULES; do cp "$REPO_ROOT/$m" "$1"; done
 }
 _cli_text() { # the text of the CLI and of its Python modules

@@ -27,8 +27,8 @@ def override_covers(argv):
                       for o in over) else 1)
 
 
-# the test files the commit gate allows beside the plan's, and a repair may commit (WP24: a shell test, as task_ops reads it)
-TEST_RE = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\.py$|_test\.(py|go|sh)$|\.(test|spec)\.[cm]?[jt]sx?$|Tests?\.(java|kt|cs)$|_spec\.rb$')
+# the test files the commit gate allows beside the plan's, and a repair may commit (WP24: the pattern of the base, unchanged)
+TEST_RE = re.compile(r'(^|/)(tests?|unit|spec|__tests__)/|(^|/)test_[^/]*\.py$|_test\.(py|go)$|\.(test|spec)\.[cm]?[jt]sx?$|Tests?\.(java|kt|cs)$|_spec\.rb$')
 
 
 def blast_radius(argv):

@@ -95,7 +95,7 @@ Git workflow — conventional commits, branching strategy. Enabled by default.
 
 ## Creating Custom Packs
 
-**Recommended:** Use `/temper:pack` to create packs interactively. At its menu, choose **Other** and describe the pack: the full pack builder scans your codebase, asks about your conventions, and generates a custom `rules.md` tailored to your team. **Quick-create launcher pack** wraps a skill or command your session lists as a BLOCK-level pack.
+**Recommended:** Use `/temper:temper pack` to create packs interactively. At its menu, choose **Other** and describe the pack: the full pack builder scans your codebase, asks about your conventions, and generates a custom `rules.md` tailored to your team. **Quick-create launcher pack** wraps a skill or command your session lists as a BLOCK-level pack.
 
 ### Manual Creation
 
@@ -162,8 +162,8 @@ packs:
 ```
 
 The guardrails pack is different: its work is done by guard hooks in a project settings file,
-so adding it to `packs:` alone turns nothing on. Use `/temper:pack enable guardrails` and
-`/temper:pack disable guardrails` instead ([Guardrails](commands.md#guardrails)).
+so adding it to `packs:` alone turns nothing on. Use `/temper:temper pack enable guardrails` and
+`/temper:temper pack disable guardrails` instead ([Guardrails](commands.md#guardrails)).
 
 ## Pack Discovery
 

@@ -9,8 +9,7 @@ estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) car
 (`evidence run` for a test run, `evidence add` for a measured value); this doc is the methodology behind what to run
 and how to interpret it.
 
-**Mode:** Check runs as a stage of `/temper` (also when `/temper:check` starts it: the
-command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
+**Mode:** Check runs as a stage of `/temper`, in a clean subprocess with no `AskUserQuestion` gate:
 return the summary, the orchestrator owns the gate and the commit. Load `.temper/specs/{feature}/review-context.json` if present.
 
 ## Step 1: Detect Stack
@@ -62,12 +61,11 @@ reads `intent.md` and checks behavior against what was promised.
 1. Resolve `{spec}`: the `--spec-path` this run was given, else
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`. Neither gives a spec path → SKIP
    this level entirely (never pick a spec folder by guessing).
-2. Extract every `Scenario:` (name + Given/When/Then) from `intent.md`.
-3. Match each scenario to a test: MCP `query_graph_tool` by name annotation → `[PROVEN]`;
-   else grep test files for the scenario name (snake_case/camelCase) → `[HEURISTIC]`; no
-   match → UNMATCHED. `check.live-scenarios` (`prompt`|`always`|`never`, default
-   `prompt`) controls whether to ask before running matched tests for real; `never` falls
-   back to heuristic-only.
+2. Extract every `Scenario:` (name, its `Then` line and its `Test:` line) from `intent.md`.
+3. Match each scenario to a test: the test its `Test:` line names → `[PROVEN]`; else MCP `query_graph_tool` by name
+   annotation → `[PROVEN]`; else grep test files for the scenario name (snake_case/camelCase) → `[HEURISTIC]`; no match
+   → UNMATCHED. `check.live-scenarios` (`prompt`|`always`|`never`, default `prompt`) controls whether to ask before
+   running matched tests for real; `never` falls back to heuristic-only.
 4. Run each matched test individually (`jest --testNamePattern`, `pytest ::test_name`,
    `mvn -Dtest=`, `go test -run`, `cargo test name --`, etc.) and capture PASS/FAIL/time
    — label `[PROVEN]`, real runner output.
@@ -114,7 +112,7 @@ the CLI: `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append coverage <pct>`,
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append lint_violations <count>`, never by
 hand-editing `.temper/metrics.json`: these arrays are what `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` computes
 control bands from, so the monitor must read a ledger the spine wrote. (Full debt
-analysis is `/temper:status`'s job, not Check's — don't slow the pipeline down
+analysis is the job of the word `status`, not Check's — don't slow the pipeline down
 repeating it here.)
 
 If every level passed and files changed: generate up to 5 config suggestions

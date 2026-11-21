@@ -96,7 +96,7 @@ echo '[]' > .temper/evidence/check.json
 assert_eq "9.8.0: check run records the suite as a CLI run that passed" "0|cli" \
   "$(python3 -c "import json; r=[x for x in json.load(open('.temper/evidence/check.json')) if x['claim'].startswith('tests:')][-1]; print('%s|%s' % (r['exit_code'], r['executed_by']))")"
 assert_eq "9.8.0: with no coverage command the coverage row is not measured and names what to set" "yes" \
-  "$(_gc | grep -q "\[?\] coverage — not measured: .*set check.commands.coverage" && echo yes || echo no)"
+  "$(_gc | grep -c "\[?\] coverage — not measured: .*set check.commands.coverage" >/dev/null && echo yes || echo no)"
 assert_eq "9.8.0: tests that pin every band catch the planted bugs: check ahead records each one caught" "measured|all caught" \
   "$(_planted15)"
 cat > unit/test_calc.py <<'PYEOF'
@@ -130,12 +130,12 @@ printf 'import unittest\nfrom lib import money\n\n\nclass T(unittest.TestCase):\
 echo '[]' > .temper/evidence/check.json
 "$TEMPER" check run >/dev/null 2>&1
 assert_eq "9.8.0: a regression test that fails on the code before the fix proves it" "yes" \
-  "$(_gc | grep -q '\[v\] regression proof — the new or changed tests (unit/test_money.py) fail on the code before the fix' && echo yes || echo no)"
+  "$(_gc | grep -c '\[v\] regression proof — the new or changed tests (unit/test_money.py) fail on the code before the fix' >/dev/null && echo yes || echo no)"
 printf 'import unittest\nfrom lib import money\n\n\nclass T(unittest.TestCase):\n    def test_total(self):\n        self.assertEqual(money.total(2, 0), 2)\n' > unit/test_money.py
 echo '[]' > .temper/evidence/check.json
 "$TEMPER" check run >/dev/null 2>&1
 assert_eq "9.8.0: a test that passes before the fix too proves nothing: the regression row fails" "yes" \
-  "$(_gc | grep -q '\[x\] regression proof — the new or changed tests (unit/test_money.py) pass on the code before the fix too' && echo yes || echo no)"
+  "$(_gc | grep -c '\[x\] regression proof — the new or changed tests (unit/test_money.py) pass on the code before the fix too' >/dev/null && echo yes || echo no)"
 
 # --- 4. Acceptance tests written from the intent before Build, by an agent that writes no code; Check runs them as locked ---
 _at_build() { # the plan approved, Build not started (no group yet), an intent on file
@@ -166,11 +166,11 @@ open(p, 'w').write(s)
 PYEOF
 echo '[]' > .temper/evidence/build.json; "$TEMPER" check build-checks >/dev/null 2>&1
 assert_eq "WP23: the checks when Build ends run the locked acceptance tests, and the Build gate reads that they pass" "yes" \
-  "$(_gb | grep -q '\[v\] acceptance tests written before Build — they pass, unchanged since they were locked' && echo yes || echo no)"
+  "$(_gb | grep -c '\[v\] acceptance tests written before Build — they pass, unchanged since they were locked' >/dev/null && echo yes || echo no)"
 printf '\n# a builder edits it\n' >> .temper/specs/demo/acceptance/test_ac.py
 echo '[]' > .temper/evidence/build.json; "$TEMPER" check build-checks >/dev/null 2>&1
 assert_eq "WP23: an acceptance test changed after the lock fails the Build gate, naming the file" "yes" \
-  "$(_gb | grep -q '\[x\] acceptance tests written before Build — changed after they were locked: .temper/specs/demo/acceptance/test_ac.py' && echo yes || echo no)"
+  "$(_gb | grep -c '\[x\] acceptance tests written before Build — changed after they were locked: .temper/specs/demo/acceptance/test_ac.py' >/dev/null && echo yes || echo no)"
 
 # --- 5. The scope row in every run with a plan; park-on-touch parks only for a file outside the plan ---
 f9_tasks | m_setup
@@ -179,13 +179,13 @@ _clear_root
 mkdir -p src unit docs/decisions; echo a > src/a.sh; echo t > unit/a_test.sh
 _gcm() { "$TEMPER" gate commit 2>&1 || true; }
 assert_eq "9.8.0: an interactive run's planned and test files are in scope" "yes" \
-  "$(_gcm | grep -q '\[v\] blast radius — 2 changed, all declared' && echo yes || echo no)"
+  "$(_gcm | grep -c '\[v\] blast radius — 2 changed, all declared' >/dev/null && echo yes || echo no)"
 echo adr > docs/decisions/0001-x.md
 assert_eq "9.8.0: an interactive run with a file nobody planned fails the scope row, naming it" "yes" \
-  "$(_gcm | grep -q '\[x\] blast radius — changed outside declared files: docs/decisions/0001-x.md' && echo yes || echo no)"
+  "$(_gcm | grep -c '\[x\] blast radius — changed outside declared files: docs/decisions/0001-x.md' >/dev/null && echo yes || echo no)"
 "$TEMPER" evidence add --stage build --phase feedback --claim "drift docs/decisions/0001-x.md: Add to plan: the person wants the record" >/dev/null 2>&1
 assert_eq "9.8.0: a file the person added to the plan at a Scope drift question is in scope" "yes" \
-  "$(_gcm | grep -q '\[v\] blast radius — 3 changed, all declared' && echo yes || echo no)"
+  "$(_gcm | grep -c '\[v\] blast radius — 3 changed, all declared' >/dev/null && echo yes || echo no)"
 rm -rf docs
 python3 - <<'PYEOF'
 p = '.temper/specs/demo/tasks.md'; s = open(p).read()
@@ -196,13 +196,13 @@ _ran_unattended   # WP11: a run the person started at the approval, now at the c
 mkdir -p src/billing; echo r > src/billing/rates.sh
 printf 'autonomy:\n  enabled: true\n  park-on-touch: ["**/billing/**"]\n' > .claude/temper.config
 assert_eq "9.8.0: an unattended run's planned change to a park-on-touch path does not park" "yes" \
-  "$(_gcm | grep -q '\[v\] park-on-touch paths' && echo yes || echo no)"
+  "$(_gcm | grep -c '\[v\] park-on-touch paths' >/dev/null && echo yes || echo no)"
 echo x > src/billing/other.sh
 assert_eq "9.8.0: a change to a park-on-touch path outside the plan still parks" "yes" \
-  "$(_gcm | grep -q '\[x\] park-on-touch paths — src/billing/other.sh matches \*\*/billing/\*\* and is not in the plan' && echo yes || echo no)"
+  "$(_gcm | grep -c '\[x\] park-on-touch paths — src/billing/other.sh matches \*\*/billing/\*\* and is not in the plan' >/dev/null && echo yes || echo no)"
 "$TEMPER" state set run_mode interactive >/dev/null 2>&1   # a skip or a step back ended it: the run asks the person again
 assert_eq "WP11: a run that went on by itself keeps that record, and the commit gate still holds it to park-on-touch after it ended" "true|yes" \
-  "$("$TEMPER" state get ran_unattended)|$(_gcm | grep -q '\[x\] park-on-touch paths — src/billing/other.sh' && echo yes || echo no)"
+  "$("$TEMPER" state get ran_unattended)|$(_gcm | grep -c '\[x\] park-on-touch paths — src/billing/other.sh' >/dev/null && echo yes || echo no)"
 assert_exit "9.8.0: the record is the CLI's: state set ran_unattended is refused" 1 "$TEMPER" state set ran_unattended false
 
 # --- 6. The Context check names what the plan leaves out; an answer other than "As planned" sends Plan back with it ---
@@ -290,7 +290,7 @@ PYEOF
   echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
   assert_eq "9.8.0: Node: the suite passes, its coverage is read from node --test, and check ahead finds pinned bands catch the planted bugs" \
     "yes|yes|measured|all caught" \
-    "$(_gc | grep -q '\[v\] tests pass' && echo yes || echo no)|$(_gc | grep -q '\[v\] coverage — .*100' && echo yes || echo no)|$(_planted15)"
+    "$(_gc | grep -c '\[v\] tests pass' >/dev/null && echo yes || echo no)|$(_gc | grep -c '\[v\] coverage — .*100' >/dev/null && echo yes || echo no)|$(_planted15)"
   printf 'import test from "node:test";\nimport assert from "node:assert";\nimport { grade } from "../src/grade.js";\ntest("g", () => { assert.ok("ABF".includes(grade(95))); });\n' > test/grade.test.js
   echo '[]' > .temper/evidence/check.json; "$TEMPER" check run >/dev/null 2>&1
   assert_eq "9.8.0: Node: a test that only runs the code misses the planted bugs, which check ahead names" "measured|survivors" \
@@ -410,12 +410,12 @@ open(p, 'w').write(s)
 PYEOF
 echo '[]' > .temper/evidence/build.json; "$TEMPER" check build-checks >/dev/null 2>&1
 assert_eq "WP23: reopened and not locked again, the Build gate fails the acceptance row" "yes" \
-  "$(_gb | grep -q '\[x\] acceptance tests written before Build — reopened to correct a test' && echo yes || echo no)"
+  "$(_gb | grep -c '\[x\] acceptance tests written before Build — reopened to correct a test' >/dev/null && echo yes || echo no)"
 printf '\n# corrected against the intent\n' >> .temper/specs/demo/acceptance/test_ac.py
 assert_exit "9.8.0: a reopened lock is locked again" 0 "$TEMPER" acceptance lock --cmd "$ACMD"
 echo '[]' > .temper/evidence/build.json; "$TEMPER" check build-checks >/dev/null 2>&1
 assert_eq "WP23: the corrected tests pass at the Build gate, and the row names the person's reason" "yes" \
-  "$(_gb | grep -q '\[v\] acceptance tests written before Build — they pass, as the person corrected them after the lock (The test asks for what the intent does not say)' && echo yes || echo no)"
+  "$(_gb | grep -c '\[v\] acceptance tests written before Build — they pass, as the person corrected them after the lock (The test asks for what the intent does not say)' >/dev/null && echo yes || echo no)"
 assert_exit "9.8.0: and it is locked once more" 1 "$TEMPER" acceptance lock --cmd "$ACMD"
 gpass build review; "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state advance review_complete check >/dev/null 2>&1
 # The corrected tests fail again (a measured run: a second wrong test): the acceptance row alone fails. The tests row reads
@@ -427,7 +427,7 @@ cat > .temper/evidence/check.json <<'JSON'
   "output": "FAIL: test_ac05 AssertionError: 401 != 423"}]
 JSON
 assert_eq "9.8.0: a corrected acceptance run that fails again fails its own row, never the tests row" "yes|yes" \
-  "$(_gc | grep -q '\[v\] tests pass' && echo yes || echo no)|$(_gc | grep -q '\[x\] acceptance tests written before Build' && echo yes || echo no)"
+  "$(_gc | grep -c '\[v\] tests pass' >/dev/null && echo yes || echo no)|$(_gc | grep -c '\[x\] acceptance tests written before Build' >/dev/null && echo yes || echo no)"
 
 # a step back from Check carries the failing output to Build's fix pass (WP19: the planted bug score is no row of Check,
 # so no surviving mutant goes with it)
@@ -441,7 +441,9 @@ assert_eq "9.8.0: the step back keeps the failing test's output" "yes" \
 import json; f = json.load(open('.temper/feedback-loops.json'))['active_loops'][0]['findings']; j = ' '.join(f)
 print('yes' if '404 != 200' in j else 'no')")"
 python3 -c "
-import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['built_before'] = True; json.dump(d, open(p, 'w'))"   # the fix pass
+import json, re; ids = re.findall(r'^## Group (G[0-9]+)', open('.temper/specs/demo/tasks.md').read(), re.M)
+json.dump({'version': 1, 'slug': 'demo', 'groups': {g: {'status': 'passed', 'gate': {'verdict': 'PASS'}} for g in ids},
+           'integration': {'verdict': 'PASS'}}, open('.temper/groups.json', 'w'))"   # the fix pass: the groups are built and merged (WP28: no built_before)
 assert_eq "9.8.0: the fix pass is told the acceptance tests are locked, and to report a wrong one instead of editing it" "yes" \
   "$(nx "'yes' if any('The acceptance tests are locked: change the code, never a test' in a['prompt'] for a in d.get('agents', [])) else 'no'")"
 
@@ -547,13 +549,13 @@ assert_eq "WP14: the Intent gate fails on the open question and records nothing 
 assert_eq "9.8.0: a choice marked (house rule) is listed first, as the recommended answer" "Who may run it? choices: Clerks and admins (house rule) | Admins only | Anyone" \
   "$(nx "d['blocking'][0]")"
 assert_eq "9.8.0: a draft intent with no Rules covered section fails the rules checklist row, naming every item" "yes" \
-  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q 'rules checklist covered — ### Rules covered has no asked, assumed or not applicable line for: Who, When, How much, Exempt, States, Where it shows, Exceptions' && echo yes || echo no)"
+  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -c 'rules checklist covered — ### Rules covered has no asked, assumed or not applicable line for: Who, When, How much, Exempt, States, Where it shows, Exceptions' >/dev/null && echo yes || echo no)"
 printf '\n### Rules covered\n\n- Who: asked\n- When: not applicable (no time rule)\n- How much: not applicable\n- Exempt: not applicable (every run is reported)\n- States: assumed (none change)\n- Where it shows: assumed\n' >> .temper/specs/demo/intent.md
 assert_eq "9.8.0: an item left out still fails the row" "yes" \
-  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q 'line for: Exceptions$' && echo yes || echo no)"
+  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -c 'line for: Exceptions$' >/dev/null && echo yes || echo no)"
 printf -- '- Exceptions: asked (twice, gone)\n' >> .temper/specs/demo/intent.md
 assert_eq "9.8.0: every item covered: the row passes" "yes" \
-  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -q '\[v\] rules checklist covered' && echo yes || echo no)"
+  "$({ "$TEMPER" gate intent 2>&1 || true; } | grep -c '\[v\] rules checklist covered' >/dev/null && echo yes || echo no)"
 
 # the triage of a failing locked test sets which option the Check question recommends
 f9_tasks | m_setup
@@ -586,7 +588,7 @@ printf '\n**States:** active, canceled\n' >> .temper/specs/demo/intent.md
 mkdir -p .temper/specs/demo/acceptance
 printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ac01_active(self):\n        self.assertEqual("active", "active")\n' > .temper/specs/demo/acceptance/test_ac.py
 assert_eq "9.8.0: the lock refuses tests that never name a listed state" "1|yes" \
-  "$("$TEMPER" acceptance lock --cmd "$ACMD" >/dev/null 2>&1; echo $?)|$({ "$TEMPER" acceptance lock --cmd "$ACMD" 2>&1 || true; } | grep -q 'no acceptance test names the state(s) canceled' && echo yes || echo no)"
+  "$("$TEMPER" acceptance lock --cmd "$ACMD" >/dev/null 2>&1; echo $?)|$({ "$TEMPER" acceptance lock --cmd "$ACMD" 2>&1 || true; } | grep -c 'no acceptance test names the state(s) canceled' >/dev/null && echo yes || echo no)"
 printf '    def test_ac02_canceled_reads_back(self):\n        self.assertEqual("canceled", "canceled")\n' >> .temper/specs/demo/acceptance/test_ac.py
 assert_exit "9.8.0: with a test for each state, it locks" 0 "$TEMPER" acceptance lock --cmd "$ACMD"
 

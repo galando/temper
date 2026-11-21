@@ -79,7 +79,7 @@ _review65() { # _review65 [plan file...]: a feature run of a git repository at R
               # integrated: the base commit holds the config (its test command the suite), a CI file and a lockfile; the
               # Build commit adds src/demo.sh, its test src/demo_test.sh and src/lib.sh (and each plan file named). The
               # plan declares all of them; the Review snapshot names the Build commit; the tree is clean. The budget
-              # allows four repeats a failure
+              # allows four repeats a failure ($B65_BUDGET when set: build it with a plan file, so no kept fixture is read)
   local f extra=""
   [[ $# -eq 0 ]] && _load65 review && return 0
   fresh; rm -rf .git src unit .github package-lock.json README
@@ -87,12 +87,12 @@ _review65() { # _review65 [plan file...]: a feature run of a git repository at R
   git config user.email t@example.com; git config user.name T
   sed -i '/block-on/d' .claude/temper.config   # the default: a critical or a high finding blocks
   _progs65
-  python3 -B - "$P65" <<'PY'
+  python3 -B - "$P65" "${B65_BUDGET:-4}" <<'PY'
 import sys
 p = ".claude/temper.config"
 s = open(p).read()
 s = s.replace("  coverage-threshold: 80\n", '  coverage-threshold: 80\n  commands:\n    test: "%s/suite"\n' % sys.argv[1], 1)
-open(p, "w").write(s + "budget:\n  per-failure: 4\n")
+open(p, "w").write(s + "budget:\n  per-failure: %s\n" % sys.argv[2])
 PY
   mkdir -p .github/workflows; echo base > README; printf '{}\n' > package-lock.json; printf 'on: push\n' > .github/workflows/ci.yml
   git add -A -- . ':(exclude).temper'; git commit -q -m base
@@ -291,6 +291,11 @@ _finding65 high 'src/auth/login.sh:1 the lockout is never reset' 'the counter of
 review_done; "$TEMPER" gate review >/dev/null 2>&1
 assert_eq "repair: start is refused outside its conditions: a finding's file is under a sensitive path" "$REFUSED65" \
   "$(_refused65 'sensitive|park-on-touch')"
+_review65
+_finding65 high 'lib/other.py:3 the fix needs a file outside the plan' 'lib/other.py is no file of the plan' 'change lib/other.py' none
+review_done; "$TEMPER" gate review >/dev/null 2>&1
+assert_eq "repair: start is refused outside its conditions: a finding's file is outside the plan" "$REFUSED65" \
+  "$(_refused65 'outside|plan')"
 _open65 none
 python3 -B -c "
 import json
@@ -358,6 +363,70 @@ _open65 none
 assert_eq "repair: commit refuses a CI file" "$DRIFT65" "$(_drift65 .github/workflows/ci.yml)"
 _open65 none
 assert_eq "repair: commit refuses a sensitive path" "$DRIFT65" "$(_drift65 src/auth/token_test.sh)"
+_open65 none
+assert_eq "repair: commit refuses a shell file named like a test outside the plan, and so does the commit gate's scope row (the test pattern of the base)" \
+  "$DRIFT65|FAIL changed outside declared files: src/other_test.sh" \
+  "$(_drift65 src/other_test.sh)|$(printf 'src/other_test.sh\n' | python3 -I "$REPO_ROOT/scripts/commit_rows.py" blast-radius '{"tasks": []}' '' /dev/null 2>&1)"
+
+# a lockfile and a file outside the plan both changed: the question names the file no answer can let through, and
+# offers only what can end it (Add to plan or Allow once of the other file would meet the same question again)
+_open65 none; _start65; _fix65; mkdir -p lib; echo 'echo other' > lib/other.sh
+printf '{"changed": 1}\n' > package-lock.json; _commit65
+assert_eq "repair: with a lockfile and a file outside the plan both changed, scope.drift names the lockfile and offers no answer that cannot end it" \
+  "scope.drift|package-lock.json|revert,save" \
+  "$(_x65 "q = d.get('ask') or {}; r = '%s|%s|%s' % (q.get('id'), 'package-lock.json' if 'Outside the plan: package-lock.json' in json.dumps(q) else 'names %s' % json.dumps(q)[:120], ','.join(ids(d)))")"
+
+# --- a small change's close never closes a repair window ---
+_open65 none; _start65; _fix65
+_c65_out="$("$TEMPER" adhoc close 2>&1)"; _c65_rc=$?
+assert_eq "repair: adhoc close inside a repair window is refused: the window stays open, nothing is committed, and the refusal names repair commit" \
+  "refused|window repair 1 open|says repair commit|next fixer or recheck, no small change" \
+  "$([[ $_c65_rc -ne 0 ]] && echo refused || echo "rc 0: ${_c65_out:0:60}")|$(_st65 "'window repair %s open' % w.get('n') if w and not w.get('commit') and (s.get('adhoc') or {}).get('kind') == 'repair' and not s.get('adhoc_done') else 'window %s adhoc %s done %s' % (w.get('n'), s.get('adhoc'), s.get('adhoc_done'))")|$(grep -q 'repair commit' <<<"$_c65_out" && echo 'says repair commit' || echo "says: ${_c65_out:0:80}")|$(_x65 "r = 'next fixer or recheck, no small change' if not any('Ad-hoc change' in str(a.get('prompt')) for a in d.get('agents') or []) else 'a small change review'")"
+
+# --- the fixer's drift ask in a repair window (the mod's Build write rule names it): scope.drift, then the fixer again ---
+_open65 none; _start65; _c65_head="$(git rev-parse HEAD)"
+_c65_ask="$("$TEMPER" drift ask --path src/other.sh --why 'the fix needs a helper' --change 'one new line' 2>&1 && echo asked || echo refused)"
+_commit65
+_c65_q="$(_x65 "q = d.get('ask') or {}; r = '%s %s' % (q.get('id'), ','.join(i for i in ids(d) if i in ('add-to-plan', 'revert', 'allow-once'))) if 'src/other.sh' in json.dumps(q) else 'asked %s' % q.get('id')")"
+_c65_kept="$([[ "$(git rev-parse HEAD)" == "$_c65_head" ]] && _st65 "'window open' if w and not w.get('commit') else 'window closed'" || echo "committed $(_subj65)")"
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done < <(_x65 "r = '\n'.join((opt(d, 'add-to-plan') or {}).get('calls') or [])")
+_c65_again="$(_x65 "a = (d.get('agents') or [{}])[0] if d.get('action') == 'work' else {}; p = str(a.get('prompt') or ''); r = '%s|%s|%s' % (a.get('type'), 'Repair in place:' if 'Repair in place:' in p else 'no line', 'Drift decision: src/other.sh: add' if 'Drift decision: src/other.sh: add' in p else 'no decision')")"
+_mark65 2>/dev/null; _fix65; echo 'echo other' > src/other.sh; _commit65
+assert_eq "repair: a drift ask of the fixer in a repair window is taken, asked as scope.drift before any commit, and the fixer runs again with the answer; the CLI then commits the file" \
+  "asked|window open|scope.drift add-to-plan,revert,allow-once|temper:temper-build|Repair in place:|Drift decision: src/other.sh: add|repair commit with src/other.sh" \
+  "$(tail -1 <<<"$_c65_ask")|$_c65_kept|$_c65_q|$_c65_again|$([[ "$(_subj65)" == 'fix(demo): repair 1 at review' ]] && grep -qx src/other.sh <<<"$(git show --name-only --format= HEAD)" && echo 'repair commit with src/other.sh' || echo "HEAD $(_subj65)")"
+
+# --- repair commit reads what is staged too: a staged rename does not hide a test file it removes ---
+_open65 none; _c65_head="$(git rev-parse HEAD)"; _start65; _fix65
+mkdir -p unit; git mv src/demo_test.sh unit/demo2_test.sh; printf 'a=1\n' > unit/demo2_test.sh
+_commit65
+assert_eq "repair: commit sees a test file a staged rename removes: nothing is committed, and the run asks with the file" \
+  "not committed|repair.stop|names src/demo_test.sh" \
+  "$([[ "$(git rev-parse HEAD)" == "$_c65_head" ]] && echo 'not committed' || echo "committed $(_subj65)")|$(_x65 "q = d.get('ask') or {}; r = '%s|%s' % (q.get('id'), 'names src/demo_test.sh' if 'src/demo_test.sh' in json.dumps(q) else 'names no file')")"
+
+# --- repair revert of a repair not committed puts back what the repair changed, the files it may not change too ---
+_open65 none; git rm -q --cached .claude/temper.config; git commit -q -m 'the config is no tracked file'
+python3 -I "$(dirname "$TEMPER")/state_ops.py" review-code save .temper/build-state.json >/dev/null 2>&1
+_c65_sums() { printf '%s' "$(cksum < .claude/temper.config 2>/dev/null)|$(cksum < .temper/specs/demo/tasks.md)|$(cksum < src/demo.sh)"; }
+_c65_before="$(_c65_sums)"; _start65; _c65_open="$(_st65 "'opened' if w else 'not opened'")"; _fix65
+echo '# changed by the repair' >> .claude/temper.config; echo '- a line of the fixer' >> .temper/specs/demo/tasks.md
+_commit65
+_c65_out="$("$TEMPER" repair revert 2>&1)"
+assert_eq "repair: revert of a repair not committed puts back the config and the spec folder as they were, and deletes neither" \
+  "opened|config kept|as before|reverted" \
+  "$_c65_open|$([[ -f .claude/temper.config ]] && echo 'config kept' || echo 'config deleted')|$([[ "$(_c65_sums)" == "$_c65_before" ]] && echo 'as before' || echo 'not as before')|$(grep -qi 'reviewed tree again' <<<"$_c65_out" && echo reverted || echo "says: ${_c65_out:0:80}")"
+
+# --- repair revert of a committed repair refuses when HEAD moved or the tree is dirty ---
+_open65 none; _start65; _fix65; _commit65
+echo more >> README; git add README; git commit -q --no-verify -m 'a commit by hand after the repair'
+_c65_head="$(git rev-parse HEAD)"; "$TEMPER" repair revert >/dev/null 2>&1; _c65_rc=$?
+_c65_moved="$([[ $_c65_rc -ne 0 ]] && echo refused || echo taken),$([[ "$(git rev-parse HEAD)" == "$_c65_head" ]] && grep -q more README && echo kept || echo undone)"
+_open65 none; _start65; _fix65; _commit65
+echo 'echo an edit after the repair' >> src/demo.sh
+_c65_head="$(git rev-parse HEAD)"; "$TEMPER" repair revert >/dev/null 2>&1; _c65_rc=$?
+_c65_dirty="$([[ $_c65_rc -ne 0 ]] && echo refused || echo taken),$([[ "$(git rev-parse HEAD)" == "$_c65_head" ]] && grep -q 'an edit after the repair' src/demo.sh && echo kept || echo undone)"
+assert_eq "repair: revert of a committed repair refuses when HEAD is not the repair commit or the tree is dirty, and undoes nothing" \
+  "moved=refused,kept|dirty=refused,kept" "moved=$_c65_moved|dirty=$_c65_dirty"
 
 # --- repair commit refuses when HEAD moved since the window opened ---
 _open65 none; _start65; _c65_open="$(_st65 "'opened' if w else 'not opened'")"; _fix65
@@ -396,6 +465,42 @@ git reset -q 2>/dev/null; git checkout -q -- src/demo.sh 2>/dev/null
 assert_eq "repair: the hook passes exactly the commit the CLI staged: not a hand commit, not a second one, never at the commit stage" \
   "hand refused|CLI passed|second refused|commit stage refused" "$_c65_hand|$_c65_cli|$_c65_second|$_c65_final"
 
+# --- trap 2: one repair with the guardrails pack's hooks: each PreToolUse hook of the pack, run as Claude Code runs it,
+# on the run's own calls, on the fixer's edit and on a commit the fixer types; the CLI's own git commit is no tool call ---
+_pack65() { # _pack65 <tool> <input JSON>: every PreToolUse hook of packs/guardrails/settings-guardrails.json whose matcher
+            # takes the tool, with the plugin's folder in the place of its variable; prints the highest exit
+  python3 -B - "$REPO_ROOT" "$1" "$2" <<'PY'
+import json, re, subprocess, sys
+root, tool, inp = sys.argv[1:4]
+worst = 0
+for e in json.load(open(root + "/packs/guardrails/settings-guardrails.json"))["hooks"]["PreToolUse"]:
+    for h in e["hooks"] if re.fullmatch(e["matcher"], tool) else []:
+        p = subprocess.run(["bash", "-c", h["command"].replace("${CLAUDE_PLUGIN_ROOT}", '"%s"' % root)], capture_output=True,
+                           input=json.dumps({"tool_name": tool, "tool_input": json.loads(inp)}), text=True)
+        worst = max(worst, p.returncode)
+print(worst)
+PY
+}
+_bash65() { _pack65 Bash "$(python3 -c 'import json, sys; print(json.dumps({"command": sys.argv[1]}))' "$1")"; }
+_open65 none; "$TEMPER" guards install >/dev/null 2>&1 || true
+_c65_pack=""
+_run65() { # _run65 <python list of calls over d> [JSON of next]: each call checked by the pack's hooks (the exit added to
+           # _c65_pack), then run as the orchestrator runs it
+  local c
+  while IFS= read -r c; do [[ -n "$c" ]] || continue; _c65_pack+="$(_bash65 "$c")"; bash -c "$c" >/dev/null 2>&1; done \
+    < <(_x65 "r = '\n'.join($1)" "${2:-}")
+}
+_run65 "d.get('calls') or []"   # the CLI's own action: repair start
+_c65_work="$("$TEMPER" next --json 2>/dev/null)"   # the fixer's launch
+_c65_pack+="|"; _run65 "[c for a in d.get('agents') or [] for c in a.get('before') or []]" "$_c65_work"
+_c65_pack+="|$(_pack65 Write "$(python3 -c 'import json, sys; print(json.dumps({"file_path": sys.argv[1], "content": "echo demo"}))' "$PWD/src/demo.sh")")"
+_fix65
+_c65_pack+="|$(_bash65 'git add src/demo.sh && git commit -m "fix: the demo"')|"
+_run65 "[c for a in d.get('agents') or [] for c in a.get('after') or []]" "$_c65_work"   # its after calls: repair commit
+assert_eq "repair: with the guardrails pack's hooks the run's calls and the CLI's commit pass, and a commit the fixer types is refused" \
+  "temper:temper-build|0||0|2|00|fix(demo): repair 1 at review" \
+  "$(_x65 "r = (d.get('agents') or [{}])[0].get('type')" "$_c65_work")|$_c65_pack|$(_subj65)"
+
 # --- the checks ran again on the new tree ---
 _open65 none; _start65; _fix65; _commit65
 assert_eq "repair: the checks ran again on the new tree: the integration record names the repair commit, the Build verdict the new tree" \
@@ -411,19 +516,19 @@ b = json.load(open('.temper/gates.json')).get('build') or {}
 print('build %s of the new tree' % b.get('verdict') if b.get('tree') == t else 'build %s of tree %s' % (b.get('verdict'), str(b.get('tree'))[:7]))" 2>/dev/null)|$([[ "$(grep -c suite "$P65/log" 2>/dev/null)" -ge 1 ]] && echo 'suite ran' || echo 'suite not run')"
 
 # --- a behaviour finding needs a RED and a GREEN of the CLI on an unchanged test file ---
-_err65() { printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q error' > src/err_test.sh; }   # fails until the fix
+_err65() { mkdir -p unit; printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q error' > unit/err_test.sh; }   # fails until the fix
 _proof65() { # _proof65 <none|changed|order>: a repair of a finding marked proof: test, with no test run, with the test file
              # changed between the RED and the GREEN, or in order; the recheck says fixed. Prints the finding's state
   _open65 test; _start65
   case "$1" in
-    changed|order) _err65; "$TEMPER" repair test 1 --phase red -- sh src/err_test.sh >/dev/null 2>&1 || true ;;
+    changed|order) _err65; "$TEMPER" repair test 1 --phase red -- sh unit/err_test.sh >/dev/null 2>&1 || true ;;
   esac
   _fix65
   case "$1" in
     none) _err65 ;;
-    changed) printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q demo' > src/err_test.sh ;;
+    changed) printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q demo' > unit/err_test.sh ;;
   esac
-  [[ "$1" == none ]] || "$TEMPER" repair test 1 --phase green -- sh src/err_test.sh >/dev/null 2>&1 || true
+  [[ "$1" == none ]] || "$TEMPER" repair test 1 --phase green -- sh unit/err_test.sh >/dev/null 2>&1 || true
   _commit65; _recheck65 fixed; _close65
   _res65 1 | sed 's/:.*//'
 }
@@ -468,7 +573,7 @@ _worse65() { # _worse65 <row|same|new|incomplete>: one repair that makes things 
   esac
   _close65
   printf '%s|%s|%s' "$repaired" \
-    "$([[ "$(_tree65)" == "$tree" ]] && git log --format=%s -3 | grep -q 'repair 1 at review' && echo 'reverted to the reviewed tree' || echo 'not reverted')" \
+    "$([[ "$(_tree65)" == "$tree" ]] && git log --format=%s -3 | grep -c 'repair 1 at review' >/dev/null && echo 'reverted to the reviewed tree' || echo 'not reverted')" \
     "$(_x65 "q = d.get('ask') or {}; r = 'repair.stop' if q.get('id') == 'repair.stop' else 'asked %s' % q.get('id')")"
 }
 WORSE65='repaired|reverted to the reviewed tree|repair.stop'
@@ -497,8 +602,8 @@ assert_eq "repair: a large diff gets a full Review, not a revert; so does a diff
 _round65() { # one repair that changes nothing the finding asks for: the recheck says not fixed, and the CLI reverts it
   echo '# a comment of the repair' >> src/demo.sh; _commit65; _recheck65 'not fixed'; _close65
 }
-# (the budget of the case config has room for the step back after both repairs, four repeats a failure, so what ends
-# the repairs is the repair's own rule, one by rule and one on the click, and Loop back to Build stays a call it takes)
+# (the budget of the case config has room after both repairs, four repeats a failure, so what ends the repairs here is
+# the repair's own rule, one by rule and one on the click)
 _open65 none
 _c65_first="$(_follow65)"
 _round65
@@ -508,13 +613,35 @@ while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done 
 _c65_click="$(_st65 "'window %s' % w.get('n') if w and s.get('adhoc') else 'no window'")"
 _round65
 _c65_after2="$(_x65 "r = '%s, repair-again %s, no repair start' % (d.get('action'), 'offered' if opt(d, 'repair-again') else 'gone') if not any(re.match(r'repair start', c) for c in calls(d)) else 'next runs %s' % calls(d)[:1]")"
-_c65_ways="$(_st65 "'%d repairs' % len({x.get('n') for x in s.get('repairs') or [] if isinstance(x, dict)})")|$(_x65 "r = ','.join(i for i in ('accept-finding', 'override', 'back', 'save') if i in ids(d) or (i == 'accept-finding' and (d.get('ask') or {}).get('accept')))")"
 assert_eq "repair: one by rule, one more on the click, then gone" \
   "auto repair start|ask|move repair, calls ['repair start --stage review --again']|window 2|ask, repair-again gone, no repair start" \
   "$_c65_first|$(sed 's/, repair-again.*//' <<<"$_c65_after1")|$_c65_again|$_c65_click|$_c65_after2"
 assert_eq "repair: the same finding open after a repair is not recommended again" "ask, repair-again offered, not recommended" "$_c65_after1"
-assert_eq "repair: a spent budget still offers the four ways on: Accept a finding, Override and continue, Loop back to Build and Save for later" \
-  "2 repairs|accept-finding,override,back,save" "$_c65_ways"
+# the budget spent: the default of two repeats a failure, which the repair by rule and the one on the click use up
+_ways65() { _x65 "r = ','.join(i for i in ('accept-finding', 'override', 'back', 'save') if i in ids(d) or (i == 'accept-finding' and (d.get('ask') or {}).get('accept')))"; }
+B65_BUDGET=2 _open65 none src/b65.sh
+_follow65 >/dev/null; _round65
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done < <(_x65 "r = '\n'.join((opt(d, 'repair-again') or {}).get('calls') or [])")
+_round65
+_c65_ways="$(_st65 "'%d repairs' % len({x.get('n') for x in s.get('repairs') or [] if isinstance(x, dict)})")|$("$TEMPER" budget 2>/dev/null | grep -o 'gate:review: [0-9]* of [0-9]*')|$(_x65 "r = (d.get('ask') or {}).get('id')")|$(_ways65)|$(_x65 "r = 'grant offered' if opt(d, 'grant-more') else 'no grant'")"
+# rule 9 (D38): only the person grants more, so the step back, a repeat of the failed Review, waits for the grant
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done < <(_x65 "r = '\n'.join(c.replace('{reason}', 'The next try is different') for c in (opt(d, 'grant-more') or {}).get('calls') or [])")
+assert_eq "repair: a spent budget still offers the four ways on: Accept a finding, Override and continue and Save for later, and Loop back to Build once the person grants more" \
+  "2 repairs|gate:review: 2 of 2|run.budget|accept-finding,override,save|grant offered|accept-finding,override,back,save" "$_c65_ways|$(_ways65)"
+
+# --- the question offers Repair again only where its call may start; a passed Review with an open High finding offers it ---
+_open65 none; echo more >> README; git add README; git commit -q -m 'a commit by hand after the Review'
+_c65_hand="$(_x65 "r = '%s %s' % ((d.get('ask') or {}).get('id'), 'offered' if opt(d, 'repair-again') else 'not offered')")"
+_open65 none; echo more >> README
+_c65_dirty="$(_x65 "r = '%s %s' % ((d.get('ask') or {}).get('id'), 'offered' if opt(d, 'repair-again') else 'not offered')")"
+assert_eq "repair: Repair again is offered only where its call may start: not after a commit by hand, not on a dirty tree" \
+  "hand commit=review.fail not offered|dirty=review.fail not offered" "hand commit=$_c65_hand|dirty=$_c65_dirty"
+_open65 none; sed -i 's/^review:$/review:\n  block-on: [critical]/' .claude/temper.config; "$TEMPER" gate review >/dev/null 2>&1
+_c65_pass="$(_x65 "o = ((d.get('ask') or {}).get('options') or [{}])[0]; r = '%s|%s|%s,%s|%s' % ((d.get('ask') or {}).get('id'), d.get('action'), o.get('id'), bool(o.get('recommended')), [short(c) for c in o.get('calls') or []][:1])")"
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done < <(_x65 "r = '\n'.join((opt(d, 'repair-again') or {}).get('calls') or [])")
+assert_eq "repair: a passed Review with an open High finding offers Repair again first, on the click only, and the click opens the window" \
+  "review.pass|ask|repair-again,True|['repair start --stage review --again']|window findings=[1]" \
+  "$_c65_pass|$(_st65 "'window findings=%s' % w.get('findings') if w else 'no window'")"
 
 # --- a failure at Check: one assertion a row of the table of mechanism 11 ---
 _check65() { # _check65 [suite mode] [coverage total]: _review65 with Review passed and the run at Check; the suite in that
@@ -610,5 +737,111 @@ _open65 none; _c65_tree="$(_tree65)"; _start65; _fix65; _commit65
 _c65_fail="$([[ "$(_subj65)" == 'fix(demo): repair 1 at review' ]] && echo 'repair commit' || echo "HEAD $(_subj65)")|$(_gates65 "$_c65_tree" 1)"
 assert_eq "repair: the commit gate passes a Review verdict that differs from the commit by closed repairs only, and fails it when a repair between them has no completed recheck" \
   "closed|tree row passes|repair commit|tree row fails naming both trees" "$_c65_pass|$_c65_fail"
+_open65 none; _c65_tree="$(_tree65)"; echo 'echo later' >> src/demo.sh; git commit -q -am 'a change after the Review, no repair'
+assert_eq "repair: the commit gate fails a Review verdict of another tree in a run with no repair, naming both trees" \
+  "tree row fails naming both trees" "$(_gates65 "$_c65_tree")"
+
+# --- the leftovers of the phase 6 recheck (lane E) ---
+# RE1: a small change of docs only at Check or at Commit, after an honest Review and the CLI's own Check, leaves the
+# tree Review judged; the commit gate's row checked tree compares that tree in every run, so the change runs Review of
+# its files again, then Check and the commit gate, and the commit gate passes (no dead end at commit.fail)
+_small65() { # _small65 <check|commit>: prints the steps the close listed and the commit gate's verdict after them
+  local i a c
+  _review65 docs/guide.md; review_done; "$TEMPER" gate review >/dev/null 2>&1
+  "$TEMPER" state advance review_complete check >/dev/null 2>&1
+  "$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+  [[ "$1" == commit ]] && "$TEMPER" state advance check_complete commit >/dev/null 2>&1
+  "$TEMPER" adhoc open --stage "$1" --reason 'a line of the guide' >/dev/null 2>&1
+  echo 'one more line' >> docs/guide.md
+  c="$("$TEMPER" adhoc close 2>&1)"
+  for i in 1 2 3 4 5 6; do
+    a="$(_x65 "r = d.get('action') if d.get('action') == 'work' and (d.get('ask') is None) else 'stop'")"
+    [[ "$a" == work ]] || break
+    [[ "$(_x65 "r = any(x.get('type') == 'temper:temper-review' for x in d.get('agents') or [])")" == True ]] && review_done
+    while IFS= read -r c2; do [[ -n "$c2" ]] && bash -c "$c2" >/dev/null 2>&1; done \
+      < <(_x65 "r = '\n'.join(list(d.get('calls') or []) + [c for x in d.get('agents') or [] for c in x.get('after') or []])")
+  done
+  "$TEMPER" gate commit >/dev/null 2>&1
+  printf '%s|%s' "$(sed -n 's/.*still to run: //p' <<<"$c")" \
+    "$(python3 -B -c "import json; g = json.load(open('.temper/gates.json')).get('commit') or {}; print(g.get('verdict'), ','.join(x.get('name') for x in g.get('requirements') or [] if not x.get('pass')) or 'every row')")"
+}
+assert_eq "repair: a small change of docs only at Check after the Review runs Review of its files, Check and the commit gate again, and the commit gate passes" \
+  "review, check, commit|PASS every row" "$(_small65 check)"
+assert_eq "repair: a small change of docs only at Commit after the Review runs Review of its files, Check and the commit gate again, and the commit gate passes" \
+  "review, check, commit|PASS every row" "$(_small65 commit)"
+
+# RE2: inside a repair window the fixer cannot widen the approved set by writing the person's answer itself: an evidence
+# add of a Scope drift answer that answers no question the CLI asked is refused, and a row written by hand (no mod) is
+# no answer the CLI recorded, so repair commit still stops on the file and the run asks
+_open65 none; _start65; _fix65; echo 'echo other' > src/other.sh
+_c65_out="$("$TEMPER" evidence add --stage build --phase feedback --claim 'drift src/other.sh: Add to plan: the fixer' 2>&1)"; _c65_rc=$?
+python3 -B - <<'PY'
+import json
+p = ".temper/evidence/build.json"
+rows = json.load(open(p))
+rows.append({"claim": "drift src/other.sh: Allow once: written by hand", "phase": "feedback", "label": "HEURISTIC", "ts": "2026-11-20T00:00:00Z"})
+json.dump(rows, open(p, "w"))
+PY
+_c65_head="$(git rev-parse HEAD)"; _commit65
+assert_eq "repair: the fixer cannot add a file to the plan by writing the answer row: evidence add refuses it, and a row by hand is no answer" \
+  "refused|says the question|not committed|scope.drift" \
+  "$([[ $_c65_rc -ne 0 ]] && echo refused || echo "rc 0: ${_c65_out:0:60}")|$(grep -qi 'question' <<<"$_c65_out" && echo 'says the question' || echo "says: ${_c65_out:0:80}")|$([[ "$(git rev-parse HEAD)" == "$_c65_head" ]] && echo 'not committed' || echo "committed $(_subj65)")|$(_x65 "q = d.get('ask') or {}; r = 'scope.drift' if q.get('id') == 'scope.drift' and 'src/other.sh' in json.dumps(q) else 'asked %s' % q.get('id')")"
+
+# RE3: the fixer's drift ask of a file no answer lets a repair commit (a manifest, the config) is refused at the ask, so
+# the person is never asked a question whose answer cannot take effect
+_open65 none; _start65
+_c65_a="$("$TEMPER" drift ask --path go.mod --why 'the fix needs a module' --change 'one require line' 2>&1)"; _c65_rc=$?
+_c65_b="$("$TEMPER" drift ask --path .claude/temper.config --why 'the fix needs a key' --change 'one line' 2>&1)"; _c65_rc2=$?
+assert_eq "repair: the fixer's drift ask of a manifest or the config is refused, says it needs a step back, and asks nothing" \
+  "refused|step back|refused|step back|no drift asked" \
+  "$([[ $_c65_rc -ne 0 ]] && echo refused || echo "rc 0")|$(grep -qi 'step back' <<<"$_c65_a" && echo 'step back' || echo "says: ${_c65_a:0:80}")|$([[ $_c65_rc2 -ne 0 ]] && echo refused || echo "rc 0")|$(grep -qi 'step back' <<<"$_c65_b" && echo 'step back' || echo "says: ${_c65_b:0:80}")|$(_x65 "r = 'no drift asked' if (d.get('ask') or {}).get('id') != 'scope.drift' else 'scope.drift asked'")"
+
+# RE4 and RE10: a finding on a shell file named like a test outside the plan is outside the approved set for the commit
+# (the gate's test pattern), so repair start refuses it as can_start's outside the plan test, with the same pattern
+_review65; _finding65 high 'src/other_test.sh:3 the helper test asserts nothing' 'the test passes on any input' 'assert the output' none
+review_done; "$TEMPER" gate review >/dev/null 2>&1
+assert_eq "repair: start refuses a finding on a shell file named like a test outside the plan, as the commit would" "$REFUSED65" \
+  "$(_refused65 'outside the plan')"
+
+# RE9: the revert of a repair not committed removes a guarded file the fixer created (a new git hook, a new file of the
+# spec folder), and says which file still differs when one does
+_open65 none; _start65; _fix65
+_c65_hook="$(python3 -B - <<'PY'
+import os, subprocess
+p = os.path.join(subprocess.run(["git", "rev-parse", "--git-path", "hooks"], stdout=subprocess.PIPE, text=True).stdout.strip(), "post-commit")
+os.makedirs(os.path.dirname(p), exist_ok=True)
+open(p, "w").write("#!/bin/sh\necho planted\n")
+os.chmod(p, 0o755)
+print(p)
+PY
+)"
+echo 'a note of the fixer' > .temper/specs/demo/fixer-note.md
+_commit65
+_c65_out="$("$TEMPER" repair revert 2>&1)"
+assert_eq "repair: revert of a repair not committed removes a new git hook and a new spec file of the fixer" \
+  "hook gone|note gone|reverted" \
+  "$([[ -e "$_c65_hook" ]] && echo 'hook left' || echo 'hook gone')|$([[ -e .temper/specs/demo/fixer-note.md ]] && echo 'note left' || echo 'note gone')|$(grep -qi 'reviewed tree again' <<<"$_c65_out" && echo reverted || echo "says: ${_c65_out:0:80}")"
+
+# RE12: the staged list of repair commit and of the carve out is read with -z, so a planned file whose name git quotes
+# (a double quote in it) is the approved file it is, and the repair is committed
+_open65 none
+python3 -B -c "
+import json
+p = '.temper/build-state.json'; d = json.load(open(p)); d['approved_files'] = list(d.get('approved_files') or []) + ['src/q\"x.sh']
+json.dump(d, open(p, 'w'), indent=2)"
+_start65; _fix65; echo 'echo q' > 'src/q"x.sh'; git add -- 'src/q"x.sh'
+_commit65
+assert_eq "repair: a staged planned file whose name git quotes is committed as the approved file it is" \
+  "repair commit with the file" \
+  "$([[ "$(_subj65)" == 'fix(demo): repair 1 at review' ]] && grep -qxF 'src/q"x.sh' <<<"$(git show --name-only --format= -z HEAD | tr '\0' '\n')" && echo 'repair commit with the file' || echo "HEAD $(_subj65)")"
+
+# RE5 and RE11: the fixer's brief names the drift ask of a repair, and the doc of the passed Review says where Repair again
+# stands first
+assert_eq "repair: the fixer's brief sends a file outside the plan to temper drift ask and reads a Drift decision line in a repair" \
+  "drift ask|Drift decision" \
+  "$(awk '/A repair in place/,/A record pass/' "$REPO_ROOT/agents/build.md" | grep -c 'drift ask' >/dev/null && echo 'drift ask' || echo 'no drift ask')|$(awk '/A repair in place/,/A record pass/' "$REPO_ROOT/agents/build.md" | grep -c 'Drift decision' >/dev/null && echo 'Drift decision' || echo 'no Drift decision')"
+assert_eq "repair: docs/flow.md says a passed Review with an open high finding offers Repair again first where it may start" \
+  "Repair again first" \
+  "$(grep -A2 'A passed Review with an open finding at high or above' "$REPO_ROOT/docs/flow.md" | tr '\n' ' ' | grep -c 'Repair again' >/dev/null && echo 'Repair again first' || echo 'Loop back only')"
 cd "$WORKDIR" || true
 rm -rf "$T65"

@@ -97,6 +97,6 @@ print(f"temper bands -> {verdict}")
 for l in lines:
     print(l)
 if worst >= 2:
-    print("A 2sigma+ breach is a closing-the-loop trigger: /temper:status renders it; a "
+    print("A 2sigma+ breach is a closing-the-loop trigger: /temper:temper status renders it; a "
           "propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to run.")
 sys.exit(1 if worst >= 2 else 0)

@@ -23,13 +23,15 @@ by none.
      `acceptance`, `pipeline`. A failed `integrate` spends under `gate:build`. One table, `SPENDS`, read by the CLI and
      by the flow, says which calls spend and when: a step back from a failed gate (from Build, also from a failed or
      parked group, under that group's key), a run again of a failed stage, a group fix, the group's tasks again, more
-     time at a failed group check, a plan patch, a task retry, a task checked again after an environment fault, a
-     reopened acceptance test, a CI fix round, and a merge again after a failed `integrate`. A task's attempts 1 to 3,
-     `group continue`, `state advance` and every call at a passed gate spend nothing. The condition is read from the
-     recorded verdicts and skips (the flow's `Run`), never from an argument: no flag and no variable exempts a call.
+     time at a failed group check, a plan patch, a plan amendment (WP25), a task retry, a task checked again after an
+     environment fault, a reopened acceptance test, a CI fix round, and a merge again after a failed `integrate`. A
+     task's attempts 1 to 3, `group continue`, `state advance` and every call at a passed gate spend nothing. The
+     condition is read from the recorded verdicts and skips (the flow's `Run`), never from an argument: no flag and no
+     variable exempts a call.
    - **The limits.** 2 for one failure (`budget.per-failure`) and 6 for one run (`budget.per-run`), defaults in code.
      The CLI's dispatcher checks a call of the table before it runs: past a limit it prints `BLOCKED: ...`, exits 1,
-     writes nothing, and the call does not run. A call refused later for a reason of its own has spent its repeat. The
+     writes nothing, and the call does not run. A call refused later for a reason of its own has spent its repeat
+     (WP25: a plan patch and a plan amendment spend in their own scripts, once every check of theirs holds). The
      record belongs to one run id: it survives a step back, and `state clear` and `state init` remove it.
    - **Who grants more.** `temper next` never offers a call the budget refuses. A question that would offer one
      becomes `run.budget`: the count, Save for later (recommended), Allow two more and the options that spend nothing.
@@ -73,9 +75,14 @@ by none.
      a level of `review.block-on` or a failed Check, or the recommended option of a failed group check when it has
      calls, needs nothing typed, does not save the run, is no step back and the group declares no sensitive path.
      Each is an entry of `.temper/rule-log.json`, with every stop and every answer.
-   - **What a rule may never do.** Plan again, change a gate's command, the intent or the approved files, skip a
-     check, accept a finding, answer a scope drift, write the config, push, open a pull request, make the final
-     commit, or repair anything in a plan that declares a sensitive path (`autonomy.park-on-touch`, risk H).
+   - **The one exception to planning again (WP25).** A rule may add to a task a file the same group already owns, and
+     nothing else of the plan: `temper plan amend task N --add-file F`, which the CLI bounds whoever calls it (the
+     file and one Depends entry on its owner; never a command, a file outside the approved set, a test file of
+     another task, a locked acceptance test or a sensitive path). It is an entry of the kind `amend`.
+   - **What a rule may never do.** Plan again (but for the exception above), change a gate's command, the intent or the
+     approved files, skip a check, accept a finding, answer a scope drift, write the config, push, open a pull request,
+     make the final commit, or repair anything in a plan that declares a sensitive path (`autonomy.park-on-touch`,
+     risk H).
    - **The stops.** Every other case is a stop: the park call, then the stage's own question. The rows of
      `scripts/stops.json` are the list; 20 and 22 join here: a failed check in a plan with a sensitive path, and a run
      taken up again (`temper go --taken-up`). Stop 21, `check.mutation-only` (a Check whose only failed row is the

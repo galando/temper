@@ -25,17 +25,16 @@ assert_exit "A1: with no run state a loop is refused (nothing to send back)" 1 "
 # --- A2, A5, A12, A15. A step back by state set next_stage does what a state loop does: one way back ---
 fresh; gpass intent plan build review check
 for s in build review check commit pipeline; do printf '[{"claim": "row of %s", "exit_code": 0}]\n' "$s" > ".temper/evidence/$s.json"; done
-_setj .temper/build-state.json "d['stage'] = 'check_complete'; d['next_stage'] = 'commit'; d['end_report'] = 'html'; d['built_before'] = 'abc'; d['enter'] = 'review'"
+_setj .temper/build-state.json "d['stage'] = 'check_complete'; d['next_stage'] = 'commit'; d['end_report'] = 'html'"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed"}}, "tasks": {}}\n' > .temper/groups.json
 assert_exit "A2: state set next_stage to an earlier stage goes back" 0 "$TEMPER" state set next_stage build
 assert_eq "A2: it clears the evidence of the stages it redoes, as a loop does (A15: commit and pipeline too)" "0|0|0|0|0" \
   "$(_rows .temper/evidence/build.json)|$(_rows .temper/evidence/review.json)|$(_rows .temper/evidence/check.json)|$(_rows .temper/evidence/commit.json)|$(_rows .temper/evidence/pipeline.json)"
-assert_eq "A2: and moves a door's entry back to the stage, as a loop does" "build" "$(_st enter)"
 assert_eq "A5: the bookkeeping stage is the stage before the one the run is at again (no longer check_complete)" "design_complete" "$(_st stage)"
 assert_eq "A12: a run sent back from Commit shows its report again: end_report is gone" "-" "$(_st end_report)"
 "$TEMPER" state set next_stage plan >/dev/null 2>&1
-assert_eq "A2: going back before Build ends the grouped run and forgets the earlier build, as a loop does" "no|" \
-  "$([[ -f .temper/groups.json ]] && echo yes || echo no)|$(python3 -c "import json; print(json.load(open('.temper/build-state.json')).get('built_before', ''))")"
+assert_eq "A2: going back before Build ends the grouped run, as a loop does (WP28: no built_before to forget)" "no" \
+  "$([[ -f .temper/groups.json ]] && echo yes || echo no)"
 assert_eq "A5: back at Plan the stage is intent_complete" "intent_complete" "$(_st stage)"
 fresh; gpass intent plan build review check; _at check
 _setj .temper/build-state.json "d['stage'] = 'review_complete'"

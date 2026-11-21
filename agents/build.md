@@ -39,15 +39,15 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    nothing else. For a finding whose proof is `test`, write the failing test first and run
    `TEMPER repair test <id> --phase red -- <command>`, then the code, then the same call with `--phase green`. For a
    failed row of Check no new failing test is asked: the CLI's failed row is the RED. Commit nothing (the CLI commits
-   with `temper repair commit` and runs the checks again), change no locked acceptance test and no file outside the
-   plan, and never accept, override or skip. When the fix needs the plan or the intent changed, stop and say so.
+   with `temper repair commit` and runs the checks again), change no locked acceptance test, and never accept,
+   override or skip. A file outside the plan goes to `TEMPER drift ask` as at Build (step 6), and a later
+   `Drift decision:` line of the prompt applies to the repair as it does at Build. When the CLI refuses that ask, or
+   the fix needs the intent changed, stop and say so.
 
-   **A record pass.** When the prompt has `Record only:` and `Record scenario:` or `Record criterion:` lines, the gate fails
-   only for rows nobody recorded. Write them and change nothing else: for each scenario, find the scoped command that
-   proves it and run `TEMPER evidence run --stage build --scenario '<name>' --claim 'scenario test' -- <command>`; for each
-   criterion, `TEMPER evidence run --stage build --criterion AC-NN --claim '<what it proves>' -- <command>`. A row the CLI
-   ran and that failed is a defect to fix, not to record again. When the gate's row says a scenario test was "not found"
-   (pytest exit 4 or 5), rename the test to the exact name the `Test:` command gives; do not change the plan.
+   **Rows the CLI records.** The CLI runs each scenario's `Test:` command and each criterion's command and records the
+   rows itself (9.8.5); record none. A row it ran that failed is a defect to fix. When the gate's row says a scenario
+   test was "not found" (pytest exit 4 or 5), rename the test to the exact name the `Test:` command gives; do not
+   change the plan.
 
 3. **Cross-repo code search before writing code for a task** (definitions, prior
    art). When any cross-repo code search tool is connected (for example a Sourcegraph
@@ -83,9 +83,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `git commit -m "feat({slug}): {scenario} [AC-NN]"`. Never `git add -A`, never
    `--no-verify`. An infrastructure-only task (no scenario) makes no commit.
 
-6. **A file outside the plan: the person decides first.** The plan's files are the ones in
-   `plan.md`'s Files to Create and Files to Modify tables and on the `**File:**` lines of
-   `tasks.md`; test files and the spec folder are always yours. Before you change any
+6. **A file outside the plan: the person decides first.** The plan's files are the ones on
+   the `**File:**` lines of `tasks.md`; test files and the spec folder are always yours. Before you change any
    other file, stop: do not write it, not even another way. Finish what the task can do
    without it, leave the task's box unticked, record each file with
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper drift ask --path {path} --why '{why}' --change '{the change}'`

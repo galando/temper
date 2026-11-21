@@ -465,7 +465,7 @@ describe('finding 7: the run controls are not writable by the model', () => {
 
 // ---- 8. state loop is for the person's Loop back ----------------------------------------------------------
 describe('finding 8: state loop names the stage the run is at, and the back answer counts once', () => {
-  const AT_CHECK: Opts = { next: 'check', gates: ['intent', 'plan', 'build', 'review'], fail: ['check'], answers: [why('Loop back to Build', 'rework')] }
+  const AT_CHECK: Opts = { next: 'check', gates: ['intent', 'plan', 'build', 'review'], fail: ['check'], answers: [why('Loop back to Build (Recommended)', 'rework')] }
   test('the same loop twice is refused the second time', async ($, on) => {
     const { w, api } = await begin($, on, AT_CHECK)
     await ask(api, w)

@@ -115,28 +115,18 @@ class Run:
         at = str(g.get("ts") or "") if isinstance(g, dict) else ""
         return [x for x in self.notes(stage, kind) if at and str(x.get("ts") or "") > at]
 
-    def missing_records(self, stage):
-        """When the stage's gate fails only for success criteria that lack a row the CLI could record (a scenario with no CLI
-        run row or no Test: line, a Validate: code criterion with no row), the lines of those rows; else []. A row that
-        exists and failed (an exit code) is not one of them: that keeps the gate question."""
-        rows = self.failed_rows(stage)
-        if stage != "build" or len(rows) != 1 or rows[0].get("name") != "criteria validated":
-            return []
-        found = []
-        for m in re.finditer(r"(AC-\d+) FAIL: (.*?)(?<=\.)(?:\s|$)", str(rows[0].get("detail") or "")):
-            what = m.group(2)
-            sm = re.match(r"scenario '(.*?)' \((.*)\) has no row run by the CLI\.?$", what)
-            if sm:
-                found.append("Record scenario: %s (%s)." % (sm.group(1), sm.group(2)))
-            elif "no passing row records it" in what:
-                found.append("Record criterion: %s (Validate: code)." % m.group(1))
-            else:
-                return []
-        return found
-
     def round_id(self):
         """What marks one round of a stage: the latest Run Build again and the latest step back."""
         return "%s|%s" % ((self.state.get("redo") or {}).get("ts", ""), (self.latest_loop() or {}).get("at") or (self.latest_loop() or {}).get("started", ""))
+
+    def model(self, name):
+        """WP27: the model of an agent as `temper next` resolved it (scripts/cli_ctx.py: the config keys over the table of
+        models, by the class of the run), else by the same rule here."""
+        m = (self.ctx.get("models") or {}).get(name)
+        if m:
+            return m
+        import cli_ctx
+        return cli_ctx.resolve("", self.config, state=self.state).get(name, ("", ""))[0]
 
     def cfg(self, key, default=""):
         v = config_yaml.get(self.config, key, default)
@@ -171,7 +161,7 @@ class Run:
 
     def has_design(self):
         """WP14 (ADR 0019 decision 2): a run of /temper:temper has the Design stage only when the person asked for it
-        (the option run-design of the approval sets want_design, or the Design door), when design.md exists, or when the run is at Design or
+        (the option run-design of the approval sets want_design), when design.md exists, or when the run is at Design or
         has a Design verdict (a run saved there by 9.8.4 keeps it). No tier, risk or setting adds it: what Design asked is
         now Blocking questions Plan writes, answered in front of the approval."""
         if self.command != "temper":
@@ -180,8 +170,8 @@ class Run:
             return True
         if "design" in self.gates or self.stage == "design":
             return True
-        # the person's ask: the option run-design, or the Design door (/temper:design enters the run at Design)
-        return str(self.state.get("want_design")).strip().lower() == "true" or self.state.get("enter") == "design"
+        # the person's ask: the option run-design
+        return str(self.state.get("want_design")).strip().lower() == "true"
 
     def next_of(self, stage):
         s = self.seq()

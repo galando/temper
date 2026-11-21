@@ -115,11 +115,19 @@ def drift_ask(argv):
         return fail("the path %s is not a plain path of the project" % path)
     state = read_json(os.path.join(".temper", "build-state.json"), {})
     stage = state.get("next_stage")
-    if stage not in ("build", "fix"):
-        return fail("a drift is asked at Build or Fix; the run is at %s" % (stage or "no stage"))
+    w = state.get("repair") if isinstance(state.get("repair"), dict) else {}
+    fixer = w and not w.get("commit") and w.get("stage") == stage and (state.get("adhoc") or {}).get("kind") == "repair"
+    if stage not in ("build", "fix") and not fixer:   # WP24: the fixer of an open repair is held to Build's rule
+        return fail("a drift is asked at Build or Fix, or by the fixer of an open repair; the run is at %s" % (stage or "no stage"))
     spec = state.get("spec_path") or ""
     if spec and path in flow.plan_files(spec):
         return fail("%s is a file of the plan: no drift to ask" % path)
+    if fixer:   # lane E: a file no answer lets a repair commit (a manifest, a CI file, the config, the spec folder, a
+        import repair_ops   # sensitive path) is refused here, so the person is never asked a question that cannot take effect
+        config = os.path.join(".claude", "temper.config")   # a run reads the project's own config (scripts/temper)
+        no = repair_ops.refused_file(path, repair_ops.run_of(config), spec, config, {os.path.normpath(path)})
+        if no:
+            return fail("%s, which no answer lets a repair commit: the fix needs a step back (stop, commit nothing, and say so)" % no)
     if evidence("build", "drift", "drift ask %s\nWhy: %s\nChange: %s" % (path, why[:300], change[:300])):
         return 1
     print("OK: the Scope drift question about %s comes next; stop here and return" % path)

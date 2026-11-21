@@ -21,9 +21,10 @@ read that evidence before you raise the same finding again, and raise it only if
 
 ## What you read
 
-Only `{spec}/intent.md`, `{spec}/plan.md` and `{spec}/tasks.md`, plus the project's code when a lens below asks you to
-search it. Read nothing under `.temper/` except the spec folder. You do not know this project; you do know software. A
-general engineering term needs no definition; a name that belongs to this project or this plan does.
+Only `{spec}/intent.md`, `{spec}/tasks.md` and `{spec}/plan.md` when the plan has one, plus the project's code when a
+lens below asks you to search it. Read nothing under `.temper/` except the spec folder. You do not know this project;
+you do know software. A general engineering term needs no definition; a name that belongs to this project or this plan
+does.
 
 ## The lenses
 

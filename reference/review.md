@@ -14,8 +14,7 @@ severity floors, filter bypasses, memory thresholds — not review technique.
 succeeds. Confidence scoring and review memory follow the temper-core skill's
 definitions.
 
-**Mode:** Review runs as a stage of `/temper` (also when `/temper:review` starts it: the
-command is a door into `/temper`), in a clean subprocess that never shows an
+**Mode:** Review runs as a stage of `/temper`, in a clean subprocess that never shows an
 `AskUserQuestion`: return the summary, the orchestrator owns the gate. Load the changed files (`${CLAUDE_PLUGIN_ROOT}/scripts/temper review files` prints them) plus
 `{spec}/intent.md` (if it exists),
 `build-context.json` (if it exists).
@@ -136,16 +135,16 @@ never go silent because of a threshold.
 Every verdict is labeled **mechanical** (provable by tools) or **semantic** (judgment —
 directional, not proof).
 
-- **a. BDD (mechanical):** each `Scenario:` → a corresponding test → it passes.
-  Checklist.
-- **b. IDD (structured):** per Success Criterion, run its `Validate:` method —
-  `scenario` / `code` (grep) → ✅/❌, `metric` → 📊 deferred, `manual` → 🔍 flagged.
-  Verdict: satisfied / partially satisfied (name the gaps) / not satisfied, plus
-  "{N} mechanical, {N} deferred, {N} manual". No intent.md → same verdict against the
+- **a. BDD (mechanical):** each `Scenario:` → the test its `Test:` line names → it passes.
+- **b. IDD (structured):** per Success Criterion, read the row of its `Validate:` method:
+  `scenario`, and `code` or `metric` with a command in backticks → the row the CLI ran of that command
+  (✅ exit 0, ❌ otherwise, or no row yet); `code` or `metric` with no command, and `manual` → 🔍 the person
+  confirms it at the Check question. Verdict: satisfied / partially satisfied (name the gaps) / not satisfied, plus
+  "{N} mechanical, {N} for the person". No intent.md → same verdict against the
   linked ticket.
-- **c. Test quality (per covered scenario):** zero assertions → **TRIVIAL**; no
-  asserted variable appears in the Then clause's keywords → **WEAK** (mechanical);
-  otherwise judge Given→setup/When→action/Then→assertion alignment and depth — accept
+- **c. Test quality (per covered scenario):** judge each test against the scenario's `Then` line and the Cases of the
+  task that owns it. Zero assertions → **TRIVIAL**; no asserted variable appears in the Then line's keywords → **WEAK**
+  (mechanical); otherwise judge whether the assertions check the Then and the Cases, and how deeply; accept
   indirect assertions that semantically cover the Then; unsure → don't flag. STRONG
   counts full, WEAK half, TRIVIAL zero toward the verdict's evidence ratio; WEAK is a
   MEDIUM issue, TRIVIAL a LOW.
@@ -270,7 +269,7 @@ memory, `.temper/review-memory.json.patterns[{key}]` (key = category + file-path
 `acceptance_rate = accepted/total_shown`. This one store drives both promotion and
 suppression:
 
-- **Promote** (surfaced at `/temper:status`, never auto-applied): 3+ accepted at
+- **Promote** (surfaced by the word `status`, never auto-applied): 3+ accepted at
   acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ at ≥ 80% in security or
   architecture → suggest a **BLOCK** rule. The human picks BLOCK / WARN /
   keep-advisory; an accepted rule is written into the project's copy of the active pack,

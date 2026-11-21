@@ -77,17 +77,20 @@ def owners(plan, intent_path=None):
 
     9.8.0 (round 5): a task that writes a file the scenario's Test command runs is traced too. A Plan traced API scenarios
     to the task that builds the domain module, while their test file came with the route's later task: that task's gate
-    could never pass, and the group parked three times over. Now the later task (or the group gate) owes it."""
+    could never pass, and the group parked three times over. Now the later task (or the group gate) owes it.
+
+    9.8.5 (WP26): Plan writes no `Traced to:` line. Every task whose declared files meet the files a scenario's Test command
+    names traces it, with or without the line; a plan that has the line (9.8.4, the base) still reads it."""
     tracing = {}
     for t in plan["tasks"]:
         for name in traced(t):
             tracing.setdefault(name, []).append(t)
     for b in blocks(intent_path) if intent_path else []:
-        if b["name"] in tracing and b["cmd"].strip():
+        if b["cmd"].strip():
             files = cmd_files(b["cmd"])
             for t in plan["tasks"]:
-                if t not in tracing[b["name"]] and files & set(t.get("files") or []):
-                    tracing[b["name"]].append(t)
+                if t not in tracing.get(b["name"], []) and files & set(t.get("files") or []):
+                    tracing.setdefault(b["name"], []).append(t)
     out = {}
     for name, ts in tracing.items():
         if len(ts) == 1:

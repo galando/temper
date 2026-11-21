@@ -5,30 +5,25 @@ argument-hint: "<feature-name-or-JIRA-123>"
 
 # Plan: Feature Planning with Impact Analysis
 
-**Goal:** Turn a feature request into `intent.md` + `tasks.md` + `plan.md` — grounded in
-a real blast radius, not an estimated one. This doc states the outcome and the handful of
-rules a strong model would not derive on its own; it does not choreograph your steps.
+**Goal:** Turn a feature request into the scenarios of `intent.md`, `tasks.md` and, above the simple tier, a short
+`plan.md`, grounded in a real blast radius, not an estimated one. Write only what a script, a gate row or a later agent
+reads. This doc states the outcome and the handful of rules a strong model would not derive on its own; it does not
+choreograph your steps.
 
 ## Usage
 
 Plan runs as a stage of `/temper`, in a clean subprocess from the plan brief
-(`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`), also when `/temper:plan` starts the run (it is a door
-into `/temper`). It returns a summary and never shows an `AskUserQuestion` gate: the
+(`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`). It returns a summary and never shows an `AskUserQuestion` gate: the
 orchestrator owns the gate.
 
 ## What You Produce
 
-**Hard rule — write exactly these three files under `.temper/specs/{feature-slug}/` for
-Medium/Complex features, never a fourth: no `spec.md`, `quickstart.md`,
-`evals/evalset.json`, README, or anything else in the spec directory.** `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate
-plan` reads only these three.
+**Hard rule: write only these files under `.temper/specs/{feature-slug}/`, never another (no `spec.md`,
+`quickstart.md`, `evals/evalset.json`, README).**
 
-- **`intent.md`** — Problem, Success Criteria (each with a `Validate:` type — see below),
-  Constraints, Target Users, then Gherkin **Scenarios**.
-- **`tasks.md`** — ordered implementation steps, each with a validation command and a
-  `Traced to:` field (see File-to-Scenario Traceability).
-- **`plan.md`** — Architecture, **Blast Radius** (required for Medium/Complex), Approach
-  Decisions (only when a real alternative was rejected), a diagram.
+- **`intent.md`**: Intent wrote it; you add the Gherkin **Scenarios** (below).
+- **`tasks.md`**: the groups and their tasks, each declaring its files, its test command and its Cases.
+- **`plan.md`**, above the simple tier only: `## Context Map` and `## Blast Radius`, nothing else.
 
 **Count production files only.** The tier counts the files that hold the product's code: test
 files, docs (README, CHANGELOG, guides) and a one-line export or registration edit follow from the
@@ -36,73 +31,66 @@ code and add no design question, so they do not count.
 
 **Trivial** (one file, no product problem): no artifacts — say so and implement directly (in
 `/temper` the Intent stage decides this). **Simple** (up to 3 production files, with new functions,
-options or fields in existing modules only): the three files above.
+options or fields in existing modules only): `tasks.md` and the scenarios, no `plan.md`. The CLI bounds it: a run
+recorded as `simple` fails the plan gate's `tier recorded` row when `tasks.md` has more than one group, declares more
+than 3 production files, or the run's risk is H, and the row names `temper state set complexity medium`.
 **Medium** (4-10 production files, or a new module, data model or external interface) / **Complex**
-(10+): the three files above too. The risk multipliers below still push a tier up. No tier runs Design: it runs
+(10+): `plan.md` as well. The risk multipliers below still push a tier up. No tier runs Design: it runs
 only when the person asks for it at the approval (`Run Design first`). A policy conflict or a product call becomes
 one line under intent.md's `### Open Questions`, `- Blocking: {question} choices: {the answer the plan assumes} |
 {another}`, and the tasks are written under the first choice (a `(house rule)` choice goes first).
 
-**intent.md usually already exists when you start.** In the orchestrated `/temper`
-flow, the Intent stage wrote it and a human accepted it at the intent gate
-(`Status: accepted`) before you launched — it is your input: derive Scenarios and
-architecture from it, refine its wording only with a stated reason, never re-derive
-the Problem from scratch. **Re-read every `- consulted:` source its `### Context
-Sources` records** — the intent summarizes them, but you plan against them; treat
-every `- unavailable:` line as an explicit gap (name it in `plan.md`, and add an
-Open Question back into `intent.md` if it hides a decision). Do not re-derive
-context Intent already gathered. A `Status: draft` intent (captured via
-`/temper:intent` or a control-band breach) is the same
-input, plus: resolve or explicitly re-carry each Open Question (you ask nobody: a
-question that must be settled is marked `Blocking`, and the orchestrator asks it before
-the gate question); the intent is accepted (`temper intent accept`) when the person
-leaves Intent.
-**Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
-code; changes what the consumers of a library with 5+ consumers already use (a signature,
-a behaviour, a default; adding a new function or option they never call does not count); changes a DB schema; a module with a
-historically high defect rate (`.temper/metrics.json` if present); a CRITICAL/HIGH
-security hot path (below).
+**intent.md usually already exists when you start.** In the orchestrated `/temper` flow, the Intent stage wrote it and a
+human accepted it at the intent gate (`Status: accepted`) before you launched. It is your input: derive Scenarios from
+it, refine its wording only with a stated reason, never re-derive the Problem from scratch. **Re-read every
+`- consulted:` source its `### Context Sources` records** — the intent summarizes them, but you plan against them; treat
+every `- unavailable:` line as an explicit gap (a `- gap:` line of the Context Map, and add an Open Question back into
+`intent.md` if it hides a decision). Do not re-derive context Intent already gathered. A `Status: draft` intent
+(captured with `/temper:temper draft` or a control-band breach) is the same input, plus: resolve or explicitly re-carry each
+Open Question (you ask nobody: a question that must be settled is marked `Blocking`, and the orchestrator asks it before
+the gate question); the intent is accepted (`temper intent accept`) when the person leaves Intent. **Risk multipliers**
+(each pushes complexity up one tier): touches auth/payment/security code; changes what the consumers of a library with
+5+ consumers already use (a signature, a behaviour, a default; adding a new function or option they never call does not
+count); changes a DB schema; a module with a historically high defect rate (`.temper/metrics.json` if present); a
+CRITICAL/HIGH security hot path (below).
 
 ## What `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` Checks
 
 Quoted from the plan gate in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`) so this doc cannot drift from the gate.
 ## Context Map and the Context check
 
-`plan.md` opens with `## Context Map`: what Plan used (`use`), what it left out on purpose (`ignore`) and what it could not find
-(`gap`), one line per source and never per code file. The plan gate row `context map reviewed` needs at least one entry, at most 12,
-each line at most 100 characters, and a `- reviewed: human|auto` line. Plan writes `- reviewed: pending`; the CLI replaces it.
-`plan.context-check` is `auto` (ask only when the map has an `ignore` or a `gap`), `always` (ask every run) or `off` (never ask;
-the map is still written and gated). 9.8.5: a map nobody is asked about passes with `- reviewed: pending`; under
-`auto` a flagged map whose lines the approval shows whole (three `ignore`, two `gap`, each at most 90 characters) is
-answered there: the approving option writes `As planned (at the approval, N flagged lines shown)`. 9.8.0: the
-question names what the plan leaves out and could not find (the `ignore` and `gap` lines, so write each as the
-decision it is: "refunds in the CSV export are out of scope"); any answer but "As planned"
-sends Plan back with the person's words as a note (`temper plan review --answer '...' --redo`). The question is the CLI's own (`temper next` and `view.json` carry `context_map` and
-`context_check`); the person's choice runs `temper plan review --answer '<choice>'`, then `temper gate plan`. Plan never asks it and
-never writes `reviewed: human`. Auto mode may refuse an edit of that line, which is why the CLI writes it
-([auto mode](../docs/auto-mode.md)).
+`plan.md` opens with `## Context Map`: what Plan left out on purpose (`ignore`) and what it could not find (`gap`), one
+line per source and never per code file. A `use` line is allowed and counted, never asked for. The plan gate row
+`context map reviewed` passes a plan.md with no map, or a map with no entry (nothing is flagged); a map holds at most 12
+entries, each line at most 100 characters, and a `- reviewed: human|auto` line. Plan writes `- reviewed: pending`; the
+CLI replaces it. `plan.context-check` is `auto` (ask only when the map has an `ignore` or a `gap`), `always` (ask every
+run) or `off` (never ask; the map is still written and gated). 9.8.5: a map nobody is asked about passes with
+`- reviewed: pending`; under `auto` a flagged map whose lines the approval shows whole (three `ignore`, two `gap`, each
+at most 90 characters) is answered there: the approving option writes
+`As planned (at the approval, N flagged lines shown)`. 9.8.0: the question names what the plan leaves out and could not
+find (the `ignore` and `gap` lines, so write each as the decision it is: "refunds in the CSV export are out of scope");
+any answer but "As planned" sends Plan back with the person's words as a note
+(`temper plan review --answer '...' --redo`). The question is the CLI's own (`temper next` and `view.json` carry
+`context_map` and `context_check`); the person's choice runs `temper plan review --answer '<choice>'`, then
+`temper gate plan`. Plan never asks it and never writes `reviewed: human`. Auto mode may refuse an edit of that line,
+which is why the CLI writes it ([auto mode](../docs/auto-mode.md)).
 
 Every scenario carries a `Test:` line, a scoped shell command that proves it on the merged tree and names the test the plan's
 task writes; the gate row `scenario test commands` fails for one without it, and for a `Test:` file no task declares and the
-project lacks. A task owes the scenarios its `Traced to:` line names (`temper task show` lists them with their exact
-commands). Build runs each `Test:` command at integration and records a row: that row, not a `Traced to:` line, is what
-lets a `Validate: scenario` criterion pass.
+project lacks. A task owes the scenarios whose `Test:` command runs a file it declares (`temper task show` lists them
+with their exact commands); a scenario no task owes is run at integration. Build runs each `Test:` command and records
+a row: that row is what lets a `Validate: scenario` criterion pass.
 
-These run **at every tier**: the artifacts exist (`intent.md` + `tasks.md`); scenario
-count >= Success Criteria count; every criterion has explicit validation links
-(`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each, every
-`Covers:` id names a real criterion); every `Scenario:` sits inside a ```gherkin
-fence; `plan.md` records `## Cross-Repo Search`. **Only for `medium`/`complex`**:
-`plan.md` also needs a heading matching `blast radius` (any level, e.g.
-`## Blast Radius`). Record `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>` as soon as you
-classify it — the gate reads it to decide whether the Blast Radius section applies. The call also writes the
-tier into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has one), where a later door
-reads it; the gate's `tier recorded` row fails when such a line names another tier than the run.
+The rows: the artifacts exist (`intent.md` + `tasks.md`); every criterion has explicit validation links
+(`acceptance.py plan`: stable `AC-NN` ids, `Why:` and `Validate:` on each, every `Covers:` id names a real criterion,
+and a `scenario` criterion is covered by a scenario); every `Scenario:` sits inside a ```gherkin fence. No tier needs a
+`plan.md`. Record `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>` as soon as you classify it. The
+call also writes the tier into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has one), where the
+gate reads it; the gate's `tier recorded` row fails when such a line names another tier than the run, or when
+a simple run crosses the bound above.
 
-Fix any FAIL before returning: usually a missing scenario, an empty Success Criteria
-section, a missing Cross-Repo Search record, or a missing Blast Radius heading. The three
-fresh review rows below are the one exception: they fail until the reviewer has run, which
-happens after you return. Leave them.
+Fix any FAIL before returning. The three fresh review rows below are the one exception: they fail until the reviewer
+has run, which happens after you return. Leave them.
 
 ## The fresh review (9.7.6)
 
@@ -162,22 +150,6 @@ the plan is missing context. Never change a severity. A contested or escalated f
 at the plan question, or sends it back. You wrote this plan; wanting to contest a finding is not
 evidence that the reviewer is wrong.
 
-## Cross-Repo Search
-
-When any cross-repo code search tool is connected (for example a Sourcegraph MCP),
-use it — for blast radius (callers of the changed code outside this repo), prior art
-(has another repo solved this already), and definitions that live in a dependency.
-When none is connected, or `tools.mode: heuristic-only`, say so and proceed with
-local tools: the tool's absence never fails a gate, but a missing record does.
-Record under `## Cross-Repo Search` in `plan.md`, one line per query:
-
-```
-- used: {tool} — {query} → {finding}
-- not available: {reason}
-```
-
-Blast-radius rows found this way carry a `[CROSS-REPO]` label and name the repo.
-
 ## Explore: Your Own Tools, By Default
 
 Explore the repo with your own tools, in your own context — stack, structure, patterns,
@@ -190,21 +162,15 @@ groups' Context distils them, below) before you plan.
 
 ## Blast Radius: Measured, Not Estimated
 
-Every file in the Blast Radius section must come from something you actually opened or
-grepped — an importer list you read, a call site you found — not a plausible guess. If a
+The Blast Radius section of `plan.md` holds only what the change reaches outside the files tasks.md declares, and each
+row comes from something you opened or grepped (an importer list you read, a call site you found), never a guess.
+When a cross-repo code search tool is connected (a Sourcegraph MCP, for example), use it for callers outside this
+repo: such a row carries a `[CROSS-REPO]` label and names the repo (`temper risk` reads the label). If a
 `code-review-graph` MCP server is available, prefer `get_impact_radius_tool` (label
 findings `[PROVEN]`); otherwise grep for importers/consumers and label `[HEURISTIC]`.
 For each changed file: who imports it, does the importer have test coverage for the
 affected path, does it change a contract (API shape, event payload, DB schema), does it
-bypass an established pattern. Output shape:
-
-```
-BLAST RADIUS — {feature}
-  Direct impact:    {file} ({action}) → used by {N} consumers
-  Transitive impact: {module} → calls {changed-function}()
-  Risk areas:        {module} has {X}% coverage for {path}
-  Architectural compliance: [ok]/[warn] {pattern} ...
-```
+bypass an established pattern. One line per consumer: `- {file}: {what it uses} ({covered by tests | not covered})`.
 
 **Security hot paths** — classify each blast-radius file by sensitivity and trace it to
 its entry point:
@@ -226,8 +192,7 @@ up a tier; each HIGH finding is a candidate for its own scenario.
 ## BDD: Derive Scenarios From the Blast Radius, Before Architecture
 
 Scenarios define required behavior; architecture should follow from them, not the other
-way — this is what keeps the file list from over-engineering (no file exists without a
-scenario or an infrastructure reason). Skip this section for Trivial/Simple.
+way: this keeps the file list from over-engineering (no file exists without a scenario or an infrastructure reason).
 
 - Every blast-radius **risk area** → at least one scenario.
 - Every **acceptance criterion** → at least one scenario.
@@ -235,24 +200,16 @@ scenario or an infrastructure reason). Skip this section for Trivial/Simple.
 - Every scenario is concrete (specific inputs/outputs) and testable — never "system works
   correctly".
 
-Medium: 3-8 scenarios. Complex: 5-15. **Every scenario is one fenced ```gherkin
-block** — never a bare `Scenario:` line with indented steps (markdown reads the
-steps as a lazy continuation and renders the whole scenario as one run-on paragraph
-in every preview and review surface). The fence holds the `Scenario:` line, the
-Given/When/Then steps, and the two annotations: `Note:` — the testing approach
-(`unit` the default for pure logic, `mock` for an external dependency,
-`integration` for DB/multi-service, `manual` for the non-automatable: UX, email
-delivery) and `Covers:` — the comma-separated AC ids this scenario verifies (a
-regression-only scenario may omit it). Group the blocks under `#### Happy Path`,
-`#### Error Paths`, `#### Edge Cases`; omit an empty group. Example:
+Medium: 3-8 scenarios. Complex: 5-15. **Every scenario is one fenced ```gherkin block of four lines**, never a bare
+`Scenario:` line (markdown renders it as one run-on paragraph): the `Scenario:` line, one `Then` line (the result its
+test checks; Review judges the test against it), `Covers:` (the AC ids it verifies; a regression-only scenario may
+omit it) and `Test:`. Nothing else: the CLI reads only the name, `Covers:` and `Test:`. Example:
 
     ```gherkin
-    Scenario: Rate-limited caller gets 429, not a hang
-      Given the API has received 100 requests in the last minute
-      When one more request arrives
-      Then it is rejected with 429 within 50ms
-      Note: unit
-      Covers: AC-01
+    Scenario: a locked account gets 423
+      Then the response is 423 and carries the unlock time
+      Covers: AC-02
+      Test: npm test -- test/auth/lockout.test.ts -t "423"
     ```
 
 After deriving scenarios, reconcile against your
@@ -264,9 +221,13 @@ infrastructure any file no scenario touches.
 | Type | Example |
 |---|---|
 | `scenario` | `Validate: scenario — covered by "User resets password"` |
-| `code` | `Validate: code — endpoint exists at POST /api/reset` |
-| `metric` | `Validate: metric — measure support ticket volume post-deploy` |
+| `code` | ``Validate: code — `grep -q "POST /api/reset" src/routes.ts` `` |
+| `metric` | ``Validate: metric — `test "$(wc -c < dist/app.js)" -lt 200000` `` |
 | `manual` | `Validate: manual — UX review needed` |
+
+A `code` or `metric` criterion carries its command in backticks: a command that exits 0 when the criterion holds. The
+CLI runs it when Build ends and at Check and records the row itself (9.8.5); no agent records it. One with no command
+fails the intent gate's `criteria validate` row. A metric that can only be read after release is `manual`.
 
 You run headless and ask nobody. Where an uncertainty changes the outcome, write it into
 `intent.md`'s Open Questions as `Blocking`, with concrete choices ("integrate with the existing
@@ -275,38 +236,14 @@ orchestrator asks it before the gate question. Skip it entirely when the require
 
 ## File-to-Scenario Traceability
 
-Every planned file justifies its existence — a scenario-traced file
-(`src/services/PasswordResetService.ts → Scenario: "User resets password"`) or an
-infrastructure file that states its dependency (`db/migrations/001_x.sql → required by
-PasswordResetService`). A file that is neither: question whether it's needed: if it is,
-a scenario is missing — add one. In `tasks.md`, fill `Traced to:` for every task the same
-way (`Traced to: Scenario: "name"` or `Traced to: Infrastructure: required by {module}`).
+Every planned file justifies its existence: a file a scenario's test needs, or an infrastructure file another file
+needs (`db/migrations/001_x.sql`, required by the service). A file that is neither: question whether it is needed: if
+it is, a scenario is missing; add one. A scenario is owed by the task that declares the file its `Test:` command runs,
+so declare each test file in the task that writes it.
 
 Order tasks by layer (infra → core → integration → tests). Tasks with disjoint files and
 no `**Depends:**` between them run in parallel; give a task `**Depends:**` on another when it
 needs that task's output or config change (see "Grouped tasks" below).
-
-## Approach Decisions
-
-Populate `## Approach Decisions` in `plan.md` **only** when a real alternative was
-genuinely considered and rejected — an empty/absent section is valid and means exactly
-that: no load-bearing choice was made. One genuine decision beats three padded ones.
-Structure: Alternative / Pros / Cons / **Why not chosen** (`${CLAUDE_PLUGIN_ROOT}/templates/adr.md`'s shape).
-
-**`Why not chosen` is the load-bearing field.** Every rejection names a concrete
-constraint, risk, or cost that a reviewer could challenge from the text alone: not
-"simpler" but what was simplified and at whose cost, not "best practice" but which
-practice and which alternative it beat. Mirror each as one line in the summary box's
-🧭 DECISIONS (`{chosen} (not {rejected})`, capped at 3, `+{N} more` beyond that).
-
-## Diagram
-
-Generate a mermaid diagram in `plan.md`'s `## Diagram` section (flowchart for component/
-data flow, `stateDiagram-v2` for lifecycles, `sequenceDiagram` for cross-boundary calls,
-`classDiagram` for type hierarchies) — under 30 nodes, `classDef` color-coding new vs.
-existing vs. modified when it helps. Right after the mermaid block, write the same diagram as
-ASCII box-drawing art in a fenced `text` block (under 80 columns): a terminal cannot render
-mermaid. Keep the mermaid block for GitHub and tool rendering.
 
 ## Grouped tasks
 
@@ -321,9 +258,8 @@ Build runs in groups, so write `tasks.md` as groups of tasks; the example to cop
   a string that must appear in it after integration) and `**Context:**` (a block that runs until the
   first `### Task`). Every group needs a Context.
 - `### Task N: description`, with `**File:**`, `**Depends:**` (`none` or `Task 1, Task 2`),
-  `**Test:**`, `**Cases:**`, `**Traced to:**` and a closing `- [ ] done` box. The parser takes a task's group from the `## Group` heading it sits under (a `[group: G<n>]` tag in the
-  title is not read).
-  Task numbers are unique across the whole file.
+  `**Test:**`, `**Cases:**` and a closing `- [ ] done` box. The parser takes a task's group from the `## Group` heading
+  it sits under (a `[group: G<n>]` tag in the title is not read). Task numbers are unique across the whole file.
 
 **Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test file.
 They can stand on one line or on a `**File:**` line each; every line counts.
@@ -344,7 +280,7 @@ would otherwise reject the new test file as an undeclared change.
 The plan gate runs no command: after the planner returns, the CLI runs each once (`temper baseline plan`) in the
 baseline's worktree, with the project's `setup:` block, under the limit Build gives it, in a process of its own. Left
 out: a command whose text is the suite the baseline ran, a command that names a file a task creates, and every task
-and scenario Test (they fail on the base by design). The exit code alone decides: 0 passes; a time out is no fault of
+and scenario Test and every criterion command (they fail on the base by design; their programs are still looked up). The exit code alone decides: 0 passes; a time out is no fault of
 the environment and offers more time; exit 125 (the setup line) and a program the shell does not find are the
 environment's; any other exit fails, unless the base itself is red. A failed or timed out command is the person's
 question `plan.command`: more time, another command, a revised plan, or a skip with a reason.
@@ -373,7 +309,7 @@ interfaces the group must keep. Review still checks the full packs, so the Conte
 not a substitute.
 
 **Budgets (the gate fails a plan over them).** A group's Context is at most 4096 bytes. A task block (its
-heading through its last field, the cases included) is at most 2048 bytes. Put long background in `plan.md`, not in tasks.md.
+heading through its last field, the cases included) is at most 2048 bytes: no long background in tasks.md.
 
 **Few groups, parallel tasks.** A group costs a worktree, a merge commit and a human gate; a dependency
 between two tasks of the same group costs nothing extra. Make a new group only for a separate review unit
@@ -396,10 +332,10 @@ group branch is merged.
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>
-${CLAUDE_PLUGIN_ROOT}/scripts/temper risk
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan
 ```
 
+The CLI runs `temper risk` itself after the planner (and the revise agent) returned, before the plan gate (9.8.5).
 `temper risk` computes the rating from the blast radius, so the same blast radius always gives the same rating:
 production files (declared files that are not tests or docs) up to 3 is L, up to 10 is M, more is H; a CRITICAL entry
 in `.temper/security-map.json` is H; a HIGH entry, or a `[CROSS-REPO]` row in the Blast Radius section, moves it up one

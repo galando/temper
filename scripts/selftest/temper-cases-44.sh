@@ -124,9 +124,22 @@ assert_eq "D02b the Context check is answered at the approval only when the card
   "fold=True:True:True|always=asked" "fold=$_d02_fold|always=$_d02_always"
 
 # --- D05b: in an unattended run none of the eight is repaired by rule ---
-_d05() { # _d05 <case>: the state of one of the eight, then what next does and whether a repair window opened
+_head44() { # the run as it stands on a reviewed HEAD: its tree in a commit on the run's own branch, Build integrated and
+            # the Review snapshot of that commit, so a state of D05b is refused by its own condition, not for want of these
+  git checkout -q -B feature/demo 2>/dev/null; git config user.email t@example.com; git config user.name T
+  mkdir -p src; [[ -f src/demo.sh ]] || echo 'echo demo prints the demo line' > src/demo.sh
+  git add -A -- . ':(exclude).temper' ':(exclude).claude'; git commit -q -m build
+  "$TEMPER" state set branch feature/demo >/dev/null 2>&1; sed -i '/block-on/d' .claude/temper.config   # a High finding blocks
+  printf '{"version": 1, "slug": "demo", "groups": {}, "tasks": {}, "integration": {"verdict": "PASS", "merged": true}}\n' > .temper/groups.json
+  python3 -I "$(dirname "$TEMPER")/state_ops.py" review-code save .temper/build-state.json >/dev/null 2>&1
+}
+_d05() { # _d05 <case>: the state of one of the eight (or plain, a High finding of the plan's file), on a reviewed HEAD,
+         # then what next does and whether a repair window opened
   _nogit44
   case "$1" in
+    plain) _unattended review
+      "$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
+      gfail review "no blocking findings" "1 open high finding" ;;
     contested) _unattended review; mkdir -p src; echo 'echo demo prints the demo line' > src/demo.sh
       "$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
       "$TEMPER" evidence contest --stage review --id 1 --cite src/demo.sh:1 --quote 'echo demo prints the demo line' \
@@ -153,6 +166,7 @@ _d05() { # _d05 <case>: the state of one of the eight, then what next does and w
       printf '{"verdict": "test", "why": "the locked test asserts the wrong text"}\n' > .temper/evidence/acceptance-triage.json
       gfail check "acceptance tests written before Build" "the locked acceptance tests fail: 1 of 2" ;;
   esac
+  _head44
   printf '%s,%s' "$(_stop44 'repair start|state loop')" \
     "$(python3 -c "import json; print('window' if json.load(open('.temper/build-state.json')).get('repair') else 'no window')" 2>/dev/null)"
 }
@@ -162,6 +176,8 @@ for _c in contested outside sensitive unfinished environment unmeasured person a
 done
 assert_eq "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window" \
   "$_d05_want" "$_d05_got"
+assert_eq "D05b the eight stand on a reviewed HEAD: there a High finding of a file of the plan is repaired by rule" \
+  "auto runs repair start --stage review" "$(_d05 plain | cut -d, -f1)"
 
 # --- D15, D15b: a failed check is never run again unchanged; the person keeps one counted way to run it anyway ---
 _suite44() { # _suite44 <exit>: a run at Check whose test command appends a line to .temper/count44 and exits with <exit>

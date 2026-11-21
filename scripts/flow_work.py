@@ -24,7 +24,7 @@ class WorkPart:
     # -- the work of a stage -------------------------------------------------------------------
     def agent(self, stage, extra_lines=()):
         r = self.r
-        models = r.ctx.get("models") or {}
+        model = r.model(stage)
         lines = ["Follow %s/agents/%s.md exactly." % (self.plugin, stage)]
         if stage in ("plan", "design"):
             # 9.8.0 (round 5): the CLI's map of the code the request reaches, made by the action's own call (temper brief).
@@ -39,8 +39,8 @@ class WorkPart:
         lines.extend(extra_lines)
         lines.extend("Person's note: %s" % x["claim"] for x in r.notes(stage, "input"))
         lines.append(self.plugin_line())
-        return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
-                "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+        return {"type": "temper:temper-%s" % stage, "model": model, "prompt": "\n".join(lines),
+                "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, model or "unknown"))]}
 
     def armed_text(self):
         return ("Approve the %s; the run goes on by itself: a passed check moves on, a failed check gets one repair and then "
@@ -64,7 +64,7 @@ class WorkPart:
         notes = r.notes("rca", "input")
         if len(notes) <= int(r.state.get("rca_notes") or 0):
             return None
-        model = (r.ctx.get("models") or {}).get("rca", "")
+        model = r.model("rca")
         prompt = "\n".join(["Follow %s/agents/rca.md exactly. Bug: %s." % (self.plugin, r.state.get("feature") or r.slug),
                             "RCA file: %s/rca.md" % r.spec] + ["Person's note: %s" % x["claim"] for x in notes] + [self.plugin_line()])
         a = {"type": "temper:temper-rca", "model": model, "prompt": prompt,
@@ -141,18 +141,15 @@ class WorkPart:
 
     # -- WP20: the baseline, before any other step of an active run, and the red base question ----------------------
     def base_step(self):
-        """The CLI's own `baseline start` when the run has no baseline file (`--env-only` at a door into Review or
-        Check); the red base question while the base is red and nobody answered; None else. A run that goes on by
+        """The CLI's own `baseline start` when the run has no baseline file; the red base question while the base is red and nobody answered; None else. A run that goes on by
         itself stops first (a recorded stop with its notice); agents in flight have finished when next is asked."""
         r = self.r
         f = os.path.join(TEMPER, "evidence", "baseline.json")
         if not os.path.exists(f):
-            door = (r.state.get("enter") or "") in ("review", "check")
-            if not door and r.state.get("base_sha"):
+            if r.state.get("base_sha"):
                 return None   # a run approved before it had a baseline (an earlier version saved it): its code is no base
-            return {"action": "auto", "stage": r.stage, "calls": [self.c("baseline start" + (" --env-only" if door else ""))],
-                    "say": "The environment is checked%s, before any agent." % (
-                        "" if door else ", and the project's suite runs once on the current code")}
+            return {"action": "auto", "stage": r.stage, "calls": [self.c("baseline start")],
+                    "say": "The environment is checked, and the project's suite runs once on the current code, before any agent."}
         b = read_json(f, {})
         if b.get("result") != "red" or b.get("answer") or b.get("env_only"):
             return None
@@ -171,18 +168,23 @@ class WorkPart:
             return None   # no baseline of this run started (or a selftest's file of a baseline not run)
         root, cfg = os.getcwd(), r.ctx.get("config_file") or os.path.join(".claude", "temper.config")
         fails = baseline.failed(root, cfg, r.spec, b)
+        gs = r.groups.get("groups") or {}
+
+        def unchecked(where):   # a command whose check has not run in Build yet
+            return any((w.startswith("G") and not (gs.get(w.split()[0]) or {}).get("gate"))
+                       or (w == "Integration" and not r.groups.get("integration")) for w in where.split(", "))
         if after:   # after the approval: only a command whose check has not run in Build yet still asks
-            gs = r.groups.get("groups") or {}
-            fails = [(c, e) for c, e in fails if any((w.startswith("G") and not (gs.get(w.split()[0]) or {}).get("gate"))
-                                                     or (w == "Integration" and not r.groups.get("integration"))
-                                                     for w in e["where"].split(", "))]
+            fails = [(c, e) for c, e in fails if unchecked(e["where"])]
         if fails:
             c, e = fails[0]
             if r.armed():
                 return self.stop(r.stage, "a command the plan wrote %s on the current code: %s (%s)" % (
                     "timed out" if e.get("result") == "timeout" else "fails", c[:200], e.get("why") or ""))
             return {"action": "ask", "stage": r.stage, "ask": self.base_red(b, (c, e), after)}
-        if (not after or not r.groups.get("groups")) and baseline.pending(root, cfg, r.spec, b):
+        pend = baseline.pending(root, cfg, r.spec, b)
+        if after and r.groups.get("groups"):   # WP25: a command a patch changed in Build runs once on the base before its check
+            pend = [p for p in pend if unchecked(p[1])]
+        if pend:
             return {"action": "auto", "stage": r.stage, "calls": [self.c("baseline plan")],
                     "say": "The plan's Validates and its Integration line run once on the current code."}
         return None
@@ -401,10 +403,7 @@ class WorkPart:
         marks the launch (the files' digest and the time), so a row written before it never counts and a reviewer that stopped is
         reported as not run instead of launched again."""
         r = self.r
-        model = r.cfg("models.plan-review", "")
-        if not model:
-            import cli_ctx
-            model = cli_ctx.frontmatter_model(os.path.join(self.plugin, "agents", "plan-review.md")) or ""
+        model = r.model("plan-review")
         insts = sorted({n.split()[1] for n in fr["need"]})
         agents = []
         for i, inst in enumerate(insts):
@@ -451,10 +450,13 @@ class WorkPart:
         if stage == "review":
             extra = extra + self.unread_lines()
         if stage == "plan":
+            rv = self.revise_work()   # WP27: a change to a plan that exists is the narrow revise agent's
+            if rv:
+                return rv
             opens = [f for f in r.fresh()["findings"] if f["state"] not in ("resolved", "accepted")]
-            if opens:
+            if opens:   # WP27: each finding whole (it was cut at 200 characters)
                 extra = ["Fresh review findings to answer (reference/plan.md, Answering the fresh review): %s." % "; ".join(
-                    "#%d [%s] %s" % (f["id"], f["severity"], f["claim"][:200]) for f in opens)]
+                    "#%d [%s] %s" % (f["id"], f["severity"], " ".join(f["claim"].split())) for f in opens)]
             unmet = decisions.unmet(decisions.project_of(r.spec), r.spec) if r.spec else ""
             if unmet:   # WP14: an answer other than the choice the plan assumed; the tasks are written under it now
                 extra = extra + ["Answers the tasks do not follow yet: %s. Write the tasks under them." % unmet]
@@ -479,23 +481,13 @@ class WorkPart:
                 extra.append("What %s left open: %s." % (LABEL.get(back.get("from_stage"), back.get("from_stage")),
                                                           "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(back["findings"]))))
         # 9.8.0: Check is run by the CLI (scripts/check_run.py) whenever it can find the project's test command: the suite
-        # with coverage, each scenario's Test: command and a fix's regression proof, all recorded as real runs. No agent and no model; the Check agent stays for a stack the CLI cannot read (and for a step back
-        # that brings a person's note to it).
+        # with coverage, each scenario's Test: command, each criterion's command (WP27: a criterion validated by code or a
+        # metric) and a fix's regression proof, all recorded as real runs. No agent and no model; the Check agent stays for
+        # a stack the CLI cannot read (and for a step back that brings a person's note to it).
         if stage == "check" and not back and self.cli_check():
             gate = self.c("gate %s" % (r.gate_of(stage) or stage))
-            rec = self.criteria("code", "metric")
-            if not rec:
-                return {"action": "work", "stage": stage, "calls": [self.c("check run"), gate], "agents": [], "gate": gate,
-                        "say": "Check: the CLI runs the suite, coverage and the scenario tests (no agent)."}
-            # A criterion validated by code or by a metric needs its own evidence: the Check agent records only those, after
-            # the CLI's run (a manual one is the person's to confirm at the Check question).
-            a = self.agent("check", extra + ["The CLI has run the suite, coverage and the scenario tests (temper check run). "
-                                            "Record evidence only for these criteria, each with --criterion: %s." % "; ".join(
-                                                "%s (%s: %s)" % (c["id"], c["vtype"], c["vdetails"][:120]) for c in rec)])
-            a["after"].append(gate)
-            a["gate"] = gate
-            return {"action": "work", "stage": stage, "calls": [self.c("check run")], "agents": [a],
-                    "say": "Check: the CLI runs the suite, coverage and the scenario tests; the Check agent records %d criteria%s." % (len(rec), on_model([a]))}
+            return {"action": "work", "stage": stage, "calls": [self.c("check run"), gate], "agents": [], "gate": gate,
+                    "say": "Check: the CLI runs the suite, coverage, the scenario tests and the criteria's commands (no agent)."}
         a = self.agent(stage, extra)
         if stage == "review" and self.cli_check():
             # 9.8.0: the CLI works while Review reads the change (Review writes no code). A feature run plants bugs only
@@ -508,9 +500,10 @@ class WorkPart:
             # none. WP15: Plan has none: its approval card shows the plan, and the question follows at once.
             a["after"].append(self.c("panel design"))
         if stage == "plan":
-            # WP21: the CLI runs the plan's Validates and its Integration line once on the current code (in a process of
-            # its own), after the planner returned and never in its turn; the plan gate itself runs no command
-            a["after"].append(self.c("baseline plan"))
+            # WP27: the CLI rates the plan's risk (temper risk); WP21: it runs the plan's Validates and its Integration line
+            # once on the current code (in a process of its own), after the planner returned and never in its turn; the
+            # plan gate itself runs no command
+            a["after"] += [self.c("risk"), self.c("baseline plan")]
         if stage == "fix":
             # WP23: a fix run has no integrate: the suite and the regression proof run when the Fix agent returns, and a
             # red result fails the Build gate before Review is paid for
@@ -545,7 +538,7 @@ class WorkPart:
         r = self.r
         if r.command != "temper" or not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
             return None
-        if r.state.get("built_before") or (r.groups.get("groups") or {}):
+        if r.groups.get("groups") or {}:
             return None
         d = self.acceptance()
         if d.get("cmd") or d.get("skipped"):
@@ -554,10 +547,7 @@ class WorkPart:
             why = "the acceptance writer locked no tests in %d launches" % int(d.get("launches") or 0)
             return {"action": "work", "stage": "build", "calls": [self.c("acceptance skip --reason %s" % shlex.quote(why))],
                     "agents": [], "say": "Build: %s; the skip is recorded and Build goes on without them." % why}
-        model = r.cfg("models.acceptance", "")
-        if not model:
-            import cli_ctx
-            model = cli_ctx.frontmatter_model(os.path.join(self.plugin, "agents", "acceptance.md")) or ""
+        model = r.model("acceptance")
         a = {"type": "temper:temper-acceptance", "model": model,
              "prompt": "\n".join(["Follow %s/agents/acceptance.md exactly." % self.plugin, "Spec path: %s." % r.spec, self.plugin_line()]),
              "before": [self.c("acceptance start")],
@@ -627,10 +617,7 @@ class WorkPart:
         if not f or self.acc_triage():   # WP23: in every mode, a run that goes on by itself too
             return None
         st = self.check_stage()
-        model = r.cfg("models.acceptance", "")
-        if not model:
-            import cli_ctx
-            model = cli_ctx.frontmatter_model(os.path.join(self.plugin, "agents", "acceptance.md")) or ""
+        model = r.model("acceptance")
         a = {"type": "temper:temper-acceptance", "model": model,
              "prompt": "\n".join(["Follow %s/agents/acceptance.md exactly." % self.plugin, "Spec path: %s." % r.spec,
                                    "Triage: a locked acceptance test fails at %s. Decide whether the code or the test is wrong; change nothing." % LABEL[st],
@@ -735,10 +722,7 @@ class WorkPart:
             return None
         if int(d["reopened"].get("launches") or 0) >= check_run.ACC_MAX_CORRECTIONS:
             return None
-        model = r.cfg("models.acceptance", "")
-        if not model:
-            import cli_ctx
-            model = cli_ctx.frontmatter_model(os.path.join(self.plugin, "agents", "acceptance.md")) or ""
+        model = r.model("acceptance")
         rows = [x for x in r.failed_rows(st) if str(x.get("name", "")).startswith("acceptance tests written before Build")]
         fail = " ".join(str(rows[0].get("detail", "")).split())[-700:] if rows else ""
         a = {"type": "temper:temper-acceptance", "model": model,
@@ -755,14 +739,16 @@ class WorkPart:
                     LABEL[st], on_model([a]), goes_on(False))}
 
     def criteria(self, *types):
-        """The required, open criteria of intent.md whose Validate type is one of types."""
+        """The required, open criteria of intent.md whose Validate type is one of types. WP27: `manual` is the list the
+        person confirms, so it also takes a criterion validated by code or a metric with no command (acceptance.by_person)."""
         r = self.r
         if not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
             return []
         import acceptance
         lines = open(os.path.join(r.spec, "intent.md"), encoding="utf-8").read().splitlines()
         return [c for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria"))
-                if c.get("id") and not c.get("placeholder") and c.get("has_validate") and c.get("vtype") in types
+                if c.get("id") and not c.get("placeholder") and c.get("has_validate")
+                and (c.get("vtype") in types or "manual" in types and acceptance.by_person(c))
                 and not (c.get("deferred") and c.get("optional"))]
 
     def cli_check(self):

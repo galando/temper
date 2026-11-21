@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 pack-discover.py: list the project's own link targets for the quick-create launcher of
-/temper:pack (Step 5a of commands/pack.md).
+the word pack of /temper:temper (Step 3 of reference/pack.md).
 
 It reads only the project, the folder it runs in:
 

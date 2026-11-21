@@ -107,7 +107,6 @@ QUESTIONS = {
     "commit.confirm": {"kind": "gate", "decision": "Whether the change is committed."},
     "commit.fail": {"kind": "gate", "decision": "Whether to add the files to the plan, step back or skip the failed gates."},
     "adhoc.fail": {"kind": "gate", "decision": "Whether a small change whose Review failed is redone or let through."},
-    "run.walked": {"kind": "gate", "decision": "Whether a stage an earlier session ran is taken as it is or run again."},
     "run.restart": {"kind": "resume", "decision": "Whether the saved run state goes, so a new run starts."},
     "scope.drift": {"kind": "drift", "decision": "Whether a file outside the plan is added to it, reverted or allowed once."},
     "run.budget": {"kind": "gate", "decision": "Whether the run is saved, or allowed two more repeats of a failed check."},
@@ -148,7 +147,9 @@ OPTION_IDS = frozenset((
     # WP22
     "run-anyway",
     # WP24
-    "repair-again", "revert-repair"))
+    "repair-again", "revert-repair",
+    # WP25: a file no task declares, added to the blocked task by the person's plan patch
+    "add-file"))
 
 
 def question_entry(qid):
@@ -288,8 +289,9 @@ def advance_ok(run, done, nxt):
 
 
 def plan_files(run_or_spec):
-    """The files a plan allows: the backticked paths of the Files to Create and Files to Modify
-    tables of plan.md, and of the **File:** lines of tasks.md."""
+    """The files a plan allows: the backticked paths of the **File:** lines of tasks.md, and of the two file tables of
+    plan.md that a plan approved by 9.8.4 or by the base holds (WP26: Plan writes those tables no more, so a new plan
+    has none and its files are the **File:** lines alone)."""
     spec = run_or_spec
     out = []
     active, level = False, 0

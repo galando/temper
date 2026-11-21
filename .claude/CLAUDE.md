@@ -3,16 +3,10 @@
 | Command | Purpose |
 |---------|---------|
 | `/temper` | Unified SDLC: intent → plan → design → build → review → check |
-| `/temper:intent` | Capture an idea as a draft `intent.md` (build later) |
-| `/temper:plan` | Plan with blast radius (a door into `/temper`) |
-| `/temper:design` | System design, complex/medium features (a door into `/temper`) |
-| `/temper:build` | TDD + quality gates (a door into `/temper`) |
-| `/temper:review` | Confidence-scored review (a door into `/temper`) |
-| `/temper:check` | Stack validation (a door into `/temper`) |
 | `/temper:fix` | RCA + fix |
-| `/temper:pack` | Manage quality packs |
-| `/temper:status` | Quality + observability dashboard |
-| `/temper:init` | Seed a project's `.claude/temper.config` (idempotent) |
+
+Words of `/temper:temper`: `draft <idea>` (a draft `intent.md`, no run), and alone `status`, `report`, `init`,
+`pack`; other text is a request. Each word has its row in the Arguments table of `commands/temper.md`.
 
 **The run to the commit (default):** the approval's first option, Approve and build, lets the run go
 on by itself to the commit question: a passed check moves on, a failed check gets one repair by rule, every other case
@@ -33,8 +27,7 @@ The person decides each gate only in the `Temper gate` question, with the mod or
 counts an answer only on an exact match for the CLI's run and step, guards, and draws the run (its
 bar decides nothing). With the mod loaded, the mod also carries a run itself (the run driver,
 `hooks/temper-mod/core/driver.ts`): it runs the CLI's calls, launches its agents and asks its questions, and hands
-the run to the conversation for whatever needs a model. The guard is not a sandbox (`docs/trust.md`). The stage commands above are
-doors into `/temper`.
+the run to the conversation for whatever needs a model. The guard is not a sandbox (`docs/trust.md`).
 
 **Version:** 9.8.5 (history: `CHANGELOG.md`).
 Config: `.claude/temper.config` | Docs: `reference/`
@@ -68,7 +61,7 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
   orchestrator file); new commands and agents must be listed in `.claude-plugin/plugin.json`;
   a finding is resolved by `temper repair close` (scripts/repair_ops.py), never by a brief or an agent's
   call; the person decides only in a question dialog, so never add a button that decides to the
-  mod, and never give a stage command a flow of its own (it is a door into `/temper`); a cap
+  mod, and never add a command (a new word is a row of the Arguments table of `commands/temper.md`, with a page in `reference/`); a cap
   of `scripts/caps.json` is never raised by a building session (`now` follows the measure,
   `final` never moves), and a count of the floor (`scripts/e2e/floor.json`) moves only in the
   commit that moves the behaviour (`bun scripts/e2e/run.ts all <name> --floor scripts/e2e/floor.json`);

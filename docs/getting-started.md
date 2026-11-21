@@ -19,11 +19,11 @@ That's it. Claude Code loads Temper's commands and skills automatically, and you
 `/temper:temper "…"` in a project sets it up on the spot: config, `.temper/` scaffold, and the
 native commit gate that blocks a red commit. The short form `/temper` is an interactive shortcut
 that may not resolve in every surface, so this guide types the full name. To set up explicitly
-instead, run `/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It
+instead, run `/temper:temper init`. For optional edit-time guardrails, run `/temper:temper pack enable guardrails`. It
 prints the guard hooks, with the plugin's absolute folder written into each command, for you to add to
 `.claude/settings.local.json` (personal, recommended) or `.claude/settings.json` (shared) in your project.
-`/temper:pack disable guardrails` says which entries to remove. After a plugin upgrade, run
-`/temper:pack enable guardrails` again to print the current commands. Temper never opens a Claude Code settings file, the project's or your home
+`/temper:temper pack disable guardrails` says which entries to remove. After a plugin upgrade, run
+`/temper:temper pack enable guardrails` again to print the current commands. Temper never opens a Claude Code settings file, the project's or your home
 folder's.
 
 ### The stage bar (Claude Code 2.1.287 or later)
@@ -107,24 +107,19 @@ then start Claude Code again, and `/temper:temper` with no arguments takes the r
 It turns off every background task of the session (background Bash commands and Ctrl+B too), and
 the session is busy while an agent runs.
 
-### Option B: Start at a stage
+### Option B: Capture first, build later
 
-Each stage command is a door into the same run: it starts `/temper:temper` at that stage, or takes up
-the run that is active, and you decide every gate in the same question. `/temper:plan` starts at
-Intent, because the plan is derived from the intent you approve with it. A later stage command
-(`/temper:build`, `/temper:review`, `/temper:check`) needs a planned feature: it checks and asks each
-earlier gate in turn, then runs its stage. A new run holds no evidence of an earlier session, so an earlier
-stage whose check needs it (Review at the Check door) fails there: you choose **Run** it (it and every stage
-after it run) or **Override and continue** with your reason. Build passes on the earlier run's committed
-ledger while no file of the plan changed since.
+`/temper:temper draft <idea>` captures an idea as a draft `intent.md` and starts no run. A later
+`/temper:temper "<feature>"` takes the draft up at Intent. There is no door into a later stage: a run
+starts at Intent, and `/temper:temper` with no words takes up the run that is active.
 
 ### 1. Plan a Feature
 
 ```bash
-/temper:plan "add user authentication"
+/temper:temper "add user authentication"
 ```
 
-Temper will analyze the blast radius:
+After the Intent gate, Plan analyzes the blast radius:
 
 ```
 🔍 Analyzing blast radius...
@@ -145,7 +140,7 @@ Temper will analyze the blast radius:
    • Token refresh logic (complex state)
 
 📝 intent.md: 5 scenarios (3 happy, 1 error, 1 edge case)
-   • Each scenario defines Given/When/Then
+   • Each scenario has one Then line, Covers: and Test:
    • Tests must cover all scenarios before build completes
 
 📋 Plan: 7 steps with test gates
@@ -161,11 +156,7 @@ the Plan agent. Set `plan.fresh-review: auto` in `.claude/temper.config` to run 
 
 ### 2. Build with Quality Gates
 
-```bash
-/temper:build
-```
-
-Temper will:
+Build starts when you approve the plan. Temper will:
 
 1. Run tests for each step (derived from intent.md scenarios)
 2. Check quality rules
@@ -178,11 +169,7 @@ Temper will:
 
 ### 3. Review Your Code
 
-```bash
-/temper:review
-```
-
-Temper will:
+Review runs after Build. Temper will:
 
 1. Analyze changed files
 2. Check against enabled packs
@@ -201,7 +188,7 @@ Temper will:
 🟡 WARN: Method exceeds 30 lines
    └─ UserService.java:112
 
-   Intent Validation: 5/5 (3 mechanical, 1 deferred, 1 manual)
+   Intent Validation: 5/5 (4 mechanical, 1 for the person)
    Scenario Coverage: 5/5
 
 ✅ All tests passing
@@ -243,7 +230,7 @@ tools:
 Every Gherkin scenario in `intent.md` can be executed individually against your project's test runner — real pass/fail, real output. No MCP servers required.
 
 - `prompt` (default) — ask before running live verification
-- `always` — always run during `/temper:check`
+- `always` — always run during Check
 - `never` — skip, use heuristic analysis only
 
 Works with: Jest, Vitest, pytest, Maven, Gradle, Go test, cargo test.
@@ -263,15 +250,15 @@ MCP server. Temper installs neither. Full setup notes: [Recommended Setup](recom
 ### Verify Your Setup
 
 ```bash
-/temper:status
+/temper:temper status
 ```
 
 Shows live scenario verification status, MCP tool availability, and evidence ratio.
 
 ## Build runs in groups
 
-Plan writes `tasks.md` as groups of small tasks. Build runs each task as one Haiku agent
-(`claude-haiku-5-5`, escalating to Sonnet after two failed attempts), each task in its own
+Plan writes `tasks.md` as groups of small tasks. Build runs each task as one task agent
+(`sonnet`, or `models.task: haiku` for cents), each task in its own
 git worktree, with one human gate per group. See [Grouped Build](grouped-build.md) for the
 loop and the tuning keys (`build.grouped.*`). It
 writes `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/`; like the other
@@ -305,13 +292,13 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
   set, or `core.hooksPath` already names another tool's folder (husky, lefthook), it leaves them
   as they are, keeps the Temper hook, and prints one line to add to your hook, with no path of
   this machine in it. To add the pre-commit framework or lefthook later, run
-  `git config --unset core.hooksPath` first; the next `/temper:temper` or `/temper:init` then
+  `git config --unset core.hooksPath` first; the next `/temper:temper` or `/temper:temper init` then
   prints that line. A `core.hooksPath` that still holds Temper's older folder, even from where
   the repository used to be, is pointed at `temper-gate`, unless that folder holds other hooks
   git runs (git-lfs writes its hooks there); then it stays, and the installer prints the line.
   Because `core.hooksPath` holds an absolute path, moving or renaming the repository leaves it
   naming the old place, and git runs no pre-commit hook until the next `/temper:temper` or
-  `/temper:init` points it at the new place. A submodule's hook goes in its own git folder.
+  `/temper:temper init` points it at the new place. A submodule's hook goes in its own git folder.
 - Practical ceiling: how many streams one person can *review*. Two or three is a
   sensible start; add sessions only while your review keeps up.
 
@@ -323,7 +310,8 @@ refusal names the run, the stage and the way out. Separate work gets its own fol
 - **A worktree per intent.** Start the other work with `claude --worktree <name>`; `/temper:temper` there is a run of its own.
 - **Make a small change.** At the Build, Review, Check and Commit questions, choose it to change the work yourself with no loop back:
   `temper adhoc open --stage <stage> --reason '<why>'`, make the change, `temper adhoc close`. The change re-runs only what it
-  touches: Review of the changed files, then Check, then the commit gate (a change of docs only re-runs the stage's gate).
+  touches: Review of the changed files, then Check, then the commit gate (a change of docs only re-runs the stage's gate, but at
+  Check or Commit, after Review judged the tree, it runs all three).
 - **The commit gate is branch scoped.** The hook gates a commit on the run's branch only. A commit on another branch passes with one
   line and records nothing.
 - **Turning Temper off.** Disable the plugin, then run `temper guards uninstall` (it removes the Temper hook and its folder, unsets

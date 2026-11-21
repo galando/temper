@@ -104,7 +104,7 @@ The CLI prints plain text.
 ### Success Criteria
 - [ ] AC-01 [required]: the CLI lists categories
   Why: people need them
-  Validate: code — the listing test
+  Validate: code — `test -f unit/test_cli.py`
 - [ ] AC-02 [required]: the CLI lists categories in color
   Why: people scan by color
   Validate: scenario — the color scenario
@@ -127,7 +127,7 @@ F7CMD="pytest unit/test_cli.py::test_color_output_for_each_category_listed -q"; 
 fresh; f7_intent; : > .temper/evidence/build.json
 OUT="$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/intent.md .temper/evidence/build.json)"
 assert_eq "F7: with no row each criterion says why: code FAIL, scenario FAIL naming the Test: cut at 60, manual CONFIRM" \
-  "AC-01 FAIL: Validate: code, and no passing row records it.|AC-02 FAIL: scenario 'the CLI lists categories in color' ($F7CUT) has no row run by the CLI.|AC-03 CONFIRM: the person confirms it at Check" \
+  "AC-01 FAIL: its command has no row run by the CLI (test -f unit/test_cli.py).|AC-02 FAIL: scenario 'the CLI lists categories in color' ($F7CUT) has no row run by the CLI.|AC-03 CONFIRM: the person confirms it at Check" \
   "$(echo "$OUT" | paste -sd'|' -)"
 "$TEMPER" evidence run --stage build --scenario 'the CLI lists categories in color' --claim 'scenario test' -- bash -c 'exit 4' >/dev/null 2>&1
 OUT="$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/intent.md .temper/evidence/build.json | sed -n 2p)"
@@ -197,15 +197,12 @@ assert_eq "F17: a timed out group gate is recorded as a timeout with its limit" 
   "$(python3 -c "import json; g=json.load(open('.temper/groups.json'))['groups']['G1']['gate']; print(g['verdict']+'|'+str(g.get('timeout_s')))")"
 assert_exit "F17: --timeout-s takes a whole number" 1 "$TEMPER" group gate G1 --timeout-s abc
 
-# --- F8. The fallback record pass: a gate that fails only for rows nobody recorded sends a fix pass that records and changes no code ---
+# --- F8. No record pass (WP27): a gate that fails for criterion rows nobody ran asks its question; the CLI runs the commands ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
-gfail build "criteria validated" "AC-01 FAIL: scenario 'first' (no Test: line) has no row run by the CLI. AC-02 FAIL: Validate: code, and no passing row records it."
-assert_eq "F8: only missing rows: the fix pass is launched with Record lines, and no code is to change" "work|temper:temper-build|1|1|1|1" \
-  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], str(a['prompt'].count('Record scenario: first')), str(a['prompt'].count('Record criterion: AC-02')), str(a['prompt'].count('Record only')), str(int('state set record_pass' in ' '.join(a['after'])))])")"
-assert_eq "F8: the record pass's gate call is the last of its after calls" "gate build" "$(nx "d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
-"$TEMPER" state set record_pass "$(nx "d['agents'][0]['after'][-2].split('record_pass ', 1)[1].strip(chr(39))")" >/dev/null 2>&1
-assert_eq "F8: the pass runs once per round: the next call asks the gate question" "ask" "$(nx "d['action']")"
+gfail build "criteria validated" "AC-01 FAIL: scenario 'first' (no Test: line) has no row run by the CLI. AC-02 FAIL: its command has no row run by the CLI (true)."
+assert_eq "F8: only missing rows: no agent is launched to record them, and the gate question is asked" "ask|0" \
+  "$(nx "'|'.join([d['action'], str(len(d.get('agents') or []))])")"
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 gfail build "criteria validated" "AC-02 FAIL: scenario 'second' (bash -c 'exit 3') exit 3."

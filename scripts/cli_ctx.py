@@ -1,7 +1,9 @@
 """cli_ctx.py: the facts only the CLI knows, and `temper next`, in one Python process.
 
   python3 cli_ctx.py next --plugin DIR --cli PATH --config-file FILE --now TS --run-files "A B ..."
-  python3 cli_ctx.py models --plugin DIR --config-file FILE [--source]
+  python3 cli_ctx.py models --plugin DIR --config-file FILE [--state-file FILE] [--source] [--all | NAME]
+                                                                               (WP27: the table of models, by agent and
+                                                                               class, with the config keys over it)
   python3 cli_ctx.py view --plugin DIR --cli PATH --config-file FILE --now TS   (9.8.0: the view every other command
                                                                                writes, with the models `next` resolves)
 
@@ -18,64 +20,43 @@ import sys
 
 import config_yaml
 
-AGENT_STAGES = ["intent", "plan", "design", "build", "review", "check", "pipeline", "rca", "fix"]
-TASK_DEFAULT = "claude-haiku-5-5"
-ESCALATION_DEFAULT = "sonnet"
-RISK_TASK_MODEL = "sonnet"   # 9.8.4: the task model of a complex or risk H plan (the same as the CLI's _resolve_task_model)
+# WP27: one table of the models every agent of a run is launched on, by its class: `standard`, or `high` for a run of tier
+# complex or of risk H (risky). The two columns are equal on purpose: the planner stays on Opus until a bench round says
+# otherwise (decision 4 of docs/plans/one-go/README.md section 3), and the `high` column is what lets that round, or a
+# person, set a cheaper planner below risk H and keep Opus at risk H. After WP27 the table has one writer: the bench block
+# of WP32. `task` is a Build task agent (agents/build-task.md), `task-escalation` its attempt after the second.
+AGENTS = ["intent", "plan", "plan-revise", "plan-review", "design", "acceptance", "build", "review", "check", "pipeline",
+          "rca", "fix", "task", "task-escalation"]
+TABLE = {a: ("opus", "opus") if a in ("plan", "design", "rca") else ("sonnet", "sonnet") for a in AGENTS}
+OLD_KEYS = {"task": "build.grouped.task-model", "task-escalation": "build.grouped.escalation-model"}   # still read
 
 
-def frontmatter_model(path):
-    """The `model:` line of a brief's frontmatter, or ''."""
-    try:
-        with open(path, encoding="utf-8") as f:
-            lines = f.read().splitlines()
-    except (OSError, UnicodeDecodeError):
-        return ""
-    fences = 0
-    for line in lines:
-        if re.match(r"^---\s*$", line):
-            fences += 1
-            if fences == 2:
-                break
-            continue
-        if fences == 1 and line.startswith("model:"):
-            return line[len("model:"):].strip()
-    return ""
+def risky(state):
+    """The class of a run is `high` when its tier is complex or its risk is H (9.8.4 measured a complex run that built 12
+    tasks on haiku five times, each passing its own gate). The first planner launch has neither yet: it is `standard`."""
+    return isinstance(state, dict) and (str(state.get("complexity") or "").lower() == "complex"
+                                        or str(state.get("risk") or "").upper() == "H")
 
 
 def risky_run(state_file=os.path.join(".temper", "build-state.json")):
-    """9.8.4: the active run's plan is complex or rated risk H. Its tasks are built on RISK_TASK_MODEL unless the config
-    names a task model: a measured complex run built 12 tasks on haiku five times, each passing its own gate."""
     try:
         with open(state_file, encoding="utf-8") as fh:
-            st = json.load(fh)
+            return risky(json.load(fh))
     except (OSError, ValueError):
         return False
-    return isinstance(st, dict) and (str(st.get("complexity") or "").lower() == "complex" or str(st.get("risk") or "").upper() == "H")
 
 
-def resolve(plugin, cfg):
-    """{name: (model, source)} for every stage, the task and its escalation. source is `config` (an override in
-    .claude/temper.config) or `brief` (the model: line of the stage's own brief); a stage with no model is left out."""
+def resolve(plugin, cfg, state=None, state_file=os.path.join(".temper", "build-state.json")):
+    """{name: (model, source)} for every agent of the table, in its order. In this order: models.high.<agent> when the
+    class is high; models.<agent>; for task and task-escalation the old keys build.grouped.task-model and
+    build.grouped.escalation-model; the table. source is `config` or `table`. The plugin folder is not read: no brief
+    holds a default of its own (every brief's model line equals the table's standard value, a case checks it)."""
+    high = risky(state) if state is not None else risky_run(state_file)
     out = {}
-    for s in AGENT_STAGES:
-        over = str(config_yaml.get(cfg, "models." + s, "") or "")
-        if over:
-            out[s] = (over, "config")
-            continue
-        m = frontmatter_model(os.path.join(plugin, "agents", s + ".md"))
-        if m:
-            out[s] = (m, "brief")
-    over = str(config_yaml.get(cfg, "build.grouped.task-model", "") or "")
-    if over:
-        out["task"] = (over, "config")
-    elif risky_run():
-        out["task"] = (RISK_TASK_MODEL, "risk")
-    else:
-        m = frontmatter_model(os.path.join(plugin, "agents", "build-task.md"))
-        out["task"] = (m, "brief") if m else (TASK_DEFAULT, "default")
-    over = str(config_yaml.get(cfg, "build.grouped.escalation-model", "") or "")
-    out["task-escalation"] = (over, "config") if over else (ESCALATION_DEFAULT, "default")
+    for a in AGENTS:
+        keys = (["models.high." + a] if high else []) + ["models." + a] + ([OLD_KEYS[a]] if a in OLD_KEYS else [])
+        over = next((str(v) for v in (config_yaml.get(cfg, k, "") for k in keys) if v and not isinstance(v, dict)), "")
+        out[a] = (over, "config") if over else (TABLE[a][1 if high else 0], "table")
     return out
 
 
@@ -141,10 +122,16 @@ def main(argv):
     plugin = option(argv, "--plugin")
     config_file = option(argv, "--config-file")
     cfg = config_yaml.load(config_file)
-    found = resolve(plugin, cfg)
-    if argv[1] == "models":
+    found = resolve(plugin, cfg, state_file=option(argv, "--state-file") or os.path.join(".temper", "build-state.json"))
+    if argv[1] == "models":   # `temper model`: one agent's model, or every line (with its source)
+        names = [x for i, x in enumerate(argv[2:], 2) if not x.startswith("--") and argv[i - 1] not in (
+            "--plugin", "--config-file", "--state-file")]
+        if names and names[0] not in found:
+            print("FAIL: unknown agent '%s' (one of: %s, or --all)" % (names[0], " ".join(AGENTS)), file=sys.stderr)
+            return 1
         for name, (model, source) in found.items():
-            print("%s=%s%s" % (name, model, " (%s)" % source if "--source" in argv else ""))
+            if not names or name == names[0]:
+                print("%s%s%s" % ("" if names else name + "=", model, " (%s)" % source if "--source" in argv else ""))
         return 0
     import flow
     models = {k: v[0] for k, v in found.items()}

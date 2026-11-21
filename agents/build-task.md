@@ -1,7 +1,7 @@
 ---
 name: temper-build-task
 description: Temper's grouped Build task agent — implements one task, or a chain of tasks in order, with TDD, each inside its own task worktree. Launched by the /temper orchestrator, never directly by a user.
-model: claude-haiku-5-5
+model: sonnet
 tools: Read, Edit, Write, Bash, Glob, Grep
 ---
 
@@ -65,7 +65,7 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 - Never edit outside the worktree, and never touch a file another task declares.
 - Never run `temper group reopen` (or any `temper group` command); reopening is the orchestrator's alone.
 - If GREEN needs a change in a file the task does not declare, never widen scope: run
-  `TEMPER task blocked N --needs <path> --reason '<why>'`, gate the task (no retry) and stop.
+  `TEMPER task blocked N --needs <path> --reason '<why>'`, gate the task (no retry) and stop; the CLI decides.
 
 **Your panel is drawn by the CLI** (`temper panel task`, after your gates) from what it recorded: the attempt, the RED and
 GREEN runs of `task test`, the gate's verdict and the files of the task's commit. Draw no box and write no script for
