@@ -47,7 +47,8 @@ cannot. `{spec_path}` is the project's `.temper/specs/{slug}` folder, never a pa
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper acceptance lock --cmd '<the command from step 4>'
    ```
    When the project cannot run automated tests at all (no framework, nothing to call), run
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper acceptance skip --reason '<why>'` instead and write no tests.
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper acceptance skip --reason '<why>'` instead and write no tests. A skip ends a
+   run that goes on by itself: the run then asks the person at every stage.
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`.
 
 **A correction.** When your launch prompt has a `Correction:` line, the tests are locked already and the person said

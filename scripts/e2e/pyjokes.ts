@@ -15,7 +15,7 @@ import path from 'node:path'
 import { orchestrate, orchestrateFix } from './loop'
 import type { Script } from './loop'
 import { asksEveryStage, chained, expect, recommended, t, worktreeOf } from './scenarios'
-import { ROOT, TEMPER, World, reviewDone } from './world'
+import { ROOT, TEMPER, World, acceptanceLock, reviewDone } from './world'
 import type { Json } from './world'
 
 // WP29: the config with lines at the top of its `check:` block, made when the template has none (the template of
@@ -252,7 +252,7 @@ const intentAgent = (seen: Seen) => (w: World, a: Json): void => {
   seen.note('intent-prompt', a.prompt)
   if (!w.exists(`${SPEC}/intent.md`)) w.write(`${SPEC}/intent.md`, INTENT)
 }
-const acceptance = (w: World): void => { t(w, "acceptance skip --reason 'the e2e driver writes no acceptance tests'") }
+const acceptance = (w: World): void => { t(w, acceptanceLock(w, SPEC)) }
 const groupFix = (w: World, a: Json): boolean => {
   // the fix agent reads the FAIL lines, runs the Validate command, and exports the new name
   const m = /Work only in its worktree (\S+) \(/.exec(String(a.prompt))

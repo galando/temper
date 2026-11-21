@@ -7,7 +7,7 @@ import { orchestrate, orchestrateFix, runCalls } from './loop'
 import type { Script } from './loop'
 import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, SUITE, TASKS_MD } from './project'
 import { pickId, stagePerson } from './persons'
-import { ROOT, TEMPER, World, reviewDone } from './world'
+import { ROOT, TEMPER, World, acceptanceLock, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
 // WP29: the config with lines at the top of its `check:` block, made when the template has none (the template of
@@ -110,8 +110,8 @@ export const AGENTS: Record<string, Agent> = {
     t(w, 'risk')
   },
   'temper:temper-plan-review': (w, a) => freshReviewer(w, a, []),
-  // 9.8.0: the acceptance writer: no test framework of its own in the driver, so it records why there are none.
-  'temper:temper-acceptance': w => { t(w, "acceptance skip --reason 'the e2e driver writes no acceptance tests'") },
+  // 9.8.0: the acceptance writer locks one test (a skip would end the run that goes on by itself, rule 3)
+  'temper:temper-acceptance': w => { t(w, acceptanceLock(w, SPEC)) },
   'temper:temper-build-task': buildTask,
   'temper:temper-review': w => reviewDone(w),
   'temper:temper-check': w => {

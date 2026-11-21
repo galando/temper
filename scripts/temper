@@ -3654,7 +3654,7 @@ cmd_acceptance() {
   done
   case "$sub" in
     lock|skip|start|reopen|restore|triage|triaged) python3 -E -s "$SCRIPTS_DIR/check_run.py" acceptance "$REPO_ROOT" "$spec" "$sub" "$text" \
-      && { [[ "$sub" != skip || -z "$(_json_get_path "$STATE_FILE" parked "")" ]] || _unattended_end "the person skipped the acceptance tests"; } ;;
+      && { [[ "$sub" != skip ]] || _unattended_end "the acceptance tests were skipped"; } ;;   # rule 3: a skip ends it
     *) echo "FAIL: usage: temper acceptance lock --cmd '<command>' | skip --reason '<why>' | start | reopen --reason '<why>' | restore | triage --reason 'code|test: <why>'" >&2; return 1 ;;
   esac
 }

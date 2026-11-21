@@ -111,3 +111,17 @@ assert_eq "round 2 reviewer 1: rule 4 a plan patch of the Integration command ch
   "patch=0|runs=echo patched" \
   "patch=$_p89|runs=$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import check_run; print(check_run.plan_line('.temper/specs/demo'))" "$REPO_ROOT/scripts" 2>/dev/null)"
 
+# --- round 2 reviewer 1: rules 3 and 4, a skip of the acceptance tests typed in a run that goes on by itself ---
+# Commit f180c06 made the flow stop where the acceptance writer locked nothing, with the skip as the person's option at
+# that stop; cmd_acceptance ends the unattended run after a skip only when the run is parked. With the mod off the
+# session types `temper acceptance skip --reason R` with no stop open: the CLI records the skip and the run still goes
+# on by itself, so a check is skipped by the run (rule 4) and the skip does not end it (rule 3).
+_unattended build
+printf '{"spec": ".temper/specs/demo", "launches": 2}\n' > .temper/evidence/acceptance-lock.json
+"$TEMPER" acceptance skip --reason 'the session says so' >/dev/null 2>&1; _s89=$?
+assert_eq "round 2 reviewer 1: rule 4 in a run that goes on by itself with no stop open a typed acceptance skip is refused, or it ends the run" \
+  "refused-or-ended" \
+  "$(_sk="$(python3 -c 'import json; print("skipped" if json.load(open(".temper/evidence/acceptance-lock.json")).get("skipped") else "not skipped")' 2>/dev/null)"
+     _md="$("$TEMPER" state get run_mode 2>/dev/null)"
+     if [[ $_s89 -ne 0 && $_sk == "not skipped" ]] || [[ $_md == interactive ]]; then echo refused-or-ended; else echo "rc=$_s89|$_sk|$_md"; fi)"
+
