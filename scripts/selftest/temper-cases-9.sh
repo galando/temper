@@ -205,7 +205,8 @@ rm -rf "$N"
 
 # --- re-audit: a scenario's trace row is no test run ---
 setup
-"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> unit/test_a.py:test_first' --exit 0 >/dev/null 2>&1
+# lane B of phase 8 (WP30-2): the row as the CLI writes it, so only the scenario filter keeps it out of the tests row
+"$TEMPER" evidence run --stage check --scenario first --claim 'scenario: first -> unit/test_a.py:test_first' -- true >/dev/null 2>&1
 assert_eq "re-audit: a scenario row that names its test does not count as a passing test run" "0" \
   "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
 ev_green check "tests"

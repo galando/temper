@@ -88,12 +88,18 @@ def feedback_answered(argv):
 
 
 def last_green(argv):
-    import json, sys
+    import json, os, sys
+    import importlib.util   # runs.py by its full path, no folder on the import path (this module runs isolated)
+    spec = importlib.util.spec_from_file_location('runs', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'runs.py'))
+    runs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runs)
     try:
         rows = json.load(open(argv[1]))
     except Exception:
         rows = []
-    hits = [r for r in rows if r.get('phase') == 'green' and 'test' in (r.get('claim') or '').lower()]
+    # rule 5 (ADR 0024): the checkpoint counts only a run the CLI saw, never a claim or a voided row
+    hits = [r for r in rows if isinstance(r, dict) and runs.counts(r) and r.get('phase') == 'green'
+            and 'test' in (r.get('claim') or '').lower()]
     if hits:
         print('%s|%s' % (hits[-1].get('exit_code'), hits[-1].get('claim') or ''))
 
