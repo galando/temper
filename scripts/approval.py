@@ -13,6 +13,14 @@ commit gates until the person approves again.
   python3 approval.py check STATE SPEC NAME=DIGEST...
                                                exit 1 with the reason when a named file of SPEC has another digest now
   python3 approval.py plan-digest PARSED_JSON  the digest of a parsed tasks.md (the CLI's _plan_digest)
+  python3 approval.py held STATE SPEC          exit 0 with the reason when the run is before its approval and no
+                                               approving answer passed its check at this step (rule 1, row D30: no
+                                               branch and no commit before the approval); exit 1 otherwise
+
+`check` records the digests it compared and the run's step as `approval_shown` in the state: the approving answer's
+first call (`state set run_mode M --shown ...`) passed, so its own `temper spec branch` and `temper spec commit` and the
+commit hook's carve out for the spec folder go on (scripts/spec_ops.py, gate_commit of the CLI), while the files are as
+it showed them. Any other branch or commit before the approval is refused.
 
 Standard library only. The one plan digest lives here: the CLI, the flow (Run.plan_core_digest) and plan_patch.py
 call it.
@@ -106,6 +114,48 @@ def read_state(path):
         return {}
 
 
+MARK = "approval_shown"
+
+
+def write_state(path, st):
+    tmp = "%s.tmp.%d" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(st, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def mark(state, pairs):
+    """Rule 1: the approving answer's digests passed at this step; recorded for held. Nothing without a run state."""
+    st = read_state(state)
+    if not st or not pairs:
+        return
+    m = st.get(MARK) if isinstance(st.get(MARK), dict) and st[MARK].get("step") == st.get("step") else {}
+    files = dict(m.get("files") or {}) if isinstance(m.get("files"), dict) else {}
+    files.update(p.split("=", 1) for p in pairs)
+    st[MARK] = {"step": st.get("step"), "files": files}
+    try:
+        write_state(state, st)
+    except OSError:
+        pass
+
+
+def held(state, spec):
+    """Rule 1 (row D30): the reason the run may make no branch and no commit now, or None. A /temper:temper run at
+    Intent or Plan, or a fix run at its root cause, is before its approval; the approving answer's first call marks the
+    step (mark), and the files it showed must still be as shown."""
+    st = read_state(state)
+    cmd, at = st.get("command") or "temper", st.get("next_stage")
+    if not ((cmd == "temper" and at in ("intent", "plan")) or (cmd == "fix" and at == "rca")):
+        return None
+    m = st.get(MARK)
+    if (isinstance(m, dict) and m.get("step") == st.get("step") and isinstance(m.get("files"), dict) and m["files"]
+            and all(digest(os.path.join(spec, n)) == d for n, d in m["files"].items())):
+        return None
+    return ("the run is at %s, before the approval: its branch and its first commit are made by the approving answer "
+            "of the person, never before it" % {"rca": "RCA"}.get(at, str(at).capitalize()))
+
+
 def row(name, ok, detail):
     return {"name": name, "pass": ok, "detail": detail}
 
@@ -144,11 +194,7 @@ def bind_rca(state):
     if st.get("command") != "fix":
         return 0
     st["intent_hash"] = bound(os.path.join(str(st.get("spec_path") or ""), "rca.md"))
-    tmp = "%s.tmp.%d" % (state, os.getpid())
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(st, f, indent=2)
-        f.write("\n")
-    os.replace(tmp, state)
+    write_state(state, st)
     return 0
 
 
@@ -190,9 +236,15 @@ def main(argv):
         if why:
             print("FAIL: %s" % why, file=sys.stderr)
             return 1
+        mark(argv[2], argv[4:])
         return 0
+    if word == "held" and len(argv) == 4:
+        why = held(argv[2], argv[3])
+        if why:
+            print(why)
+        return 0 if why else 1
     print("usage: approval.py digest FILE | bound FILE | row STATE SPEC | check STATE SPEC NAME=DIGEST... "
-          "| plan-digest JSON | bind-rca STATE", file=sys.stderr)
+          "| plan-digest JSON | bind-rca STATE | held STATE SPEC", file=sys.stderr)
     return 2
 
 

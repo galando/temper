@@ -193,6 +193,7 @@ assert_eq "round 4, 2: integrate merges them into the project" "PASS|echo two" \
 (cd "$N/packages/app" && git -c user.email=t@t -c user.name=t commit -qm "code while every gate fails") >/dev/null 2>&1; rc=$?
 assert_eq "round 4, 3: the native hook gates the commit of a project below the top of its repository" "1|init" \
   "$rc|$(git -C "$N" log --format=%s -1 | sed 's/^Merge.*/init/; s/^merge.*/init/; s/^feat.*/init/; s/^spec$/init/')"
+(cd "$N/packages/app" && _at build)   # WP32, rule 1 (D30): a spec only commit is one of a run past its approval
 (cd "$N/packages/app" && git reset -q && mkdir -p .temper/specs/pw2 && echo '# x' > .temper/specs/pw2/intent.md && git add .temper/specs/pw2 \
   && git -c user.email=t@t -c user.name=t commit -qm "spec only") >/dev/null 2>&1; rc=$?
 assert_eq "round 4, 3: and lets its spec only commit through" "0|spec only" "$rc|$(git -C "$N" log --format=%s -1)"

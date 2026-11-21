@@ -922,6 +922,7 @@ git config user.email "test@example.com"
 git config user.name "test"
 echo "# Intent: demo" > .temper/specs/demo/captured.md
 git add .temper/specs/demo/ >/dev/null 2>&1
+_at build   # WP32, rule 1 (D30): before the approval no commit is made, the spec folder's either (temper-cases-81.sh)
 assert_exit "an all-specs staged set passes the commit gate mid-run (no stage verdicts)" 0 "$TEMPER" gate commit
 OUT=$("$TEMPER" gate commit 2>&1)
 assert_eq "the artifact-only carve-out names itself" "yes" "$(grep -q 'artifact-only commit' <<<"$OUT" && echo yes || echo no)"

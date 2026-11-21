@@ -56,11 +56,11 @@ _answer57() { # _answer57 <option id>: runs the calls of that option of the ques
 _first57() { _x57 "r = str(((d.get('ask') or {}).get('question') or {}).get('question', '')).split('\n')[0]"; }
 
 # --- spec branch --carry: the spec files cross the switch; a refused switch puts them back and fails ---
-_clash57
+_clash57; _at build   # WP32, rule 1 (D30): a branch and a commit come after the approval
 assert_eq "w16 spec branch --carry: the spec files cross the switch to the run's branch, which a plain switch refuses" \
   "refused|0|feature/demo|same|plan" \
   "$(git checkout -q feature/demo >/dev/null 2>&1 && echo switched || echo refused)|$("$TEMPER" spec branch --carry feature/demo >/dev/null 2>&1; echo $?)|$(git branch --show-current)|$(_spec57)"
-_clash57
+_clash57; _at build   # WP32, rule 1 (D30): a branch and a commit come after the approval
 echo 'echo a local edit' > src/demo.sh
 _out57="$("$TEMPER" spec branch --carry feature/demo 2>&1)"; _rc57=$?
 _dir57=""
@@ -73,7 +73,7 @@ assert_eq "w16 spec branch --carry: a refused switch puts the spec files back, f
   "$([[ $_rc57 -ne 0 ]] && echo failed || echo passed)|$(git branch --show-current)|$(_spec57)|$(grep -o 'FAIL' <<<"$_out57" | head -n 1)|$([[ -n "$_dir57" ]] && echo named || echo none)"
 
 # --- spec branch --carry takes only the run's branch: a path as NAME is refused, its edits stay (phase 4b review) ---
-_clash57
+_clash57; _at build   # WP32, rule 1 (D30): a branch and a commit come after the approval
 echo 'echo a local edit' > src/demo.sh
 _out57="$("$TEMPER" spec branch --carry src/demo.sh 2>&1)"; _rc57=$?
 assert_eq "w16 spec branch --carry: a NAME that is not the run's branch is refused, and a path's edits stay" \
@@ -81,7 +81,7 @@ assert_eq "w16 spec branch --carry: a NAME that is not the run's branch is refus
   "$_rc57|$(grep -o '^FAIL' <<<"$_out57" | head -n 1)|$(git branch --show-current)|$(cat src/demo.sh)|$(_spec57)"
 
 # --- spec commit -- FILE...: the commit holds the files named and nothing staged before it (phase 4b review) ---
-fresh; _repo57
+fresh; _repo57; _at build   # WP32, rule 1 (D30)
 echo 'echo other' > src/old.sh; git add src/old.sh; git commit -q -m old
 echo 'echo changed' > src/demo.sh; rm src/old.sh
 echo staged > unrelated.txt; git add unrelated.txt
@@ -91,7 +91,7 @@ assert_eq "w15 spec commit -- FILE...: the commit holds the files named, and a f
   "$_rc57|$(git show --name-only --format= HEAD | sort | paste -sd, -)|$(git status --porcelain -- unrelated.txt)"
 
 # --- spec commit 'msg' with no files: the commit holds the spec folder and nothing staged before it (phase 4b) ---
-fresh; rm -f unrelated.txt; _repo57
+fresh; rm -f unrelated.txt; _repo57; _at build   # WP32, rule 1 (D30)
 printf '# Plan: demo\n' > .temper/specs/demo/plan.md
 echo staged > unrelated.txt; git add unrelated.txt
 _rc57="$("$TEMPER" spec commit 'docs(spec): demo' >/dev/null 2>&1; echo $?)"
