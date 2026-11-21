@@ -91,13 +91,16 @@ assert_exit "a new unresolved critical finding FAILs the gate again" 1 "$TEMPER"
 cd "$WORKDIR"; rm -rf "$WORKDIR/rv1"
 
 # --- check gate: coverage threshold ---
+# review 3 of WP32: coverage is only what the CLI measured (a value recorded with evidence add is not read), so the
+# coverage command prints the total and `check run` measures it
 setup
+printf 'check:\n  commands:\n    test: "true"\n    coverage: echo "TOTAL 10 4 60%%"\n' >> .claude/temper.config
+"$TEMPER" check run >/dev/null 2>&1
 ev_green check "tests"
-"$TEMPER" evidence add --stage check --claim "coverage" --value 60 >/dev/null
 ev_scen check first
 ev_scen check second
 assert_exit "check gate FAILs below coverage threshold (60 < 80)" 1 "$TEMPER" gate check
-"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+sed -i 's/TOTAL 10 4 60%/TOTAL 10 1 90%/' .claude/temper.config; "$TEMPER" check run >/dev/null 2>&1
 assert_exit "check gate PASSes above coverage threshold (90 >= 80)" 0 "$TEMPER" gate check
 
 # --- check gate: the coverage threshold is data, never Python source ---

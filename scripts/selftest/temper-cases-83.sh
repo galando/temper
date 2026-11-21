@@ -40,3 +40,16 @@ gpass intent plan build review; _at check
 assert_eq "review 3: a scenario whose Test: command failed in the CLI's run is not traced by a run of another command" \
   "scenarios=False|acceptance=False" \
   "scenarios=$(_g83 "r = row('scenarios traced').get('pass')")|acceptance=$(_g83 "r = row('acceptance evidence').get('pass')")"
+
+# --- rules 5 and 6: a coverage value an agent typed with evidence add turns a coverage not measured into passed ---
+fresh; _repo83; printf 'check:\n  commands:\n    test: "true"\n' >> .claude/temper.config   # no coverage command
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+_c83_before="$(_g83 "r = row('coverage').get('state')")"
+"$TEMPER" evidence add --stage check --claim 'coverage' --value 95 >/dev/null 2>&1
+"$TEMPER" gate check >/dev/null 2>&1
+assert_eq "review 3: a coverage value recorded with evidence add passes no coverage row: what the CLI measured, not measured, stays" \
+  "before=not measured|after=None:not measured|view=not measured" \
+  "before=$_c83_before|after=$(_g83 "r = '%s:%s' % (row('coverage').get('pass'), row('coverage').get('state'))")|view=$(vw "next((x.get('state') for x in d.get('checks') or [] if str(x.get('name', '')).startswith('coverage')), None)")"
+
+# --- rule 5: a Check verdict names a tree on which the suite never ran; the pass it counts is of the tree before ---

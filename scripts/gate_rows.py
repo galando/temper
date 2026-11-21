@@ -44,11 +44,12 @@ def ledger_rows(ledger):
 
 def check_rows(ledger, baseline, key):
     """The row coverage, judged again here with the config and the baseline as they are now: the ledger's latest coverage
-    row (the CLI's, with what it measured, or a recorded value) is the measure."""
+    row the CLI wrote (check_run.coverage_row, with what it measured) is the measure; a value an agent recorded with
+    `temper evidence add` is no measure and is not read (rules 5 and 6)."""
     import check_run
     rows = ledger_rows(ledger)
     hits = [x for x in rows if not x.get("scenario") and re.search("coverage", str(x.get("claim") or ""), re.I)
-            and (x.get("value") is not None or x.get("state"))]
+            and runs.counts(x) and x.get("state")]
     last = hits[-1] if hits else {}
     measure = {"total": last.get("value"), "command": last.get("command", True), "exit": last.get("cov_exit"),
                "hint": last.get("hint") or "", "note": last.get("note") or ("" if last else "no coverage was recorded")}

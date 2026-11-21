@@ -61,7 +61,8 @@ Claude Code file. A pack's link targets come from the skills and commands your s
 - **What Check measures (9.8.5).** A gate row is passed, failed, or `not measured`: a measurement that was not taken,
   such as coverage with no coverage tool for the stack, a coverage program that could not start, or no base value to
   judge it against. A row not measured fails nothing and passes nothing; the gate output marks it `[?]`, the mod
-  draws it `?`, and the commit card names it, so a number nobody measured is never shown as passed. Coverage is
+  draws it `?`, and the commit card names it, so a number nobody measured is never shown as passed. Coverage is only
+  what the CLI measured: a value recorded with `temper evidence add` is not read. Coverage is
   judged against the project's own base value, not a fixed number, unless your config sets `check.coverage-threshold`.
   The planted bug score (`temper check ahead`, beside Review, into `.temper/evidence/mutation.json`) is information
   only: it gates nothing and moves the run nowhere.

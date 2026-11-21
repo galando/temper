@@ -28,15 +28,9 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    (`acceptance.py check`). Record real results from real commands, never an estimate (the CLI runs the tests):
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage check --claim "tests" -- <the exact test command>
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
-     --claim "coverage" --cmd '<the exact coverage command>' --exit <code> \
-     --value <the parsed coverage percentage> --artifact <path to the coverage report> \
-     --label PROVEN
    ```
-   Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
-   `$` in it stays text.
-   `--label PROVEN` is downgraded automatically by the CLI if the artifact doesn't exist —
-   so point `--artifact` at the real report file, don't skip it.
+   Coverage is what the CLI measured in `temper check run`: a coverage value recorded with `evidence add` is not
+   read, so record none.
 
    For **every** `Scenario:` in `intent.md` — not just the ones you're confident about —
    find the test that exercises it (its `Test:` line names it, and then only a run of that command counts; else by
@@ -47,6 +41,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
      --scenario '<the exact scenario name from intent.md>' \
      --claim 'scenario: <name> -> <test file>:<test name>' -- <the command that runs that one test>
    ```
+   Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
+   `$` in it stays text.
    If you cannot find a test for a scenario, name it in your summary as a gap: the gate lists it by name in its
    FAIL detail.
 3. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` yourself before returning and fix
@@ -56,14 +52,12 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - Wait for every test run in the foreground. Never return while a run goes on in the background: the stage ends when you return.
-- Run the suite once, with coverage on in that same run when the stack allows it (pytest `--cov`, jest `--coverage`, JaCoCo with `mvn verify`). Never run the full suite a second time for coverage. Write the coverage output under `.temper/check/` and point `--artifact` there.
+- Run the suite once, with coverage on in that same run when the stack allows it (pytest `--cov`, jest `--coverage`, JaCoCo with `mvn verify`). Never run the full suite a second time for coverage.
 - Run every command for real and record the exact command and exit code. Never
   estimate a coverage number.
 - When the tool for the tests is missing, name it in the summary and tell the person to install it and choose **Run
   Check again** at the gate. A missing coverage tool fails nothing: the row is not measured; name it in the summary.
   Never tell the person to record a number by hand, and record none yourself.
-- Point `--artifact` at the real coverage report. The CLI downgrades `PROVEN` when the
-  file does not exist.
 - Trace every `Scenario:` to a test, not only the ones you are confident about, and
   copy the scenario name exactly from `intent.md`. A scenario with no test is a gap your
   summary names, never silence.
