@@ -10,10 +10,8 @@ the gate needs; this doc is the methodology behind what to test and in what orde
 
 **Modes:** the fix pass (`agents/build.md`, launched by the orchestrator) starts clean —
 no `AskUserQuestion` gate, return the summary, the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
-Prerequisites/blast-radius section, active packs' `rules.md` (project `.claude/packs/`
-shadows global `~/.claude/packs/` shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept
-where `phases` is `all` or contains `build`), and the project's `.claude/packs/stacks/{stack}.md` if
-present. The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit of the run.
+Prerequisites/blast-radius section, the pack files your prompt lists on its `Packs:` line (the CLI chose those of
+Build), and the project's `.claude/packs/stacks/{stack}.md` if present. The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit of the run.
 
 ## Execute Tasks in Order
 
@@ -28,8 +26,8 @@ For each task in `tasks.md`:
 
 **a. Read context** — existing files, adjacent patterns, conventions. Before writing
 code for the task, use any connected cross-repo code search tool (for example a
-Sourcegraph MCP) for definitions and prior art; with none connected, or
-`tools.mode: heuristic-only`, proceed with local tools. Record the outcome in
+Sourcegraph MCP) for definitions and prior art; with none connected, proceed with local
+tools. Record the outcome in
 `build-context.json` as `"code_search": {"tool": "{name}", "queries": N}` or
 `{"available": false, "reason": "{why}"}` — the tool's absence never fails a gate,
 a missing record does.

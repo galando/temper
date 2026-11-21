@@ -21,10 +21,9 @@ definitions.
 
 ## Step 1: Gather Context
 
-`git diff --stat` + changed files; `.claude/temper.config` for `review.block-on` (default `[critical, high]`) /
-`review.confidence-threshold` / auto-fix; the enabled packs' `rules.md` (project
-`.claude/packs/` shadows global `~/.claude/packs/` shadows
-the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains `review`);
+`git diff --stat` + changed files; `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get review.block-on` for the levels
+that block (default `[critical, high]`); the pack files your prompt lists on its `Packs:` line (the CLI chose those
+of Review);
 `.temper/review-memory.json`; the active `intent.md` (in the spec folder your launch
 prompt's `Spec path:` line names).
 
@@ -41,7 +40,7 @@ gate. Absent → skip silently.
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get tools.ocr.mode off`. The default is `off`, and a config
 without the key reads as `off`: skip OCR silently and never run `ocr`. OCR sends the diff
 to the model provider the user set up for it, so it runs only when the user turns it on
-by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in `.claude/temper.config`.
+by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in the project's config.
 This page is the source of truth for how OCR behaves in a review:
 
 - **Probe (here, in Step 1).** Run `command -v ocr`, then `ocr review --preview`. Both
@@ -53,8 +52,7 @@ This page is the source of truth for how OCR behaves in a review:
 - **`ocr` present but the probe fails** (often no model provider set up for OCR). Both
   modes print a one-line warning and continue with Temper's own review; this never
   blocks.
-- **Run and merge (Step 2).** When `ocr_status` is ready, run OCR over the diff under
-  `tools.ocr.timeout` (minutes, default 10) and fold its findings in as `[OCR]`, or as
+- **Run and merge (Step 2).** When `ocr_status` is ready, run OCR over the diff (at most 10 minutes) and fold its findings in as `[OCR]`, or as
   `[OCR+TEMPER]` when a Temper finding matches; the merge mechanics are in
   `${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md`. A failure or a timeout during the run is
   handled like a failed probe: a one-line warning, then Temper's own review, never a
@@ -94,8 +92,7 @@ preferences that violate no pack rule. Classify each finding REGRESSION (was wor
 now broken — highest priority) / NEW ISSUE / PRE-EXISTING (lower priority).
 ```
 
-If `ocr_status == ready`, OCR owns line-level defect detection (unless
-`tools.ocr.replace-defect-subagent` is `false`); the subagent covers pack rules,
+If `ocr_status == ready`, OCR owns line-level defect detection; the subagent covers pack rules,
 security, AI-code detection, architecture drift, test gaps, and intent validation,
 folding in OCR's `[OCR]` findings.
 
@@ -104,8 +101,7 @@ sync I/O in a hot path, non-atomic shared-state mutation in a concurrent handler
 HIGH; unbounded recursion, O(n²) membership scan in a loop, concurrent access with no
 sync primitive at all → MEDIUM.
 
-**Security (MCP-first):** semgrep MCP available and `tools.mode` isn't
-`heuristic-only` → `security_check` on changed files, error→CRITICAL, warning→HIGH,
+**Security (MCP-first):** semgrep MCP available → `security_check` on changed files, error→CRITICAL, warning→HIGH,
 info→MEDIUM, label `[PROVEN]`. Else review heuristically, label `[HEURISTIC]`. For
 files the fingerprint flagged: trace call chains to the changed function and check each
 boundary — unauthenticated code needs rate limiting, authenticated needs an
@@ -200,8 +196,7 @@ options), and the orchestrator then runs `${CLAUDE_PLUGIN_ROOT}/reference/archit
 ## Step 4: Confidence Filtering
 
 Pack-rule findings override the threshold (BLOCK→CRITICAL, WARN→HIGH/MEDIUM,
-SUGGEST→LOW — always shown). Otherwise: below `review.confidence-threshold` (default
-0.7) → discard entirely (not shown, not counted, not stored). From
+SUGGEST→LOW — always shown). Otherwise: below a confidence of 0.7 → discard entirely (not shown, not counted, not stored). From
 `review-memory.json`: 5+ prior dismissals of the pattern → suppress; 3-4 → downgrade
 one severity level.
 

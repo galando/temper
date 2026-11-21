@@ -21,6 +21,10 @@ Usage:
   temper metrics append <series> <value>
   temper config get <dot.path> [default]
   temper config init                      (write .claude/temper.config from the plugin's default, when it is missing)
+  temper config show [--markdown]         (each key, its value and its source: config, default, old name; the table
+                                            of every default is scripts/defaults.py)
+  temper config tidy --apply | --keep     (the two answers of the one time question config.tidy: only at Intent)
+  temper packs --stage <stage>            (the pack files the agent of that stage reads, as its Packs: line names them)
   temper model task | task-escalation   (grouped Build: the task agent's model and its escalation model)
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
   temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)

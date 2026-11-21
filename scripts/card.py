@@ -170,7 +170,7 @@ def files_rows(r, b):
     the sensitive paths. The matcher is the commit gate's (scripts/sensitive.py)."""
     plan = r.plan or {"groups": [], "tasks": []}
     hot = dict(sensitive.declared([f for t in plan.get("tasks", []) for f in t.get("files", [])],
-                                  r.cfg("autonomy.park-on-touch", "")))
+                                  r.cfg("autonomy.park-on-touch")))
     out, seen = [], set()
     for g in plan.get("groups", []):
         files = []
@@ -335,12 +335,12 @@ def fix_approval(b, nxt):
     out.append(sec("fix", "THE FIX", [cell(f["FIX"])]) if f["FIX"] else None)
     out.append(sec("test", "THE REGRESSION TEST", [cell(f["TEST"])], "written first; it must fail before the fix")
                if f["TEST"] else None)
-    hot = dict(sensitive.declared(names, r.cfg("autonomy.park-on-touch", "")))
+    hot = dict(sensitive.declared(names, r.cfg("autonomy.park-on-touch")))
     rows = [cell(x, "sensitive" if x in hot else "modify" if os.path.exists(x) else "create") for x in names]
     out.append(sec("files", "WHAT WILL CHANGE", rows, "the fix may change these %d and its test; any other file asks you first"
                    % len(rows), None, path) if rows else None)
     try:
-        test = check_run.detect(os.getcwd(), r.cfg("check.commands.test", ""), r.cfg("check.commands.coverage", "")).get("test")
+        test = check_run.detect(os.getcwd(), r.cfg("check.commands.test"), r.cfg("check.commands.coverage")).get("test")
     except Exception:
         test = None
     out.append(sec("commands", "THE CHECKS RUN", [cell(test)]) if test else None)
@@ -537,7 +537,7 @@ def commit(b, nxt):
         if r.command == "fix":   # WP17: the files rca.md names, the regression test, a file the person allowed
             allowed.update(fix_files(r)[0] + [str(r.state.get("regression_test") or "")]
                            + [x["path"] for x in r.drifts() if x["choice"] in ("Add to plan", "Allow once")])
-        hot = dict(sensitive.declared(changed, r.cfg("autonomy.park-on-touch", "")))
+        hot = dict(sensitive.declared(changed, r.cfg("autonomy.park-on-touch")))
         outside = [f for f in changed if f not in allowed]
         rows = [cell("%s (outside the plan)" % f, "sensitive" if f in hot else None) for f in outside]
         rows += [cell(f, "sensitive") for f in changed if f in hot and f not in outside]

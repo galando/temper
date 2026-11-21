@@ -402,7 +402,7 @@ const TOO_MANY_DENY =
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
 const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
-  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', 'close', '--person', ...STAGES]
+  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', 'close', '--person', 'config', 'tidy', ...STAGES]
 
 const RESOLVE_DENY =
   'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
@@ -548,7 +548,8 @@ const DRIFT_ANSWER_DENY = (path: string): string =>
 
 // The temper calls only the person may cause (ADR 0013), by their words after the script: leaving Intent or Plan, a
 // skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, writing a setup block, more
-// repeats than the budget holds, going on from a red base, and starting over or ending the run before it is done.
+// repeats than the budget holds, going on from a red base, tidying the config, and starting over or ending the run
+// before it is done.
 function personOnly(w: readonly string[], r: RunFacts): boolean {
   const [a, b, c, d] = w
   if (a === 'override') return true
@@ -569,6 +570,8 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   if (a === 'doctor') return w.includes('--write')
   // 9.8.5 (WP10): more repeats of a failed check than the budget holds are the person's grant, at run.budget.
   if (a === 'budget') return b === 'grant'
+  // 9.8.5 (WP29): the one time config question rewrites or marks the config; its two calls are the person's answers.
+  if (a === 'config') return b === 'tidy'
   // 9.8.5 (WP20): going on from a red base is a recorded skip of the suite's failures, the person's at base.red; the
   // baseline's own calls (start, clean, plan) are the CLI's. WP21: a skip of a command the plan wrote, with a reason,
   // is the person's at plan.command.

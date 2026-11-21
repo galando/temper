@@ -10,8 +10,8 @@ committed artifacts (intent, plan, design, gate ledger and diff) are the audit t
 ## What Temper runs and changes
 
 Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project and its git
-folder. Apart from the mod's plugin store, Temper reads only one place in your home folder that git does not
-name: its global pack folder `~/.claude/packs`, if you made one. Through git it reads the hooks folder your git
+folder. Apart from the mod's plugin store, Temper reads no place in your home folder that git does not name (since
+9.8.5 not even a pack folder there). Through git it reads the hooks folder your git
 config names, which may be in your home folder; it reads no name or email from git (an accepted intent or an
 override records that the person decided it at the gate). It reads no key, login, transcript, settings or other
 Claude Code file. A pack's link targets come from the skills and commands your session lists.

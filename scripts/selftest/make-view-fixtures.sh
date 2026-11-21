@@ -93,7 +93,8 @@ def project(name):
     write(cwd, "README.md", "x\n")
     sh("git", "add", "README.md", cwd=cwd)
     sh("git", "commit", "-qm", "init", cwd=cwd)
-    write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\n")
+    # WP29: the old review level the views were made with, and the one time question answered (an old default)
+    write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\nupgrade:\n  asked: \"9.8.5\"\n")
     return cwd
 
 

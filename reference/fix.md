@@ -43,8 +43,8 @@ when the codebase is large enough that reading it directly would crowd your cont
   After 3 dead ends, return a blocker naming what was tried; you run headless, so the
   orchestrator asks the user. Skip straight to investigation when there's one obvious
   cause or an exact stack trace.
-- **Trace the call chain** to the failing point. With the `code-review-graph` MCP server
-  (and `tools.mode` ≠ `heuristic-only`), `query_graph_tool` + `get_affected_flows_tool`
+- **Trace the call chain** to the failing point. With the `code-review-graph` MCP server,
+  `query_graph_tool` + `get_affected_flows_tool`
   give an AST-level chain and user-facing blast radius → `[PROVEN]`; else grep →
   `[HEURISTIC]`.
 - **Check git history** (`git log`/`git show` on the affected files) for the introducing
@@ -83,8 +83,8 @@ at once — you can't tell which worked.
    when the human says so), never the agent's. With the Temper mod loaded, the mod refuses that call from the
    agent during a fix run: the person runs it in their own terminal.
 
-2. **Validate the approach against enabled packs** before writing the fix (read
-   `.claude/temper.config` for the pack list + the stack pack): a BLOCK-rule violation
+2. **Validate the approach against the packs** before writing the fix (read the pack files your prompt lists on
+   its `Packs:` line, and the stack pack): a BLOCK-rule violation
    (SQL concatenation, a logged secret, a bypassed auth check) means reconsider the
    approach, not implement it; a WARN is noted and proceeds.
 

@@ -192,8 +192,8 @@ def suite_owner(root, cfg=None, spec=""):
     import config_yaml
     if cfg is None:
         cfg = config_yaml.load(os.path.join(root, ".claude", "temper.config"))
-    test = str(config_yaml.get(cfg, "check.commands.test", "") or "").strip()
-    cov = str(config_yaml.get(cfg, "check.commands.coverage", "") or "").strip()
+    test = str(config_yaml.get(cfg, "check.commands.test") or "").strip()
+    cov = str(config_yaml.get(cfg, "check.commands.coverage") or "").strip()
     if test:
         return {"test": test, "run": cov or test, "source": "configured", "why": "check.commands.test of the config",
                 "det": detect(root, test, cov)}

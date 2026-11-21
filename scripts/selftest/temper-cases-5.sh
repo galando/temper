@@ -1207,8 +1207,10 @@ assert_eq "plan brief: one step points at the grouped format, and none at a buil
   "$(grep -c 'in the grouped format' "$REPO_ROOT/agents/plan.md" | tr -d ' ')|$(grep -c 'config get build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
 assert_eq "plan reference: documents the grouped format, budgets and pack distilling" "4" \
   "$(for k in '^## Grouped tasks' '4096' '2048' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"
-assert_eq "config default: commented build block names every grouped key" "4" \
-  "$(for k in '^# build:' 'task-model' 'escalation-model' 'max-parallel'; do grep -qE -- "$k" "$REPO_ROOT/templates/temper.config.default" && echo x; done | wc -l | tr -d ' ')"
+# WP29: the template keeps 10 live lines, and every grouped key has its default in the table of the CLI: docs/commands.md
+# holds that table (temper config show --markdown) and names the two old model keys among what became of an old key
+assert_eq "config default: the key table of docs/commands.md names every grouped key" "5" \
+  "$(for k in 'build.grouped.max-parallel' 'build.grouped.max-groups' 'build.grouped.keep-days' 'build.grouped.task-model' 'build.grouped.escalation-model'; do grep -qF -- "\`$k" "$REPO_ROOT/docs/commands.md" && echo x; done | wc -l | tr -d ' ')"
 setup
 
 # --- the orchestrator is a loop over temper next (ADR 0013); grouped Build's loop is the CLI's ---
@@ -1227,8 +1229,9 @@ assert_eq "orchestrator-patterns: the run files list groups.json and usage.json"
   "$(for k in 'groups.json' 'usage.json'; do grep -qF -- "$k" "$REPO_ROOT/reference/orchestrator-patterns.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "autonomy.md: narrowed invariant and group rules" "4" \
   "$(for k in 'final feature commit' 'never pushes' 'answered Continue' 'max-blast-radius'; do grep -qiF -- "$k" "$REPO_ROOT/reference/autonomy.md" && echo x; done | wc -l | tr -d ' ')"
+# WP29: the template holds only the person's choices; the invariant is stated in the grouped Build guide
 assert_eq "config default: hardcoded invariant states the narrowed wording" "yes|0" \
-  "$(grep -qiF 'final feature commit' "$REPO_ROOT/templates/temper.config.default" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
+  "$(grep -qiF 'final feature commit' "$REPO_ROOT/docs/grouped-build.md" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0), review loop 1: the task gate verdict and its restore path [H1, H2, H5, M2] ---

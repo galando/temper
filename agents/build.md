@@ -51,8 +51,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 3. **Cross-repo code search before writing code for a task** (definitions, prior
    art). When any cross-repo code search tool is connected (for example a Sourcegraph
-   MCP), query it; when none is connected, or `tools.mode: heuristic-only`, proceed
-   with local tools. Record the outcome in `build-context.json` as
+   MCP), query it; when none is connected, proceed with local tools. Record the outcome in `build-context.json` as
    `"code_search": {"tool": "{name}", "queries": N}` or
    `{"available": false, "reason": "{why}"}` — the tool's absence never fails a gate,
    a missing record does.

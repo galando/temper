@@ -211,6 +211,29 @@ To read a failure, the session runs `temper output G<n>` (the group's last Valid
 FAIL lines and recorded output) or `temper output <stage>` (the gate's failed rows and the stage's last failed
 run). It is read only; with the mod on, the session may run the CLI but not `printenv` or a test runner.
 
+### The one time config question (9.8.5, WP29, ADR 0023)
+
+The first question of a `/temper:temper` run at Intent, before the baseline and before any agent (no `intent.md` and
+no usage row of Intent yet), in a run that asks, when the project's config holds a line whose value an earlier template
+shipped (`OLD` of `scripts/defaults.py`) or a key no longer read (`GONE`) and no `upgrade.asked` of 9.8.5:
+`config.tidy`, header `Temper gate`. Its text counts the lines and says a copy is kept, then names at most eight with
+what changes (the coverage floor, `phases.design`, the five packs and `block-on: [critical]` first) and `and M more`.
+Its two options are one call of the CLI each:
+
+- `tidy-config`, `Remove them (Recommended)`: `temper config tidy --apply`. The old file is copied to
+  `.claude/temper.config.before-9.8.5`, and the new template is written with the lines the person changed, a renamed
+  key under its new name, and `autonomy.enabled: false` as `run.default: ask`.
+- `keep-config`, `Keep my file`: `temper config tidy --keep`, which appends `upgrade:` with `asked: "9.8.5"`.
+
+Both calls exit 1 and change nothing past Intent, in a fix run and in a run that goes on by itself; with the mod they
+pass only as the picked option of the question the view holds (a stop that must stay, `scripts/stops.json`). A project
+made by `config init` is never asked: its config is the template.
+
+The CLI also names the pack files of each agent (`temper packs --stage S`, `scripts/cli_ctx.py`): the prompt of the
+agents of Plan, Design, Build, Review, Check, RCA and Fix holds one line `Packs: <file>, <file>` (the project's
+`.claude/packs/<name>/rules.md`, else the plugin's, kept by its `phases:`; Plan also takes those of Build), and an entry
+of `packs:` in braces goes on a line `Pack entries:` as written.
+
 ### The environment check and the baseline (9.8.5, WP20)
 
 A fault of the environment or of the base is named before any agent is paid for. Before any other step of an active

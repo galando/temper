@@ -197,41 +197,29 @@ Review runs after Build. Temper will:
 
 ## Configuration
 
-Create `.claude/temper.config` in your project:
+`/temper:temper` writes `.claude/temper.config` from the template when the project has none: about ten live lines,
+your choices only. Every other setting has its default in the CLI; `temper config show` prints each key, its value and
+where it comes from.
 
 ```yaml
-# Stack override (auto-detect by default)
-stack: auto
-
-# Enabled packs
-packs:
-  - quality
-  - tdd
-  - security
-  - git
-
-# Review options
+run:
+  default: to-commit          # to-commit | ask (a question at every stage) | never-unattended
+packs: [security, tdd]        # the rules the agents follow
 review:
-  block-on: [critical, high]
-  confidence-threshold: 0.7
-
-# Check options (coverage is judged against the project: no threshold key)
-check:
-  live-scenarios: prompt    # prompt | always | never
-
-# MCP-powered analysis (optional)
-tools:
-  mode: auto                # auto | heuristic-only | require
-  label-findings: true      # Show [PROVEN]/[HEURISTIC]/[SEMANTIC] labels
+  block-on: [critical, high]  # finding levels that stop a run
+autonomy:
+  park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]  # sensitive paths
+models:
+  plan: opus
+  task: sonnet
 ```
+
+A config of 9.8.4 is asked about once, at the start of the first run: the lines that only repeat old defaults can go,
+and a copy is kept (`docs/commands.md`, "The one time question").
 
 ### Live Scenario Verification
 
 Every Gherkin scenario in `intent.md` can be executed individually against your project's test runner — real pass/fail, real output. No MCP servers required.
-
-- `prompt` (default) — ask before running live verification
-- `always` — always run during Check
-- `never` — skip, use heuristic analysis only
 
 Works with: Jest, Vitest, pytest, Maven, Gradle, Go test, cargo test.
 

@@ -155,10 +155,9 @@ evidence that the reviewer is wrong.
 Explore the repo with your own tools, in your own context — stack, structure, patterns,
 similar code, test coverage. A nested Explore subagent is an escape hatch for a repo
 large enough that reading it directly would blow your context, not a mandatory first
-step; that judgment call is yours, not a fixed procedure. Read `.claude/temper.config`
-and enabled packs' `rules.md` (project shadows global shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`;
-keep rules whose `phases` is `all` or contains `plan`, and also those that contain `build`: the
-groups' Context distils them, below) before you plan.
+step; that judgment call is yours, not a fixed procedure. Read the pack files your prompt lists on its
+`Packs:` line before you plan (the CLI chose them: a project's own pack takes the place of the built in one, and
+the list holds the packs of Plan and of Build, because the groups' Context distils them, below).
 
 ## Blast Radius: Measured, Not Estimated
 

@@ -91,12 +91,13 @@ def parse_text(text):
         os.unlink(p)
 
 
-def cfg(key, default=""):
+def cfg(key):
+    """A config value; a key the config lacks gets the table's default (scripts/defaults.py, WP29)."""
     try:
-        v = config_yaml.get(config_yaml.load(CONFIG), key, default)
+        v = config_yaml.get(config_yaml.load(CONFIG), key)
     except Exception:
-        v = default
-    return default if v is None or v == "" else v
+        v = ""
+    return "" if v is None else v
 
 
 # ---- the static rows of the plan gate, on a plan text --------------------------------------------------------------------
@@ -118,13 +119,13 @@ def static_rows(spec, text):
         d = os.path.join(tmp, os.path.basename(os.path.normpath(spec)) or "spec")
         shutil.copytree(spec, d, symlinks=True, ignore=shutil.ignore_patterns("*.tmp.*"))
         write_text(os.path.join(d, "tasks.md"), text)
-        blast = str(cfg("autonomy.max-blast-radius", "15"))
+        blast = str(cfg("autonomy.max-blast-radius"))
         blast = blast if blast.isdigit() else "15"
         out = []
         for args in ([os.path.join(HERE, "plan_rows.py"), blast, str(_limit("GROUP_CONTEXT_MAX_BYTES", 4096)),
                       str(_limit("TASK_BLOCK_MAX_BYTES", 2048)), json.dumps(tasks_md.parse(os.path.join(d, "tasks.md"))),
                       os.getcwd()],
-                     [os.path.join(HERE, "gate_rows.py"), "plan-rows", d, os.getcwd(), str(cfg("plan.context-check", "auto"))]):
+                     [os.path.join(HERE, "gate_rows.py"), "plan-rows", d, os.getcwd(), str(cfg("plan.context-check"))]):
             r = subprocess.run([sys.executable, "-I" if args[0].endswith("plan_rows.py") else "-s"] + args,
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
             out += r.stdout.decode("utf-8", "replace").splitlines()
@@ -278,7 +279,7 @@ def check(r, n, f):
     if commit_rows.TEST_RE.search(f):
         return "%s is a test file Task %s declares: a task never takes another task's test" % (
             f, ", ".join(str(m) for m in own)), None
-    hot = [p for p in sensitive.patterns_of(r.cfg("autonomy.park-on-touch", "")) if sensitive.match(f, p)]
+    hot = [p for p in sensitive.patterns_of(r.cfg("autonomy.park-on-touch")) if sensitive.match(f, p)]
     if hot:
         return "%s is under a sensitive path (autonomy.park-on-touch: %s): nothing there changes by rule" % (f, hot[0]), None
     if f not in [norm(x) for x in st.get("approved_files") or []]:

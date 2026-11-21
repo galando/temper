@@ -119,7 +119,7 @@ class CommitPart:
                          "since the state is gone after state clear." % self.plugin)
             steps.append("Follow %s/reference/pr.md, section %s: every pull request is a draft, and Temper never marks one ready. "
                          "A pull request that cannot be opened never fails the commit." % (self.plugin, "One PR" if pr == "one" else "Stacked PRs"))
-        if r.command == "temper" and r.cfg("phases.pipeline", "true").lower() != "false" and pr in ("one", "stacked") and not r.armed():
+        if r.command == "temper" and r.cfg("phases.pipeline").lower() != "false" and pr in ("one", "stacked") and not r.armed():
             steps.append("If a pull request was opened, run %s: Pipeline reads its checks. Otherwise run %s." % (
                 self.c("state advance commit_complete pipeline"), self.c("state clear")))
         else:

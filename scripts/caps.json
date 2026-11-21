@@ -14,22 +14,22 @@
  ],
  "caps": {
   "question_sites": {
-   "now": 51,
+   "now": 52,
    "final": 53,
    "measure": "measure_question_sites: calls of self.question( and self.with_more( in the flow files"
   },
   "option_sites": {
-   "now": 88,
+   "now": 89,
    "final": 89,
    "measure": "measure_option_sites: calls of self.opt( in the flow files"
   },
   "option_labels": {
-   "now": 81,
+   "now": 83,
    "final": 71,
    "measure": "measure_option_labels: distinct labels of those calls, seen through a tuple, a variable or a format string"
   },
   "question_ids": {
-   "now": 37,
+   "now": 38,
    "final": 35,
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
@@ -54,32 +54,32 @@
    "measure": "measure_listed_skills: skills of .claude-plugin/plugin.json"
   },
   "config_live_keys": {
-   "now": 19,
+   "now": 10,
    "final": 12,
    "measure": "measure_config_live_keys: key lines of the config template that are not comments"
   },
   "config_comment_keys": {
-   "now": 48,
+   "now": 8,
    "final": 46,
    "measure": "measure_config_comment_keys: commented key lines of the config template"
   },
   "config_lines": {
-   "now": 153,
+   "now": 21,
    "final": 60,
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 257700,
+   "now": 255504,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
   "pack_skill_bytes": {
-   "now": 79549,
+   "now": 79382,
    "final": 79658,
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 211163,
+   "now": 211277,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

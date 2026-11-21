@@ -4,18 +4,8 @@ Temper works out of the box with zero configuration. This guide covers optional 
 
 ## Live Scenario Verification
 
-No installation needed. Temper uses your project's existing test runner to execute Gherkin scenarios from intent.md individually.
-
-**Configuration** (in `.claude/temper.config`):
-
-```yaml
-check:
-  live-scenarios: prompt    # prompt | always | never
-```
-
-- `prompt` — Ask before running live verification (default)
-- `always` — Always run live verification during check
-- `never` — Skip live verification, use heuristic analysis only
+No installation needed and no setting: Temper uses your project's existing test runner to execute Gherkin scenarios
+from intent.md individually.
 
 Works with: Jest, Vitest, pytest, Maven, Gradle, Go test, cargo test.
 
@@ -74,7 +64,6 @@ and says where to find OCR's install steps.
 | `ocr: command not found` | Install OCR by the steps in its README (linked above), so `ocr` is on your `PATH` |
 | `ocr --preview` fails with LLM error | Set up OCR's model provider (see OCR docs) |
 | OCR findings seem wrong | Set `tools.ocr.mode: off` in temper.config to turn it off |
-| Review times out with OCR | Increase `tools.ocr.timeout` |
 
 **Config** (in `.claude/temper.config`):
 
@@ -82,21 +71,10 @@ and says where to find OCR's install steps.
 tools:
   ocr:
     mode: auto                      # off (the default) | auto | require
-    replace-defect-subagent: true   # Drop generic defect hunting when OCR is active
-    timeout: 10                     # minutes
 ```
 
-### tools.mode Configuration
-
-```yaml
-tools:
-  mode: auto              # auto | heuristic-only | require
-  label-findings: true    # Show [PROVEN]/[HEURISTIC]/[SEMANTIC] labels
-```
-
-- `auto` — Use MCP tools when available, fall back to heuristics (default)
-- `heuristic-only` — Never use MCP tools, always use grep-based analysis
-- `require` — Fail if MCP tools are unavailable (for teams that require proven analysis)
+An agent uses a connected MCP tool when there is one and falls back to a grep based heuristic when there is none; no
+setting changes that.
 
 ## Verify Setup
 

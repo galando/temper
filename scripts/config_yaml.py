@@ -1,9 +1,17 @@
 """config_yaml.py: the small YAML subset of .claude/temper.config, read the one way the CLI and
 flow.py both read it. Standard library only.
 
-  python3 config_yaml.py <config file> <dot.path> <default>   prints the value, as `temper config get`
+  python3 config_yaml.py <config file> <dot.path> [default]   prints the value, as `temper config get`; with no
+                                                              default, the default of scripts/defaults.py (WP29)
 """
 import sys
+
+try:
+    import defaults
+except ImportError:   # a copy of the CLI without the table (a test's throwaway plugin): no default but the caller's
+    defaults = type("defaults", (), {"RENAMED": {}, "default": staticmethod(lambda path: None)})
+
+_TABLE = object()   # get() with no default: the table's
 
 # A deliberately small YAML subset: nested maps by indentation, scalars, and
 # INLINE flow lists ([a, b, c]) only — the v7 config never needs block-style
@@ -58,20 +66,35 @@ def load(path):
         return {}
 
 
-def get(d, path, default=""):
-    """The value at a dot path as the CLI prints it: a list joined by \x1f, a bool as true or false."""
+def _at(d, path):
     cur = d
     for k in path.split("."):
         if isinstance(cur, dict) and k in cur:
             cur = cur[k]
         else:
+            return _TABLE
+    return cur
+
+
+def get(d, path, default=_TABLE):
+    """The value at a dot path as the CLI prints it: a list joined by \x1f, a bool as true or false. WP29: with no
+    default given, a key the config lacks is read under its old name (defaults.RENAMED), else the table's default
+    (defaults.KEYS, "" for a key it lacks); a default the caller gives wins over both."""
+    cur = _at(d, path)
+    if cur is _TABLE and default is _TABLE and path in defaults.RENAMED:
+        cur = _at(d, defaults.RENAMED[path])
+    if cur is _TABLE or cur == "":
+        if default is not _TABLE:
             return default
+        cur = defaults.default(path)
+        if cur is None:
+            return ""
     if isinstance(cur, list):
         return "\x1f".join(str(i) for i in cur)
     if isinstance(cur, bool):
         return "true" if cur else "false"  # bash compares lowercase; never Python's True/False
-    return cur if cur != "" else default
+    return cur
 
 
 if __name__ == "__main__":
-    print(get(load(sys.argv[1]), sys.argv[2], sys.argv[3]))
+    print(get(load(sys.argv[1]), sys.argv[2], *sys.argv[3:4]))
