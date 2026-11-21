@@ -1,6 +1,6 @@
 {
  "version": 1,
- "about": "The stops an unattended run must keep: the 18 of docs/plans/one-go/evidence/v-auto-advance.md section 2 and the calls only the person may cause (the mod's rule personOnly). check names the case or scenario that walks the stop; WP07 fills it. A stop leaves this list only with a decision record.",
+ "about": "The stops an unattended run must keep: the 18 of the review of the auto advance (v-auto-advance.md section 2, a working paper of the build that is not kept in the tree) and the calls only the person may cause (the mod's rule personOnly). check names the case or scenario that walks the stop; WP07 fills it. A stop leaves this list only with a decision record.",
  "stops": [
   {
    "id": "design.tasks-changed",

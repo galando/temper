@@ -372,3 +372,41 @@ _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" b2
 print(s["mean"], s["before"], s["blocked"], s["blocked_before"], s["pass"], l["bug"]["runs_over_dialogs"], l["vague"]["runs_over_dialogs"])')"
 assert_eq "summary: the bench counts steps back to Plan and blocked tasks, and more dialogs only on a vague task" \
   "1 0 1 0.5 0 False 2 0" "$_c41_sc"
+
+# --- WP32, added by the owner: two plan quality figures of a run, read from the records the harness keeps (no model call)
+# One made up run with two entries in its amendments record (one by rule, one the person's patch) and three High findings
+# in its first Review (a medium one beside them, and a High one in the second Review after it); one with neither record.
+python3 -I - "$_c41_dir/bench/quality" <<'PY'
+import json, os, sys
+root = sys.argv[1]
+def run(name, records):
+    d = os.path.join(root, name)
+    os.makedirs(os.path.join(d, "records"), exist_ok=True)
+    json.dump({"task": "partial-payments", "arm": "temper", "rep": 1, "cost_usd": 1.0, "wall_s": 100, "questions": 2,
+               "ended": "done"}, open(os.path.join(d, "run.json"), "w"))
+    for f, rows in records.items():
+        json.dump(rows, open(os.path.join(d, "records", f), "w"))
+def finding(sev, ts):
+    return {"claim": "src/a.py:%s a finding" % ts, "severity": sev, "label": "PROVEN", "ts": "2026-01-01T00:00:%02dZ" % ts}
+done = {"claim": "review completed", "exit_code": 0, "severity": None, "label": "PROVEN", "ts": "2026-01-01T00:00:09Z"}
+run("partial-payments__temper__1", {
+    "amendments.json": [{"n": 1, "kind": "amend", "what": "Task 2 gains src/b.py"},
+                        {"n": 2, "kind": "patch", "what": "Task 3 changed"}],
+    "review.json": [finding("high", 1), finding("high", 2), finding("medium", 3), finding("high", 4), done,
+                    finding("high", 10), dict(done, ts="2026-01-01T00:00:19Z")]})
+run("partial-payments__temper__2", {})
+PY
+_c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" quality >/dev/null 2>&1; echo -n "$? "
+  python3 -I - "$REPO_ROOT/bench" <<'PY'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import scorecard
+one = [scorecard.one(os.path.join("quality", d)) for d in ("partial-payments__temper__1", "partial-payments__temper__2")]
+print([(x["amendments"], x["amendments_by_rule"], x["amendments_by_person"], x["first_review_high"]) for x in one])
+c = json.load(open("quality/scorecard.json"))["blocks"]["quality/temper"]["all"]
+print(c["amendments"]["mean"], c["amendments"]["n"], c["first_review_high"]["mean"], c["first_review_high"]["n"])
+PY
+)"
+assert_eq "summary: the scorecard counts the amendments of a run and the High findings of its first Review, null with no record" \
+  "0 [(2, 1, 1, 3), (None, None, None, None)]
+2 1 3 1" "$_c41_sc"

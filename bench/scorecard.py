@@ -12,7 +12,13 @@ person.jsonl, else run.json's `questions`), the hand backs (a run with the mod w
 hidden tests, the rules met on a vague task, the launches, seconds and dollars by agent type (bench/agentlog.py, the
 type matched whole), the Reviews a run, the steps back to Plan the person chose (an answer whose move is `back` and
 whose option goes back to Plan, the `to` of its person.jsonl line) and the blocked tasks (the distinct tasks an agent
-marked with `temper task blocked N` and the CLI took).
+marked with `temper task blocked N` and the CLI took). Two figures of the plan's quality (WP32, added by the owner):
+`amendments`, the entries of the run's amendments record (`.temper/evidence/amendments.json`, WP25), also apart as
+`amendments_by_rule` (kind `amend`) and `amendments_by_person` (kind `patch`), and `first_review_high`, the findings
+of level high or critical the first Review launch recorded in the Review ledger (`.temper/evidence/review.json`), up to
+its first `review completed` row. `state clear` deletes both files when a run ends, so run.mjs keeps every entry it saw
+in the run's folder, under `records/`; the scorecard reads those, and what the work tree still holds. A run with no
+such record (plain Claude Code, or a CLI that writes none, as the round before on `10e965a`) gives null, never 0.
 
 Cost has one source: the SDK's own result messages, as run.json holds them (`cost_usd`). bench/loop.py prices the same
 requests from Claude Code's logs and its `--check` compares the two; the scorecard reads run.json only.
@@ -102,6 +108,55 @@ def blocked_tasks(run):
     return len(done)
 
 
+def records(run, name):
+    """The entries of a run record (a list in a JSON file), from the copy run.mjs kept and from the work tree, each
+    once and in the order first seen; None when no such file exists. The amendments record also has the lists an
+    approval moved to .temper/archive (state_ops._amendments_close)."""
+    files = [os.path.join(run, "records", name), os.path.join(run, "work", ".temper", "evidence", name)]
+    if name == "amendments.json":
+        arch = os.path.join(run, "work", ".temper", "archive")
+        files += sorted(os.path.join(arch, f) for f in (os.listdir(arch) if os.path.isdir(arch) else [])
+                        if f.startswith("amendments-") and f.endswith(".json"))
+    out, seen, found = [], set(), False
+    for f in files:
+        rows = read(f)
+        if not isinstance(rows, list):
+            continue
+        found = True
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            k = json.dumps([r.get(x) for x in ("n", "ts", "kind", "what", "claim", "severity", "cmd", "phase")])
+            if k not in seen:
+                seen.add(k)
+                out.append(r)
+    return out if found else None
+
+
+def amendments(run):
+    """(all, by rule, by the person) of the amendments record, or (None, None, None) when the run has none."""
+    rows = records(run, "amendments.json")
+    if rows is None:
+        return None, None, None
+    return (len(rows), sum(1 for r in rows if r.get("kind") == "amend"),
+            sum(1 for r in rows if r.get("kind") == "patch"))
+
+
+def first_review_high(run):
+    """The findings of level high or critical before the first `review completed` row of the Review ledger; None when
+    the run recorded no Review row."""
+    rows = records(run, "review.json")
+    if not rows:
+        return None
+    n = 0
+    for r in rows:
+        if r.get("claim") == "review completed":
+            break
+        if str(r.get("severity") or "").lower() in ("high", "critical"):
+            n += 1
+    return n
+
+
 def one(run):
     r = read(os.path.join(run, "run.json"), {}) or {}
     g = read(os.path.join(run, "grade.json"), {}) or {}
@@ -114,6 +169,7 @@ def one(run):
     ag = agentlog.agents(run)
     types = sorted({a["type"] for a in ag})
     turns = main_turns(run)
+    am = amendments(run)
     return {
         "task": r.get("task"), "kind": kind_of(r.get("task")), "arm": r.get("arm"), "rep": r.get("rep"),
         "cost": r.get("cost_usd") or 0.0, "wall": r.get("wall_s") or 0,
@@ -129,6 +185,8 @@ def one(run):
         "reviews": sum(1 for a in ag if a["type"] == "temper:temper-review"),
         "steps_back": sum(1 for p in person if p.get("move") == "back" and p.get("to") == "plan"),
         "blocked": blocked_tasks(run),
+        "amendments": am[0], "amendments_by_rule": am[1], "amendments_by_person": am[2],
+        "first_review_high": first_review_high(run),
         "plugin_commit": r.get("plugin_commit"), "plugin_version": r.get("plugin_version"),
     }
 
@@ -161,6 +219,11 @@ def cell(runs):
         "two_reviews_share": round(sum(1 for x in runs if x["reviews"] >= 2) / len(runs), 4) if runs else None,
         "steps_back": spread([x["steps_back"] for x in runs]),
         "blocked": spread([x["blocked"] for x in runs]),
+        # WP32: the plan's quality; a run with no record is left out of the spread (null when none has one)
+        "amendments": spread([x["amendments"] for x in runs]),
+        "amendments_by_rule": spread([x["amendments_by_rule"] for x in runs]),
+        "amendments_by_person": spread([x["amendments_by_person"] for x in runs]),
+        "first_review_high": spread([x["first_review_high"] for x in runs]),
     }
 
 
@@ -185,6 +248,11 @@ def scorecard(folders):
         per_folder[folder] = mine
         blocks.update(mine)
     return blocks, per_folder
+
+
+def mean_n(s):
+    """`mean (n)` of a spread, or `not measured` when no run has the record."""
+    return "not measured" if not s else "%s (%d)" % (s["mean"], s["n"])
 
 
 def mean_of(b, kind, key):
@@ -249,14 +317,15 @@ def main(argv):
         with open(os.path.join(folder, "scorecard.json"), "w", encoding="utf-8") as f:
             json.dump({"version": 1, "blocks": mine}, f, indent=1, sort_keys=True)
             f.write("\n")
-    print("| block | runs | cost mean (median, min to max) | wall s mean (median, min to max) | dialogs median | hidden | rules met |")
-    print("|---|---|---|---|---|---|---|")
+    print("| block | runs | cost mean (median, min to max) | wall s mean (median, min to max) | dialogs median | hidden "
+          "| rules met | amendments mean (runs) | first Review High mean (runs) |")
+    print("|---|---|---|---|---|---|---|---|---|")
     for name, b in sorted(blocks.items()):
         c = b["all"]
-        print("| %s | %d | %.2f (%.2f, %.2f to %.2f) | %.0f (%.0f, %.0f to %.0f) | %s | %s | %s |" % (
+        print("| %s | %d | %.2f (%.2f, %.2f to %.2f) | %.0f (%.0f, %.0f to %.0f) | %s | %s | %s | %s | %s |" % (
             name, c["runs"], c["cost"]["mean"], c["cost"]["median"], c["cost"]["min"], c["cost"]["max"],
             c["wall"]["mean"], c["wall"]["median"], c["wall"]["min"], c["wall"]["max"], c["dialogs"]["median"],
-            c["hidden_rate"], c["rules_met"]))
+            c["hidden_rate"], c["rules_met"], mean_n(c["amendments"]), mean_n(c["first_review_high"])))
     if "gate" not in opts:
         return 0
     arm = pick(blocks, folders, opts.get("arm"), "temper", folders[-1:])

@@ -19,7 +19,11 @@
 # final (9.8.5, WP07): full, then check_done.py --final (the list is empty and every final is the number of done.md),
 # check_caps.py --final, check_floor.py --final and check_changed_tests.py (every changed assertion is listed), and the
 # bench block: with docs/evidence/scorecard-9.8.5.json every line of it must pass, the lines of part H of done.md; with
-# no such file it prints the line OPEN: the bench gate (needs the owner's word and a model access), and goes on.
+# no such file it prints the line OPEN: the bench gate (needs the owner's word and a model access), and goes on. WP32:
+# in final the A/B replay fails when a counted number of this tree is above the base (full passes --base-only, so only
+# its base column counts there); check_done.py --final also holds that every package of PROGRESS.md is done or blocked
+# and that the working papers left the tree; and check_done.py --summary runs when docs/history/build-9.8.5.md is
+# there, else the line OPEN: the summary of the build is printed.
 #
 # One line per step with its result and seconds, then `verify quick: PASS` or `FAIL` (or `full`). Exit 0 only when
 # every step passed; another word exits 2. When the mod's types cannot be made here, the two fixture files are
@@ -180,10 +184,15 @@ else   # full, and final, which is full and then its closing checks
     bg_step "end to end: run.ts all --shard $k/$CPUS --floor" bun scripts/e2e/run.ts all --shard "$k/$CPUS" --floor scripts/e2e/floor.json
   done
   collect
-  # the measured bad run, replayed, against the floor's replay entry; and the base column of the A/B replay against
-  # replay_base (ab-replay.sh checks it itself when its base is 10e965a)
+  # the measured bad run, replayed, against the floor's replay entry; and the A/B replay against the base, whose base
+  # column ab-replay.sh holds against replay_base itself. full prints its compare (--base-only); final fails when a
+  # counted number of this tree is above the base (WP32, done.md row D59)
   step "floor: replay.ts final against the replay entry" replay_floor
-  step "floor: ab-replay.sh 10e965a (its base column equals replay_base)" bash scripts/e2e/ab-replay.sh 10e965a
+  if [[ "$WORD" == final ]]; then
+    step "replay: ab-replay.sh 10e965a (no counted number above the base, D59)" bash scripts/e2e/ab-replay.sh 10e965a
+  else
+    step "floor: ab-replay.sh --base-only 10e965a (the base column)" bash scripts/e2e/ab-replay.sh --base-only 10e965a
+  fi
   step "claude plugin test ." claude plugin test .
   step "claude plugin validate --strict ." claude plugin validate --strict .
   step "test-check-mod-calls.sh" bash scripts/selftest/test-check-mod-calls.sh
@@ -201,6 +210,12 @@ if [[ "$WORD" == final ]]; then
     step "bench: $SCORECARD inside the lines of part H" bench_lines
   else
     echo "OPEN: the bench gate (needs the owner's word and a model access)"
+  fi
+  # the summary of the build (WP32, done.md row D107) is written after the first green final, so its absence is open
+  if [[ -f docs/history/build-9.8.5.md ]]; then
+    step "done: check_done.py --summary (the form of the summary, D107)" python3 -I scripts/check_done.py --summary
+  else
+    echo "OPEN: the summary of the build"
   fi
 fi
 

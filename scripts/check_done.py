@@ -25,7 +25,22 @@ A `mod` item is not looked up: the mod's own suite runs every test file. A `gate
 
 With `--final` it also fails while the list has an entry, and it runs D75b: each `final` of `scripts/caps.json` and
 `scripts/e2e/floor.json` equals the value the table writes after `=` for its key, every such key of the table has its
-`final`, and no `final` is above its value in the commit that first added the key.
+`final`, and no `final` is above its value in the commit that first added the key. Two more rules close the build
+(WP32): each of WP00 to WP31 has a line in the table "Packages" of `docs/plans/one-go/PROGRESS.md` whose state is
+`done` or `blocked` (a line that is `todo` or `doing`, or no line, fails; the line of WP32 is not read); and the
+working papers, the folder `evidence` of `docs/plans/one-go`, are not tracked (`git ls-files` of the folder prints
+nothing) and no tracked file outside `docs/plans/one-go` names the folder by its path.
+
+  python3 scripts/check_done.py --summary [--root DIR]
+
+The form of the summary of the build (row D107), and nothing else: it fails when `docs/history/build-9.8.5.md` is
+missing, has more than 150 lines, lacks one of the eight headings of level two of `docs/plans/one-go/contracts.md`
+section 8 or has them in another order (each once), or when its part 3 (under `## The plan, item by item`) has no line
+for an item id of `docs/plans/two-approval-run.md` or a line there holds none of the three states. An item id is one
+digit and one letter at the start of a list item under the headings `### Release 0.` to `### Release 7.` of the plan
+(`- **0a, first ...` or `- **2e. The approval ...`); `Pass line` and the other entries with no id are not items. A line
+of part 3 is a table row whose first cell is the id, and its state is a cell that is exactly `built and proven`,
+`built and not proven` or `not built`.
 
 It prints one line a row: the id and `ok`, `expected to fail` (a check of the row is on the list) or `open` (the row
 needs a model or a person, or a `final` it names is not written yet), or `FAIL` with what is missing; then the count of
@@ -47,6 +62,18 @@ THREE = ("accept.ts", "slow.ts", "broken.ts")
 KINDS = ("case", "scenario", "floor", "caps", "mod", "gate", "bench")
 MODES = ("plain", "mod", "driver")
 RULE_ROWS = ["D%d" % n for n in range(30, 40)]
+KIT = "docs/plans/one-go"
+PROGRESS = KIT + "/PROGRESS.md"
+PAPERS = os.path.join(KIT, "evidence")   # the working papers (the path is joined so this file does not name it)
+PACKAGES = ["WP%02d" % n for n in range(0, 32)]
+SUMMARY = "docs/history/build-9.8.5.md"
+PLAN = "docs/plans/two-approval-run.md"
+SUMMARY_LINES = 150
+HEADINGS = ["In five lines", "The numbers, before and after", "The plan, item by item",
+            "What changes for someone who used 9.8.4", "What went differently from the plan",
+            "What is not done, and what is yours to do", "The build in numbers", "Was it run for real"]
+STATES = ("built and proven", "built and not proven", "not built")
+ITEM = re.compile(r"^- \*\*([0-7][a-z])[.,]")
 SPAN = re.compile(r"`([^`]+)`")
 VALUE = re.compile(r"\s*=\s*([^\s;,()]+)(?:\s+in\s+(plain|mod|driver)\s+mode)?")
 MODES_AFTER = re.compile(r"\s+((?:plain|mod|driver)(?:\s*,\s*(?:plain|mod|driver))*)\b")
@@ -465,21 +492,139 @@ def load_json(root, rel):
         return None
 
 
+# ---- the rules that close the build (WP32) -----------------------------------------------------------------------------
+
+def package_problems(root):
+    """The packages WP00 to WP31 whose line of the table "Packages" of PROGRESS.md is not done or blocked."""
+    text = read(root, PROGRESS)
+    if text is None:
+        return ["final: no %s, so no package can be shown done" % PROGRESS]
+    states, inside = {}, False
+    for line in text.split("\n"):
+        if line.startswith("## "):
+            inside = line.strip() == "## Packages"
+            continue
+        if inside and line.startswith("|"):
+            cells = cells_of(line)
+            if len(cells) > 1 and re.match(r"^WP\d\d$", cells[0]):
+                states.setdefault(cells[0], cells[1])
+    out = []
+    for wp in PACKAGES:
+        if wp not in states:
+            out.append("final: %s has no line in the table Packages of %s" % (wp, PROGRESS))
+        elif states[wp] not in ("done", "blocked"):
+            out.append("final: %s is %s in %s (every package before WP32 is done or blocked)"
+                       % (wp, states[wp] or "empty", PROGRESS))
+    return out
+
+
+def papers_problems(root):
+    """The working papers are untracked, and no tracked file outside the kit's folder names them."""
+    out = []
+    code, listed = git(root, "ls-files", "--", PAPERS)
+    if code != 0:
+        return ["final: git cannot list the files of %s" % root]
+    if listed.strip():
+        out.append("final: the working papers are tracked: %d files under %s (git rm -r them)"
+                   % (len(listed.strip().split("\n")), PAPERS))
+    code, named = git(root, "grep", "-l", "-F", "-e", PAPERS, "--", ".", ":(exclude)%s" % KIT)
+    for f in (named.strip().split("\n") if code == 0 and named.strip() else []):
+        out.append("final: %s names the working papers (%s), which leave the tree" % (f, PAPERS))
+    return out
+
+
+def plan_items(text):
+    """The item ids of releases 0 to 7 of the plan, in their order."""
+    out, inside = [], False
+    for line in text.split("\n"):
+        if line.startswith("#"):
+            inside = bool(re.match(r"^### Release [0-7]\.", line))
+            continue
+        m = ITEM.match(line) if inside else None
+        if m and m.group(1) not in out:
+            out.append(m.group(1))
+    return out
+
+
+def summary_problems(root):
+    """What is wrong with the form of the summary of the build; [] when it holds."""
+    text = read(root, SUMMARY)
+    if text is None:
+        return ["summary: no %s" % SUMMARY]
+    out = []
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines = lines[:-1]
+    if len(lines) > SUMMARY_LINES:
+        out.append("summary: %s has %d lines, at most %d" % (SUMMARY, len(lines), SUMMARY_LINES))
+    seen = [l[3:].strip() for l in lines if l.startswith("## ") and l[3:].strip() in HEADINGS]
+    for h in HEADINGS:
+        if h not in seen:
+            out.append("summary: the heading '## %s' is missing" % h)
+        elif seen.count(h) > 1:
+            out.append("summary: the heading '## %s' is there %d times" % (h, seen.count(h)))
+    if len(seen) == len(HEADINGS) and set(seen) == set(HEADINGS) and seen != HEADINGS:
+        out.append("summary: the headings are out of order: %s" % " | ".join(seen))
+    plan = read(root, PLAN)
+    if plan is None:
+        return out + ["summary: no %s, so the items of part 3 are not known" % PLAN]
+    ids = plan_items(plan)
+    if not ids:
+        out.append("summary: %s has no item under its headings Release 0 to Release 7" % PLAN)
+    rows, inside = {}, False
+    for line in lines:
+        if line.startswith("## "):
+            inside = line[3:].strip() == HEADINGS[2]
+            continue
+        if inside and line.startswith("|"):
+            cells = [c.strip("`* ") for c in cells_of(line)]
+            if cells and cells[0] in ids:
+                rows.setdefault(cells[0], []).append(cells)
+    for i in ids:
+        if i not in rows:
+            out.append("summary: the item %s of the plan has no line in part 3 (## %s)" % (i, HEADINGS[2]))
+            continue
+        for cells in rows[i]:
+            if not any(c in STATES for c in cells[1:]):
+                out.append("summary: the line of %s in part 3 holds none of the three states (%s)"
+                           % (i, ", ".join(STATES)))
+    return out
+
+
+def summary_main(root):
+    problems = summary_problems(root)
+    for p in problems:
+        print("FAIL: %s" % p)
+    if problems:
+        print("check_done --summary: FAIL (%d)" % len(problems))
+        return 1
+    print("check_done --summary: PASS: %s has the eight headings in their order and a state for each item of the plan"
+          % SUMMARY)
+    return 0
+
+
 # ---- the check -------------------------------------------------------------------------------------------------------------
 
 def main(argv):
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    final = False
+    final = summary = False
     args = list(argv)
     while args:
         a = args.pop(0)
         if a == "--final":
             final = True
+        elif a == "--summary":
+            summary = True
         elif a == "--root" and args:
             root = os.path.abspath(args.pop(0))
         else:
-            print("usage: python3 scripts/check_done.py [--final] [--root DIR]")
+            print("usage: python3 scripts/check_done.py [--final | --summary] [--root DIR]")
             return 2
+    if final and summary:
+        print("usage: python3 scripts/check_done.py [--final | --summary] [--root DIR]")
+        return 2
+    if summary:
+        return summary_main(root)
     done = read(root, DONE)
     if done is None:
         print("check_done: FAIL: no %s" % DONE)
@@ -635,6 +780,8 @@ def main(argv):
                     if not same(finals[k], it["value"]):
                         problems.append("D75b: %s%s: the final is %s, the table says %s" % (
                             label, " [%s]" % k[1] if k[1] else "", json.dumps(finals[k]), json.dumps(it["value"])))
+        problems.extend(package_problems(root))
+        problems.extend(papers_problems(root))
         for rel in (CAPS, FLOOR):
             doc = caps_doc if rel == CAPS else floor_doc
             first = first_values(root, rel)

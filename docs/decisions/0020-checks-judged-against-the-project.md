@@ -7,12 +7,12 @@
 ## Context
 
 ADR-0018 put a preflight in the plan gate: each Validate and the Integration line ran on a throwaway worktree of HEAD,
-and fifteen text patterns sorted each failure into an environment fault, a command fault or "needs new code". The
-review of pull request 115 (`docs/plans/one-go/evidence/pr-env.md`) found that the gate then ran project commands
-inside the planner's turn under one limit of 300 s for all, that 24 of 33 representative failures outside Maven matched
-no pattern and passed silently, that its worktree was not the place Build runs in, and that a code bug which prints
-`Connection refused` was held as a fault of the environment. The environment check and the baseline of WP20 now find a
-missing tool, a wrong JDK or a service that is down from the project's own files, before any agent.
+and fifteen text patterns sorted each failure into an environment fault, a command fault or "needs new code". The review
+of pull request 115 (`pr-env.md`, a working paper of the build that is not kept in the tree) found that the gate then
+ran project commands inside the planner's turn under one limit of 300 s for all, that 24 of 33 representative failures
+outside Maven matched no pattern and passed silently, that its worktree was not the place Build runs in, and that a code
+bug which prints `Connection refused` was held as a fault of the environment. The environment check and the baseline of
+WP20 now find a missing tool, a wrong JDK or a service that is down from the project's own files, before any agent.
 
 ## Decision
 

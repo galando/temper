@@ -8,12 +8,12 @@
 
 A run that goes on by itself takes the recommended option, so a limit that only moves the recommendation is the real
 bound of its repeats. At the base, eleven limits bounded a repeat, by five techniques, and only three of them refused a
-call: the step back of one pair of stages, the attempts of a task and the writer of the acceptance tests
-(`docs/plans/one-go/evidence/v-failure-budget.md`, section 1.3). A run again of a stage, the tasks of a group again, a
-fix of a group and more time for its check were counted nowhere. Every other store of a failure is deleted or archived
-by a step back, so a run that stepped back to Plan forgot what it had tried. The loop keys of the config
-(`loops.max-per-type`, `fix.max-loops`, `feedback.enabled`, `autonomy.budget`) were read by some sites, by one site, or
-by none.
+call: the step back of one pair of stages, the attempts of a task and the writer of the acceptance tests (the review of
+the failure budget, `v-failure-budget.md` section 1.3, a working paper of the build that is not kept in the tree). A run
+again of a stage, the tasks of a group again, a fix of a group and more time for its check were counted nowhere. Every
+other store of a failure is deleted or archived by a step back, so a run that stepped back to Plan forgot what it had
+tried. The loop keys of the config (`loops.max-per-type`, `fix.max-loops`, `feedback.enabled`, `autonomy.budget`) were
+read by some sites, by one site, or by none.
 
 ## Decision
 
