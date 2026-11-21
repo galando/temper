@@ -1,0 +1,35 @@
+{
+  "task": "vague-late-fees",
+  "arm": "temper",
+  "rep": 2,
+  "base": "e03c6df7efec796081d53b855d709154cb072c4b",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "a47cdcb45c470187e25985767145711b8fbd23e2",
+  "mod": true,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-sonnet-5-5": 1.0644848999999996
+  },
+  "cost_usd": 1.0645,
+  "cost_results": "sum",
+  "wall_s": 369,
+  "api_s": 0,
+  "turns": 0,
+  "sessions": 1,
+  "questions": 6,
+  "facts_total": 6,
+  "facts_elicited": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "owner_replies": 0,
+  "person_cost_usd": 0.0668,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": "none"
+}
