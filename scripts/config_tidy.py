@@ -11,8 +11,9 @@ ADR 0023). Standard library only.
 read (defaults.GONE), moves a renamed key to its new name, turns autonomy.enabled: false into run.default: ask, keeps a
 copy (.claude/temper.config.before-<version>) and writes the new template with the lines the person changed in place of
 its own or after them, whatever upgrade.asked says (the question is asked once; the call, typed after Keep my file,
-still does what it says). --keep appends `upgrade:` with `asked: "<version>"`, so the question is not asked again. An
-unknown key is never an error: both keep it.
+still does what it says); the file then starts with the template's first line, so the question is not asked again
+(current, WP32). --keep appends `upgrade:` with `asked: "<version>"`, so the question is not asked again. An unknown
+key is never an error: both keep it.
 """
 import json
 import os
@@ -106,8 +107,11 @@ def current(text):
 
 def stale(text, every=False):
     """The lines the question offers to remove, [{path, raw, what}], the four that change a run first; none when the
-    config already answered the question of that version (upgrade.asked). every: each such line whatever upgrade.asked
-    says, the lines `--apply` removes (step 7 of WP29: a typed call after Keep my file does what it says)."""
+    config already answered the question of that version (upgrade.asked), or was written from this version's template
+    (current: a value the person sets later is theirs, never an old default). every: each such line whatever
+    upgrade.asked says, the lines `--apply` removes (step 7 of WP29: a typed call after Keep my file does what it says)."""
+    if not every and current(text):
+        return []
     asked = () if every else vtuple(config_yaml.get(config_yaml.parse_yaml_subset(text), "upgrade.asked", ""))
     tpl = {p: norm(value(r)) for p, r, _ in leaves(template_text()) if r is not None}
     out = []

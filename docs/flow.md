@@ -216,7 +216,9 @@ run). It is read only; with the mod on, the session may run the CLI but not `pri
 
 The first question of a `/temper:temper` run at Intent, before the baseline and before any agent (no `intent.md` and
 no usage row of Intent yet), in a run that asks, when the project's config holds a line whose value an earlier template
-shipped (`OLD` of `scripts/defaults.py`) or a key no longer read (`GONE`) and no `upgrade.asked` of 9.8.5:
+shipped (`OLD` of `scripts/defaults.py`) or a key no longer read (`GONE`), no `upgrade.asked` of 9.8.5, and a first
+line that is not the first line of the 9.8.5 template (WP32: what `config init` and `Remove them` write is never asked,
+also when the person later sets a value an old template shipped):
 `config.tidy`, header `Temper gate`. Its text counts the lines and says a copy is kept, then names at most eight with
 what changes (the coverage floor, `phases.design`, the five packs and `block-on: [critical]` first) and `and M more`.
 Its two options are one call of the CLI each:

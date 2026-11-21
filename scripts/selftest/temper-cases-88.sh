@@ -115,3 +115,28 @@ _d102_88+="|worktree=$(_ev "'told' if str(d.get('say') or '').startswith('Temper
 cd "$WORKDIR" || exit 1
 assert_eq "review 8: a worktree of a project that only ran 9.8.5 is never told Temper 9.8.5 asks twice" \
   "first=quiet|worktree=quiet" "$_d102_88"
+
+# --- review 8, D62: the one time config question is never asked again ---
+# The person answers Remove them (the recommended answer) on the template of 9.8.4. Later they set a coverage floor of
+# 80 on purpose, a value the old template happened to ship: the next run asks config.tidy again and recommends removing
+# their own line. Remove them writes no mark (only Keep my file writes upgrade.asked), so the question comes back.
+_clean88; _git88; mkdir -p .claude; _tpl88 7c7a1c1 > .claude/temper.config
+printf 'x\n' > README.md; git add -A; git commit -q -m init
+"$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+_d62_88="first=$(nx "(d.get('ask') or {}).get('id')")"
+"$TEMPER" config tidy --apply >/dev/null 2>&1 || true
+"$TEMPER" state clear >/dev/null 2>&1 || true
+printf 'check:\n  coverage-threshold: 80\n' >> .claude/temper.config
+"$TEMPER" state init pw2 --feature 'Export totals' >/dev/null 2>&1
+_d62_88+="|later=$(nx "(d.get('ask') or {}).get('id')")"
+assert_eq "review 8: after Remove them the one time question config.tidy is never asked again, also when the person later sets a value an old template shipped" \
+  "first=config.tidy|later=None" "$_d62_88"
+# The lane's check beside the finding (WP32): a new project, whose config config init wrote, sets the same value on
+# purpose; it never ran an older Temper, so it is never asked the upgrade question.
+_clean88; _git88; "$TEMPER" config init >/dev/null 2>&1
+printf 'x\n' > README.md; git add -A; git commit -q -m init
+"$TEMPER" init >/dev/null 2>&1
+printf 'check:\n  coverage-threshold: 80\n' >> .claude/temper.config
+"$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+assert_eq "review 8, lane: a new project whose config config init wrote is never asked config.tidy, also with a value an old template shipped" \
+  "None" "$(nx "(d.get('ask') or {}).get('id')")"
