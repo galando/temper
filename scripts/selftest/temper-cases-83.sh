@@ -74,3 +74,12 @@ assert_eq "review 3: a Check verdict never names a tree on which no suite ran, f
   "first=${_s83_t1%%:*}|second=$([[ "${_s83_t2#*:}" != "${_s83_t1#*:}" ]] && echo "${_s83_t2%%:*}" || echo same-tree)|commit=$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['commit']['verdict'])")"
 
 # --- rule 6: acceptance tests that never ran (the writer's skip) are shown as passed ---
+fresh; _repo83; printf 'check:\n  commands:\n    test: "true"\n' >> .claude/temper.config
+gpass intent plan build review; _at check
+"$TEMPER" acceptance skip --reason 'the writer locked no test' >/dev/null 2>&1
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+assert_eq "review 3: acceptance tests that were skipped, never run, are not a passed row of the Check verdict" \
+  "not passed" \
+  "$(_g83 "x = row('acceptance tests'); r = 'not passed' if x and x.get('pass') is not True and x.get('state') in ('skipped', 'not measured') else 'passed=%s:%s' % (x.get('pass'), x.get('detail'))")"
+
+# --- rule 5: a verdict outside a git repository names no tree ---

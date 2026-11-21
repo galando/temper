@@ -73,13 +73,14 @@ def acceptance_row(rows):
         return row("acceptance tests written before Build", False, "no run of the acceptance tests the CLI made: a row "
                    "written with evidence add counts nowhere")
     last, claim = ran[-1], str(ran[-1].get("claim") or "")
+    if claim.endswith("skipped"):   # rule 6: no test ran; skipped, as the red base's skip of `tests pass`, never passed
+        return {"name": "acceptance tests written before Build", "pass": None, "state": "skipped",
+                "detail": "skipped: %s" % one_line(last.get("output"))}
     if last.get("exit_code") != 0:
         return row("acceptance tests written before Build", False, one_line(last.get("output")))
     ok = "they pass, unchanged since they were locked"
     if ", corrected after the lock: " in claim:
         ok = "they pass, as the person corrected them after the lock (%s)" % claim.split(", corrected after the lock: ", 1)[1]
-    if claim.endswith("skipped"):
-        ok = "skipped: %s" % one_line(last.get("output"))
     return row("acceptance tests written before Build", True, ok)
 
 
