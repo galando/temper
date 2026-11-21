@@ -1,0 +1,24 @@
+{
+  "task": "partial-payments",
+  "arm": "vanilla",
+  "rep": 1,
+  "base": "7608f01f1d7e3e04ba2f27bc438f9741463258d2",
+  "plugin_version": "9.8.5",
+  "plugin_commit": "10e965a71c66ef3d9868fc93acd760825209f47c",
+  "mod": false,
+  "claude_code_version": "2.1.318",
+  "model_requested": "default",
+  "models_cost_usd": {
+    "claude-opus-5-5": 0.5084736
+  },
+  "cost_usd": 0.5085,
+  "cost_results": "sum",
+  "wall_s": 90,
+  "api_s": 86,
+  "turns": 7,
+  "sessions": 1,
+  "questions": 0,
+  "ended": "done",
+  "last_subtype": "success",
+  "temper_action_at_end": null
+}
