@@ -222,7 +222,9 @@ Its two options are one call of the CLI each:
 
 - `tidy-config`, `Remove them (Recommended)`: `temper config tidy --apply`. The old file is copied to
   `.claude/temper.config.before-9.8.5`, and the new template is written with the lines the person changed, a renamed
-  key under its new name, and `autonomy.enabled: false` as `run.default: ask`.
+  key under its new name, a block form `packs:` list as written, and `autonomy.enabled: false` as `run.default: ask`.
+  A copy that is there already is never overwritten (the old file takes the next free number), and with nothing to
+  remove the call changes nothing.
 - `keep-config`, `Keep my file`: `temper config tidy --keep`, which appends `upgrade:` with `asked: "9.8.5"`.
 
 Both calls exit 1 and change nothing past Intent, in a fix run and in a run that goes on by itself; with the mod they

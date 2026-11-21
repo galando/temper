@@ -76,13 +76,45 @@ def _at(d, path):
     return cur
 
 
+def block_list(lines):
+    """The entries of a block list, the lines under a key with no value up to the next line that is not indented: `- name`
+    is one entry, and `- name: x` with the keys under it is one entry `name: x, link: y` (reference/pack.md)."""
+    names = []
+    for raw in lines:
+        x = raw.split(" #", 1)[0].rstrip()
+        if x.strip() and not x.startswith(" "):
+            break
+        if x.strip().startswith("- "):
+            names.append(x.strip()[2:].strip())
+        elif x.strip() and names and ":" in names[-1]:
+            names[-1] += ", " + x.strip()
+    return names
+
+
+def old_name(d, path):
+    """The old key a value the config lacks at path is read from, or None: the old name of a renamed key
+    (defaults.RENAMED), or autonomy.enabled for run.default when it is false, which reads as ask (the flow's
+    Run.run_default and `state may-start` read it so)."""
+    if _at(d, path) is not _TABLE:
+        return None
+    if path in defaults.RENAMED and _at(d, defaults.RENAMED[path]) is not _TABLE:
+        return defaults.RENAMED[path]
+    if path == "run.default" and str(_at(d, "autonomy.enabled")).strip().lower() == "false":
+        return "autonomy.enabled"
+    return None
+
+
 def get(d, path, default=_TABLE):
     """The value at a dot path as the CLI prints it: a list joined by \x1f, a bool as true or false. WP29: with no
-    default given, a key the config lacks is read under its old name (defaults.RENAMED), else the table's default
-    (defaults.KEYS, "" for a key it lacks); a default the caller gives wins over both."""
+    default given, a key the config lacks is read under its old name (old_name: defaults.RENAMED, and run.default as
+    ask when autonomy.enabled is false), else the table's default (defaults.KEYS, "" for a key it lacks); a default
+    the caller gives wins over both."""
     cur = _at(d, path)
-    if cur is _TABLE and default is _TABLE and path in defaults.RENAMED:
-        cur = _at(d, defaults.RENAMED[path])
+    old = old_name(d, path) if default is _TABLE else None
+    if old == "autonomy.enabled":
+        return "ask"
+    if old:
+        cur = _at(d, old)
     if cur is _TABLE or cur == "":
         if default is not _TABLE:
             return default

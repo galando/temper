@@ -394,6 +394,62 @@ _old73 7c7a1c1 's/^stack: auto$/stack: auto\nupgrade:\n  note: kept73/'
 assert_eq "w29 a repeated block is merged: after config tidy --keep on a config that already has an upgrade block, both its keys are read" \
   "note=kept73|asked=9.8.5|next=work" "note=$(_get73 upgrade.note)|asked=$(_get73 upgrade.asked)|next=$(_qid73)"
 
+# --- the review of phase 8 (W29-1 to W29-4) ---
+# W29-1: a packs list in block form (reference/pack.md) survives --apply as written, byte for byte, and reads the same
+_old73 7c7a1c1 's/^packs: \[.*\]$/packs:\n  - security\n  - name: api-standards\n    link: plugin:\/\/my-api-linter\n  - tdd/'
+_blk73="$(printf 'packs:\n  - security\n  - name: api-standards\n    link: plugin://my-api-linter\n  - tdd')"
+_pb73="$("$TEMPER" packs --stage review 2>&1)"
+"$TEMPER" config tidy --apply >/dev/null 2>&1; _rc73=$?
+assert_eq "w29 config tidy --apply keeps a packs list in block form byte for byte, the packs of a stage read the same, and the run goes on" \
+  "exit=0|block=as written, once|packs=same|next=work" \
+  "exit=$_rc73|block=$(python3 -I - "$_blk73" <<'PY'
+import sys
+t = open(".claude/temper.config").read()
+n = t.count(sys.argv[1] + "\n")
+print("as written, once" if n == 1 and t.count("packs:") == 1 and t.count("api-standards") == 1 else "%d times: %r" % (n, t[:400]))
+PY
+)|packs=$([[ "$("$TEMPER" packs --stage review 2>&1)" == "$_pb73" ]] && echo same || echo differs)|next=$(_qid73)"
+# W29-2: a pack whose rules.md says `phases: []` is listed at no stage (docs/packs.md, reference/pack.md, the guardrails
+# pack); a pack with no phases line is listed at every stage, as before
+fresh; rm -f .claude/temper.config; "$TEMPER" config init >/dev/null 2>&1
+_project_pack73 zz73e '[]'
+mkdir -p .claude/packs/zz73f; printf '# zz73f\n\n- a rule\n' > .claude/packs/zz73f/rules.md
+sed -i 's/^packs: \[security, tdd\]/packs: [security, tdd, zz73e, zz73f, guardrails]/' .claude/temper.config
+_e73=""
+for _st73 in plan design build review check rca fix; do
+  _o73="$("$TEMPER" packs --stage "$_st73" 2>&1)"
+  _e73+="${_e73:+|}$_st73=$(grep -c -e 'zz73e' -e 'guardrails' <<<"$_o73"),$(grep -c 'zz73f' <<<"$_o73")"
+done
+assert_eq "w29 a pack whose phases is [] is listed at no stage (the project's zz73e, the plugin's guardrails), a pack with no phases line at every stage" \
+  "plan=0,1|design=0,1|build=0,1|review=0,1|check=0,1|rca=0,1|fix=0,1" "$_e73"
+# W29-3: with autonomy.enabled false and no run.default line, the flow asks (Run.run_default); config get and config
+# show say ask, from the old name, and do not call autonomy.enabled gone; a default the caller gives still wins
+fresh; _config73 'autonomy:
+  enabled: false'
+_s73="$("$TEMPER" config show 2>/dev/null)"
+assert_eq "w29 autonomy.enabled false with no run.default: config get run.default is ask, config show gives it from the old name and names autonomy.enabled gone nowhere" \
+  "get=ask|source=old name autonomy.enabled|gone lines=0|given=x73" \
+  "get=$(_get73 run.default)|source=$(_src73 run.default)|gone lines=$(grep -c '^gone: autonomy\.enabled' <<<"$_s73")|given=$("$TEMPER" config get run.default x73 2>/dev/null)"
+_config73 'autonomy:
+  enabled: true'
+assert_eq "w29 autonomy.enabled true with no run.default: run.default is the table's to-commit, and autonomy.enabled is gone" \
+  "get=to-commit|source=default|gone lines=1" \
+  "get=$(_get73 run.default)|source=$(_src73 run.default)|gone lines=$("$TEMPER" config show 2>/dev/null | grep -c '^gone: autonomy\.enabled')"
+# W29-4: the copy is never overwritten: a second --apply leaves it the old file; with nothing to remove --apply writes
+# nothing; a copy that is there with other text stays, and the old file goes to the next number
+_old73 7c7a1c1
+"$TEMPER" config tidy --apply >/dev/null 2>&1; cp .claude/temper.config .git/tidy-73
+"$TEMPER" config tidy --apply >/dev/null 2>&1; _rc73=$?
+_k4_73="second=$_rc73 copy $(cmp -s .git/old-config-73 .claude/temper.config.before-9.8.5 && echo old file || echo overwritten) file $(cmp -s .git/tidy-73 .claude/temper.config && echo same || echo changed)"
+fresh; rm -f .claude/temper.config; "$TEMPER" config init >/dev/null 2>&1; cp .claude/temper.config .git/tidy-73
+"$TEMPER" config tidy --apply >/dev/null 2>&1; _rc73=$?
+_k4_73+="|nothing stale=$_rc73 copy $([[ -e .claude/temper.config.before-9.8.5 ]] && echo written || echo none) file $(cmp -s .git/tidy-73 .claude/temper.config && echo same || echo changed)"
+_old73 7c7a1c1; printf 'an older copy\n' > .claude/temper.config.before-9.8.5
+"$TEMPER" config tidy --apply >/dev/null 2>&1; _rc73=$?
+_k4_73+="|copy there=$_rc73 $(cat .claude/temper.config.before-9.8.5) $(cmp -s .git/old-config-73 .claude/temper.config.before-9.8.5.2 && echo next number || echo lost)"
+assert_eq "w29 config tidy --apply never overwrites the copy: a second call keeps the old file, with nothing stale it writes nothing, an existing copy stays" \
+  "second=0 copy old file file same|nothing stale=0 copy none file same|copy there=0 an older copy next number" "$_k4_73"
+
 # --- the question is a stop that must stay, and a project of the selftest or of config init is never asked ---
 assert_eq "w29 scripts/stops.json holds config.tidy, the one time config question, as a stop that must stay" "config.tidy listed" \
   "$(python3 -I -c '

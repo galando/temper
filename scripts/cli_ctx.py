@@ -68,8 +68,9 @@ PACK_STAGES = ("plan", "design", "build", "review", "check", "rca", "fix")
 def packs(plugin, config_file, stage):
     """([rules file], [entry as written]) of the packs of the config (the table's [security, tdd] with no `packs:` line)
     that apply at the stage: the project's .claude/packs/<name>/rules.md when it exists, else the plugin's; kept when the
-    file's `phases:` is all, is absent or holds the stage. Nothing in the home folder is read. An entry in braces (a
-    link, a phases list) is handed on as written; reference/pack.md says what an agent does with it."""
+    file's `phases:` is all, is absent or holds the stage (`phases: []` is no stage: the guardrails pack). Nothing in the
+    home folder is read. An entry in braces (a link, a phases list) is handed on as written; reference/pack.md says what
+    an agent does with it."""
     if stage not in PACK_STAGES:
         return [], []
     try:
@@ -85,14 +86,7 @@ def packs(plugin, config_file, stage):
     elif raw:
         names = [raw]
     elif at is not None:   # a block list (reference/pack.md): `- name`, or `- name: x` with its keys, as one entry
-        for x in text[at + 1:]:
-            if x.strip() and not x.startswith(" "):
-                break
-            if x.strip().startswith("- "):
-                names.append(x.strip()[2:].strip())
-            elif x.strip() and names and ":" in names[-1]:
-                names[-1] += ", " + x.strip()
-        names = ["{ %s }" % n if ":" in n and not n.startswith("{") else n for n in names]
+        names = ["{ %s }" % n if ":" in n and not n.startswith("{") else n for n in config_yaml.block_list(text[at + 1:])]
     if at is None:
         names = [str(x) for x in config_yaml.get({}, "packs").split("\x1f") if x]
     want = (stage, "build") if stage == "plan" else (stage,)
@@ -109,9 +103,9 @@ def packs(plugin, config_file, stage):
                 head = f.read(2000)
         except OSError:
             continue
-        m = re.search(r"(?m)^phases:\s*(.*)$", head.split("\n---", 1)[0] if head.startswith("---") else "")
-        ph = (m.group(1).strip() if m else "all").strip("[]").replace(",", " ").split()
-        if not ph or "all" in ph or any(s in ph for s in want):
+        m = re.search(r"(?m)^phases:[ \t]*(.*)$", head.split("\n---", 1)[0] if head.startswith("---") else "")
+        ph = m.group(1).strip().strip("[]").replace(",", " ").split() if m else ["all"]   # `phases: []`: no stage
+        if "all" in ph or any(s in ph for s in want):
             files.append(path)
     return files, entries
 
