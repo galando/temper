@@ -13,8 +13,7 @@ choreograph your steps.
 ## Usage
 
 Plan runs as a stage of `/temper`, in a clean subprocess from the plan brief
-(`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`), also when `/temper:plan` starts the run (it is a door
-into `/temper`). It returns a summary and never shows an `AskUserQuestion` gate: the
+(`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`). It returns a summary and never shows an `AskUserQuestion` gate: the
 orchestrator owns the gate.
 
 ## What You Produce
@@ -47,7 +46,7 @@ it, refine its wording only with a stated reason, never re-derive the Problem fr
 `- consulted:` source its `### Context Sources` records** — the intent summarizes them, but you plan against them; treat
 every `- unavailable:` line as an explicit gap (a `- gap:` line of the Context Map, and add an Open Question back into
 `intent.md` if it hides a decision). Do not re-derive context Intent already gathered. A `Status: draft` intent
-(captured via `/temper:intent` or a control-band breach) is the same input, plus: resolve or explicitly re-carry each
+(captured with `/temper:temper draft` or a control-band breach) is the same input, plus: resolve or explicitly re-carry each
 Open Question (you ask nobody: a question that must be settled is marked `Blocking`, and the orchestrator asks it before
 the gate question); the intent is accepted (`temper intent accept`) when the person leaves Intent. **Risk multipliers**
 (each pushes complexity up one tier): touches auth/payment/security code; changes what the consumers of a library with
@@ -86,8 +85,8 @@ The rows: the artifacts exist (`intent.md` + `tasks.md`); every criterion has ex
 (`acceptance.py plan`: stable `AC-NN` ids, `Why:` and `Validate:` on each, every `Covers:` id names a real criterion,
 and a `scenario` criterion is covered by a scenario); every `Scenario:` sits inside a ```gherkin fence. No tier needs a
 `plan.md`. Record `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>` as soon as you classify it. The
-call also writes the tier into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has one), where a
-later door reads it; the gate's `tier recorded` row fails when such a line names another tier than the run, or when
+call also writes the tier into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has one), where the
+gate reads it; the gate's `tier recorded` row fails when such a line names another tier than the run, or when
 a simple run crosses the bound above.
 
 Fix any FAIL before returning. The three fresh review rows below are the one exception: they fail until the reviewer

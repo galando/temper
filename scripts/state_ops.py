@@ -230,10 +230,8 @@ def archive_ledger(argv):
 
 def state_redo(argv):
     import json, os, sys
-    p, stage, reason, ts, enter = argv[1:6]
+    p, stage, reason, ts = argv[1:5]
     d = json.load(open(p))
-    if enter:
-        d['enter'] = stage
     d['redo'] = {'stage': stage, 'reason': reason, 'ts': ts}
     # the stage runs again from the start: a small change made at it, and the steps it still owed, end here
     d.pop('adhoc', None)
@@ -312,21 +310,8 @@ def state_init(argv):
         'started': argv[4],
         'saved_by': SAVED_BY,   # WP11: a state with none was saved by an older Temper (migrate_legacy)
     }
-    # ADR 0013: the feature as the person gave it (the Intent brief's input), and a door's stage
+    # ADR 0013: the feature as the person gave it (the Intent brief's input)
     if argv[6]: d['feature'] = argv[6]
-    if argv[7] and argv[3] == 'temper':
-        d['enter'] = argv[7]
-        # A door's run takes the tier Plan recorded: plan.md's Complexity line, else intent.md's (Intent's first guess)
-        import re
-        for name in ('plan.md', 'intent.md'):
-            try:
-                text = open(os.path.join(d['spec_path'], name), encoding='utf-8', errors='replace').read()
-            except OSError:
-                continue
-            m = re.search(r'^\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*(trivial|simple|medium|complex)\b', text, re.I | re.M)
-            if m:
-                d['complexity'] = m.group(1).lower()
-                break
     json.dump(d, open(argv[5], 'w'), indent=2)
     # WP17: a new run spends the record of a trivial request (scripts/trivial.py): the commit hook no longer holds it
     try:

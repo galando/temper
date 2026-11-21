@@ -161,7 +161,7 @@ class Run:
 
     def has_design(self):
         """WP14 (ADR 0019 decision 2): a run of /temper:temper has the Design stage only when the person asked for it
-        (the option run-design of the approval sets want_design, or the Design door), when design.md exists, or when the run is at Design or
+        (the option run-design of the approval sets want_design), when design.md exists, or when the run is at Design or
         has a Design verdict (a run saved there by 9.8.4 keeps it). No tier, risk or setting adds it: what Design asked is
         now Blocking questions Plan writes, answered in front of the approval."""
         if self.command != "temper":
@@ -170,8 +170,8 @@ class Run:
             return True
         if "design" in self.gates or self.stage == "design":
             return True
-        # the person's ask: the option run-design, or the Design door (/temper:design enters the run at Design)
-        return str(self.state.get("want_design")).strip().lower() == "true" or self.state.get("enter") == "design"
+        # the person's ask: the option run-design
+        return str(self.state.get("want_design")).strip().lower() == "true"
 
     def next_of(self, stage):
         s = self.seq()

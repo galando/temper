@@ -45,12 +45,12 @@ Precedence and rationale: `${CLAUDE_PLUGIN_ROOT}/reference/pack.md` → "Pack Co
 
 ## Review memory
 Reviews get smarter over time through a single store, `.temper/review-memory.json`,
-written by `/temper:review` and surfaced at `/temper:status`.
+written by Review and shown by `/temper:temper status`.
 
 | Capability | Trigger | Action |
 |-----------|---------|--------|
 | Pattern tracking | every review | Cluster findings by category + file-path prefix + keywords into `patterns[key]` |
-| Rule promotion | accepted 3+ times @ ≥70% (5+ @ ≥80% for security/architecture → BLOCK) | Suggest a pack rule at `/temper:status`; the human accepts BLOCK/WARN |
+| Rule promotion | accepted 3+ times @ ≥70% (5+ @ ≥80% for security/architecture → BLOCK) | Suggest a pack rule at `status`; the human accepts BLOCK/WARN |
 | Noise reduction | dismissed 3+ (downgrade) / 5+ (suppress) | Downgrade or auto-suppress, per-context |
 
 **Graceful degradation:** absent `review-memory.json` → every command works unchanged.
@@ -76,19 +76,18 @@ The add-ons are options of the stage's `Temper gate` question, with the mod and 
 The person's own message at a gate is the original "Other".
 
 ## Full Docs
-One methodology file per command, each written out in full:
+One methodology file per stage or word, each written out in full:
 
-- `/temper:plan`: `${CLAUDE_PLUGIN_ROOT}/reference/plan.md` (HTML review:
+- Plan: `${CLAUDE_PLUGIN_ROOT}/reference/plan.md` (HTML review:
   `${CLAUDE_PLUGIN_ROOT}/reference/plan-review.md`)
-- `/temper:design`: `${CLAUDE_PLUGIN_ROOT}/reference/design.md`
-- `/temper:build`: `${CLAUDE_PLUGIN_ROOT}/reference/build.md`
-- `/temper:review`: `${CLAUDE_PLUGIN_ROOT}/reference/review.md` (architecture depth:
+- Design: `${CLAUDE_PLUGIN_ROOT}/reference/design.md`
+- Build: `${CLAUDE_PLUGIN_ROOT}/reference/build.md`
+- Review: `${CLAUDE_PLUGIN_ROOT}/reference/review.md` (architecture depth:
   `${CLAUDE_PLUGIN_ROOT}/reference/architecture-depth.md`)
-- `/temper:check`: `${CLAUDE_PLUGIN_ROOT}/reference/check.md` (config suggestions:
+- Check: `${CLAUDE_PLUGIN_ROOT}/reference/check.md` (config suggestions:
   `${CLAUDE_PLUGIN_ROOT}/reference/config-suggestions.md`)
 - `/temper:fix`: `${CLAUDE_PLUGIN_ROOT}/reference/fix.md`
-- `/temper:pack`: `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`
-- `/temper:status`: `${CLAUDE_PLUGIN_ROOT}/reference/status.md`
+- the words `draft` and `pack`: `${CLAUDE_PLUGIN_ROOT}/reference/draft.md`, `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`
 - `/temper` and `/temper:fix` orchestration: `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`
   says each step (`${CLAUDE_PLUGIN_ROOT}/docs/flow.md`); the run files and hand off files are in
   `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md`, and an armed run in

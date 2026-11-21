@@ -211,7 +211,7 @@ print(f"BLOCK {stage}")
       # PATH, so a bare name would leave Claude guessing while this hook keeps blocking.
       local cli; cli="$(printf '%q' "$ROOT/scripts/temper")"
       printf '%s\n' >&2 \
-        "temper: this session ran /temper:$stage but 'temper gate $stage' was never invoked, so" \
+        "temper: this session owes the $stage gate (it ran /temper:temper draft) but 'temper gate $stage' was never invoked, so" \
         "no verdict exists in .temper/gates.json and 'temper gate commit' cannot see that the" \
         "stage happened. Before finishing: record the stage's evidence as that stage's brief in" \
         "the plugin's agents folder specifies (for example '$cli state set complexity <tier>' for" \

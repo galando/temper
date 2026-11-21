@@ -323,7 +323,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart, RevisePart):
             out.update(rep)
             return out
         # A note the person gave after the verdict: input goes to the agent again, edit (made for them) only to the gate.
-        if verdict is not None and not skipped and not self.walked(stage):
+        if verdict is not None and not skipped:
             if r.stale_notes(stage, "input"):
                 if stage == "build" and r.command == "temper":
                     a = self.agent("build", self.feedback_lines())
@@ -357,10 +357,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart, RevisePart):
                 out.update(cmds)
                 return out
         if verdict is None and not skipped:
-            if self.walked(stage):
-                out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % stage)], "agents": [],
-                            "say": "%s ran before this run started; it is checked." % LABEL[stage]})
-            elif stage == "build" and r.command == "temper":
+            if stage == "build" and r.command == "temper":
                 out.update(self.plan_command_step(after=True) or self.build_work())
             else:
                 out.update(self.stage_work(stage))

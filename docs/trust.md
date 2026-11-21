@@ -17,8 +17,8 @@ override records that the person decided it at the gate). It reads no key, login
 Claude Code file. A pack's link targets come from the skills and commands your session lists.
 
 - **Plugin hooks.** The plugin's hooks file registers four classic hooks and the mod module.
-  `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes that a `/temper:intent`
-  session owes an intent gate (the other stage commands are doors into `/temper` and owe none).
+  `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes that a `/temper:temper draft`
+  session owes an intent gate (a run of `/temper:temper` owes none).
   `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. `PreToolUse` on Bash runs
   `scripts/guards/block_stdin_wait.py` (9.8.0; a Python file since 9.8.1, answering deny as JSON), which refuses, in a folder with a `.temper` folder at or above it, a
@@ -89,11 +89,11 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none
   from your system account), and uses the fixed `Temper <temper@localhost>` when none is.
 - **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`
-  set to `auto` or `require` and `ocr` on your `PATH`, `/temper:review` uses it, and `ocr` sends the diff to
+  set to `auto` or `require` and `ocr` on your `PATH`, Review uses it, and `ocr` sends the diff to
   the provider you set up. Temper adds no tool; the guardrails pack and autonomy run only when you ask.
-- **Guardrails pack (opt in).** `/temper:pack enable guardrails` prints the guard hooks, with the plugin
+- **Guardrails pack (opt in).** `/temper:temper pack enable guardrails` prints the guard hooks, with the plugin
   folder's absolute path written in, for you to add to the project's `.claude/settings.local.json` or
-  `.claude/settings.json`; `/temper:pack disable guardrails` says which to remove. Temper never opens a Claude Code
+  `.claude/settings.json`; `/temper:temper pack disable guardrails` says which to remove. Temper never opens a Claude Code
   settings file, the project's or your home folder's.
 - **Sharing a plan.** Share HTML review publishes the plan review only as a Claude artifact, after you confirm.
 

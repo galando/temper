@@ -2,21 +2,20 @@
 #
 # stage-marker.sh — UserPromptSubmit half of the standalone-stage gate guarantee.
 #
-# When the submitted prompt invokes /temper:intent (the one stage command that runs on its own:
-# it captures a draft intent), record that the session owes an intent gate in
-# .temper/pending-stage.json. The Stop half (verify-stage-gate.sh) refuses to let the
-# session end until .temper/gates.json carries a verdict for that stage — any verdict,
-# PASS or FAIL; what's enforced is that `temper gate <stage>` actually ran, not that it
-# passed. Together the pair closes the wiring gap measured at v8 (the model skipped the CLI
-# in 2 of 3 live runs — see docs/decisions/0005-deterministic-stage-gate-enforcement.md).
+# When the submitted prompt is the word draft of /temper:temper (`/temper:temper draft <idea>`,
+# or `/temper draft <idea>`: it captures a draft intent and starts no run), record that the
+# session owes an intent gate in .temper/pending-stage.json. The Stop half
+# (verify-stage-gate.sh) refuses to let the session end until .temper/gates.json carries a
+# verdict for that stage — any verdict, PASS or FAIL; what's enforced is that
+# `temper gate <stage>` actually ran, not that it passed. Together the pair closes the wiring
+# gap measured at v8 (the model skipped the CLI in 2 of 3 live runs — see
+# docs/decisions/0005-deterministic-stage-gate-enforcement.md).
 #
-# /temper (unified) is deliberately NOT marked: its orchestrator runs each gate at the
-# stage boundary, and a session legitimately ends mid-pipeline at any human gate. Since 9.7.0
-# the other stage commands (/temper:plan, :design, :build, :review, :check) are doors into
-# that same orchestrator (ADR 0012), so they are not marked either: a person who chooses
-# Save for later at an earlier gate ends the session with nothing owed.
-# /temper:fix is not marked either — its RCA phase can legitimately end a session
-# before any build evidence exists.
+# A run of /temper:temper (any other text, or none) is deliberately NOT marked: its
+# orchestrator runs each gate at the stage boundary, and a session legitimately ends
+# mid-pipeline at any human gate (a person who chooses Save for later ends the session with
+# nothing owed). /temper:fix is not marked either — its RCA phase can legitimately end a
+# session before any build evidence exists.
 #
 # The marker names the session that owes the gate (session_id, from the hook's input), so
 # the Stop half acts only on its own session's marker; the same session owing the same stage
@@ -35,7 +34,7 @@
 # does; reached from anywhere that is not a plugin's scripts/guards folder, it does nothing.
 #
 # DEGRADATION CONTRACT:
-#   - Prompt is not a marked stage command  => exit 0 (no-op)
+#   - Prompt is not the word draft          => exit 0 (no-op)
 #   - python3 absent / unparseable input    => exit 0 (fail-open)
 #   - Any internal error                    => exit 0 (fail-open; never blocks a prompt)
 set -uo pipefail
@@ -122,8 +121,9 @@ except Exception:
   # Match only at the start of the prompt: a *mention* of a command mid-sentence is
   # not an invocation.
   local stage=""
+  shopt -s nocasematch   # the word is read in any case, as the mod reads it
   case "$prompt" in
-    /temper:intent*) stage="intent" ;;   # intent gained its own gate in v9 (fail-fast artifact)
+    "/temper:temper draft "*|"/temper draft "*) stage="intent" ;;   # the word draft owes the intent gate (ADR 0005)
     *) return 0 ;;
   esac
 

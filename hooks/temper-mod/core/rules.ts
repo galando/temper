@@ -105,7 +105,7 @@ function targetPath(call: ToolCall): string | null {
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
 
 // The files the editing tools never write. `config` and `hooks` only while a run is active (the person writes the config
-// with /temper:init, and installs the hooks, when no run is on). `hooks` is the native commit gate: the git hooks, the
+// with the word init of /temper:temper, and installs the hooks, when no run is on). `hooks` is the native commit gate: the git hooks, the
 // git config (core.hooksPath) and the Temper commit hook (the temper-gate folder in the git folder, the older
 // temper-pre-commit file there, and the older folders hooks-temper and temper-git-hooks).
 export type ProtectedKind = 'events' | 'gates' | 'status' | 'overrides' | 'state' | 'folder' | 'evidence' | 'loops' | 'config' | 'hooks'

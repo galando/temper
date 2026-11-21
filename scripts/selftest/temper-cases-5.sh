@@ -1214,9 +1214,9 @@ setup
 # --- the orchestrator is a loop over temper next (ADR 0013); grouped Build's loop is the CLI's ---
 OT="$REPO_ROOT/commands/temper.md"
 OF="$REPO_ROOT/commands/fix.md"
-# /temper:build is a door into the orchestrator (ADR 0012): it reads commands/temper.md and enters at Build.
-assert_eq "orchestrator: the loop runs temper go (9.8.0), and /temper:build is a door into it" "1|1" \
-  "$(grep -c 'scripts/temper go` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
+# WP28: no door into the orchestrator is left: /temper:temper takes up the active run, and no page enters at a stage.
+assert_eq "orchestrator: the loop runs temper go (9.8.0), and no door into it is left (WP28)" "1|1" \
+  "$(grep -c 'scripts/temper go` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$([[ ! -e "$REPO_ROOT/commands/build.md" ]] && ! grep -qF 'Entering at a stage' "$OT" && echo 1 || echo 0)"
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "orchestrator: an agent's after calls run with its time filled in, and no agent id or token count" "yes|0|0" \

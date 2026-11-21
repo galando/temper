@@ -213,7 +213,7 @@ fi
 
 # 8. One flow (ADR 0012, ADR 0013): the orchestrator pages are a loop over `temper next`. They list no gate
 # option and name no move (the CLI gives each one), ask every question exactly as the CLI wrote it, never send
-# the person to type a command or press a button, and the stage commands are doors into /temper. Each row is a
+# the person to type a command or press a button, and no door into a later stage is left. Each row is a
 # page, a regular expression it must hold (+) or must not hold (-), and why. Whitespace in a pattern matches
 # any run of spaces and line breaks, so a reflowed paragraph still matches.
 FLOW_TEXT=$(python3 - "$REPO_ROOT" <<'PY'
@@ -230,21 +230,18 @@ ROWS = [
     ('commands/temper.md', '-', r'Temper bar', 'no line sends the person to the bar'),
     ('commands/temper.md', '+', r'never choose "Start over" yourself', 'only the person starts over'),
     ('commands/temper.md', '+', r'three at most', 'a Blocking question holds three choices plus Carry forward'),
-    ('commands/temper.md', '+', r'## Entering at a stage', 'the stage commands are doors into /temper'),
-    ('commands/temper.md', '+', r'--enter \{stage\}', 'a door starts its run at its stage'),
-    ('commands/temper.md', '-', r'state set complexity \{tier\}', 'a door takes the tier Plan recorded from the CLI, not from Intent\'s first guess'),
+    ('commands/temper.md', '-', r'## Entering at a stage', 'the doors are gone: /temper:temper takes up the active run'),
+    ('commands/temper.md', '-', r'--enter', 'the doors are gone: no run starts at a later stage'),
+    ('commands/temper.md', '+', r'reference/draft.md', 'the word draft reads its page'),
+    ('commands/temper.md', '+', r'reference/pack.md', 'the word pack reads its page'),
+    ('commands/temper.md', '-', r'state set complexity \{tier\}', 'the tier is the one Plan records through the CLI, not a guess of the page'),
     ('commands/temper.md', '+', r'run_in_background: false', 'a stage agent runs in the foreground, so the run goes on the moment it returns'),
     ('commands/temper.md', '+', r'Never end a turn with an agent\'s `after` calls not run', 'an agent\'s report or completion notice moves the run'),
     ('commands/temper.md', '-', r'transcript', 'the CLI reads no transcript of Claude Code: usage is the totals Claude Code gives for an agent'),
     ('commands/temper.md', '+', r'Never wait for the notice', 'an agent\'s report moves the run; Claude Code may start no turn for its notice'),
     ('commands/fix.md', '-', r'--agent', 'the RCA agent\'s usage is the totals Claude Code gives, not looked up by an agent id'),
     ('commands/temper.md', '+', r'copy what it printed into\s+your reply', 'the person sees the end of run report in the reply, not in a Bash output'),
-    ('commands/init.md', '-', r'foreground-agents', 'Temper never edits a Claude Code settings file: the person sets the variable'),
-    ('commands/plan.md', '+', r'"Entering at a stage"', 'the Plan command is a door into /temper'),
-    ('commands/design.md', '+', r'"Entering at a stage"', 'the Design command is a door into /temper'),
-    ('commands/build.md', '+', r'"Entering at a stage"', 'the Build command is a door into /temper'),
-    ('commands/review.md', '+', r'"Entering at a stage"', 'the Review command is a door into /temper'),
-    ('commands/check.md', '+', r'"Entering at a stage"', 'the Check command is a door into /temper'),
+    ('commands/temper.md', '-', r'foreground-agents', 'Temper never edits a Claude Code settings file: the person sets the variable'),
     ('commands/fix.md', '+', r'the mod stands aside in a `/temper:fix` run', 'a fix run asks its own questions with the mod'),
     ('commands/fix.md', '+', r'scripts/temper next --json', 'after its RCA a fix run is driven by temper next'),
     ('commands/fix.md', '+', r'When it lists `setup`, run those calls', 'a fix run installs the commit hook before its RCA'),

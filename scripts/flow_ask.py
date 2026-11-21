@@ -310,22 +310,6 @@ class AskPart:
         def override_opt(then):
             return self.override_opt(stage, then)
 
-        walked = self.walked(stage)
-        if walked:
-            text = "%s: %s%s (this stage ran before; it is checked, not run again). Go on to %s?" % (
-                label, state_of, " (%s)" % why if why and not passed else "", LABEL.get(nxt, nxt))
-            go = self.leave(stage)
-            if passed:
-                return self.question(GATE_HEADER, text, stage=stage, qid="run.walked", options=[
-                    self.opt("Continue to %s (Recommended)" % LABEL.get(nxt, nxt), "Go on to %s." % LABEL.get(nxt, nxt),
-                             move=self.go_move(stage), calls=go, oid="continue"), self.save()])
-            # A stage of an earlier session leaves no evidence in this run (state init starts it empty): its check fails,
-            # and the person runs it now (it and every stage after it run) or skips it.
-            run = self.opt("Run %s (Recommended)" % label, "%s runs now, and every stage after it." % label, move="redo",
-                           calls=[self.c("state redo %s --reason %s" % (stage, shlex.quote("the check of %s failed when the run entered at a later stage%s" % (
-                               label, " (%s)" % why[:300] if why else ""))))], oid="redo")
-            return self.question(GATE_HEADER, text, stage=stage, options=[run, override_opt(go), self.save()], qid="run.walked")
-
         if r.command == "fix" and stage == "rca":
             return self.rca_approval()
 
@@ -773,10 +757,3 @@ class AskPart:
         nxt = self.r.next_of(stage)
         return [self.c("state advance %s_complete %s" % (stage, nxt))]
 
-    def walked(self, stage):
-        """A door started this run at a later stage: the stages before it are checked and asked, not run."""
-        enter = self.r.state.get("enter") or ""
-        seq = self.r.seq()
-        # By the order of all stages, so the Design door of a run with no Design stage still walks what comes before.
-        order = ["intent", "plan", "design", "build", "review", "check", "commit"]
-        return enter in order and stage in seq and stage in order and order.index(stage) < order.index(enter)

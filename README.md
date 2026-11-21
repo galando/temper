@@ -65,17 +65,15 @@ How it differs from Superpowers, Spec Kit, OpenSpec and BMAD Method, and where t
 
 | Command | Purpose |
 |---------|---------|
-| `/temper:temper "..."` | The whole flow, from intent to commit |
+| `/temper:temper "..."` | The whole flow, from intent to commit; `draft`, `status`, `report`, `init` and `pack` after it are its words |
 | `/temper:fix "..."` | Root cause, a failing regression test, a minimal fix |
-| `/temper:intent "..."` | Capture an idea now, build it later |
-| `/temper:status` | Gates, metrics and spec drift |
 
 ## What the mod reads and writes
 
 Three command hooks and an optional mod (Claude Code 2.1.287 or later). Neither makes a network call or reads a
 credential. In short:
 
-- **Hooks** note an `/temper:intent` gate, ask Claude to finish it, and deny a Bash command that would hang; they never
+- **Hooks** note the intent gate a `/temper:temper draft` owes, ask Claude to finish it, and deny a Bash command that would hang; they never
   approve a call or change its input.
 - **The mod** runs only the plugin's own `scripts/temper` (never a shell) and `sleep`, and starts the Temper stage
   agents the CLI names, with your permission mode.

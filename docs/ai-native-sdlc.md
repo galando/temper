@@ -26,7 +26,7 @@ as what was asked and what was built.
 
 | Playbook stage | Playbook artifact | Temper |
 |---|---|---|
-| Plan | `intent.md` | Intent stage + gate **[NEW]** → `.temper/specs/{slug}/intent.md`, accepted by a human with the plan, before any code runs (`/temper:intent` for capture-only) |
+| Plan | `intent.md` | Intent stage + gate **[NEW]** → `.temper/specs/{slug}/intent.md`, accepted by a human with the plan, before any code runs (`/temper:temper draft` for capture-only) |
 | Design | `spec.md` | `intent.md` (criteria + scenarios) + `plan.md` + `design.md` — see [Deliberate divergences](#deliberate-divergences) |
 | Build | `plan.md`, the diff | plan gate → `plan.md`/`tasks.md`; Build's RED→GREEN evidence |
 | Test | tests + eval results | check gate: scenario-traced tests, coverage, live verification |
@@ -48,7 +48,7 @@ from the intent, so an intent correction at this gate costs words, and the same
 correction after Plan costs the plan.
 `temper gate intent` is the deterministic floor (Problem stated, ≥1 criterion, Status
 header), and the commit gate requires an intent verdict whenever the artifact exists.
-`/temper:intent` remains the capture-only entry (an idea, a ticket, a bands breach —
+`/temper:temper draft` remains the capture-only entry (an idea, a ticket, a bands breach —
 possibly from someone who will never run the build); its draft is exactly what the
 pipeline's intent gate later presents. The lifecycle has named owners: `draft`
 (capture or the Intent stage) → `accepted` (the human's approval of the plan, which accepts the
@@ -148,7 +148,7 @@ removed in v9.5.0 (ADR 0010): its CI job never ran, so it never gated a merge. T
 measurement runs used fixtures kept out of the plugin; their numbers are in the description
 of galando/temper#97. What guards Temper's own behavior is
 `scripts/selftest/test-temper.sh` (the gate logic, deterministically) plus the Stop
-hook of a `/temper:intent` session, which refuses to end it until its gate has run. Scaffolding an eval harness for a
+hook of a `/temper:temper draft` session, which refuses to end it until its gate has run. Scaffolding an eval harness for a
 *user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
 
 ### Stage 5 — Deploy
@@ -191,7 +191,7 @@ rehearsal are a project's pipeline concern.
 
 ### Stage 6 — Maintain
 
-**Closing the loop.** This was Temper's largest gap — `/temper:status` was a
+**Closing the loop.** This was Temper's largest gap — `/temper:temper status` was a
 dashboard with, as its own doc said, "no separate alerting system". **[NEW]**
 `temper bands`: a deterministic control-band check (rolling mean ± k·sigma + a
 same-side-run drift rule) over the metric histories, with the response tiered in
@@ -214,7 +214,7 @@ capability, out of scope for a plugin — but the plugin-shaped half is now in:
 (root cause, trigger, fix, regression test, the generalized failure shape) and every
 future RCA *reads it first* — the playbook's "post-mortem to a version-controlled
 lessons file that future investigations can read", verbatim. An incident write-up
-dropped into `/temper:intent` (or a bands breach) enters the same loop.
+dropped into `/temper:temper draft` (or a bands breach) enters the same loop.
 
 ## Deliberate divergences
 
@@ -282,7 +282,7 @@ Honest list, in rough adoption order:
 1. `/temper "…"` → sets itself up on first run (config, scaffold, commit gate) and
    runs the intent-gated pipeline.
 2. Packs + guardrails pack → skills-with-deterministic-backstops.
-3. `/temper:intent` → capture-first flow; commit the spec artifacts.
+3. `/temper:temper draft` → capture-first flow; commit the spec artifacts.
 4. Wire `temper gate review` into whatever CI you run → the review loop, org-visible.
 5. `autonomy:` block → longer unattended arcs, parked before commit.
 6. `bands:` + `temper bands` on any scheduler → the loop closes itself.

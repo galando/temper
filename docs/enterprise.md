@@ -55,7 +55,7 @@ Create `.claude/packs/{company}/rules.md`:
 In Claude Code, in your project:
 
 ```text
-/temper:pack
+/temper:temper pack
 ```
 
 At the menu, choose **Other** and describe the pack. Temper scans your codebase, interviews you about conventions, and generates the rules file.
@@ -135,7 +135,7 @@ Clone the project, start Claude Code in it, and accept the plugin when the proje
 offer it. Then run:
 
 ```text
-/temper:status    # See pre-configured packs and quality metrics
+/temper:temper status    # See pre-configured packs and quality metrics
 ```
 
 No other setup is needed: the project settings bring the plugin, and the project brings its packs.

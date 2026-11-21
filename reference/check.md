@@ -9,8 +9,7 @@ estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) car
 (`evidence run` for a test run, `evidence add` for a measured value); this doc is the methodology behind what to run
 and how to interpret it.
 
-**Mode:** Check runs as a stage of `/temper` (also when `/temper:check` starts it: the
-command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
+**Mode:** Check runs as a stage of `/temper`, in a clean subprocess with no `AskUserQuestion` gate:
 return the summary, the orchestrator owns the gate and the commit. Load `.temper/specs/{feature}/review-context.json` if present.
 
 ## Step 1: Detect Stack
@@ -113,7 +112,7 @@ the CLI: `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append coverage <pct>`,
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append lint_violations <count>`, never by
 hand-editing `.temper/metrics.json`: these arrays are what `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` computes
 control bands from, so the monitor must read a ledger the spine wrote. (Full debt
-analysis is `/temper:status`'s job, not Check's — don't slow the pipeline down
+analysis is the job of the word `status`, not Check's — don't slow the pipeline down
 repeating it here.)
 
 If every level passed and files changed: generate up to 5 config suggestions

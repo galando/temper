@@ -57,6 +57,7 @@ What users have is 9.8.4 (`7c7a1c1`).
 | the table of models | `AGENTS`, `TABLE` (`standard`, `high`) and `resolve(plugin, cfg, state)` in `scripts/cli_ctx.py`; the flow reads a model with `Run.model(name)` | WP27 | WP29, the bench block of WP32 (the table's one writer) |
 | `acceptance.by_person`, `acceptance.cli_pass`, the field `vcmd` of `acceptance.parse_criteria`; `check_run.run_criteria` | a criterion the person confirms; the CLI's row of a criterion's own command; the command in backticks; the run of the commands at Build and at Check | WP27 | none |
 | `reference/draft.md` | the page of the word `draft` | WP28 | none |
+| the form of a word | `isWord`, `ALONE` and `WITH_TEXT` of `hooks/temper-mod/core/session.ts` (`requestOf` is null for a word in its documented form); `parseArgs` of `core/commands.ts` gives a word only alone; the Arguments of `commands/temper.md` say the same rule | WP28 | none |
 | `scripts/defaults.py`, `scripts/config_tidy.py`, `scripts/check_config_keys.py` | every default in one table; the one time question; the reader test | WP29 | WP30 adds to `GONE` |
 | `scripts/words.json`, `scripts/check_words.py` | the 12 words and the retired ones | WP31 | none |
 | `scripts/e2e/replay_compare.py`, `docs/evidence/scorecard-9.8.5.json` | the replay gate; the bench result | WP32 (WP05 writes the code that makes the scorecard file) | WP07 reads the scorecard file in `final`; the README's one line on cost and time may state a figure only from it (`D108`) |
@@ -203,6 +204,8 @@ meaning. Tests, the policy, the driver and the scripted persons select by id and
 | `pipeline.pass`, `pipeline.fail` | the Pipeline stage: every job passed; a job failed, the result is missing or the fix limit is reached | WP04 | none |
 | `adhoc.fail` | the Review of a small change made at Check or Commit failed | WP04 | none |
 | `run.walked` | a stage an earlier session ran, checked and asked, not run, when a door entered the run later | WP04 | none |
+
+Question ids that go: `run.walked` (WP28, with the doors; `QUESTIONS` of `scripts/flow_base.py` loses it).
 
 Question kinds: `gate`, `group`, `resume`, `drift`, `blocking`, `context`, `reason`, `name`. Option kinds: `more`,
 `accept`, `cancel`, `carry`, `type`. The `needs` kinds of WP16 are the three that stay in the driver (`more`,

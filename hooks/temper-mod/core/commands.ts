@@ -9,14 +9,13 @@ export type Reserved = (typeof RESERVED)[number]
 
 export const isReserved = (w: string): w is Reserved => (RESERVED as readonly string[]).includes(w)
 
-export type Parsed = { word: Reserved; rest: string }
+export type Parsed = { word: Reserved }
 
-// null when the first word is not one the mod answers (a feature description, a decision word, or nothing).
+// null when the text is not one word the mod answers, alone (a feature description, a decision word, a word with text
+// after it, or nothing): a word is a word only in its documented form (commands/temper.md, Arguments).
 export function parseArgs(args: string): Parsed | null {
-  const text = args.trim()
-  const m = /^(\S+)\s*([\s\S]*)$/.exec(text)
-  const word = (m?.[1] ?? '').toLowerCase()
-  return m && isReserved(word) ? { word, rest: (m[2] ?? '').trim() } : null
+  const word = args.trim().toLowerCase()
+  return isReserved(word) ? { word } : null
 }
 
 export const HELP = [
@@ -26,6 +25,10 @@ export const HELP = [
   '  report               show the run report (with no run active, the last one kept)',
   '  pane                 open or close the Temper pane (full mode)',
   '  mode, enforcement    show what Temper shows and enforces (change both in /config)',
+  '  draft <idea>         capture an idea as a draft intent.md, with no run',
+  '  init                 set up this project: config, .temper and the commit gate',
+  '  pack                 show the quality packs; pack enable guardrails or pack disable guardrails prints the hooks',
+  'Each word above counts only alone (draft takes the idea, pack the two forms shown).',
   'You decide in the Temper gate question: approve the plan and the run goes on to the commit, or ask at every stage.',
-  'Any other text after /temper:temper is a feature description. It starts or resumes a run. With no text it takes the run up again.',
+  'Any other text after /temper:temper is a request: a feature description. It starts or resumes a run. With no text it takes the run up again.',
 ].join('\n')

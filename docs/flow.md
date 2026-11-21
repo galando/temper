@@ -215,7 +215,7 @@ run). It is read only; with the mod on, the session may run the CLI but not `pri
 
 A fault of the environment or of the base is named before any agent is paid for. Before any other step of an active
 run, while `.temper/evidence/baseline.json` is absent, `next` is the CLI's own action `auto` with the one call
-`temper baseline start` (`--env-only` at a door into Review or Check). `state init` empties `.temper/evidence`, so every
+`temper baseline start`. `state init` empties `.temper/evidence`, so every
 new run starts one; a step back does not. The call always exits 0 and returns in seconds (`scripts/baseline.py`):
 
 - **The owner of the suite command** (`python3 scripts/check_run.py owner ROOT [SPEC]`): the config's
@@ -320,8 +320,7 @@ is the code's, as before: it spends the attempt. Any status move clears the mark
 
 **Design runs only when asked (WP14, ADR 0019 decision 2).** A run of `/temper:temper` has the Design stage when the
 person chose `Run Design first` (id `run-design`, in the More list of the passed plan question; its calls are
-`temper state set want_design true` and then those that leave Plan, with `design` as the next stage), when the run was
-started by the Design door, when `design.md` exists, or when the run is at Design or has a Design verdict. No tier, no
+`temper state set want_design true` and then those that leave Plan, with `design` as the next stage), when `design.md` exists, or when the run is at Design or has a Design verdict. No tier, no
 risk and no setting adds it: `phases.design` and the state key `intent_asked` are gone. What Design asked is now a
 Blocking question Plan writes into intent.md, `- Blocking: {question} choices: {the answer the plan assumes} | ...`,
 with the tasks written under the first choice. `state advance plan_complete` is refused while one is open, so it is
@@ -684,7 +683,7 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   advance intent_complete plan`, when all of these hold (`Builder.intent_by_rule`): a `/temper:temper` run; the Intent
   check passed and was not skipped; `intent.md` exists (a trivial request has none); no Blocking question is open (an
   answer is no note: once the gate passes again the rule moves on); the run did not come back to Intent; the person
-  typed no note at Intent; no door walked Intent. Otherwise `intent.accept` (or `intent.fail`, or `run.walked`) is
+  typed no note at Intent. Otherwise `intent.accept` (or `intent.fail`) is
   asked as before. `temper go` runs that work by itself. The intent stays a draft.
 - **The approval accepts it.** Its first options run, in order: `state set run_mode autonomous` (or `interactive`,
   each with the `--shown` digests),
@@ -854,3 +853,11 @@ The end to end scenarios count the dialogs a person saw, the launches by agent t
 the steps back, the hand backs of the run driver and the runs of the whole suite; `scripts/e2e/floor.json` holds those
 counts for each scenario and mode, and `bun scripts/e2e/run.ts <mode> <name> --floor scripts/e2e/floor.json` compares
 them exactly (`scripts/check_floor.py`).
+
+## No door (9.8.5, WP28)
+
+A run starts at Intent and nowhere else: `temper state init` refuses `--enter` with one line, and `/temper:temper`
+with no words takes up the active run. The state keys `enter` and `built_before` are gone (`state set` still refuses
+both); `next` reads neither, so a run that an older Temper saved after it came through a door runs its agent at a
+stage before the door that has no verdict, and asks no question about a walked stage (the question `run.walked` is
+gone). `temper baseline start --env-only` stays a word of the CLI; the flow no longer calls it.

@@ -107,7 +107,6 @@ QUESTIONS = {
     "commit.confirm": {"kind": "gate", "decision": "Whether the change is committed."},
     "commit.fail": {"kind": "gate", "decision": "Whether to add the files to the plan, step back or skip the failed gates."},
     "adhoc.fail": {"kind": "gate", "decision": "Whether a small change whose Review failed is redone or let through."},
-    "run.walked": {"kind": "gate", "decision": "Whether a stage an earlier session ran is taken as it is or run again."},
     "run.restart": {"kind": "resume", "decision": "Whether the saved run state goes, so a new run starts."},
     "scope.drift": {"kind": "drift", "decision": "Whether a file outside the plan is added to it, reverted or allowed once."},
     "run.budget": {"kind": "gate", "decision": "Whether the run is saved, or allowed two more repeats of a failed check."},
