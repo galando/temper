@@ -868,6 +868,11 @@ def acc_skip(spec, lockfile, reason):
         print("FAIL: usage: temper acceptance skip --reason '<why>'", file=sys.stderr)
         return 1
     d = acc_read(lockfile)
+    # A skip never takes the place of a lock (adversarial review R7a): a builder could change a locked test, skip, and
+    # lock it again as a first lock. Only the person reopens a lock.
+    if d.get("spec") == spec and (d.get("cmd") or d.get("reopened")):
+        print("FAIL: the acceptance tests are locked; a skip does not lift the lock (only the person reopens it)", file=sys.stderr)
+        return 1
     acc_write(lockfile, {"spec": spec, "skipped": reason.strip(), "launches": d.get("launches", 0),
                          "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
     print("OK: no acceptance tests for this run: %s" % reason.strip())
