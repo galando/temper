@@ -2,9 +2,10 @@
 
 This page is the only place Temper pushes or calls `gh`. It runs inside the Commit steps of `/temper:temper`, after the record
 commit and before `temper state clear`, only when the person chose **Commit and open PR** or **Commit and open stacked PRs** at the
-Check question (the CLI keeps the choice: `state get pr` is `one` or `stacked`). A run that goes on by itself never gets here, and `/temper:fix`
-never does. Every pull request is a **draft**: Temper never runs `gh pr ready` and never removes the draft state. `gh` takes the
-repository from `origin`; never write an owner or a repository name, and never read, store, print or set a token.
+Check question (the CLI keeps the choice: `state get pr` is `one` or `stacked`). A run that goes on by itself never gets
+here, and `/temper:fix` never does. Every pull request is a **draft**: Temper never runs `gh pr ready` and never removes
+the draft state. `gh` takes the repository from `origin`; never write an owner or a repository name, and never read,
+store, print or set a token.
 
 ## Capture
 

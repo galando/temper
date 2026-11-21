@@ -36,8 +36,8 @@ the stage it was made at (`unattended_from`).
 the run goes on by itself after the answer. The run keeps its mode; the answer's last call,
 `temper park --end --answer <id>`, ends the stop. `.temper/autonomy-report.md` holds the verdict and the reason, and
 ends with "The run waits for you at the question of the stage where it stopped." A plan that declares a sensitive path
-(`autonomy.park-on-touch`) is risk H, is named on the approval card, and gets no repair by rule. A run taken up with no words asks its stage once (`temper go --taken-up`). The stops are listed in
-`scripts/stops.json`.
+(`autonomy.park-on-touch`) is risk H, is named on the approval card, and gets no repair by rule. A run taken up with no
+words asks its stage once (`temper go --taken-up`). The stops are listed in `scripts/stops.json`.
 
 **A red base after the approval** is a stop: the baseline, still running at the approval, ended red.
 No new task agent is launched, the agents in flight finish and their calls run, the stop is recorded with its notice,

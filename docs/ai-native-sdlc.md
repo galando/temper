@@ -148,8 +148,8 @@ removed in v9.5.0 (ADR 0010): its CI job never ran, so it never gated a merge. T
 measurement runs used fixtures kept out of the plugin; their numbers are in the description
 of galando/temper#97. What guards Temper's own behavior is
 `scripts/selftest/test-temper.sh` (the gate logic, deterministically) plus the Stop
-hook of a `/temper:temper draft` session, which refuses to end it until its gate has run. Scaffolding an eval harness for a
-*user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
+hook of a `/temper:temper draft` session, which refuses to end it until its gate has run. Scaffolding an eval harness
+for a *user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
 
 ### Stage 5 — Deploy
 

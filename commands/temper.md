@@ -20,10 +20,10 @@ run it exactly as printed, never through a shell variable (the mod refuses a pro
 gate, an option or a next stage yourself.
 
 
-With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
-With the mod on, the mod carries the run (the run driver: `docs/mod.md`) and hands one step here, one the person chose:
-the person's command stays as typed, with a note after it that ends `step <kind> <option id>` (see Arguments). Either
-way the run is where the CLI says it is.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently. With the mod on, the mod carries the run (the run driver: `docs/mod.md`) and hands one step here, one the
+person chose: the person's command stays as typed, with a note after it that ends `step <kind> <option id>` (see
+Arguments). Either way the run is where the CLI says it is.
 
 ## Arguments
 
@@ -126,8 +126,8 @@ the word `status` read it); the loop only needs `temper go`.
 - **`wait`**: tasks are running. For a task whose agent you launched in this conversation, wait for
   its result, then run its `after` calls. Otherwise (a new conversation) run its `after` calls now.
 - **`auto`**: the CLI's own move (the run after the approval goes on to the commit by itself, or a step with
-  nothing to decide): run its `calls`. Never ask "Shall I...?". A stop is the CLI's `temper park` call; say its `say` in one
-  line, then ask the question that follows.
+  nothing to decide): run its `calls`. Never ask "Shall I...?". A stop is the CLI's `temper park` call; say its `say` in
+  one line, then ask the question that follows.
 - **`broken`**: say its `say` in one line and ask its `restart` question.
 - **`none`** after a commit: the steps printed the report before they cleared the run (a report printed
   now is empty); the page is `report.html` in its spec folder. Say where it is and stop.

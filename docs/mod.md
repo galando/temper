@@ -116,7 +116,8 @@ give, so an agent cannot widen the plan by writing the answer itself.
 The mod needs Claude Code 2.1.287 or later. This section shows where enforcement works, where it does
 not work and what is not verified.
 
-With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently.
 
 ### Older versions, or no mod
 
@@ -179,10 +180,10 @@ Claude set on getting around a gate through Bash can do it. The hard guarantees 
 The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
 - **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
-  step back, accepting a finding, confirming a criterion at Check (`evidence add --person`), starting the run that goes on by itself,
-  keeping an agent's commits, overriding the commit gate, starting over during a run) needs your answer in the question dialog, at the run and the step
-  the CLI is at. The guard finds the call when it is written out in the command
-  (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word
+  step back, accepting a finding, confirming a criterion at Check (`evidence add --person`), starting the run that goes
+  on by itself, keeping an agent's commits, overriding the commit gate, starting over during a run) needs your answer in
+  the question dialog, at the run and the step the CLI is at. The guard finds the call when it is written out in the
+  command (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word
   before its reason (`temper o?erride`) is refused, since bash may expand it to a file's name.
 - **Temper's own files.** The CLI's files in `.temper` (the gates, the run state, the evidence ledger,
   the loop counter, the view), and during a run `.claude/temper.config` and the git hooks, are written by
@@ -323,7 +324,8 @@ the gate question again; a name question is asked until a name is typed or Cance
 active is carried the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop), and
 `/temper:fix` with no words takes an active fix run up. A run word (`approve`, `next`, ...), the words `draft <idea>`,
 `init` and `pack`, and a request while another run is active go to the conversation as before. A word counts only in
-its documented form (9.8.5): `status badge on the order page` is a request, and the driver starts a run for it. Without the mod, the conversation carries every run, as before.
+its documented form (9.8.5): `status badge on the order page` is a request, and the driver starts a run for it. Without
+the mod, the conversation carries every run, as before.
 
 ## What the mod reads and writes
 
