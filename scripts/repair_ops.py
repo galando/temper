@@ -598,17 +598,26 @@ def test(argv):
     named = sorted({t for c in cmd for t in shlex.split(c) if os.path.isfile(t)})
     row = {"id": int(fid), "phase": phase, "cmd": text, "exit_code": rc, "hashes": digests(named), "ts": now()}
     if phase == "red":
-        row["ok"] = task_ops.red_ok(row)
+        # As the task gate's red_staged (adversarial review R7c): a RED counts only on the code as the window found it, so
+        # a RED made after the fix is no failing-first proof. Test files may change; any other file may not.
+        import adhoc_ops
+        was, cur = w.get("dirty") or {}, adhoc_ops.dirty()
+        moved = sorted(p for p in set(was) | set(cur) if was.get(p) != cur.get(p) and not is_test(p))
+        row["ok"] = task_ops.red_ok(row) and not moved
+        if moved:
+            row["why"] = "the RED run came after a change to %s: write the test first, see it fail, then the fix" % ", ".join(moved[:3])
     else:
         reds = [x for x in w.get("tests") or [] if x.get("id") == int(fid) and x.get("phase") == "red" and x.get("ok")]
-        row["ok"] = rc == 0 and bool(reds) and reds[-1].get("hashes") == row["hashes"] and bool(named)
+        row["ok"] = (rc == 0 and bool(reds) and reds[-1].get("hashes") == row["hashes"] and bool(named)
+                     and reds[-1].get("cmd") == text)   # the GREEN runs the command the RED ran
 
     def add(d):
         d["repair"].setdefault("tests", []).append(row)
     change_state(add)
     sys.stdout.write(output.decode("utf-8", "replace")[-2000:] if isinstance(output, bytes) else str(output)[-2000:])
     print("%s: %s of finding #%s (exit %s)%s" % ("OK" if row["ok"] else "NOTE", phase.upper(), fid, rc,
-                                                "" if row["ok"] else ": it does not count"))
+                                                "" if row["ok"] else ": it does not count%s" % (
+                                                    " (%s)" % row["why"] if row.get("why") else "")))
     return 0
 
 

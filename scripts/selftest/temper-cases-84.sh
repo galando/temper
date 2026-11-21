@@ -122,3 +122,23 @@ assert_eq "review 4: R7b acceptance tests locked after a task passed its gate ar
   "task=passed|lock=refused|row=not passed" \
   "task=$_r84_task|lock=$_r84_late|row=$([[ "$(_row84 build 'acceptance tests written before Build')" == True ]] && echo passed || echo 'not passed')"
 
+
+# --- rule 7 for a repair (ADR 0021: "for a finding marked proof: test, the CLI ran a RED before the fix and a GREEN after
+# it on unchanged test files"): the fixer fixes first, then records as RED a command that fails without running the test ---
+_review84 high
+"$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo exits 0 on error' --severity high --proof test --label PROVEN >/dev/null 2>&1
+_done84 src/demo.sh src/demo_test.sh
+"$TEMPER" gate review >/dev/null 2>&1
+"$TEMPER" repair start --stage review >/dev/null 2>&1 || true
+echo 'echo fixed >&2; exit 1' > src/demo.sh
+"$TEMPER" repair test 3 --phase red -- sh -c 'exit 1' src/demo_test.sh >/dev/null 2>&1 || true
+"$TEMPER" repair test 3 --phase green -- sh src/demo_test.sh >/dev/null 2>&1 || true
+"$TEMPER" repair commit >/dev/null 2>&1 || true
+while IFS= read -r _c; do [[ -n "$_c" ]] && bash -c "$_c" >/dev/null 2>&1; done \
+  < <(_x84 "r = '\n'.join(c for a in d.get('agents') or [] for c in a.get('before') or [])")
+"$TEMPER" evidence add --stage review --claim 'recheck #1: fixed' --exit 0 --label PROVEN >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'recheck #3: fixed' --exit 0 --label PROVEN >/dev/null 2>&1
+_done84 src/demo.sh
+"$TEMPER" repair close >/dev/null 2>&1 || true
+assert_eq "review 4: R7c a behaviour finding (proof test) is not resolved by a RED run after the fix that never ran the test" \
+  "#3 open" "#3 $(_ledger84 review "'resolved' if (e[2].get('resolved') or {}).get('fixed_by') else 'open'")"
