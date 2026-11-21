@@ -842,15 +842,15 @@
 
   <section id="loop">
     <div class="section-label">The Loop</div>
-    <h2 class="section-title">One pipeline, a human gate at every stage</h2>
+    <h2 class="section-title">One pipeline that asks you twice: before any code and at the commit</h2>
     <p class="section-desc">
       <code style="background:var(--bg);padding:0.15rem 0.5rem;border-radius:3px;font-size:0.9em;">INTENT &rarr; PLAN &rarr; DESIGN? &rarr; BUILD &rarr; REVIEW &rarr; CHECK &rarr; COMMIT &rarr; PIPELINE?</code>
     </p>
 
     <div class="why-grid">
       <div class="why-item">
-        <h4>Intent Gate First</h4>
-        <p>You approve the Problem and success criteria <strong>before any exploration or architecture spends tokens</strong>. Each rule the request leaves open comes to you as a question with ready answers: you click one instead of typing. A wrong intent multiplies into wrong everything &mdash; correcting it here costs words; after Plan it costs the plan.</p>
+        <h4>Intent First</h4>
+        <p>You accept the Problem and success criteria <strong>together with the plan, in one question, before any code is written</strong>. Each rule the request leaves open comes to you as a question with ready answers: you click one instead of typing. A wrong intent multiplies into wrong everything; correcting it at that question costs words, and after Build it costs the code.</p>
       </div>
       <div class="why-item">
         <h4>Deterministic Gates</h4>
@@ -914,7 +914,7 @@
     <div class="why-grid">
       <div class="why-item">
         <h4>IDD &mdash; Intent-Driven</h4>
-        <p><strong>Did we solve the problem?</strong> Success criteria with structured validation types, accepted by a human at the intent gate before anything is built.</p>
+        <p><strong>Did we solve the problem?</strong> Success criteria with structured validation types, accepted by a human together with the plan, before anything is built.</p>
       </div>
       <div class="why-item">
         <h4>BDD &mdash; Behavior-Driven</h4>
@@ -961,13 +961,12 @@
     </div>
 
     <p style="text-align: center; margin-top: 1.5rem; color: var(--fg-muted); font-size: 0.9rem;">
-      Granular control: <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:plan</code>
-      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:design</code>
-      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:build</code>
-      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:review</code>
-      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:check</code>
-      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:status</code>
-      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:pack</code>
+      The words of <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">/temper:temper</code>, each alone after it:
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">draft &lt;idea&gt;</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">status</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">report</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">init</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">pack</code>
       &nbsp;&mdash;&nbsp;<a href="https://github.com/galando/temper/blob/main/docs/commands.md" style="color: var(--accent);">full reference &rarr;</a>
     </p>
   </section>

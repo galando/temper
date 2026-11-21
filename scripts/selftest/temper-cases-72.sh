@@ -81,6 +81,10 @@ PY
 assert_eq "w28 no page names a command that is gone: no /temper:intent, plan, design, build, review, check, status, init or pack in commands, agents, reference, templates, packs, skills, scripts/guards, the hook manifest or README.md" \
   "none" "$(_hits72 "$(git -C "$REPO_ROOT" grep -nE '/temper:(intent|plan|design|build|review|check|status|init|pack)([^[:alnum:]_]|$)' \
     -- commands agents reference templates packs skills scripts/guards "$_HJ72" README.md 2>/dev/null)")"
+# phase 8 review, WP28-2: the bench starts a task with /temper:temper or /temper:fix only, and no task at a door
+assert_eq "w28 the bench names no command that is gone and starts no task at a door: no meta.command in bench/run.mjs or bench/README.md" \
+  "none" "$(_hits72 "$(git -C "$REPO_ROOT" grep -nE '/temper:(intent|plan|design|build|review|check|status|init|pack)([^[:alnum:]_]|$)|meta\.command|`command`' \
+    -- bench/run.mjs bench/README.md 2>/dev/null)")"
 
 # --- 4. no door ---
 setup

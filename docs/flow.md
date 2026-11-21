@@ -365,9 +365,10 @@ newest first, as decisions that win over `tasks.md`. The Design gate has no such
 `repair start --again` may start, and otherwise recommends `Loop back to Build`; with a Medium one it recommends
 `Continue to Check`, and the passed Check question lists the open findings (`open findings: 1 medium` and the first
 three claims) where the person commits. Both Review questions name the open findings per level (`open findings: 1 high,
-2 medium`). At a passed Review with an open finding, `Accept a finding`, `Grill Me`, `Make a small change` and `Save for
-later` are under `More options`, and `Teach Me` takes the place of `Architecture Depth Review`; when `Repair again` is
-shown, `Architecture Depth Review` moves under `More options` too.
+2 medium`). At a passed Review with an open finding and no `Repair again`, `Accept a finding`, `Grill Me`,
+`Make a small change` and `Save for later` are under `More options`, and `Teach Me` takes the place of
+`Architecture Depth Review`. When `Repair again` is shown, `More options` holds `Accept a finding`, `Grill Me`,
+`Teach Me` and `Save for later`, and neither `Architecture Depth Review` nor `Make a small change` is offered.
 
 **What resolves a finding (WP18).** `temper evidence resolve --stage S --id N --fixed-by COMMIT` marks a finding
 resolved only when four things hold: COMMIT is a commit; it is an ancestor of HEAD; it is no ancestor of the reviewed
