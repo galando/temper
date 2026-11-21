@@ -41,7 +41,8 @@ SPENDS = (
     (("group", "fix"), "group fix", "with no flag: group:<G>"),
     (("group", "reopen"), "tasks again", "the group's gate is FAIL or the group is parked: group:<G>"),
     (("group", "gate"), "more time", "with --timeout-s, at a group gate that is FAIL already, when the base did not measure "
-                                     "the group's suite (WP20): group:<G>"),
+                                     "the group's suite (WP20): group:<G>; with no flag at a gate that is FAIL: group:<G>, "
+                                     "check again (rule 9: group fix --commit, group reopen and plan patch clear it first)"),
     (("plan", "patch"), "plan patch", "always: group:<G>, task:<N>, or gate:build for the Integration line (WP25: spent by "
                                       "scripts/plan_patch.py once every check of the patch holds)"),
     (("plan", "amend"), "plan amend", "always: task:<N> (WP25: the amendment by rule, spent by scripts/plan_amend.py once "
@@ -192,8 +193,10 @@ def key_of(words, facts):
         return ("group:" + c, "tasks again") if failed else None
     if a == "group" and b == "gate":
         more = "--timeout-s" in words or any(str(x).startswith("--timeout-s=") for x in words)
-        if not (more and (group.get("gate") or {}).get("verdict") == "FAIL"):
+        if (group.get("gate") or {}).get("verdict") != "FAIL":
             return None
+        if not more:   # rule 9: the paid ways back (group fix --commit, reopen, plan patch) clear the gate before its check,
+            return "group:" + c, "check again"   # so a check of a gate that is FAIL still is a repeat nobody paid for yet
         # WP20: a time out of a suite the base measured is no repeat (its limit came from the base); else one is spent
         import baseline
         val = next((g.get("validate") or "" for g in (facts.run().plan or {}).get("groups") or [] if g.get("id") == c), "")

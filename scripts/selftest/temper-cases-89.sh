@@ -112,3 +112,31 @@ assert_eq "round 2 reviewer 2: the words of a scenario's Test: text run with no 
   "before=False:False|after=False:False" \
   "before=$_r2r2_d_before|after=$(_r2r2_g "r = '%s:%s' % (row('scenarios traced').get('pass'), row('acceptance evidence').get('pass'))")"
 
+# --- rule 9 (fix b238221): a failed group check checked again after a change no fix request paid for ---
+# b238221 refuses `group fix G --commit` with no request open, so a fix commit always spends group:G. The check again
+# itself spends nothing (`group gate G` with no flag), and the gate refuses only an uncommitted change to a tracked file
+# (status --untracked-files=no): a file the agent adds in the group's worktree, uncommitted, makes Validate pass on the
+# next `group gate G`, with no request, no commit and no repeat spent.
+f9_tasks | m_setup
+python3 - <<'PY'
+import json
+d = json.load(open(".temper/groups.json"))
+for n in ("1", "2"):
+    d.setdefault("tasks", {})[n] = {"status": "passed", "group": "G1"}
+json.dump(d, open(".temper/groups.json", "w"))
+p = ".temper/specs/demo/tasks.md"
+text = open(p).read().replace("**Validate:** `true`", "**Validate:** `test -f src/fixed`")
+open(p, "w").write(text)
+for f in (".temper/groups.json", ".temper/build-state.json"):
+    x = json.load(open(f)); x.pop("plan_hash", None); json.dump(x, open(f, "w"))
+PY
+"$TEMPER" group gate G1 >/dev/null 2>&1
+_r2r2_e_first="$(_r2r2_gv)"
+_r2r2_e_wt="$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1']['worktree'])" 2>/dev/null)"
+mkdir -p "$_r2r2_e_wt/src"; : > "$_r2r2_e_wt/src/fixed"
+"$TEMPER" group gate G1 >/dev/null 2>&1
+_r2r2_e_again="$(_r2r2_gv)"
+assert_eq "round 2 reviewer 2: a failed group check passed again after a change no fix request paid for spends a repeat or is refused" \
+  "first=FAIL|again=refused or paid" \
+  "first=$_r2r2_e_first|again=$([[ "$_r2r2_e_again" == PASS && "$(_r2r2_used)" == 0 ]] && echo "passed with no repeat paid for" || echo "refused or paid")"
+
