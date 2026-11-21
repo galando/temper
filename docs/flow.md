@@ -802,7 +802,11 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
   ran it (`temper evidence run`, a task test, a group check, integrate, Check) or the person confirmed it
   (`scripts/runs.py`). A run an agent recorded with `evidence add --exit` is a claim and counts nowhere; no
   config key makes it count (9.8.5). `temper evidence void --stage S --id N --reason R` marks a false pass void:
-  the row stays, `evidence list` shows `[void: R]`, and it counts no more. Only a pass is voided.
+  the row stays, `evidence list` shows `[void: R]`, and it counts no more. Only a pass is voided. When the suite is
+  known (the config, what `detect` finds, the plan's `**Integration:**` line), `tests pass` counts only a run of that
+  command: a run of another command under the suite's claim stands for no run of the suite. It counts only runs on
+  the tree the verdict names (the tree of the latest run the CLI made at Check; `evidence run --stage check` records
+  it), so a pass of the tree before stands for no run of this one.
 - **A note in the question.** `temper state set ask_note '<step>: <text>'` adds the orchestrator's note to the question
   of that step, marked `Note from Claude (not from Temper)`; the options stay the CLI's.
 

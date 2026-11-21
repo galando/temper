@@ -498,6 +498,8 @@ json.dump(rows, open(p, "w"))
 PY
 }
 setup
+sed -i '/^  Test: true$/d' .temper/specs/demo/intent.md   # review 3 of WP32: a scenario with a Test: line counts only
+                                                       # runs of it; these rows are of a test the Check agent found
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 # a row of the CLI's shape (executed_by cli; rule 5: a claimed row counts nowhere) with no cmd and no artifact -> unsupported
@@ -507,6 +509,7 @@ assert_eq "an exit-0 row with no cmd and no artifact is NOT a supported pass" "y
   "$(grep -q "scenario 'first' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
 
 setup
+sed -i '/^  Test: true$/d' .temper/specs/demo/intent.md   # as above
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 echo proof > .temper/specs/demo/artifact.txt

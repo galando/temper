@@ -87,13 +87,17 @@ def feedback_answered(argv):
         print(' | '.join(unanswered) if unanswered else 'OK')
 
 
-def _runs():
+def _module(name):
     import os
-    import importlib.util   # runs.py by its full path, no folder on the import path (this module runs isolated)
-    spec = importlib.util.spec_from_file_location('runs', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'runs.py'))
-    runs = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(runs)
-    return runs
+    import importlib.util   # a module by its full path, no folder on the import path (this module runs isolated)
+    spec = importlib.util.spec_from_file_location(name, os.path.join(os.path.dirname(os.path.abspath(__file__)), name + '.py'))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _runs():
+    return _module('runs')
 
 
 def last_green(argv):
@@ -177,11 +181,13 @@ def evidence_list(argv):
 
 def run_entry(argv):
     import json, sys
-    claim, cmd, exit_code, severity, label, phase, scenario, criterion, ts = argv[1:]
+    claim, cmd, exit_code, severity, label, phase, scenario, criterion, ts = argv[1:10]
     e = {'claim': claim, 'cmd': cmd, 'exit_code': int(exit_code), 'artifact': None,
          'sha256': None, 'value': None, 'severity': severity or None,
          'phase': phase or None, 'scenario': scenario or None, 'criterion': criterion or None,
          'label': label, 'executed_by': 'cli', 'ts': ts}
+    if len(argv) > 10 and argv[10]:   # a run at Check: the tree it ran on (run_env.tree_key), as Check's own rows carry it
+        e['tree'] = argv[10]
     print(json.dumps(e))
 
 
@@ -218,11 +224,10 @@ def write_verdict(argv):
             pass
     if stage == 'check':   # rule 5: Check judged the tree its latest CLI run ran on, not the tree at the gate's moment
         try:
-            ran = [x.get('tree') for x in json.load(open(os.path.join(os.path.dirname(f), 'evidence', 'check.json')))
-                   if isinstance(x, dict) and x.get('executed_by') == 'cli' and x.get('tree')]
+            ran = _runs().verdict_tree(json.load(open(os.path.join(os.path.dirname(f), 'evidence', 'check.json'))))
         except (OSError, ValueError, TypeError):
-            ran = []
-        d[stage]['tree'] = ran[-1] if ran else d[stage].get('tree')
+            ran = None
+        d[stage]['tree'] = ran or d[stage].get('tree')
     tmp = '%s.tmp.%d' % (f, os.getpid())
     with open(tmp, 'w') as fh:
         json.dump(d, fh, indent=2)
@@ -252,13 +257,16 @@ def scenarios_covered(argv):
     entries = json.load(open(argv[1]))
     # rule 5 (ADR 0024): a scenario is traced by a run the CLI made (evidence run --scenario, Check, integrate), never
     # by a row an agent wrote or a void one, as the acceptance evidence row reads it (acceptance.py)
-    print(len(covered_scenarios(entries)))
+    print(len(covered_scenarios(entries, argv[2] if len(argv) > 2 else '')))
 
 
-def covered_scenarios(entries):
-    """The scenarios whose trace rows hold a pass the CLI counts (runs.counts); spec_text.py's missing list uses it."""
-    runs = _runs()
-    return {e['scenario'] for e in entries if runs.counts(e) and e.get('scenario') and e.get('exit_code') == 0}
+def covered_scenarios(entries, intent=''):
+    """The scenarios whose latest trace row the CLI ran passed: of the scenario's own Test: command when INTENT names one
+    (acceptance.scenario_runs); spec_text.py's missing list uses it."""
+    import os
+    acc = _module('acceptance')
+    blocks = acc.scenario_blocks(open(intent, encoding='utf-8').read().splitlines()) if intent and os.path.isfile(intent) else []
+    return {n for n, e in acc.scenario_runs(entries, blocks).items() if e.get('exit_code') == 0}
 
 
 def latest_claim_exit(argv):

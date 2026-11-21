@@ -13,7 +13,9 @@ assert_eq "round 4, 1: the run's own folder, however it is written, is recorded"
   "$(python3 -c "import json; print(json.load(open('.temper/gates.json')).get('intent', {}).get('verdict'))")"
 rm -f r4-gates-before.json
 printf 'check:\n  coverage-threshold: 1\n' > r4-low.cfg
-"$TEMPER" evidence add --stage check --claim "coverage" --value 50 --exit 0 >/dev/null 2>&1
+# review 3 of WP32: coverage is only what the CLI measured, so the project's coverage command prints 50% and Check runs it
+printf 'check:\n  commands:\n    test: "true"\n    coverage: echo "TOTAL 10 5 50%%"\n' >> .claude/temper.config
+"$TEMPER" check run >/dev/null 2>&1
 OUT="$(TEMPER_CONFIG=r4-low.cfg "$TEMPER" gate check 2>&1)"
 assert_eq "round 4, 1: TEMPER_CONFIG is not followed by a gate while a run is active" "1|1" \
   "$(grep -c 'TEMPER_CONFIG is not followed' <<<"$OUT")|$(grep -E '^ *\[x\] coverage — ' <<<"$OUT" | grep -F 'check.coverage-threshold' | grep -cw 80)"
@@ -486,7 +488,9 @@ assert_eq "live run 5: the park report is in the clone's info/exclude, so it is 
   "$([[ -f .temper/autonomy-report.md ]] && echo 1 || echo 0)|$(git status --porcelain --untracked-files=all | grep -c 'autonomy-report')"
 
 # --- live run 7: each test command counts by its latest run, and a passed Check can still go back to Build ---
-fresh
+# review 3 of WP32: with the suite known (the plan's Integration line), only its command counts; here no suite is known,
+# so the test commands are those the Check agent found, each counted by its latest run
+fresh; sed -i '/^\*\*Integration:\*\*/d' .temper/specs/demo/tasks.md
 ev_green check 'unit tests'
 ev_red check 'integration tests'
 "$TEMPER" evidence add --stage check --claim coverage --value 90 --exit 0 >/dev/null 2>&1

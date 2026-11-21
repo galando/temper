@@ -44,11 +44,12 @@ def ledger_rows(ledger):
 
 def check_rows(ledger, baseline, key):
     """The row coverage, judged again here with the config and the baseline as they are now: the ledger's latest coverage
-    row (the CLI's, with what it measured, or a recorded value) is the measure."""
+    row the CLI wrote (check_run.coverage_row, with what it measured) is the measure; a value an agent recorded with
+    `temper evidence add` is no measure and is not read (rules 5 and 6)."""
     import check_run
     rows = ledger_rows(ledger)
     hits = [x for x in rows if not x.get("scenario") and re.search("coverage", str(x.get("claim") or ""), re.I)
-            and (x.get("value") is not None or x.get("state"))]
+            and runs.counts(x) and x.get("state")]
     last = hits[-1] if hits else {}
     measure = {"total": last.get("value"), "command": last.get("command", True), "exit": last.get("cov_exit"),
                "hint": last.get("hint") or "", "note": last.get("note") or ("" if last else "no coverage was recorded")}
@@ -72,13 +73,14 @@ def acceptance_row(rows):
         return row("acceptance tests written before Build", False, "no run of the acceptance tests the CLI made: a row "
                    "written with evidence add counts nowhere")
     last, claim = ran[-1], str(ran[-1].get("claim") or "")
+    if claim.endswith("skipped"):   # rule 6: no test ran; skipped, as the red base's skip of `tests pass`, never passed
+        return {"name": "acceptance tests written before Build", "pass": None, "state": "skipped",
+                "detail": "skipped: %s" % one_line(last.get("output"))}
     if last.get("exit_code") != 0:
         return row("acceptance tests written before Build", False, one_line(last.get("output")))
     ok = "they pass, unchanged since they were locked"
     if ", corrected after the lock: " in claim:
         ok = "they pass, as the person corrected them after the lock (%s)" % claim.split(", corrected after the lock: ", 1)[1]
-    if claim.endswith("skipped"):
-        ok = "skipped: %s" % one_line(last.get("output"))
     return row("acceptance tests written before Build", True, ok)
 
 

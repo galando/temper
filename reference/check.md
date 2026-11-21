@@ -6,8 +6,8 @@ description: "Run the project's validation pipeline (tests, build, lint, securit
 
 **Goal:** Run the project's real validation pipeline and record what happened — never
 estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) carries the exact calls the gate needs
-(`evidence run` for a test run, `evidence add` for a measured value); this doc is the methodology behind what to run
-and how to interpret it.
+(`evidence run` for a test run; a coverage value recorded with `evidence add` is not read: coverage is what the CLI
+measured); this doc is the methodology behind what to run and how to interpret it.
 
 **Mode:** Check runs as a stage of `/temper`, in a clean subprocess with no `AskUserQuestion` gate:
 return the summary, the orchestrator owns the gate and the commit. Load `.temper/specs/{feature}/review-context.json` if present.

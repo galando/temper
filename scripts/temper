@@ -524,6 +524,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
     echo "      (the slug is letters of either case, digits, '.', '_' or '-', starts with a letter or digit, and has no '/' or '..'; got '$slug')" >&2
     return 1
   fi
+  git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1 || { echo "FAIL: $REPO_ROOT is not in a git repository: a verdict names the tree it judged, by git (git init first)" >&2; return 1; }
   _ensure_dirs
   local command="temper" branch="" feature=""
   while [[ $# -gt 0 ]]; do
@@ -1261,13 +1262,14 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
     fi
   fi
   _ensure_dirs
+  local tree=""; [[ "$stage" == check ]] && tree="$(python3 -E -s "$SCRIPTS_DIR/run_env.py" tree "$REPO_ROOT" 2>/dev/null)"
   "$@"
   local exit_code=$?
   local cmd_str="$*"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || (set -C; echo '[]' > "$file") 2>/dev/null || true
   local entry
-  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" run-entry "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)")
+  entry=$(python3 -I "$SCRIPTS_DIR/ledger_ops.py" run-entry "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)" "$tree")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim (cli-executed, exit $exit_code)"
   return 0
@@ -1436,7 +1438,7 @@ _ev_scenarios_covered() { # _ev_scenarios_covered <stage> -> count of DISTINCT s
   local stage="$1"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo 0; return; }
-  python3 -I "$SCRIPTS_DIR/ledger_ops.py" scenarios-covered "$file"
+  python3 -I "$SCRIPTS_DIR/ledger_ops.py" scenarios-covered "$file" "$(_spec_path "")/intent.md"
 }
 
 _intent_uncovered_scenarios() { # _intent_uncovered_scenarios <intent.md> <stage>
@@ -2883,7 +2885,7 @@ gate_check() {
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
   # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
-  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" 2>/dev/null || echo 0)"
+  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$REPO_ROOT" "$spec_path" 2>/dev/null || echo 0)"
   tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
   local skip=""; [[ -n "$tests_red" ]] && skip="$(_baseline skip-row "$(_evidence_file check)")"   # WP20: a red base gone on from
   if [[ -n "$skip" ]]; then

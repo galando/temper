@@ -206,6 +206,14 @@ def cli_pass(rows, c):
     return row, bool(row) and row.get("exit_code") == 0
 
 
+def scenario_runs(rows, blocks):
+    """The latest row the CLI ran of each scenario (rule 5): of its own `Test:` command when intent.md names one, so a
+    run of another command under its name traces nothing; else of the test the Check agent found for it."""
+    tests = {b["name"]: b["cmd"] for b in blocks if b.get("cmd")}
+    return latest_by_key([r for r in ran_by(rows, "cli") if r.get("scenario") not in tests
+                          or r.get("cmd") == tests[r["scenario"]]], "scenario")
+
+
 def load_evidence(path):
     try:
         rows = json.load(open(path))
@@ -430,7 +438,7 @@ def main():
 
     if stage == "check":
         rows = load_evidence(ev_path)
-        latest_scen = latest_by_key(ran_by(rows, "cli"), "scenario")   # as build_report: a claimed trace proves nothing
+        latest_scen = scenario_runs(rows, scenario_blocks(lines))   # a claimed trace, or another command's, proves nothing
         for name in scen_names:
             row = latest_scen.get(name)
             if not row or not supported_pass(row):

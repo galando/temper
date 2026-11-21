@@ -22,7 +22,8 @@ def check_markers(run):
     out = []
     for name, rx in kinds:
         # A scenario's trace row names its test; it is no run of a check (as in `temper gate check`).
-        hits = [r for r in rows if isinstance(r, dict) and not r.get("scenario") and re.search(rx, str(r.get("claim", "")), re.I)]
+        hits = [r for r in rows if isinstance(r, dict) and not r.get("scenario") and re.search(rx, str(r.get("claim", "")), re.I)
+                and (name != "coverage" or r.get("executed_by") == "cli" and r.get("state"))]   # the CLI's measure only
         gate = next((x for x in run.rows("check") if isinstance(x, dict) and x.get("name") == "coverage"), None) if name == "coverage" else None
         if not hits and gate is None:
             out.append({"name": name, "state": "none", "detail": "", "lines": []})
