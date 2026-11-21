@@ -284,8 +284,8 @@ copy of the plugin and in a folder inside the plugin folder.
 **Guardrails: Disable.** Not in the home folder, and not where
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper status` refuses the folder (as in Enable step 1b).
 When `packs:` lists `guardrails` (or an old `hooks` entry), show that change, ask with
-`AskUserQuestion` "Remove guardrails from packs:" / "Cancel"; on Cancel change nothing and stop, on the first remove it; when it lists
-neither, say "Guardrails are not on in this project's temper.config." Either way, say
+`AskUserQuestion` "Remove guardrails from packs:" / "Cancel"; on Cancel change nothing and stop, on the first remove it;
+when it lists neither, say "Guardrails are not on in this project's temper.config." Either way, say
 that the guard hooks live in the project's settings files, which Temper does not open,
 and that the user removes each Temper guard entry from `.claude/settings.local.json` and
 `.claude/settings.json` to stop them.

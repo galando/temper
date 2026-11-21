@@ -5,9 +5,9 @@ description: "Technical code review with confidence scoring and intent validatio
 # Review: Confidence-Scored Code Review
 
 **Goal:** High signal-to-noise review — parallel subagents, confidence scoring, intent
-validation. The review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add
---severity` invocation the gate needs; this doc is the policy behind what to look for
-and how to score it. It states rules a strong reviewer would not derive alone —
+validation. The review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) carries the exact
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --severity` invocation the gate needs; this doc is the policy behind
+what to look for and how to score it. It states rules a strong reviewer would not derive alone —
 severity floors, filter bypasses — not review technique.
 
 **Do not run if** code doesn't compile or tests are failing — run only after Build
@@ -28,9 +28,9 @@ of Review); the active `intent.md` (in the spec folder your launch prompt's `Spe
 **`REVIEW.md` at the repo root (optional org review policy):** apply it layered on top
 of the packs — its passes/emphases steer subagent attention; its Important-vs-Nit
 definitions map to severities (nit caps at LOW, Important floors at HIGH); its nit cap
-bounds how many LOWs the summary lists (excess summarized as a count, not dropped); its do-not-report list suppresses matches — but never a pack **BLOCK** rule,
-a `review.block-on` severity, or a security finding: those bypass every filter,
-REVIEW.md included. Policy can re-aim the review; only config + packs can lower the
+bounds how many LOWs the summary lists (excess summarized as a count, not dropped); its do-not-report list suppresses
+matches — but never a pack **BLOCK** rule, a `review.block-on` severity, or a security finding: those bypass every
+filter, REVIEW.md included. Policy can re-aim the review; only config + packs can lower the
 gate. Absent → skip silently.
 
 ## Step 1.5: Diff-Aware Fingerprinting
@@ -45,8 +45,8 @@ so review effort concentrates where the risk actually is.
 Split the changed files across subagents when the diff is large enough that parallel
 reading pays for each subagent's context setup; a small diff is reviewed inline. One
 hard constraint, because it bounds recursion: a review subagent never spawns subagents
-of its own (say so in its prompt). Each subagent gets the pack rules, the fingerprint, its file list, and this prompt shape (write the plugin folder in
-place of the CLAUDE_PLUGIN_ROOT variable in its first line):
+of its own (say so in its prompt). Each subagent gets the pack rules, the fingerprint, its file list, and this prompt
+shape (write the plugin folder in place of the CLAUDE_PLUGIN_ROOT variable in its first line):
 
 ```
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with
@@ -164,7 +164,8 @@ options), and the orchestrator then runs `${CLAUDE_PLUGIN_ROOT}/reference/archit
 ## Step 4: Confidence Filtering
 
 Pack-rule findings override the threshold (BLOCK→CRITICAL, WARN→HIGH/MEDIUM,
-SUGGEST→LOW — always shown). Otherwise: below a confidence of 0.7 → discard entirely (not shown, not counted, not stored).
+SUGGEST→LOW — always shown). Otherwise: below a confidence of 0.7 → discard entirely (not shown, not counted, not
+stored).
 
 ## Summary + Gate
 

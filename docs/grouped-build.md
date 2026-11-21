@@ -1,6 +1,7 @@
 # Grouped Build (9.7.0)
 
-With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently.
 
 Build runs in groups of small tasks, each handed to a slim task agent (on Sonnet since 9.8.5), with one human gate
 per group. It is the one Build since 9.7.0: in the baseline measurement (galando/temper#97) the
@@ -41,8 +42,8 @@ build:
 
 9.8.5: the builders run on Sonnet by default, from the one table of models (`scripts/cli_ctx.py`); `temper model --all
 --source` prints every agent's model and whether it comes from `config` or the `table`. For cents, set
-`models.task: haiku`: in nine runs of each (`docs/evidence/haiku-sonnet-task-agents.md`) the task agents cost $0.07 a run
-on Haiku against $0.33 on Sonnet, and took 259 s against 134 s, with the same hidden tests passed. The old keys
+`models.task: haiku`: in nine runs of each (`docs/evidence/haiku-sonnet-task-agents.md`) the task agents cost $0.07 a
+run on Haiku against $0.33 on Sonnet, and took 259 s against 134 s, with the same hidden tests passed. The old keys
 `build.grouped.task-model` and `build.grouped.escalation-model` are still read, below `models.task` and
 `models.task-escalation`. The plan gate's `shared production files` row fails when more than two tasks of one group declare the
 same production file (a test file does not count): merge them into one task.
@@ -81,8 +82,9 @@ escalation, and the question recommends the loop back to Plan.
    passes only with RED then GREEN evidence for that task and only declared files changed in its worktree. On PASS the CLI
    commits the declared files on the task branch, merges it into the group branch (a fast-forward
    when it can) and removes the task's worktree. On FAIL the task's worktree is discarded and the
-   task is retried once on the task model in a fresh one, then escalated once to the escalation model. If that also fails, the group stops and the run waits
-   for you; independent groups finish first. Every attempt, its model and outcome are recorded.
+   task is retried once on the task model in a fresh one, then escalated once to the escalation model. If that also
+   fails, the group stops and the run waits for you; independent groups finish first. Every attempt, its model and
+   outcome are recorded.
 
    **A stop after a commit the CLI did not make.** Task agents must not run `git commit`. If one
    does, the task gate FAILs naming the commit and its files and the group stops at once, with no

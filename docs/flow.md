@@ -2,11 +2,11 @@
 
 Two outputs of the `temper` CLI carry the whole flow of a run ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
 
-With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
-Both are computed by `scripts/flow.py` and its `flow_*.py` modules from the run's own files; nothing else decides what
-comes next. `flow.py` is the facade: `Builder`, `core_next` and the words the CLI starts it with. `flow_base.py` holds
-the tables (`SEQ`, `MOVES`) and the readers, `flow_run.py` the class `Run`, `flow_ask.py`, `flow_work.py`,
-`flow_build.py` and `flow_commit.py` the four parts of `Builder`, and `flow_view.py` the view.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently. Both are computed by `scripts/flow.py` and its `flow_*.py` modules from the run's own files; nothing else
+decides what comes next. `flow.py` is the facade: `Builder`, `core_next` and the words the CLI starts it with.
+`flow_base.py` holds the tables (`SEQ`, `MOVES`) and the readers, `flow_run.py` the class `Run`, `flow_ask.py`,
+`flow_work.py`, `flow_build.py` and `flow_commit.py` the four parts of `Builder`, and `flow_view.py` the view.
 
 - `temper next --json` prints the next action, with the full view. The orchestrator runs
   `temper go` instead (9.8.0, `scripts/go.py`): it runs the CLI's own steps itself (an `auto` action's
@@ -84,8 +84,9 @@ the tree the Review verdict judged runs all three, since the commit gate holds R
   recorded a verdict that `next` asks about, whatever its exit code, so the action goes on.
 - **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
   in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
-- **`auto`**: the CLI's own move: a run that goes on by itself, or a step with nothing to decide (9.8.0: the one group of a plan passing, a Build task an earlier task already built in a run that goes on by itself). Run `calls`, then ask `next` again.
-  `run.armed` of `next` (WP11) says whether the run goes on by itself now.
+- **`auto`**: the CLI's own move: a run that goes on by itself, or a step with nothing to decide (9.8.0: the one group
+  of a plan passing, a Build task an earlier task already built in a run that goes on by itself). Run `calls`, then ask
+  `next` again. `run.armed` of `next` (WP11) says whether the run goes on by itself now.
 - **`broken`**: the run state does not fit its spec folder; ask the `restart` question.
 
 ### Questions
@@ -345,13 +346,14 @@ is the code's, as before: it spends the attempt. Any status move clears the mark
 
 **Design runs only when asked (WP14, ADR 0019 decision 2).** A run of `/temper:temper` has the Design stage when the
 person chose `Run Design first` (id `run-design`, in the More list of the passed plan question; its calls are
-`temper state set want_design true` and then those that leave Plan, with `design` as the next stage), when `design.md` exists, or when the run is at Design or has a Design verdict. No tier, no
-risk and no setting adds it: `phases.design` and the state key `intent_asked` are gone. What Design asked is now a
-Blocking question Plan writes into intent.md, `- Blocking: {question} choices: {the answer the plan assumes} | ...`,
-with the tasks written under the first choice. `state advance plan_complete` is refused while one is open, so it is
-answered in front of the approval, with the mod or without it. At risk H the fresh review of the plan applies with no
-request (under `plan.fresh-review: ask`), and the option that starts the unattended run is offered only when a round
-ran on the plan as it is, every lens complete, with no open finding at high (`Builder.may_run_alone`).
+`temper state set want_design true` and then those that leave Plan, with `design` as the next stage), when `design.md`
+exists, or when the run is at Design or has a Design verdict. No tier, no risk and no setting adds it: `phases.design`
+and the state key `intent_asked` are gone. What Design asked is now a Blocking question Plan writes into intent.md,
+`- Blocking: {question} choices: {the answer the plan assumes} | ...`, with the tasks written under the first choice.
+`state advance plan_complete` is refused while one is open, so it is answered in front of the approval, with the mod or
+without it. At risk H the fresh review of the plan applies with no request (under `plan.fresh-review: ask`), and the
+option that starts the unattended run is offered only when a round ran on the plan as it is, every lens complete, with
+no open finding at high (`Builder.may_run_alone`).
 
 **An answer reaches the tasks.** `temper intent answer` given after `tasks.md` exists keeps the answer with the hash
 `tasks.md` has at that moment, and whether it is the first choice of its line (`.temper/decisions.json`,
@@ -446,8 +448,8 @@ text (WP20: `check.commands.coverage` or `check.commands.test`, else what `detec
 `**Integration:**` line), with its coverage report, as the row `Integration suite` (`phase: integration`; the plan's
 text in `plan_cmd` when it differs); the row `coverage` (WP19); one row per scenario test; one row per criterion
 command (9.8.5: a criterion validated by `code` or `metric` carries its command in backticks; the row has
-`phase: criterion`, the criterion's id, `scenario` null and `executed_by` cli, and only an accepted intent's commands run); the
-locked acceptance tests. `temper check run` records the same criterion rows into the Check ledger. The rows
+`phase: criterion`, the criterion's id, `scenario` null and `executed_by` cli, and only an accepted intent's commands
+run); the locked acceptance tests. `temper check run` records the same criterion rows into the Check ledger. The rows
 `criteria validated` (Build) and `acceptance evidence` (Check) pass such a criterion only from a row the CLI ran of its
 own command that exited 0 (`FAIL: <command> exit N`, or `its command has no row run by the CLI`); no agent records
 one, so no record pass and no Check agent are launched for it. One with no command is the person's to confirm at the
@@ -487,8 +489,8 @@ commands through the store first, as WP22 made it.
 **What failed.** A failed group check keeps its failure lines most telling first: a time-out (exit 124) says so; then
 the build tool's own summary (the last Maven `Failed to execute goal` line, `Rule violated` lines, failed test names);
 then the lines that say FAIL, ERROR or an exception, without the log lines a passing test printed
-(`20:01:44.264 [main] ERROR ...`). With none, the last three lines, never the first. The stop reason of a run that goes on by itself keeps
-1200 characters of it.
+(`20:01:44.264 [main] ERROR ...`). With none, the last three lines, never the first. The stop reason of a run that goes
+on by itself keeps 1200 characters of it.
 
 **No empty fix pass.** Build's fix pass after integrate gets the integrate verdict and the Build gate's failed rows in
 its prompt. When nothing names a fault (no feedback, no failed row, no note of the person), no agent is launched: the
@@ -633,9 +635,9 @@ amendment spend inside their own scripts, once every check of theirs holds, so a
 together, in order, against both limits. A question that would offer one becomes `run.budget` (header
 `Temper gate`): the stage's first sentence, the count, then Save for later (recommended), `Allow two more` (move
 `grant`, the call `temper budget grant --key <key> --reason '{reason}'`, the person's only) and the options of the
-stage's question that spend nothing. An `auto` or `work` action that holds one stops a run that goes on by itself, or asks the same
-question. After a grant `next` asks the stage's own question again. `temper budget` prints the record. The record
-survives a step back; `state clear` and `state init` remove it. So following the recommendation always ends.
+stage's question that spend nothing. An `auto` or `work` action that holds one stops a run that goes on by itself, or
+asks the same question. After a grant `next` asks the stage's own question again. `temper budget` prints the record. The
+record survives a step back; `state clear` and `state init` remove it. So following the recommendation always ends.
 
 ### The run to the commit (9.8.5, WP11)
 
@@ -661,14 +663,14 @@ rule's loop back to Build is gone); what it may not start, and what a repair lea
 recommended option when it has calls, needs nothing typed, does not save the run, is no step back and the group declares
 no sensitive file. Every other case is a stop (`scripts/stops.json`).
 
-A stop is the CLI's `temper park` call, then the stage's own question. `temper park` keeps `run_mode`; `parked` makes `Run.armed`
-false and ends when the run changes stage or by `temper park --end [--answer ID]` (not at Commit). The question asked
-while `parked` is set says `After your answer the run goes on by itself.`, every option with calls and no `stop` ends
-with `park --end --answer <its id>`, and `ask-every-stage` ("Ask me at every stage from here") is added. A skip, an
-accepted finding and a step back to Intent, Plan or Design end the run to the commit, and so does a refused approval
-and the advance out of Commit: a run that opened a pull request reaches Pipeline asking. The commit question always
-asks: `commit`, `commit-pr`, `back` (`state loop check build`), and under More the stacked pull requests, the small
-change and `save`. A failed commit gate with a changed sensitive file outside the plan offers `confirm`
+A stop is the CLI's `temper park` call, then the stage's own question. `temper park` keeps `run_mode`; `parked` makes
+`Run.armed` false and ends when the run changes stage or by `temper park --end [--answer ID]` (not at Commit). The
+question asked while `parked` is set says `After your answer the run goes on by itself.`, every option with calls and no
+`stop` ends with `park --end --answer <its id>`, and `ask-every-stage` ("Ask me at every stage from here") is added. A
+skip, an accepted finding and a step back to Intent, Plan or Design end the run to the commit, and so does a refused
+approval and the advance out of Commit: a run that opened a pull request reaches Pipeline asking. The commit question
+always asks: `commit`, `commit-pr`, `back` (`state loop check build`), and under More the stacked pull requests, the
+small change and `save`. A failed commit gate with a changed sensitive file outside the plan offers `confirm`
 (`temper override sensitive-path:<path>`). `temper go --taken-up` records a stop of such a run first, so its stage asks
 once. What a rule decided, each stop and each answer are entries of `.temper/rule-log.json` (`scripts/rule_log.py`).
 

@@ -42,8 +42,8 @@ orchestrator prints the returned box verbatim rather than restating formats, and
 `commands/fix.md` launches its stages through the same briefs instead of inlining its
 own copies of their prompts (22.9KB → 7.1KB in v9.1).
 
-**Features you turn on load only when on.** Since 9.7.0 the temper CLI computes the moves of a run that goes on by itself
-(`temper next`), so no page about autonomy is read during a run; `reference/autonomy.md` explains
+**Features you turn on load only when on.** Since 9.7.0 the temper CLI computes the moves of a run that goes on by
+itself (`temper next`), so no page about autonomy is read during a run; `reference/autonomy.md` explains
 them to people. The same shift
 dieted `reference/review.md` from 19.6KB to 13.6KB: what survived is policy a reviewer
 would not derive alone (severity floors, filter bypasses, memory thresholds); what left

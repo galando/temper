@@ -1,7 +1,8 @@
 # 0005 — Deterministic stage-gate enforcement for standalone commands
 
 **Status:** accepted (v8.0.0, pre-release)
-**Amended by:** ADR-0023 (9.8.5: two listed commands; the stage commands are gone, and the stage hook marks `/temper:temper draft`)
+**Amended by:** ADR-0023 (9.8.5: two listed commands; the stage commands are gone, and the stage hook marks
+`/temper:temper draft`)
 
 **Amended in 9.7.0 (ADR 0012):** the stage commands `/temper:plan`, `:design`, `:build`,
 `:review` and `:check` became doors into `/temper`, so they run the orchestrator, which runs

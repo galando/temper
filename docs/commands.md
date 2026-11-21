@@ -233,7 +233,8 @@ messages use it.
 | `/temper:temper pane` | Open or close the pane (in full mode it also opens by itself when a run starts; see [the mod](mod.md)) |
 | `/temper:temper help` | List these |
 
-With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently.
 
 A word that names a move (`approve`, `next`, `back`, `override`, `accept`, `drift`) is your wish, not
 your decision: you decide in the question dialog that follows, with one click. Claude cannot decide for
@@ -244,8 +245,8 @@ based command, so it works the same on every surface.
 With the mod loaded and enforcement on, a headless `claude -p` run stops at the first gate, because
 only a person can answer the gate question. With enforcement off a headless run goes on.
 
-A run starts at Intent, and `/temper:temper` with no words takes up the active run where the CLI says it is. A folder an earlier run planned, with no run active, is started from its
-`intent.md`: Plan runs again.
+A run starts at Intent, and `/temper:temper` with no words takes up the active run where the CLI says it is. A folder an
+earlier run planned, with no run active, is started from its `intent.md`: Plan runs again.
 
 ### `draft`
 
@@ -536,9 +537,9 @@ The mod lets it run during a run, as any CLI call. Use it when a gate says `envi
 **How Temper finds the setup of a project it has never seen.** Two sources, one check:
 
 1. **Rules, for common setups** (`temper doctor --propose`): the JDK a Maven enforcer, `<java.version>`, a Gradle
-   toolchain, `.java-version` or `.tool-versions` asks for, set by the project's `scripts/ensure-jdk*.sh --export` (else a
-   JDK of that version in `/usr/lib/jvm`); Docker Compose services (Postgres, MySQL, MariaDB, Redis) when a Docker daemon
-   answers; a local Postgres cluster; a Python `.venv`; an `.nvmrc`.
+   toolchain, `.java-version` or `.tool-versions` asks for, set by the project's `scripts/ensure-jdk*.sh --export` (else
+   a JDK of that version in `/usr/lib/jvm`); Docker Compose services (Postgres, MySQL, MariaDB, Redis) when a Docker
+   daemon answers; a local Postgres cluster; a Python `.venv`; an `.nvmrc`.
 2. **The project's CI and devcontainer** (the same command): GitHub Actions (`actions/setup-java` and `setup-node`
    versions, a job's `services:` with their images and ports, the variables that point at them, such as
    `IT_POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}`), `.gitlab-ci.yml` image tags, and
@@ -565,8 +566,8 @@ fetch) is said in plain words instead.
 `temper baseline start [--again] [--env-only]` checks the environment (the tools and services the project's files and
 the config name, in under 5 s) and runs the project's suite once on the current code, in the detached worktree
 `.claude/worktrees/temper-baseline`, in its own process; it writes `.temper/evidence/baseline.json` and always exits 0.
-The flow calls it as its own first step of a run; `--again` runs it after a repair, `--env-only` checks the environment and runs
-no suite (the flow no longer calls it, 9.8.5). `temper baseline clean` removes the worktree (`state clear` and
+The flow calls it as its own first step of a run; `--again` runs it after a repair, `--env-only` checks the environment
+and runs no suite (the flow no longer calls it, 9.8.5). `temper baseline clean` removes the worktree (`state clear` and
 `state init` call it). `temper baseline accept-red --reason '<why>'` is your answer "Go on anyway" at the red base
 question: the base's failures become a recorded skip (an override row `base-suite`); the mod lets it run only as the
 call of that answer. `python3 scripts/check_run.py owner ROOT [SPEC]` prints who owns the suite command, as one JSON
@@ -584,8 +585,8 @@ the call of that answer. See `docs/flow.md`, "A command the plan wrote".
 `temper plan patch G1 --cmd 'bash scripts/selftest/run-selftest.sh --fast'` changes one command line of the approved
 plan (`G<n>` a group's Validate, inserted after its Depends line, or after its head, when it has none; `task N` a task's
 Test, which reopens the task when it passed, and is refused before anything is written when that reopen cannot run
-(no worktree, a task it cannot reopen, a commit on the group's branch the CLI did not record, an upstream gate it needs);
-`integration` the Integration line), keeps every other passed task, and spends one repeat.
+(no worktree, a task it cannot reopen, a commit on the group's branch the CLI did not record, an upstream gate it
+needs); `integration` the Integration line), keeps every other passed task, and spends one repeat.
 `temper plan patch task N --add-file F` adds a file outside the approved set to Task N and to `approved_files` (a name
 with no dot and no slash is written `./F`, so the plan reads it as a file). The static rows of the plan gate run on the
 result first, and a row it newly fails refuses the patch. You give it as your answer to "Change the group's command" at

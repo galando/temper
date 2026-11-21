@@ -10,7 +10,8 @@ Packs are collections of rules that Temper uses to validate and guide AI-generat
 ## Built-in Packs
 
 Temper ships eight packs: seven rule packs, enforced during code generation and review (a new project turns on
-`security` and `tdd`), plus `guardrails`, whose guard hooks you turn on separately (see [Enabling Packs](#enabling-packs)).
+`security` and `tdd`), plus `guardrails`, whose guard hooks you turn on separately (see
+[Enabling Packs](#enabling-packs)).
 
 ### `quality`
 
@@ -95,7 +96,9 @@ Git workflow — conventional commits, branching strategy.
 
 ## Creating Custom Packs
 
-**Recommended:** Use `/temper:temper pack` to create packs interactively. At its menu, choose **Other** and describe the pack: the full pack builder scans your codebase, asks about your conventions, and generates a custom `rules.md` tailored to your team. **Quick-create launcher pack** wraps a skill or command your session lists as a BLOCK-level pack.
+**Recommended:** Use `/temper:temper pack` to create packs interactively. At its menu, choose **Other** and describe the
+pack: the full pack builder scans your codebase, asks about your conventions, and generates a custom `rules.md` tailored
+to your team. **Quick-create launcher pack** wraps a skill or command your session lists as a BLOCK-level pack.
 
 ### Manual Creation
 

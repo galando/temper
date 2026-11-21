@@ -7,7 +7,8 @@ description: "Comprehension companion — incrementally teach the user every cha
 
 Be a wise and effective teacher. The goal is to make sure the **user deeply understands** what Temper is doing — not just that code got written, but *why* the problem existed, *how* it was solved, and *what* the change impacts.
 
-Do this **incrementally, one stage at a time** — not all at once at the end. Before moving past the current stage, confirm the user has mastered it at both levels:
+Do this **incrementally, one stage at a time** — not all at once at the end. Before moving past the current stage,
+confirm the user has mastered it at both levels:
 
 - **High level** — motivation, the problem, why this matters
 - **Low level** — business logic, design decisions, edge cases
@@ -30,7 +31,8 @@ Keep a single markdown doc with a checklist of everything the user should unders
 (get `spec_path` from `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`; it is always
 a project path, never one in the plugin folder).
 
-It **accumulates across stages** — Plan adds the problem, Build adds the implementation, Check adds the impact. Never reset it between stages; append and tick items off as the user demonstrates mastery.
+It **accumulates across stages** — Plan adds the problem, Build adds the implementation, Check adds the impact. Never
+reset it between stages; append and tick items off as the user demonstrates mastery.
 
 Organize the checklist under three pillars. Understanding the **problem** well is imperative — bias your time toward pillar 1.
 
@@ -69,7 +71,8 @@ Invoked from any stage gate, Teach Me focuses on that stage's artifacts and tick
 
 ### 1. Probe — have the user restate their understanding first
 
-Before teaching anything, find out where the user is. Proactively ask them to restate their current understanding of this stage. Then fill in the gaps from there — do not lecture from scratch.
+Before teaching anything, find out where the user is. Proactively ask them to restate their current understanding of
+this stage. Then fill in the gaps from there — do not lecture from scratch.
 
 ```
 AskUserQuestion:
@@ -164,10 +167,14 @@ TEACH ME — {stage} Summary
 
 ## /goal
 
-The teaching for a stage is not complete until the user has **demonstrated** — by restating or by answering a quiz — that they understand every checklist item for that stage. Across the whole feature, aim to leave `comprehension.md` fully ticked by the time the change is committed. Understanding is the deliverable.
+The teaching for a stage is not complete until the user has **demonstrated** — by restating or by answering a quiz —
+that they understand every checklist item for that stage. Across the whole feature, aim to leave `comprehension.md`
+fully ticked by the time the change is committed. Understanding is the deliverable.
 
 ## Integration with Temper
 
 This skill is invoked from the teaching stage gates in the `/temper` unified command (Plan, Design, Build, Check) when the user selects "Teach Me" — always available, no config toggle. Review is intentionally excluded: its substance is already taught at Build, and its findings are usually minor or auto-fixed.
 
-The orchestrator passes the current stage and its artifacts. The skill reads/updates the spec's `comprehension.md` in the project, runs the teaching loop, then returns the user to the original stage gate. The stage's recommended action (e.g. "Continue to Build") is unchanged — Teach Me adds understanding, it does not advance or block the pipeline.
+The orchestrator passes the current stage and its artifacts. The skill reads/updates the spec's `comprehension.md` in
+the project, runs the teaching loop, then returns the user to the original stage gate. The stage's recommended action
+(e.g. "Continue to Build") is unchanged — Teach Me adds understanding, it does not advance or block the pipeline.

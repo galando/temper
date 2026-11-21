@@ -41,8 +41,8 @@ config set it to `count`.
 
 ## What a project of 9.8.4 does
 
-- A project that kept a stack file in the `stacks` folder of its `.claude/packs`: nothing loads it now. Move its rules into
-  a pack of the project (`.claude/packs/<name>/rules.md`) and add the name to `packs:`.
+- A project that kept a stack file in the `stacks` folder of its `.claude/packs`: nothing loads it now. Move its rules
+  into a pack of the project (`.claude/packs/<name>/rules.md`) and add the name to `packs:`.
 - A test run an agent only claimed with `temper evidence add --exit N` no longer counts at the Build or Check gate,
   and no config key makes it count. Record the run with `temper evidence run --stage <stage> --claim <claim> -- <the
   test command>`, which runs it and records the exit code it saw.

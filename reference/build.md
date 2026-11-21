@@ -11,7 +11,8 @@ the gate needs; this doc is the methodology behind what to test and in what orde
 **Modes:** the fix pass (`agents/build.md`, launched by the orchestrator) starts clean —
 no `AskUserQuestion` gate, return the summary, the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
 Prerequisites/blast-radius section, the pack files your prompt lists on its `Packs:` line (the CLI chose those of
-Build). The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit of the run.
+Build). The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit
+of the run.
 
 ## Execute Tasks in Order
 

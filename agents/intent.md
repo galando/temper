@@ -33,8 +33,8 @@ folder.
    example) becomes a targeted Open Question in the draft — never a silent guess.
 
 3. **Pick up an existing draft — bounded refine pass.** If
-   `{spec_path}/intent.md` already exists (captured with `/temper:temper draft`), it is your input. You run headless and ask
-   nobody: a question the draft marks `Blocking` stays in Open Questions, and the
+   `{spec_path}/intent.md` already exists (captured with `/temper:temper draft`), it is your input. You run headless and
+   ask nobody: a question the draft marks `Blocking` stays in Open Questions, and the
    orchestrator asks the person before the gate question (`temper next` lists it under
    `blocking`). Anything else you find thin becomes a NEW Open Question in the file,
    answered once at the gate. Keep the originator's Problem and
