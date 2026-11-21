@@ -172,7 +172,7 @@ assert_eq "review 4: R8b a finding of a later Review round is not resolved by ha
   "repair 1=$_r84_first|second Review=$_r84_second|hand resolve=$_r84_hand|after=$(_verdict84 review)"
 
 # --- rule 8 (row D37): an open blocking finding is erased by `temper evidence clear --stage review` ---
-# No question offers the call (only the mod refuses it: tests/mod/final-review.test.ts); with the mod off the CLI empties
+# No question offers the call (only the mod refuses it: the mod test final-review.test.ts); with the mod off the CLI empties
 # Review's ledger and the Review gate passes with the High finding gone: no repair commit, no checks, no recheck.
 _review84 high
 _r84_before="$(_verdict84 review)"
