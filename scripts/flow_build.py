@@ -149,28 +149,25 @@ class BuildPart:
         def gpass(g):
             return ((rg.get(g) or {}).get("gate") or {}).get("verdict") == "PASS"
 
-        # the fix pass: the groups are integrated, so Build mends what a step back or "Run Build again" names. A door's
-        # run whose code an earlier run built (built_before, from the walked Build's check) mends it the same way.
-        before = r.state.get("built_before") and not rg
-        if (integ and gid and all(gpass(g) for g in gid)) or before:
+        # the fix pass: the groups are integrated, so Build mends what a step back or "Run Build again" names.
+        if integ and gid and all(gpass(g) for g in gid):
             lines = self.feedback_lines() + self.fault_lines()   # M1: the finding and what failed since
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
             if self.env_records("build") and not str(redo.get("reason") or "").startswith("it is the code"):
                 # WP23: a fault of the environment gets no fix pass: the checks run again, and a failure there is the
                 # setup question (its option It is the code is the person's way to the fix pass)
                 return {"action": "auto" if r.armed() else "work", "stage": "build", "agents": [],
-                        "calls": ([self.c("integrate")] if integ and not before else [self.c("check build-checks")]) + [self.c("gate build")],
+                        "calls": [self.c("integrate"), self.c("gate build")],
                         "say": "Build: the last failure was the environment's, so no fix agent: the CLI checks Build again."}
             if not lines and not r.notes("build", "input"):
                 # 9.8.5 (S7): a fix pass with no fault in its prompt fixes nothing (a measured launch said so): the CLI
                 # checks Build again, and a failure there names the fault for the next pass
-                return {"action": "auto", "stage": "build", "calls": ([self.c("integrate")] if integ and not before else []) + [self.c("gate build")],
+                return {"action": "auto", "stage": "build", "calls": [self.c("integrate"), self.c("gate build")],
                         "say": "Build: nothing names a fault to fix, so the CLI checks Build again first."}
             a = self.agent("build", lines)
             # 9.8.4: the CLI runs the scenario tests on the fixed tree (integrate does when the groups are merged already),
             # so no record pass of a model is needed after a step back that cleared Build's rows
-            if integ and not before:
-                a["after"].append(self.c("integrate"))
+            a["after"].append(self.c("integrate"))
             a["after"].append(self.c("gate build"))
             a["gate"] = a["after"][-1]
             return {"action": "work", "stage": "build", "calls": [], "agents": [a], "say": "Build: the fix pass is working%s. %s" % (on_model([a]), goes_on(False))}

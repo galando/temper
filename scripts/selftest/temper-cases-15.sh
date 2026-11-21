@@ -441,7 +441,9 @@ assert_eq "9.8.0: the step back keeps the failing test's output" "yes" \
 import json; f = json.load(open('.temper/feedback-loops.json'))['active_loops'][0]['findings']; j = ' '.join(f)
 print('yes' if '404 != 200' in j else 'no')")"
 python3 -c "
-import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['built_before'] = True; json.dump(d, open(p, 'w'))"   # the fix pass
+import json, re; ids = re.findall(r'^## Group (G[0-9]+)', open('.temper/specs/demo/tasks.md').read(), re.M)
+json.dump({'version': 1, 'slug': 'demo', 'groups': {g: {'status': 'passed', 'gate': {'verdict': 'PASS'}} for g in ids},
+           'integration': {'verdict': 'PASS'}}, open('.temper/groups.json', 'w'))"   # the fix pass: the groups are built and merged (WP28: no built_before)
 assert_eq "9.8.0: the fix pass is told the acceptance tests are locked, and to report a wrong one instead of editing it" "yes" \
   "$(nx "'yes' if any('The acceptance tests are locked: change the code, never a test' in a['prompt'] for a in d.get('agents', [])) else 'no'")"
 

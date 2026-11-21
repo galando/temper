@@ -91,9 +91,9 @@ with TypeScript 5.6) and `bash scripts/check-mod-calls.sh`.
 
 ### Add a New Command
 
-1. Create the command in `commands/`, named after the command. A stage command is a door into
-   `/temper` (about 900 bytes, like `commands/plan.md`); what comes next belongs in `scripts/flow.py`
-   and its `flow_*.py` modules
+1. Temper lists two commands, `/temper:temper` and `/temper:fix` (9.8.5). Prefer a word of
+   `/temper:temper` (a row of its Arguments table, with a page in `reference/`) to a new command; what
+   comes next belongs in `scripts/flow.py` and its `flow_*.py` modules
 2. Put long methodology in `reference/` and a stage agent's brief in `agents/`
 3. Update `.claude-plugin/plugin.json`
 4. Update the commands table in README.md and the command's section in `docs/commands.md`
@@ -113,7 +113,6 @@ Keep always-loaded content small. Sizes in 9.7.0, as a guide:
 |------|-------------|
 | `.claude/CLAUDE.md` | about 4.5 KB |
 | `skills/temper-core/SKILL.md` | about 6.4 KB |
-| A stage door (`commands/plan.md` and the like) | about 900 bytes each |
 | `commands/temper.md` (read on every run) | about 10.5 KB |
 | Reference docs | Can be larger (loaded on demand) |
 

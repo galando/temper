@@ -40,7 +40,7 @@ current task, and always re-run the full suite afterward.
 
 ## When intent.md Exists (Scenario-Driven TDD)
 
-When `/temper:plan` writes Gherkin scenarios into intent.md, the TDD cycle becomes scenario-driven:
+When Plan writes Gherkin scenarios into intent.md, the TDD cycle becomes scenario-driven:
 
 | TDD Phase | Without intent.md | With intent.md |
 |-----------|-------------------|----------------|

@@ -27,17 +27,24 @@ way the run is where the CLI says it is.
 
 ## Arguments
 
-When the first word is one of these, do this and start no run. Any other first word begins a
-feature description.
+When the text after the command is one of these words in the form shown, do this and start no run. The words
+`status`, `report`, `timeline`, `help`, `init`, `pack`, `mode`, `enforcement`, `pane`, `pr` and the wishes count only
+alone, with nothing after them; `draft`, `discuss` and `chose` take text after them (the last two, which an older mod
+sent, are wishes: run the loop), and `pack` takes `enable guardrails` or `disable guardrails`. Any other text is a
+request, a feature description, even when it starts with one of these words: "status badge on the order page" is a
+request.
 
 | Word | What to do |
 |---|---|
 | `status` | Print `${CLAUDE_PLUGIN_ROOT}/scripts/temper status` and the `say` of `temper next --json`. |
 | `report`, `timeline` | Print `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`. |
+| `draft <idea>` | Capture the idea as a draft intent.md and start no run: read `${CLAUDE_PLUGIN_ROOT}/reference/draft.md` and do what it says, with the idea as its input. |
+| `init` | Set up this project: run `${CLAUDE_PLUGIN_ROOT}/scripts/temper config init`, `${CLAUDE_PLUGIN_ROOT}/scripts/temper init` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper guards install`, each once, and show what each printed (a failed `guards install` as Start says). |
+| `pack`, `pack enable guardrails`, `pack disable guardrails` | The quality packs: read `${CLAUDE_PLUGIN_ROOT}/reference/pack.md` and do what it says for these words. |
 | `help` | List these words with one line each. |
 | `approve`, `next`, `back`, `override`, `accept`, `drift` | A wish, never a decision: run the loop below. When it reaches a question, ask it as given; the person chooses there. |
 | `pr` | Write a pull request description from `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` (the verdicts), `.temper/overrides.json` (each skip with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review` (each accepted finding with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage build` (the drift answers) and the `loops` of `.temper/view.json`. |
-| `step <kind> <id>` | From the mod's run driver: the person chose the option `<id>` of the question `temper go` gives now (or, for `pull-request`, the steps of its `work` action). Do not ask it again: carry out that one step (the option's calls, `steps` and `do`), then end the turn with the line `Type /temper:temper to go on.` |
+| `step <kind> <id>` | From the mod's run driver, a note after the command (never typed): the person chose the option `<id>` of the question `temper go` gives now (or, for `pull-request`, the steps of its `work` action). Do not ask it again: carry out that one step (the option's calls, `steps` and `do`), then end the turn with the line `Type /temper:temper to go on.` |
 | `mode`, `enforcement`, `pane` | These belong to the Temper mod. Without it, say they are not available here. |
 
 ## Start
@@ -50,7 +57,8 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
   written; then go on: the commit gate is not installed, and Temper says so. A `FAIL: run temper from a
   project folder` line from any call means stop and show it.
 - When `action` is `none`: with no feature in the arguments, say "No run is active. Start one with
-  `/temper:temper "<feature>"`." and stop. Otherwise pick the slug: when a folder in the project's
+  `/temper:temper "<feature>"`." and stop. A folder planned by an earlier run with no run active now is started from
+  its intent: Plan runs again. Otherwise pick the slug: when a folder in the project's
   `.temper/specs` already holds an `intent.md` for this feature, its name; else a short name of
   letters, digits, `.`, `_` or `-` (a ticket key keeps its case, as in `PROJ-123-login`). Run
   `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --feature '{the feature as the person typed it}'`
@@ -72,7 +80,7 @@ about those. It never runs a call only the person may cause: the calls of the op
 chose are yours to run, as below. A call that prints a `VERDICT:` line recorded a verdict: it is no failure,
 whatever its exit code. When it prints `action: error`, say its `say` in one line and run
 `temper next --json` once to see the full state. `temper next --json` stays the full view (the mod and
-`/temper:status` read it); the loop only needs `temper go`.
+the word `status` read it); the loop only needs `temper go`.
 
 - **`work`**: say its `say` in one line (it names the model each agent runs on), then launch each
   agent of `agents`, all in one turn (`temper go` has run the action's calls already), then do each of
@@ -171,26 +179,6 @@ exit code, so the action goes on: run the calls after it, then `temper go`.
 ## Agents
 
 - **An agent that fails or blocks**: show what it returned and ask the current question again.
-
-## Entering at a stage (the stage commands)
-
-`/temper:plan`, `/temper:design`, `/temper:build`, `/temper:review` and `/temper:check` are doors into
-this flow. Each reads this page and enters at its stage, with its arguments as the feature (Plan) or
-the spec folder's name.
-
-1. **A run is active:** the run is where the CLI says, and a door never moves it. When it is at
-   another stage, say in one line where it is ("The run is at Review."). Then run the loop.
-2. **No run, the Plan door:** start a run for the feature as Start says; Intent comes first.
-3. **No run, a later door:** the run is for the folder in `.temper/specs` that holds `tasks.md`
-   (the one the arguments name, the only one, or else ask the person; with none, say in
-   one line that this stage needs a planned feature and that `/temper:temper "<feature>"` starts one,
-   and stop). Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --enter {stage}` (it takes the
-   tier from the Complexity line of `plan.md`, else of `intent.md`).
-   The Design door enters at Build when the run has no Design stage, and says so. Then run the loop:
-   the stages before the door's are checked and asked, not run again; the question of one whose check
-   fails offers to run it.
-
-The stage hooks mark only `/temper:intent`, which captures a draft on its own.
 
 ## When the CLI refuses
 

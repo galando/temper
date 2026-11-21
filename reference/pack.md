@@ -1,13 +1,20 @@
 ---
-description: "Manage quality packs: view, toggle, create, quick-create launchers, configure links and phases, print the guardrails hooks to add or remove"
+description: "The word pack of /temper:temper: view, toggle, create, quick-create launchers, configure links and phases, print the guardrails hooks to add or remove"
 ---
 
 # Pack: Quality Pack Manager
 
-**Goal:** Show every quality pack's status, phase scoping, and link health; let the user
-toggle packs, quick-create a launcher pack, configure links/phases, or run the full
-interactive builder; and print the guardrails pack's hooks for the user to add to a project
-settings file, or say which to remove.
+The page of the word `pack` of `/temper:temper`. **Goal:** Show every quality pack's status, phase scoping, and link
+health, and how to change `packs:` in `.claude/temper.config`; let the user toggle packs, quick-create a launcher
+pack, configure links/phases, or run the full interactive builder; and print the guardrails pack's hooks for the user
+to add to a project settings file, or say which to remove.
+
+**Plugin folder:** the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken
+off). Wherever this page writes the CLAUDE_PLUGIN_ROOT variable, use this folder. If that file does not exist, stop
+and say "Cannot locate the Temper plugin folder. Reinstall the plugin." Never search the disk for another copy.
+Nothing here writes into the plugin folder, and nothing here opens a Claude Code settings file, the project's or the
+home folder's. Nothing here reads Claude Code's own files in the home folder either (its plugin list, other plugins'
+folders, or the skills and commands kept there); of the plugin folder, it reads only Temper's own files.
 
 ## Pack Resolution: Three-Tier System
 
@@ -41,7 +48,7 @@ is lowercase letters, digits and hyphens only; skip any other folder.
 
 **Old name:** the guardrails pack was called `hooks` before v9.6.5. A `packs:` entry
 named `hooks` means `guardrails`: treat it exactly as a `guardrails` entry, and when
-`/temper:pack` writes the `packs:` list back, write `guardrails`.
+the word `pack` writes the `packs:` list back, write `guardrails`.
 
 ## Pack Configuration Schema
 
@@ -115,9 +122,10 @@ removed plugin.
 
 ### Arguments
 
-`/temper:pack enable guardrails` runs **Guardrails: Enable** and `/temper:pack disable
+`/temper:temper pack enable guardrails` runs **Guardrails: Enable** and `/temper:temper pack disable
 guardrails` runs **Guardrails: Disable** (both in Guardrails Hooks below), then stops.
-With no argument, or any other, start at Step 1.
+`/temper:temper pack` alone starts at Step 1. Any other text after `pack` is no word of this page: it is a request
+(`commands/temper.md`, Arguments).
 
 ### Step 1: Discover + Display
 
@@ -137,7 +145,11 @@ plus the built-in files listed there), merge with `.claude/temper.config`, then 
 +--------------------------------------------------------------------------+
 ```
 
-Populate every row from real scan data — never a hardcoded example row.
+Populate every row from real scan data — never a hardcoded example row. CONNECTED is `found` or `missing`, and blank
+when there is no link: decide it as Pack-Plugin/Skill Linking above says, from the skills and commands this session
+lists and the rows of `pack-discover.py` only, never from a file of Claude Code or of another plugin. Under the box,
+say in one line how to change the list: the `packs:` list in `.claude/temper.config` (a bare name, or a mapping with
+`name`, `phases` and `link`), or the action below.
 
 ### Step 2: Action
 
@@ -168,7 +180,10 @@ the project's own skills and commands (bounded, deduplicated, one correct answer
 given project; 4 pipe-separated fields, `TYPE|name|path|description`, `TYPE` one of
 `LOCAL_SKILL`/`LOCAL_CMD`), and add the skills and slash commands this session lists (a
 plugin's item shows as `{plugin}:{item}`; leave out Temper's own `temper:` items; a
-plugin with at least one listed item is also offered once as `plugin://{name}`). Filter
+plugin with at least one listed item is also offered once as `plugin://{name}`; never read Claude Code's files to
+find more). Label each: a listed skill `Skill`, a listed slash command `Command` (both link as `skill://{name}`), a
+plugin `Plugin` (`plugin://{name}`), a `LOCAL_SKILL` row `Project Skill` and a `LOCAL_CMD` row `Project Command`
+(both `skill://{name}`). Filter
 out any target already linked to an existing pack (check every pack's `link:` in
 `temper.config`). Only show targets that the script printed or the session lists, and
 never fabricate an entry.
@@ -242,7 +257,8 @@ copy of the plugin and in a folder inside the plugin folder.
    that starts with `FAIL: run temper from a project folder` (the home folder, an
    installed copy of the plugin, or a folder inside the plugin folder), show that line
    and stop. Any other result, `FAIL: no intent.md to report on` among them, means go
-   on. (c) `.claude/temper.config` must exist (otherwise: "Run /temper:init first").
+   on. (c) `.claude/temper.config` must exist (otherwise say "No .claude/temper.config here. Run /temper:temper
+   init first." and stop).
 2. Run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guardrails-snippet.py"`. It reads one
    file, the plugin's own `packs/guardrails/settings-guardrails.json`, and prints its
    `hooks` object as JSON, with the plugin folder in place of the CLAUDE_PLUGIN_ROOT
@@ -260,16 +276,18 @@ copy of the plugin and in a folder inside the plugin folder.
    entry already there replaced so none is doubled, and `.claude/settings.local.json`
    kept out of commits. Never open, read or write either settings file, and never offer
    to: the user adds the entries.
-4. Add `guardrails` to `packs:` (an old `hooks` entry becomes `guardrails`).
-5. Report that a plugin upgrade moves the plugin folder, so the added commands then point
-   at an old or missing copy of the guard scripts and `/temper:pack enable guardrails`
-   prints the current ones again, and that the commit gate `/temper:init` installs is
-   separate.
+4. Add `guardrails` to `packs:` (an old `hooks` entry becomes `guardrails`; when `guardrails`
+   is already there, leave the list as it is).
+5. Report in at most three lines that a plugin upgrade moves the plugin folder, so the added
+   commands then point at an old or missing copy of the guard scripts and `/temper:temper pack
+   enable guardrails` prints the current ones again; that the commit gate the word `init`
+   installs is separate and still the only gate on a raw `git commit`; and that new hooks may
+   need the `/hooks` menu or a new session before they run.
 
 **Guardrails: Disable.** Not in the home folder, and not where
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper status` refuses the folder (as in Enable step 1b).
-When `packs:` lists `guardrails` (or an old `hooks` entry), show that change, ask
-"Remove guardrails from packs:" / "Cancel", and on the first remove it; when it lists
+When `packs:` lists `guardrails` (or an old `hooks` entry), show that change, ask with
+`AskUserQuestion` "Remove guardrails from packs:" / "Cancel"; on Cancel change nothing and stop, on the first remove it; when it lists
 neither, say "Guardrails are not on in this project's temper.config." Either way, say
 that the guard hooks live in the project's settings files, which Temper does not open,
 and that the user removes each Temper guard entry from `.claude/settings.local.json` and
@@ -307,4 +325,4 @@ folder) is the user's own copy and stays.
 | `performance` | N+1 detection, pagination, Core Web Vitals | WARN |
 | `api-design` | Additive extension, idempotency, naming | WARN |
 | `architecture-depth` | Module depth: seams, adapters, locality, leverage | WARN |
-| `guardrails` | Install guide for the edit-time and commit-time guard scripts (old name `hooks`); `phases: []`, so no stage loads it, and `/temper:pack enable guardrails` prints its hooks for the user to add to a project settings file | BLOCK (enforced by the scripts) |
+| `guardrails` | Install guide for the edit-time and commit-time guard scripts (old name `hooks`); `phases: []`, so no stage loads it, and `/temper:temper pack enable guardrails` prints its hooks for the user to add to a project settings file | BLOCK (enforced by the scripts) |

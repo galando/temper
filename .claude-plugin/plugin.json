@@ -24,16 +24,7 @@
   ],
   "commands": [
     "./commands/temper.md",
-    "./commands/intent.md",
-    "./commands/plan.md",
-    "./commands/design.md",
-    "./commands/build.md",
-    "./commands/review.md",
-    "./commands/check.md",
-    "./commands/fix.md",
-    "./commands/pack.md",
-    "./commands/status.md",
-    "./commands/init.md"
+    "./commands/fix.md"
   ],
   "agents": [
     "./agents/intent.md",

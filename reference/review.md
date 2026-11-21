@@ -14,8 +14,7 @@ severity floors, filter bypasses, memory thresholds — not review technique.
 succeeds. Confidence scoring and review memory follow the temper-core skill's
 definitions.
 
-**Mode:** Review runs as a stage of `/temper` (also when `/temper:review` starts it: the
-command is a door into `/temper`), in a clean subprocess that never shows an
+**Mode:** Review runs as a stage of `/temper`, in a clean subprocess that never shows an
 `AskUserQuestion`: return the summary, the orchestrator owns the gate. Load the changed files (`${CLAUDE_PLUGIN_ROOT}/scripts/temper review files` prints them) plus
 `{spec}/intent.md` (if it exists),
 `build-context.json` (if it exists).
@@ -270,7 +269,7 @@ memory, `.temper/review-memory.json.patterns[{key}]` (key = category + file-path
 `acceptance_rate = accepted/total_shown`. This one store drives both promotion and
 suppression:
 
-- **Promote** (surfaced at `/temper:status`, never auto-applied): 3+ accepted at
+- **Promote** (surfaced by the word `status`, never auto-applied): 3+ accepted at
   acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ at ≥ 80% in security or
   architecture → suggest a **BLOCK** rule. The human picks BLOCK / WARN /
   keep-advisory; an accepted rule is written into the project's copy of the active pack,

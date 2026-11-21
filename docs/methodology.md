@@ -34,7 +34,7 @@ A `code` or `metric` criterion with no command in backticks fails the Intent gat
 
 ### Intent Validation in Review
 
-When `/temper:review` runs, it produces:
+When Review runs, it produces:
 
 ```
 Intent Validation (IDD): 3/5 (4 mechanical, 1 for the person)
@@ -120,7 +120,7 @@ and an edit of the plan after the review makes it stale. The idea comes from Goo
 ## TDD: Test-Driven Development
 
 **Question:** Does the code work?
-**When:** During `/temper:build`, per scenario
+**When:** During Build, per scenario
 
 TDD in Temper is **scenario-driven**. Instead of the AI deciding what to test, tests are derived from BDD scenarios:
 

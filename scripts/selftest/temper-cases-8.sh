@@ -218,14 +218,6 @@ assert_exit "group continue: recorded for a passed group" 0 "$TEMPER" group cont
 assert_eq "next: once every group continued, the groups are merged and Build is checked" "integrate|gate build" \
   "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'])")"
 
-# --- doors: a run started at a later stage checks the stages before it ---
-setup; "$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known
-assert_eq "next: a door's earlier stage is checked, not run" "work|gate intent|0" \
-  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(len(d['agents']))")"
-gpass intent
-assert_eq "next: and then asked, with Continue and Save for later" "Continue to Plan (Recommended)|Save for later" "$(labels)"
-assert_exit "state init: --enter takes a stage of the run" 1 "$TEMPER" state init demo --enter nowhere
-
 # --- intent accept and complete ---
 setup; sed -i.bak 's/^\*\*Status:\*\* accepted/**Status:** draft/' .temper/specs/demo/intent.md
 "$TEMPER" intent accept >/dev/null 2>&1
@@ -285,8 +277,6 @@ assert_eq "next: Check FAIL on a missing measurement (no test run recorded) offe
 assert_eq "next: a question names the gate of its stage" "gate check" "$(nx "d['gate'].split('temper ', 1)[1]")"
 assert_eq "next: the question names the failed row" "1" "$(nx "int('no passing test-run evidence recorded' in d['ask']['question']['question'])")"
 
-setup; "$TEMPER" state init demo --enter check >/dev/null 2>&1; _base_known; gfail intent "problem stated" "missing"
-assert_eq "next: a door's failed earlier stage offers to run it, a skip with a reason, or Save for later" "Run Intent (Recommended)|Override and continue|Save for later" "$(labels)"
 
 # --- groups that stop: a failed group gate, a parked group ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -351,9 +341,6 @@ setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1;
 "$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true; "$TEMPER" gate intent >/dev/null 2>&1
 assert_eq "review 9: the trivial window still holds after the Intent agent's gate ran (WP17: the verdict recorded)" "True" \
   "$(vw "d['guard']['trivial_exit']")"
-# 10. A door's walked stage that fails its check names the failed rows in its question.
-fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1; _base_known; gfail intent "problem stated" "no Problem section"
-assert_eq "review 10: the walked stage's question names what failed" "1" "$(nx "int('problem stated: no Problem section' in d['ask']['question']['question'])")"
 
 # --- the independent review of 9.7.0, round 2: each finding, reproduced ---
 _walk_to_commit() { # a run of the demo spec with every stage passed, at the commit stage
@@ -423,10 +410,6 @@ _park8="$(nx "' '.join(d.get('calls') or [])")"; [[ "$_park8" == *" park --verdi
 assert_eq "round 2, 11b: only the commit gate's own row failed: Check again is first" "commit.fail|check-again|False|gate commit" \
   "$(nx "q = d.get('ask') or {}; o = (q.get('options') or [{}])[0]; '%s|%s|%s|%s' % (q.get('id'), o.get('id'), bool(o.get('recommended')), ((o.get('calls') or ['none'])[-1]).split('temper ', 1)[-1])")"
 git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
-# 12. The Design door is the person's ask for Design (WP14): the stages before it are walked, not run again.
-setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; _base_known; "$TEMPER" state set complexity simple >/dev/null 2>&1
-assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
-  "$(nx "d['action'] + '|' + (d['calls'][0].split('temper ', 1)[1] if d['calls'] else '') + '|' + str(len(d.get('agents') or []))")"
 # 13. Stop at a group question saves the run; it records no Build verdict.
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1; second_group
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json

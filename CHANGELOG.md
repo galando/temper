@@ -258,6 +258,17 @@ All notable changes to Temper are documented here. The plugin version lives in
   table of models by tier and risk (`temper model --all --source`), with `models.<agent>` and `models.high.<agent>`
   over it: the planner, Design and RCA stay on Opus, every other agent and the Build task agents run on Sonnet
   (`models.task: haiku` for cents). ADR 0022: the acceptance tests keep their own writer, alone and first.
+- WP28: two listed commands, `/temper:temper` and `/temper:fix`. What the other nine did is a word of `/temper:temper`
+  or gone: `draft <idea>` captures a draft `intent.md` with no run (`reference/draft.md`), `status` and `report` show
+  the run, `init` runs `temper config init`, `temper init` and `temper guards install`, and `pack` (with `pack enable
+  guardrails` or `pack disable guardrails`) reads `reference/pack.md`. The five stage doors are gone, with `state init
+  --enter` (refused in one line: `/temper:temper` takes up the active run), the state keys `enter` and `built_before`
+  (still refused by `state set`), the question `run.walked`, `scripts/earlier_build.py` and `reference/status.md`. A
+  word counts only in its documented form, in the page and in the mod: `/temper:temper status badge on the order page`
+  starts a run for that feature. The stage hook marks `/temper:temper draft` (ADR 0005 is unchanged: a session that
+  captured a draft owes the intent gate). What is lost: a planned folder with no run is started from its intent, and
+  its plan is written again. A run saved by 9.8.4 or by the base after it came through a door keeps `enter` in its
+  state: the key is ignored, so a stage before the door with no verdict runs its agent. It is not an error.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

@@ -19,7 +19,7 @@ packs: [quality, tdd, security, git, performance]
 # heuristic-only | require. See ${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md
 tools:
   mode: auto
-  # External review engine: open-code-review (ocr CLI). Off by default. /temper:review
+  # External review engine: open-code-review (ocr CLI). Off by default. Review
   # runs ocr only when mode is auto (use it when it is installed and ready) or require
   # (block the review when it is not). When it runs, OCR takes over line-level defect
   # detection and sends the diff to the model provider you set up for it.
@@ -64,14 +64,10 @@ check:
 #   rca: opus      # /temper:fix stages
 #   fix: sonnet
 
-# The stage commands (/temper:plan, :design, :build, :review, :check) are doors into /temper
-# since 9.7.0: every stage runs in its own isolated subprocess, so the old `stages.subprocess`
-# key does nothing any more. /temper:intent stays inline: it is an interactive capture.
-
 # Control bands: closing the loop (the CLI's `bands` check). A deterministic check of the
 # history arrays in .temper/metrics.json against rolling mean ± k·sigma bands plus a
 # same-side-run drift rule. Detection never involves a model; the response to a breach
-# is tiered here and lands in the normal pipeline (/temper:status renders the verdict;
+# is tiered here and lands in the normal pipeline (the word status renders the verdict;
 # a propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to
 # run — through every ordinary gate, never around them). The block absent = these
 # defaults; the CLI's `bands` check in CI or cron is the trigger layer, never a daemon.
@@ -84,7 +80,7 @@ check:
 #   metrics: [coverage, tests]
 #   tiers:
 #     1sigma: log         # in the report only
-#     2sigma: diagnose    # read-only diagnosis via /temper:status
+#     2sigma: diagnose    # read-only diagnosis via the word status
 #     3sigma: propose     # draft an intent.md into .temper/specs/ for /temper to run
 
 # Edit-time protected paths (guardrails pack: block-protected-paths.sh). Same folder-name

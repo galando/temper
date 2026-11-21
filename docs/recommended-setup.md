@@ -42,7 +42,7 @@ then add it to Claude Code as an MCP server named `semgrep` that starts Semgrep 
 
 ### open-code-review (Line-Level Defect Engine)
 
-Provides deterministic, file-bundled code review via an external LLM. OCR is off by default. When you turn it on (`tools.ocr.mode: auto` or `require`, see the config below) and `ocr` is on your `PATH`, OCR takes over line-level defect detection (NPEs, injections, thread-safety) during `/temper:review`. Temper keeps intent validation, security analysis, architecture depth, and review memory. Findings are labeled `[OCR]`; cross-validated findings that both engines agree on are labeled `[OCR+TEMPER]`.
+Provides deterministic, file-bundled code review via an external LLM. OCR is off by default. When you turn it on (`tools.ocr.mode: auto` or `require`, see the config below) and `ocr` is on your `PATH`, OCR takes over line-level defect detection (NPEs, injections, thread-safety) during Review. Temper keeps intent validation, security analysis, architecture depth, and review memory. Findings are labeled `[OCR]`; cross-validated findings that both engines agree on are labeled `[OCR+TEMPER]`.
 
 To install it, follow the steps in the
 [open-code-review README](https://github.com/alibaba/open-code-review). Temper does not install it.
@@ -56,7 +56,7 @@ ocr review --preview --from HEAD~1 --to HEAD
 
 **Configure OCR's model:** OCR needs its own model provider setup. See the [open-code-review docs](https://github.com/alibaba/open-code-review).
 
-**How findings merge into a review** (the mechanics `/temper:review` applies when
+**How findings merge into a review** (the mechanics Review applies when
 `tools.ocr.mode` isn't `off` and `ocr` is ready): Review runs `ocr review --format json
 --audience agent` over the diff range under a timeout, parses `comments[]`, and maps
 each to a severity/category from its prose (`Critical Bug`/`Vulnerability` → CRITICAL,
@@ -100,12 +100,12 @@ tools:
 
 ## Verify Setup
 
-Run `/temper:status` to check:
+Run `/temper:temper status` to check:
 
 - Live scenario verification status
 - MCP tool availability (code-review-graph, semgrep)
 - Evidence ratio (proven vs heuristic findings)
 
 ```
-/temper:status
+/temper:temper status
 ```

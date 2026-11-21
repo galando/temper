@@ -182,3 +182,29 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     expect(ran).toEqual([])
   })
 })
+
+// WP28: a first word is a word only in its documented form. A request that only starts with a word reaches the driver as
+// a request and starts a run; a word in its form (draft with an idea, init, pack, pack enable guardrails) starts none and
+// goes on to the prompt based command, which reads its page.
+describe('w28 the words of /temper:temper and the driver', () => {
+  test('w28 /temper:temper status badge on the order page reaches the driver as a request: state init with it whole', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = world(on, {}, { projectRoot: '/repo' })
+    const { ran } = engine(on, w, [{ action: 'none', say: 'No run is active.' }])
+    await api.session.start(START)
+    await api.command.run({ command: 'temper:temper', args: 'status badge on the order page', origin: { kind: 'composer' } })
+    expect(ran.some(c => / state init \S+ --feature 'status badge on the order page'$/.test(c))).toBe(true)
+  })
+
+  for (const args of ['draft an idea', 'init', 'pack', 'pack enable guardrails']) {
+    test(`w28 ${args}: no run is started, and the words go on to the prompt based command`, async ($, on) => {
+      const api = $ as unknown as Api
+      const w = world(on, {}, { projectRoot: '/repo' })
+      const { ran } = engine(on, w, [])
+      await api.session.start(START)
+      await api.command.run({ command: 'temper:temper', args, origin: { kind: 'composer' } })
+      expect(ran.filter(c => / state init /.test(c))).toEqual([])
+      expect(w.commandRuns.map(c => c.args)).toEqual([args])
+    })
+  }
+})

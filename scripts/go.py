@@ -24,7 +24,7 @@ mod lets through today. A call that fails stops it, unless it recorded a verdict
 `group gate` and `integrate` print `VERDICT: <scope> <PASS or FAIL or PARKED>` on stdout once the verdict is recorded,
 and a call whose own marker is there is no failure, whatever its exit code: the verdict is what the next question asks
 about. `verdicts` lists the markers read, in order. The full view still goes to .temper/view.json for the mod and
-/temper:status.
+the word status of /temper:temper.
 Standard library only.
 """
 import json

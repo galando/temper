@@ -21,7 +21,7 @@ This skill leverages the Context7 MCP server (if available) to fetch version-spe
 
 ## When to Use
 
-- `/temper:build` or `/temper:fix` writing framework-specific code (React, Spring Boot, Express, FastAPI, etc.)
+- Build or `/temper:fix` writing framework-specific code (React, Spring Boot, Express, FastAPI, etc.)
 - Adding or updating a dependency
 - Writing code that uses a library API you haven't used recently
 - Whenever the agent says "I believe the API works like..."

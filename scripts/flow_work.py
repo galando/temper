@@ -141,18 +141,15 @@ class WorkPart:
 
     # -- WP20: the baseline, before any other step of an active run, and the red base question ----------------------
     def base_step(self):
-        """The CLI's own `baseline start` when the run has no baseline file (`--env-only` at a door into Review or
-        Check); the red base question while the base is red and nobody answered; None else. A run that goes on by
+        """The CLI's own `baseline start` when the run has no baseline file; the red base question while the base is red and nobody answered; None else. A run that goes on by
         itself stops first (a recorded stop with its notice); agents in flight have finished when next is asked."""
         r = self.r
         f = os.path.join(TEMPER, "evidence", "baseline.json")
         if not os.path.exists(f):
-            door = (r.state.get("enter") or "") in ("review", "check")
-            if not door and r.state.get("base_sha"):
+            if r.state.get("base_sha"):
                 return None   # a run approved before it had a baseline (an earlier version saved it): its code is no base
-            return {"action": "auto", "stage": r.stage, "calls": [self.c("baseline start" + (" --env-only" if door else ""))],
-                    "say": "The environment is checked%s, before any agent." % (
-                        "" if door else ", and the project's suite runs once on the current code")}
+            return {"action": "auto", "stage": r.stage, "calls": [self.c("baseline start")],
+                    "say": "The environment is checked, and the project's suite runs once on the current code, before any agent."}
         b = read_json(f, {})
         if b.get("result") != "red" or b.get("answer") or b.get("env_only"):
             return None
@@ -541,7 +538,7 @@ class WorkPart:
         r = self.r
         if r.command != "temper" or not r.spec or not os.path.isfile(os.path.join(r.spec, "intent.md")):
             return None
-        if r.state.get("built_before") or (r.groups.get("groups") or {}):
+        if r.groups.get("groups") or {}:
             return None
         d = self.acceptance()
         if d.get("cmd") or d.get("skipped"):

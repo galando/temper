@@ -256,12 +256,12 @@ class CommitPart:
     def intent_by_rule(self):
         """WP13 (ADR 0019 decision 5): the run leaves Intent with no question, as the CLI's own action, only when a
         /temper:temper run's Intent check passed (not skipped), intent.md exists, no Blocking question is open, the run did
-        not come back to Intent, the person typed no note there, and no door walked it. The intent stays a draft; the
+        not come back to Intent, and the person typed no note there. The intent stays a draft; the
         person accepts it with the plan, at the approval (accept_draft). Else the Intent question is asked as before."""
         r = self.r
         return (r.command == "temper" and r.verdict("intent") == "PASS" and r.skip("intent") is None and bool(r.intent)
                 and not r.blocking() and not r.loop_into("intent") and not r.loop_through("intent")
-                and not r.notes("intent", "input") and not self.walked("intent"))
+                and not r.notes("intent", "input"))
 
     def fold_calls(self, cm):
         """WP13: the folded Context check is answered by the approving option the person picks: plan.md records that the

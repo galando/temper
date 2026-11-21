@@ -408,14 +408,15 @@ describe('the run starts from the request the person typed, in the conversation 
     w.sessionId = 'conv-2'
     expect(await sh(api, init('Partial refunds for invoices'))).toBeUndefined()
   })
-  test('a run word keeps nothing, and a door clears what was kept', async ($, on) => {
+  // WP28: the doors are gone; /temper:fix is the one other command left, and it clears what was kept as a door did.
+  test('a run word keeps nothing, and the other command clears what was kept', async ($, on) => {
     const api = $ as unknown as Api
     world(on, {}, { fakeCli: true, projectRoot: '/repo' })
     await api.session.start(START)
     await api.command.run({ command: 'temper:temper', args: REQ, origin: { kind: 'composer' } })
     await api.command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })
     expect(await sh(api, init('Partial refunds'))).toBe(FEATURE_DENY)
-    await api.command.run({ command: 'temper:plan', args: 'Partial refunds', origin: { kind: 'composer' } })
+    await api.command.run({ command: 'temper:fix', args: 'Partial refunds', origin: { kind: 'composer' } })
     expect(await sh(api, init('Partial refunds'))).toBeUndefined()
   })
 })
