@@ -142,7 +142,7 @@ class CommitPart:
         first += prs[:1] + [self.loop_opt("check", "fix" if r.command == "fix" else "build")]
         rest = prs[1:]
         opens = [f for f in r.findings() if f["state"] == "open"]
-        text = "Commit: every gate passed%s, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?" % (
+        text = "Commit: every gate passed%s, and the run that went on by itself stopped here for you (its report: .temper/autonomy-report.md). Commit?" % (
             self.finding_counts(opens))
         anyway = self.run_anyway(["check run --fresh", "gate check", "gate commit"])   # WP22
         return self.with_more(GATE_HEADER, text, "commit", first, rest + [anyway, self.save()], "Commit: more options.", qid="commit.confirm")
@@ -156,7 +156,7 @@ class CommitPart:
             kind = "SHIP-PENDING-COMMIT" if verdict == "PASS" else "PARKED-NEEDS-DECISION"
             why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit"))[:200]
             return {"action": "auto", "stage": "commit", "calls": [self.c('park --verdict %s --reason %s' % (kind, shlex.quote(why or "every gate passed")))],
-                    "say": "The armed run parks before the commit; the person decides."}
+                    "say": "The run stops before the commit; the person decides."}
         if verdict == "PASS":
             end = r.state.get("end_report")
             if end in ("html", "none"):

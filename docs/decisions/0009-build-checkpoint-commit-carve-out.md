@@ -2,6 +2,8 @@
 
 Date: 2026-09-29 · Status: accepted · Applies to: `temper gate commit` (scripts/temper)
 
+**Amended by:** ADR-0021 (9.8.5: a second carve out of the commit gate, the repair commit the CLI makes in the stage)
+
 ## Context
 
 Build runs one task per checkpoint: the moment a scenario's test goes GREEN, the

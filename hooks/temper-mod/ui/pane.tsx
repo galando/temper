@@ -130,7 +130,7 @@ export function renderPane(kit: Kit, view: View, inline = false): RenderElement 
             view.grid.map(g => (
               <Box key={`group-${g.id}`} flexDirection="column">
                 <Text bold color={g.status === 'parked' ? YELLOW : g.status === 'passed' || g.status === 'merged' ? GREEN : FG}>
-                  {`${g.id}${g.title ? ` ${g.title}` : ''}${g.status === 'pending' ? '' : ` (${g.status})`}`}
+                  {`${g.id}${g.title ? ` ${g.title}` : ''}${g.status === 'pending' ? '' : ` (${g.status === 'parked' ? 'stopped' : g.status})`}`}
                 </Text>
                 {(inline ? g.tasks.filter(t => t.state !== 'pass') : g.tasks).map(t => (
                   <Text key={`task-${t.n}`} color={TASK_COLOR[t.state]}>{`  ${taskText(t)}`}</Text>

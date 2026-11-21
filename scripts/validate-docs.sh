@@ -249,8 +249,8 @@ ROWS = [
     ('commands/fix.md', '-', r'Ready to push', 'the fix run invites no typing'),
     ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),
     ('reference/check.md', '-', r'write `build-state.json` with', 'the guard refuses a hand written run state'),
-    ('reference/autonomy.md', '-', r'Run /temper to resume', 'a park waits at its gate question, not for a typed command'),
-    ('reference/autonomy.md', '+', r'The run waits for you at the gate it parked at', 'a park shows its gate'),
+    ('reference/autonomy.md', '-', r'Run /temper to resume', 'a stop waits at its question, not for a typed command'),
+    ('reference/autonomy.md', '+', r'The run waits for you at the question of the stage where it stopped', 'a stop shows its question'),
     ('reference/autonomy.md', '+', r'final feature commit', 'autonomy never makes the final feature commit'),
 ]
 for page, sign, pattern, why in ROWS:

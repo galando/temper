@@ -296,7 +296,7 @@ class BuildPart:
             if r.armed():
                 return {"action": "auto", "stage": "build",
                         "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote("the groups are to be merged again after the commits the CLI did not make were kept or taken out"))],
-                        "say": "The armed run parks for you before the groups are merged again."}
+                        "say": "The run stops and waits for you before the groups are merged again."}
             return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER,
                     "The commits the CLI did not make are kept or taken out. Merge the groups again?", stage="build", qid="build.foreign", options=[
                         self.opt("Merge the groups (Recommended)", "Merge the passed groups again and check Build.", move="redo", calls=again, oid="merge-groups"),
@@ -307,7 +307,7 @@ class BuildPart:
         if r.armed():
             return {"action": "auto", "stage": "build",
                     "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote("group %s's branch holds commits the CLI did not make: %s" % (gid, csv)))],
-                    "say": "Group %s holds commits the CLI did not make; the armed run parks for you." % gid}
+                    "say": "Group %s holds commits the CLI did not make; the run stops and waits for you." % gid}
         wt = (branches.get(gid) or {}).get("worktree") or ""
         # They are taken out newest first, each one by a rebase of the group's worktree onto its parent. Only when they
         # are the newest commits of that branch: a rebase would write the CLI's own commits above them again, as commits
@@ -638,12 +638,12 @@ class BuildPart:
         amend = self.amend_calls(blocked) if blocked and not foreign else None
         if amend:   # WP25: a file its own group owns is added by rule, in every mode (the CLI's own call; the card lists it)
             return {"action": "auto", "stage": "build", "calls": amend,
-                    "say": "Group %s is parked on a blocked task whose file its own group owns: the rule adds the file to the "
+                    "say": "Group %s stopped on a blocked task whose file its own group owns: the rule adds the file to the "
                            "task, and the task runs again." % gid}
         if r.armed():
             return {"action": "auto", "stage": "build",
-                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s is parked: %s" % (gid, str(g.get("parked_reason", ""))[:200])))],
-                    "say": "Group %s is parked; the armed run parks for you." % gid}
+                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s stopped: %s" % (gid, str(g.get("parked_reason", ""))[:200])))],
+                    "say": "Group %s stopped; the run stops and waits for you." % gid}
         if foreign:
             wt = ""
             for n in tasks:
@@ -659,7 +659,7 @@ class BuildPart:
                              calls=[self.c("group reopen %s %s --accept-foreign %s --reason '{reason}'" % (gid, targs, csv))],
                              reason=["The commits are right", "I accept the risk"], oid="keep-commits"),
                     self.save()]
-            text = "Group %s is parked: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
+            text = "Group %s stopped: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
         elif blocked:
             # 9.8.4: a task whose test needs a file it does not declare: no attempt on any model can build it as planned
             # (a benchmark run spent two Haiku and two Sonnet attempts on one). WP25: a file its own group owns was added by
@@ -682,7 +682,7 @@ class BuildPart:
                 opts = [self.plan_loop(True, "The plan cannot be built"), rerun, save]
             else:
                 opts = [self.set_rec(save, True), rerun]
-            text = "Group %s is parked: %s. No attempt can build it as planned. %s" % (
+            text = "Group %s stopped: %s. No attempt can build it as planned. %s" % (
                 gid, what, "Add %s to Task %d?" % (new[0].get("needs"), new[1]) if new else "Loop back to Plan?" if back else "Save the run for later?")
         else:
             # 9.8.0 (round 5): a group that parks again after the person ran it again failed every model twice over: the
@@ -699,6 +699,6 @@ class BuildPart:
             if again:
                 opts.append(rerun)
             opts.append(self.save())
-            text = ("Group %s is parked again after a rerun (%s). Loop back to Plan?" if again else
-                    "Group %s is parked (%s). Run the task again?") % (gid, str(g.get("parked_reason", ""))[:200])
+            text = ("Group %s stopped again after a rerun (%s). Loop back to Plan?" if again else
+                    "Group %s stopped (%s). Run the task again?") % (gid, str(g.get("parked_reason", ""))[:200])
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="group.parked")}

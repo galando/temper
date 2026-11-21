@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "displayName": "Temper",
-  "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a phase bar in Claude Code.",
+  "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a stage bar in Claude Code.",
   "version": "9.8.5",
   "author": {
     "name": "galando",
@@ -70,8 +70,8 @@
     },
     "phaseModels": {
       "type": "string",
-      "title": "Per-phase models",
-      "description": "Optional. Comma separated phase=model pairs such as build=sonnet. Empty means no change.",
+      "title": "Models per stage",
+      "description": "Optional. Comma separated stage=model pairs such as build=sonnet. Empty means no change.",
       "default": "",
       "sensitive": false
     },

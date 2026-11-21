@@ -277,7 +277,7 @@ d['tasks']['1']['reopened'] = [{'ts': '2026-11-05T13:21:37Z', 'feedback': None}]
 json.dump(d, open(p, 'w'))
 PY
 assert_eq "9.8.0: a group parked again after a rerun recommends Loop back to Plan, and still offers the rerun" "Loop back to Plan (Recommended)|1|1" \
-  "$(nx "d['ask']['question']['options'][0]['label']")|$(nx "d['ask']['question']['question']" | grep -c 'parked again after a rerun')|$(labels | grep -c 'Run the task again')"
+  "$(nx "d['ask']['question']['options'][0]['label']")|$(nx "d['ask']['question']['question']" | grep -c 'stopped again after a rerun')|$(labels | grep -c 'Run the task again')"
 _at_lock() { fresh; mkdir -p .temper/specs/demo/acceptance; printf 'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ac01(self):\n        self.assertEqual(1, 2)\n' > .temper/specs/demo/acceptance/test_ac.py; }
 _at_lock
 assert_eq "9.8.0: acceptance lock refuses a command that cannot run here, and names why" "1|1" \

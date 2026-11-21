@@ -8,8 +8,8 @@ model: sonnet
 
 **First output.** Look at your system prompt for a line that starts with `Temper enforcement:`. With
 none, your first line is exactly `Temper enforcement is off here (no mods support); continuing with
-prompt based phases.` With `Temper enforcement: off (UI only)`, it is exactly `Temper enforcement is
-off (turned off by the user); continuing with prompt based phases.` With `active`, say nothing about
+prompt based stages.` With `Temper enforcement: off (UI only)`, it is exactly `Temper enforcement is
+off (turned off by the user); continuing with prompt based stages.` With `active`, say nothing about
 it. Say it once per conversation; it is never an error. A stage agent never sees that line, so never
 ask one to say it.
 
@@ -20,7 +20,7 @@ run it exactly as printed, never through a shell variable (the mod refuses a pro
 gate, an option or a next stage yourself.
 
 
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
 With the mod on, the mod carries the run (the run driver: `docs/mod.md`) and hands one step here, one the person chose:
 the person's command stays as typed, with a note after it that ends `step <kind> <option id>` (see Arguments). Either
 way the run is where the CLI says it is.
@@ -49,7 +49,8 @@ request.
 
 ## Start
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`. When its `say` starts with `Temper 9.8.5 asks twice`, say
+that one sentence first, as it is: the CLI says it once to a project that ran an earlier Temper.
 
 - When it lists `setup`, run those calls first, each once, and say in one line what was set up. When
   `temper guards install` (which runs `scripts/guards/install.sh`) exits non zero, show its `FAIL` line (or its whole output in a fenced
@@ -109,7 +110,8 @@ the word `status` read it); the loop only needs `temper go`.
     is yours to fill (a commit message that says what the feature does).
   - **The report.** When a call prints the run's report (`temper report --end`), copy what it printed into
     your reply, as it is, in a code block, before the next call: the person does not see a Bash call's
-    output. Then run `next`: it asks whether to write the report as an HTML page too.
+    output. Then run `temper go`: it writes the report page, `report.html` in the spec folder, with no question, and
+    the commit steps follow.
   - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
     text there as it is, with each `'` in it written as `'\''`, so a backquote or a `$` in it stays text. Run `git commit` in a Bash call
     of its own, after the `git add` call.
@@ -124,12 +126,11 @@ the word `status` read it); the loop only needs `temper go`.
 - **`wait`**: tasks are running. For a task whose agent you launched in this conversation, wait for
   its result, then run its `after` calls. Otherwise (a new conversation) run its `after` calls now.
 - **`auto`**: the CLI's own move (the run after the approval goes on to the commit by itself, or a step with
-  nothing to decide): run its `calls`. Never ask "Shall I...?". A stop is the park call; say its `say` in one
+  nothing to decide): run its `calls`. Never ask "Shall I...?". A stop is the CLI's `temper park` call; say its `say` in one
   line, then ask the question that follows.
 - **`broken`**: say its `say` in one line and ask its `restart` question.
 - **`none`** after a commit: the steps printed the report before they cleared the run (a report printed
-  now is empty); when the person asked for the page, it is `report.html` in its spec folder. Say where it
-  is and stop.
+  now is empty); the page is `report.html` in its spec folder. Say where it is and stop.
 
 Run the calls of one action in one Bash call, one per line, when they are only `temper` calls; a
 `git` call goes in a call of its own.

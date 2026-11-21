@@ -30,7 +30,7 @@ the plugin folder.
    no gate counts (9.8.5).
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
    `$` in it stays text.
-   As soon as RED is confirmed, also record the test's path — this arms the write
+   As soon as RED is confirmed, also record the test's path — this turns on the write
    shield (`protect-regression-test.sh` blocks you from editing that file; fix the
    code, not the test):
    ```

@@ -62,6 +62,7 @@ What users have is 9.8.4 (`7c7a1c1`).
 | the shapes of `scripts/defaults.py` | `KEYS` `{dot path: (default, literal, meaning)}` (a path with `<agent>` stands for each agent of the table of models), `OLD` `{dot path: [(value, version)]}`, `GONE` `{dot path: (replacement, meaning, version)}`, `RENAMED` `{new: old}`, `VERSION`, `default(path)`; `config_yaml.get(d, path)` with no default reads `RENAMED`, then `KEYS` | WP29 | WP30 (moves keys from `KEYS` to `GONE`), case files 46 and 73 |
 | `config_tidy.stale(text)`, `config_tidy.question_text(found)`; `cli_ctx.packs(plugin, config_file, stage)` and `PACK_STAGES` | the lines the question offers to remove and its text; the pack files of a stage and the entries in braces | WP29 | the flow (`WorkPart.tidy_step`, `WorkPart.packs_lines`) |
 | `scripts/words.json`, `scripts/check_words.py` | the 12 words and the retired ones | WP31 | none |
+| `scripts/notice.py` (`TEXT`, `take`, `put`, `init`) | the one time notice and its mark `.temper/notice.json`: `cli_ctx.py` takes it for `temper next`, `go.py` keeps it, `temper init` marks a new project | WP31 | none |
 | `scripts/e2e/replay_compare.py`, `docs/evidence/scorecard-9.8.5.json` | the replay gate; the bench result | WP32 (WP05 writes the code that makes the scorecard file) | WP07 reads the scorecard file in `final`; the README's one line on cost and time may state a figure only from it (`D108`) |
 | `docs/evidence/ab-replay-9.8.5.md` | the replay page; at the base it compares 9.8.4 with the base | the head | WP32 rewrites it in place as one page with three columns: 9.8.4, the base, the result. No second replay page is made |
 | `docs/history/build-9.8.5.md` | the summary of what happened, for the owner: the eight parts of section 8, at most 150 lines | WP32, last, after its green `final` | `python3 scripts/check_done.py --summary` (`D107`); the pull request text opens with its parts 1, 2 and 6 |
@@ -176,6 +177,7 @@ The view stays version 1: a field is added, none is renamed or removed (`D65`).
 | `guard.adhoc_kind` | the view; the mod reads it as `adhocKind` beside `adhocStage` (`core/runview.ts`, `RunFacts`) | WP24 | the mod |
 | `next.after` | the view, only when not empty: the `repair` calls among the `before` and `after` calls of a `work` action's agents; the mod lets them through as calls of the action the view names (`core/runview.ts`, `adapter.ts`) | WP24 | the mod |
 | `drift_ids` beside the options of `drift`, their ids at their places | the view | WP04 | every test |
+| `notice` | `temper go`, once: the one time notice the first `next` of an older project put in front of its `say` | WP31 | the mod's run driver shows it when no run is active yet |
 
 ## 5. Question ids and option ids: the closed list
 

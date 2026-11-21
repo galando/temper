@@ -44,5 +44,6 @@ need TRUST "temper guards uninstall" "after a plugin is disabled, run temper gua
 need TRUST "reads no settings file" "Temper reads no settings file to find out that a plugin is disabled"
 need TRUST "pushes only after the person chose a pull request option at the commit question" "Temper pushes only after the person chose a pull request option at the commit question"
 need MOD "only from the option you pick at the approval" "a run goes on by itself only from the person's option at the approval"
+need TRUST "that a person, not the model, picked an option" "with the mod off only the page's rule holds that a person, not the model, picked an option"
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

@@ -30,24 +30,22 @@ solves the right problem — **mechanically**, not by asking the model to grade 
 
 ## How It Works
 
-One loop, a human gate at every stage, the cheapest artifact reviewed first:
+Five stages, Intent, Plan, Build, Review and Check, and two questions: you approve once before any code is written
+and once at the commit.
 
 ```
-INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
-  ↑ WHY — approved before any tokens are spent downstream
+INTENT -> PLAN -> (approval) -> BUILD -> REVIEW -> CHECK -> (commit question) -> COMMIT
 ```
 
-- **Intent gate first** — you approve the Problem and success criteria before
-  exploration or architecture runs. A wrong intent multiplies into wrong everything;
-  correcting it at this gate costs words, after Plan it costs the plan.
-- **Scenarios before architecture** — BDD scenarios are derived from a *measured*
-  blast radius, so every planned file traces to a behavior.
-- **Every gate is computed** — the `temper` CLI (auditable bash, no network) reads an
-  evidence ledger and prints PASS/FAIL per requirement. A red gate blocks `git commit`
-  via a real pre-commit hook; a human can override (recorded, never erased) — a
-  confused model can't.
-- **Fixes leave lessons:** a fix writes a committed `lessons.md` every future RCA
-  reads first.
+- **The intent first.** The rules your request left out come back as questions with ready answers, and the approval
+  shows the intent's criteria beside the plan, so a correction costs words, not code.
+- **One approval before code.** The card shows what will be true, the files that will change and the commands the
+  checks run. After Approve and build the run goes on by itself: a passed check moves on, and a failed check gets one
+  counted repair. It stops and asks you only when a check still fails after that repair.
+- **Every gate is computed.** The `temper` CLI reads an evidence ledger and prints PASS or FAIL for each row; a check
+  it could not measure is shown as not measured. A red gate blocks `git commit` through a real pre-commit hook; a
+  person can override it (recorded, never erased), a confused model cannot.
+- **Fixes leave lessons.** A fix writes a committed `lessons.md` that every later root cause analysis reads first.
 
 ## The Temper mod (Claude Code 2.1.287 or later)
 
@@ -59,7 +57,8 @@ layer and shows them. Older versions load the plugin as before.
   to the hook, which refuses it until the gates pass or you override them. Every refusal names the
   next step. Temper is not a sandbox: [Trust](trust.md) lists what the mod does not see.
 - **You decide in one place.** Every gate is a question in Claude Code's own dialog, with or
-  without the mod: Continue, Loop back, Override and continue, Save for later, Teach me, Grill me.
+  without the mod, with the options the CLI gives: Approve and build, Ask me at every stage, Commit, Loop back,
+  Override and continue, Save for later.
 - **You see where you are.** A stage bar shows Intent, Plan, Build, Review and Check with their
   results, the status and the details of the stage. It never decides anything.
 - **You choose how much it shows.** `uiMode` is full, minimal or off. `enforcement` is on or off.
@@ -73,21 +72,18 @@ writes. To try a branch on your own machine, follow [Testing the mod](mods-testi
 
 ## Commands
 
-Three you'll actually type. `/temper:temper` runs and routes the rest:
+Two commands:
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper:temper "…"`](commands.html#tempertemper-the-run) | The whole pipeline, intent gate to commit |
-| [`/temper:fix "…"`](commands.html#temperfix) | Root cause → failing test (write-protected) → minimal fix |
+| `/temper:temper "..."` | The whole run, from your request to the commit |
+| `/temper:fix "..."` | Root cause, a failing regression test, a minimal fix |
 
-`/temper:temper` also takes a few words: `draft <idea>` captures an idea as a committed draft to build later, and
-`status`, `report`, `init` and `pack` stand alone. See the commands reference.
+`/temper:temper` also takes a few words, each alone after it: `draft <idea>` captures an idea as a draft to build
+later, and `status`, `report`, `init` and `pack` show the run or set the project up. See the commands reference.
 
-**Autonomy (opt-in):** after you approve the plan, `/temper` can run Build unattended; Review,
-Check and the commit still ask you. It never commits, pushes, or merges.
-
-**Works with any CI:** temper ships no platform files — its automation surface is
-commands and exit codes, the same under GitHub Actions, GitLab, Jenkins, or cron.
+**Works with any CI:** Temper ships no platform files. Its automation surface is commands and exit codes, the same
+under GitHub Actions, GitLab, Jenkins, or cron.
 
 ## Install
 
@@ -96,7 +92,7 @@ commands and exit codes, the same under GitHub Actions, GitLab, Jenkins, or cron
 /plugin install temper
 ```
 
-That's it. Your first `/temper:temper "…"` sets the project up: config, scaffold, and the
+That is all. Your first `/temper:temper "…"` sets the project up: config, scaffold, and the
 native commit gate. The short form `/temper` is an interactive shortcut that may not resolve in
 every surface.
 

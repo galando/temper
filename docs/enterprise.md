@@ -130,7 +130,7 @@ Clone the project, start Claude Code in it, and accept the plugin when the proje
 offer it. Then run:
 
 ```text
-/temper:temper status    # See pre-configured packs and quality metrics
+/temper:temper pack      # see the packs the project turns on
 ```
 
 No other setup is needed: the project settings bring the plugin, and the project brings its packs.

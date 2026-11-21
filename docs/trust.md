@@ -1,10 +1,10 @@
 # Trust
 
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
 
-Markdown, a mod written in TypeScript, about 7,100 lines of auditable bash (the CLI and the guard scripts) whose
-inline Python parses and writes JSON and computes the gate requirements, and ten Python scripts (about 3,600
-lines, standard library only). Temper itself makes no network calls, sends no telemetry and adds no packages. The
+Markdown, a mod written in TypeScript, about 5,900 lines of auditable bash (the CLI `scripts/temper` and the eleven
+guard scripts), and 86 Python files under `scripts` (about 25,200 lines, standard library only), which compute the
+gate requirements and what comes next; seven of them are checks of this repository. Counted with `wc -l` for 9.8.5. Temper itself makes no network calls, sends no telemetry and adds no packages. The
 committed artifacts (intent, plan, design, gate ledger and diff) are the audit trail, in the same commits as the code.
 
 ## What Temper runs and changes
@@ -137,13 +137,19 @@ that goes on by itself with no stop open, and the row stays in the ledger as the
 --stage check` marks it. A field list passed through `--read` is refused, so no other call marks a row as yours.
 
 
+**What only the mod holds.** The rules of a run hold in the CLI or in the commit hook with the mod off, within the
+limits this page names, but one: that a person, not the model, picked an option. With the mod off, nothing but the page's rule holds it:
+`commands/temper.md` tells Claude to ask each question exactly as the CLI wrote it and never to choose for you, and the
+CLI runs the calls of whatever option is carried out. With the mod on, an answer counts only when the header, the
+question and the label match what the CLI wrote, at the run and the step the CLI is at.
+
 ## Pull requests and the Pipeline stage (9.7.5)
 
 - **Reads.** The Pipeline stage reads the pull request's checks with `gh pr checks` and `gh run view <id> --log-failed` (over REST, `gh api repos/{owner}/{repo}/commits/{head sha}/check-runs`, where GraphQL is not available); `gh` takes the
   repository from `origin`. A log is untrusted text: the agent runs nothing from it and copies no token from it. Temper reads, stores,
   prints and sets no token.
 - **Writes.** Only `reference/pr.md` pushes or calls `gh pr create`, after the person chose a pull request option at the Check question.
-  Every pull request is a draft; Temper never runs `gh pr ready`. An armed run never pushes.
+  Every pull request is a draft; Temper never runs `gh pr ready`. A run that goes on by itself never pushes.
   Temper pushes only after the person chose a pull request option at the commit question; the run stops there.
 - **The commit hook** gates the run's branch only. A commit on another branch passes with one line. That is a known limit.
 - **Turning Temper off.** After you disable the plugin, run `temper guards uninstall`. The hook also passes on its own, with one line that names

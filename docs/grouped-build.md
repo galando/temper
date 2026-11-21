@@ -1,6 +1,6 @@
 # Grouped Build (9.7.0)
 
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
 
 Build runs in groups of small tasks, each handed to a slim task agent (on Sonnet since 9.8.5), with one human gate
 per group. It is the one Build since 9.7.0: in the baseline measurement (galando/temper#97) the
@@ -41,14 +41,14 @@ build:
 
 9.8.5: the builders run on Sonnet by default, from the one table of models (`scripts/cli_ctx.py`); `temper model --all
 --source` prints every agent's model and whether it comes from `config` or the `table`. For cents, set
-`models.task: haiku`: in nine runs an arm (`docs/evidence/haiku-sonnet-task-agents.md`) the task agents cost $0.07 a run
+`models.task: haiku`: in nine runs of each (`docs/evidence/haiku-sonnet-task-agents.md`) the task agents cost $0.07 a run
 on Haiku against $0.33 on Sonnet, and took 259 s against 134 s, with the same hidden tests passed. The old keys
 `build.grouped.task-model` and `build.grouped.escalation-model` are still read, below `models.task` and
 `models.task-escalation`. The plan gate's `shared production files` row fails when more than two tasks of one group declare the
 same production file (a test file does not count): merge them into one task.
 
 A task whose test needs a change in a file it does not declare cannot be built as planned on any model. Its agent records
-`temper task blocked N --needs <path> --reason '<why>'`; the gate fails once and parks the group without a retry or an
+`temper task blocked N --needs <path> --reason '<why>'`; the gate fails once and stops the group without a retry or an
 escalation, and the question recommends the loop back to Plan.
 
 ## What a run looks like
@@ -66,7 +66,7 @@ escalation, and the question recommends the loop back to Plan.
    repository (a package of a monorepo) the task works in the project's folder inside it, and
    the CLI reads every path from the project folder, as the plan writes them.
 3. **Schedule.** `temper schedule` prints the launchable tasks,
-   one JSON line each, with the model to use: dependencies met, group not parked, declared
+   one JSON line each, with the model to use: dependencies met, group not stopped, declared
    files disjoint from running tasks, `max-parallel` respected. The orchestrator launches all
    of them in one turn.
 4. **The orchestrator** runs `temper task start N`, which gives the task **its own worktree**
@@ -81,19 +81,19 @@ escalation, and the question recommends the loop back to Plan.
    passes only with RED then GREEN evidence for that task and only declared files changed in its worktree. On PASS the CLI
    commits the declared files on the task branch, merges it into the group branch (a fast-forward
    when it can) and removes the task's worktree. On FAIL the task's worktree is discarded and the
-   task is retried once on the task model in a fresh one, then escalated once to the escalation model. If that also fails, the group stops and the run parks
-   for a human; independent groups finish first. Every attempt, its model and outcome are recorded.
+   task is retried once on the task model in a fresh one, then escalated once to the escalation model. If that also fails, the group stops and the run waits
+   for you; independent groups finish first. Every attempt, its model and outcome are recorded.
 
-   **A park after a commit the CLI did not make.** Task agents must not run `git commit`. If one
-   does, the task gate FAILs naming the commit and its files and the group parks at once, with no
+   **A stop after a commit the CLI did not make.** Task agents must not run `git commit`. If one
+   does, the task gate FAILs naming the commit and its files and the group stops at once, with no
    retry. The commit can only be that task's, since the worktree is its own. The CLI changes
    nothing in that worktree and keeps it, and the group's other tasks refuse `task gate` and
    `task test` until the reopen (no verdict, no row), so they keep their work. You have two ways out,
    and the orchestrator asks you which one with a question (you click, Claude runs the lines):
-   - (a) take the commits off the task's branch (the park prints
+   - (a) take the commits off the task's branch (the stop prints
      `git -C <task worktree> rebase --autostash --onto <sha>~1 <sha>`, newest first), then
      `temper group reopen G1 --task N`; the next `task start` reuses that worktree with the
-     agent's uncommitted work. Reopen is refused while a parked commit is still on the branch.
+     agent's uncommitted work. Reopen is refused while such a commit is still on the branch.
    - (b) keep them knowingly: `temper group reopen G1 --task N --accept-foreign <sha>[,<sha>]
      --reason '<why>'`. The acceptance is recorded like an override and `temper report` lists it.
    Known limits: detection is by sha, so rewritten history can hide a commit (the group gate
@@ -105,7 +105,7 @@ escalation, and the question recommends the loop back to Plan.
    tasks it concerns; re-planning is the separate "Loop back to Plan" choice.
    `group reopen` is an orchestrator-only command: a task agent must not run it (the mod cannot
    tell a task agent's Bash from the orchestrator's, so this is a rule, not a hook).
-   The group gate also fails while the group is parked and when a passed task's commit is no
+   The group gate also fails while the group is stopped and when a passed task's commit is no
    longer on the group branch.
 7. **Integrate.** `temper integrate` merges the passed group branches into the feature branch
    (`--no-ff`), removes the worktrees, runs the checks when Build ends in one call (`temper check
@@ -175,7 +175,7 @@ empty. The CLI opens no file of Claude Code's to learn more, and records no toke
 
 To compare two runs (two models for the task agents, two plans, two versions of Temper), build
 the same feature from the same commit on two branches and compare the time per model, Build wall
-time, retries, escalations, parked groups and Review findings. For the cost of each, read your own
+time, retries, escalations, stopped groups and Review findings. For the cost of each, read your own
 usage page.
 
 

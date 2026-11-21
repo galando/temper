@@ -24,7 +24,7 @@ the stage it was made at (`unattended_from`).
   nothing typed, is no step back and the group declares no sensitive path. A finding below the level goes on and is
   named at the commit question.
 - A task an earlier task built is taken as done.
-- At a failed Build gate (the checks run when Build ends, 9.8.5, WP23) the failure record's class picks the step: a
+- At a failed Build gate (the checks run when Build ends) the failure record's class picks the step: a
   fault of the environment (`environment`) is a stop with the setup question, and no fix pass; a locked acceptance test
   that fails alone gets the triage agent, in every mode; a test the triage blames on the code gets one fix pass as the
   CLI's own action (one repeat of `gate:build`), and then the run asks; a test the triage calls wrong is a stop with
@@ -32,14 +32,14 @@ the stage it was made at (`unattended_from`).
   (`code`, the only failed rows) gets one fix pass by rule, then a stop; any other failed Build gate is a stop. No rule
   changes code for a test the triage does not blame on the code, and a class never changes a verdict.
 
-**A stop** is everything else: the park call (`temper park`), then the stage's own question, whose text says the run
-goes on by itself after the answer. The run keeps its mode; the answer's last call, `temper park --end --answer <id>`,
-ends the stop. `.temper/autonomy-report.md` holds the verdict and the reason, and ends with
-"The run waits for you at the gate it parked at." A plan that declares a file under `autonomy.park-on-touch` gets no
-repair by rule. A run taken up with no words asks its stage once (`temper go --taken-up`). The stops are listed in
+**A stop** is everything else: the CLI records it (`temper park`), then asks the stage's own question, whose text says
+the run goes on by itself after the answer. The run keeps its mode; the answer's last call,
+`temper park --end --answer <id>`, ends the stop. `.temper/autonomy-report.md` holds the verdict and the reason, and
+ends with "The run waits for you at the question of the stage where it stopped." A plan that declares a sensitive path
+(`autonomy.park-on-touch`) is risk H, is named on the approval card, and gets no repair by rule. A run taken up with no words asks its stage once (`temper go --taken-up`). The stops are listed in
 `scripts/stops.json`.
 
-**A red base after the approval** (9.8.5, WP20) is a stop: the baseline, still running at the approval, ended red.
+**A red base after the approval** is a stop: the baseline, still running at the approval, ended red.
 No new task agent is launched, the agents in flight finish and their calls run, the stop is recorded with its notice,
 and the run asks the red base question. "Go on anyway" there is a skip, so the run then asks at every stage.
 

@@ -35,6 +35,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import card  # noqa: E402
+import notice  # noqa: E402
 
 MAX_STEPS = 60
 MARKER = re.compile(r"^VERDICT: (\S+) (PASS|FAIL|PARKED)$")
@@ -130,12 +131,23 @@ def compact(n, ran, cli, verdicts=()):
     return out
 
 
-def taken_up(cli, root, ran):
+def tell(out, told):
+    """WP31: the one time notice the first next said stays in front of the say go prints, and in `notice`, which the
+    mod's run driver shows when the action says nothing else (a project with no active run)."""
+    if any(told):
+        notice.put(out, notice.TEXT)
+        out["notice"] = notice.TEXT
+    return out
+
+
+def taken_up(cli, root, ran, told):
     """WP11: `temper go --taken-up` (the run was taken up again with no words): a run that goes on by itself records a
     stop first, so its stage asks the person its question once."""
     p = subprocess.run([cli, "next", "--json"], cwd=root, capture_output=True, text=True)
     try:
-        armed = bool((json.loads(p.stdout).get("run") or {}).get("armed"))
+        n = json.loads(p.stdout)
+        armed = bool((n.get("run") or {}).get("armed"))
+        told.append(str(n.get("say") or "").startswith(notice.TEXT))
     except (ValueError, AttributeError):
         armed = False
     if armed:
@@ -148,8 +160,9 @@ def main(cli, root, flags=()):
     ran = []
     verdicts = []
     last = None
+    told = []   # WP31: the one time notice of the first next stays in front of the say go prints
     if "--taken-up" in flags:
-        taken_up(cli, root, ran)
+        taken_up(cli, root, ran, told)
     for _ in range(MAX_STEPS):
         p = subprocess.run([cli, "next", "--json"], cwd=root, capture_output=True, text=True)
         try:
@@ -158,6 +171,7 @@ def main(cli, root, flags=()):
             print(json.dumps({"action": "error", "say": "temper next failed: %s" % (p.stderr or p.stdout)[-300:],
                               "ran": [short(c, cli) for c in ran], "verdicts": verdicts}))
             return 1
+        told.append(str(n.get("say") or "").startswith(notice.TEXT))
         act = n.get("action")
         mechanical = act == "auto" or (act == "work" and not n.get("agents") and not n.get("steps"))
         calls = n.get("calls") or []
@@ -166,7 +180,7 @@ def main(cli, root, flags=()):
             if key == last:   # the same calls again: they changed nothing, so stop rather than loop
                 out = compact(n, ran, cli, verdicts)
                 out["action"], out["say"] = "error", "temper go: the same calls would run twice (%s); run them by hand" % "; ".join(short(c, cli) for c in calls)
-                print(json.dumps(out))
+                print(json.dumps(tell(out, told)))
                 return 1
             last = key
             for c in calls:
@@ -179,12 +193,12 @@ def main(cli, root, flags=()):
                     out = compact(n, ran, cli, verdicts)
                     out["action"] = "error"
                     out["say"] = "the call %s failed (exit %d): %s" % (short(c, cli), r.returncode, (r.stderr or r.stdout).strip()[-300:])
-                    print(json.dumps(out))
+                    print(json.dumps(tell(out, told)))
                     return 1
             if mechanical:
                 continue
             n = dict(n, calls=[])
-        print(json.dumps(compact(n, ran, cli, verdicts)))
+        print(json.dumps(tell(compact(n, ran, cli, verdicts), told)))
         return 0
     print(json.dumps({"action": "error", "say": "temper go: more than %d steps without a stop" % MAX_STEPS,
                       "ran": [short(c, cli) for c in ran], "verdicts": verdicts}))

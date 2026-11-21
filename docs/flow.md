@@ -2,7 +2,7 @@
 
 Two outputs of the `temper` CLI carry the whole flow of a run ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
 
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
 Both are computed by `scripts/flow.py` and its `flow_*.py` modules from the run's own files; nothing else decides what
 comes next. `flow.py` is the facade: `Builder`, `core_next` and the words the CLI starts it with. `flow_base.py` holds
 the tables (`SEQ`, `MOVES`) and the readers, `flow_run.py` the class `Run`, `flow_ask.py`, `flow_work.py`,
@@ -16,7 +16,7 @@ the tables (`SEQ`, `MOVES`) and the readers, `flow_run.py` the class `Run`, `flo
   9.8.5, the verdict marker: `temper gate <stage>`, `temper task gate <N>`, `temper group gate <G>` and
   `temper integrate` print one line on stdout once they recorded a verdict, `VERDICT: <scope> <verdict>`, with the
   scope `gate:<stage>`, `task:<N>`, `group:<G>` or `integrate` and the verdict `PASS` or `FAIL` (`PARKED` only for
-  `group:<G>`, from a task gate a parked group refuses). Exit codes do not change. A gate the commit hook runs, a
+  `group:<G>`, from a task gate a stopped group refuses). Exit codes do not change. A gate the commit hook runs, a
   gate of another spec folder and a call that recorded nothing print none. `temper go` reads the last marker line of
   a call's stdout (`recorded()` of `scripts/go.py`): a call that exits non zero is an error only when no marker of
   its own scope is there (a task gate's own task, or any group), and the marker is read only from a call `temper go`
@@ -47,7 +47,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `run` | `{id, step, slug, stage, command, mode}`, or `null` when no run is active |
 | `action` | what to do: `none`, `work`, `ask`, `wait`, `auto`, `broken` (below) |
 | `stage` | the stage the action belongs to |
-| `say` | one sentence for the person |
+| `say` | one sentence for the person. Once, in a project that ran an earlier Temper (`.temper/specs` or `.temper/archive` there, and no `.temper/notice.json`), the first `next` puts the one time notice in front of it, `Temper 9.8.5 asks twice: ...`, and writes that mark; `temper go` keeps it in front of the `say` it prints and in its key `notice`, which the mod's run driver shows when no run is active yet. `temper init` writes the mark for a new project, which is never told |
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step; 9.8.5: id `run.restart`, kind `resume`, options `start-over` and `cancel` (kind `cancel`) |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
 | `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); 9.8.5: `question` goes to the dialog as it is, so its ids sit beside it in `question_ids`: `{id, kind, options}`, with id `intent.blocking`, kind `blocking`, and each option's `id` in the same order (`choice-1` to `choice-3`, `type`, `carry`), Carry forward with the kind `carry`; `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
@@ -84,7 +84,7 @@ the tree the Review verdict judged runs all three, since the commit gate holds R
   recorded a verdict that `next` asks about, whatever its exit code, so the action goes on.
 - **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
   in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
-- **`auto`**: the CLI's own move: an armed autonomous run, or a step with nothing to decide (9.8.0: the one group of a plan passing, a Build task an earlier task already built in an armed run). Run `calls`, then ask `next` again.
+- **`auto`**: the CLI's own move: a run that goes on by itself, or a step with nothing to decide (9.8.0: the one group of a plan passing, a Build task an earlier task already built in a run that goes on by itself). Run `calls`, then ask `next` again.
   `run.armed` of `next` (WP11) says whether the run goes on by itself now.
 - **`broken`**: the run state does not fit its spec folder; ask the `restart` question.
 
@@ -107,10 +107,10 @@ means:
 | `label`, `description` | as in the question |
 | `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept` (a review finding), `covered` (a Build task an earlier task already built), `keep`, `commitOverride`, `redo`, `pause`, `restart`, `grant` (more repeats, at `run.budget`), `repair` (Repair again: one more repair in the stage, WP24), or `null` for an option that decides nothing |
 | `calls` | the CLI calls this answer makes, in order; `{reason}` is the person's reason. Every `{...}` text stands inside single quotes: put the text there with each `'` written as `'\''`, so a backquote or a `$` in it stays text |
-| `steps` | for Commit at a parked run: the commit steps |
+| `steps` | for Commit at a run that stopped there: the commit steps |
 | `step_kinds` | WP16, beside `steps` (on an option and on a `work` action) when a step has a kind: one entry a step, `show-last` for the report step, `note` for the note of a run with nothing to stage, `""` for any other. The mod's run driver selects these two steps by kind, never by their words |
 | `do` | for an option that decides nothing: what to do, then ask the question again (words for a person or a model; the mod's run driver never reads it) |
-| `needs` | WP16, on every option with a `do` and on More options, Accept a finding and Cancel: one kind of the closed list `NEEDS` (`scripts/flow_base.py`). `more`, `accept` and `cancel` are navigation the run driver does itself; the other seven are the hand back kinds, each one step the conversation does for the person: `talk`, `html-review`, `depth-review`, `config-suggestions`, `small-change`, `pull-request`, `pipeline-fix`. `opt()` refuses any other kind, and a `do` with none. A `work` action whose steps are the pull request's carries `needs: pull-request` and `option`, the id of the option the person chose them by |
+| `needs` | WP16, on every option with a `do` and on More options, Accept a finding and Cancel: one kind of the closed list `NEEDS` (`scripts/flow_base.py`). `more`, `accept` and `cancel` are navigation the run driver does itself; the other seven are the kinds of the one step the run goes on in the conversation with, each one step the conversation does for the person: `talk`, `html-review`, `depth-review`, `config-suggestions`, `small-change`, `pull-request`, `pipeline-fix`. `opt()` refuses any other kind, and a `do` with none. A `work` action whose steps are the pull request's carries `needs: pull-request` and `option`, the id of the option the person chose them by |
 | `skill` | 9.8.0, with `do`: the skill the option carries out (`grill-me`, `teach-me`); the mod lets its own questions through while it runs |
 | `stop` | the run stops here (Save for later) |
 | `reason`, `reason_question`, `reason_ids` | the move needs the person's reason: their note on the option, or their answer to `reason_question` (any answer but Cancel, typed text included). 9.8.5: `reason_question` goes to the dialog as it is, so its ids sit beside it in `reason_ids`: `{id, kind, options}`, with the id of its question and `.reason`, the kind `reason`, and in the order of its options each ready reason's id `choice-N` and Cancel's id `cancel` with the kind `cancel` |
@@ -130,7 +130,7 @@ Scope drift (WP16) is the CLI's question. A Build or Fix agent that needs a file
 `temper drift ask --path P --why W --change C` (a `drift` row of the Build ledger; a path of the plan is refused) and
 returns. Before the gate question and before any launch, `next` asks `scope.drift` (header `Scope drift`, first line
 `Outside the plan: P`, then `Why:` and `Change:` lines) with `Add to plan`, `Revert` and `Allow once`, each with move
-`drift` and the call that records the answer (`drift P: <label>: W`, phase `feedback`), in an unattended run too. With
+`drift` and the call that records the answer (`drift P: <label>: W`, `phase: feedback`), in an unattended run too. With
 every one answered, the stage's agent runs again with one `Drift decision: P: add|revert|allow-once` line a file; its
 `before` call marks them given.
 
@@ -440,10 +440,10 @@ failed since in one prompt.
 **The checks when Build ends (WP23).** After the merges, `integrate` makes one call, `temper check build-checks`
 (`scripts/check_run.py build-checks`), which records into the Build ledger, in this order: the suite in the owner's run
 text (WP20: `check.commands.coverage` or `check.commands.test`, else what `detect` finds, else the plan's
-`**Integration:**` line), with its coverage report, as the row `Integration suite` (phase `integration`; the plan's
+`**Integration:**` line), with its coverage report, as the row `Integration suite` (`phase: integration`; the plan's
 text in `plan_cmd` when it differs); the row `coverage` (WP19); one row per scenario test; one row per criterion
-command (9.8.5: a criterion validated by `code` or `metric` carries its command in backticks; the row has phase
-`criterion`, the criterion's id, `scenario` null and `executed_by` cli, and only an accepted intent's commands run); the
+command (9.8.5: a criterion validated by `code` or `metric` carries its command in backticks; the row has
+`phase: criterion`, the criterion's id, `scenario` null and `executed_by` cli, and only an accepted intent's commands run); the
 locked acceptance tests. `temper check run` records the same criterion rows into the Check ledger. The rows
 `criteria validated` (Build) and `acceptance evidence` (Check) pass such a criterion only from a row the CLI ran of its
 own command that exited 0 (`FAIL: <command> exit N`, or `its command has no row run by the CLI`); no agent records
@@ -484,7 +484,7 @@ commands through the store first, as WP22 made it.
 **What failed.** A failed group check keeps its failure lines most telling first: a time-out (exit 124) says so; then
 the build tool's own summary (the last Maven `Failed to execute goal` line, `Rule violated` lines, failed test names);
 then the lines that say FAIL, ERROR or an exception, without the log lines a passing test printed
-(`20:01:44.264 [main] ERROR ...`). With none, the last three lines, never the first. An armed run's park reason keeps
+(`20:01:44.264 [main] ERROR ...`). With none, the last three lines, never the first. The stop reason of a run that goes on by itself keeps
 1200 characters of it.
 
 **No empty fix pass.** Build's fix pass after integrate gets the integrate verdict and the Build gate's failed rows in
@@ -580,7 +580,7 @@ The mod lets a patch run only as the person's answer.
 ### A blocked task and the plan amendment (9.8.5, WP25)
 
 A task whose test needs a file it does not declare records `temper task blocked N --needs F --reason R`; its gate fails
-once and parks the group. When every blocked task of the group needs a file another task of the same group declares, the
+once and stops the group. When every blocked task of the group needs a file another task of the same group declares, the
 next action is the CLI's own `temper plan amend task N --add-file F [--failure ID]`, in every mode
 (`scripts/plan_amend.py`): Task N gains F on its File line and the owner on its Depends line, and nothing else. It
 refuses unless the plan is approved (the run is past Plan: a step back to Plan waits for the new approval) and
@@ -590,12 +590,12 @@ neither running nor passed, the static rows pass on the result, and the budget h
 `plan amend`). It moves `plan_hash` in the run state and in `groups.json`, appends an entry to
 `.temper/evidence/amendments.json` (the approved record `approved-tasks.json` is never written by an amendment or a
 patch), writes the plan ledger row `plan amended by rule: Task N gains F (Task M declares it)` and the rule log entry of
-the kind `amend`, and reopens the task: its blocked mark, the group's park, gate and failure marks go, and no file is
+the kind `amend`, and reopens the task: its blocked mark, the group's stop, gate and failure marks go, and no file is
 restored, so the work of the task it now depends on stays. The commit card lists every amendment and patch under
 `THE PLAN SINCE THE APPROVAL`; an approval moves the list of the plan before it to `.temper/archive/`. When the rule
 does not hold the run asks (a run that goes on by itself stops): a file no task declares first offers `Add to plan` (the id
 `add-file`, the person's `plan patch task N --add-file F`); a file of another group or of a later task of the group, a
-file the rule may not add, or a group parked twice with no blocked record first offers Loop back to Plan, which is the
+file the rule may not add, or a group stopped twice with no blocked record first offers Loop back to Plan, which is the
 person's.
 
 ### What a replan keeps (9.8.5, WP25)
@@ -617,7 +617,7 @@ Every repeat that follows a failed check is counted by the CLI in one record, `.
 check that failed, its key: `gate:<stage>`, `group:<G>`, `task:<N>`, `acceptance` or `pipeline` (a failed `integrate`
 spends under `gate:build`); a launch of the revise agent spends under `plan-revise:<reason>` (its before call
 `temper budget revise`, 9.8.5). The table `SPENDS` says which calls spend and when: a step back or a run again from a failed
-gate (from Build, a failed or parked group's key), a group fix, the group's tasks again, more time at a failed group
+gate (from Build, a failed or stopped group's key), a group fix, the group's tasks again, more time at a failed group
 check, a plan patch, a plan amendment, a task retry, a task checked again after an environment fault, a reopened
 acceptance test, a CI fix round, and a merge again after a failed `integrate`. A step back by `state set next_stage`
 spends as a `state loop` does. One CI fix round is one entry, under `pipeline`: the `state redo pipeline` of its steps answers the
@@ -630,7 +630,7 @@ amendment spend inside their own scripts, once every check of theirs holds, so a
 together, in order, against both limits. A question that would offer one becomes `run.budget` (header
 `Temper gate`): the stage's first sentence, the count, then Save for later (recommended), `Allow two more` (move
 `grant`, the call `temper budget grant --key <key> --reason '{reason}'`, the person's only) and the options of the
-stage's question that spend nothing. An `auto` or `work` action that holds one parks an armed run, or asks the same
+stage's question that spend nothing. An `auto` or `work` action that holds one stops a run that goes on by itself, or asks the same
 question. After a grant `next` asks the stage's own question again. `temper budget` prints the record. The record
 survives a step back; `state clear` and `state init` remove it. So following the recommendation always ends.
 
@@ -644,7 +644,7 @@ reads as `ask`; an unknown value is `ask`. `approve-run` is left out for a skipp
 question (the Design question is then the approval), and when `may_run_alone()` says no. The CLI refuses the call
 unless the run is at Plan or Design with that check passed and not skipped, and under `never-unattended`; it records
 the stage in `unattended_from`, which `state set` refuses. A state with `run_mode: autonomous` and no `unattended_from`
-(a run of 9.8.4 or of the base, approved for Build alone) reads as `interactive`. `state init` stamps `saved_by`; a
+(a run that 9.8.4 approved for Build alone) reads as `interactive`. `state init` stamps `saved_by`; a
 state with none, saved at Review, loses its Review verdict once, so Review runs once more.
 
 `Run.armed` is `run_mode: autonomous`, an `unattended_from` other than the stage the run is at, and no `parked`. Then a
@@ -658,7 +658,7 @@ rule's loop back to Build is gone); what it may not start, and what a repair lea
 recommended option when it has calls, needs nothing typed, does not save the run, is no step back and the group declares
 no sensitive file. Every other case is a stop (`scripts/stops.json`).
 
-A stop is the park call, then the stage's own question. `temper park` keeps `run_mode`; `parked` makes `Run.armed`
+A stop is the CLI's `temper park` call, then the stage's own question. `temper park` keeps `run_mode`; `parked` makes `Run.armed`
 false and ends when the run changes stage or by `temper park --end [--answer ID]` (not at Commit). The question asked
 while `parked` is set says `After your answer the run goes on by itself.`, every option with calls and no `stop` ends
 with `park --end --answer <its id>`, and `ask-every-stage` ("Ask me at every stage from here") is added. A skip, an
@@ -877,10 +877,10 @@ the steps back, the hand backs of the run driver and the runs of the whole suite
 counts for each scenario and mode, and `bun scripts/e2e/run.ts <mode> <name> --floor scripts/e2e/floor.json` compares
 them exactly (`scripts/check_floor.py`).
 
-## No door (9.8.5, WP28)
+## One way in
 
 A run starts at Intent and nowhere else: `temper state init` refuses `--enter` with one line, and `/temper:temper`
 with no words takes up the active run. The state keys `enter` and `built_before` are gone (`state set` still refuses
-both); `next` reads neither, so a run that an older Temper saved after it came through a door runs its agent at a
-stage before the door that has no verdict, and asks no question about a walked stage (the question `run.walked` is
+both); `next` reads neither, so a run that an older Temper saved after it started at a later stage runs its agent at a
+stage before that one that has no verdict, and asks no question about a walked stage (the question `run.walked` is
 gone). `temper baseline start --env-only` stays a word of the CLI; the flow no longer calls it.

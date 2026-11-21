@@ -29,6 +29,21 @@ missing tool, a wrong JDK or a service that is down from the project's own files
 3. **Corrects ADR-0018 decision 4.** `temper doctor` reads, and with `--propose --write --expect <hash>` writes the block
    the person chose at the question that showed it whole. No command is run to check a block (the store of blocks
    tried goes), and no agent drafts one: the environment agent and its brief are removed.
+4. **A check is judged against the project (9.8.5, the checks of WP19).** A gate row is passed, failed or not
+   measured: a row the CLI could not measure has `pass` null and `state: not measured`, is printed `[?]`, is named on
+   the commit card, and is never read as passed or failed; it fails nothing, and the run moves on. Coverage is one row,
+   `coverage`, judged by one rule (`scripts/check_run.py coverage-verdict`): the key `check.coverage-threshold` only
+   when the project's config holds it; no coverage command, a coverage program that could not start, or no base value
+   is not measured; with line data and ten or more changed executable lines, their share that ran must reach the base
+   total (at most 80); else the total may be at most 1 point below the base total. The planted bug score is no row: it
+   is information on the commit card, and the threshold key and its default of 80 are gone.
+5. **The environment check and the baseline come first (9.8.5, WP20).** A run's first step is the CLI's own
+   `temper baseline start`: the tools and services the project's files and the config name are checked in under 5 s,
+   then the project's own suite runs once on the current code, in a detached worktree, in its own process, and
+   `.temper/evidence/baseline.json` says green, red or unknown. A fault or a red base is one question, `base.red`,
+   before any agent, and after the approval no new task agent is launched on it. Every time limit is the larger of its
+   default and three times the base's time of the same suite; a first time out of a group's check runs again with
+   twice the limit, as the CLI's own call.
 
 ## Alternatives Considered
 
@@ -36,6 +51,11 @@ missing tool, a wrong JDK or a service that is down from the project's own files
 - **Pros:** a failure gets a class without a run of the suite.
 - **Cons:** every stack needs its own list, and a list that misses a text passes the failure silently.
 - **Why not chosen:** the exit code and the declared environment are known for every stack.
+
+### A fixed coverage floor and a fixed time limit
+- **Pros:** one number a team can read in the config.
+- **Cons:** a project below the floor fails every run it did not cause, and a slow suite times out on its own base.
+- **Why not chosen:** the project's own base is the one measure that fits every project.
 
 ### Run the commands inside the plan gate, with a longer limit
 - **Pros:** one call, one verdict.
@@ -47,7 +67,10 @@ missing tool, a wrong JDK or a service that is down from the project's own files
 ### Positive
 - `temper gate plan` is static and fast; a slow Validate costs no planner time and is never an environment fault.
 - A failed command is final only by the person's answer: "Run it again" runs it again after a repair.
+- A missing coverage tool is not measured, never failed and never passed, and a fault of the environment is named
+  before any agent is paid for.
 
 ### Negative
 - A Validate that names no path and breaks on tests a later group changes still fails only at its first group gate.
-- One more question id (`plan.command`) in the registry.
+- One more question id (`plan.command`) in the registry, and `base.red` beside it.
+- The baseline runs the suite once more per run, on the current code, before any agent.

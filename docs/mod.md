@@ -9,7 +9,7 @@ The mod does four things:
   passes; the mod refuses `--no-verify` and a changed hooks path. A commit the hook does not check,
   such as a merge, is a known limit ([what the guard does not see](#what-the-guard-checks-and-what-it-does-not)).
 - It refuses a step only you may take (leaving Intent or Plan, a skip, a step back, accepting a
-  finding, arming autonomy) unless you chose it in the gate question.
+  finding, starting the run that goes on by itself) unless you chose it in the gate question.
 - A run goes on by itself only from the option you pick at the approval (Approve and build); the
   CLI's own moves after it are the calls of its action, and a toast says when such a run stops.
 - It draws the run: the stage bar above the prompt and the pane, and keeps a report of the run
@@ -56,7 +56,7 @@ again.
 
 The pane (`/temper:temper pane`) shows the whole run on one card: the intent, the stages with your skips
 and the loops back, the plan's files by Build group as you approved them, the Build grid (each task's
-state, waiting, running, RED, GREEN, PASS, FAIL or parked, with its model and retries), at Plan and Design
+state, waiting, running, RED, GREEN, PASS, FAIL or stopped, with its model and retries), at Plan and Design
 the fresh review of the plan (the reader's summary, a lens that did not run, and each finding with its state:
 open, contested with its citation, escalated, resolved or accepted), the Review
 findings (severity, confidence, file and line, open, resolved or accepted), the Check markers (compile,
@@ -70,8 +70,8 @@ width; Claude Code shows a pane the mod opens on its own only from 144 columns (
 it yourself, until you close it by hand). Once you close it by hand, it stays closed for the rest of the session;
 `/temper:temper pane` opens or closes it at any time.
 
-At the commit the run prints its report in the terminal (`temper report`), and asks whether to write it
-as one page too, `report.html` in the spec folder (`temper report --html`), from the same view: the stages,
+At the commit the run prints its report in the terminal (`temper report`), then writes it as one page with no
+question, `report.html` in the spec folder (`temper report --html`), from the same view: the stages,
 loops and skips with their reasons, the plan, the Build grid, the findings, the Check markers, the criteria
 with evidence, and the time by stage and by model. The commit carries the page,
 so it goes with the change.
@@ -116,7 +116,7 @@ give, so an agent cannot widen the plan by writing the answer itself.
 The mod needs Claude Code 2.1.287 or later. This section shows where enforcement works, where it does
 not work and what is not verified.
 
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
 
 ### Older versions, or no mod
 
@@ -179,7 +179,7 @@ Claude set on getting around a gate through Bash can do it. The hard guarantees 
 The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
 - **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
-  step back, accepting a finding, confirming a criterion at Check (`evidence add --person`), arming autonomy,
+  step back, accepting a finding, confirming a criterion at Check (`evidence add --person`), starting the run that goes on by itself,
   keeping an agent's commits, overriding the commit gate, starting over during a run) needs your answer in the question dialog, at the run and the step
   the CLI is at. The guard finds the call when it is written out in the command
   (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word

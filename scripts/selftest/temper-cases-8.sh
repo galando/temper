@@ -181,7 +181,7 @@ assert_eq "next: an unattended run's failed Review with no blocking finding on r
   "auto|park --verdict PARKED-NEEDS-DECISION" "$(nx "d['action'] + '|' + ' '.join(d['calls'][0].split('temper ', 1)[1].split()[:3])")"
 "$TEMPER" park --verdict PARKED-NEEDS-DECISION --reason "a test" >/dev/null 2>&1
 assert_eq "park: the run keeps its mode, is marked parked, and the report says where it waits (WP11)" "autonomous|review|1" \
-  "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the gate it parked at' .temper/autonomy-report.md)"
+  "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the question of the stage where it stopped' .temper/autonomy-report.md)"
 assert_eq "WP24 next: after a park the person gets the gate question, the loop back first and recommended where the repair may not start" "ask|back,True" \
   "$(nx "d['action'] + '|' + '%s,%s' % (d['ask']['options'][0]['id'], bool(d['ask']['options'][0].get('recommended')))")"
 
@@ -370,7 +370,7 @@ git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base
 mkdir -p src/auth; echo x > src/auth/login.ts; git add src/auth/login.ts; git -c user.email=t@t -c user.name=t commit -qm auth --no-verify >/dev/null 2>&1
 _ran_unattended; "$TEMPER" gate commit >/dev/null 2>&1
 assert_eq "round 2, 5: a committed change under a park-on-touch pattern fails the row" "False|1" \
-  "$(python3 -c "import json; r=[x for x in json.load(open('.temper/gates.json'))['commit']['requirements'] if x['name']=='park-on-touch paths']; print(str(r[0]['pass']) + '|' + str(int('src/auth/login.ts' in r[0]['detail'])))")"
+  "$(python3 -c "import json; r=[x for x in json.load(open('.temper/gates.json'))['commit']['requirements'] if x['name']=='sensitive paths']; print(str(r[0]['pass']) + '|' + str(int('src/auth/login.ts' in r[0]['detail'])))")"
 git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
 # 6, 7. The commit steps add what the run changed: no untracked file that was there before the run, every name quoted.
 fresh; touch -d '2020-01-01' local.env

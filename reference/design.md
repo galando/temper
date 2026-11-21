@@ -2,7 +2,7 @@
 description: "System design exploration for complex features (optional stage)"
 ---
 
-# Design: System Design Phase
+# Design: System Design Stage
 
 **Goal:** Produce system design artifacts, when the person asked for Design at the plan approval (WP14).
 
@@ -62,7 +62,7 @@ open concerns means the human accepted them as written: leaving Design, the CLI 
 of its own (indented to the item's text under a list item concern), and the run
 commits `design.md`. Another call, typed at the question, is written into the
 concern's own `resolved: {what was decided}` line before the question is asked again.
-An armed run parks at a Design with open concerns, so the person decides them.
+A run that goes on by itself stops at a Design with open concerns, so the person decides them.
 
 The orchestrator asks the gate question exactly as `temper next --json` gives it (header
 `Temper gate`; on a pass: "Continue to Build (Recommended)", "Walk through step by step"

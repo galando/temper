@@ -69,22 +69,22 @@
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 250302,
+   "now": 250684,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
   "pack_skill_bytes": {
-   "now": 58588,
+   "now": 58593,
    "final": 79658,
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 206289,
+   "now": 206427,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },
   "readme_lines": {
-   "now": 87,
+   "now": 65,
    "final": 80,
    "measure": "measure_readme_lines: lines of the product's README.md, in the root"
   },

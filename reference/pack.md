@@ -1,5 +1,5 @@
 ---
-description: "The word pack of /temper:temper: view, toggle, create, quick-create launchers, configure links and phases, print the guardrails hooks to add or remove"
+description: "The word pack of /temper:temper: view, toggle, create, quick-create launchers, configure links and stages, print the guardrails hooks to add or remove"
 ---
 
 # Pack: Quality Pack Manager
@@ -135,7 +135,7 @@ merge with `.claude/temper.config`, then show:
 +--------------------------------------------------------------------------+
 | PACK — Quality Pack Manager                                              |
 +--------------------------------------------------------------------------+
-|  NAME            STATUS  PHASES     LINK                CONNECTED        |
+|  NAME            STATUS  STAGES     LINK                CONNECTED        |
 |  {name}           {on}    {phases}   {link}              {found/missing} |
 |  ...                                                                     |
 |  N packs total (X enabled, Y disabled)                                   |
@@ -157,7 +157,7 @@ AskUserQuestion:
     - label: "Toggle packs on/off"
     - label: "Quick-create launcher pack"
       description: "Wrap a plugin or skill as a BLOCK-level pack. No codebase scan."
-    - label: "Configure pack (link, phases)"
+    - label: "Configure pack (link, stages)"
     - label: "Done"
       description: "Use 'Other' to request the full interactive pack builder."
   multiSelect: false
@@ -206,10 +206,10 @@ folder):
 Add `{ name: {pack-name}, link: {type}://{name} }` to `temper.config`'s `packs:`, report
 the launcher pack's location + link + severity, return to Step 2.
 
-### Step 4: Configure Pack (Link, Phases)
+### Step 4: Configure Pack (Link, Stages)
 
-Pick a pack, then "Set link target" (same discovery + selection as Step 3) / "Set phase
-scoping" (`AskUserQuestion`: All phases / build only / review+check / "Other" free-text
+Pick a pack, then "Set link target" (same discovery + selection as Step 3) / "Set stage
+scoping" (`AskUserQuestion`: All stages / build only / review+check / "Other" free-text
 for a custom combination) / Both. Update `temper.config`, return to Step 2.
 
 ### Step 5: Full Interactive Pack Builder ("Other" → "add new pack")

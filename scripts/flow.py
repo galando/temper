@@ -22,6 +22,7 @@ import sys
 import budget
 import card
 import fresh_review
+import notice
 import run_summary
 import trivial
 
@@ -183,7 +184,7 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart, RevisePart):
             line = budget.count_line(key, r.room(key))
             kept = {k: out[k] for k in ("v", "run", "restart") if k in out}
             if r.armed():
-                kept.update({"action": "auto", "stage": stage, "say": "%s: the budget is spent; the armed run parks for you." % LABEL.get(stage, stage),
+                kept.update({"action": "auto", "stage": stage, "say": "%s: the budget is spent; the run stops and waits for you." % LABEL.get(stage, stage),
                              "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(
                                  "%s: the budget is spent: %s" % (LABEL.get(stage, stage), line)))]})
                 return kept
@@ -447,7 +448,7 @@ def run_next(ctx):
     """The next action as the JSON text `temper next` prints."""
     run = Run(ctx)
     project_facts(run, ctx)
-    out = Builder(run).next()
+    out = notice.put(Builder(run).next(), ctx.get("notice"))
     if ctx.get("setup"):
         out["setup"] = ctx["setup"]
     return json.dumps(out, indent=1)
@@ -462,7 +463,7 @@ def run_view(ctx):
         nxt = Builder(run).next()
     except Exception as e:  # the view still says where the run is; it never stays behind the run
         nxt = {"action": "error", "say": "temper next failed: %s" % e}
-    doc = view(run, nxt)
+    doc = view(run, notice.put(nxt, ctx.get("notice")))
     doc["written"] = ctx.get("now")
     if ctx.get("asked"):   # the view of `temper next`: its question is the one the carrier is handed (run summary)
         try:

@@ -18,5 +18,5 @@ This is why the CLI writes the `reviewed:` line and Plan never does: a model tha
 them, and a mod that lets the edit through would count an answer nobody gave.
 
 The run to the commit asks nothing between the approval and the commit question unless it stops; each stop is a question
-of the CLI, so no step of this table is taken by a rule. With the mod off, every phase works the same; the mod adds the
-band, the pane and its write guards. Nothing falls back silently.
+of the CLI, so no step of this table is taken by a rule. With the mod off, every stage works the same; the mod adds the
+bar, the pane and its write guards. Nothing falls back silently.
