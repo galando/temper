@@ -42,9 +42,12 @@ const kindOf = (call: string): string | null => {
   if (w[0] === 'task' && (w[1] === 'confirm' || w[1] === 'accept')) return `task ${w[1]}`
   if (w[0] === 'adhoc' && w[1] === 'open') return 'adhoc open'
   if (w[0] === 'state' && w[1] === 'set' && w[2] === 'branch') return 'state set branch'
+  if (w[0] === 'budget' && w[1] === 'grant') return 'budget grant'
+  if (w[0] === 'config' && w[1] === 'tidy') return 'config tidy'
   return null
 }
-const REQUIRED = ['override', 'plan review', 'task confirm', 'task accept', 'adhoc open', 'state set branch']
+const REQUIRED = ['override', 'plan review', 'task confirm', 'task accept', 'adhoc open', 'state set branch',
+  'budget grant', 'config tidy']
 
 describe('the mod answer audit: every option of every question is reachable, and its calls are judged by the rule', () => {
   const seen = new Set<string>()
@@ -101,8 +104,8 @@ describe('the Context check: a typed answer, and what counts for nothing', () =>
     expect(answersIn({ result: { ...base.result, afkTimeoutMs: 1000 } }, rv)).toEqual([])
     expect(answersIn({ result: { ...base.result, followUp: true } }, rv)).toEqual([])
   })
-  test('a typed answer over 100 characters, or the word Cancel, records nothing', () => {
-    expect(answersIn(result(q.header, q.question, 'x'.repeat(101)), rv).filter(x => x.kind === 'gate')).toEqual([])
+  test('a typed answer over 2,000 characters (the CLI\'s limit, WP16), or the word Cancel, records nothing', () => {
+    expect(answersIn(result(q.header, q.question, 'x'.repeat(2001)), rv).filter(x => x.kind === 'gate')).toEqual([])
     expect(answersIn(result(q.header, q.question, 'Cancel'), rv).filter(x => x.kind === 'gate')).toEqual([])
   })
 })
@@ -117,5 +120,134 @@ describe('a manual task\'s name question (9.8.0)', () => {
     expect(said('Type it below')).toEqual([])
     expect(said('Cancel')).toEqual([])
     expect(said('Gal').map(a => a.kind === 'gate' ? a.reason : '')).toEqual(['Gal'])
+  })
+})
+
+// 9.8.5 (WP10): the question at the limit of the budget (ADR 0016, the row of the kind budget grant). The fixture view
+// `check-budget` is a run at a failed Check whose key gate:check was repeated twice: `temper next` asks run.budget.
+describe('the question at the limit of the budget: budget grant only on the exact match', () => {
+  const NAME = 'check-budget'
+  const read = (): RunView | null => (ALL[NAME] === undefined ? null : parseRunView(JSON.stringify(ALL[NAME])))
+  const said = (rv: RunView, a: Ask, option: Option): Option[] => {
+    const q = a.question.question
+    const questions = [{ header: a.question.header, question: q, multiSelect: false }]
+    const annotations = { [q]: { notes: 'the next try is different' } }
+    const result = { result: { questions, answers: { [q]: option.label }, annotations } }
+    return answersIn(result, rv)
+      .filter(x => x.kind === 'gate' && x.option.label === option.label)
+      .map(x => (x as { option: Option }).option)
+  }
+  const judge = (rv: RunView, allowed: string[], command: string): boolean =>
+    !('deny' in evaluate(ctx(rv, allowed), { tool: 'Bash', input: { command } } as never))
+
+  test(`the fixture view ${NAME} asks run.budget, with Save for later first and Allow two more`, () => {
+    const rv = read()
+    expect(rv).not.toBeNull()
+    expect(rv?.ask?.id).toBe('run.budget')
+    expect(rv?.ask?.question.header).toBe('Temper gate')
+    expect(rv?.ask?.options[0]?.id).toBe('save')
+    expect(rv?.ask?.options[0]?.recommended).toBe(true)
+    const grant = rv?.ask?.options.find(o => o.id === 'grant-more')
+    expect(grant?.label).toBe('Allow two more')
+    expect(grant?.move).toBe('grant')
+    expect((grant?.calls ?? []).filter(c => kindOf(c) === 'budget grant').length).toBe(1)
+  })
+
+  test('the grant passes as the answer Allow two more, and as no other answer, no other key and no other words', () => {
+    const rv = read()
+    const a = rv?.ask ?? null
+    expect(a).toBeTruthy()
+    if (rv === null || a === null) return
+    const grant = a.options.find(o => o.id === 'grant-more')
+    expect(grant).toBeTruthy()
+    if (!grant) return
+    const call = fill(grant.calls.find(c => kindOf(c) === 'budget grant') ?? '')
+    expect(call).toMatch(/\/scripts\/temper budget grant --key gate:check --reason /)
+    const found = said(rv, a, grant)
+    expect(found.length).toBeGreaterThan(0)
+    const written = [...(found[0] as Option).calls, ...(found[0] as Option).steps]
+    expect(judge(rv, written, call)).toBe(true)
+    expect(judge(rv, [], call)).toBe(false)
+    // the calls of every other answer of the question, and of its More question, do not let it through
+    for (const o of [...a.options, ...(a.more?.options ?? [])]) {
+      if (o.id === 'grant-more' || o.move === null) continue
+      const other = said(rv, a.more !== null && a.more.options.includes(o) ? a.more : a, o)
+      const calls = other.length > 0 ? [...(other[0] as Option).calls, ...(other[0] as Option).steps] : o.calls
+      expect(judge(rv, calls, call), o.label).toBe(false)
+    }
+    // the exact match: another key, a second key, or a grant with no reason is another call
+    for (const cmd of [call.replace('--key gate:check', '--key group:G1'), `${call} --key gate:build`,
+      call.replace(/ --reason .*$/, '')]) {
+      expect(judge(rv, written, cmd), cmd).toBe(false)
+    }
+  })
+})
+
+// 9.8.5 (WP29): the one time config question (ADR 0023). The fixture view `config-tidy` is a new /temper:temper run at
+// Intent, no agent launched yet, whose config is the template of 9.8.4: `temper next` asks config.tidy before anything
+// else. Its two calls, `config tidy --apply` and `config tidy --keep`, rewrite or mark the config: each counts only as the
+// option the person picked at the `Temper gate` question the view holds; typed by the model it is refused.
+describe('the one time config question: config tidy only as the picked option of config.tidy', () => {
+  const NAME = 'config-tidy'
+  const read = (): RunView | null => (ALL[NAME] === undefined ? null : parseRunView(JSON.stringify(ALL[NAME])))
+  const said = (rv: RunView, a: Ask, option: Option): Option[] => {
+    const q = a.question.question
+    const result = { result: { questions: [{ header: a.question.header, question: q, multiSelect: false }], answers: { [q]: option.label }, annotations: {} } }
+    return answersIn(result, rv)
+      .filter(x => x.kind === 'gate' && x.option.label === option.label)
+      .map(x => (x as { option: Option }).option)
+  }
+  const judge = (rv: RunView, allowed: string[], command: string): boolean =>
+    !('deny' in evaluate(ctx(rv, allowed), { tool: 'Bash', input: { command } } as never))
+  const tidyCall = (o: Option | undefined): string => fill((o?.calls ?? []).find(c => kindOf(c) === 'config tidy') ?? '')
+
+  test(`the fixture view ${NAME} asks config.tidy at Intent, with Remove them first and recommended, and Keep my file`, () => {
+    const rv = read()
+    expect(rv).not.toBeNull()
+    expect(rv?.run?.stage).toBe('intent')
+    expect(rv?.ask?.id).toBe('config.tidy')
+    expect(rv?.ask?.question.header).toBe('Temper gate')
+    const ids = (rv?.ask?.options ?? []).map(o => o.id)
+    expect(ids).toEqual(['tidy-config', 'keep-config'])
+    expect(rv?.ask?.options[0]?.recommended).toBe(true)
+    expect(rv?.ask?.options[0]?.label).toBe('Remove them (Recommended)')
+    expect(rv?.ask?.options[1]?.label).toBe('Keep my file')
+    expect(tidyCall(rv?.ask?.options[0])).toMatch(/\/scripts\/temper config tidy --apply$/)
+    expect(tidyCall(rv?.ask?.options[1])).toMatch(/\/scripts\/temper config tidy --keep$/)
+  })
+
+  test('each call passes as its own answer, and as no other answer, from no model and with no other words', () => {
+    const rv = read()
+    const a = rv?.ask ?? null
+    expect(a).toBeTruthy()
+    if (rv === null || a === null) return
+    for (const id of ['tidy-config', 'keep-config']) {
+      const option = a.options.find(o => o.id === id)
+      expect(option, id).toBeTruthy()
+      if (!option) continue
+      const call = tidyCall(option)
+      expect(call, id).not.toBe('')
+      const found = said(rv, a, option)
+      expect(found.length, id).toBeGreaterThan(0)
+      const written = [...(found[0] as Option).calls, ...(found[0] as Option).steps]
+      // the picked option lets its call through; the same call typed by the model, with no answer, is refused
+      expect(judge(rv, written, call), id).toBe(true)
+      expect(judge(rv, [], call), id).toBe(false)
+      // the other answer does not let it through
+      for (const o of a.options) {
+        if (o.id === id) continue
+        const other = said(rv, a, o)
+        const calls = other.length > 0 ? [...(other[0] as Option).calls, ...(other[0] as Option).steps] : o.calls
+        expect(judge(rv, calls, call), `${o.id} lets ${id} through`).toBe(false)
+      }
+    }
+    // the exact match: the call with another word, or the bare word, is another call, refused even after an answer
+    const tidy = a.options.find(o => o.id === 'tidy-config')
+    const found = tidy === undefined ? [] : said(rv, a, tidy)
+    const written = found.length > 0 ? [...(found[0] as Option).calls, ...(found[0] as Option).steps] : []
+    const call = tidyCall(tidy)
+    for (const cmd of [`${call} --keep`, call.replace(/ --apply$/, ''), call.replace(/ --apply$/, ' --apply --force')]) {
+      expect(judge(rv, written, cmd), cmd).toBe(false)
+    }
   })
 })

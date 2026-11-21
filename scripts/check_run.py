@@ -3,22 +3,37 @@ ledger; a row it forgot (coverage recorded as 'none') failed the gate for no fau
 commands and records what they gave, and the agent is only the fallback for a stack the CLI cannot read.
 
   python3 check_run.py detect ROOT [TEST_CMD] [COVERAGE_CMD]    the commands it would run, as JSON ({} when none)
-  python3 check_run.py run ROOT SPEC LEDGER BASE COMMAND [TEST_CMD] [COVERAGE_CMD]
+  python3 check_run.py run ROOT SPEC LEDGER BASE COMMAND [TEST_CMD] [COVERAGE_CMD] [KEY]
                                                                 run them, record the rows, print one line each
+  python3 check_run.py build-checks ROOT SPEC LEDGER BASE COMMAND [TEST_CMD COVERAGE_CMD KEY [nosuite]]
+                                                                the checks when Build ends (WP23): the same rows into the
+                                                                Build ledger (the suite as `Integration suite`, in the
+                                                                owner's run text, the plan's line only when nothing else
+                                                                names a suite); exits with the suite's exit code
+  python3 check_run.py ahead ROOT SPEC BASE COMMAND [TEST_CMD COVERAGE_CMD KEY]
+                                                                the same run while Review reads the change, through the
+                                                                reuse store (run_env.run_cached), then the planted bugs
+                                                                (.temper/evidence/mutation.json)
+  python3 check_run.py coverage-verdict                         the coverage rule on one JSON object on standard input
+  python3 check_run.py owner ROOT [SPEC]                        who owns the suite command (WP20, suite_owner), one JSON
+                                                                line {"test", "run", "source", "why"}
 
 What `run` records in the Check ledger, every row `executed_by: cli`:
   - tests       the suite (with coverage on in the same run when the stack allows it), its exit and output tail
-  - coverage    the total line coverage, with the report as its artifact; when no coverage tool is there, a row that
-                names what to install (the gate row says the measurement is missing, and Check runs again once it is)
+  - coverage    one row with the verdict of the coverage rule (WP19, coverage_verdict): the total, the rule, the floor
+                and the state; exit 0 for pass, 1 for fail, null for not measured (no coverage command, a coverage
+                program that could not start, no base value). KEY is check.coverage-threshold when the project's
+                config holds it.
   - scenario    each intent.md scenario's `Test:` command, its real exit (a scenario row is a real run, not a trace)
-  - mutation    the mutation score of the tests on the lines this run changed: one small bug at a time is planted and
-                the suite must catch it. Python is read as a syntax tree (a comparison flipped, + and - swapped, a
-                constant moved by one, `and`/`or` swapped, a `not` dropped, a call statement deleted); JavaScript,
-                TypeScript, Java, Kotlin, Go, C#, Rust, Swift, Scala, C, C++, PHP and Ruby as text (a comparison, ==
-                and !=, && and ||, + and -, true and false, a number moved by one). Coverage says a line ran; this says a
-                test would notice it break. Capped at 40 mutants and a time budget; skipped when nothing changed.
+  - criterion   each criterion validated by code or a metric, by its command in backticks (WP27; phase criterion)
   - regression  (fix runs) the tests the fix added or changed, run on the code before the fix: they must FAIL there,
                 or they do not prove the fix
+`run` plants no bug. The planted bug score is information beside Review: `ahead` plants one small bug at a time in
+the lines this run changed, and only when three runs of the suite fit the budget. Python is read as a syntax tree (a
+comparison flipped, + and - swapped, a constant moved by one, `and`/`or` swapped, a `not` dropped, a call statement
+deleted); JavaScript, TypeScript, Java, Kotlin, Go, C#, Rust, Swift, Scala, C, C++, PHP and Ruby as text (a
+comparison, == and !=, && and ||, + and -, true and false, a number moved by one). Coverage says a line ran; this says
+a test would notice it break. Capped at 40 planted bugs, the budget, and 60 s after Check starts (mutation.stop).
 Standard library only.
 """
 import ast
@@ -36,10 +51,15 @@ import acceptance
 import run_env
 
 SKIP_DIRS = {".git", ".temper", ".claude", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", "target", ".tox"}
-TEST_DIR_NAMES = ("tests", "test", "unit", "spec", "acceptance")
+TEST_DIR_NAMES = run_env.TEST_DIR_NAMES
 MUTANT_CAP = 40
 MUTATION_BUDGET_S = float(os.environ.get("TEMPER_MUTATION_BUDGET_S", "300"))
 SUITE_TIMEOUT_S = float(os.environ.get("TEMPER_CHECK_TIMEOUT_S", "1800"))
+LCOV_SUMMARY = ".temper/check/coverage/coverage-summary.json"
+LCOV = ".temper/check/coverage/lcov.info"
+COVERAGE_CAP = 80.0   # the floor of the changed lines is the base total, never more than this
+CHANGED_MIN = 10      # the changed executable lines the rule of the changed lines needs
+STOP_AFTER_S = 60     # the planted bugs go on at most this long after Check starts (mutation.stop)
 
 
 def _ok(root, args):
@@ -118,14 +138,14 @@ def detect(root, test_cmd="", cov_cmd=""):
         deps = dict(pkg.get("dependencies") or {}, **(pkg.get("devDependencies") or {}))
         cov = None
         if "jest" in deps:
-            cov = {"run": "npx jest --coverage --coverageReporters=json-summary --coverageDirectory=.temper/check/coverage",
-                   "kind": "jest", "file": ".temper/check/coverage/coverage-summary.json"}
+            cov = {"run": "npx jest --coverage --coverageReporters=json-summary --coverageReporters=lcovonly "
+                          "--coverageDirectory=.temper/check/coverage", "kind": "jest", "file": LCOV_SUMMARY, "lcov": LCOV}
         elif "vitest" in deps:
-            cov = {"run": "npx vitest run --coverage --coverage.reporter=json-summary --coverage.reportsDirectory=.temper/check/coverage",
-                   "kind": "vitest", "file": ".temper/check/coverage/coverage-summary.json"}
+            cov = {"run": "npx vitest run --coverage --coverage.reporter=json-summary --coverage.reporter=lcovonly "
+                          "--coverage.reportsDirectory=.temper/check/coverage", "kind": "vitest", "file": LCOV_SUMMARY, "lcov": LCOV}
         elif "c8" in deps:
-            cov = {"run": "npx c8 --reporter=json-summary --report-dir=.temper/check/coverage npm test --silent",
-                   "kind": "c8", "file": ".temper/check/coverage/coverage-summary.json"}
+            cov = {"run": "npx c8 --reporter=json-summary --reporter=lcovonly --report-dir=.temper/check/coverage npm test --silent",
+                   "kind": "c8", "file": LCOV_SUMMARY, "lcov": LCOV}
         if not cov and "--experimental-test-coverage" in t:   # node --test prints its own coverage table
             cov = {"run": "npm test --silent", "kind": "node-test"}
         return {"stack": "node", "test": "npm test --silent", "coverage": cov, "mutation": True,
@@ -137,11 +157,22 @@ def detect(root, test_cmd="", cov_cmd=""):
     if os.path.exists(j("Cargo.toml")):
         return {"stack": "rust", "test": "cargo test", "coverage": None, "mutation": True, "hint": "set check.commands.coverage (cargo llvm-cov) to measure coverage"}
     if os.path.exists(j("pom.xml")):
-        return {"stack": "maven", "test": "mvn -q test", "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
+        return {"stack": "maven", "test": "mvn -q verify", "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
     if os.path.exists(j("build.gradle")) or os.path.exists(j("build.gradle.kts")):
         g = "./gradlew" if os.path.exists(j("gradlew")) else "gradle"
         return {"stack": "gradle", "test": "%s test" % g, "coverage": None, "mutation": True, "hint": "set check.commands.coverage (JaCoCo) to measure coverage"}
     return {}
+
+
+def det_for(root, test_cmd="", cov_cmd=""):
+    """The commands Check runs (WP22): detect() in the root, else those of the owner of the suite command when it found
+    them one folder down (suite_owner, WP20), so Check runs the owner's text, the key of the run the base, a group and
+    integrate made of it; {} when neither."""
+    det = detect(root, test_cmd, cov_cmd)
+    if det or test_cmd:
+        return det
+    o = suite_owner(root, {}, "")
+    return o["det"] if o.get("source") == "detected" else {}
 
 
 def _read(p):
@@ -149,6 +180,60 @@ def _read(p):
         return open(p, encoding="utf-8", errors="replace").read()
     except OSError:
         return ""
+
+
+# ---- the owner of the suite command (WP20) --------------------------------------------------------------------------
+def suite_owner(root, cfg=None, spec=""):
+    """Who says which command is the project's suite: {"test", "run", "source", "why", "det"}. In this order: the
+    config's check.commands.test (with check.commands.coverage); detect() in the root; detect() of the one folder one
+    level down that answers (none when two do), with `cd <folder> && ` in front of each command and the folder in
+    front of its coverage file; the plan's **Integration:** line once tasks.md exists; else none, with the reason.
+    `run` is the coverage form or the test text again; `det` is what coverage_value() reads."""
+    import config_yaml
+    if cfg is None:
+        cfg = config_yaml.load(os.path.join(root, ".claude", "temper.config"))
+    test = str(config_yaml.get(cfg, "check.commands.test") or "").strip()
+    cov = str(config_yaml.get(cfg, "check.commands.coverage") or "").strip()
+    if test:
+        return {"test": test, "run": cov or test, "source": "configured", "why": "check.commands.test of the config",
+                "det": detect(root, test, cov)}
+    det = detect(root)
+    if det:
+        c = det.get("coverage") or {}
+        return {"test": det["test"], "run": c.get("run") or det["test"], "source": "detected",
+                "why": "the %s files in the project's root" % det.get("stack"), "det": det}
+    found = []
+    for name in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+        if name in SKIP_DIRS or name.startswith(".") or not os.path.isdir(os.path.join(root, name)):
+            continue
+        d = detect(os.path.join(root, name))
+        if d:
+            found.append((name, d))
+    if len(found) == 1:
+        name, d = found[0]
+        pre = "cd %s && " % name
+        c = dict(d.get("coverage") or {})
+        for k in ("run", "report"):
+            if c.get(k):
+                c[k] = pre + c[k]
+        for k in ("file", "lcov"):   # trap 7: the report is written under that folder
+            if c.get(k):
+                c[k] = os.path.join(name, c[k])
+        if c:   # and the paths inside the report are that folder's (_line_hits)
+            c["dir"] = name
+        det = dict(d, test=pre + d["test"], coverage=c or None)
+        return {"test": det["test"], "run": c.get("run") or det["test"], "source": "detected",
+                "why": "the %s files in %s/, the one folder one level down that has them" % (d.get("stack"), name), "det": det}
+    tasks = os.path.join(spec, "tasks.md") if spec else ""
+    if tasks and os.path.isfile(tasks):
+        m = re.search(r"^\*\*Integration:\*\*\s*`([^`]+)`", _read(tasks), re.M)
+        if m and m.group(1).strip() and m.group(1).strip() != "manual":
+            line = m.group(1).strip()
+            return {"test": line, "run": line, "source": "plan", "why": "the Integration line of %s" % tasks,
+                    "det": detect(root, line)}
+    why = ("%s each have build files, one folder down, and nothing says which is the suite: set check.commands.test"
+           % " and ".join("%s/" % n for n, _ in found)) if found else "no test command is configured and none was found: set check.commands.test"
+    return {"test": "", "run": "", "source": "none", "why": why, "det": {}}
 
 
 def coverage_value(root, det, out_text):
@@ -170,11 +255,191 @@ def coverage_value(root, det, out_text):
     return None
 
 
+strip_banner = run_env.strip_banner
+
+
+# ---- coverage judged against the project (WP19) ---------------------------------------------------------------------
+def _num(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct(x):
+    return ("%.1f" % x).rstrip("0").rstrip(".")
+
+
+def coverage_verdict(measure, base, changed, threshold, base_why=""):
+    """The coverage rule, in this order: the key check.coverage-threshold when the project's config holds it; no coverage
+    command, or a coverage program that could not start (exit 127): not measured; no base value: not measured; ten or
+    more changed executable lines with line data: their share that ran reaches the base total (at most 80); else the
+    total is not below the base total by more than 1 point; else not measured. Decided by the probe and the exit code,
+    never by output text. Returns {"state": "pass" | "fail" | "not measured", "rule", "value", "floor", "why"}."""
+    m = measure if isinstance(measure, dict) else {}
+    total, hint, note = _num(m.get("total")), str(m.get("hint") or ""), str(m.get("note") or "")
+
+    def v(state, rule, value, floor, why):
+        return {"state": state, "rule": rule, "value": value, "floor": floor, "why": why}
+    if threshold not in (None, ""):
+        key, t = "check.coverage-threshold", _num(threshold)
+        out = "remove that line from .claude/temper.config and coverage is judged against the project"
+        if t is None:
+            return v("fail", "threshold", total, None, "%s is %r, not a number: %s" % (key, str(threshold)[:60], out))
+        if total is None:
+            return v("not measured", "threshold", None, t, "no coverage total was recorded (%s asks for %s%%)%s"
+                     % (key, _pct(t), ": " + (note or hint) if (note or hint) else ""))
+        if total >= t:
+            return v("pass", "threshold", total, t, "total %s%% reaches %s%%, the value of %s" % (_pct(total), _pct(t), key))
+        return v("fail", "threshold", total, t, "total %s%% is below %s%%, the value of %s in the project's config: %s"
+                 % (_pct(total), _pct(t), key, out))
+    if not m.get("command", True):
+        return v("not measured", None, None, None, hint or "this stack has no coverage command: set check.commands.coverage")
+    if m.get("exit") == 127:
+        return v("not measured", None, None, None, "the coverage program could not start (exit 127)" + ("; " + hint if hint else ""))
+    b = _num(base)
+    if b is None:
+        return v("not measured", None, total, None, "no base value: " + (base_why or "no baseline was taken for this run"))
+    ch = changed if isinstance(changed, dict) else {}
+    ran, missed = int(ch.get("ran") or 0), int(ch.get("missed") or 0)
+    if ch and ran + missed >= CHANGED_MIN:
+        floor, share = min(b, COVERAGE_CAP), round(100.0 * ran / (ran + missed), 1)
+        ok = share >= floor
+        return v("pass" if ok else "fail", "changed lines", share, floor, "%d of %d changed lines ran (%s%%), %s the floor %s%% "
+                 "(the base total %s%%, at most 80)" % (ran, ran + missed, _pct(share), "at or above" if ok else "below",
+                                                        _pct(floor), _pct(b)))
+    if total is not None:
+        floor = round(b - 1, 1)
+        ok = total >= floor
+        return v("pass" if ok else "fail", "total", total, floor, "total %s%% against the base total %s%% (it may be at most 1 "
+                 "point lower)%s" % (_pct(total), _pct(b), "" if ok else ": a drop of %s points" % _pct(b - total)))
+    return v("not measured", None, None, None, note or "no coverage total in the report")
+
+
+def base_value(path):
+    """(the base total, why there is none) from the baseline (.temper/evidence/baseline.json, written by WP20), only when
+    it ran on the code of the run's base commit (base_sha of the run state beside it; .temper/ and .claude/ aside): one
+    taken again later, past `integrate`, measured the change."""
+    d = acc_read(path)
+    c = _num(d.get("coverage"))
+    temper = os.path.dirname(os.path.dirname(os.path.abspath(path)))
+    sha = acc_read(os.path.join(temper, "build-state.json")).get("base_sha")
+    if c is not None and d.get("head") and sha and d["head"] != sha and subprocess.run(
+            ["git", "diff", "--quiet", d["head"], sha, "--", ".", ":(exclude).temper", ":(exclude).claude"],
+            cwd=os.path.dirname(temper), capture_output=True).returncode == 1:
+        return None, "the baseline ran on %s, not on the run's base %s" % (str(d["head"])[:12], str(sha)[:12])
+    if c is not None:
+        return c, ""
+    if not d:
+        return None, "no baseline was taken for this run"
+    if d.get("result") == "red":
+        return None, "the base was red, so it gave no coverage total"
+    return None, "the baseline recorded no coverage total"
+
+
+def _line_hits(root, det):
+    """{path: (lines that ran, lines that did not)} from the coverage report's line data: coverage.py's JSON, Go's
+    profile, lcov.info of jest, vitest and c8. {} when the tool gives none."""
+    cov = det.get("coverage") or {}
+    kind, hits, sub = cov.get("kind"), {}, cov.get("dir") or ""
+
+    def add(p, line, n):
+        r, m = hits.setdefault(os.path.normpath(os.path.join(sub, p)), (set(), set()))
+        (r if n else m).add(line)
+    if kind == "coverage.py":
+        for p, f in (json.load(open(os.path.join(root, cov["file"]))).get("files") or {}).items():
+            for line in f.get("executed_lines") or []:
+                add(os.path.normpath(p), line, 1)
+            for line in f.get("missing_lines") or []:
+                add(os.path.normpath(p), line, 0)
+    elif kind == "go":
+        mod = re.search(r"^module\s+(\S+)", _read(os.path.join(root, sub, "go.mod")), re.M)
+        for line in _read(os.path.join(root, cov["file"])).splitlines():
+            m = re.match(r"^(.+?):(\d+)\.\d+,(\d+)\.\d+ \d+ (\d+)$", line)
+            if m:
+                p = m.group(1)
+                if mod and p.startswith(mod.group(1) + "/"):
+                    p = p[len(mod.group(1)) + 1:]
+                for n in range(int(m.group(2)), int(m.group(3)) + 1):
+                    add(p, n, int(m.group(4)))
+    elif cov.get("lcov"):
+        p = None
+        for line in _read(os.path.join(root, cov["lcov"])).splitlines():
+            if line.startswith("SF:"):
+                p = os.path.relpath(os.path.join(root, sub, line[3:].strip()), os.path.join(root, sub))
+            elif line.startswith("DA:") and p:
+                n, c = (line[3:].split(",") + ["0"])[:2]
+                add(p, int(n), int(float(c or 0)))
+    return {p: (r, m - r) for p, (r, m) in hits.items()}
+
+
+def line_data(root, det, base):
+    """{"ran", "missed"}: the changed executable lines (a line the report lists as run or as missed) that ran and that did
+    not; None when the tool gives no line data."""
+    try:
+        hits = _line_hits(root, det)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not hits or not base:
+        return None
+    ran = missed = 0
+    for p, lines in changed_lines(root, base).items():
+        r, m = hits.get(p, (set(), set()))
+        ran, missed = ran + len(lines & r), missed + len(lines & m)
+    return {"ran": ran, "missed": missed}
+
+
+def measure_of(root, det, base):
+    """The coverage a passing suite run left (WP22): the report command, the total and the changed lines, kept with the
+    pass in the store, so a reused run gives them too."""
+    cov = det.get("coverage") or {}
+
+    def measure(out):
+        rout = run_env.run_cmd(root, 300, [cov["report"]])[0] if cov.get("report") else b""
+        total = coverage_value(root, det, (out + b"\n" + rout).decode("utf-8", "replace"))
+        return {"coverage": total, "changed": line_data(root, det, base) if total is not None else None, "base": base,
+                "report": rout[-2048:].decode("utf-8", "replace")}
+    return measure
+
+
+def coverage_row(root, det, cmd, out, rc, cov_exit, base, threshold, extra=None):
+    """The one coverage row of the ledger: the verdict's fields beside what it was judged on, so the gate judges it again
+    with the config and the baseline as they are then."""
+    cov = det.get("coverage")
+    ok = cov and rc == 0 and cov_exit != 127
+    m = extra if isinstance(extra, dict) else {}
+    total = m.get("coverage") if ok and "coverage" in m else coverage_value(root, det, out.decode("utf-8", "replace")) if ok else None
+    changed = (m.get("changed") if m.get("base") == base else None) if "coverage" in m else (
+        line_data(root, det, base) if total is not None else None)
+    note = "the suite failed, so no coverage was taken" if cov and rc != 0 and cov_exit != 127 else ""
+    measure = {"total": total, "command": bool(cov), "exit": cov_exit, "hint": det.get("hint") or "", "note": note}
+    b, why = base_value(os.path.join(root, ".temper", "evidence", "baseline.json"))
+    v = coverage_verdict(measure, b, changed, threshold, why)
+    code = {"pass": 0, "fail": 1}.get(v["state"])
+    return row("coverage", cmd if cov else "", code, v["why"], value=total, artifact=(cov or {}).get("file"), rule=v["rule"],
+               floor=v["floor"], state=v["state"], share=v["value"] if v["rule"] == "changed lines" else None, changed=changed,
+               command=bool(cov), cov_exit=cov_exit, hint=measure["hint"], note=note)
+
+
+
+
+def setup_fault(out, rc, cmd):
+    """Why a run failed on its environment, not on the code ("" when it did not): the project's own setup marker
+    (`temper-check: SETUP: ...`), else a sure sign of run_env.env_fault (a time-out stays the code's)."""
+    text = out.decode("utf-8", "replace") if isinstance(out, bytes) else str(out or "")
+    if rc == 0:
+        return ""
+    m = re.search(r"^[\w.-]+: SETUP: (.+)$", text, re.M)   # a project script's marker: `temper-check: SETUP: no Postgres ...`
+    if m:
+        return " ".join(m.group(1).split())[:200]
+    return run_env.env_fault(text, rc, cmd)
+
+
 def row(claim, cmd, rc, out, **kw):
     r = {"claim": claim, "cmd": cmd, "exit_code": rc, "artifact": None, "sha256": None, "value": None, "severity": None,
          "phase": "check", "scenario": None, "criterion": None, "label": "PROVEN" if rc == 0 else "HEURISTIC",
          "executed_by": "cli", "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-         "output": (out or b"")[-2048:].decode("utf-8", "replace") if isinstance(out, bytes) else str(out or "")[-2048:]}
+         "output": strip_banner((out or b"").decode("utf-8", "replace") if isinstance(out, bytes) else str(out or ""))[-2048:]}
     r.update(kw)
     return r
 
@@ -184,17 +449,8 @@ CMP_SWAP = {ast.Lt: ast.LtE, ast.LtE: ast.Lt, ast.Gt: ast.GtE, ast.GtE: ast.Gt, 
             ast.In: ast.NotIn, ast.NotIn: ast.In}
 
 
-SOURCE_EXT = (".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".java", ".kt", ".rb", ".rs", ".cs", ".php", ".swift", ".scala", ".sh")
-
-
-def is_test_path(p):
-    """A test source file: a test file name (test_x.py, x_test.go, x.test.ts, x.spec.js, XTest.java), or a source file in a
-    tests folder. Never a compiled or cached file."""
-    if "__pycache__" in p or not p.endswith(SOURCE_EXT):
-        return False
-    b = os.path.basename(p)
-    return bool(re.match(r"^test_.*\.py$|^.*_test\.(py|go)$|^conftest\.py$|^.*\.(test|spec)\.[cm]?[jt]sx?$|^.*Tests?\.(java|kt|cs)$|^.*_spec\.rb$", b)) or any(
-        part in TEST_DIR_NAMES for part in p.split("/")[:-1])
+SOURCE_EXT = run_env.SOURCE_EXT
+is_test_path = run_env.is_test_path   # WP22: the runner reads them too (a byproduct is never a source or test file)
 
 
 def changed_lines(root, base):
@@ -339,6 +595,14 @@ def text_mutants(source, lines):
     return out
 
 
+def _stopped(root):
+    """True once Check started more than STOP_AFTER_S ago: `check run` writes the time into .temper/check/mutation.stop."""
+    try:
+        return time.time() > float(open(os.path.join(root, ".temper", "check", "mutation.stop")).read().strip())
+    except (OSError, ValueError):
+        return False
+
+
 def mutation(root, base, test_cmd, suite_s):
     """(score percent | None, planted, caught, survivors, note)."""
     planted = []
@@ -362,7 +626,7 @@ def mutation(root, base, test_cmd, suite_s):
         if os.path.isdir(os.path.join(root, "node_modules")):   # the dependencies are read, never changed: a link will do
             os.symlink(os.path.join(root, "node_modules"), os.path.join(w, "node_modules"))
         for path, desc, src in planted:
-            if time.time() - t0 > MUTATION_BUDGET_S:
+            if time.time() - t0 > MUTATION_BUDGET_S or _stopped(root):
                 break
             full = os.path.join(w, path)
             orig = open(full, encoding="utf-8").read()
@@ -497,10 +761,11 @@ def acc_lock(root, spec, lockfile, cmd):
         return 1
     d = acc_read(lockfile)
     same = d.get("spec") == spec
-    # A lock is taken once. Only the person reopens it (the Check question's "Correct the acceptance test"), so a builder
+    # A lock is taken once. Only the person reopens it (the Build or Check question's "Correct the acceptance test"), so a builder
     # cannot change a locked test and lock it again.
     if same and d.get("cmd") and not d.get("reopened"):
-        print("FAIL: the acceptance tests are locked already; only the person reopens them (Correct the acceptance test, at the Check question)", file=sys.stderr)
+        print("FAIL: the acceptance tests are locked already; only the person reopens them (Correct the acceptance test, at the %s "
+              "question)" % stage_label(root), file=sys.stderr)
         return 1
     corrections = list(d.get("corrections") or []) if same else []
     if same and d.get("reopened"):
@@ -523,7 +788,7 @@ def acc_lock(root, spec, lockfile, cmd):
 
 
 def acc_reopen(spec, lockfile, reason):
-    """The person says a locked test is wrong (the Check question): the lock opens for one correction, which the
+    """The person says a locked test is wrong (the question of the stage the run is at): the lock opens for one correction, which the
     acceptance writer makes and locks again. The report and the gate row show the reason."""
     d = acc_read(lockfile)
     if d.get("spec") != spec or not d.get("cmd"):
@@ -540,7 +805,7 @@ def acc_reopen(spec, lockfile, reason):
 
 def acc_triage(spec, lockfile, text):
     """The triage of a failing locked test (agents/acceptance.md, Triage): `code: why` or `test: why`. It only sets which
-    option the Check question recommends; the person decides. Kept with a digest of the failure it read, so a new
+    option the question of the stage recommends; the person decides. Kept with a digest of the failure it read, so a new
     failure gets a new triage."""
     d = acc_read(lockfile)
     m = re.match(r"^\s*(code|test)\s*[:-]\s*(.+)$", text or "", re.S | re.I)
@@ -550,6 +815,12 @@ def acc_triage(spec, lockfile, text):
     d["triage"] = {"verdict": m.group(1).lower(), "reason": " ".join(m.group(2).split())[:300],
                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     acc_write(lockfile, d)
+    if d["triage"]["verdict"] == "test":   # WP23: a locked test the triage calls wrong is a record of class plan
+        try:
+            root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(lockfile))))
+            _failures().triaged_test(stage_label(root).lower(), root)
+        except Exception:
+            pass
     print("OK: triage recorded: the %s looks wrong" % d["triage"]["verdict"])
     return 0
 
@@ -605,7 +876,7 @@ def acc_skip(spec, lockfile, reason):
 
 # The launches of the acceptance writer a run allows: to write the tests before Build (a writer that cannot lock does not
 # hold Build up: the flow records the skip), and to correct a test each time the person reopens the lock (then the
-# Check question is the person's again). flow.py reads both.
+# question of the stage is the person's again). flow.py reads both.
 ACC_MAX_LAUNCHES = 2
 ACC_MAX_CORRECTIONS = 2
 
@@ -619,7 +890,8 @@ def acc_start(spec, lockfile):
     if isinstance(d.get("reopened"), dict):
         n = int(d["reopened"].get("launches", 0))
         if n >= ACC_MAX_CORRECTIONS:
-            print("FAIL: the acceptance writer was launched %d times for this correction; the Check question is the person's" % n, file=sys.stderr)
+            print("FAIL: the acceptance writer was launched %d times for this correction; the %s question is the person's"
+                  % (n, stage_label(os.getcwd())), file=sys.stderr)
             return 1
         d["reopened"]["launches"] = n + 1
         acc_write(lockfile, d)
@@ -638,7 +910,7 @@ def acc_start(spec, lockfile):
 
 
 def acc_run(root, spec, lockfile):
-    """The acceptance row(s) for Check: [] when this run has no lock."""
+    """The acceptance row(s) for the checks when Build ends and for Check: [] when this run has no lock."""
     d = acc_read(lockfile)
     if not spec or d.get("spec") != os.path.relpath(spec, root) or not (d.get("cmd") or d.get("skipped")):
         return []
@@ -652,157 +924,298 @@ def acc_run(root, spec, lockfile):
     if changed:
         return [row("acceptance (written before Build)", d["cmd"], 1,
                     "changed after they were locked: %s" % ", ".join(changed)[:300])]
-    out, rc = run_env.run_cmd(root, SUITE_TIMEOUT_S, [d["cmd"]])
+    info = {}   # WP22: its tests live under .temper/, outside the digest, so the lock's file digests are in its key
+    import baseline   # WP20: the limit from the base's time of the same suite and from a kept limit, at least Check's
+    out, rc, _ = run_env.run_cached(root, baseline.limit_for(d["cmd"], SUITE_TIMEOUT_S, root), [d["cmd"]], info=info,
+                                    extra={"lock": d.get("files") or {}}, root=root)
     fixed = [c.get("reason", "") for c in d.get("corrections") or [] if isinstance(c, dict)]
     name = "acceptance (written before Build)" + (", corrected after the lock: %s" % "; ".join(fixed)[:200] if fixed else "")
-    return [row(name, d["cmd"], rc, out)]
+    return [row(name, d["cmd"], rc, out, **run_env.row_fields(info))]
 
 
 # ---- run -----------------------------------------------------------------------------------------------------------
-def run(root, spec, ledger, base, command, test_cmd="", cov_cmd=""):
-    det = detect(root, test_cmd, cov_cmd)
-    if not det:
-        print("UNKNOWN: no test command for this project; set check.commands.test")
-        return 3
+def plan_line(spec):
+    """The plan's **Integration:** text (WP23: the owner of the suite only when the config and detect name none)."""
+    m = re.search(r"^\*\*Integration:\*\*\s*`([^`]+)`", _read(os.path.join(spec, "tasks.md")) if spec else "", re.M)
+    line = m.group(1).strip() if m else ""
+    return "" if line == "manual" else line
+
+
+def stage_label(root):
+    """The stage the run is at, in the person's words, for a text that names its question (Build or Check)."""
+    st = acc_read(os.path.join(root, ".temper", "build-state.json")).get("next_stage")
+    return {"build": "Build", "fix": "Build", "review": "Review", "check": "Check"}.get(st, "Build")
+
+
+def _failures():
+    import failure
+    return failure
+
+
+# the limit of a run of the checks: at Build TEMPER_INTEGRATION_TIMEOUT_S (an hour), at Check SUITE_TIMEOUT_S
+LIMIT_S = {"build": lambda: float(os.environ.get("TEMPER_INTEGRATION_TIMEOUT_S") or 3600), "check": lambda: SUITE_TIMEOUT_S}
+
+
+def run(root, spec, ledger, base, command, test_cmd="", cov_cmd="", threshold="", info=None, stage="check", suite=True):
+    """Check's run (stage check), or the checks when Build ends (stage build, `build-checks`, WP23): the suite in the
+    owner's run text with its coverage, the coverage row, each scenario test, the locked acceptance tests and a fix's
+    regression proof, each through the reuse store and recorded in the stage's ledger; every failed run is one failure
+    record. Returns the suite's exit code at Build (0 when the person's skip of a red base covers it), else 0; 3 at Check
+    with no test command."""
+    det = det_for(root, test_cmd, cov_cmd)
+    line = plan_line(spec)   # WP23 mechanism 2: at Build and at Check, so a run never ends at Check for want of a command
+    if not det and line:   # the plan's line owns the suite only when the config and detect name none
+        det = detect(root, line)
     try:
         rows = json.load(open(ledger))
         rows = rows if isinstance(rows, list) else []
     except (OSError, ValueError):
         rows = []
+    if not det and stage != "build":   # WP27: a criterion's command needs no suite: it is run and recorded all the same
+        if run_criteria(root, spec, rows.append, stage):
+            write_rows(ledger, rows)
+        print("UNKNOWN: no test command for this project; set check.commands.test")
+        return 3
     os.makedirs(os.path.join(root, ".temper", "check"), exist_ok=True)
+    ran = []   # (check, the row's index in the ledger)
+
+    def add(r_, check=None):
+        rows.append(r_)
+        if check:
+            ran.append((check, len(rows) - 1))
     cov = det.get("coverage")
-    # the suite, with coverage on in the same run when the stack allows it
-    cmd = cov["run"] if cov else det["test"]
-    t0 = time.time()
-    out, rc = run_env.run_cmd(root, SUITE_TIMEOUT_S, [cmd])
-    suite_s = time.time() - t0
-    if cov and cov.get("report") and rc == 0:
-        rout, _ = run_env.run_cmd(root, 300, [cov["report"]])
-        out = out + b"\n" + rout
-    rows.append(row("tests: the suite (run by the CLI)", cmd, rc, out))
-    print("tests: exit %d, %.1f s (%s)" % (rc, suite_s, cmd[:120]))
-    if cov:
-        val = coverage_value(root, det, out.decode("utf-8", "replace"))
-        if val is not None and rc == 0:
-            rows.append(row("coverage", cmd, 0, b"", value=val, artifact=cov.get("file")))
-            print("coverage: %s%%" % val)
+    out, rc, out_rc = b"", 0, 0
+    if det and suite:
+        # the suite, with coverage on in the same run when the stack allows it
+        cmd = cov["run"] if cov else det["test"]
+        import baseline
+        limit = baseline.limit_for(cmd, LIMIT_S[stage](), root)   # WP20: three times the base's time of the same suite, at least
+        # WP22: through the reuse store; a kept pass of the same key (a group's Validate of the same text on the same
+        # content, integrate's run on the tree Check judges) is used, with what it measured
+        sinfo = {"measure": measure_of(root, det, base), "need_extra": True} if cov else {}
+        out, rc, _ = run_env.run_cached(root, limit, [cmd], info=sinfo, root=root)
+        if rc == 124:   # WP20 mechanism 14: twice the limit is kept, the next run's limit, so the kept time out runs again
+            baseline.timed_out(cmd, limit, root)
+        cov_exit = rc if cov else None
+        if cov and rc == 127 and cmd != det["test"]:   # the coverage program could not start: the suite runs without it
+            sinfo = {}
+            out, rc, _ = run_env.run_cached(root, limit, [det["test"]], info=sinfo, root=root)
+            cmd = det["test"]
+        suite_s = float(sinfo.get("seconds") or 0)
+        if isinstance(info, dict):
+            info.update(suite_s=suite_s, rc=rc, det=det)
+        extra = sinfo.get("extra") if isinstance(sinfo.get("extra"), dict) else {}
+        if extra.get("report"):
+            out = out + b"\n" + extra["report"].encode("utf-8")
+        kw = dict(run_env.row_fields(sinfo), fail_lines=sinfo.get("fail_lines") or run_env.fail_lines(out, rc=rc)) if rc else \
+            run_env.row_fields(sinfo)
+        out_rc = rc
+        if stage == "build":
+            if line and line != cmd:
+                kw["plan_cmd"] = line
+            if rc != 0 and baseline.like_base(root, cmd, kw.get("fail_lines") or []):   # WP21: only the base's failures
+                kw["state"], out_rc = "skipped", 0
+                print("NOTE: the integration suite failed (exit %d) only as it failed on the base, which you went on from" % rc)
+            add(row("Integration suite", cmd, rc, out, phase="integration", **kw), None if out_rc == 0 and rc else "suite")
         else:
-            print("coverage: not measured (%s)" % ("the suite failed" if rc else "no total in the report"))
-    else:
-        rows.append(row("coverage tool missing: " + (det.get("hint") or "no coverage command"), "", 1, b""))
-        print("coverage: not measured: %s" % det.get("hint"))
+            add(row("tests: the suite (run by the CLI)", cmd, rc, out, **kw), "suite")
+        if stage == "build":
+            show(out, rc)
+            if out_rc:   # the reason integrate records
+                print("REASON: integration suite failed (exit %d): %s" % (rc, cmd[:300]))
+        print("tests: exit %d, %.1f s (%s)" % (rc, suite_s, cmd[:120]))
+        why = setup_fault(out, rc, cmd)
+        if why:   # the suite row stays red: the gate fails as before, and the question says SETUP
+            add(row("setup fault: " + why, cmd, 1, b"", label="HEURISTIC"))
+            print("SETUP: %s" % why)
+        c = coverage_row(root, det, cov["run"] if cov else "", out, rc, cov_exit, base, threshold, extra)
+        c.update({k: v for k, v in run_env.row_fields(sinfo).items() if k in ("tree", "key", "reused")})
+        add(c, "coverage")
+        print("coverage: %s: %s" % (c["state"], c["output"]))
     # each scenario's Test: command
     intent = os.path.join(spec, "intent.md") if spec else ""
     if intent and os.path.exists(intent):
         for b in acceptance.scenario_blocks(open(intent, encoding="utf-8").read().splitlines()):
             if not b.get("cmd", "").strip():
                 continue
-            sout, src = run_env.run_cmd(root, SUITE_TIMEOUT_S, [b["cmd"]])
-            rows.append(row("scenario: %s -> %s" % (b["name"], b["cmd"][:120]), b["cmd"], src, sout, phase="scenario", scenario=b["name"]))
-            print("scenario '%s': exit %d" % (b["name"][:60], src))
+            i = {}
+            import baseline
+            sout, src, _ = run_env.run_cached(root, baseline.limit_for(b["cmd"], LIMIT_S[stage](), root), [b["cmd"]], info=i,
+                                              root=root)
+            add(row("scenario test at integration" if stage == "build" else "scenario: %s -> %s" % (b["name"], b["cmd"][:120]),
+                    b["cmd"], src, sout, phase="scenario", scenario=b["name"], **run_env.row_fields(i)), "scenario")
+            print("scenario '%s': exit %d%s" % (b["name"][:60], src, ", %.1f s" % float(i.get("seconds") or 0) if stage == "build" else ""))
+    run_criteria(root, spec, lambda r_: add(r_, "criterion"), stage)
     # the acceptance tests written before Build, as they were locked
     lockfile = os.path.join(root, ".temper", "evidence", "acceptance-lock.json")
     for r_ in acc_run(root, spec, lockfile):
-        rows.append(r_)
+        add(r_, "acceptance")
         print("acceptance: exit %s" % r_["exit_code"])
-    # mutation score on the changed lines (any stack with a test command), only on a green suite
-    if det.get("mutation") and rc == 0 and base:
-        score, ran, caught, surv, note = mutation(root, base, det["test"], suite_s)
-        if score is None:
-            rows.append(row("mutation: not measured (%s)" % note, "", 0, b"", label="HEURISTIC"))
-            print("mutation: not measured (%s)" % note)
-        else:
-            rows.append(row("mutation score", "%d mutants of the changed lines" % ran, 0, "\n".join(surv), value=score))
-            print("mutation: %s%% (%d of %d caught)" % (score, caught, ran))
+        why = setup_fault(r_.get("output") or "", r_["exit_code"] if isinstance(r_["exit_code"], int) else 1, r_.get("cmd") or "")
+        if why and not any(str(x.get("claim", "")).startswith("setup fault: ") for x in rows[-3:]):
+            add(row("setup fault: " + why, r_.get("cmd") or "", 1, b"", label="HEURISTIC"))
+            print("SETUP: %s" % why)
     # regression proof of a fix
-    if command == "fix" and base:
+    if command == "fix" and base and det:
         rrc, detail = regression(root, base, det["test"])
-        rows.append(row("regression proof", det["test"], rrc, detail))
+        add(row("regression proof", det["test"], rrc, detail), "regression")
         print("regression: %s" % detail)
+    write_rows(ledger, rows)
+    if not isinstance(info, dict) or not info.get("ahead"):
+        record(stage, rows, ran, root)
+    return out_rc if stage == "build" else 0
+
+
+def write_rows(ledger, rows):
     tmp = "%s.tmp.%d" % (ledger, os.getpid())
     with open(tmp, "w") as f:
         json.dump(rows, f, indent=2)
     os.replace(tmp, ledger)
+
+
+def run_criteria(root, spec, add, stage):
+    """WP27: each required criterion validated by code or a metric with its command in backticks (acceptance.parse_criteria
+    vcmd), not deferred, of an accepted intent only (the approval covers the command: the card shows it, and WP12 binds the
+    intent): its command, through the reuse store, as a row of the stage's ledger like a scenario's (phase criterion).
+    Returns how many ran."""
+    intent = os.path.join(spec, "intent.md") if spec else ""
+    if not intent or not os.path.isfile(intent):
+        return 0
+    import baseline
+    import intent_parse
+    text = open(intent, encoding="utf-8").read()
+    if intent_parse.status(text) not in ("accepted", "completed"):
+        return 0
+    n = 0
+    for c in acceptance.parse_criteria(acceptance.section_lines(text.splitlines(), "Success Criteria")):
+        if not c.get("id") or c.get("placeholder") or not c.get("vcmd") or c.get("deferred"):
+            continue
+        i = {}
+        out, rc, _ = run_env.run_cached(root, baseline.limit_for(c["vcmd"], LIMIT_S[stage](), root), [c["vcmd"]], info=i, root=root)
+        claim = "criterion %s: %s" % (c["id"], c["vcmd"][:120])   # a ledger row's claim, no gate row
+        add(row(claim, c["vcmd"], rc, out, phase="criterion", criterion=c["id"], scenario=None, **run_env.row_fields(i)))
+        print("criterion %s: exit %d" % (c["id"], rc))
+        n += 1
+    return n
+
+
+def record(stage, rows, ran, root):
+    """One failure record per failed run (WP23); a pass of the same check on another key resolves the open ones."""
+    try:
+        f = _failures()
+        for check, i in ran:
+            r_ = rows[i]
+            if r_.get("exit_code") == 0 or (check == "coverage" and r_.get("state") != "fail"):
+                if r_.get("exit_code") == 0:
+                    f.resolve_pass("gate:%s" % stage, check, r_.get("key") or "", root)
+                continue
+            f.of_row(stage, "gate:%s" % stage, check, r_, i, root=root,
+                     kind="coverage-drop" if check == "coverage" else None)
+    except Exception as e:   # the record never fails a check: the rows and the verdict stand
+        print("NOTE: the failure record was not written: %s" % str(e)[:160])
+
+
+def show(out, rc, keep=12):
+    """A suite's output for the orchestrator: a passing run its last lines, a failing one all of it."""
+    lines = out.decode("utf-8", "replace").splitlines(True)
+    if rc == 0 and len(lines) > keep:
+        sys.stdout.write("[the first %d lines of the passing output are not shown]\n" % (len(lines) - keep))
+        lines = lines[-keep:]
+    sys.stdout.write("".join(lines))
+    sys.stdout.flush()
+
+
+# ---- ahead: beside Review, the planted bugs (and in a fix run Check's run) -----------------------------------------------
+# Review writes no code, so the CLI works in the background while the Review agent reads the change. In a fix run (no
+# integrate) it runs Check's commands through the reuse store into a throwaway ledger: the store is warm, and `check run`
+# finds each entry by its key (a call while that run goes on waits on the key's lock, then reads the entry). A feature
+# run's store is warm from integrate (WP23 mechanism 10): no check runs, and the suite's time is the one the store keeps
+# for the tree as it is (trap 9). Then, and only here, the planted bugs run (WP19): when three runs of the suite fit
+# MUTATION_BUDGET_S, into .temper/evidence/mutation.json. `check run` never waits for them.
+def mutation_path(root):
+    return os.path.join(root, ".temper", "evidence", "mutation.json")
+
+
+def planted_write(root, tree, state, why="", **kw):
+    d = dict({"state": state, "why": why, "ran": 0, "caught": 0, "survivors": [], "tree": tree,
+              "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, **kw)
+    acc_write(mutation_path(root), d)
+
+
+def planted(root):
+    """The planted bug score as the card and the view show it: {"state", "text"} of mutation.json when it measured the
+    tree as it is now; None when there is none, or it is of another tree."""
+    d = acc_read(mutation_path(root))
+    if not d.get("state") or d.get("tree") != run_env.tree_key(root, root=root):
+        return None
+    if d["state"] == "measured":
+        n, c = int(d.get("ran") or 0), int(d.get("caught") or 0)
+        return {"state": "measured", "text": "%d of %d planted bugs caught" % (c, n)}
+    if d["state"] == "running":
+        return {"state": "running", "text": "the planted bugs are still running"}
+    return {"state": d["state"], "text": "no planted bug score: %s" % (d.get("why") or "not run")}
+
+
+def plant(root, base, info, before):
+    """The planted bugs of the tree `before`, beside Review: only on a green suite and when three runs of it fit."""
+    det, suite_s = info.get("det") or {}, float(info.get("suite_s") or 0)
+    if not det.get("mutation") or not base:
+        return planted_write(root, before, "not run", "no base to read the changed lines against")
+    if info.get("rc") != 0:
+        return planted_write(root, before, "not run", "the suite failed (exit %s)" % info.get("rc"))
+    if 3 * suite_s >= MUTATION_BUDGET_S:
+        return planted_write(root, before, "not run", "three runs of the suite take %.1f s, not under the budget of %s s"
+                             % (3 * suite_s, _pct(MUTATION_BUDGET_S)))
+    planted_write(root, before, "running")
+    score, ran, caught, surv, note = mutation(root, base, det["test"], suite_s)
+    if score is None:
+        return planted_write(root, before, "not run", note, ran=ran, caught=caught, survivors=surv)
+    return planted_write(root, before, "measured", "", ran=ran, caught=caught, survivors=surv)
+
+
+def plant_kept(root, spec, base, test_cmd, cov_cmd, before):
+    """A feature run's planted bugs (WP23 mechanism 10, trap 9): the suite's time and result are the store's entry of the
+    tree as it is (the run integrate made, or Check's), read and never run; with no entry nothing runs, and the file says
+    why."""
+    det = det_for(root, test_cmd, cov_cmd)
+    line = plan_line(spec)
+    if not det and line:
+        det = detect(root, line)
+    if not det:
+        return planted_write(root, before, "not run", "no test command for this project")
+    # a kept pass first: the coverage run that could not start (exit 127) is followed by the suite's own text, as at run
+    kept = [run_env.kept(root, [c], root=root) for c in dict.fromkeys(x for x in ((det.get("coverage") or {}).get("run"),
+                                                                                 det.get("test")) if x)]
+    got = next((k for k in kept if k and k[0] == "pass"), None) or next((k for k in kept if k), None)
+    if not got:
+        return planted_write(root, before, "not run", "no run of the suite on this tree is kept (integrate and Check made "
+                             "none on it), so its time is not known")
+    plant(root, base, {"det": det, "suite_s": got[1].get("seconds"), "rc": 0 if got[0] == "pass" else got[1].get("rc")}, before)
     return 0
 
 
-# ---- ahead: Check's run made while Review reads the change ------------------------------------------------------------
-# Review writes no code, so the CLI runs Check's suite, coverage and mutation score in the background while the Review
-# agent works. `check run` adopts that run when the tree is still the one it measured (the same digest), else runs
-# again. A run that did not finish, or a tree that changed, is never adopted.
-def tree_digest(root):
-    """HEAD, plus every changed, added or removed file outside .temper/ and .claude/ with its content."""
-    import hashlib
-    def git(*a):
-        p = subprocess.run(["git", "-C", root] + list(a), capture_output=True, text=True)
-        return p.stdout if p.returncode == 0 else ""
-    h = hashlib.sha256(git("rev-parse", "HEAD").encode())
-    names = sorted(set(git("-c", "core.quotePath=false", "ls-files", "-m", "-o", "-d", "--exclude-standard").splitlines()))
-    for n in names:
-        if n.startswith((".temper/", ".claude/")) or "__pycache__" in n:
-            continue
-        h.update(n.encode() + b"\0")
-        f = os.path.join(root, n)
-        if os.path.isfile(f):
-            h.update(hashlib.sha256(open(f, "rb").read()).digest())
-    return h.hexdigest()
-
-
-def ahead_paths(root):
-    d = os.path.join(root, ".temper", "check")
-    return os.path.join(d, "ahead.json"), os.path.join(d, "ahead.pid")
-
-
-def ahead(root, spec, base, command, test_cmd="", cov_cmd=""):
-    out, pidf = ahead_paths(root)
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    for f in (out,):
+def ahead(root, spec, base, command, test_cmd="", cov_cmd="", threshold=""):
+    for f in (os.path.join(root, ".temper", "check", "mutation.stop"), mutation_path(root)):
         if os.path.exists(f):
             os.remove(f)
-    open(pidf, "w").write(str(os.getpid()))
+    before = run_env.tree_key(root, root=root)
+    if command != "fix":
+        return plant_kept(root, spec, base, test_cmd, cov_cmd, before)
+    fd, tmp = tempfile.mkstemp(prefix="temper-ahead-", suffix=".json")
+    os.close(fd)
+    open(tmp, "w").write("[]")
+    import contextlib, io
+    info = {"ahead": True}   # a throwaway ledger: its failures are recorded by the run that writes the stage's ledger
     try:
-        before = tree_digest(root)
-        fd, tmp = tempfile.mkstemp(prefix="temper-ahead-", suffix=".json")
-        os.close(fd)
-        open(tmp, "w").write("[]")
-        import contextlib, io
-        with contextlib.redirect_stdout(io.StringIO()):
-            rc = run(root, spec, tmp, base, command, test_cmd, cov_cmd)
-        rows = json.load(open(tmp))
-        os.remove(tmp)
-        if rc == 0 and tree_digest(root) == before:
-            acc_write(out, {"digest": before, "rows": rows})
+        with contextlib.redirect_stdout(io.StringIO()):   # the regression proof of a fix is no store run: check run makes it
+            rc = run(root, spec, tmp, base, "", test_cmd, cov_cmd, threshold, info)
     finally:
-        if os.path.exists(pidf):
-            os.remove(pidf)
+        os.remove(tmp)
+    if rc == 0 and run_env.tree_key(root, root=root) == before:
+        plant(root, base, info, before)
+    elif rc == 0:
+        planted_write(root, before, "not run", "the tree changed while the suite ran")
     return 0
-
-
-def adopt(root, ledger):
-    """Add the rows of the ahead run to Check's ledger when it measured this very tree; True when adopted. Waits for an
-    ahead run still going (it is the same work this run would do)."""
-    out, pidf = ahead_paths(root)
-    t0 = time.time()
-    while os.path.exists(pidf) and time.time() - t0 < SUITE_TIMEOUT_S:
-        try:
-            os.kill(int(open(pidf).read().strip() or "0"), 0)
-        except (ValueError, OSError):
-            break
-        time.sleep(1)
-    d = acc_read(out)
-    if os.path.exists(out):
-        os.remove(out)
-    if not d.get("rows") or d.get("digest") != tree_digest(root):
-        return False
-    try:
-        rows = json.load(open(ledger))
-        rows = rows if isinstance(rows, list) else []
-    except (OSError, ValueError):
-        rows = []
-    rows.extend(d["rows"])
-    acc_write(ledger, rows)
-    print("adopted the run made while Review read the change (%d rows; the tree is unchanged since)" % len(d["rows"]))
-    return True
 
 
 def main(argv):
@@ -824,15 +1237,29 @@ def main(argv):
             return acc_triage(spec, lockfile, text)
         if sub == "triaged":
             return acc_triaged(spec, lockfile, text)
+    if len(argv) >= 3 and argv[1] == "owner":   # owner ROOT [SPEC] (WP20): one JSON line
+        o = suite_owner(argv[2], None, argv[3] if len(argv) > 3 else "")
+        print(json.dumps({k: o[k] for k in ("test", "run", "source", "why")}))
+        return 0
     if len(argv) >= 3 and argv[1] == "detect":
         print(json.dumps(detect(argv[2], argv[3] if len(argv) > 3 else "", argv[4] if len(argv) > 4 else "")))
         return 0
-    if len(argv) >= 6 and argv[1] == "ahead":   # ahead ROOT SPEC BASE COMMAND [TEST_CMD COV_CMD]
-        return ahead(argv[2], argv[3], argv[4], argv[5], argv[6] if len(argv) > 6 else "", argv[7] if len(argv) > 7 else "")
+    if len(argv) == 2 and argv[1] == "coverage-verdict":   # one JSON object on standard input (case 60, w19 rule table)
+        d = json.loads(sys.stdin.read() or "{}")
+        print(json.dumps(coverage_verdict(d.get("measure"), d.get("base"), d.get("changed"), d.get("threshold"),
+                                          d.get("base_why") or "")))
+        return 0
+    if len(argv) >= 6 and argv[1] == "ahead":   # ahead ROOT SPEC BASE COMMAND [TEST_CMD COV_CMD KEY]
+        return ahead(*argv[2:6], *argv[6:9])
     if len(argv) >= 7 and argv[1] == "run":
-        if adopt(argv[2], argv[4]):
-            return 0
-        return run(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7] if len(argv) > 7 else "", argv[8] if len(argv) > 8 else "")
+        # the planted bugs beside Review go on at most STOP_AFTER_S from now; this run never waits for them
+        stop = os.path.join(argv[2], ".temper", "check", "mutation.stop")
+        os.makedirs(os.path.dirname(stop), exist_ok=True)
+        open(stop, "w").write("%d\n" % (time.time() + STOP_AFTER_S))
+        return run(*argv[2:7], *argv[7:10])
+    if len(argv) >= 7 and argv[1] == "build-checks":   # build-checks ROOT SPEC LEDGER BASE COMMAND [TEST COV KEY [nosuite]]
+        a = (argv[7:11] + ["", "", "", ""])[:4]
+        return run(*argv[2:7], *a[:3], stage="build", suite=a[3] != "nosuite")
     print(__doc__, file=sys.stderr)
     return 2
 

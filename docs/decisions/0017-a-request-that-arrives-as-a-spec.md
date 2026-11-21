@@ -1,6 +1,6 @@
 # ADR-0017: A request that arrives as a spec (draft)
 
-**Status:** Proposed (a draft; nothing of it is built)
+**Status:** Rejected: not built (9.8.5). ADR-0025 records why: one route, Design on request and the plan contract.
 **Date:** 2026-11-12
 **Relates to:** ADR-0011 (grouped Build), ADR-0013 (the CLI says what next)
 

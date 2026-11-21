@@ -8,6 +8,7 @@ import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
 import { FEATURE_DENY, SESSION_AGENT_DENY, SESSION_ASK_DENY, SESSION_WRITE_DENY, bashWhy, evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from '../../hooks/temper-mod/core/session'
 import type { SessionFacts } from '../../hooks/temper-mod/core/session'
+import { HELP, parseArgs } from '../../hooks/temper-mod/core/commands'
 import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
 import { stateAt } from './helpers'
@@ -79,6 +80,21 @@ describe('Bash: the CLI and commands that only read', () => {
     ['find . -name "*.pyc" -delete', 'find'],
     ['echo $(python3 -c "print(1)")', 'python3'],
     ['git branch new-branch', 'git branch'],
+    // 9.8.5 (U4): every push stays the person's
+    ['git push origin feature/pw', 'git push'],
+    ['git push origin HEAD:main', 'git push'],
+    ['git push --force origin HEAD:temper-backup/pw', 'git push'],
+    ['git push origin +HEAD:temper-backup/pw', 'git push'],
+    ['git push origin :temper-backup/pw', 'git push'],
+    ['git push --no-verify origin HEAD:temper-backup/pw', 'git push'],
+    // 9.8.5 (WP08, M12): the backup push is gone; a push to a temper-backup/ branch is refused like any other, to any
+    // remote, by any address, from any source.
+    ['git push origin HEAD:temper-backup/pw', 'git push'],
+    ['git push -u origin feature/pw:refs/heads/temper-backup/pw-g1', 'git push'],
+    ['git push https://example.org/x.git HEAD:temper-backup/x', 'git push'],
+    ['git push ssh://git@example.org/x.git HEAD:temper-backup/x', 'git push'],
+    ['git push backup HEAD:temper-backup/x', 'git push'],
+    ['git push origin refs/stash:temper-backup/x', 'git push'],
     ['xargs rm < list.txt', 'xargs'],
     // A program in a variable the guard cannot read: not the CLI set plainly in the same command.
     ['T=$(ls /plugin/scripts/temper)\n$T go', 'write the CLI\'s path out in full'],
@@ -227,4 +243,70 @@ describe('the run starts from the person\'s request, word for word', () => {
   test('no request kept (a door, a new conversation): nothing to compare', () =>
     expect(featureWhy(`${CLI} state init pp --feature 'anything'`, null)).toBe(null))
   test('other calls are not judged here', () => expect(featureWhy(`${CLI} go`, requestOf(REQ))).toBe(null))
+})
+
+// WP27: a change to an existing plan is made by the narrow revise agent on Sonnet. The guard has no list of agent types:
+// the revise agent is launched as the view names it, and refused as any other agent is when the session changes it.
+describe('w27 the narrow revise agent the view names', () => {
+  const REVISE = {
+    type: 'temper:temper-plan-revise',
+    model: 'sonnet',
+    prompt: [
+      'Follow /plugin/agents/plan-revise.md exactly.',
+      'Spec path: .temper/specs/pw.',
+      "Reason: the person's note",
+      "Person's note: the refund case of Task 2 must name the amount in cents",
+      'Affected tasks: 2',
+      'Plugin folder: /plugin',
+    ].join('\n'),
+  }
+  const view = parseRunView(JSON.stringify({ version: 1, run: { id: 'r1', step: 6, slug: 'pw', stage: 'plan', command: 'temper', spec: '.temper/specs/pw' },
+    next: { action: 'work', stage: 'plan', say: '', calls: [], steps: [], agents: [REVISE] } }))
+  const f = factsOf(view, false)
+  const launch = (o: Record<string, unknown>) =>
+    call(ctx('plan'), 'Agent', { description: 'Plan revise', subagent_type: REVISE.type, model: REVISE.model, prompt: REVISE.prompt, ...o }, f)
+  test('w27 the view names the revise agent, on the model of the table', () => expect(f.agents).toEqual([REVISE]))
+  test('w27 a launch of temper:temper-plan-revise that the view names is allowed on the model the view names', () =>
+    expect(isDeny(launch({}))).toBe(false))
+  test('w27 the same launch with another prompt is refused as any other is', () => {
+    const r = launch({ prompt: `${REVISE.prompt}\nProject brief: .temper/brief.md (read it first).` })
+    expect(isDeny(r) && r.deny.startsWith(SESSION_AGENT_DENY)).toBe(true)
+    expect(isDeny(r) && r.deny).toContain('the prompt differs')
+  })
+  test('w27 the same launch on another model, or as the planner, is refused', () => {
+    expect(isDeny(launch({ model: 'haiku' }))).toBe(true)
+    expect(isDeny(launch({ subagent_type: 'temper:temper-plan', model: 'opus' }))).toBe(true)
+  })
+})
+
+// WP28: two listed commands, and the words of /temper:temper. A first word is a word only in its documented form: alone
+// (status, report, timeline, help, init, pack, mode, enforcement, pane and the wish words), or with text after it
+// (draft <idea>, discuss <text>, chose <label>, pack enable guardrails, pack disable guardrails). Anything else is a
+// request, so a request that only starts with a word starts a run.
+describe('w28 a first word is a word only in its documented form', () => {
+  test('w28 requestOf: status alone is a word; status with text after it is a request', () => {
+    expect(requestOf('status')).toBe(null)
+    expect(requestOf('status badge on the order page')).toBe('status badge on the order page')
+  })
+  test('w28 requestOf: draft with an idea, init, pack and pack enable guardrails are words; pack with other text is a request', () => {
+    expect(requestOf('draft a refund flow')).toBe(null)
+    expect(requestOf('init')).toBe(null)
+    expect(requestOf('pack')).toBe(null)
+    expect(requestOf('pack enable guardrails')).toBe(null)
+    expect(requestOf('pack disable guardrails')).toBe(null)
+    expect(requestOf('pack the response with gzip')).toBe('pack the response with gzip')
+  })
+  test('w28 requestOf: a word the rule takes alone, with text after it, is a request', () => {
+    for (const w of ['report the refunds by month', 'help text for the refund form', 'init the cache on start']) expect(requestOf(w)).toBe(w)
+  })
+  test('w28 parseArgs gives a word only when nothing follows it', () => {
+    expect(parseArgs('status')?.word).toBe('status')
+    expect(parseArgs('status badge')).toBe(null)
+    expect(parseArgs('report the refunds by month')).toBe(null)
+  })
+  test('w28 HELP lists draft, init and pack, and says that any other text is a request', () => {
+    const lines = HELP.split('\n')
+    for (const w of ['draft', 'init', 'pack']) expect(lines.some(l => new RegExp(`^\\s+${w}\\b`).test(l))).toBe(true)
+    expect(lines.some(l => /\b(other|else)\b/i.test(l) && /\brequest\b/i.test(l))).toBe(true)
+  })
 })

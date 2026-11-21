@@ -1,0 +1,23 @@
+APPROVE BEFORE ANY CODE IS WRITTEN                                        pw
+You asked: "Password reset by email"
+
+WHAT WILL BE TRUE (5 criteria; each gets a test written and locked first)
+ AC-01 criterion 1
+ AC-02 criterion 2
+ AC-03 criterion 3
+ AC-04 criterion 4
+ AC-05 criterion 5
+
+WHAT WILL CHANGE (3 files; any other file asks you first)
+ G1 Tokens  + src/app.ts  + unit/app.test.ts
+ G2 Mail    + src/mail.ts
+
+THE CHECKS RUN
+ G1: npm test
+ G2: npm test
+ all: npm test
+
+LAUNCHES: 1 test writer (sonnet), 3 builders (sonnet), 1 reviewer (sonnet)
+BASELINE: unknown: not run in the selftest [not measured]
+You are asked again only if a check still fails after one repair, and at the
+commit. Nothing is pushed.

@@ -43,7 +43,7 @@ After all validation levels of Check pass (no failures), before the Commit gate:
    b. Naming conventions (file naming, class naming, function naming)
    c. Directory structure patterns (where new files were placed)
    d. Import/export patterns (barrel exports, named exports)
-   e. Testing patterns (describe/it, Given/When/Then, test helpers)
+   e. Testing patterns (describe/it, arrange and assert, test helpers)
    f. Configuration patterns (env vars, config files, feature flags)
    g. API patterns (route structure, middleware, validation)
    h. Data patterns (DTOs, mappers, serializers)
@@ -74,9 +74,7 @@ After all validation levels of Check pass (no failures), before the Commit gate:
    `.temper/specs/{feature}/config-suggestions.json`.
 2. **User interaction:** Accept, Reject, or Defer each one at the Check gate.
 3. **Accepted:** written to CLAUDE.md or AGENTS.md immediately.
-4. **Rejected:** recorded as a dismissal in `review-memory.json` (the single finding
-   memory) under a `config:{pattern_id}` key — 3+ dismissals of the same suggestion
-   pattern auto-suppress it from future checks.
+4. **Rejected:** simply not written.
 5. **Deferred:** left in the spec's `config-suggestions.json` for the next check.
 
 ## Suggestion Format

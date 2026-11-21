@@ -6,7 +6,53 @@ on:
   pull_request:
     branches: [main]
 
+# A new push to a pull request cancels the run it supersedes. A push to main has a group of its own commit, so no run
+# there is cancelled or replaced while it waits, and each commit on main keeps a result.
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    # Whether the two long suites run. long is false only when every changed file is under docs/decisions,
+    # docs/evidence, docs/history or docs/plans, or is CHANGELOG.md; any error in the diff gives true. The changed files
+    # are those of the whole pull request, or on main those of the push, never of the last commit alone.
+    name: Changed files
+    runs-on: ubuntu-latest
+    outputs:
+      long: ${{ steps.diff.outputs.long }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: Decide whether the long suites run
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          long=true
+          files=""
+          if [ "$EVENT" = pull_request ]; then
+            git fetch --no-tags origin "$BASE_REF" \
+              && files="$(git diff --no-renames --name-only "origin/$BASE_REF...HEAD")" || files=""
+          else
+            files="$(git diff --no-renames --name-only "$BEFORE..$SHA")" || files=""
+          fi
+          if [ -n "$files" ]; then
+            long=false
+            while IFS= read -r f; do
+              case "$f" in
+                docs/decisions/*|docs/evidence/*|docs/history/*|docs/plans/*|CHANGELOG.md) ;;
+                *) long=true ;;
+              esac
+            done <<< "$files"
+          fi
+          echo "changed files: $(printf '%s\n' "$files" | grep -c .); long=$long"
+          echo "long=$long" >> "$GITHUB_OUTPUT"
+
   quality:
     name: Quality Checks
     runs-on: ubuntu-latest
@@ -16,12 +62,23 @@ jobs:
         run: bash scripts/quality-check.sh
 
   temper-cli:
-    name: temper CLI Unit Tests
+    # The selftest, its case files in six shards side by side (run-selftest.sh --shard K/6); the groups are in number
+    # order, so shard 4 holds case file 5, the long pole.
+    name: temper CLI selftest (shard ${{ matrix.shard }} of 6)
+    needs: changes
+    if: needs.changes.outputs.long == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
-      - name: Run test-temper.sh
-        run: bash scripts/selftest/test-temper.sh
+        with:
+          fetch-depth: 0
+      - name: Run the case files of this shard
+        run: bash scripts/selftest/run-selftest.sh --shard ${{ matrix.shard }}/6
 
   validate-readme:
     name: README Validation
@@ -73,8 +130,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+      - name: Install Claude Code 2.1.287 (the version the mod job uses)
+        run: npm install -g @anthropic-ai/claude-code@2.1.287
       - name: Run claude plugin validate --strict
         run: claude plugin validate --strict .
 
@@ -83,17 +140,49 @@ jobs:
     # Review, Check, Commit, the pull request and Pipeline, a fix run and the small change window. Each scenario runs
     # without the mod (plain), with the mod's rule engine guarding every call (mod), and carried by the mod's run
     # driver (driver); a scenario fails when the flow with the mod differs from the flow without it. The pyjokes scenarios
-    # (scripts/e2e/pyjokes.ts) replay the faults of 9.8.4 on a second mock project.
-    name: End to end (plain, mod, driver)
+    # (scripts/e2e/pyjokes.ts) replay the faults of 9.8.4 on a second mock project. Four shards side by side; every mode
+    # of a scenario stays in one shard, because the compare reads two traces of one process.
+    name: End to end (shard ${{ matrix.shard }} of 4)
+    needs: changes
+    if: needs.changes.outputs.long == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30   # shard 2 passed in 20 minutes and was cancelled at the limit
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4   # the version the scenarios were run with
-      - name: Run every scenario in every mode
-        run: bun scripts/e2e/run.ts all
+      - name: Run the scenarios of this shard in every mode
+        run: bun scripts/e2e/run.ts all --shard ${{ matrix.shard }}/4
+
+  floor-and-caps:
+    # What keeps the product from growing back (9.8.5). The caps: each `now` of scripts/caps.json equals its measure and
+    # no `final` was raised (python3 and git only, always). The floor: the counts of the scripted default run, the full
+    # run and a fix run in every mode (dialogs, launches by agent type, the CLI's own steps, steps back, hand backs,
+    # suite runs) equal the `now` values of scripts/e2e/floor.json, and no `final` there was raised.
+    name: Floor and caps
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # a final is held against its first committed value, read from the history of the file
+      - name: The caps
+        run: python3 scripts/check_caps.py
+      - name: The floor's shape, and no final raised
+        run: python3 scripts/check_floor.py
+      - uses: oven-sh/setup-bun@v2
+        if: needs.changes.outputs.long == 'true'
+        with:
+          bun-version: 1.4.4   # the version the e2e job pins
+      - name: The counts of default-run, full-run and fix in every mode against the floor
+        if: needs.changes.outputs.long == 'true'
+        run: bun scripts/e2e/run.ts all default-run full-run fix --floor scripts/e2e/floor.json
 
   mod:
     name: Mod (Claude Code 2.1.287)
@@ -123,3 +212,20 @@ jobs:
           bash scripts/check-mod-calls.sh
       - name: The documented limits of the guard
         run: bash scripts/check-known-limits.sh
+
+  gate:
+    # The one check a branch rule requires: it fails when a job it needs failed or was cancelled. A long suite that the
+    # changes job skipped on purpose counts as passed.
+    name: Gate
+    needs: [changes, quality, temper-cli, validate-readme, validate-directory, validate-docs, validate-plugin,
+      validate-panels, validate-manifest, e2e, floor-and-caps, mod]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every needed job passed, or was skipped by the changes job
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "results: $RESULTS"
+          if [ "$FAILED" = true ]; then echo "a needed job failed or was cancelled"; exit 1; fi

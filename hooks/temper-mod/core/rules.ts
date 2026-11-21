@@ -32,21 +32,32 @@ export type RunFacts = {
   planFiles: readonly string[]
   // A grouped Build run is active, and the CLI (not an agent) ticks the run's tasks.md.
   groupedActive: boolean
-  // The run never left Intent and holds no spec file: a `state clear` loses nothing (the TRIVIAL exit).
+  // WP17: the run state holds the trivial verdict (`temper intent trivial`, view.json's trivial_exit): the window of
+  // the Intent agent's one write outside the spec folder, until the flow closes the run.
   trivialExit: boolean
   // The project's folder from the top of its git repository (`packages/app/`); "" or absent at the top. A group or task
   // worktree is a checkout of the whole repository, so the project's files are under this prefix in it.
   prefix?: string
   // The stage a small change window was opened at (`temper adhoc open`), or null/absent when none is open.
   adhocStage?: string | null
+  // WP24: the kind of that window: `repair` (a repair in the stage, `temper repair start`) holds Build's write rule; none
+  // (or any other) is a small change.
+  adhocKind?: string | null
 }
 
 // A small change window is open at the stage the run is at, and that stage is one a window may be opened at
 // (ADHOC_STAGES). The one rule: the stage write rule here and the main session's rule (core/session.ts) both ask it.
-export const adhocOpen = (r: RunFacts): boolean => r.adhocStage != null && r.adhocStage === r.stage && ADHOC_STAGES.includes(r.stage)
+export const adhocOpen = (r: RunFacts): boolean =>
+  r.adhocStage != null && r.adhocStage === r.stage && ADHOC_STAGES.includes(r.stage) && r.adhocKind !== 'repair'
 
-// The TRIVIAL exit: a `state clear` of a run that never left Intent loses nothing (view.json's trivial_exit, at Intent,
-// before any step). The guard lets that clear through, and register.tsx stops holding the run it cleared: both ask this.
+// WP24: a repair window is open at the stage the run is at (Review or Check): its fixer writes as a Build agent does, a
+// planned file or a test; any other path is scope drift.
+export const repairOpen = (r: RunFacts): boolean => r.adhocStage != null && r.adhocStage === r.stage && r.adhocKind === 'repair'
+
+
+// The trivial window (WP17): the CLI recorded the trivial verdict at Intent, before any step (view.json's
+// trivial_exit). The Intent agent may then make the one change outside the spec folder; the commit hook holds it to
+// the bound.
 export const trivialExit = (r: RunFacts | null): boolean => r !== null && r.trivialExit && r.stage === 'intent' && r.step <= 0
 
 export type RuleContext = {
@@ -94,7 +105,7 @@ function targetPath(call: ToolCall): string | null {
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
 
 // The files the editing tools never write. `config` and `hooks` only while a run is active (the person writes the config
-// with /temper:init, and installs the hooks, when no run is on). `hooks` is the native commit gate: the git hooks, the
+// with the word init of /temper:temper, and installs the hooks, when no run is on). `hooks` is the native commit gate: the git hooks, the
 // git config (core.hooksPath) and the Temper commit hook (the temper-gate folder in the git folder, the older
 // temper-pre-commit file there, and the older folders hooks-temper and temper-git-hooks).
 export type ProtectedKind = 'events' | 'gates' | 'status' | 'overrides' | 'state' | 'folder' | 'evidence' | 'loops' | 'config' | 'hooks'
@@ -105,8 +116,14 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   ['gates', /(^|\/)\.temper\/gates\.json$/i],
   ['status', /(^|\/)\.temper\/status\.json$/i],
   ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
-  // The run state, the grouped Build record, the usage record and the view the mod draws: the CLI writes them.
-  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view)\.json$/i],
+  // The run state, the grouped Build record, the usage record and the view the mod draws: the CLI writes them. 9.8.5
+  // (M14): so are the Design answers and the rows of the Check run made ahead (Check adopts them), which turn rows.
+  // 9.8.5 (WP10): so is the record of the run's repeats; and
+  // (WP11) the record of what a rule decided, which the commit question shows; and (WP17) the record of a trivial
+  // request, which turns the commit gate's row with no run.
+  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view|decisions|budget|rule-log|trivial|check\/ahead)\.json$/i],
+  // The store of reused passes, in the git folder and shared by every worktree: a row in it passes a check unrun.
+  ['gates', /(^|\/)\.git\/temper-results\.json$/i],
   ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
   ['loops', /(^|\/)\.temper\/feedback-loops\.json$/i],
   ['config', /(^|\/)\.claude\/temper\.config$/i],
@@ -120,6 +137,8 @@ const GUARDED_SAMPLES = [
   '.temper', '.temper/specs', '.temper/evidence', '.temper/gates.json', '.temper/status.json', '.temper/overrides.json',
   '.temper/build-state.json', '.temper/groups.json', '.temper/usage.json', '.temper/view.json', '.temper/feedback-loops.json',
   '.temper/evidence/review.json', '.claude/temper.config', '.git/config', '.git/hooks', '.git/hooks/pre-commit', '.git/temper-gate',
+  '.git/temper-results.json', '.temper/decisions.json',
+  '.temper/check/ahead.json', '.temper/budget.json', '.temper/rule-log.json', '.temper/trivial.json',
 ]
 // A glob as bash reads it, one segment at a time: `*` and `?` stay inside a segment, and a segment that starts with one
 // does not match a name that starts with a dot (bash's default: `rm -rf *` leaves `.temper` alone).
@@ -178,7 +197,7 @@ function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
     return {
       deny:
         'Temper: the evidence ledger and the loop counter belong to the temper CLI. Do not write them by hand. ' +
-        `Next: use ${cli} evidence add, run or resolve, and ${cli} state loop.`,
+        `Next: use ${cli} evidence add or run, and ${cli} state loop.`,
     }
   }
   if (kind === 'hooks') {
@@ -234,6 +253,22 @@ function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): 
   return { ...res, deny: text }
 }
 
+// Build's write rule: the spec folder, a test, a planned file, or a file the person added to the plan or allowed once.
+function buildWrite(ctx: RuleContext & { run: RunFacts }, path: string, inSpec: boolean): RuleResult {
+  if (inSpec || isTestFile(path) || matchesPlan(path, ctx.run.planFiles) || ctx.drift.added.some(p => normalizePath(p) === path)) return ALLOW
+  const once = ctx.drift.allowOnce.find(a => normalizePath(a.path) === path)
+  if (once) return { allow: true, use: once.id }
+  return {
+    deny:
+      `Temper: scope drift. ${path} is not in the plan, so the user decides first: add to plan, revert, or allow once. ` +
+      `Do not write it another way. Next: stop this task, record the file with ${ctx.cli ?? CLI} drift ask --path ${path} ` +
+      "--why '<why it is needed>' --change '<what you would change>' (WP16: in place of a DRIFT section of your panel), and " +
+      `return. The CLI asks the user: header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", ` +
+      'then a "Why:" line and a "Change:" line, and the options Add to plan, Revert, Allow once.',
+    drift: path,
+  }
+}
+
 function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: string): RuleResult {
   const r = ctx.run
   // A write in a group or task worktree of this run is judged by its worktree-relative path, with the same rule.
@@ -245,20 +280,28 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
   if (stageIndex(r.stage) >= stageIndex('design') && path === `${spec}/tasks.md`) {
     return { deny: `Temper: the plan is approved. Writing ${rawPath} is not allowed: the run's tasks.md is the plan the user approved, and the temper CLI ticks it. ${TASKS_OWNED}` }
   }
+  // WP12: the approval is bound to the intent as shown; from Build on a change to it is a step back to Plan and a new
+  // approval, so no agent writes it (the CLI's own Status and Completed lines are not tool writes).
+  if (stageIndex(r.stage) >= stageIndex('build') && path === `${spec}/intent.md`) {
+    return { deny: `Temper: the intent is approved. Writing ${rawPath} is not allowed: the run's intent.md is the intent the user approved with the plan. Next: to change it, ask the user whether to loop back to Plan, where the intent and the plan are approved again.` }
+  }
   const inSpec = inDir(path, spec)
   const specFile = (name: string) => path === `${spec}/${name}`
   const label = stageLabel(r.stage)
   // A small change window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only there.
   if (adhocOpen(r)) return ALLOW
+  // WP24: a repair window holds Build's write rule at Review or Check
+  if (repairOpen(r)) return buildWrite(ctx, path, inSpec)
 
   switch (r.stage) {
     case 'intent':
-      if (specFile('intent.md') || specFile('intent-context.json')) return ALLOW
+      if (specFile('intent.md') || specFile('intent-context.json') || trivialExit(r)) return ALLOW
       return {
         deny:
-          `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the intent. ` +
+          `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the intent with the plan. ` +
           'Do not look for another way. Do not offer to turn Temper off. ' +
-          `Next: finish intent.md. Then ${ASK} (Continue to Plan).`,
+          `Next: finish intent.md. The run then goes on to Plan, where you ${ASK} (the approval): that one ` +
+          'question accepts the intent and the plan.',
       }
     case 'plan':
     case 'design': {
@@ -289,20 +332,8 @@ function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: strin
           `Temper: ${label} stage. Writing ${path} is not allowed. Check only runs checks. ` +
           `Next: finish the check stage. To change code, ${ASK} whether to loop back to Build.`,
       }
-    case 'build': {
-      if (inSpec || isTestFile(path) || matchesPlan(path, r.planFiles) || ctx.drift.added.some(p => normalizePath(p) === path)) return ALLOW
-      const once = ctx.drift.allowOnce.find(a => normalizePath(a.path) === path)
-      if (once) return { allow: true, use: once.id }
-      return {
-        deny:
-          `Temper: scope drift. ${path} is not in the plan, so the user decides first: add to plan, revert, or allow once. ` +
-          'Do not write it another way. Next: in the Build stage, stop this task and list the file in the DRIFT section of your ' +
-          'panel, with why it is needed and what you would change. In the main conversation, ask with AskUserQuestion: ' +
-          `header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", then a "Why:" line and a ` +
-          '"Change:" line, and the options Add to plan, Revert, Allow once.',
-        drift: path,
-      }
-    }
+    case 'build':
+      return buildWrite(ctx, path, inSpec)
     case 'pipeline':
       // Pipeline reads the pull request's checks and proposes a fix; the push is the person's. The fix is applied in a small
       // change window the Pipeline question's steps open.
@@ -332,7 +363,8 @@ const AUTONOMY_DENY =
   `Next: ${ASK} at the plan gate (or the Design gate, when Design runs), exactly as \`temper next --json\` gives it.`
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason'])
+// trivial (WP17) is the verdict of `temper intent trivial`, a path below it too: set by hand it would open the window.
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'intent_hash', 'from_branch', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason', 'trivial'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +
@@ -368,8 +400,18 @@ const TOO_MANY_DENY =
   'Next: write the paths out, or split the command.'
 
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
-const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
-  'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix', ...STAGES]
+const PERSON_WORDS = ['override', 'group', 'reopen', 'acceptance', '--accept-foreign', 'evidence', 'accept', 'clear', 'resolve', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
+  'doctor', '--write', 'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix',
+  'budget', 'grant', 'baseline', 'accept-red', 'skip', 'repair', '--fresh', 'close', '--person', 'config', 'tidy', ...STAGES]
+
+const RESOLVE_DENY =
+  'Temper: the CLI resolves a finding itself, for a commit it made after Review read the code; no session or agent does. ' +
+  `Next: ${ASK} for a decision on the finding.`
+
+// WP24: a repair window ends with the CLI's own `repair commit` (the fixer's after call), never as a small change.
+const REPAIR_CLOSE_DENY =
+  'Temper: a repair window is closed by temper repair commit, the fixer\'s after call: the CLI commits the fix, runs the checks again, and a reader rechecks it. ' +
+  'Do not close it as a small change. Next: finish the fix, commit nothing, and return.'
 
 const GLOB_DENY =
   'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
@@ -433,6 +475,12 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     return { deny: SHIELD_DENY(cli) }
   }
 
+  // 9.8.5 (WP18): a finding is resolved by the CLI itself, for its own repair commit, where no guard sees it; no
+  // answer of the person and no armed run makes the call a tool call, in a /temper run and in a /temper:fix run.
+  if (guardsCommit && c.calls.some(call => { const [a, b] = callWords(call); return a === 'evidence' && b === 'resolve' })) return { deny: RESOLVE_DENY }
+  // An unquoted glob that bash may expand to one of its two words is refused in a /temper:fix run too.
+  if (guardsCommit && c.globWords.some(ws => ws.some(w => globCould(w, 'evidence') || globCould(w, 'resolve')))) return { deny: GLOB_DENY }
+
   if (!active) return ALLOW
   // Every pull request is a draft, and Temper never marks one ready (reference/pr.md).
   if (/\bgh\s+pr\s+ready\b/.test(command) || (/\bgh\s+pr\s+create\b/.test(command) && !/--draft\b/.test(command))) return { deny: DRAFT_DENY }
@@ -442,11 +490,14 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   // `--accept-for?ign`): bash expands it when a file of that name exists. Any other glob (`sonnet[1m]`) is no refusal.
   if (c.globWords.some(ws => ws.some(w => PERSON_WORDS.some(t => globCould(w, t) || globCould(w.split('=')[0] ?? w, t))))) return { deny: GLOB_DENY }
   const r = ctx.run
+  if (repairOpen(r) && c.calls.some(call => { const [a, b] = callWords(call); return a === 'adhoc' && b === 'close' })) return { deny: REPAIR_CLOSE_DENY }
+  // WP20: one answer at base.red is one recorded skip: a second accept-red in the same command is not it
+  let wentOn = false
   for (const call of c.calls) {
     const w = callWords(call)
     const [a, b, key, value] = w
     if (a === 'state' && b === 'set' && key !== undefined) {
-      if (GUARD_KEYS.has(key) && !(key === 'branch' && ctx.allowed.some(written => sameCall(written, w)))) return { deny: KEY_DENY(key) }
+      if ((GUARD_KEYS.has(key) || key.startsWith('trivial.')) && !(key === 'branch' && ctx.allowed.some(written => sameCall(written, w)))) return { deny: KEY_DENY(key) }
       // The keys the orchestrator sets itself, only in the form and the stage it sets them: the complexity while the
       // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build.
       if (key === 'complexity' && !((r.stage === 'intent' || r.stage === 'plan') && /^(?:trivial|simple|medium|complex)$/.test(value ?? ''))) return { deny: KEY_DENY(key) }
@@ -456,12 +507,23 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
         if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(key) }
       }
     }
+    // 9.8.5 (lane E): a Scope drift answer that widens the approved set (`drift P: Add to plan|Allow once`) is recorded
+    // only as the person's answer: their Scope drift answer for P, or the call of the gate answer they gave (the commit
+    // gate's Add to plan). The fixer of a repair never writes it (the CLI refuses an answer to no question in a repair).
+    const ans = driftAnswer(w)
+    if (ans !== null && !ctx.allowed.some(written => sameCall(written, w))) {
+      const given = ans.add ? ctx.drift.added : ctx.drift.allowOnce.map(x => x.path)
+      if (!given.some(p => normalizePath(p) === normalizePath(ans.path))) return { deny: DRIFT_ANSWER_DENY(ans.path) }
+    }
     if (!personOnly(w, r)) continue
     // The person's answer at this step, or the CLI's own action, maps to this very call.
+    if (a === 'baseline' && b === 'accept-red' && ctx.allowed.some(written => sameCall(written, w))) {
+      if (wentOn) return { deny: personDeny(w, r, cli) }
+      wentOn = true
+      continue
+    }
     if (ctx.allowed.some(written => sameCall(written, w))) continue
     const resets = a === 'state' && (b === 'clear' || b === 'archive' || b === 'init')
-    // The TRIVIAL exit of the orchestrator: a clear of a run that never left Intent loses nothing.
-    if (a === 'state' && b === 'clear' && trivialExit(r)) continue
     // Start over: the saved run state goes, and a run of the same command begins (never a fix run, which the mod stands
     // aside for).
     if (resets && ctx.restart && !w.some((x, i) => (x === '--command' && w[i + 1] === 'fix') || x === '--command=fix')) continue
@@ -470,23 +532,56 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   return ALLOW
 }
 
+// The Scope drift answer an `evidence add` records, when it widens the approved set: its path, and whether it adds the file
+// to the plan (else it allows it once). Null for any other call.
+function driftAnswer(w: readonly string[]): { path: string; add: boolean } | null {
+  if (w[0] !== 'evidence' || w[1] !== 'add') return null
+  const at = w.findIndex(x => x === '--claim' || x.startsWith('--claim='))
+  const claim = at < 0 ? '' : w[at] === '--claim' ? (w[at + 1] ?? '') : (w[at] as string).slice('--claim='.length)
+  const m = /^drift (\S+): (Add to plan|Allow once)\b/i.exec(claim)
+  return m ? { path: m[1] as string, add: (m[2] as string).toLowerCase() === 'add to plan' } : null
+}
+
+const DRIFT_ANSWER_DENY = (path: string): string =>
+  `Temper: a Scope drift answer for ${path} is the user's, given at the Scope drift question; no agent records it. ` +
+  'Next: ask about the file with temper drift ask, stop, and return; the user answers the question.'
+
 // The temper calls only the person may cause (ADR 0013), by their words after the script: leaving Intent or Plan, a
-// skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, and starting over or ending
-// the run before it is done.
+// skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, writing a setup block, more
+// repeats than the budget holds, going on from a red base, tidying the config, and starting over or ending the run
+// before it is done.
 function personOnly(w: readonly string[], r: RunFacts): boolean {
   const [a, b, c, d] = w
   if (a === 'override') return true
   // 9.7.5: the Context check answer, a manual task's confirmation, a covered task's acceptance and a small change are the
   // person's, each only as the call their answer to the CLI's question maps to.
-  if (a === 'plan' && b === 'review') return true
+  if (a === 'plan' && (b === 'review' || b === 'patch')) return true   // 9.8.5: a plan patch changes the approved plan
   if (a === 'task' && (b === 'confirm' || b === 'accept')) return true
   if (a === 'adhoc' && b === 'open') return true
   // 9.8.0: reopening the locked acceptance tests (a test the person says is wrong) is the person's; restoring them is not.
   if (a === 'acceptance' && b === 'reopen') return true
   if (a === 'state' && b === 'set' && c === 'branch') return true
   if (a === 'group' && b === 'reopen') return w.some(x => x === '--accept-foreign' || x.startsWith('--accept-foreign='))
-  // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's.
-  if (a === 'evidence') return b === 'accept' || b === 'clear'
+  // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's. 9.8.5 (WP27 step 7): so
+  // is a row `--person`, the confirm option's call: the one row a criterion the person confirms at Check counts from.
+  if (a === 'evidence') return b === 'accept' || b === 'clear' || (b === 'add' && w.includes('--person'))
+  // 9.8.5 (M13): a setup block runs before every command of every gate, so writing one to the config is the person's;
+  // `doctor` and `doctor --propose` only read.
+  if (a === 'doctor') return w.includes('--write')
+  // 9.8.5 (WP10): more repeats of a failed check than the budget holds are the person's grant, at run.budget.
+  if (a === 'budget') return b === 'grant'
+  // 9.8.5 (WP29): the one time config question rewrites or marks the config; its two calls are the person's answers.
+  if (a === 'config') return b === 'tidy'
+  // 9.8.5 (WP20): going on from a red base is a recorded skip of the suite's failures, the person's at base.red; the
+  // baseline's own calls (start, clean, plan) are the CLI's. WP21: a skip of a command the plan wrote, with a reason,
+  // is the person's at plan.command.
+  if (a === 'baseline') return b === 'accept-red' || b === 'skip'
+  // 9.8.5 (WP24): the repair in the stage is the CLI's own action (`repair start`) or the person's Repair again
+  // (`--again`); its commit, mark, close and revert pass only as calls of the action the view names. Its test runs and
+  // its status decide nothing.
+  if (a === 'repair') return b !== 'test' && b !== 'status'
+  // WP22 (step 11): Run it anyway, a check run whatever the reuse store holds, is the person's option only.
+  if (w.includes('--fresh') && ((a === 'check' && (b === 'run' || b === 'build-checks')) || (a === 'group' && b === 'gate') || a === 'integrate')) return true
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true

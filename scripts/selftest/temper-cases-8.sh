@@ -15,15 +15,16 @@ assert_eq "next: a new run launches the Intent brief, with the feature, then rec
   "work|temper:temper-intent|1|1|usage add --stage intent|gate intent" \
   "$(nx "'|'.join([d['action'], d['agents'][0]['type'], str(int('Feature: the demo thing.' in d['agents'][0]['prompt'])), str(int('/agents/intent.md exactly' in d['agents'][0]['prompt'])), ' '.join(d['agents'][0]['after'][0].split('temper ', 1)[1].split()[:4]), d['agents'][0]['after'][1].split('temper ', 1)[1]])")"
 assert_eq "next: the run's identity is in every action" "demo|intent|0" "$(nx "d['run']['slug'] + '|' + d['run']['stage'] + '|' + str(d['run']['step'])")"
+"$TEMPER" evidence add --stage intent --phase note --claim 'keep the demo to one screen' >/dev/null 2>&1   # WP13: a note at Intent keeps its question
 gpass intent
 assert_eq "next: Intent PASS asks the Temper gate question with its four options, exactly" \
   "ask|Temper gate|Intent: the check passed. Accept the intent and continue to Plan?" \
   "$(nx "d['action'] + '|' + d['ask']['question']['header'] + '|' + d['ask']['question']['question']")"
 assert_eq "next: the Intent PASS options" "Continue to Plan (Recommended)|Grill Me|Teach Me|Save for later" "$(labels)"
 _b="$(git symbolic-ref -q HEAD)"; git branch -f temper-test-other HEAD >/dev/null 2>&1; git symbolic-ref HEAD refs/heads/temper-test-other   # on another branch than the run's, at the same commit
-assert_eq "next: Continue to Plan is the person's approval: switch to the run's branch, accept the intent, commit it, then advance (9.8.0: each a temper call)" \
-  "approve|spec branch|intent accept|spec commit 'docs(intent): accept demo'|state advance intent_complete plan" \
-  "$(nx "o = d['ask']['options'][0]; '|'.join([o['move']] + [c.split('temper ', 1)[1] for c in (o['calls'][0], o['calls'][1], o['calls'][2], o['calls'][-1])])")"
+assert_eq "next: Continue to Plan is the person's answer: accept the intent, then advance; no branch and no commit before the approval (WP12)" \
+  "approve|intent accept|state advance intent_complete plan|2" \
+  "$(nx "o = d['ask']['options'][0]; '|'.join([o['move']] + [c.split('temper ', 1)[1] for c in (o['calls'][0], o['calls'][-1])] + [str(len(o['calls']))])")"
 git symbolic-ref HEAD "$_b"
 assert_eq "next: Save for later stops the run and is a pause" "pause|True" "$(nx "o = d['ask']['options'][3]; o['move'] + '|' + str(o['stop'])")"
 assert_eq "next: the ask carries the run id and step it belongs to" "yes|0" "$(nx "('yes' if d['ask']['run_id'] == d['run']['id'] else 'no') + '|' + str(d['ask']['step'])")"
@@ -69,14 +70,15 @@ assert_exit "state set next_stage forward: refused past a stage that has no pass
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 printf '# Plan\n\n## Files to Modify\n| File | Change |\n|---|---|\n| `src/demo.sh` | the demo |\n| `README.md` | a line |\n' > .temper/specs/demo/plan.md
 gpass plan
-assert_eq "next: Plan PASS with no Design to follow offers stage by stage or unattended, then Fresh review first (9.8.0)" \
-  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
-assert_eq "next: More options holds the rest, as its own question" "Open HTML review|Grill Me|Teach Me|Save for later" \
+assert_eq "next: Plan PASS with no Design to follow offers ask at every stage or the run to the commit, then Fresh review first (WP11)" \
+  "ask-every-stage,True|approve-run,False|fresh-review,False|more,False" \
+  "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
+assert_eq "next: More options holds the rest, as its own question, Run Design first in Teach Me's place (WP14)" "Open HTML review|Run Design first|Loop back to Intent|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 cp .claude/temper.config .claude/temper.config.keep; printf 'plan:\n  fresh-review: off\n' >> .claude/temper.config
 assert_eq "next: with plan.fresh-review off the Plan question has no Fresh review first" \
-  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Open HTML review|More options|Share HTML review|Grill Me|Teach Me|Save for later" \
-  "$(labels)|$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
+  "ask-every-stage|approve-run|html-review|more|run-design|grill-me|back|save" \
+  "$(nx "'|'.join(o['id'] for o in d['ask']['options'])")|$(nx "'|'.join(o['id'] for o in d['ask']['more']['options'])")"
 mv .claude/temper.config.keep .claude/temper.config
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -90,31 +92,40 @@ assert_eq "view: Build is held to the approved files, not to a plan.md edited si
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
-assert_eq "next: with autonomy on, the Plan question offers the arming choice" \
-  "Stage by stage (Recommended)|Autonomous Build: run Build unattended|Fresh review first|More options" "$(labels)"
-assert_eq "next: Autonomous arms the run before it advances" "arm|state set run_mode autonomous" \
-  "$(nx "o = d['ask']['options'][1]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
-assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Grill Me|Teach Me|Save for later" \
+assert_eq "next: with autonomy on, the Plan question offers the run to the commit first and recommended (WP11)" \
+  "approve-run,True|ask-every-stage,False|fresh-review,False|more,False" \
+  "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
+assert_eq "next: Approve and build starts the run to the commit before it advances" "arm|state set run_mode autonomous" \
+  "$(nx "o = [x for x in d['ask']['options'] if x['id'] == 'approve-run'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1].split(' --shown ')[0]")"
+assert_eq "next: the Plan question has no walk through: More options holds the rest" "Open HTML review|Run Design first|Loop back to Intent|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH; fresh_reviewed
-assert_eq "next: a medium plan goes on to Design" "Continue to Design (Recommended)|state advance plan_complete design" \
-  "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][-1].split('temper ', 1)[1]")"
-assert_exit "advance: a medium plan may not skip Design" 1 "$TEMPER" state advance plan_complete build
+assert_eq "next: a medium plan at risk H goes on to Build: Design runs only when asked (WP14), with the digests shown (WP12)" \
+  "ask-every-stage,True|state advance plan_complete build|shown" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls'][-1]; '%s,%s' % (o['id'], bool(o.get('recommended'))) + '|' + c.split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else '|no digests')")"
+"$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design (the option run-design)
+assert_eq "next: a plan whose person asked for Design goes on to Design, with the digests shown (WP12)" \
+  "Continue to Design (Recommended)|state advance plan_complete design|shown" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls'][-1]; o['label'] + '|' + c.split('temper ', 1)[1].split(' --shown ')[0] + ('|shown' if ' --shown intent.md=' in c and ' --shown tasks.md=' in c else '|no digests')")"
+assert_exit "advance: a run whose person asked for Design may not skip it" 1 "$TEMPER" state advance plan_complete build
 
 # --- Review, Check, the loop budget ---
 fresh; gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 "$TEMPER" evidence add --stage review --claim "src/demo.sh:3 the input is not checked" --severity critical >/dev/null 2>&1
 gfail review "no blocking findings" "1 open finding"
-assert_eq "next: Review FAIL with an open finding: loop back first, accept a finding, override" \
-  "Loop back to Build (Recommended)|Accept a finding|Override and continue|More options" "$(labels)"
+# WP24: Repair again is offered exactly where its call may start (repair_ops.can_start); this run has no reviewed HEAD,
+# so it is not, and the loop back is the first answer (case file 65 holds the question where the repair may start)
+assert_eq "WP24 next: Review FAIL with an open finding and no reviewed HEAD: no Repair again, the loop back first and recommended, accept a finding, override" \
+  "back,True,back|back,accept-finding,override|no repair-again" \
+  "$(nx "o = d['ask']['options'][0]; a = d['ask']['options'] + d['ask'].get('more', {}).get('options', []); i = [x['id'] for x in a]; '%s,%s,%s' % (o['id'], bool(o.get('recommended')), o.get('move')) + '|' + ','.join(x for x in ('back', 'accept-finding', 'override') if x in i) + '|' + ('repair-again offered' if 'repair-again' in i else 'no repair-again')")"
 assert_eq "next: the accept question lists the open finding by id, with its own reason question" \
   "Accept finding 1|accept|True|evidence accept --stage review --id 1 --reason '{reason}'" \
   "$(nx "o = d['ask']['accept']['options'][0]; '|'.join([o['label'], o['move'], str(o['reason']), o['calls'][0].split('temper ', 1)[1]])")"
-assert_eq "next: the step back is a state loop with the person's reason" "back|state loop review build --reason '{reason}'" \
-  "$(nx "o = d['ask']['options'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
-printf 'loops:\n  max-per-type: 1\n' >> .claude/temper.config
+assert_eq "WP24 next: the step back is a state loop with the person's reason" "back|state loop review build --reason '{reason}'" \
+  "$(nx "o = [x for x in d['ask']['options'] + d['ask'].get('more', {}).get('options', []) if x['id'] == 'back'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+printf 'budget:\n  per-failure: 1\n' >> .claude/temper.config   # WP10: the budget's key, in the place of loops.max-per-type
 "$TEMPER" state loop review build --reason "first" >/dev/null 2>&1
 gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
 gfail review "no blocking findings" "1 open finding"
@@ -152,30 +163,27 @@ assert_eq "next: a failed commit gate asks to override the failed stages, with a
   "Override and commit|commitOverride|override review --reason '{reason}'|gate commit" \
   "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][-1].split('temper ', 1)[1]])")"
 
-# --- an armed run is Build alone (9.8.0, the person asked for it): it goes on by itself through Build, then Review,
-# Check and the commit ask the person as in every run ---
-fresh; printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
-gpass intent plan build; for s in intent_complete:plan plan_complete:build; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-assert_eq "next: an armed run's passed Build goes on to Review by itself and turns back to interactive" \
-  "auto|state advance build_complete review|state set run_mode interactive" \
-  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + d['calls'][1].split('temper ', 1)[1]")"
+# --- WP11: the run to the commit, started at the approval: a passed check moves on by itself and keeps the mode; a stop
+# keeps the mode too, and the person gets the gate question ---
+_unattended build; gpass build
+assert_eq "next: an unattended run's passed Build goes on to Review by itself and keeps its mode (WP11)" \
+  "auto|state advance build_complete review|1" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(len(d['calls']))")"
 "$TEMPER" state advance build_complete review >/dev/null 2>&1; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 gpass review
 assert_eq "next: after the unattended Build, a passed Review asks the person" "ask|Continue to Check (Recommended)" \
   "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1   # a run armed before this change
-gpass review
-assert_eq "next: even armed, Review asks the person and goes on by nothing itself" "ask|Continue to Check (Recommended)" \
-  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
+_unattended review; gpass review
+assert_eq "next: an unattended run's passed Review goes on to Check by itself (WP11)" "auto|state advance review_complete check" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 gfail review "no blocking findings" "1 open finding"
-assert_eq "next: even armed, a failed Review asks the person, with no loop back by itself" "ask|Loop back to Build (Recommended)" \
-  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
+assert_eq "next: an unattended run's failed Review with no blocking finding on record stops: the park call first (WP11)" \
+  "auto|park --verdict PARKED-NEEDS-DECISION" "$(nx "d['action'] + '|' + ' '.join(d['calls'][0].split('temper ', 1)[1].split()[:3])")"
 "$TEMPER" park --verdict PARKED-NEEDS-DECISION --reason "a test" >/dev/null 2>&1
-assert_eq "park: the run is interactive again, marked parked, and the report says where it waits" "interactive|review|1" \
-  "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the gate it parked at' .temper/autonomy-report.md)"
-assert_eq "next: after a park the person gets the gate question" "ask|Loop back to Build (Recommended)" \
-  "$(nx "d['action'] + '|' + d['ask']['options'][0]['label']")"
+assert_eq "park: the run keeps its mode, is marked parked, and the report says where it waits (WP11)" "autonomous|review|1" \
+  "$("$TEMPER" state get run_mode)|$("$TEMPER" state get parked)|$(grep -c 'The run waits for you at the question of the stage where it stopped' .temper/autonomy-report.md)"
+assert_eq "WP24 next: after a park the person gets the gate question, the loop back first and recommended where the repair may not start" "ask|back,True" \
+  "$(nx "d['action'] + '|' + '%s,%s' % (d['ask']['options'][0]['id'], bool(d['ask']['options'][0].get('recommended')))")"
 
 # --- Run Build again ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -210,14 +218,6 @@ assert_exit "group continue: recorded for a passed group" 0 "$TEMPER" group cont
 assert_eq "next: once every group continued, the groups are merged and Build is checked" "integrate|gate build" \
   "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'])")"
 
-# --- doors: a run started at a later stage checks the stages before it ---
-setup; "$TEMPER" state init demo --enter review >/dev/null 2>&1
-assert_eq "next: a door's earlier stage is checked, not run" "work|gate intent|0" \
-  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(len(d['agents']))")"
-gpass intent
-assert_eq "next: and then asked, with Continue and Save for later" "Continue to Plan (Recommended)|Save for later" "$(labels)"
-assert_exit "state init: --enter takes a stage of the run" 1 "$TEMPER" state init demo --enter nowhere
-
 # --- intent accept and complete ---
 setup; sed -i.bak 's/^\*\*Status:\*\* accepted/**Status:** draft/' .temper/specs/demo/intent.md
 "$TEMPER" intent accept >/dev/null 2>&1
@@ -236,6 +236,7 @@ fresh
 assert_eq "view: state init writes the view of the new run" "1|demo|intent|here" \
   "$(vw "str(d['version']) + '|' + d['run']['slug'] + '|' + d['run']['stage'] + '|' + d['stages'][0]['mark']")"
 gpass intent; "$TEMPER" evidence add --stage intent --claim "c" >/dev/null 2>&1
+"$TEMPER" evidence add --stage intent --phase note --claim 'keep the demo to one screen' >/dev/null 2>&1   # WP13: a note at Intent keeps its question
 assert_eq "view: the current question is the one temper next gives" "yes" \
   "$(python3 -c "import json, subprocess, sys; v = json.load(open('.temper/view.json'))['ask']; n = json.loads(subprocess.run([sys.argv[1], 'next', '--json'], capture_output=True, text=True).stdout)['ask']; print('yes' if v == n else 'no')" "$TEMPER")"
 before="$(stat -c %Y .temper/view.json 2>/dev/null || stat -f %m .temper/view.json)"; touch -d '2001-01-01' .temper/view.json 2>/dev/null || touch -t 200101010000 .temper/view.json
@@ -259,12 +260,13 @@ assert_eq "next: it is a read: the run state is unchanged" "same" "$(cmp -s .tem
 
 # --- Design, Check FAIL, a door's failed stage ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity complex >/dev/null 2>&1
-python3 -c "
-import json; p = '.temper/build-state.json'; d = json.load(open(p)); d['intent_asked'] = True; json.dump(d, open(p, 'w'))"   # Intent asked the person (9.8.0: Design runs)
+"$TEMPER" state set want_design true >/dev/null 2>&1   # the person asked for Design at the approval (WP14: only then it runs)
 "$TEMPER" state advance plan_complete design >/dev/null 2>&1
 assert_eq "next: Design runs its brief" "temper:temper-design|gate design" "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
 gpass design
-assert_eq "next: Design PASS offers the unattended run too (9.8.0: the last question before Build)" "Continue to Build (Recommended)|Autonomous Build: run Build unattended|Walk through step by step|More options" "$(labels)"
+assert_eq "next: Design PASS is the approval when the person asked for Design: ask at every stage or the run to the commit (WP11)" \
+  "ask-every-stage,True|approve-run,False|walk-through,False|more,False" \
+  "$(nx "'|'.join('%s,%s' % (o['id'], bool(o.get('recommended'))) for o in d['ask']['options'])")"
 gfail design "areas of concern" "missing"
 assert_eq "next: Design FAIL" "Loop back to Plan|Override and continue|Save for later" "$(labels)"
 
@@ -275,21 +277,25 @@ assert_eq "next: Check FAIL on a missing measurement (no test run recorded) offe
 assert_eq "next: a question names the gate of its stage" "gate check" "$(nx "d['gate'].split('temper ', 1)[1]")"
 assert_eq "next: the question names the failed row" "1" "$(nx "int('no passing test-run evidence recorded' in d['ask']['question']['question'])")"
 
-setup; "$TEMPER" state init demo --enter check >/dev/null 2>&1; gfail intent "problem stated" "missing"
-assert_eq "next: a door's failed earlier stage offers to run it, a skip with a reason, or Save for later" "Run Intent (Recommended)|Override and continue|Save for later" "$(labels)"
 
 # --- groups that stop: a failed group gate, a parked group ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "gate": {"verdict": "FAIL", "reason": "Validate failed"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a failed group gate asks to run its tasks again" "Run the group's tasks again (Recommended)|group reopen G1 --task 1|1" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1] + '|' + str(int('Validate failed' in d['ask']['question']['question']))")"
-printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
-assert_eq "next: an armed run parks on a failed group gate, as on every stop (nobody is there to answer)" "auto|park --verdict PARKED-NEEDS-DECISION|1" \
-  "$(nx "d['action'] + '|' + ' '.join(d['calls'][0].split('temper ', 1)[1].split()[:3]) + '|' + str(int('Validate failed' in d['calls'][0]))")"
+_g8="$(cat .temper/groups.json)"; _unattended build; printf '%s\n' "$_g8" > .temper/groups.json
+assert_eq "next: an unattended run takes the recommended repair of a failed group gate by rule, once (WP11)" \
+  "auto|group reopen G1 --task 1|1" \
+  "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1] + '|' + str(len(d['calls']))")"
 "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_reason": "Task 1 failed on haiku, haiku and sonnet"}}, "tasks": {"1": {"status": "failed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a group parked on failed attempts" "Run the task again (Recommended)|group reopen G1 --task 1" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+_p8_run_again() { nx "d['ask']['options'][0]['description']"; }
+_p8_default="$(_p8_run_again)"; printf 'models:\n  task: opus\n' >> .claude/temper.config
+assert_eq "next: Run the task again names the task model its tasks run on again, the table's or the config's (WP27)" \
+  "The tasks run again from their first attempt, on sonnet.|The tasks run again from their first attempt, on opus." \
+  "$_p8_default|$(_p8_run_again)"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_foreign": ["abcdef1234567890"]}}, "tasks": {"1": {"status": "failed", "group": "G1", "worktree": "wt1"}}}\n' > .temper/groups.json
 assert_eq "next: a group parked on an agent's commits: take them out, or keep them with a reason" \
   "Take the commits out and run the task again (Recommended)|Keep the agent's commits|Save for later|keep|True|group reopen G1 --task 1 --accept-foreign abcdef1" \
@@ -302,8 +308,12 @@ assert_eq "view: a finding keeps its file and line, and is open" "src/demo.sh|12
   "$(vw "f = d['findings'][0]; '|'.join([f['file'], str(f['line']), f['state'], f['severity']])")"
 assert_eq "view: the intent's criteria, with their status" "AC-01:open|AC-02:open" "$(vw "'|'.join(c['id'] + ':' + c['status'] for c in d['criteria'])")"
 assert_eq "view: a run that never left Intent with no spec file written is the TRIVIAL exit's case" "False" "$(vw "d['guard']['trivial_exit']")"
-setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1
-assert_eq "view: a new run with an empty spec folder may take the TRIVIAL exit" "True" "$(vw "d['guard']['trivial_exit']")"
+setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1; _base_known
+# WP17: trivial_exit says the run state holds the trivial verdict (`temper intent trivial`), the window of its one write
+_tv8="before=$(vw "d['guard']['trivial_exit']")"
+"$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true
+assert_eq "view: a new run with an empty spec folder opens the trivial window once the verdict is recorded (WP17)" \
+  "before=False|after=True" "$_tv8|after=$(vw "d['guard']['trivial_exit']")"
 
 # --- the independent review of 9.7.0 (step 9): each finding, reproduced ---
 # 1. No advance from a stage the run is not at: `started` is the state before Intent, never a stage to leave.
@@ -312,9 +322,7 @@ assert_exit "review 1: state advance started build is refused" 1 "$TEMPER" state
 assert_exit "review 1: state advance started nowhere is refused" 1 "$TEMPER" state advance started nowhere
 assert_eq "review 1: the run is still at Intent" "intent" "$("$TEMPER" state get next_stage)"
 # 2. Text from a failed row or a finding is never shell code in a call the orchestrator runs as printed.
-fresh; printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
-gpass intent plan; for s in intent_complete:plan plan_complete:build; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+_unattended build   # WP11: the run to the commit is started at the approval
 gfail build "tests pass" 'src/a.sh:4 runs $(touch PWNED1) and `touch PWNED2` on install'
 CALL="$(nx "d['calls'][0]")"; ( bash -c "$CALL" ) >/dev/null 2>&1
 assert_eq "review 2: an armed run's park runs no text of the failed row, and keeps it as written" "0|0|1" \
@@ -327,12 +335,12 @@ assert_eq "review 2: Run Build again runs no text of the failed row" "0|0" "$([[
 # 4. The files the person approved are the CLI's: no state set changes them.
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 assert_exit "review 4: state set approved_files is refused" 1 "$TEMPER" state set approved_files none
-# 9. The TRIVIAL exit still holds after the Intent agent's after calls ran its gate.
-setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1; "$TEMPER" gate intent >/dev/null 2>&1
-assert_eq "review 9: a run that never left Intent, with no spec file, may take the TRIVIAL exit after its gate ran" "True" "$(vw "d['guard']['trivial_exit']")"
-# 10. A door's walked stage that fails its check names the failed rows in its question.
-fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1; gfail intent "problem stated" "no Problem section"
-assert_eq "review 10: the walked stage's question names what failed" "1" "$(nx "int('problem stated: no Problem section' in d['ask']['question']['question'])")"
+# 9. The trivial window still holds after the Intent agent's after calls ran its gate (WP17: once the verdict is
+#    recorded).
+setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1; _base_known
+"$TEMPER" intent trivial --why "a typo in the help text" >/dev/null 2>&1 || true; "$TEMPER" gate intent >/dev/null 2>&1
+assert_eq "review 9: the trivial window still holds after the Intent agent's gate ran (WP17: the verdict recorded)" "True" \
+  "$(vw "d['guard']['trivial_exit']")"
 
 # --- the independent review of 9.7.0, round 2: each finding, reproduced ---
 _walk_to_commit() { # a run of the demo spec with every stage passed, at the commit stage
@@ -360,9 +368,9 @@ fresh; printf 'autonomy:\n  enabled: true\n  park-on-touch: ["**/auth/**"]\n' >>
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base --no-verify >/dev/null 2>&1
 "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
 mkdir -p src/auth; echo x > src/auth/login.ts; git add src/auth/login.ts; git -c user.email=t@t -c user.name=t commit -qm auth --no-verify >/dev/null 2>&1
-"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" gate commit >/dev/null 2>&1
+_ran_unattended; "$TEMPER" gate commit >/dev/null 2>&1
 assert_eq "round 2, 5: a committed change under a park-on-touch pattern fails the row" "False|1" \
-  "$(python3 -c "import json; r=[x for x in json.load(open('.temper/gates.json'))['commit']['requirements'] if x['name']=='park-on-touch paths']; print(str(r[0]['pass']) + '|' + str(int('src/auth/login.ts' in r[0]['detail'])))")"
+  "$(python3 -c "import json; r=[x for x in json.load(open('.temper/gates.json'))['commit']['requirements'] if x['name']=='sensitive paths']; print(str(r[0]['pass']) + '|' + str(int('src/auth/login.ts' in r[0]['detail'])))")"
 git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
 # 6, 7. The commit steps add what the run changed: no untracked file that was there before the run, every name quoted.
 fresh; touch -d '2020-01-01' local.env
@@ -385,15 +393,23 @@ REASON="it is \`touch PWNED6\` and it's fine"; Q="${REASON//\'/\'\\\'\'}"
 ( bash -c "${CALL//\{reason\}/$Q}" ) >/dev/null 2>&1
 assert_eq "round 2, 10: a reason put in its placeholder as the page says is kept as written, and runs nothing" "0|1" \
   "$([[ -e PWNED6 ]] && echo 1 || echo 0)|$(grep -c 'touch PWNED6' .temper/overrides.json)"
-assert_eq "round 2, 10: no call of flow.py puts a placeholder of the person's text in double quotes" "0" "$(grep -cE '\"\{(reason|text)\}|#\{K\}: \{text\}\"' "$REPO_ROOT/scripts/flow.py")"
-# 11. Override and commit after a park on a commit row of its own (blast radius) records the person's skip.
+assert_eq "round 2, 10: no call of flow.py puts a placeholder of the person's text in double quotes" "0" "$(_flow_text | grep -cE '\"\{(reason|text)\}|#\{K\}: \{text\}\"')"
+# 11. A commit row of its own (blast radius) is not cleared by an override of the commit check (9.8.5, Q8: the same question
+# came back after it), so the override is not offered there; Add to plan is.
 fresh; _walk_to_commit; gfail commit "blast radius" "changed outside declared files: src/x"
-assert_eq "round 2, 11: Override and commit skips the commit check with the person's reason" "override commit --reason" \
-  "$(nx "' '.join([o for o in d['ask']['options'] if o['label'] == 'Override and commit'][0]['calls'][0].split('temper ', 1)[1].split()[:3])")"
-# 12. The Design door of a run with no Design stage enters at Build: the stages before are walked, not run again.
-setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; "$TEMPER" state set complexity simple >/dev/null 2>&1
-assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
-  "$(nx "d['action'] + '|' + (d['calls'][0].split('temper ', 1)[1] if d['calls'] else '') + '|' + str(len(d.get('agents') or []))")"
+assert_eq "round 2, 11: no Override and commit for the commit gate's own row; Add to plan is first" "Add to plan (Recommended)|0" \
+  "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + str(sum(1 for x in o if x['label'] == 'Override and commit'))")"
+# 11b. M11 of WP08: the state of 5 (no plan, so no scope row), at the commit stage and parked: only the commit gate's own
+# row failed, so an option runs the commit gate again, first and with no mark (the question says "then check again").
+fresh; gpass intent plan build review check; _at commit; rm -f .temper/specs/demo/tasks.md
+git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base --no-verify >/dev/null 2>&1
+"$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
+mkdir -p src/auth; echo x > src/auth/login.ts; git add src/auth/login.ts; git -c user.email=t@t -c user.name=t commit -qm auth --no-verify >/dev/null 2>&1
+_ran_unattended; "$TEMPER" gate commit >/dev/null 2>&1
+_park8="$(nx "' '.join(d.get('calls') or [])")"; [[ "$_park8" == *" park --verdict "* ]] && bash -c "$_park8" >/dev/null 2>&1
+assert_eq "round 2, 11b: only the commit gate's own row failed: Check again is first" "commit.fail|check-again|False|gate commit" \
+  "$(nx "q = d.get('ask') or {}; o = (q.get('options') or [{}])[0]; '%s|%s|%s|%s' % (q.get('id'), o.get('id'), bool(o.get('recommended')), ((o.get('calls') or ['none'])[-1]).split('temper ', 1)[-1])")"
+git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
 # 13. Stop at a group question saves the run; it records no Build verdict.
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1; second_group
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
@@ -406,7 +422,7 @@ assert_eq "round 3, 1: a task with two **File:** lines declares the files of bot
   "$(python3 "$REPO_ROOT/scripts/tasks_md.py" parse r3-tasks.md | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)['tasks'][0]['files']))")"
 rm -f r3-tasks.md
 # 2. next_stage takes only a stage of the run's own sequence, so no other value opens a forward move.
-setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
 assert_exit "round 3, 2: state set next_stage to a value that is no stage of the run is refused" 1 "$TEMPER" state set next_stage bogus
 assert_exit "round 3, 2: and Commit stays refused from RCA" 1 "$TEMPER" state set next_stage commit
 assert_eq "round 3, 2: the fix run is still at RCA" "rca" "$("$TEMPER" state get next_stage)"
@@ -426,11 +442,23 @@ assert_eq "round 3, 4: no placeholder of text stands in double quotes in a call 
 fresh; "$TEMPER" init >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "init: view.json is listed in the clone's info/exclude, so it is never an untracked file of the project" "1|0" \
   "$(grep -cx '/.temper/view.json' "$(git rev-parse --git-common-dir)/info/exclude")|$(git status --porcelain --untracked-files=all | grep -c 'view.json')"
+# WP08 (U19): the run files pull request 115 added are local run state too, and a cleared run leaves none of them
+_ex="$(git rev-parse --git-common-dir)/info/exclude"
+# (WP21: the two stores of the plan's old per command check are gone; decisions.json and the files of the repeats and
+# of the rule log are the run files left of that list)
+_u19_listed="$(for f in decisions.json budget.json rule-log.json; do grep -qxF "/.temper/$f" "$_ex" && echo yes || echo no; done | paste -sd' ' -)"
+for f in decisions.json budget.json rule-log.json; do echo '{}' > ".temper/$f"; done
+"$TEMPER" state clear >/dev/null 2>&1
+assert_eq "the run files of pull request 115 are listed and cleared" "yes yes yes|0" \
+  "$_u19_listed|$(for f in decisions.json budget.json rule-log.json; do [[ -e ".temper/$f" ]] && echo "$f"; done | wc -l | tr -d ' ')"
 
 # --- a /temper:fix run ---
-setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
-assert_eq "next: a fix run starts at the RCA question" "Proceed to Fix (Recommended)|state advance rca_complete fix" \
-  "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
+assert_eq "next: a fix run starts at the RCA question, read by its id and the advance of its options (WP17)" \
+  "rca.approve|state advance rca_complete fix" \
+  "$(nx "import re; a = d['ask']; cs = [re.sub(r' --shown \\S+', '', c.split('temper ', 1)[1])
+  for o in a['options'] for c in o.get('calls') or []]; adv = 'state advance rca_complete fix'; a['id'] + '|' + (
+  adv if adv in cs else ','.join(cs))")"
 mkdir -p .temper/specs/demo-bug; "$TEMPER" state advance rca_complete fix >/dev/null 2>&1
 assert_eq "next: Fix runs its brief and is judged by the build gate" "temper:temper-fix|gate build" \
   "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
@@ -455,6 +483,26 @@ assert_eq "view fixtures: the module the mod's tests import is what the CLI writ
   "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" && echo same || echo differs)"
 assert_eq "view fixtures: the second module (the states 9.7.5 added) is what the CLI writes now (make-view-fixtures.sh extra)" "same" \
   "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" extra 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures-2.ts" && echo same || echo differs)"
+# trap 5 of WP24 (lane E, RE13): a fixture view stands where a repair may start, so the mod's audit of every option of
+# every fixture view makes the Repair again call with no matching answer
+assert_eq "view fixtures: a view offers Repair again (repair-again), with its call repair start --again" "yes" \
+  "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" "$REPO_ROOT/scripts/selftest/view-fixtures-2.ts" <<'PY'
+import json, sys
+found = []
+def walk(o):
+    if isinstance(o, dict):
+        if o.get("id") == "repair-again" and any("repair start --stage" in c and c.endswith("--again") for c in o.get("calls") or []):
+            found.append(o)
+        for v in o.values():
+            walk(v)
+    elif isinstance(o, list):
+        for v in o:
+            walk(v)
+for f in sys.argv[1:]:
+    walk(json.loads(open(f).read().split("= ", 1)[1]))
+print("yes" if found else "no")
+PY
+)"
 assert_eq "view fixtures: the next field carries the calls of the CLI's own action" "state advance build_complete review" \
   "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" <<'PY'
 import json, sys
@@ -462,6 +510,71 @@ d = json.loads(open(sys.argv[1]).read().split("= ", 1)[1])
 print(d["armed-build-pass"]["next"]["calls"][0].split("temper ", 1)[1])
 PY
 )"
+# WP16: what the fixture views hold of the closed list. _fx8 <python code>: runs the code with `views`, every view of
+# both generated modules by name, `walk(x)`, every dict inside x, and prints r.
+_fx8() {
+  python3 -B - "$REPO_ROOT" "$1" <<'PY'
+import json, re, sys
+root = sys.argv[1]
+views = {}
+for f in ("view-fixtures.ts", "view-fixtures-2.ts"):
+    text = open("%s/scripts/selftest/%s" % (root, f)).read()
+    views.update(json.loads(text.split("= ", 1)[1].strip().rstrip(";")))
+def walk(x):
+    if isinstance(x, dict):
+        yield x
+        for v in x.values():
+            yield from walk(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from walk(v)
+CLI = "/plugin/scripts/temper "
+SEVEN = ["config-suggestions", "depth-review", "html-review", "pipeline-fix", "pull-request", "small-change", "talk"]
+STAY = ["accept", "cancel", "more"]
+r = None
+exec(sys.argv[2])
+print(r)
+PY
+}
+assert_eq "view fixtures: no call of the flow is a foreign program: every string of every calls list starts with the CLI's path (WP16)" "0 []" \
+  "$(_fx8 "bad = ['%s: %s' % (n, str(c)[:60]) for n, v in sorted(views.items()) for d in walk(v) if isinstance(d.get('calls'), list) for c in d['calls'] if not str(c).startswith(CLI)]
+r = '%d %s' % (len(bad), bad[:2])")"
+assert_eq "view fixtures: every needs kind is on the closed list, and no option carries a do text without a needs (WP16)" \
+  "config-suggestions,depth-review,html-review,pipeline-fix,pull-request,small-change,talk|0 []|0 []|yes" \
+  "$(_fx8 "sys.path.insert(0, root + '/scripts')
+try:
+    from flow_base import NEEDS
+    kinds = ','.join(sorted(set(NEEDS) - set(STAY))) if set(NEEDS) <= set(SEVEN + STAY) else 'NEEDS holds %s' % sorted(NEEDS)
+except ImportError:
+    kinds = 'no NEEDS in scripts/flow_base.py'
+odd = ['%s: %s' % (n, d.get('needs')) for n, v in sorted(views.items()) for d in walk(v) if 'needs' in d and d.get('needs') not in SEVEN + STAY]
+bare = ['%s: %s' % (n, d.get('id')) for n, v in sorted(views.items()) for d in walk(v) if d.get('do') and not d.get('needs')]
+seen = any('needs' in d for v in views.values() for d in walk(v))
+r = '%s|%d %s|%d %s|%s' % (kinds, len(odd), odd[:2], len(bare), bare[:2], 'yes' if seen else 'no option carries a needs')")"
+assert_eq "view fixtures: a gate question carries typed calls, with the state redo call only at Intent, Plan, Design, Build and Fix (WP16)" "0 []|yes" \
+  "$(_fx8 "FIVE = ('intent', 'plan', 'design', 'build', 'fix')
+bad, redone = [], 0
+for n, v in sorted(views.items()):
+    a = v.get('ask') or {}
+    if a.get('kind') != 'gate':
+        continue
+    stage = a.get('stage') or (v.get('run') or {}).get('stage') or ''
+    t = a.get('typed')
+    calls = t.get('calls') if isinstance(t, dict) else None
+    if not calls:
+        bad.append('%s: no typed calls' % n)
+        continue
+    note = any(re.search(r\" evidence add --stage \\S+ --phase note --kind input --claim '\\{text\\}'\$\", c) for c in calls)
+    redo = [c for c in calls if ' state redo ' in c]
+    again = t.get('again') is True
+    redone += 1 if redo else 0
+    if not note:
+        bad.append('%s: no note call' % n)
+    if redo and not all(re.search(r\" state redo %s --reason '\\{text\\}'\$\" % stage, c) for c in redo):
+        bad.append('%s: %s' % (n, redo[0][-60:]))
+    if bool(redo) != (stage in FIVE and not again):
+        bad.append('%s: stage %s, again %s, redo %s' % (n, stage, again, bool(redo)))
+r = '%d %s|%s' % (len(bad), bad[:2], 'yes' if redone else 'no gate question holds a redo')")"
 # --- the end of run report page (scripts/run_report.py) ---
 fresh; printf '# Intent: </style><script>x</script>\n' > .temper/specs/demo/intent.md
 "$TEMPER" evidence add --stage review --claim "src/a.ts:3 a token </td> leaks" --severity high --confidence 0.85 >/dev/null 2>&1
@@ -499,6 +612,7 @@ setup
 # --- 9.8.4 7a: "Include what is left out" passes the whole list to Plan, never the first 100 characters ---
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state set complexity simple >/dev/null 2>&1
+printf 'plan:\n  context-check: always\n' >> .claude/temper.config   # WP13: a map that fits is folded into the approval
 cat > .temper/specs/demo/plan.md <<'PEOF'
 ## Context Map
 - use: src/ (3 files)
@@ -510,6 +624,17 @@ cat > .temper/specs/demo/plan.md <<'PEOF'
 PEOF
 assert_eq "9.8.4 7a: the Include call carries the whole text, the second left out source and its last word included" "yes" \
   "$(nx "c = d['context_check']['options'][1]['calls'][0]; 'yes' if 'reads the same rows' in c and c.endswith('--redo') else c")"
+# phase 4b review: a typed answer at the Context check runs the question's own answer call, as at a gate
+gfail plan "context map reviewed" "the Context check is pending: the person's answer is not recorded yet"
+assert_eq "WP16: the Context check carries typed: its own answer call, which sends Plan back (again false)" \
+  "plan.context|plan review --answer '{text}' --redo|False" \
+  "$(nx "a = d.get('ask') or {}; t = a.get('typed') or {}; cs = [c.split('temper ', 1)[1] for c in t.get('calls') or []]; \
+'%s|%s|%s' % (a.get('id'), '|'.join(cs), t.get('again'))")"
+assert_eq "view fixtures: the Context check carries typed, its own answer call (WP16)" \
+  "plan review --answer '{text}' --redo|False" \
+  "$(_fx8 "a = views['context-check'].get('ask') or {}
+t = a.get('typed') or {}
+r = '%s|%s' % ('|'.join(c.split('temper ', 1)[1] for c in t.get('calls') or []), t.get('again'))")"
 
 # --- 9.8.4 fault 2: a failed group check names what failed, and stops recommending a blind retry ---
 _g2() { # _g2 <gate JSON>: a run at Build with group G1 (Task 1 passed) whose gate is the JSON given
@@ -553,7 +678,7 @@ assert_eq "9.8.4 3a: the Plan agent after Intent gets the reason and the open fr
 # 3c: a loop from Build to Plan puts the group gate's reason and FAIL lines first, and never the expected RED runs of the tasks
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22; do
-  "$TEMPER" evidence add --stage build --phase red --claim "Task $n unit test red" --cmd "pytest t$n" --exit 1 >/dev/null 2>&1
+  ev_red build "Task $n unit test red"
 done
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "fails": 3, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: cases 8 expect the old message"]}}}, "tasks": {}}\n' > .temper/groups.json
 "$TEMPER" state loop build plan --reason "G1 cannot pass" >/dev/null 2>&1
@@ -569,14 +694,19 @@ _g2c '"fails": 2, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G
 assert_eq "9.8.4 2c: after a fix of the merged tree that did not pass, Loop back to Plan is recommended and the fix is still offered" \
   "Loop back to Plan (Recommended)|Fix the group's merged work|1" \
   "$(nx "o = d['ask']['options']; q = d['ask']['question']['question']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('A fix of its merged work did not make it pass' in q))")"
-"$TEMPER" state loop build plan --reason "x" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
-printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", "fails": 3, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+# WP10: a step back from a failed group check spends group:G1; two spend it, and the question is run.budget
+for _g2ci in 1 2; do
+  "$TEMPER" state loop build plan --reason "x" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "branch": "temper/demo/G1", "fails": 3, "fix_tries": 1, "gate": {"verdict": "FAIL", "reason": "group G1 Validate failed (exit 1): make test", "ran": true, "fail_lines": ["FAIL: test_a"]}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+done
 assert_eq "9.8.4 2c: with the step back to Plan spent, Save for later is recommended: no retry is" "Save for later (Recommended)|0" \
   "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + str(sum(1 for x in o if '(Recommended)' in x['label'] and x['label'] != 'Save for later (Recommended)'))")"
 
 # --- 9.8.4 reverify: the fix pass ends with the CLI's scenario run; Build that fails the same way after running again is not run again ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+# 9.8.5 (S7): a fix pass needs a fault to fix; here the person's note is that fault
+"$TEMPER" evidence add --stage build --phase note --kind input --claim "the export drops refunds" >/dev/null 2>&1
 assert_eq "9.8.4 reverify: the fix pass of an integrated run reruns the scenario tests before the Build gate" "integrate|gate build" \
   "$(nx "a = d['agents'][0]['after']; a[-2].split('temper ', 1)[1] + '|' + a[-1].split('temper ', 1)[1]")"
 gfail build "tests pass" "the last test run failed"
@@ -588,10 +718,10 @@ assert_eq "9.8.4 reverify: the same failure after running again recommends Save 
 # --- 9.8.4 bench: Check that misses the same measurement after running again is not run again by the recommendation ---
 fresh; gpass intent plan build review
 for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
-gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"
+gfail check "tests pass" "no passing test-run evidence recorded"
 assert_eq "9.8.4 bench: a missing measurement first recommends running Check again" "Run Check again (Recommended)" "$(nx "d['ask']['options'][0]['label']")"
 "$TEMPER" state redo check --reason "$(nx "d['ask']['options'][0]['calls'][0].split('--reason ', 1)[1]" | python3 -c "import shlex, sys; print(shlex.split(sys.stdin.read())[0])")" >/dev/null 2>&1
-gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80% (install coverage.py)"
+gfail check "tests pass" "no passing test-run evidence recorded"
 assert_eq "9.8.4 bench: the same gap after running again recommends Save for later, and says so" "Save for later (Recommended)|Run Check again|1" \
   "$(nx "o = d['ask']['options']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('failed the same way after it ran again' in d['ask']['question']['question']))")"
 
@@ -600,4 +730,32 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_reason": "Task 1 needs src/b.sh, outside its declared files"}}, "tasks": {"1": {"status": "failed", "group": "G1", "blocked": {"needs": "src/b.sh", "owners": [2], "reason": "the test needs the b event"}}}}\n' > .temper/groups.json
 assert_eq "9.8.4 blocked: Loop back to Plan is recommended at once, and the question names the file, its task and why" "Loop back to Plan (Recommended)|Run the task again|1" \
   "$(nx "o = d['ask']['options']; q = d['ask']['question']['question']; o[0]['label'] + '|' + o[1]['label'] + '|' + str(int('Task 1 needs src/b.sh, which Task 2 declares' in q and 'the test needs the b event' in q))")"
+setup
+
+# --- WP23: at a failed Build gate the next step is read from the open failure records. A record of class environment
+#     is the setup question, with no fix agent, in a run the person drives; a run that goes on by itself stops there.
+#     The record is written as scripts/failure.py writes it (docs/plans/one-go/wp/phase-5-checks.md, mechanism 11) ---
+_env8() { # a run at Build whose integrate failed on a setup line that failed, with its one open record
+  fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "confirmed": "t", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "FAIL", "reason": "integration suite failed (exit 125): bash suite.sh", "merged": true}}\n' > .temper/groups.json
+  gfail build "integration" "integration suite failed (exit 125): bash suite.sh"
+  python3 - <<'PY'
+import json
+json.dump([{"id": "F1", "ts": "2026-11-19T00:00:00Z", "stage": "build", "scope": "gate:build", "check": "suite",
+            "cmd": "bash suite.sh", "exit": 125, "ran_by": "cli", "tree": "t8", "setup": "s8", "limit_s": 600, "key": "k8",
+            "class": "environment", "kind": "setup-line", "class_by": "exit",
+            "why": "the setup block failed (temper-setup: FAIL (exit 1))", "fail_lines": ["temper-setup: FAIL (exit 1)"],
+            "row": "build#1", "n": 1, "step": "", "resolved": None}], open(".temper/evidence/failures.json", "w"), indent=2)
+# the record's row on the Build ledger, as integrate leaves it (a record stands only while its failure is there)
+json.dump([{"claim": "unit tests", "phase": "green", "cmd": "true", "exit_code": 0, "executed_by": "cli"},
+           {"claim": "Integration suite", "phase": "integration", "cmd": "bash suite.sh", "exit_code": 125, "executed_by": "cli",
+            "key": "k8", "tree": "t8", "output": "temper-setup: FAIL (exit 1)"}], open(".temper/evidence/build.json", "w"), indent=2)
+PY
+}
+_env8
+_r8="driven=$(nx "o = d['ask'].get('options', []) + (d['ask'].get('more') or {}).get('options', []) if d.get('ask') else []; ids = [x.get('id') for x in o]; '%s:%s:%s' % (d.get('action'), ','.join(i for i in ('check-again', 'it-is-the-code', 'save') if i in ids) or 'no setup options', 'no agent' if not d.get('agents') else 'agents')")"
+_env8; _ran_unattended
+_r8+="|by itself=$(nx "c = ' '.join(d.get('calls') or []); 'stop' if d.get('action') == 'auto' and ' park ' in c and not d.get('agents') else '%s %s' % (d.get('action'), [a.get('type') for a in d.get('agents') or []])")"
+assert_eq "WP23: an open record of class environment at the failed Build gate is the setup question with no fix agent; a run that goes on by itself stops there" \
+  "driven=ask:check-again,it-is-the-code,save:no agent|by itself=stop" "$_r8"
 setup

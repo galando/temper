@@ -3,6 +3,8 @@
 **Status:** Accepted
 **Date:** 2026-10-13
 **Amends:** ADR-0012 (decisions 1, 5, 6 and 7; see "What changes in ADR-0012")
+**Amended by:** ADR-0019 (9.8.5, decision 1 here: the CLI's own `auto` action carries the run to the commit)
+**Amended by:** ADR-0021 (9.8.5: the flow's own repair at Review and Check comes before the rule's move)
 
 ## Context
 

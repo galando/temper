@@ -1,0 +1,291 @@
+"""flow_repair.py: RepairPart of Builder: a finding repaired in its stage (9.8.5, WP24, ADR 0021).
+
+What comes next while a repair runs: what it asks (repair.stop, scope.drift), the fixer, the recheck or the full Review,
+and the CLI's own `repair start` when scripts/repair_ops.py can_start holds. A module of the flow; scripts/flow.py is its
+facade. Standard library only.
+"""
+
+import os
+import re
+import shlex
+
+import failure
+import repair_ops
+
+from flow_build import DRIFT_WORDS
+from flow_base import (DRIFT_HEADER, DRIFT_IDS, DRIFT_OPTIONS, DRIFT_PREFIX, GATE_HEADER, LABEL, TEMPER, goes_on, on_model,
+                       read_json)
+
+DRIFT_SAYS = {"Add to plan": "The file joins the plan; the CLI commits the repair with it.",
+              "Revert": "The repair is taken back: the work tree goes back to the tree Review read.",
+              "Allow once": "The CLI commits the repair with this file, this once."}
+
+
+class RepairPart:
+    def repair_step(self, stage):
+        """The repair in the stage, in every mode, before the rule's move and before the question: what a repair asks
+        (repair.stop, scope.drift; in a run that goes on by itself the park first), the fixer while the window is open,
+        the recheck (or the full Review) once the CLI committed it, and the CLI's own `repair start` whenever
+        scripts/repair_ops.py can_start holds. None when no repair applies."""
+        r = self.r
+        d = r.state
+        st = d.get("repair_stop") if isinstance(d.get("repair_stop"), dict) else None
+        if st and st.get("stage") in (None, stage):
+            if r.armed():
+                return self.stop(stage, "repair %s: %s" % (st.get("n"), st.get("why")))
+            return {"action": "ask", "stage": stage, "ask": self.repair_question(stage, st)}
+        w = d.get("repair") if isinstance(d.get("repair"), dict) else None
+        if w and w.get("stage") == stage:
+            if not w.get("commit"):   # the fixer's drift ask is the person's scope.drift first, as at Build
+                drift = self.drift_next(stage)
+                return drift if drift is not None and drift.get("action") == "ask" else self.repair_work(w)
+            if w.get("recheck") == "none":
+                gate = self.c("gate %s" % stage)
+                return {"action": "auto", "stage": stage, "calls": [self.c("repair close"), gate],
+                        "say": "%s: repair %s changed test files alone, so no reader rechecks it; the CLI closes it." % (LABEL[stage], w["n"])}
+            return self.recheck_work(w)
+        if repair_ops.can_start(r, stage) is None:
+            what = "; ".join(f["claim"][:100] for f in r.open_findings()[:2]) if stage == "review" else "; ".join(
+                str(x.get("name")) for x in r.failed_rows(stage))
+            return {"action": "auto", "stage": stage, "calls": [self.c("repair start --stage %s" % stage)],
+                    "say": "%s: the rule repairs it in the stage (%s): a fresh Build agent fixes it, the CLI commits and checks it, "
+                           "and a reader rechecks it." % (LABEL[stage], what[:160])}
+        return None
+
+    def repair_work(self, w):
+        """The fixer: a fresh Build agent with the whole finding (or the failed row with its whole kept output), the open
+        findings it must not touch, and the line `Repair in place:`. It commits nothing; its after call is the CLI's
+        `repair commit`."""
+        r = self.r
+        stage = w["stage"]
+        rows = read_json(os.path.join(TEMPER, "evidence", "review.json"), [])
+        lines = ["Repair in place: repair %s at %s. Fix exactly what is named below and nothing else, in the files of the plan; "
+                 "commit nothing (the CLI commits and runs the checks again); change no locked acceptance test; never accept, "
+                 "override or skip. When the fix needs the plan or the intent changed, stop and say so." % (w["n"], LABEL[stage])]
+        for fid in w.get("findings") or []:
+            e = rows[fid - 1] if 0 < fid <= len(rows) and isinstance(rows[fid - 1], dict) else {}
+            claim = str(e.get("claim") or "")
+            proof = "test" if str(e.get("proof") or "none") == "test" else "none"
+            lines.append("Finding #%d [%s]: %s" % (fid, e.get("severity"), claim))
+            lines.append("Detail: %s" % (e.get("detail") or claim))
+            if e.get("fix"):
+                lines.append("Suggested fix: %s" % e["fix"])
+            lines.append("The finding's proof: test: a behaviour defect. Write the failing test first and run `temper repair test %d "
+                         "--phase red -- <command>`, then the code, then the same call with --phase green." % fid if proof == "test" else
+                         "The finding's proof: none: no new test is asked; the recheck reads the fix.")
+        if stage == "check":
+            ledger = read_json(os.path.join(TEMPER, "evidence", "check.json"), [])
+            for x in r.failed_rows(stage):
+                lines.append("Failed row: %s: %s" % (x.get("name"), " ".join(str(x.get("detail") or "").split())))
+            for rec in failure.open_records(scope="gate:check"):
+                m = re.match(r"^check#(\d+)$", str(rec.get("row") or ""))
+                row = ledger[int(m.group(1))] if m and int(m.group(1)) < len(ledger) and isinstance(ledger[int(m.group(1))], dict) else {}
+                lines.append("Failure record %s (%s, %s): %s%s" % (rec.get("id"), rec.get("class"), rec.get("check"), rec.get("why"),
+                             "; the kept output:\n%s" % str(row.get("output")).rstrip() if row.get("output") else
+                             "; failing lines: %s" % " | ".join(rec.get("fail_lines") or [])))
+            lines.append("No new failing test is asked here: the CLI's failed row is the RED, and the same check must pass on the new tree.")
+        others = [f for f in r.findings() if f["state"] == "open" and f["id"] not in (w.get("findings") or [])]
+        if others:
+            lines.append("Open findings this repair must not touch: %s." % "; ".join(f["claim"][:160] for f in others[:5]))
+        given = [x for x in r.drifts() if x["choice"] and not x["delivered"]]
+        a = self.agent("build", lines + ["Drift decision: %s: %s" % (x["path"], DRIFT_WORDS[x["choice"]]) for x in given])
+        if given:
+            a["before"] = [self.c("evidence add --stage build --phase drift --claim 'drift decided'")]
+        a["after"].append(self.c("repair commit"))
+        return {"action": "work", "stage": stage, "calls": [], "agents": [a],
+                "say": "%s: repair %s: a fresh Build agent fixes it in the stage%s. %s" % (LABEL[stage], w["n"], on_model([a]), goes_on(False))}
+
+    def recheck_work(self, w):
+        """The narrow recheck of a repair (the section Re-check: of agents/review.md), or a full Review when the diff is over
+        300 changed lines or touches a file no finding names. Its before call is the CLI's launch mark: only rows written
+        after it count. Its after calls close the repair and compute the gates again."""
+        r = self.r
+        stage = w["stage"]
+        rows = read_json(os.path.join(TEMPER, "evidence", "review.json"), [])
+        mine = [(fid, rows[fid - 1]) for fid in w.get("findings") or [] if 0 < fid <= len(rows) and isinstance(rows[fid - 1], dict)]
+        answer = ("Record `recheck #<id>: fixed` (--exit 0) or `recheck #<id>: not fixed` (--exit 1) for each finding of the repair, "
+                  "with --cmd recheck")
+        g = read_json(os.path.join(TEMPER, "gates.json"), {})
+        results = "integration %s; Build gate %s%s" % ((r.groups.get("integration") or {}).get("verdict") or "not run",
+                                                        (g.get("build") or {}).get("verdict") or "none",
+                                                        "; Check gate %s" % (g.get("check") or {}).get("verdict") if stage == "check" else "")
+        found = "; ".join("#%d [%s] %s (detail: %s)" % (fid, e.get("severity"), e.get("claim"), e.get("detail") or e.get("claim"))
+                          for fid, e in mine) or "none: the failed rows %s" % ", ".join(w.get("rows") or [])
+        if w.get("recheck") == "full":
+            a = self.agent("review", ["Repair %s at %s (commit %s) changed %s line(s) in %s: more than a narrow recheck reads, so "
+                                      "Review reads the whole change again." % (w["n"], LABEL[stage], str(w.get("commit"))[:7],
+                                                                               w.get("lines"), ", ".join(w.get("files") or [])),
+                                      "%s: %s." % (answer, found)])
+            say = "%s: repair %s changed more than a recheck reads; a full Review reads the change%s. %s"
+        else:
+            model = r.model("review")
+            others = [f for f in r.findings() if f["state"] == "open" and f["id"] not in (w.get("findings") or [])]
+            lines = ["Follow %s/agents/review.md exactly." % self.plugin, "Spec path: %s." % r.spec,
+                     "Re-check: repair %s at %s, commit %s. Read only the diff %s/repair-%s.diff (from the reviewed HEAD to the "
+                     "repair commit) and answer three questions, no other lens: is each finding fixed; did the changed lines add "
+                     "a defect; was a test weakened or removed." % (w["n"], LABEL[stage], str(w.get("commit"))[:7], r.spec, w["n"]),
+                     "Findings this repair answers: %s." % found,
+                     "Findings still open, not this repair's: %s." % ("; ".join("[%s] %s" % (f["severity"], f["claim"][:160]) for f in others) or "none"),
+                     "The CLI's results on the new tree: %s." % results,
+                     "%s; a new finding only on a changed line; then one row `review completed` with --cmd recheck, --value <the "
+                     "count of ids checked> and one --read for each changed file: %s." % (answer, ", ".join(w.get("files") or [])),
+                     self.plugin_line()]
+            a = {"type": "temper:temper-review", "model": model, "prompt": "\n".join(lines),
+                 "after": [self.c("usage add --stage review --model %s --ms {ms}" % (model or "unknown"))]}
+            say = "%s: repair %s is committed and checked; a reader that did not write it rechecks the diff%s. %s"
+        # the launch mark only: the CLI ran the suite on the repair tree already, and `check ahead` runs in the
+        # background, where it would race the CLI's own revert commit on git's index
+        a["before"] = [self.c("repair mark")]
+        a["after"] = a["after"] + [self.c("repair close"), self.c("gate review")] + ([self.c("gate check")] if stage == "check" else [])
+        a["gate"] = a["after"][-1]
+        return {"action": "work", "stage": stage, "calls": [], "agents": [a],
+                "say": say % (LABEL[stage], w["n"], on_model([a]), goes_on(False))}
+
+    def repair_question(self, stage, st):
+        """What a repair asks: scope.drift for a file a repair may not commit, repair.stop for anything else (a diff that
+        removes test lines, a repair reverted as worse, one that changed nothing, a commit the CLI did not make)."""
+        r = self.r
+        kind = st.get("kind")
+        n, path = st.get("n"), st.get("path") or ""
+        revert = [self.c("repair revert")]
+        # the options of the repair's own answers: (label, description, move, calls, id)
+        if kind == "drift":
+            plan = str(st.get("why")).startswith("%s is outside the approved file set" % path)   # the named file's own reason
+            note = lambda label: [self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote(
+                "drift %s: %s: repair %s" % (path, label, n))), self.c("repair commit")]
+            own = [(label, DRIFT_SAYS[label], "drift", revert if label == "Revert" else note(label), ids["id"])
+                   for label, ids in zip(DRIFT_OPTIONS, DRIFT_IDS) if plan or label == "Revert"]
+        elif kind == "tests":
+            own = [("Revert the repair (Recommended)", "The work tree goes back to the tree Review read; the finding stays open.",
+                    "redo", revert, "revert-repair")]
+        else:
+            own = []
+        opts = [self.opt(label, desc, move=move, calls=calls, oid=oid) for label, desc, move, calls, oid in own]
+        back = self.loop_opt(stage, "build", rec=kind not in ("tests", "drift"))
+        opens = [f for f in r.findings() if f["state"] == "open"] if stage == "review" and kind not in ("tests", "drift") else []
+        if kind == "drift":
+            header, qid, more = DRIFT_HEADER, "scope.drift", []
+            if not plan:
+                opts = [self.set_rec(opts[0], True)]
+            first = opts + ([] if plan else [self.save()])
+            text = "%s %s\nWhy: %s\nChange: repair %s at %s; nothing is committed, and the change stays in the work tree." % (
+                DRIFT_PREFIX, path, st.get("why"), n, LABEL[stage])
+        elif kind == "tests":
+            header, qid, more = GATE_HEADER, "repair.stop", []
+            first = opts + [back, self.save()]
+            text = "%s: repair %s removes lines of a test file that existed at the reviewed HEAD, so the rule never resolves it:\n%s\nRevert the repair?" % (
+                LABEL[stage], n, "\n".join(str(x) for x in (st.get("lines") or [])[:8]))
+        else:
+            header, qid = GATE_HEADER, "repair.stop"
+            rep = repair_ops.offer(r, stage)
+            first = [back] + ([self.repair_opt(stage, False)] if rep is not None else []) + ([self.accept_opt()] if opens else [])
+            more = first[3:] + [self.override_opt(stage, [self.c("state advance %s_complete %s" % (stage, r.next_of(stage)))]), self.save()]
+            first = first[:3]
+            text = "%s: %s. Loop back to Build?" % (LABEL[stage], str(st.get("why")).rstrip("."))
+        q = self.with_more(header, text, stage, first, more, "%s: more options." % LABEL[stage], qid=qid)
+        if opens:
+            q["accept"] = self.accept_question(opens, qid="repair.stop.accept")
+        return q
+
+    # The small change window (moved from flow_ask.py, which passed its 64 KiB): its option, its place in a gate question,
+    # the steps it touches once closed, and the question when Review of it failed. A repair window is a window of this kind.
+    def adhoc_option(self, stage):
+        # Claude makes it, here in the conversation (a person read "change the work yourself" as their own edit).
+        return self.opt("Make a small change", "Claude makes one small change here, with no loop back to %s: the one you describe, " % (
+                        "Fix" if self.r.command == "fix" else "Build") +
+                        "or the one the review asked for. Only what it touches is checked again.",
+                        move="adhoc", calls=[self.c("adhoc open --stage %s --reason '{reason}'" % stage)],
+                        do="Make the small change: for a fix the person describes, ask them in one line what to change first; for the "
+                           "review's, take what the review asked for. Then run %s, then run %s again." % (self.c("adhoc close"), self.c("next --json")),
+                        reason=["A small fix I will describe", "A change the review asked for"], oid="small-change", needs="small-change")
+
+    def add_adhoc(self, out, stage):
+        """Add Make a small change to the gate question of Build, Review, Check or Commit, before Save for later. Four options
+        at most: when the question is full it goes under More options. Not offered while a window is open, nor at a fix
+        run's Fix stage (its change is the fix itself)."""
+        r = self.r
+        if stage not in self.ADHOC_OPTION_STAGES or r.state.get("adhoc") or (r.command == "fix" and r.stage == "fix"):
+            return out
+        q = out.get("ask") if "ask" in out else out
+        if not isinstance(q, dict) or "options" not in q or any(o["label"] == "Make a small change" for o in q["options"]) \
+                or (r.command == "fix" and q.get("id") == "commit.confirm"):   # WP17: commit, back to Fix, or save
+            return out
+        more = q.get("more")
+        if stage == "review" and len(q["options"]) >= 4 and more and len(more["options"]) >= 4 and r.verdict("review") == "PASS" and \
+                any(f["state"] == "open" for f in r.findings()):
+            # M2 of WP08: at a passed Review with an open finding both questions are full. The Architecture Depth Review gives
+            # way to the small change, and Teach Me takes its place, so Accept a finding, Grill Me, Teach Me and Save for
+            # later all stay in reach (row D42).
+            teach = next((o for o in more["options"] if o["label"] == "Teach Me"), None)
+            at = next((i for i, o in enumerate(q["options"]) if o.get("id") == "depth-review"), None)
+            if teach is not None and at is not None:
+                q["options"][at] = teach
+                more["options"] = [o for o in more["options"] if o is not teach]
+                more["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in more["options"]]
+        opt = self.adhoc_option(stage)
+        self.follow_ups(opt, q["id"])
+
+        def put(options):
+            keep = [o for o in options if o["label"] == "Save for later"]
+            rest = [o for o in options if o["label"] != "Save for later"]
+            return rest + [opt] + keep
+
+        if len(q["options"]) < 4:
+            q["options"] = put(q["options"])
+        elif q.get("more") and len(q["more"]["options"]) < 4:
+            q["more"]["options"] = put(q["more"]["options"])
+            q["more"]["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["more"]["options"]]
+        elif q.get("more"):
+            return out   # M2 of WP08: a full More question is never built again from the visible options
+        else:
+            first, rest = q["options"][:3], q["options"][3:]
+            more = self.question(q["question"]["header"], q["question"]["question"].split("?")[0] + "? More options.", put(rest), stage,
+                                 qid=q["id"] + ".more")
+            q["options"] = first + [self.more_opt(more["options"])]
+            q["more"] = more
+        for o in q["options"]:   # the description of More options lists what is behind it, as it is now
+            if o["label"] == "More options" and q.get("more"):
+                o["description"] = ", ".join(x["label"] for x in q["more"]["options"])
+        q["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["options"]]
+        return out
+
+    def small_change_work(self, done):
+        """A small change is closed: run the steps it touches, in order (review of the changed files, check, the commit gate;
+        or only the stage's own gate), before the stage's question is asked again."""
+        r = self.r
+        step = (done.get("steps") or [""])[0]
+        files = ", ".join(done.get("files") or [])
+        if step == "review":
+            a = self.agent("review", ["Ad-hoc change: review only %s." % files])
+            a["after"].append(self.c("gate review"))
+            a["gate"] = a["after"][-1]
+            return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
+                    "say": "%s: the Review agent checks your small change%s. %s" % (LABEL.get(r.stage, r.stage), on_model([a]), goes_on(False))}
+        if step == "check" and self.cli_check():
+            # M7 of WP08: the CLI checks the tree itself, with no agent, as stage_work does (a claimed run counts for nothing)
+            return {"action": "work", "stage": r.stage, "calls": [self.c("check run"), self.c("gate check")], "agents": [],
+                    "say": "%s: the CLI checks the tree after your small change (no agent)." % LABEL.get(r.stage, r.stage)}
+        if step == "check":
+            a = self.agent("check", ["Ad-hoc change: check the tree as it is now; the change touched %s." % files])
+            a["after"].append(self.c("gate check"))
+            a["gate"] = a["after"][-1]
+            return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
+                    "say": "%s: the Check agent checks the tree after your small change%s. %s" % (LABEL.get(r.stage, r.stage), on_model([a]), goes_on(False))}
+        gate = {"commit": "commit"}.get(step) or (r.gate_of(done.get("stage") or r.stage) or r.stage)
+        return {"action": "work", "stage": r.stage, "calls": [self.c("gate %s" % gate)], "agents": [],
+                "say": "%s is checked again after your small change." % LABEL.get(done.get("stage") or r.stage, r.stage)}
+
+    def side_review_failed(self, done):
+        """Review of a change made at Check or Commit failed: the run has left Review, so it never offers to advance from it."""
+        r = self.r
+        why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("review")[:3])
+        opts = []
+        work = "fix" if r.command == "fix" else "build"
+        if r.can_loop(r.stage, work):
+            opts.append(self.opt("Loop back to %s (Recommended)" % LABEL[work], "Do %s again; the stages after it are redone too." % LABEL[work], move="back",
+                                 calls=[self.c("state loop %s %s --reason '{reason}'" % (r.stage, work))], reason=["The review found a real problem"], oid="back"))
+        opts.append(self.opt("Override and continue", "Skip the Review of your change with your reason; the report shows it.", move="override",
+                             calls=[self.c("override review --reason '{reason}'")], reason=["I accept the risk", "It is not a real issue"], oid="override"))
+        opts.append(self.save())
+        return {"action": "ask", "stage": r.stage, "ask": self.question(GATE_HEADER, "%s: Review of your small change failed (%s). %s" % (
+            LABEL.get(r.stage, r.stage), why, "Loop back to %s?" % LABEL[work] if len(opts) > 2 else "Override it?"), stage=r.stage, options=opts, qid="adhoc.fail")}

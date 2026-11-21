@@ -1,8 +1,11 @@
 # ADR-0006: Merge adaptive learning into review memory
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0024 (what 9.8.5 removed)
 **Date:** 2026-08-24
 **Supersedes:** [ADR-0001](0001-separate-learning-state-file.md)
+
+**Amended in 9.8.5 (ADR 0024):** review memory is gone. No page reads or writes `review-memory.json`, and nothing
+learns from past dismissals; the person keeps or drops a finding at the Review question.
 
 ## Context
 

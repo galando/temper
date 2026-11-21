@@ -5,7 +5,7 @@
 
 import type { Decision } from './decisions'
 import { describe } from './decisions'
-import type { RunView } from './runview'
+import type { Card, RunView } from './runview'
 import type { Stage } from './stages'
 import { cliStage, isStage, stageLabel } from './stages'
 
@@ -57,6 +57,8 @@ export type View = {
   detail: string[]
   // The failed checks of the current stage's gate, for the pane.
   failedChecks: Array<{ name: string; detail: string }>
+  // WP19: the checks of Check that were not measured (the third state): neither passed nor failed, drawn `?`.
+  unmeasured: Array<{ name: string; detail: string }>
   groups: GroupRow[] | null
   findings: Array<{ id: string; severity: string; claim: string }>
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string; evidence: string[] }>
@@ -73,7 +75,7 @@ export type View = {
   findingRows: FindingRow[]
   // The fresh review of the plan; null when it does not apply to the run.
   fresh: FreshView | null
-  // The five Check markers: compile, tests, coverage, lint, security.
+  // The Check markers: compile, tests, coverage, lint, security, and the planted bugs as information (WP19).
   markers: Marker[]
   // The person's decisions in this run, as sentences, oldest first.
   decisions: string[]
@@ -83,6 +85,8 @@ export type View = {
   line: string | null
   // What `temper next` does now (the system prompt names it).
   next: { action: string; say: string; header: string | null }
+  // WP15: the card of the question (the approval, the commit, a stop), drawn above the dialog; null for none.
+  card: Card | null
 }
 
 export type ViewInput = {
@@ -113,7 +117,7 @@ const TASK_GLYPH: Record<string, string> = { waiting: '○', running: '◐', pas
 // One line a group in Build: "G2 Payments  ✓1 ✓2 ◐3 ○4".
 export function groupLine(g: GroupRow): string {
   const tasks = g.tasks.map(t => `${TASK_GLYPH[t.state] ?? '○'}${t.n}`).join(' ')
-  const state = g.state === 'parked' ? ' (parked)' : g.state === 'passed' ? ' (passed)' : ''
+  const state = g.state === 'parked' ? ' (stopped)' : g.state === 'passed' ? ' (passed)' : ''
   return `${g.id}${g.title ? ` ${g.title}` : ''}${state}  ${tasks}`
 }
 
@@ -177,6 +181,7 @@ export function buildView(input: ViewInput): View {
     status: statusOf(input, stage, wait),
     detail: detailOf(rv, stage, groups, failed),
     failedChecks: failed.map(q => ({ name: q.name, detail: q.detail })),
+    unmeasured: rv.checks.filter(c => c.state === 'not measured').map(c => ({ name: c.name, detail: c.detail })),
     groups,
     findings: rv.findings.filter(f => f.state === 'open').map(f => ({ id: String(f.id), severity: f.severity, claim: f.claim })),
     criteria,
@@ -186,6 +191,7 @@ export function buildView(input: ViewInput): View {
     loops: rv.loops.map(l => `${cap(l.from)} to ${cap(l.to)}: ${l.iteration} of ${l.max}${l.reason ? ` (${l.reason})` : ''}`),
     line: input.line ?? null,
     next: { action: rv.next.action, say: rv.next.say, header: rv.ask?.question.header ?? null },
+    card: rv.card,
     clock: { minutes: minutesOf(rv.time.started, rv.time.updated) },
     loopMarks: rv.loops.map(l => ({ from: l.from, to: l.to, iteration: l.iteration, max: l.max, reason: l.reason })),
     planTree: planTreeOf(rv),
@@ -235,7 +241,7 @@ export const TASK_STATE: Record<GridTask['state'], [string, string]> = {
   covered: ['◇', 'COVERED'],
   pass: ['✓', 'PASS'],
   fail: ['✗', 'FAIL'],
-  parked: ['⏸', 'parked'],
+  parked: ['⏸', 'stopped'],
 }
 
 const cap = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}`
@@ -302,6 +308,11 @@ export function stageToast(stage: Stage | null): string | null {
   return stage === 'commit' ? 'The run is done. Commit is next.' : `${stageLabel(stage)} is open.`
 }
 
+// WP11: the notice of a stop of a run that goes on by itself: `run.parked` of the view turned from null to a stage.
+export function stopToast(stage: string): string {
+  return `The run stopped at ${isStage(stage) ? stageLabel(stage) : stage}: its question asks you.`
+}
+
 // What Claude does next, for the system prompt: what `temper next --json` says, in one line.
 export function nextStep(v: View): string {
   if (v.stage === null) return ''
@@ -313,7 +324,7 @@ export function nextStep(v: View): string {
     case 'gate':
       return `ask the \`${v.next.header ?? 'Temper gate'}\` question exactly as \`temper next --json\` gives it, then wait`
     case 'armed':
-      return 'the run is armed: run the calls `temper next --json` gives, and never ask "Shall I...?"'
+      return 'the run goes on by itself: run the calls `temper next --json` gives, and never ask "Shall I...?"'
     default:
       return v.next.say ? `${v.next.say} Do what \`temper next --json\` says.` : 'do what `temper next --json` says'
   }

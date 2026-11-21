@@ -1,11 +1,12 @@
 ---
 name: grill-me
-description: "Socratic challenge mode — stress-test plans and designs with adversarial questions, one at a time"
+description: "Socratic challenge mode: stress-test plans and designs with adversarial questions, asked in rounds"
 ---
 
 # Grill Me
 
-Interview the user relentlessly about a plan or design until reaching shared understanding. Walk down each branch of the decision tree, resolving dependencies between decisions one-by-one.
+Interview the user about a plan or design until you reach a shared understanding. Walk down each branch of the decision
+tree, settling the decisions others depend on first.
 
 > **Credit:** adapted from Matt's [Grill Me skill](https://www.aihero.dev/skills-grill-me) (AI Hero), with thanks.
 
@@ -15,25 +16,18 @@ Interview the user relentlessly about a plan or design until reaching shared und
 |----------|-------------|----------|
 | Purpose | Explain the plan to the user | Challenge the plan's assumptions |
 | Direction | Temper → User (teaching) | Temper ↔ User (adversarial) |
-| Questions | "Does this make sense?" | "What happens if X fails?" |
 | Outcome | User understands plan | User discovers weaknesses |
-| Mode | Sequential section presentation | One hard question at a time |
+| Mode | Sequential section presentation | Rounds of up to four hard questions |
 
 ## Algorithm
 
 ### 1. Extract Claims
 
-Read the plan/design document. Extract:
-
-- **Claims** — explicit assertions ("This handles all error cases", "This is backward-compatible")
-- **Assumptions** — unstated beliefs ("Users will have X", "External service is fast")
-- **Dependencies** — things that must be true for the plan to work
-- **Decisions** — architectural choices made (and alternatives rejected)
-- **Gaps** — things not mentioned that should be
+Read the plan or design. Extract the **claims** it makes, the **assumptions** it leaves unstated, the **dependencies**
+that must hold, the **decisions** it took (and the alternatives it rejected), and the **gaps**: what it should mention
+and does not.
 
 ### 2. Generate Challenge Questions
-
-For each extracted item, generate challenge questions targeting:
 
 | Target | Question Pattern |
 |--------|-----------------|
@@ -41,56 +35,58 @@ For each extracted item, generate challenge questions targeting:
 | Missing error paths | "What does {component} do when {dependency} fails?" |
 | Alternatives not considered | "Why {this approach} instead of {alternative}?" |
 | Scalability limits | "What happens at 10x/100x current {metric}?" |
-| Dependency risks | "If {dependency} changes/breaks, what's the impact?" |
 | Edge cases | "What about {edge case}?" |
-| Hidden complexity | "What's the hardest part of implementing {this}?" |
 | Success criteria gaps | "How would you verify {claim} actually works?" |
-| Cross-cutting concerns | "How does this interact with {existing system}?" |
 | Rollback | "If this fails in production, how do you roll back?" |
 
-### 3. Present One Question at a Time
+A fact about the project (a caller, a version, what a file holds) is looked up in the code, never asked.
 
-Ask exactly one question per turn and wait for the answer; a batch of questions lets
-the user answer the easy ones and skip the hard one.
+### 3. Ask in Rounds
+
+A round is one `AskUserQuestion` call with up to 4 questions (the tool takes no more). A question enters a round only
+when every decision it depends on is settled; one that depends on an open answer waits for the next round.
+
+Each question carries two or three concrete answers, and the first option is the recommended answer: the one you would
+pick, marked `(Recommended)`. The person can always write their own answer instead.
 
 ```
 AskUserQuestion:
-  question: "{challenge question}"
-  options:
-    - label: "Answer"
-      description: "Provide your answer or reasoning."
-    - label: "Update plan"
-      description: "I want to revise the plan based on this question."
-    - label: "Skip"
-      description: "Skip this question, move to next."
-    - label: "Done grilling"
-      description: "End the session and return to the gate."
-  multiSelect: false
+  questions:
+    - question: "{challenge question}"
+      options:
+        - label: "{the answer you would pick} (Recommended)"
+          description: "{what it settles, and what it costs}"
+        - label: "{another concrete answer}"
+          description: "{what it settles, and what it costs}"
+      multiSelect: false
+    - ...up to 4 questions in all
 ```
 
-### 4. Analyze Response
+`Update plan` and `Done grilling` stay in reach in every round: a round of up to three questions adds a last one,
+"Next?", with the options `Next round`, `Update plan` and `Done grilling`; in a round of four the person writes either
+as the own answer of any question.
 
-After each answer:
+### 4. Analyze the Round
 
-1. **If the answer reveals a weakness:** Note it as a finding. Offer to update the plan.
-2. **If the answer is solid:** Acknowledge it, move to next question.
-3. **If the answer raises new questions:** Ask a follow-up (still one at a time).
-4. **If the user chooses "Update plan":** Apply the change to the plan/design file, then continue grilling.
+For each answer of the round:
+
+1. **It reveals a weakness:** note it as a finding and offer to update the plan.
+2. **It is solid:** acknowledge it.
+3. **It raises a new question:** put it in the next round.
+4. **The user chose `Update plan`:** apply the change to the plan or design file, then go on with the next round.
+
+A question the person skipped in a round is not asked again in the same session; the summary lists it as still open.
 
 ### 5. Loop Until Done
 
-Continue until:
-- User types "Done grilling" or selects "Done grilling" option
-- Maximum 10 questions reached
-- 3 consecutive answers that reveal no weaknesses (the plan is solid)
+Continue until the user chooses `Done grilling`, or 10 questions have been asked, in at most 4 rounds, or a round
+revealed no weakness (the plan is solid).
 
 ### 6. Summary
 
-After the loop ends:
-
 ```
 GRILL ME — Summary
-  Questions asked: {N}
+  Questions asked: {N} in {R} rounds
   Weaknesses found: {N}
   Plan updates made: {N}
 
@@ -98,12 +94,15 @@ GRILL ME — Summary
     1. {description} — {how it was addressed}
     2. {description} — {still open}
 
+  Skipped, still open:
+    - {question}
+
   Plan updated: Yes/No
   Returning to {stage} gate...
 ```
 
 ## Integration with Temper
 
-This skill is invoked from the Plan and Design stage gates in the `/temper` unified command. When the user selects "Grill Me" at a gate, the orchestrator invokes this skill with the current plan.md or design.md as input.
-
-After the grill session ends, the user returns to the original stage gate (Plan or Design). If the plan was updated during grilling, the gate shows the updated summary.
+The gates of `/temper` offer Grill Me; when the user picks it, the orchestrator invokes this skill with the stage's
+file as input. When the session ends, the user returns to the same gate, and a plan updated during the session shows
+in the gate's summary.

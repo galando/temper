@@ -15,9 +15,12 @@ folder.
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/intent.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
 1. **Triage first.** If the request is plainly trivial or mechanical (a typo, a
-   one-line change, direct instructions with no product problem to state), return
-   `TRIVIAL` with one sentence of reasoning and write nothing. The orchestrator then
-   clears the run and handles the change directly, outside the pipeline.
+   one-line change, direct instructions with no product problem to state), write no spec
+   file and run `${CLAUDE_PLUGIN_ROOT}/scripts/temper intent trivial --why '{one sentence of
+   reasoning}'`. Only after it printed `OK:` make the change yourself: one production file
+   and 10 changed lines at most (the commit hook holds that bound), then run the project's
+   tests, and return one line. Commit nothing: the flow closes the run, and the commit is the
+   person's. A refused call means the request is not trivial here: draft the intent.
 
 2. **Gather task context before drafting.** Fetch every source the request links
    (ticket key, MR/PR, doc link, named repo history) read-only, with whatever tools
@@ -30,9 +33,8 @@ folder.
    example) becomes a targeted Open Question in the draft — never a silent guess.
 
 3. **Pick up an existing draft — bounded refine pass.** If
-   `{spec_path}/intent.md` already exists (captured via `/temper:intent`, or drafted
-   from a control-band breach that `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` reported), it is your input. You run headless and ask
-   nobody: a question the draft marks `Blocking` stays in Open Questions, and the
+   `{spec_path}/intent.md` already exists (captured with `/temper:temper draft`), it is your input. You run headless and
+   ask nobody: a question the draft marks `Blocking` stays in Open Questions, and the
    orchestrator asks the person before the gate question (`temper next` lists it under
    `blocking`). Anything else you find thin becomes a NEW Open Question in the file,
    answered once at the gate. Keep the originator's Problem and
@@ -41,31 +43,28 @@ folder.
 
 4. **Accepted-intent pass.** If the draft's header says `**Status:** accepted` AND
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` passes AND your launch prompt has no `Loop back from` line:
-   read the file, change nothing, ask nothing, and return the summary panel. A recorded acceptance is never
+   read the file, change nothing, ask nothing, and return. A recorded acceptance is never
    revisited on its own. **A loop back is the exception:** when the prompt has a `Loop back from` line, a later
    stage sent the run back here for that reason (and, on a `What ... left open` line, its open findings). Revise
    the accepted intent for exactly that: change the criteria, constraints or scope the reason names, record the
    change under Decisions, and keep everything else. Set `**Status:** draft` and remove the `**Accepted-by:**`
-   line: the person accepted other wording, and accepts this revision at the Intent question. A draft holds no
-   scenarios, so remove the `Scenario:` blocks; Plan writes them again for the revised criteria. List each change
-   in your panel. Changing nothing on a loop back sends the run round again.
+   line: the person accepted other wording, and accepts this revision (a run that came back asks it). A draft holds no
+   scenarios, so remove the `Scenario:` blocks; Plan writes them again for the revised criteria. Changing nothing on a
+   loop back sends the run round again.
 
 5. **Otherwise derive the intent** from the feature description in your launch prompt,
    with at most a quick look at the repo for naming and context. Write
    `{spec_path}/intent.md` from `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`:
    - Header: `**Author:**` (a name the person typed, else
      `the person`; never ask git or the system for a name or email), `**Status:** draft`,
-     `**Created:**`, `**Ticket:**` if one was given, `**Reviewer:**` only when the request
-     names one (it is optional: the person who accepts the intent at the gate is its approver,
-     so never ask for a reviewer), `**Complexity:**` (a first guess; Plan records the
-     authoritative one).
+     `**Created:**`, `**Ticket:**` if one was given, `**Complexity:**` (a first guess; Plan records
+     the authoritative one). Never ask for a reviewer: the person who accepts the intent with the plan approves it.
    - **Problem** (who is affected, current → desired with one concrete example, why
      it matters, facts separated from assumptions), **Success Criteria** (stable
      `AC-NN` ids, each `[required]` or `[optional]`, each with a `Why:` line and a
      `Validate:` type — see the template), **Constraints** (each marked
      `(source: …)` or `(proposed)`), **Scope and Non-goals** (In scope / Out of
-     scope / Must keep working), **Target Users** (each bullet an action chain
-     `{user}: {what they do with this} → {what happens next}`), **Open Questions**
+     scope / Must keep working), **Open Questions**
      (each bullet labeled `Blocking:` or `Deferred:` with consequence and owner),
      **Decisions** (one `{question} -> {answer} ({who}, {date})` row, written the
      moment an answer arrives — this is the only record that survives the session).
@@ -86,9 +85,8 @@ folder.
 
    **Interview discipline.** You cannot ask while you run, so what an interview would
    settle becomes an Open Question (`Blocking` when the answer changes the outcome).
-   Two probes are mandatory for every draft you author: *"what business outcome or risk
-   does each criterion address?"* (the `Why:` line) and *"who acts on the result,
-   and what happens next?"* (the Target Users action chain).
+   One probe is mandatory for every draft you author: *"what business outcome or risk
+   does each criterion address?"* (the `Why:` line).
 
    **The rules checklist (9.8.0).** A request names the feature and leaves its rules out; the person knows them, and
    a builder who guesses gets them wrong. Before you finish, go through this checklist for the feature, and for each
@@ -128,6 +126,12 @@ folder.
    of exactly `limit` items gets a cursor, though the request said `next_cursor` is null on the last page; the click
    put a cursor there, and the code broke the request. Ask an edge only when the rule as written leaves it open.
 
+**A fact is looked up, never asked.** Before you write a question, decide its kind. A fact says what the project is
+today (what an existing endpoint returns, a config value, a field name, a limit the code holds); a decision says what
+the new feature shall do. For a fact make one search (one Grep or one file read), never more. Found: one row under
+`### Decisions`, `- {the fact} -> as the project holds it ({file}:{line})`. Not found: a question or an assumption as
+before. A house rule is a default for the new feature, so it stays a question.
+
    **Write each question so the person clicks, never types.** One line each, in this form:
    `- Blocking: {the question, concrete, naming the feature} choices: {recommended answer} | {other} | {other}`
    with two or three choices, the one you would pick first, each a short concrete answer ("Admins only", "60 days
@@ -142,8 +146,8 @@ folder.
    fix any FAIL it reports (an empty Problem, no real criteria, a missing header
    field, an unlabeled open question, a criterion without a `Why:`).
 
-7. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
-   orchestrator; it owns the human-facing gate.
+7. Do NOT show an `AskUserQuestion` gate — you run headless. Return as the last paragraph
+   says; the orchestrator owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - Never write a placeholder `Scenario:` block. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` demands a passing
@@ -154,34 +158,13 @@ folder.
   silent guess is the failure this stage exists to prevent.
 - Every criterion needs a stable `AC-NN` id, a `Why:` line and a `Validate:` type. An
   unlabeled open question or a missing header field fails `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent`.
+- A `code` or `metric` Validate carries its command in backticks, one that exits 0 when the criterion holds; the CLI
+  runs it. A metric that can only be read after release is `manual`.
 - Do not explore the codebase beyond naming and context. Blast radius and architecture
   belong to Plan and Plan's budget.
 - An intent already marked `**Status:** accepted` that passes the gate is read, never
   rewritten, and never re-questioned, unless a loop back names what to change (step 4).
 
-**Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border), and it is the only box you print. Fact rows at the top, then titled sections
-(`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
-more"; omit an empty section including its divider — never a row saying "none"; wrap
-a long entry onto a continuation row indented two spaces.
-
-Return this panel (the orchestrator prints it verbatim). After it, each on a line of
-its own, return the spec path and then one status word, `READY` or `TRIVIAL`: the
-orchestrator branches on that word. Nothing else goes outside the panel. A `TRIVIAL`
-return writes no file, and its panel holds only the title row and a PROBLEM row with
-your one sentence of reasoning:
-
-```
-+--------------------------------------------------------------------------+
-| INTENT — {Feature Name}                                                  |
-+--------------------------------------------------------------------------+
-| PROBLEM: {one line — whose problem, what they can't do today}            |
-| CRITERIA: {N} ({n} required / {n} optional)  TICKET: {key or none}       |
-+--- OPEN QUESTIONS (N) ---+-----------------------------------------------+
-| {Blocking|Deferred}: {question, wrapped onto continuation rows}          |
-+--- ASSUMPTIONS (N) ---+--------------------------------------------------+
-| {what you assume} (because {why})                                        |
-+--- DECISIONS (N) ---+----------------------------------------------------+
-| {question} -> {answer} ({who}, {date})                                   |
-+--------------------------------------------------------------------------+
-```
+**Your panel is drawn by the CLI** (9.8.5): the person reads the criteria on the approval card, and
+the CLI draws the card (`temper card`). Draw no panel and no box. Return the spec path and then the status word
+`READY`, each on a line of its own, and nothing else. A trivial request (step 1) returns its one line instead.

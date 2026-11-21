@@ -9,7 +9,9 @@ The mod does four things:
   passes; the mod refuses `--no-verify` and a changed hooks path. A commit the hook does not check,
   such as a merge, is a known limit ([what the guard does not see](#what-the-guard-checks-and-what-it-does-not)).
 - It refuses a step only you may take (leaving Intent or Plan, a skip, a step back, accepting a
-  finding, arming autonomy) unless you chose it in the gate question.
+  finding, starting the run that goes on by itself) unless you chose it in the gate question.
+- A run goes on by itself only from the option you pick at the approval (Approve and build); the
+  CLI's own moves after it are the calls of its action, and a toast says when such a run stops.
 - It draws the run: the stage bar above the prompt and the pane, and keeps a report of the run
   (`/temper:temper report`).
 
@@ -54,7 +56,7 @@ again.
 
 The pane (`/temper:temper pane`) shows the whole run on one card: the intent, the stages with your skips
 and the loops back, the plan's files by Build group as you approved them, the Build grid (each task's
-state, waiting, running, RED, GREEN, PASS, FAIL or parked, with its model and retries), at Plan and Design
+state, waiting, running, RED, GREEN, PASS, FAIL or stopped, with its model and retries), at Plan and Design
 the fresh review of the plan (the reader's summary, a lens that did not run, and each finding with its state:
 open, contested with its citation, escalated, resolved or accepted), the Review
 findings (severity, confidence, file and line, open, resolved or accepted), the Check markers (compile,
@@ -62,14 +64,14 @@ tests, coverage, lint, security, with the lines that failed), the acceptance cri
 and your decisions. It has no button. `minimal` draws the stages only; `off` draws nothing.
 
 In full mode the pane opens by itself: when you type `/temper:temper` with a feature description (or
-any word that goes on to the run), when a run starts later in the session (a door, or a run Claude
+any word that goes on to the run), when a run starts later in the session (a run Claude
 started), and when a session starts during a run. Your own `/temper:temper` opens it at any terminal
 width; Claude Code shows a pane the mod opens on its own only from 144 columns (110 once you have opened
 it yourself, until you close it by hand). Once you close it by hand, it stays closed for the rest of the session;
 `/temper:temper pane` opens or closes it at any time.
 
-At the commit the run prints its report in the terminal (`temper report`), and asks whether to write it
-as one page too, `report.html` in the spec folder (`temper report --html`), from the same view: the stages,
+At the commit the run prints its report in the terminal (`temper report`), then writes it as one page with no
+question, `report.html` in the spec folder (`temper report --html`), from the same view: the stages,
 loops and skips with their reasons, the plan, the Build grid, the findings, the Check markers, the criteria
 with evidence, and the time by stage and by model. The commit carries the page,
 so it goes with the change.
@@ -81,9 +83,9 @@ so it goes with the change.
 | Intent | `intent.md` only |
 | Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records |
 | Design | The same, but `tasks.md`: you approved it at the plan gate |
-| Build | The plan's files, test files and the spec folder, but `tasks.md`. Another file waits for your answer to the Scope drift question. |
-| Review | The spec folder only, but `tasks.md` |
-| Check | The spec folder only, but `tasks.md`; and `CLAUDE.md` or `AGENTS.md` for a config suggestion you accept |
+| Build | The plan's files, test files and the spec folder, but `tasks.md` and `intent.md`. Another file waits for your answer to the Scope drift question. |
+| Review | The spec folder only, but `tasks.md` and `intent.md` |
+| Check | The spec folder only, but `tasks.md` and `intent.md`; and `CLAUDE.md` or `AGENTS.md` for a config suggestion you accept |
 | Commit | The same as Check: the code is what Review and Check passed |
 
 A step back is a loop: you choose "Loop back to {stage}" with a reason, and the run does that stage
@@ -106,13 +108,16 @@ shows the file, why the task needs it and the change. You choose one answer:
 
 This question is the same with the mod and without it. The mod also refuses the write until you answer.
 The mod reads your answer from the result of the question, not from what Claude sends.
+The record of an Add to plan or Allow once answer is yours too: the mod refuses a call that records one you did not
+give, so an agent cannot widen the plan by writing the answer itself.
 
 ## Where enforcement works
 
 The mod needs Claude Code 2.1.287 or later. This section shows where enforcement works, where it does
 not work and what is not verified.
 
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently.
 
 ### Older versions, or no mod
 
@@ -175,10 +180,10 @@ Claude set on getting around a gate through Bash can do it. The hard guarantees 
 The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
 - **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
-  step back, accepting a finding, arming autonomy, keeping an agent's commits, overriding the commit
-  gate, starting over during a run) needs your answer in the question dialog, at the run and the step
-  the CLI is at. The guard finds the call when it is written out in the command
-  (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word
+  step back, accepting a finding, confirming a criterion at Check (`evidence add --person`), starting the run that goes
+  on by itself, keeping an agent's commits, overriding the commit gate, starting over during a run) needs your answer in
+  the question dialog, at the run and the step the CLI is at. The guard finds the call when it is written out in the
+  command (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word
   before its reason (`temper o?erride`) is refused, since bash may expand it to a file's name.
 - **Temper's own files.** The CLI's files in `.temper` (the gates, the run state, the evidence ledger,
   the loop counter, the view), and during a run `.claude/temper.config` and the git hooks, are written by
@@ -212,7 +217,7 @@ The guard has four jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mo
   request, word for word: the mod keeps what they typed after `/temper:temper` (in its plugin store, with one pair of
   quotes around all of it taken off) and refuses a `temper state init` whose `--feature` differs from it, whitespace
   aside (round 5: a session started a run of a dozen rules with a one line summary, and every agent planned from it).
-  A door (`/temper:plan "..."`) or another temper command clears what was kept. A `/temper:fix` run is left to
+  Another temper command (`/temper:fix`) clears what was kept. A `/temper:fix` run is left to
   `commands/fix.md`, as before.
 
 The guard reads a Bash command as text: it splits it into statements and words and honours quotes
@@ -256,9 +261,11 @@ A decision comes from the result of the question dialog, after you chose. Its au
 Claude Code. Claude writes the question and its options, so read the option you pick.
 
 If a run's `view.json` is hidden or removed, the run stays enforced from the last known state.
-This continues until you turn enforcement off. The exception is the TRIVIAL exit (`state clear` at
-Intent before the run ever moved and before Claude wrote an intent), which ends the run. Claude
-decides that a change is trivial; it tells you so in one line, and you are not asked.
+This continues until you turn enforcement off. A trivial request is a verdict the CLI records
+(`temper intent trivial`, at Intent before the run ever moved and before an intent was written): the
+Intent agent then makes its one change, the flow closes the run, and you are not asked. The change is
+left for you to commit, and the commit hook holds it to one production file and 10 lines. No `state
+clear` is let through at Intent.
 
 The rules hold through the Commit stage too, until the Commit steps clear the run. A `/temper:fix`
 run is not judged move by move (its own page asks every gate), but the native hook stays on there
@@ -277,14 +284,20 @@ With the mod loaded, `/temper:temper <request>` (no run active) and `/temper:tem
 are carried by the mod itself, with no model in the main session (`core/driver.ts`). It runs `temper go`, the
 calls the CLI gives (the action's calls, an agent's `before` and `after` calls, the CLI calls of `steps`), launches
 each agent the CLI names with its type, model and prompt as given and waits for it, prints the panels and the report
-the CLI prints, asks each question the CLI gives (header, question and option labels as given; Blocking questions
+the CLI prints (the report step and the no record note by their `step_kinds`, never by their words), asks each
+question the CLI gives (header, question and option labels as given; Blocking questions
 with their answer calls), records your answer as the guard does, and runs the calls of the option you picked. The dialog a mod raises
 takes labels alone; the mod's own tool call hook gives each option back its description and its preview (the Context
 check's table) from the CLI's question, so the dialog shows what each choice does. A Build task's panel is the CLI's
 (`temper panel task`, after the task gates); of the agent's answer the driver shows only a `TASK N: stopped:` line,
-which the CLI cannot know. A panel the CLI draws is shown as a few rows: its title, a row a fact and a row a section,
-with the Plan's diagram left in plan.md (a mod's log line is one row with the plugin's name before it, and a box drawn
-row by row read as forty rows of "temper:"). A stage that only waits for your answers (open Blocking questions, the
+which the CLI cannot know. A panel the CLI draws is shown as a few rows: its title, a row a fact and a row a section
+(a mod's log line is one row with the plugin's name before it, and a box drawn row by row read as forty rows of
+"temper:"). The card of a question that decides (the approval, the commit, a stop; WP15, its fields in `docs/flow.md`)
+comes before the dialog: in full mode the mod draws it above the dialog the driver raised, under
+the dim question line (its title and tag, each section with its rows and marks, what a cut section leaves out, the
+foot); in any other mode the driver logs its rows. A dialog the conversation raised has the card's rows in the page
+(`commands/temper.md`), and the mod draws no card on it. The card only shows: you decide in the dialog.
+A stage that only waits for your answers (open Blocking questions, the
 Context check, a criterion you confirm) draws as the current stage, never red. A Temper agent's message is drawn in
 full, where the engine shows one folded line. The Blocking questions come in one dialog, four at most (each its own
 tab, then a review of the answers), as the conversation asks them without the mod. An interrupt stops the driver between two steps or while it waits on an agent; it starts no
@@ -293,16 +306,26 @@ guard checks the driver's questions and agents as it checks the session's: each 
 benchmark measured why: the main session's own model time was 8% to 10% of a feature run's wall time and 20% to
 30% of a bug run's, and it cost $0.03 to $0.09 a run on Haiku, for steps that need no model.
 
-It hands the run to the conversation (the prompt based `/temper:temper`, which goes on from the same state; the
-CLI holds the run, the driver holds nothing) for anything that needs a model or your own words: an answer you
-type (passed on as `discuss <your words>`), a skill (Grill Me, Teach Me), the HTML plan review, a small change
-window, a pull request step, an agent's DRIFT rows (the Scope drift question), a call that fails and an action it
-does not know (a manual task's name question it asks itself, and runs the confirm calls with the typed name). It says so in one line. An option you chose that only the conversation can carry out
-(a skill, the HTML review, a small change) goes over as `chose <label>`, before any of its calls runs: the
-conversation carries it out as your answer, with no second question. `/temper:fix <bug>` with no run active is carried
-the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop). A run word (`approve`,
-`next`, ...) and a request while another run is active go to the conversation as before. Without the mod, the
-conversation carries every run, as before.
+WP16: a run leaves the driver only for one step on a closed list of seven kinds (`NEEDS` of `scripts/flow_base.py`
+but the three the driver does itself, `more`, `accept` and `cancel`; the cap `handback_kinds` holds the seven), each
+one you asked for by an option: `talk` (Grill Me, Teach Me, the Design walk through), `html-review` (Open or Share
+HTML review), `depth-review` (Architecture Depth Review), `config-suggestions`, `small-change` (Make a small change),
+`pull-request` (the pull request steps after the commit) and `pipeline-fix` (Apply the fix and push). The option's or
+the step's `needs` names the kind; the driver never reads a `do` text. Nothing of that option runs in the driver: the
+command goes on as typed, with one note after it that ends `step <kind> <option id>`; the conversation does that one
+step and ends its turn, and your next `/temper:temper` (or `/temper:fix`) takes the run up in the driver again.
+Everything else stays with the driver. An answer you type at a gate question runs the question's `typed` calls
+with your words (a note for the next agent and, at Intent, Plan, Design, Build and Fix while the budget has room, the
+stage run again with it). A failed call, a question nobody answered, a bound (questions six deep, 120 waits, the same
+after calls twice, 300 turns) and a defect end as a saved stop: the driver's text starts with what stopped (a failed
+call's own FAIL line), and the run is where the CLI says. Scope drift is the CLI's own question (`temper drift ask`),
+asked as any other; a run whose state cannot be read asks the restart question. A Cancel in the accept question asks
+the gate question again; a name question is asked until a name is typed or Cancel. `/temper:fix <bug>` with no run
+active is carried the same way (the root cause agent, the panel from `rca.md`, the run's state, then the loop), and
+`/temper:fix` with no words takes an active fix run up. A run word (`approve`, `next`, ...), the words `draft <idea>`,
+`init` and `pack`, and a request while another run is active go to the conversation as before. A word counts only in
+its documented form (9.8.5): `status badge on the order page` is a request, and the driver starts a run for it. Without
+the mod, the conversation carries every run, as before.
 
 ## What the mod reads and writes
 
@@ -355,8 +378,8 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
     mode) and `report` keeps the run report in its store; `mode` and `enforcement` only say what is set. Every other word (`approve`, `back`, `override`
     and the rest) and any other command pass on unchanged, and the mod records nothing from them; in full mode, such
     a word typed in your prompt box opens the pane first. When the run driver hands a run to the conversation, the
-    command still passes on unchanged (9.8.1; before, its arguments were replaced); the words the run continues with
-    (`next`, `discuss <text>`, `chose <label>`) come as one note the model reads after the command, its `context`.
+    command still passes on unchanged (9.8.1; before, its arguments were replaced); the one step it hands on (WP16:
+    `step <kind> <option id>`) comes as one note the model reads after the command, its `context`.
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
     `session.start` also opens the pane during a run, as the first read that finds a run started later in the
     session does. Both return what the engine gives them: no context, instruction or setting is added.
@@ -384,9 +407,11 @@ run it drives it runs no command and starts no agent. CI fails on a call outside
 
 - **The small change window.** An open window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only
   there (Pipeline included). `adhoc close` needs no answer; `adhoc open` is the person's, as the call their answer maps to.
-- **Person only calls.** `plan review`, `task confirm`, `task accept`, `adhoc open` and `state set branch` pass only as the call the
-  person's answer to the CLI's question maps to, word for word. A typed answer to the Context check maps to `plan review --answer` with
-  that text, quoted ([ADR 0016](decisions/0016-the-mod-answer-audit.md)).
+  Inside a repair window (WP24) `adhoc close` is refused: the CLI's `repair commit` ends that window.
+- **Person only calls.** Among them, `plan review`, `task confirm`, `task accept`, `adhoc open`, `state set branch` and
+  `doctor --propose --write --expect` (9.8.5) pass only as the call the person's answer to the CLI's question maps to,
+  word for word; `personOnly` in `hooks/temper-mod/core/rules.ts` holds the whole list. A typed answer to the Context
+  check maps to `plan review --answer` with that text, quoted ([ADR 0016](decisions/0016-the-mod-answer-audit.md)).
 - **Refusals** name the run and the stage, keep their `Next:` step and point at a worktree (`claude --worktree <name>`); from Build on they
   also point at `Make a small change`.
 - **Pipeline** refuses a code write unless its window is open. `gh pr create` without `--draft`, and any `gh pr ready`, are refused.

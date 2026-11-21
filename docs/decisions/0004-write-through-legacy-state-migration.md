@@ -1,6 +1,6 @@
 # ADR-0004: Legacy build-state values are migrated write-through, not mapped on read
 
-**Status:** Proposed
+**Status:** Accepted (shipped in 8.0.0)
 **Date:** 2026-07-31
 **Supersedes:** (none)
 

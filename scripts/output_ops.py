@@ -40,6 +40,21 @@ def show_run(r):
         print(out)
 
 
+def last_run(tdir, stage):
+    """(the stage's last failed run the CLI recorded with its output, or its last run when none failed; whether it
+    failed), or (None, False)."""
+    runs = [r for r in load(os.path.join(tdir, "evidence", "%s.json" % stage), [])
+            if isinstance(r, dict) and (r.get("output") or r.get("cmd")) and isinstance(r.get("exit_code"), int)]
+    failed = [r for r in runs if r.get("exit_code") != 0]
+    return (failed[-1] if failed else (runs[-1] if runs else None)), bool(failed)
+
+
+def last_failed(tdir, stage):
+    """The stage's last failed run, as `temper output` prints it (the stop card's kept lines), or None."""
+    run, failed = last_run(tdir, stage)
+    return run if failed else None
+
+
 def main(argv):
     if len(argv) != 3:
         print("FAIL: usage: temper output <stage>|G<n>", file=sys.stderr)
@@ -64,16 +79,21 @@ def main(argv):
     if gate:
         print("%s gate: %s" % (what.capitalize(), gate.get("verdict")))
         for q in gate.get("requirements") or []:
-            if isinstance(q, dict) and not q.get("pass"):
+            if isinstance(q, dict) and q.get("pass") is False:   # a row not measured (pass null) is no failure (WP19)
                 print("  %s: %s" % (q.get("name"), q.get("detail")))
         shown = True
-    runs = [r for r in load(os.path.join(tdir, "evidence", "%s.json" % what), [])
-            if isinstance(r, dict) and (r.get("output") or r.get("cmd")) and isinstance(r.get("exit_code"), int)]
-    failed = [r for r in runs if r.get("exit_code") != 0]
-    pick = failed[-1] if failed else (runs[-1] if runs else None)
+    pick, failed = last_run(tdir, what)
     if pick is not None:
         print("Its last %s run:" % ("failed" if failed else "recorded"))
         show_run(pick)
+        shown = True
+    recs = [x for x in load(os.path.join(tdir, "evidence", "failures.json"), []) if isinstance(x, dict)
+            and x.get("resolved") is None and x.get("stage") == what]
+    if recs:   # WP23: the open failure records of the stage (scripts/failure.py)
+        print("Open failure records:")
+        for x in recs[-5:]:
+            print("  %s %s (%s, %s): %s%s" % (x.get("id"), x.get("scope"), x.get("class"), x.get("kind"), x.get("why"),
+                                             "; step: %s" % x["step"] if x.get("step") else ""))
         shown = True
     if not shown:
         print("%s: no gate verdict and no run recorded" % what)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 guardrails-snippet.py: print the guardrails pack's hook entries, ready to paste into a project
-settings file, for /temper:pack enable guardrails.
+settings file, for /temper:temper pack enable guardrails.
 
 It opens one file, the plugin's own ${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json,
 and prints its `hooks` object as JSON with 2-space indents: in every command the plugin root

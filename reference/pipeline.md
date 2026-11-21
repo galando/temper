@@ -26,7 +26,7 @@ result", and a `red` status fails the row "jobs passed". Green passes.
 
 - Green, or skipped: **End the run?** (End the run, Save for later).
 - No final result: **Run Pipeline again?** (`state redo pipeline`).
-- Red, within `loops.max-per-type` rounds: **Apply the fix and push?**
+- Red, within the budget's rounds (key `pipeline`): **Apply the fix and push?**
 - Red past the limit: **the fix limit is reached; End the run?**
 
 The orchestrator applies a fix only after the person says yes, in a Pipeline ad-hoc window

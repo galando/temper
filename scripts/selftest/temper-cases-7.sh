@@ -4,7 +4,7 @@
 bs() { python3 -c "import json,sys; d=json.load(open('.temper/build-state.json')); print(d.get(sys.argv[1], ''))" "$1"; }
 
 setup
-"$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known
 RUN1="$(bs run_id)"
 assert_eq "ADR 0012: state init writes a run id and step 0" "yes|0|intent" \
   "$([[ "$RUN1" =~ ^[0-9a-f]{16}$ ]] && echo yes || echo no)|$(bs step)|$(bs next_stage)"
@@ -20,13 +20,13 @@ assert_eq "ADR 0012: an advance that names the stage the run is at counts no ste
 assert_exit "ADR 0012: state set step is refused" 1 "$TEMPER" state set step 9
 assert_exit "ADR 0012: state set run_id is refused" 1 "$TEMPER" state set run_id 0123456789abcdef
 assert_eq "ADR 0012: the refused sets changed nothing" "2|$RUN1" "$(bs step)|$(bs run_id)"
-"$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known
 assert_eq "ADR 0012: a new state init is a new run, at step 0" "yes|0" \
   "$([[ "$(bs run_id)" != "$RUN1" ]] && echo yes || echo no)|$(bs step)"
 
 # A loop back redoes the stages from its target: their verdicts leave gates.json and their skips move to the archive.
 setup
-"$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known
 _pass intent plan
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -48,7 +48,7 @@ assert_eq "ADR 0012: after the loop the commit gate no longer counts the old ski
 
 # A state set next_stage to an earlier stage redoes like a loop; to a later stage it is refused.
 setup
-"$TEMPER" state init demo >/dev/null 2>&1
+"$TEMPER" state init demo >/dev/null 2>&1; _base_known
 _pass intent plan build
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -65,7 +65,7 @@ assert_eq "ADR 0013: state set next_stage to a later stage is refused (state adv
 
 # A fix run's gates are build, review and check: a loop back to fix redoes all three.
 setup
-"$TEMPER" state init demo --command fix >/dev/null 2>&1
+"$TEMPER" state init demo --command fix >/dev/null 2>&1; _base_known
 printf '{"build":{"verdict":"PASS"},"review":{"verdict":"FAIL"},"check":{"verdict":"FAIL"}}\n' > .temper/gates.json
 "$TEMPER" override review --reason "fix review skip" >/dev/null 2>&1
 _at check

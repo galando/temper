@@ -12,9 +12,10 @@ cd temper
 # Create a feature branch
 git checkout -b feature/my-improvement
 
-# Make your changes, then run the checks
-bash scripts/selftest/test-temper.sh
-bash scripts/quality-check.sh
+# Make your changes, then run the gate: quick after each change (about 3 minutes),
+# full before a push (every case file, the end to end suite in every mode, the mod)
+bash scripts/verify.sh quick
+bash scripts/verify.sh full
 
 # Submit a pull request
 git push origin feature/my-improvement
@@ -35,9 +36,13 @@ temper/
 ├── commands/                # Slash commands (loaded on invocation)
 ├── agents/                  # Stage subprocess briefs (model frontmatter = defaults)
 ├── reference/               # Per-stage methodology docs (loaded on demand)
-├── skills/                  # Skill definitions (temper-core, grill-me, ...)
-├── packs/                   # Rule packs, stack files, guardrails pack
+├── skills/                  # Skill definitions (grill-me, teach-me)
+├── packs/                   # Rule packs, guardrails pack
 ├── scripts/                 # temper CLI (the deterministic spine), flow.py, guards/, selftest/
+│                            # the flow: flow.py, the facade, over flow_base.py, flow_run.py, flow_ask.py,
+│                            # flow_work.py, flow_build.py, flow_commit.py, flow_view.py
+│                            # the CLI's Python modules: json_ops.py, state_ops.py, ledger_ops.py, spec_text.py,
+│                            # commit_rows.py, report_ops.py, groups_ops.py; its help text: temper-help.txt
 ├── templates/               # Artifact templates (intent/plan/design/config)
 ├── examples/                # Company packs, CI workflow templates, an example gate
 ├── docs/                    # GitHub Pages documentation
@@ -50,31 +55,6 @@ with TypeScript 5.6) and `bash scripts/check-mod-calls.sh`.
 
 ## 🎯 Ways to Contribute
 
-### Add a New Stack
-
-1. Create a stack file in `packs/stacks/`, named after the stack (for example `packs/stacks/django.md`)
-2. Include:
-   - Detection patterns (files, dependencies)
-   - Validation commands (test, build, lint)
-   - Patterns to follow
-   - Test patterns
-3. Add the stack name to the `stack:` comment in `templates/temper.config.default`
-
-**Example:**
-```markdown
-# packs/stacks/django.md
-
-## Detection
-- manage.py in root
-- settings.py with Django config
-- requirements.txt with django
-
-## Commands
-- test: python manage.py test
-- build: python manage.py collectstatic --noinput
-- lint: ruff check .
-```
-
 ### Add a New Pack
 
 1. Create a folder for the pack in `packs/`, named after the pack, with a `rules.md` in it
@@ -84,13 +64,15 @@ with TypeScript 5.6) and `bash scripts/check-mod-calls.sh`.
    - `## SUGGEST` — Informational improvements
 3. Add the pack to the built-in list in `reference/pack.md` and to `docs/packs.md`
 
-### Add a New Command
+### Add a word of `/temper:temper`
 
-1. Create the command in `commands/`, named after the command. A stage command is a door into
-   `/temper` (about 900 bytes, like `commands/plan.md`); what comes next belongs in `scripts/flow.py`
-2. Put long methodology in `reference/` and a stage agent's brief in `agents/`
-3. Update `.claude-plugin/plugin.json`
-4. Update the commands table in README.md and the command's section in `docs/commands.md`
+Temper has two commands, `/temper:temper` and `/temper:fix` (9.8.5), and no new command is added. A new thing to
+type is a word of `/temper:temper`:
+
+1. Add a row for the word to the Arguments table of `commands/temper.md`
+2. Add its page in `reference/`, which the row points to; a stage agent's brief goes in `agents/`, and what comes
+   next belongs in `scripts/flow.py` and its `flow_*.py` modules
+3. Add its section under "Words of `/temper:temper`" in `docs/commands.md`
 
 ### Improve Documentation
 
@@ -106,8 +88,6 @@ Keep always-loaded content small. Sizes in 9.7.0, as a guide:
 | File | Size |
 |------|-------------|
 | `.claude/CLAUDE.md` | about 4.5 KB |
-| `skills/temper-core/SKILL.md` | about 6.4 KB |
-| A stage door (`commands/plan.md` and the like) | about 900 bytes each |
 | `commands/temper.md` (read on every run) | about 10.5 KB |
 | Reference docs | Can be larger (loaded on demand) |
 

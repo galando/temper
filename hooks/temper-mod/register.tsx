@@ -8,16 +8,16 @@ import { HELP, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
-import { answeredResult, answersIn } from './core/answers'
-import { evaluate, trivialExit } from './core/rules'
+import { answeredResult, answersIn, noteOf } from './core/answers'
+import { evaluate } from './core/rules'
 import { callWords, readShell } from './core/shell'
-import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
-import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, logRows, lookAtAgents, slugOf } from './core/driver'
-import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Port } from './core/driver'
+import { bugOf, evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
+import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, isSavedStop, logRows, lookAtAgents, slugOf } from './core/driver'
+import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Picked, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
 import type { Stage } from './core/stages'
 import { SECTION_ID } from './core/section'
-import { isTemperAgent, stageToast, turnLine } from './core/view'
+import { isTemperAgent, stageToast, stopToast, turnLine } from './core/view'
 import type { View } from './core/view'
 import { hintProps } from './ui/hint'
 import { renderBand } from './ui/band'
@@ -42,6 +42,8 @@ const agentEnds = new Map<string, AgentEnd>()
 // load of the session, null for none. A cache of `$.state` `seen`, read at the first load of this module (see seenStage).
 let lastStage: string | null | undefined
 let stageRead = false
+// WP11: the stop last seen (`run.parked` of the view), so its toast goes out once: undefined before the first load.
+let lastParked: string | null | undefined
 
 // One toast. Every toast of the mod goes through here.
 function showToast($: Api, text: string): void {
@@ -234,6 +236,10 @@ function announce($: Api, snap: Snapshot): void {
   }
   if (lastStage === undefined) lastStage = null
   noteStage($, stage)
+  // WP11: one toast when the run stops (run.parked turns from null to a stage), through the one toast call
+  const parked = snap.inert ? null : (snap.view?.run?.parked ?? null)
+  if (lastParked === null && parked !== null && snap.mode !== 'off') showToast($, stopToast(parked))
+  lastParked = parked
 }
 
 // The run reached Done since the stage last announced: its report is kept, so /temper:temper report shows it after the
@@ -265,7 +271,7 @@ async function refresh($: Api): Promise<Snapshot> {
 }
 
 // A run the mod first sees after it saw none in this session (a run started with /temper:temper,
-// a door or `temper state init`): the pane opens for it as it does at a session start.
+// /temper:fix or `temper state init`): the pane opens for it as it does at a session start.
 function startedHere(snap: Snapshot): boolean {
   return lastStage === null && !snap.inert && snap.run !== null && snap.run.stage !== 'commit'
 }
@@ -364,7 +370,8 @@ async function recordAnswers($: Api, result: unknown): Promise<void> {
   const stage = snap.run.stage
   let kept = false
   for (const a of answersIn(result, snap.view)) {
-    if (a.kind === 'gate') await keepDecision(io, snap.at, a.stage || stage, { kind: 'gate', label: a.option.label, move: a.option.move ?? '', calls: a.option.calls, steps: a.option.steps, reason: a.reason, ask: a.ask })
+    if (a.kind === 'gate') await keepDecision(io, snap.at, a.stage || stage, { kind: 'gate', label: a.option.label, move: a.option.move ?? '', calls: a.option.calls, steps: a.option.steps, reason: a.reason, ask: a.ask,
+      ...(a.questionId !== null ? { questionId: a.questionId } : {}), ...(a.option.id !== null ? { optionId: a.option.id } : {}) })
     else if (a.kind === 'restart') await keepDecision(io, snap.at, stage, { kind: 'restart', calls: a.option.calls, reason: '' })
     else await keepDecision(io, snap.at, stage, { kind: 'drift', path: a.path, choice: a.choice, reason: a.reason })
     kept = true
@@ -398,9 +405,7 @@ function failedGuard(tool: string): Guarded {
 // The one place this module denies.
 // `use`: a decision the call spends (an Allow once answer). It is spent once the call ran (the tool.call hook): a call
 // that is refused further on, or fails, leaves it for the next.
-// `trivialExit`: the call is a `state clear` of a run that never left Intent (view.json's trivial_exit). Once it ran, the
-// run it cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
-type Guarded = { deny: string | null; use?: string; trivialExit?: boolean }
+type Guarded = { deny: string | null; use?: string }
 
 // 9.8.0: the run and step at which the person chose a skill option (Grill Me, Teach Me): until the run moves on, the
 // session asks the skill's own questions (core/session.ts). One entry per project (`skill:<root>`), in the plugin
@@ -437,8 +442,6 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
   // Fail open: when the mod cannot tell where the run is, it never blocks Temper.
   if (!enforces(snap)) return { deny: null }
   const command = typeof input.command === 'string' ? input.command : ''
-  // A `state clear` at Intent (the TRIVIAL exit), as view.json says now.
-  const clearable = tool === 'Bash' && trivialExit(snap.run) && readShell(command).calls.some(w => w[0] === 'state' && w[1] === 'clear')
   const rootDir = await rootOf($)
   const rc = ruleContext(snap, rootDir)
   const r = evaluate(rc, { tool, input })
@@ -456,7 +459,7 @@ async function guard($: Api, tool: string, input: Record<string, unknown>, main 
       if (why !== null) return { deny: why }
     }
   }
-  return { deny: null, ...(r.use !== undefined ? { use: r.use } : {}), ...(clearable ? { trivialExit: true } : {}) }
+  return { deny: null, ...(r.use !== undefined ? { use: r.use } : {}) }
 }
 
 // ---- The run driver (9.8.0, round 5) ------------------------------------------------------------
@@ -468,7 +471,7 @@ const WAIT_MS = 90 * 60_000
 // One call of the CLI in the project: the plugin's own scripts/temper, run by its path with the call's words as its
 // arguments, never through a shell (core/argv.ts). A call that is not one (another program, or a line that needs a
 // shell) is not run here: it fails with exit 126, and the run goes on in the conversation. Streamed, so a long call
-// (Check's suite and mutation score inside `temper go`) has no time cap; leaving the loop at the person's interrupt ends
+// (Check's suite inside `temper go`) has no time cap; leaving the loop at the person's interrupt ends
 // the child.
 // At the person's interrupt the engine aborts a running child, and reading it throws ("aborted", seen in an interactive
 // terminal): that is the interrupt, answered as one (exit 130), never as a failed call the conversation should take up.
@@ -533,6 +536,8 @@ async function hostWait($: Api, cwd: string, ids: string[], signal: AbortSignal 
 // The question the driver is asking now: the tool.call hook below gives its dialog each option's description and preview,
 // which `$.ui.ask` cannot carry.
 let asking: GoQuestion | null = null
+// WP21: the person's note on the option picked in the driver's own dialog, which `$.ui.ask` does not give back
+let askedNote = ''
 
 async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
   asking = q
@@ -542,6 +547,16 @@ async function hostAsk($: Api, q: GoQuestion): Promise<string | null> {
   } finally {
     asking = null
   }
+}
+
+// The driver's question with the person's note on the picked option (WP21: a reason the person wrote there is the
+// reason, so the reason question is not asked again)
+async function hostAskNoted($: Api, q: GoQuestion): Promise<string | Picked | null> {
+  askedNote = ''
+  const a = await hostAsk($, q)
+  const note = askedNote
+  askedNote = ''
+  return a !== null && note !== '' ? { label: a, note } : a
 }
 
 // Several questions in one dialog (the Blocking questions): `$.ui.ask` raises the first, the tool.call hook below puts
@@ -577,11 +592,13 @@ async function hostRecord($: Api, q: GoQuestion, label: string): Promise<void> {
   await recordAnswers($, { result: { questions: [{ header: q.header, question: q.question, options: q.options, multiSelect: false }], answers: { [q.question]: label } } })
 }
 
-// The run driver hands a run to the prompt based command (9.8.1): the command's event goes on unchanged, as the person
-// typed it, and the hand back is one note the model reads after the command's text (its `context`), the words the page
-// takes (`next`, `discuss <text>`, `chose <label>`: commands/temper.md, "Arguments"). The person's words are not rewritten.
-function handBack(result: CommandRunResult, args: string): CommandRunResult {
-  const note = `Temper hand back from the mod's run driver: take these as the arguments of this command in place of the ones typed: ${args}`
+// The run driver hands one step to the prompt based command (9.8.1, WP16): the command's event goes on unchanged, as
+// the person typed it, and the hand back is one note the model reads after the command's text (its `context`): `step
+// <kind> <option id>`, the one step of the closed list the person chose (commands/temper.md, "Arguments"). The
+// conversation does that step and ends its turn; the person's next command takes the run up in the driver. The words
+// are not rewritten.
+function handBack(result: CommandRunResult, end: { needs: string; option: string }): CommandRunResult {
+  const note = `Temper hand back from the mod's run driver: do this one step, then end the turn: step ${end.needs} ${end.option}`
   return { ...result, context: [...(result.context ?? []), note] }
 }
 
@@ -590,9 +607,16 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
     run: call => hostRun($, cwd, call, signal),
     spawn: a => hostSpawn($, a),
     wait: ids => hostWait($, cwd, ids, signal),
-    ask: q => hostAsk($, q),
+    ask: q => hostAskNoted($, q),
     askAll: qs => hostAskAll($, qs),
     record: (q, label) => hostRecord($, q, label),
+    // WP15: the card of the question the driver asks next: the render hook draws it above the dialog in full mode;
+    // in any other mode its rows are logged
+    card: async rows => {
+      const ui = await readUi($).catch(() => null)
+      if (ui !== null && ui.mode === 'full') return
+      for (const row of logRows(rows.join('\n'))) $.ui.log(row)
+    },
     show: async text => {
       // `$.ui.log` appends one line: the terminal draws a line break inside it as a mark and cuts the line at 2000
       // characters, so a panel or a report (many rows, thousands of characters) is logged a row at a time.
@@ -605,12 +629,12 @@ async function driveRun($: Api, cwd: string, request: string | null, signal: Abo
   return drive(port, pluginCli(), request, request === null ? null : slugOf(request))
 }
 
-// Whether the mod carries this /temper:temper: a request with no run active (a new run), or no words with a run of
-// /temper active (taking it up again). A run word, a request while another run is active (its restart question), a
-// /temper:fix run, an inert or switched off mod: the model loop of commands/temper.md, as before.
+// Whether the mod carries this /temper:temper: a request with no run active (a new run), or no words with a run active
+// (taking it up again, a /temper:fix run too: WP16). A run word, a request while another run is active (its restart
+// question), an inert or switched off mod: the model loop of commands/temper.md, as before.
 async function drives($: Api, args: string): Promise<{ request: string | null } | null> {
   const snap = await refresh($)
-  if (!enforces(snap) || snap.runCommand === 'fix') return null
+  if (!enforces(snap)) return null
   const req = requestOf(args)
   const active = snap.slug !== null
   if (req !== null && !active) return { request: req }
@@ -721,20 +745,22 @@ export const register: Register = (on, opts) => {
   // goes on to the prompt based command unchanged.
   on('command.run', async ($, e, next) => {
     if (e.command !== 'temper' && e.command !== 'temper:temper') {
-      // A door (/temper:plan "...") or another command: no request is held to it.
+      // Another command (/temper:fix): no request is held to it.
       if (/^temper:/.test(e.command)) await dropRequest($)
-      // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; what needs a model goes to fix.md.
+      // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; WP16: so is /temper:fix with no
+      // words while a fix run is active (taken up again). The one step of a hand back goes to fix.md.
       if (e.command === 'temper:fix' || e.command === 'fix') {
-        const bug = requestOf(e.args)
-        const snap = bug === null ? null : await refresh($).catch(() => null)
-        if (bug !== null && snap !== null && enforces(snap) && snap.slug === null) {
-          const end = await driveRun($, root, bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
+        const bug = bugOf(e.args)
+        const snap = await refresh($).catch(() => null)
+        const takeUp = bug === null && e.args.trim() === '' && snap !== null && snap.slug !== null && snap.runCommand === 'fix'
+        if (snap !== null && enforces(snap) && ((bug !== null && snap.slug === null) || takeUp)) {
+          const end = await driveRun($, root, takeUp ? null : bug, (next as { signal?: AbortSignal }).signal, true).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
           const after = await refresh($).catch(() => null)
           if (after !== null) adopt($, after)
           if (end.kind === 'done') return { text: end.text }
           if (after === null || after.slug === null) return next(e)
-          $.ui.log(`Temper: the fix goes on in the conversation (${end.why}).`)
-          return handBack(await next(e), end.args)
+          $.ui.log(`Temper: one step goes to the conversation (${end.needs}); then /temper:fix takes the run up again.`)
+          return handBack(await next(e), end)
         }
       }
       return next(e)
@@ -748,8 +774,8 @@ export const register: Register = (on, opts) => {
     if (parsed === null) {
       // The person's own run word, from the prompt box, opens the pane in full mode; any other origin opens nothing.
       if (e.origin?.kind === 'composer') await openForPerson($).catch(() => undefined)
-      // 9.8.0 (round 5): the mod carries the run itself, with no model in the main session; what needs a model goes on
-      // in the prompt based command, from the same state. Any failure hands the run to that command as well.
+      // 9.8.0 (round 5): the mod carries the run itself, with no model in the main session. WP16: only a step of the
+      // closed list goes on in the prompt based command, from the same state; a failure is a saved stop that says so.
       const d = await drives($, e.args).catch(() => null)
       if (d !== null) {
         const end = await driveRun($, root, d.request, (next as { signal?: AbortSignal }).signal).catch((x: unknown) => driverThrew(x, (next as { signal?: AbortSignal }).signal?.aborted === true))
@@ -757,11 +783,12 @@ export const register: Register = (on, opts) => {
         if (after !== null) adopt($, after)
         // A run is on: the request the driver started it with (or took up) is used.
         if (after !== null && after.slug !== null) await dropRequest($)
+        // No run was started (the driver stopped before its state init, or handed a step on): the request goes on as
+        // the person typed it, and the prompt based command starts the run. There is no run to save.
+        if (d.request !== null && (after === null || after.slug === null) && (end.kind === 'handback' || isSavedStop(end))) return next(e)
         if (end.kind === 'done') return { text: end.text }
-        // No run was started: the request goes on as the person typed it, and the prompt based command starts the run.
-        if (d.request !== null && (after === null || after.slug === null)) return next(e)
-        $.ui.log(`Temper: the run goes on in the conversation (${end.why}).`)
-        return handBack(await next(e), end.args)
+        $.ui.log(`Temper: one step goes to the conversation (${end.needs}); then /temper:temper takes the run up again.`)
+        return handBack(await next(e), end)
       }
       return next(e)
     }
@@ -775,7 +802,7 @@ export const register: Register = (on, opts) => {
     try {
       const snap = await ensure($)
       if (snap.inert || snap.prAttribution !== 'on' || snap.slug === null) return result
-      return { text: `${result.text}\n\nMade with Temper. The phases have gates. /temper:temper report shows the report.` }
+      return { text: `${result.text}\n\nMade with Temper. The stages have gates. /temper:temper report shows the report.` }
     } catch {
       return result
     }
@@ -791,17 +818,7 @@ export const register: Register = (on, opts) => {
     const many = e.tool === 'AskUserQuestion' && askingAll !== null ? dialogQuestionsAll(raised, askingAll) : null
     const filled = many ?? (e.tool === 'AskUserQuestion' && asking !== null ? dialogQuestions(raised, asking) : null)
     const driverDialog = filled !== null
-    let result
-    try {
-      result = await next(filled === null ? e : ({ ...e, questions: filled } as typeof e))
-    } finally {
-      // After the TRIVIAL exit ran (or failed): the cleared run is no longer held, and the run is read again. When the
-      // clear did not take effect, build-state.json is still there and the run reads back as it was.
-      if (g.trivialExit) {
-        lastRun = null
-        await refresh($).catch(() => undefined)
-      }
-    }
+    const result = await next(filled === null ? e : ({ ...e, questions: filled } as typeof e))
     const errored = (result as { isError?: boolean }).isError === true
     const refused = typeof (result as { deny?: unknown }).deny === 'string'
     // The call ran: the Allow once answer it was let through on is spent (one that failed, or was refused further on, is
@@ -810,6 +827,8 @@ export const register: Register = (on, opts) => {
       await spendDecision(makeIo($), g.use)
       adopt($, await refresh($))
     }
+    // The note on the answer of the driver's own question, for hostAskNoted (WP21).
+    if (many === null && driverDialog && !errored && asking !== null) askedNote = noteOf(result, asking.question)
     // Every answer of the driver's dialog of several questions, for hostAskAll.
     if (many !== null && !errored) {
       const r = answeredResult(result)
@@ -909,12 +928,14 @@ export const register: Register = (on, opts) => {
     )
   })
 
-  // One Temper line above the engine's dialog, which stays exactly once in the tree.
+  // One Temper line above the engine's dialog, which stays exactly once in the tree. WP15: the card of the question
+  // too, only for a dialog the run driver raised itself (a dialog the conversation raised has the card's rows in the
+  // page).
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     const engine = await next(e)
     const ui = await readUi($).catch(() => null)
     if (ui === null || ui.mode !== 'full') return engine
-    return renderQuestion($.ui.resolve(e), ui.view, engine) ?? engine
+    return renderQuestion($.ui.resolve(e), ui.view, engine, asking !== null || askingAll !== null ? ui.view.card ?? null : null) ?? engine
   })
 
   // A line beneath the answer (stage, progress, next stage). Nothing is submitted.

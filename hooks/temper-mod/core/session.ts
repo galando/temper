@@ -211,13 +211,31 @@ const unquoted = (t: string): string => {
   return close !== undefined && w.length >= 2 && w.endsWith(close) ? words(w.slice(1, -1)) : w
 }
 
-// Words after /temper:temper that are not a request (commands/temper.md, Arguments).
-const NOT_A_REQUEST = new Set(['status', 'report', 'timeline', 'help', 'approve', 'next', 'back', 'override', 'accept', 'drift', 'pr', 'discuss', 'chose', 'mode', 'enforcement', 'pane'])
+// The form of a word (commands/temper.md, Arguments): a word is a word only in its documented form, and anything else
+// after /temper:temper is a request. ALONE words stand with nothing after them; WITH_TEXT words take text after them;
+// `pack` also takes exactly `enable guardrails` or `disable guardrails`.
+export const ALONE = new Set(['status', 'report', 'timeline', 'help', 'init', 'pack', 'mode', 'enforcement', 'pane', 'approve', 'next', 'back', 'override', 'accept', 'drift', 'pr'])
+export const WITH_TEXT = new Set(['draft', 'discuss', 'chose'])
+
+export function isWord(args: string): boolean {
+  const t = unquoted(args)
+  const [first = '', ...more] = t.split(' ')
+  const w = first.toLowerCase()
+  const rest = more.join(' ').toLowerCase()
+  if (rest === '') return ALONE.has(w)
+  return WITH_TEXT.has(w) || (w === 'pack' && (rest === 'enable guardrails' || rest === 'disable guardrails'))
+}
 
 export function requestOf(args: string): string | null {
   const t = unquoted(args)
-  const first = (t.split(' ')[0] ?? '').toLowerCase()
-  return t === '' || NOT_A_REQUEST.has(first) ? null : t
+  return t === '' || isWord(t) ? null : t
+}
+
+// The bug of /temper:fix: all its words, unquoted (commands/fix.md has no words of its own, so a bug that starts with
+// `draft`, `discuss` or `chose` is a bug); null only when there are none.
+export function bugOf(args: string): string | null {
+  const t = unquoted(args)
+  return t === '' ? null : t
 }
 
 export const FEATURE_DENY =

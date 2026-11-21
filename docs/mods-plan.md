@@ -548,15 +548,14 @@ guarded in every phase.
 
 ```
 Temper enforcement: active
-Phase: Build (task 3 of 7) · Intent: "Password reset by email"
+Stage: Build (task 3 of 7) · Intent: "Password reset by email"
 Criteria: 2 of 5 passed (AC-01, AC-03)
 Next: ...
 ```
 
-With enforcement off it reads "Temper enforcement: off (UI only)". Skills and
-commands (`commands/temper.md`, `skills/temper-core/SKILL.md`, each stage brief's
-preamble) gain one rule: if the system prompt has no "Temper enforcement: active"
-line, say once "Temper enforcement is off here (no mods support); continuing with
+With enforcement off it reads "Temper enforcement: off (UI only)". The
+commands (`commands/temper.md`, `commands/fix.md`, each stage brief's preamble) gain one rule: if the system prompt has
+no "Temper enforcement: active" line, say once "Temper enforcement is off here (no mods support); continuing with
 prompt based phases" and go on as today. (Since 9.6.5 the "off (UI only)" line gets
 its own sentence, "Temper enforcement is off (turned off by the user)", because the mod
 is loaded and still draws the bar.)

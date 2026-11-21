@@ -85,11 +85,11 @@ assert_exit "9.8.4 2b: group fix is refused on a group whose gate did not fail" 
 assert_eq "9.8.4 2a: a FAIL line is what failed, not a traceback's header" "['FAIL: test_x (t.T.test_x)', 'AssertionError: 1 != 2', 'FAILED (failures=1)']" \
   "$(python3 - "$REPO_ROOT/scripts" <<'PYF'
 import sys
-src = open(sys.argv[1] + '/task_ops.py').read()   # task_ops.py runs a mode on import: read fail_lines out of it
-ns = {}
-exec('import re\n' + src[src.index('FAIL_LINE ='):src.index('def red_why')], ns)
+sys.path.insert(0, sys.argv[1])
+# WP20: fail_lines moved from task_ops.py (which runs a mode on import) to run_env.py, shared with the baseline
+import run_env
 out = b'..F\n=====\nFAIL: test_x (t.T.test_x)\n-----\nTraceback (most recent call last):\n  File \"t.py\", line 3\nAssertionError: 1 != 2\n\nFAILED (failures=1)\n'
-print(ns['fail_lines'](out))
+print(run_env.fail_lines(out))
 PYF
 )"
 
@@ -155,7 +155,7 @@ rm -rf test scripts p1-tasks.md
 # --- 3b. After a loop back that changes plan.md or tasks.md, the fresh review gets one more round past its cap ---
 setup
 printf 'plan:\n  fresh-review: auto\n  fresh-review-rounds: 1\n' >> .claude/temper.config
-"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
 printf '## Context Map\n- use: intent.md - the scope\n- reviewed: auto - current\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
 "$TEMPER" plan fresh start >/dev/null 2>&1
@@ -179,12 +179,12 @@ assert_exit "9.8.4 3b: a replan (state redo plan) that changes tasks.md earns on
 # --- 5. Build model by risk: a complex or risk H plan builds its tasks on sonnet; an explicit task-model still wins ---
 fresh
 _tm() { echo "$("$TEMPER" model task)|$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config | sed -n 's/^task=//p')"; }
-assert_eq "9.8.4 5: a simple plan keeps the brief's model for its tasks (the CLI and the flow agree)" "claude-haiku-5-5|claude-haiku-5-5" "$(_tm)"
+assert_eq "9.8.4 5: a simple plan keeps the table's model for its tasks (the CLI and the flow agree)" "sonnet|sonnet" "$(_tm)"
 "$TEMPER" state set complexity complex >/dev/null 2>&1
 assert_eq "9.8.4 5: a complex plan builds its tasks on sonnet" "sonnet|sonnet" "$(_tm)"
 "$TEMPER" state set complexity medium >/dev/null 2>&1; riskH
 assert_eq "9.8.4 5: a risk H plan builds its tasks on sonnet" "sonnet|sonnet" "$(_tm)"
-assert_eq "9.8.4 5: and says where the model comes from" "task=sonnet (risk)" \
+assert_eq "9.8.4 5: and says where the model comes from" "task=sonnet (table)" \
   "$(python3 "$REPO_ROOT/scripts/cli_ctx.py" models --plugin "$REPO_ROOT" --config-file .claude/temper.config --source | grep '^task=')"
 printf 'build:\n  grouped:\n    task-model: haiku\n' >> .claude/temper.config
 assert_eq "9.8.4 5: an explicit build.grouped.task-model still wins" "haiku|haiku" "$(_tm)"
@@ -210,7 +210,7 @@ rm -f p5-tasks.md
 # --- 4. The fresh review converges: a first round with a tests lens, then rechecks of the earlier findings only ---
 setup
 printf 'plan:\n  fresh-review: auto\n' >> .claude/temper.config
-"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
 printf '## Context Map\n- use: intent.md - the scope\n- reviewed: auto - current\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
 "$TEMPER" gate plan >/dev/null 2>&1
@@ -266,7 +266,7 @@ assert_eq "9.8.4 7c: temper output changes nothing" "same" \
   "$(a=$(cksum .temper/gates.json .temper/evidence/build.json); "$TEMPER" output build >/dev/null 2>&1; [[ "$a" == "$(cksum .temper/gates.json .temper/evidence/build.json)" ]] && echo same || echo changed)"
 
 # --- 7d. An agent the tool ran in the background: its time is filled in when its completion notice arrives ---
-setup; "$TEMPER" state init demo >/dev/null 2>&1
+setup; "$TEMPER" state init demo >/dev/null 2>&1; _base_known
 "$TEMPER" usage add --stage plan --model opus --ms 1000 >/dev/null 2>&1
 "$TEMPER" usage add --stage design --model opus --ms none >/dev/null 2>&1
 "$TEMPER" usage add --stage build --model haiku --ms none --task 3 >/dev/null 2>&1
@@ -332,7 +332,7 @@ assert_eq "9.8.4 blocked: running the task again clears the block" "False" "$(_b
 # --- 9.8.4 live check: the person's Context check answer does not make the fresh review stale (no empty recheck round) ---
 setup
 printf 'plan:\n  fresh-review: auto\n' >> .claude/temper.config
-"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
+"$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; _base_known
 gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state set complexity medium >/dev/null 2>&1
 printf '## Context Map\n- use: intent.md - the scope\n- ignore: ledger/export.py: out of scope\n- reviewed: pending\n\n## Blast Radius\n- none\n\n## Cross-Repo Search\n- not available: none\n' > .temper/specs/demo/plan.md
 "$TEMPER" plan fresh start >/dev/null 2>&1
@@ -347,3 +347,182 @@ printf '\n- a changed step\n' >> .temper/specs/demo/tasks.md
 assert_eq "9.8.4 live: a change of tasks.md still makes it stale" "False" \
   "$("$TEMPER" gate plan >/dev/null 2>&1; python3 -c "
 import json; print([r for r in json.load(open('.temper/gates.json'))['plan']['requirements'] if r['name'] == 'fresh review ran'][0]['pass'])")"
+
+# --- WP25: the plan gate row for a group with no Validate, and the one plan digest (U24) ---
+_pv20() { # _pv20 <tasks.md text>: pass|G1 named of the row "group validate command" (scripts/plan_rows.py), or no row
+  printf '%s\n' "$1" > pv-tasks.md
+  python3 -I "$REPO_ROOT/scripts/plan_rows.py" 15 4096 2048 "$(python3 -c "import sys, json; sys.path.insert(0, sys.argv[1]); import tasks_md; print(json.dumps(tasks_md.parse(sys.argv[2])))" "$REPO_ROOT/scripts" pv-tasks.md)" "$PWD" \
+    | python3 -c "import json, sys; r = [json.loads(l) for l in sys.stdin if '\"group validate command\"' in l]; print('%s|%s' % (r[0]['pass'], 'G1 named' if 'G1' in r[0]['detail'] else r[0]['detail']) if r else 'no row')"
+}
+setup
+assert_eq "WP25 plan rows: group validate command fails a group with no Validate and passes the demo plan" \
+  "no Validate=False|G1 named|demo=True" \
+  "no Validate=$(_pv20 "$(sed '/^\*\*Validate:\*\*/d' .temper/specs/demo/tasks.md)")|demo=$(_pv20 "$(cat .temper/specs/demo/tasks.md)" | cut -d'|' -f1)"
+rm -f pv-tasks.md
+# U24: the digest of the approved plan has one definition, plan_digest of scripts/approval.py; the CLI's _plan_digest,
+# plan_patch.py and the flow's plan_core_digest call it. A grep for the digest's pick of a task's Depends finds one
+# file.
+assert_eq "WP25 the three digests are one function (U24: a grep finds one definition)" \
+  "definitions=scripts/approval.py|cli=calls it|patch=same|flow=same" \
+  "definitions=$(cd "$REPO_ROOT" && grep -lE "[\"']depends[\"']: *t\[[\"']depends[\"']\]" scripts/*.py scripts/temper | paste -sd, -)|cli=$(awk '/^_plan_digest\(\) \{/{f=1} f{print} f&&/^}/{exit}' "$TEMPER" | grep -q 'approval.py" plan-digest' && echo 'calls it' || echo 'its own')|$(python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+os.chdir(sys.argv[1] + "/..")
+import approval, flow_run, plan_patch, tasks_md
+m = tasks_md.parse(os.path.join(sys.argv[1], "..", "templates", "example-tasks.md")) if os.path.isfile(
+    os.path.join(sys.argv[1], "..", "templates", "example-tasks.md")) else None
+if not m or not m.get("tasks"):
+    m = {"tasks": [{"n": 1, "group": "G1", "files": ["src/a.sh"], "depends": [], "test": "true"}],
+         "groups": [{"id": "G1", "depends": [], "validate": "true", "interfaces": [], "context": "x", "tasks": [1]}],
+         "integration": "true"}
+h = approval.plan_digest(m)
+print("patch=%s|flow=%s" % ("same" if h and plan_patch.digest(m) == h else "other",
+                            "same" if h and flow_run.Run.plan_core_digest(m) == h else "other"))
+PY
+)"
+
+# --- WP25: a replan keeps the built tasks whose approved fields did not change (names replan:) ---
+# Three groups built by the CLI's own calls: G1 (Task 1, then Task 2 depending on it), G2 (Task 3) and G3 (Task 4, the
+# group depends on G2). A step back to Plan archives groups.json and moves each group branch to its kept ref; after the
+# new approval the first Build action (`temper group keep`) restores each task whose files, Depends and Test are those
+# of the archived plan, whose tasks it depends on are kept, and whose group's Depends (and the groups those name) are
+# unchanged and fully kept. A call the CLI does not have yet stays inside $( ... ) or ends in || true.
+T20="$(mktemp -d)"
+_rp20() { # _rp20 [sed script]: the plan of the replan cases, changed by the sed script when one is given
+  sed -e "${1:-}" <<'TASKS'
+# Tasks: demo
+
+**Integration:** `true`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** `true`
+**Context:**
+The core.
+
+### Task 1: first
+**File:** `src/a.sh`
+**Depends:** none
+**Test:** `test -f src/a.sh`
+**Cases:**
+- a holds
+- a bad input is refused
+- [ ] done
+
+### Task 2: second
+**File:** `src/b.sh`
+**Depends:** Task 1
+**Test:** `test -f src/b.sh`
+**Cases:**
+- b holds
+- a bad input is refused
+- [ ] done
+
+## Group G2: Side
+**Depends:** none
+**Validate:** `true`
+**Context:**
+The side work.
+
+### Task 3: third
+**File:** `src/c.sh`
+**Depends:** none
+**Test:** `test -f src/c.sh`
+**Cases:**
+- c holds
+- a bad input is refused
+- [ ] done
+
+## Group G3: Last
+**Depends:** G2
+**Validate:** `true`
+**Context:**
+The last work.
+
+### Task 4: fourth
+**File:** `src/d.sh`
+**Depends:** none
+**Test:** `test -f src/d.sh`
+**Cases:**
+- d holds
+- a bad input is refused
+- [ ] done
+TASKS
+}
+_bt20() { # _bt20 <N> <file>: Task N built by the CLI's own calls: started, RED, the file in its worktree, GREEN, gated
+  "$TEMPER" task start "$1" >/dev/null 2>&1; "$TEMPER" task test "$1" --phase red >/dev/null 2>&1
+  mkdir -p ".claude/worktrees/temper-demo-T$1/src"; echo "echo $1" > ".claude/worktrees/temper-demo-T$1/$2"
+  "$TEMPER" task test "$1" --phase green >/dev/null 2>&1; "$TEMPER" task gate "$1" --model m >/dev/null 2>&1
+}
+_built20() { # every task built and passed, every group checked; kept as an archive, restored on later calls
+  if [[ -f "$T20/built.tar" ]]; then
+    cd "$WORKDIR" || return 1
+    find "$WORKDIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null; tar -xf "$T20/built.tar" -C "$WORKDIR"; return 0
+  fi
+  _rp20 | m_setup; "$TEMPER" group start G2 >/dev/null 2>&1
+  _bt20 1 src/a.sh; _bt20 2 src/b.sh; _bt20 3 src/c.sh
+  "$TEMPER" group gate G1 >/dev/null 2>&1; "$TEMPER" group gate G2 >/dev/null 2>&1; "$TEMPER" group continue G2 >/dev/null 2>&1
+  "$TEMPER" group start G3 >/dev/null 2>&1; _bt20 4 src/d.sh; "$TEMPER" group gate G3 >/dev/null 2>&1
+  tar -cf "$T20/built.tar" -C "$WORKDIR" . 2>/dev/null
+}
+_t20() { python3 -c "import json,sys; d = json.load(open('.temper/groups.json')); print(eval(sys.argv[1]))" "$1" 2>/dev/null || echo none; }
+_c20() { _t20 "'|'.join('%s=%s' % (n, (d.get('tasks', {}).get(n) or {}).get('commit', '')) for n in ('1', '2', '3', '4'))"; }
+_replan20() { # _replan20 <sed script>: the step back to Plan, the new plan, approved, then the first Build actions after the
+              # approval: the CLI's own calls, or the before calls of the agents it launches (up to four actions)
+  "$TEMPER" state loop build plan --reason "the plan changes" >/dev/null 2>&1
+  [[ -n "${_RP20_HOOK:-}" ]] && eval "$_RP20_HOOK"
+  _rp20 "$1" > .temper/specs/demo/tasks.md
+  gpass plan; _RP20_CARD="$("$TEMPER" card 2>/dev/null)"
+  "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  "$TEMPER" acceptance skip --reason "the replan cases write no acceptance test" >/dev/null 2>&1
+  local i calls c
+  for i in 1 2 3 4; do
+    calls="$(_ev "r = ((d.get('calls') or []) + [c for x in d.get('agents') or [] for c in x.get('before') or []]) if d.get('action') in ('auto', 'work') else []; chr(10).join(r)" "$("$TEMPER" next --json 2>/dev/null)")"
+    [[ -n "$calls" ]] || break
+    while IFS= read -r c; do [[ -n "$c" ]] && bash -c "$c" >/dev/null 2>&1; done <<<"$calls"
+  done
+}
+_st20() { # _st20 <N>...: "N=passed" or "N=not passed" for each task
+  local n o=""; for n in "$@"; do o+="task$n=$([[ "$(_t20 "(d.get('tasks', {}).get('$n') or {}).get('status')")" == passed ]] && echo passed || echo 'not passed')|"; done
+  echo "${o%|}"
+}
+_built20; _c20_before="$(_c20)"; _c1_20="$(_t20 "d['tasks']['1'].get('commit', '')")"
+_replan20 's|^\*\*Test:\*\* `test -f src/b.sh`|**Test:** `test -s src/b.sh`|'
+assert_eq "replan: Task 1 unchanged and Task 2 with a new Test line: the approval restores Task 1 as passed with its commit on the group branch, and Task 2 runs again" \
+  "task1=passed|commit=on the group branch|task2=not passed|task3=passed|task4=passed" \
+  "$(_st20 1)|commit=$([[ -n "$_c1_20" && "$(_t20 "(d.get('tasks', {}).get('1') or {}).get('commit', '')")" == "$_c1_20" ]] && git merge-base --is-ancestor "$_c1_20" temper/demo/G1 2>/dev/null && echo 'on the group branch' || echo lost)|$(_st20 2 3 4)"
+assert_eq "replan: a group's gate verdict is kept only when every task of it is kept" "G1=not kept|G2=PASS|G3=PASS" \
+  "$(_t20 "'|'.join('%s=%s' % (g, (d.get('groups', {}).get(g) or {}).get('gate', {}).get('verdict') or 'not kept') for g in ('G1', 'G2', 'G3'))" | sed 's/G1=PASS/G1=kept/')"
+assert_eq "replan: the approval card says how many built tasks the replan keeps" "3 kept" "$(python3 -c "
+import re, sys
+print('3 kept' if any(re.search(r'\bkept\b|\bkeeps?\b', l, re.I) and re.search(r'(?<![\d.])3(?![\d.])', l) for l in sys.argv[1].splitlines()) else 'no line says it')" "$_RP20_CARD")"
+_built20
+_replan20 '/^## Group G2/,/^\*\*Depends:\*\*/s|^\*\*Depends:\*\* none|**Depends:** G1|'
+assert_eq "replan: a changed group Depends restores nothing of that group or of the groups that depend on it" \
+  "task1=passed|task2=passed|task3=not passed|task4=not passed" "$(_st20 1 2 3 4)"
+_built20
+# the kept ref of G1 moved back to the base of the feature branch: neither task's commit is in it any more
+_RP20_HOOK='for _r in $(git for-each-ref --format="%(refname)" "refs/temper/kept/demo/"); do [[ "$_r" == */G1 ]] && git update-ref "$_r" "$(git rev-parse feature/demo)"; done'
+_replan20 's|^\*\*Test:\*\* `test -f src/b.sh`|**Test:** `test -s src/b.sh`|'
+_RP20_HOOK=""
+assert_eq "replan: a kept task whose commit is no longer in the kept ref is not restored" "task1=not passed|task3=passed" "$(_st20 1 3)"
+# two tasks of G1 that ran beside each other: the second to pass joined the group branch by a merge commit of the CLI's
+_rp20 's|^\*\*Depends:\*\* Task 1$|**Depends:** none|' | m_setup
+for _n in 1 2; do "$TEMPER" task start "$_n" >/dev/null 2>&1; "$TEMPER" task test "$_n" --phase red >/dev/null 2>&1; done
+mkdir -p .claude/worktrees/temper-demo-T1/src .claude/worktrees/temper-demo-T2/src
+echo 'echo 1' > .claude/worktrees/temper-demo-T1/src/a.sh; echo 'echo 2' > .claude/worktrees/temper-demo-T2/src/b.sh
+for _n in 1 2; do "$TEMPER" task test "$_n" --phase green >/dev/null 2>&1; "$TEMPER" task gate "$_n" --model m >/dev/null 2>&1; done
+"$TEMPER" group gate G1 >/dev/null 2>&1
+_replan20 's|^\*\*Depends:\*\* Task 1$|**Depends:** none|;s|^\*\*Test:\*\* `test -f src/c.sh`|**Test:** `test -s src/c.sh`|'
+assert_eq "replan: an unchanged task whose pass joined the group branch by a merge commit is kept" \
+  "task1=passed|task2=passed|G1=PASS|merges=1|merge in cli_commits=True" \
+  "$(_st20 1 2)|G1=$(_t20 "(d.get('groups', {}).get('G1') or {}).get('gate', {}).get('verdict') or 'not kept'")|merges=$(git rev-list --first-parent --merges --count feature/demo..temper/demo/G1 2>/dev/null)|merge in cli_commits=$(_t20 "'$(git rev-list --first-parent --merges -1 feature/demo..temper/demo/G1 2>/dev/null)' in (d.get('cli_commits') or [])")"
+# a step back whose archive has no stamp (tasks.md was edited after the approval) keeps nothing of an older replan
+_built20
+_replan20 's|^\*\*Test:\*\* `test -f src/b.sh`|**Test:** `test -s src/b.sh`|'
+sed -i 's|^\*\*Test:\*\* `test -f src/d.sh`|**Test:** `test -e src/d.sh`|' .temper/specs/demo/tasks.md
+_replan20 's|^\*\*Test:\*\* `test -f src/b.sh`|**Test:** `test -s src/b.sh`|'
+assert_eq "replan: a newer archive with no stamp keeps nothing of an older replan's archive" \
+  "task1=not passed|task2=not passed|task3=not passed|task4=not passed" "$(_st20 1 2 3 4)"
+cd "$WORKDIR" || true
+rm -rf "$T20"

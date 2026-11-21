@@ -11,6 +11,7 @@ import statistics as st
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# The arms in this order first, then any other arm name the runs carry (9.8.5: arm names are free), in the order met.
 ARMS = ["vanilla", "careful", "careful-ask", "temper-9.7.6", "temper"]
 HARD = {"partial-payments", "subscriptions", "cent-mismatch", "tenant-leak"}
 
@@ -38,10 +39,21 @@ def load(results):
     return rows
 
 
+def arms(rows, first=ARMS):
+    """The arms of the rows: the known ones in their order, then every other name in the order the rows hold them."""
+    seen = [r["arm"] for r in rows]
+    return [a for a in first if a in seen] + [a for a in dict.fromkeys(seen) if a not in first]
+
+
+def spread(xs, fmt):
+    """mean (median, min to max) of a column."""
+    return "%s (%s, %s to %s)" % (fmt % st.mean(xs), fmt % st.median(xs), fmt % min(xs), fmt % max(xs))
+
+
 def table(rows):
-    out = ["| Arm | Runs | Hidden pass rate | All hidden pass | Suite kept green | Outside scope | Own tests: mutation score | Own tests catch the bug again | Cost (mean) | Wall (mean) | Tokens (mean, all) | Output tokens (mean) | Lines changed |",
+    out = ["| Arm | Runs | Hidden pass rate | All hidden pass | Suite kept green | Outside scope | Own tests: mutation score | Own tests catch the bug again | Cost: mean (median, min to max) | Wall: mean (median, min to max) | Tokens (mean, all) | Output tokens (mean) | Lines changed |",
            "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
-    for arm in ARMS:
+    for arm in arms(rows):
         rs = [r for r in rows if r["arm"] == arm]
         if not rs:
             continue
@@ -50,11 +62,11 @@ def table(rows):
         reg = [r["regression"] for r in rs if r.get("regression") is not None]
         tt = [r["tok_total"] for r in rs if r.get("tok_total") is not None]
         to = [r["tok_output"] for r in rs if r.get("tok_output") is not None]
-        out.append("| %s | %d | %.0f%% | %d/%d | %d/%d | %d/%d | %s | %s | $%.2f | %ds | %s | %s | %.0f |" % (
+        out.append("| %s | %d | %.0f%% | %d/%d | %d/%d | %d/%d | %s | %s | %s | %s | %s | %s | %.0f |" % (
             arm, len(rs), 100 * m("hidden_rate"), sum(r["hidden_all"] for r in rs), len(rs),
             sum(r["suite_ok"] for r in rs), len(rs), sum(bool(r["outside_expected"]) for r in rs), len(rs),
             ("%.0f%%" % (100 * st.mean(mut))) if mut else "n/a", ("%d/%d" % (sum(reg), len(reg))) if reg else "n/a",
-            m("cost_usd"), m("wall_s"), ("%.2fM" % (st.mean(tt) / 1e6)) if tt else "n/a", ("%.0fk" % (st.mean(to) / 1e3)) if to else "n/a",
+            spread([r["cost_usd"] for r in rs], "$%.2f"), spread([r["wall_s"] for r in rs], "%ds"), ("%.2fM" % (st.mean(tt) / 1e6)) if tt else "n/a", ("%.0fk" % (st.mean(to) / 1e3)) if to else "n/a",
             m("code_lines")))
     return out
 
@@ -63,9 +75,9 @@ VAGUE_ARMS = ["vanilla", "careful-ask", "careful", "temper-9.7.6", "temper"]
 
 
 def vague_table(rows):
-    out = ["| Arm | Runs | Ticket tests pass | Brief facts met | Brief facts asked for | Questions to the owner | Cost (mean) | Wall (mean) | Tokens (mean, all) |",
+    out = ["| Arm | Runs | Ticket tests pass | Brief facts met | Brief facts asked for | Questions to the owner | Cost: mean (median, min to max) | Wall: mean (median, min to max) | Tokens (mean, all) |",
            "|---|---|---|---|---|---|---|---|---|"]
-    for arm in VAGUE_ARMS:
+    for arm in arms(rows, VAGUE_ARMS):
         rs = [r for r in rows if r["arm"] == arm]
         if not rs:
             continue
@@ -74,9 +86,9 @@ def vague_table(rows):
         fa, fz = sum(len(r.get("facts_elicited", [])) for r in rs), sum(r.get("facts_total", 0) for r in rs)
         owner = sum(r.get("owner_questions", 0) for r in rs)
         toks = [r["tok_total"] for r in rs if r.get("tok_total") is not None]
-        out.append("| %s | %d | %d/%d (%.0f%%) | %d/%d (%.0f%%) | %d/%d (%.0f%%) | %.1f per run | $%.2f | %ds | %s |" % (
+        out.append("| %s | %d | %d/%d (%.0f%%) | %d/%d (%.0f%%) | %d/%d (%.0f%%) | %.1f per run | %s | %s | %s |" % (
             arm, len(rs), tp, tt, 100 * tp / max(tt, 1), fm, ft, 100 * fm / max(ft, 1), fa, fz, 100 * fa / max(fz, 1),
-            owner / len(rs), st.mean(r["cost_usd"] for r in rs), st.mean(r["wall_s"] for r in rs),
+            owner / len(rs), spread([r["cost_usd"] for r in rs], "$%.2f"), spread([r["wall_s"] for r in rs], "%ds"),
             ("%.2fM" % (st.mean(toks) / 1e6)) if toks else "n/a"))
     return out
 

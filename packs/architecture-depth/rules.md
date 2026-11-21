@@ -1,11 +1,11 @@
 ---
-phases: [design, review]
+phases: [plan, design, review]
 ---
 
 # Architecture Depth Pack
 
 Module-depth analysis inspired by Matt Pocock's "Deep Modules" philosophy.
-Evaluates whether modules earn their complexity through leverage and locality.
+Checks whether modules earn their complexity by leverage and locality.
 
 ## Dimensions
 

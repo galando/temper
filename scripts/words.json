@@ -1,0 +1,34 @@
+{
+  "words": {
+    "run": "one request, carried from your words to a commit",
+    "stage": "one step of a run: Intent, Plan, Build, Review, Check",
+    "intent": "what will be true when the run is done, from your request and your answers",
+    "criterion": "one line of the intent that a test or a command can prove",
+    "plan": "the tasks and the files that will change",
+    "task": "one small change with its own test, written first",
+    "gate": "the question where you decide; its header is Temper gate",
+    "check": "something the CLI runs and judges: your suite, coverage, the acceptance tests",
+    "finding": "something Review found, with a level from low to critical",
+    "repair": "one counted fix a rule makes after a failed check",
+    "override": "you pass a failed check, with a reason that is kept",
+    "loop back": "the run goes to an earlier stage and does it again"
+  },
+  "retired": {
+    "armed": "runs by itself",
+    "arm": "runs by itself",
+    "arms": "runs by itself",
+    "arming": "runs by itself",
+    "parked": "stopped for you",
+    "park": "stops and waits",
+    "parks": "stops and waits",
+    "phase": "stage",
+    "phases": "stage",
+    "door": "a word of /temper:temper",
+    "doors": "the words of /temper:temper",
+    "Autonomous Build": "Approve and build",
+    "Stage by stage": "Ask me at every stage",
+    "preflight": "your commands run once on the current code",
+    "band": "bar",
+    "hand back": "the run goes on in the conversation"
+  }
+}

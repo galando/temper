@@ -14,7 +14,7 @@ describe('prompt.compose', () => {
     expect(last?.scope).toBe('session')
     const text = last?.text ?? ''
     expect(text).toContain('Temper enforcement: active')
-    expect(text).toContain('Phase: Build · Intent: "Password reset by email"')
+    expect(text).toContain('Stage: Build · Intent: "Password reset by email"')
     expect(text).toContain('Criteria: 2 of 5 passed (AC-01, AC-03)')
     expect(text).toContain('Next: ')
     // The engine's own sections are kept, ahead of ours.
@@ -39,7 +39,7 @@ describe('prompt.compose', () => {
   test('with no run the marker is still there, saying no run is active', async ($, on) => {
     world(on, {})
     const text = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
-    expect(text).toBe('Temper enforcement: active\nPhase: none. No Temper run is active.')
+    expect(text).toBe('Temper enforcement: active\nStage: none. No Temper run is active.')
   })
 
   test('a load failure leaves the engine sections untouched', async ($, on) => {
@@ -57,7 +57,7 @@ describe('the run comes back after /clear from the CLI files and the kept decisi
     const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }), { store: { 'dec:run-pw': [decision] } })
     await $.classic.SessionStart({ source: 'clear' })
     const text = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
-    expect(text).toContain('Phase: Plan')
+    expect(text).toContain('Stage: Plan')
     expect(text).toContain('carry out the calls of that option')
     // Once the CLI moved on, the answer belongs to an earlier step: Build has its own.
     cliTo(w, 'build')
@@ -65,7 +65,7 @@ describe('the run comes back after /clear from the CLI files and the kept decisi
     w.files.set('.temper/build-state.json', JSON.stringify({ ...d, step: 4 }))
     await $.classic.SessionStart({ source: 'clear' })
     const after = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
-    expect(after).toContain('Phase: Build')
+    expect(after).toContain('Stage: Build')
     expect(after).not.toContain('carry out the calls of that option')
   })
 })

@@ -23,9 +23,10 @@ const gate = (a: Answer[]) => a.filter((x): x is Extract<Answer, { kind: 'gate' 
 const asked = (name: string, which: Parameters<typeof questionOf>[1] = {}) => questionOf(JSON.stringify(view(name)), which)
 
 describe('a gate question answered exactly', () => {
+  // WP13: a clean pass leaves Intent by rule; the question stays where the person typed a note there (intent-ask)
   test('Continue to Plan: the move and the exact calls the CLI wrote for it', () => {
-    const q = asked('intent-pass')
-    const a = gate(answersIn(result(q, 'Continue to Plan (Recommended)'), rv('intent-pass')))
+    const q = asked('intent-ask')
+    const a = gate(answersIn(result(q, 'Continue to Plan (Recommended)'), rv('intent-ask')))
     expect(a).toHaveLength(1)
     expect(a[0]?.option.move).toBe('approve')
     expect(a[0]?.option.calls.some(c => c.endsWith('temper state advance intent_complete plan'))).toBe(true)
@@ -33,9 +34,11 @@ describe('a gate question answered exactly', () => {
 
   test('the arming answer at the plan gate, with autonomy on', () => {
     const q = asked('plan-pass-autonomy')
-    const a = gate(answersIn(result(q, 'Autonomous Build: run Build unattended'), rv('plan-pass-autonomy')))
+    const a = gate(answersIn(result(q, 'Approve and build (Recommended)'), rv('plan-pass-autonomy')))
     expect(a[0]?.option.move).toBe('arm')
-    expect(a[0]?.option.calls.some(c => c.endsWith('temper state set run_mode autonomous'))).toBe(true)
+    // WP12: the arming call carries the digests the question showed (--shown), compared before the mode is written
+    const arm = (c: string): boolean => c.split(' --shown ')[0]!.endsWith('temper state set run_mode autonomous')
+    expect(a[0]?.option.calls.some(arm)).toBe(true)
   })
 
   test('Save for later in the More options question', () => {
@@ -46,8 +49,8 @@ describe('a gate question answered exactly', () => {
 })
 
 describe('what is no answer', () => {
-  const q = asked('intent-pass')
-  const v = rv('intent-pass')
+  const q = asked('intent-ask')
+  const v = rv('intent-ask')
   const none: Record<string, unknown> = {
     'a reworded question': result({ ...q, question: 'Intent passed. Go on to Plan?' }, 'Continue to Plan (Recommended)'),
     'another header': result({ ...q, header: 'Temper' }, 'Continue to Plan (Recommended)'),
@@ -100,5 +103,23 @@ describe('Start over', () => {
   test('Start over is a restart; Cancel is none', () => {
     expect(answersIn(result(q, 'Start over'), rv('build-work')).map(a => a.kind)).toEqual(['restart'])
     expect(answersIn(result(q, 'Cancel'), rv('build-work'))).toEqual([])
+  })
+})
+
+// WP16, defects 1 and 2: a typed answer to the Context check counts (the view reads the check's question object), and
+// the limit of a typed answer is the CLI's own, 2,000 characters (MAX_ANSWER of scripts/plan_ops.py), not 100.
+describe('a typed Context check answer (WP16)', () => {
+  const v = rv('context-check')
+  const cq = (view('context-check') as { context_check: { question: Q } }).context_check.question
+  const q: Q = { header: cq.header, question: cq.question }
+  test('a typed Context check answer of 1,500 characters counts, with the text in its call', () => {
+    const text = 'x'.repeat(1500)
+    const a = gate(answersIn(result(q, text), v))
+    expect(a).toHaveLength(1)
+    expect(a[0]?.option.move).toBe('answer')
+    expect(a[0]?.option.calls.some(c => c.includes(`'${text}'`))).toBe(true)
+  })
+  test('a typed Context check answer of 2,001 characters does not count', () => {
+    expect(answersIn(result(q, 'x'.repeat(2001)), v)).toEqual([])
   })
 })

@@ -23,7 +23,6 @@ describe('legitimate Temper CLI flows stay allowed', () => {
     'S=/Users/x/plugin; $S/scripts/temper gate check',
     'S=/Users/x/plugin; "$S"/scripts/temper evidence add --stage build --claim x',
     'scripts/temper evidence run --stage build --claim x --phase red -- bash scripts/selftest/test-temper.sh',
-    'scripts/temper evidence resolve --stage review --id 3 --reason fixed',
     'scripts/temper state get next_stage',
     // (complexity and base_sha are set in Plan and Build only, in the form the orchestrator uses: see hardening.test.ts)
     'scripts/temper state set task 2',
@@ -72,8 +71,9 @@ describe('the plugin folder path in a prompt', () => {
 
 describe('the setting words say where the person changes the setting', () => {
   // ADR 0012: the decision words go on to the orchestrator (it asks the Temper gate question). 9.7.3: the mode and
-  // enforcement words change nothing from any origin; they name the /config option instead.
-  for (const word of ['mode off', 'enforcement off']) {
+  // enforcement words change nothing from any origin; they name the /config option instead. WP28: a word counts only
+  // alone, so `mode off` is a request (the run's restart question); it changes no setting either.
+  for (const word of ['mode', 'enforcement']) {
     test(`${word} from a model origin`, async ($, on) => {
       const w = world(on, runFiles({ nextStage: 'plan' }))
       await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: false })
@@ -82,5 +82,56 @@ describe('the setting words say where the person changes the setting', () => {
       expect(w.configSets).toEqual([])
     })
   }
+  for (const word of ['mode off', 'enforcement off']) {
+    test(`${word} from a model origin changes no setting`, async ($, on) => {
+      const w = world(on, runFiles({ nextStage: 'plan' }))
+      await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: false })
+      await $.command.run({ command: 'temper', args: word, origin: { kind: 'sdk' } } as never)
+      expect(w.configSets).toEqual([])
+    })
+  }
   test('the spec folder name is used', () => expect(SPEC).toContain('.temper/specs/'))
+})
+
+// WP18: `evidence resolve` is never a tool call. The CLI resolves a finding itself, for its own repair commit (WP24),
+// where no guard sees it; the rule refuses the call at every stage and in an armed run, even as a call written in the
+// options of a question, so no answer of the person and no action of the CLI lets one through.
+describe('evidence resolve is refused for the session and for every agent', () => {
+  const calls = [
+    'scripts/temper evidence resolve --stage review --id 3 --fixed-by 4f1c2ab',
+    'scripts/temper evidence resolve --stage review --id 3 --fixed-by "the fix pass"',
+    'cd demo && ../scripts/temper evidence resolve --stage check --id 1 --fixed-by HEAD',
+    'S=/Users/x/plugin; "$S"/scripts/temper evidence resolve --stage review --id 1 --fixed-by HEAD',
+    'bash scripts/temper evidence resolve --stage review --id 1 --fixed-by HEAD',
+  ]
+  for (const stage of ['build', 'review', 'check', 'commit'] as const) {
+    for (const cmd of calls) test(`at ${stage}: ${cmd}`, () => expect('deny' in run(cmd, stage)).toBe(true))
+  }
+  const written = 'scripts/temper evidence resolve --stage review --id 1 --fixed-by 4f1c2ab'
+  test('a call the options of a question name is refused all the same', () => {
+    const r = evaluate(stateAt('review'), { ...ctx, allowed: [written] }, { tool: 'Bash', input: { command: written } })
+    expect('deny' in r).toBe(true)
+  })
+  test('an armed run is refused all the same', () => {
+    const r = evaluate(stateAt('review'), { ...ctx, autonomous: true }, { tool: 'Bash', input: { command: written } })
+    expect('deny' in r).toBe(true)
+  })
+  // A /temper:fix run: the mod holds no run of its own there (run null), and the call is refused all the same.
+  for (const cmd of calls) {
+    test(`in a fix run: ${cmd}`, () => expect('deny' in evaluate(null, { ...ctx, fixRun: true }, { tool: 'Bash', input: { command: cmd } })).toBe(true))
+  }
+  // An unquoted glob that bash may expand to `resolve` (or `evidence`) once a file of that name exists is refused in a
+  // fix run too, as it is in a /temper run.
+  for (const cmd of [
+    'scripts/temper evidence res?lve --stage review --id 1 --fixed-by HEAD',
+    'scripts/temper evidence res[o]lve --stage review --id 1 --fixed-by HEAD',
+    'scripts/temper evid?nce resolve --stage review --id 1 --fixed-by HEAD',
+  ]) {
+    test(`in a fix run, a glob: ${cmd}`, () => expect('deny' in evaluate(null, { ...ctx, fixRun: true }, { tool: 'Bash', input: { command: cmd } })).toBe(true))
+  }
+  test('the control: evidence list and evidence add at Review are allowed', () => {
+    expect('deny' in run('scripts/temper evidence list --stage review', 'review')).toBe(false)
+    const add = `scripts/temper evidence add --stage review --claim 'review completed' --exit 0`
+    expect('deny' in run(add, 'review')).toBe(false)
+  })
 })

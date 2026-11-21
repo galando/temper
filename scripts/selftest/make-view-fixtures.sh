@@ -7,6 +7,10 @@
 #
 # Each run is made in a throwaway folder, with the CLI's own moves; a verdict is written as a gate run writes it. The
 # plugin folder, the project folder, run ids, times and commit ids are replaced by fixed text.
+#
+# With TEMPER_CAPTURE_DIR set (scripts/selftest/capture-cli.sh), each state is also copied, and in the copy a fixed list
+# of CLI calls runs: their exit codes and outputs, and then every file under .temper of the copy, go to
+# $TEMPER_CAPTURE_DIR/<state>.txt with the same replacements. The printed module does not change.
 set -euo pipefail
 exec </dev/null
 unset CDPATH
@@ -21,7 +25,7 @@ export TEMPER_SELFTEST_ROOT="$WORK" HOME="$WORK/home"
 mkdir -p "$HOME"
 
 python3 - "$ROOT" "$WORK" "${1:-}" <<'PY'
-import json, os, re, subprocess, sys
+import json, os, re, shutil, subprocess, sys
 
 root, work = sys.argv[1], sys.argv[2]
 temper = os.path.join(root, "scripts", "temper")
@@ -36,18 +40,17 @@ INTENT = "\n".join([
     "### Success Criteria",
     "",
 ] + ["- [ ] AC-0%d [required]: criterion %d (source: test)" % (n, n) for n in range(1, 6)] + [""])
-PLAN = "\n".join(["# Plan", "", "### Files to Modify", "", "| File | Change |", "|---|---|", "| `src/app.ts` | edit |",
-                  "| `unit/app.test.ts` | add |", "| `src/mail.ts` | edit |", ""])
+PLAN = "\n".join(["# Plan", "", "## Blast Radius", "", "- nothing outside the declared files", ""])   # WP26: the new shape
 TASKS = "\n".join([
     "# Tasks: Password reset by email", "", "**Integration:** `npm test`", "",
     "## Group G1: Tokens", "**Depends:** none", "**Validate:** `npm test`", "**Context:**", "Keep the token API.", "",
     "### Task 1: Issue a token", "**File:** `src/app.ts`, `unit/app.test.ts`", "**Depends:** none", "**Test:** `npm test`",
-    "**Cases:**", "- a token is issued", "**Traced to:** Scenario: \"reset\"", "- [ ] done", "",
+    "**Cases:**", "- a token is issued", "- [ ] done", "",
     "### Task 2: Expire a token", "**File:** `src/app.ts`", "**Depends:** Task 1", "**Test:** `npm test`",
-    "**Cases:**", "- an old token is refused", "**Traced to:** Scenario: \"reset\"", "- [ ] done", "",
+    "**Cases:**", "- an old token is refused", "- [ ] done", "",
     "## Group G2: Mail", "**Depends:** G1", "**Validate:** `npm test`", "**Context:**", "Send the mail.", "",
     "### Task 3: Send the mail", "**File:** `src/mail.ts`", "**Depends:** none", "**Test:** `npm test`",
-    "**Cases:**", "- the mail holds the link", "**Traced to:** Scenario: \"reset\"", "- [ ] done", ""])
+    "**Cases:**", "- the mail holds the link", "- [ ] done", ""])
 FINDINGS = [
     {"claim": "src/app.ts:12 the token never expires", "severity": "critical", "label": "PROVEN"},
     {"claim": "src/mail.ts:4 the subject is not localized", "severity": "low", "label": "HEURISTIC"},
@@ -59,7 +62,10 @@ def sh(*args, cwd):
 
 
 def cli(cwd, *args):
-    return subprocess.run([temper] + list(args), cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    r = subprocess.run([temper] + list(args), cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if list(args[:2]) == ["state", "init"]:   # WP20: the baseline on record as not run (the selftest's _base_known)
+        write(cwd, ".temper/evidence/baseline.json", '{"result": "unknown", "why": "not run in the selftest"}\n')
+    return r
 
 
 def write(cwd, rel, text):
@@ -87,7 +93,10 @@ def project(name):
     write(cwd, "README.md", "x\n")
     sh("git", "add", "README.md", cwd=cwd)
     sh("git", "commit", "-qm", "init", cwd=cwd)
-    write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\n")
+    # WP29: the old review level the views were made with, and the one time question answered (an old default)
+    write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\nupgrade:\n  asked: \"9.8.5\"\n")
+    # WP31: the one time notice was said, as `temper init` writes it for a new project (a view shows no notice)
+    write(cwd, ".temper/notice.json", '{"9.8.5": "the fixtures"}\n')
     return cwd
 
 
@@ -98,6 +107,7 @@ def snap(cwd, name, run_name):
     text = text.replace(root, "/plugin").replace(cwd, "/project").replace(work, "/work")
     if head:
         text = text.replace(head, "0" * 40)
+        text = re.sub(r"\b%s\b" % head[:7], "0" * 7, text)   # WP15: the commit card's tree names HEAD short
     text = re.sub(r"its last commit is [0-9a-f]{7,40} ", "its last commit is 0000000 ", text)
     d = json.loads(text)
     rid = (d.get("run") or {}).get("id")
@@ -106,6 +116,65 @@ def snap(cwd, name, run_name):
         text = text.replace(rid, run_name)
     text = re.sub(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?", "2026-01-01T00:00:00Z", text)
     views[name] = json.loads(text)
+    if CAPTURE:
+        capture(cwd, name, run_name, rid)
+
+
+CAPTURE = os.environ.get("TEMPER_CAPTURE_DIR", "")
+READS = [["next", "--json"], ["status"], ["report"], ["schedule"], ["card"], ["model", "--all"],
+         ["state", "get", "next_stage"], ["evidence", "list", "--stage", "build"]] + \
+        [["gate", s] for s in ("intent", "plan", "design", "build", "review", "check", "commit")] + \
+        [["status"], ["report"], ["go"], ["next", "--json"]]
+# one call for each writer the run above does not reach; {at} is the stage the copy's run is at
+WRITES = [["evidence", "run", "--stage", "build", "--claim", "capture", "--", "true"],
+          ["evidence", "accept", "--stage", "review", "--id", "2", "--reason", "capture"],
+          ["evidence", "resolve", "--stage", "review", "--id", "1", "--fixed-by", "capture"],
+          ["intent", "carry", "capture question"], ["intent", "answer", "capture question", "capture answer"],
+          ["intent", "accept"], ["task", "confirm", "1", "--by", "capture"], ["group", "start", "G1"],
+          ["group", "continue", "G1"], ["group", "reopen", "G1", "--task", "1"], ["state", "archive"],
+          ["state", "redo", "{at}", "--reason", "capture"], ["state", "loop", "{at}", "intent", "--reason", "capture"],
+          ["state", "clear"]]
+
+
+def capture(cwd, name, run_name, rid):
+    copy = os.path.join(work, "capture-copy")
+    shutil.rmtree(copy, ignore_errors=True)
+    shutil.copytree(cwd, copy, symlinks=True)
+    git = lambda: subprocess.run(["git", "rev-parse", "HEAD"], cwd=copy, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout.strip()
+    heads = [git()]
+    try:
+        at = json.load(open(os.path.join(copy, ".temper", "build-state.json"))).get("next_stage") or ""
+    except Exception:
+        at = ""
+    out = []
+    for call in READS + [[a.replace("{at}", at) for a in c] for c in WRITES]:
+        r = cli(copy, *call)
+        out += ["$ temper " + " ".join(call), "exit %d" % r.returncode, "--- stdout", r.stdout, "--- stderr", r.stderr]
+    heads.append(git())
+    for top, dirs, files in os.walk(os.path.join(copy, ".temper")):
+        dirs.sort()
+        for f in sorted(files):
+            path = os.path.join(top, f)
+            out.append("=== " + os.path.relpath(path, copy))
+            try:
+                out.append(open(path, encoding="utf-8", errors="replace").read())
+            except OSError as e:
+                out.append("(unreadable: %s)" % e.__class__.__name__)
+    text = "\n".join(out).replace(root, "/plugin").replace(copy, "/project").replace(cwd, "/project").replace(work, "/work")
+    for i, h in enumerate(heads):
+        if h:
+            text = text.replace(h, str(i) * 40)
+    text = re.sub(r"its last commit is [0-9a-f]{7,40} ", "its last commit is 0000000 ", text)
+    # a key that is a hash over HEAD (the baseline's), which the fixture's commit time makes new on every run
+    text = re.sub(r'"key": "[0-9a-f]{64}"', '"key": "(a hash over HEAD)"', text)
+    if rid:
+        text = text.replace(rid, run_name)
+    text = re.sub(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?", "2026-01-01T00:00:00Z", text)
+    # a traceback names a file and a line of the code that raised: keep only its last line
+    text = re.sub(r"Traceback \(most recent call last\):\n(?:[ \t].*\n)+", "Traceback (the frames are not compared)\n", text)
+    with open(os.path.join(CAPTURE, name + ".txt"), "w") as f:
+        f.write(text)
+    shutil.rmtree(copy, ignore_errors=True)
 
 
 # A /temper run from Intent to the commit.
@@ -118,6 +187,7 @@ verdict(p, "intent", False, "Success criteria", "AC-03 has no Validate line")
 snap(p, "intent-fail", "run-pw")
 verdict(p, "intent", True)
 snap(p, "intent-pass", "run-pw")
+# WP13: the run leaves Intent by rule; the intent stays a draft until the approval accepts it
 cli(p, "state", "advance", "intent_complete", "plan")
 snap(p, "plan-work", "run-pw")
 write(p, ".temper/specs/pw/plan.md", PLAN)
@@ -129,6 +199,7 @@ snap(p, "plan-pass", "run-pw")
 write(p, ".claude/temper.config", "review:\n  block-on: [critical]\nautonomy:\n  enabled: true\n")
 snap(p, "plan-pass-autonomy", "run-pw")
 write(p, ".claude/temper.config", "review:\n  block-on: [critical]\n")
+cli(p, "intent", "accept")   # as the approval does (WP13)
 cli(p, "state", "advance", "plan_complete", "build")
 snap(p, "build-work", "run-pw")
 verdict(p, "build", False, "tests pass", "2 tests fail: unit/app.test.ts")
@@ -138,7 +209,7 @@ snap(p, "build-pass", "run-pw")
 cli(p, "state", "advance", "build_complete", "review")
 snap(p, "review-work", "run-pw")
 write(p, ".temper/evidence/review.json", json.dumps(FINDINGS))
-verdict(p, "review", False, "critical findings", "1 open critical finding")
+verdict(p, "review", False, "no blocking findings", "1 open critical finding")
 snap(p, "review-fail", "run-pw")
 verdict(p, "review", True)
 snap(p, "review-pass", "run-pw")
@@ -159,21 +230,24 @@ snap(p, "commit-page", "run-pw")
 cli(p, "report", "--no-html")
 snap(p, "commit-record", "run-pw")
 
-# A run with a Design stage (a medium plan at risk H, with phases.design on).
+# A run with a Design stage: the person asked for it with the option run-design of the approval (WP14).
 d = project("design")
-write(d, ".claude/temper.config", "review:\n  block-on: [critical]\nphases:\n  design: true\n")
+write(d, ".claude/temper.config", "review:\n  block-on: [critical]\n")
 cli(d, "state", "init", "pw", "--feature", "Password reset by email")
 write(d, ".temper/specs/pw/intent.md", INTENT.replace("**Complexity:** simple", "**Complexity:** medium"))
 verdict(d, "intent", True)
+# WP13: the run leaves Intent by rule; the intent stays a draft until the approval accepts it
 cli(d, "state", "advance", "intent_complete", "plan")
 cli(d, "state", "set", "complexity", "medium")
 write(d, ".temper/specs/pw/plan.md", PLAN)
 write(d, ".temper/specs/pw/tasks.md", TASKS)
-cli(d, "risk", "--raise", "H", "--reason", "a medium plan runs Design at risk H (9.8.0)")
 # 9.7.6, plan.fresh-review: ask (the default): nobody asked for the fresh review, so the plan question offers it
 verdict(d, "plan", True)
+cli(d, "state", "set", "want_design", "true")   # the first call of the option run-design
+# the plan question of a run with Design (after a step back from it, say): Continue goes on to Design
 snap(d, "design-plan-pass", "run-design")
-cli(d, "state", "advance", "plan_complete", "design")
+cli(d, "intent", "accept")   # as run-design does (WP13)
+cli(d, "state", "advance", "plan_complete", "design")   # the last call of run-design
 snap(d, "design-work", "run-design")
 verdict(d, "design", False, "API contracts", "no contract for the reset endpoint")
 snap(d, "design-fail", "run-design")
@@ -187,6 +261,7 @@ write(a, ".claude/temper.config", "review:\n  block-on: [critical]\nautonomy:\n 
 cli(a, "state", "init", "pw", "--feature", "Password reset by email")
 write(a, ".temper/specs/pw/intent.md", INTENT)
 verdict(a, "intent", True)
+cli(a, "intent", "accept")   # as the approval does: plan_complete is refused while the intent is a draft (WP12)
 cli(a, "state", "advance", "intent_complete", "plan")
 write(a, ".temper/specs/pw/plan.md", PLAN)
 write(a, ".temper/specs/pw/tasks.md", TASKS)
@@ -199,7 +274,7 @@ verdict(a, "build", True)
 snap(a, "armed-build-pass", "run-armed")
 cli(a, "state", "advance", "build_complete", "review")
 write(a, ".temper/evidence/review.json", json.dumps(FINDINGS))
-verdict(a, "review", False, "critical findings", "1 open critical finding")
+verdict(a, "review", False, "no blocking findings", "1 open critical finding")
 snap(a, "armed-review-fail", "run-armed")
 verdict(a, "review", True)
 snap(a, "armed-review-pass", "run-armed")
@@ -212,9 +287,20 @@ cli(a, "state", "advance", "check_complete", "commit")
 verdict(a, "commit", True)
 snap(a, "armed-commit-pass", "run-armed")
 
-# A /temper:fix run: the mod stands aside for it.
+# WP13: the Intent question where it stays: the person typed a note at Intent, so the run does not leave it by rule.
+ia = project("intent-ask")
+cli(ia, "state", "init", "pw", "--feature", "Password reset by email")
+write(ia, ".temper/specs/pw/intent.md", INTENT)
+cli(ia, "evidence", "add", "--stage", "intent", "--phase", "note", "--claim", "keep the reset link to one hour")
+verdict(ia, "intent", True)
+snap(ia, "intent-ask", "run-ia")
+
+# A /temper:fix run: the mod stands aside for it. WP17: started with the bug as typed, at its root cause question (the
+# approval), with rca.md as the root cause agent writes it.
 f = project("fix")
-cli(f, "state", "init", "bug", "--command", "fix")
+cli(f, "state", "init", "bug", "--command", "fix", "--feature", "Totals drop a cent on export")
+write(f, ".temper/specs/bug/rca.md", "# RCA: Totals drop a cent\n\nCAUSE: total_of rounds each line before the sum\n"
+      "AT: src/totals.py:2\nCONFIDENCE: HIGH\nFIX: round once after the sum\nTEST: three lines of 0.005 total 0.02\n")
 snap(f, "fix-rca", "run-fix")
 
 # ---- the states 9.7.5 added (printed by `make-view-fixtures.sh extra`, view-fixtures-2.ts) ----
@@ -231,6 +317,7 @@ def snap2(cwd, name, run_name, *args):
 def at_build(cwd):
     write(cwd, ".temper/specs/pw/intent.md", INTENT)
     verdict(cwd, "intent", True)
+    cli(cwd, "intent", "accept")   # as the approval does: plan_complete is refused while the intent is a draft (WP12)
     cli(cwd, "state", "advance", "intent_complete", "plan")
     write(cwd, ".temper/specs/pw/plan.md", PLAN)
     write(cwd, ".temper/specs/pw/tasks.md", TASKS)
@@ -240,10 +327,13 @@ def at_build(cwd):
 # The Context check of Plan
 c = project("ctx")
 cli(c, "state", "init", "pw", "--feature", "Password reset by email")
-write(c, ".temper/specs/pw/intent.md", INTENT + "\n### Open Questions\n\n- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.\n")
+# WP13: a flagged map under auto is folded into the approval when it fits, so the check is asked here by always
+write(c, ".claude/temper.config", "review:\n  block-on: [critical]\nplan:\n  context-check: always\n")
+write(c, ".temper/specs/pw/intent.md", INTENT)
 verdict(c, "intent", True)
+# WP13: the run leaves Intent by rule; the intent stays a draft until the approval accepts it
 cli(c, "state", "advance", "intent_complete", "plan")
-write(c, ".temper/specs/pw/plan.md", "# Plan\n\n## Context Map\n- use: intent.md - scope\n- gap: no rate limit policy\n- reviewed: pending\n\n## Files to Modify\n")
+write(c, ".temper/specs/pw/plan.md", "# Plan\n\n## Context Map\n- use: intent.md - scope\n- gap: no rate limit policy\n- reviewed: pending\n\n## Blast Radius\n")
 verdict(c, "plan", False, "context map reviewed", "the Context check is pending: the person's answer is not recorded yet")
 snap2(c, "context-check", "run-ctx")
 
@@ -295,13 +385,19 @@ sh("git", "checkout", "-q", "-", cwd=bc)
 cli(bc, "state", "init", "pw", "--feature", "Password reset by email")
 write(bc, ".temper/specs/pw/intent.md", INTENT)
 verdict(bc, "intent", True)
-snap2(bc, "branch-clash", "run-clash")
+# WP13: the run leaves Intent by rule; the intent stays a draft until the approval accepts it
+cli(bc, "state", "advance", "intent_complete", "plan")
+write(bc, ".temper/specs/pw/plan.md", PLAN)
+write(bc, ".temper/specs/pw/tasks.md", TASKS)
+verdict(bc, "plan", True)
+snap2(bc, "branch-clash", "run-clash")   # WP12: the approval names the clash and continues on the branch
 
 # ---- 9.7.6: the fresh review of a medium plan, with an open blocker and a contested finding (also in EXTRA_VIEWS) ----
 fr = project("fresh")
 cli(fr, "state", "init", "pw", "--feature", "Password reset by email")
 write(fr, ".temper/specs/pw/intent.md", INTENT.replace("**Complexity:** simple", "**Complexity:** medium"))
 verdict(fr, "intent", True)
+# WP13: the run leaves Intent by rule; the intent stays a draft until the approval accepts it
 cli(fr, "state", "advance", "intent_complete", "plan")
 cli(fr, "state", "set", "complexity", "medium")
 write(fr, ".temper/specs/pw/plan.md", PLAN)
@@ -322,9 +418,67 @@ verdict(fr, "plan", False, "no open plan blockers", "2 open")
 snap2(fr, "plan-fresh-blocker", "run-fresh")
 
 
+# ---- 9.8.5 (WP10): the question at the limit of the budget: a failed Check run again twice, then failed again ----
+bu = project("budget")
+cli(bu, "state", "init", "pw", "--feature", "Password reset by email")
+at_build(bu)
+for st, nxt in (("build", "review"), ("review", "check")):
+    verdict(bu, st, True)
+    cli(bu, "state", "advance", st + "_complete", nxt)
+for _ in range(2):
+    verdict(bu, "check", False, "tests pass", "exit 1: 2 failed")
+    cli(bu, "state", "redo", "check", "--reason", "the suite again")
+verdict(bu, "check", False, "tests pass", "exit 1: 2 failed")
+snap2(bu, "check-budget", "run-budget")
+
+# ---- 9.8.5 (WP20): the baseline as the first step of a run, and the red base question before any agent ----
+bs = project("baseline")
+cli(bs, "state", "init", "pw", "--feature", "Password reset by email")
+os.remove(os.path.join(bs, ".temper", "evidence", "baseline.json"))
+snap2(bs, "base-start", "run-baseline")
+write(bs, ".temper/evidence/baseline.json", json.dumps({
+    "result": "red", "kind": "red-base", "cmd": "npm test", "run": "npm test", "source": "configured", "exit_code": 1,
+    "seconds": 4.2, "fail_lines": ["FAIL test/totals.test.js > rounds a cent"], "env": [], "limits": {}, "plan": {}}))
+snap2(bs, "base-red", "run-baseline")
+
+# ---- 9.8.5 (WP24, trap 5): a passed Review with an open High finding where a repair may start (a reviewed HEAD on the
+# run's branch, Build integrated, a clean tree), so the Review question offers Repair again (repair-again) ----
+rp = project("repair")
+sh("git", "checkout", "-q", "-b", "feature/pw", cwd=rp)
+cli(rp, "state", "init", "pw", "--feature", "Password reset by email")
+cli(rp, "state", "set", "branch", "feature/pw")
+at_build(rp)
+write(rp, "src/app.ts", "export const token = () => 'x'\n")
+sh("git", "add", "src/app.ts", cwd=rp)
+sh("git", "commit", "-qm", "build: the token", cwd=rp)
+head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=rp, stdout=subprocess.PIPE, text=True).stdout.strip()
+write(rp, ".temper/groups.json", json.dumps({"version": 1, "slug": "pw", "cli_commits": [],
+      "groups": {"G1": {"status": "passed", "worktree": "", "confirmed": True, "gate": {"verdict": "PASS"}}},
+      "tasks": {"1": {"status": "passed", "group": "G1"}},
+      "integration": {"verdict": "PASS", "reason": "", "group": None, "files": [], "ts": "x", "head": head, "merged": True}}))
+verdict(rp, "build", True)
+cli(rp, "state", "advance", "build_complete", "review")
+write(rp, ".temper/evidence/review.json", json.dumps([{"claim": "src/app.ts:1 the token never expires", "severity": "high", "label": "PROVEN"}]))
+verdict(rp, "review", True)
+snap2(rp, "review-pass-repair", "run-repair")
+
+# ---- 9.8.5 (WP29): the one time config question: a new run at Intent, no agent launched yet, on the template of 9.8.4 ----
+ct = project("config-tidy")
+with open(os.path.join(root, "scripts", "selftest", "saved-old.json")) as f:
+    write(ct, ".claude/temper.config", json.load(f)["7c7a1c1"]["template"].replace("@PLUGIN@", root))
+cli(ct, "state", "init", "pw", "--feature", "Password reset by email")
+snap2(ct, "config-tidy", "run-config-tidy")
+
+# A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
+for name in ("armed-review-pass", "review-fail", "armed-check-fail"):   # WP15: the cards made it grow; WP16: typed calls
+    extra[name] = views.pop(name)
+
 if len(sys.argv) > 3 and sys.argv[3] == "extra":
     views = extra
 print("// Generated by scripts/selftest/make-view-fixtures.sh%s from the temper CLI: the .temper/view.json it writes at" % (" extra" if views is extra else ""))
 print("// each point of a run. Do not edit by hand: a self test case runs the script again and compares.")
-print("export const %s: Record<string, unknown> = " % ("EXTRA_VIEWS" if views is extra else "VIEWS") + json.dumps(views, indent=1, sort_keys=True))
+# one view per line, in key order, so the module stays small and a changed view is a changed line
+print("export const %s: Record<string, unknown> = {" % ("EXTRA_VIEWS" if views is extra else "VIEWS"))
+print(",\n".join(" %s: %s" % (json.dumps(k), json.dumps(views[k], sort_keys=True, separators=(",", ":"))) for k in sorted(views)))
+print("}")
 PY

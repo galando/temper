@@ -5,115 +5,80 @@ nav_order: 3
 
 # Commands Reference
 
-## `/temper` (Unified Command)
+Temper lists two commands: `/temper:temper`, the run and its words, and `/temper:fix`. What the other commands of
+9.8.4 did is a word of `/temper:temper` (`draft`, `status`, `report`, `init`, `pack`) or gone: a run starts at Intent,
+and `/temper:temper` with no words takes up the run that is active.
 
-**The one command for the full SDLC.**
+## `/temper:temper` (the run)
+
+**The one command for a feature.**
 
 ```text
 /temper:temper "add login feature"
 /temper:temper "JIRA-123"
-/temper:temper                        # Resume or continue the current run
+/temper:temper                        # take up the active run
 ```
 
-> **The short form.** `/temper` is an interactive shortcut that may not resolve in every
-> surface: in `claude -p` and CI it does not. Type the full name `/temper:temper`, for
-> example `claude -p '/temper:temper "add login feature"'`. All other commands
-> (`/temper:plan`, `/temper:build`, etc.) already use their full form. With the mod loaded
-> and enforcement on, such a headless run stops at the first gate, because only a person in
-> an interactive session can approve; with enforcement off it runs on (see [Subcommands](#subcommands)).
+> **The short form.** `/temper` is an interactive shortcut that may not resolve in every surface: in `claude -p` and
+> CI it does not. Type the full name `/temper:temper`, for example `claude -p '/temper:temper "add login feature"'`.
+> With the mod loaded and enforcement on, such a headless run stops at the first question, because only a person in
+> an interactive session can approve; with enforcement off it runs on.
 
-**What it does:**
-
-Runs the full software development lifecycle with stage gates:
+**What it does.** A run goes through five stages, Intent, Plan, Build, Review and Check, and ends at the commit:
 
 ```
-INTENT → (gate) → PLAN → (gate) → BUILD → (gate) → REVIEW → (gate) → CHECK → (gate) → COMMIT
+INTENT -> PLAN -> (approval) -> BUILD -> REVIEW -> CHECK -> (commit question) -> COMMIT
 ```
 
-The **Intent gate comes first and is deliberately cheap**: you approve (or correct) the
-Problem, success criteria, and constraints before any exploration or architecture work
-spends tokens — an intent correction at this gate costs words; the same correction
-after Plan costs the whole plan, because every downstream artifact is derived from the
-intent. Trivial requests (a typo, a one-liner) skip it automatically.
+By default it asks you twice: once before any code is written, and once at the commit.
 
-**Stage Gates:**
+- **Intent** asks you only what your request left open (who, when, how much, exceptions), as Blocking questions with
+  ready answers. With nothing open the run goes on to Plan by itself; you accept the intent with the plan.
+- **The approval** is one question with a card that shows the intent's criteria, the files by group, the commands the
+  checks run, the launches and what the run does by itself after your click:
 
-At each gate Claude asks one question in Claude Code's own dialog, header `Temper gate`, with the
-options `temper next --json` gives for that gate. After the plan:
+  ```text
+  Temper gate
+  Plan: the check passed. Accept the intent, approve the plan and continue to Build?
+    1. Approve and build (Recommended)   Accept the intent. Approve the plan; the run goes on by itself ...
+    2. Ask me at every stage             Accept the intent. Approve the plan; every later stage asks you.
+    3. Fresh review first                A reviewer with no context reads the plan before you approve it ...
+    4. More options                      Open HTML review, Run Design first, Loop back to Intent, Save for later
+  ```
 
-```text
-Temper gate
-Plan: the check passed. Approve the plan and continue to Build?
-  1. Continue to Build (Recommended)   Approve the plan, commit it, and start Build.
-  2. Open HTML review                  Open the plan as a page to comment on.
-  3. Share HTML review                 Publish the plan as a private Claude artifact others can comment on.
-  4. More options                      Grill Me, Teach Me, Save for later
-```
+- **After Approve and build** the run goes on by itself: a passed check moves on, a failed check gets one counted
+  repair by rule, and every other case stops and asks you. It never pushes, never opens a pull request by itself and
+  never makes the final commit.
+- **The commit question** always asks, with a card of what is true, the suite, coverage, the open findings and
+  everything a rule decided since the approval: Commit, Loop back to Build, Commit and open PR, More options.
 
-| Response | Action |
+`run.default` in `.claude/temper.config` orders the first two options (`to-commit`, `ask` or `never-unattended`).
+With Ask me at every stage, every later stage asks its own question, as below.
+
+**The questions.** Each one is asked in Claude Code's own dialog, header `Temper gate`, with the options
+`temper next --json` gives for the step the run is at; Claude asks it exactly as given, with the mod and without it.
+
+| Answer | What happens |
 |----------|--------|
-| **Continue to Build** | Approve the plan, commit it, and start Build |
-| **Grill Me** | Socratic challenge mode — adversarial questions that stress-test your plan |
-| **Open HTML review** | Browser-based review with inline comments (Google Doc-style) |
-| **Share HTML review** | Publish the same review as a Claude artifact so other people can comment by link, and their comments come back automatically. Without the Artifact tool it offers Open HTML review instead. Asks before anything leaves your machine |
-| **Save for later** | Stop, save state, resume later with `/temper:temper` |
-| **Other** | Type a change request: Claude makes it, the gate runs again, and the question comes back. It is not a move. |
+| **Loop back to {stage}** | That stage runs again, and the stages after it are redone |
+| **Override and continue** | Skip a failed check with your reason; the report shows it |
+| **Accept a finding** | Keep one finding of Review as it stands, with your reason |
+| **Grill Me**, **Teach Me** | Questions that stress test the work, or a walk through it |
+| **Make a small change** | One small change with no loop back; only what it touches is checked again |
+| **Save for later** | Stop and save the run; `/temper:temper` with no words takes it up again |
+| **Other** | A change you type: the CLI records it as a note, the stage's agent runs again with it, and the question comes back. Claude never edits a file for it itself. It is not a move. |
 
-**Review Gate Additional Options:**
+At the Check question, **Commit and open PR** opens a draft pull request after the commit, and **Run it anyway** runs
+the check once more whatever Temper kept of this tree.
 
-| Response | Action |
-|----------|--------|
-| **Loop back to Build** | Build fixes the open findings, then Review runs again |
-| **Accept a finding** | Keep one finding as it stands, with your reason |
-| **Architecture Depth Review** | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
+**What each stage reads.** Each stage runs in an agent of its own, with only what it needs:
 
-**Check Gate Additional Options:**
-
-| Response | Action |
-|----------|--------|
-| **Commit** | Commit with conventional message |
-| **Review config suggestions** | Review CLAUDE.md/AGENTS.md suggestions based on what was built |
-
-**Context Management:**
-
-Each stage gate clears context and loads only what's needed:
-
-| Stage | What's Loaded | Size |
-|-------|---------------|------|
-| PLAN | Full codebase (via subagent) | Large (temp) |
-| BUILD | tasks.md + intent.md | ~5-10KB |
-| REVIEW | Changed files only | ~20-50KB |
-| CHECK | Nothing new | 0KB |
-
-### Subcommands
-
-The short form `/temper` is an interactive shortcut that may not resolve in every surface;
-`/temper:temper` always works, and the mod's own messages use it. When the first word
-after the command is one of these, Temper handles it instead of starting a run. Any other first word is a feature description, as before.
-
-| Subcommand | What it does |
-|---|---|
-| `/temper:temper status` | Where the run stands: stage, task, criteria passed, loop count |
-| `/temper:temper timeline` | Your decisions in this run |
-| `/temper:temper approve`, `next`, `back`, `override`, `accept`, `drift` | Your wish, not a move: Claude runs the loop and asks the gate question exactly as the CLI gives it. You choose there. |
-| `/temper:temper report` | The run report: verdicts, skips with their reasons, loops, usage. Without the mod it is `temper report`; with it, the mod's report from `view.json` and your decisions, kept in its plugin store. The page to share is `report.html` (below). |
-| `/temper:temper pr` | Ask Claude for a pull request description from the report |
-| `/temper:temper mode` | Say how much Temper draws, and that you change it in `/config` (Temper UI mode) |
-| `/temper:temper enforcement` | Say whether denials are on, and that you change it in `/config` (Temper enforcement) |
-| `/temper:temper pane` | Open or close the pane (in full mode it also opens by itself when a run starts; see [the mod](mod.md)) |
-| `/temper:temper discuss <text>` | Send a message about the step you are at. It changes no stage. |
-| `/temper:temper help` | List these |
-
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
-
-A word that names a move (`approve`, `next`, `back`, `override`, `accept`, `drift`) is your wish, not
-your decision: you decide in the question dialog that follows, with one click. Claude cannot decide for
-you. With the mod loaded it answers the words that only show something (`status`, `timeline`,
-`report`, `help`, `pane`, `mode`, `enforcement`) itself; every other word goes to the prompt
-based command, so it works the same on every surface.
-
-With the mod loaded and enforcement on, a headless `claude -p` run stops at the first gate, because
-only a person can answer the gate question. With enforcement off a headless run goes on.
+| Stage | What its agent reads |
+|-------|---------------|
+| Plan | the intent and the code, through its own agent |
+| Build | `tasks.md` and `intent.md`, one task block a task agent |
+| Review | the changed files |
+| Check | nothing: the CLI runs the commands |
 
 ### Modes
 
@@ -126,9 +91,8 @@ You change both in `/config`; the mod never changes them itself:
 | `uiMode` (Temper UI mode) | `full`, `minimal`, `off` | `full` draws the bar, the pane, toasts, the spinner text, the turn line, the hint and the question header. `minimal` draws the stage timeline only. `off` draws nothing. The mode changes only what is drawn: the questions and the rules are the same in every mode. |
 | `enforcement` (Temper enforcement) | `on`, `off` | `on` refuses writes outside the stage, `--no-verify`, a changed hooks path, and a step only you may take without your answer. `off` keeps the drawing only. |
 
-Denials and subcommands work in every mode. `/temper:temper mode` and `/temper:temper enforcement`
-say what is set and where to change it. [Where enforcement works](mod.md#where-enforcement-works)
-shows what is covered and what is not.
+Denials and the words work in every mode. `/temper:temper mode` and `/temper:temper enforcement` say what is set and
+where to change it. `docs/mod.md`, "Where enforcement works", shows what is covered and what is not.
 
 ### The stage bar
 
@@ -136,30 +100,23 @@ In `full` mode the bar above the prompt shows `TEMPER`, the run's title, the ste
 ("Step 2 of 6: Plan"), the stages as chips (green with a check for passed, red with a cross for a failed
 check, yellow for a stage you skipped, a filled chip for the stage you are at, plain chips for the stages
 to come), the loops back with their reasons, the time of the run, one sentence of status
-("Plan: waiting for your answer to the Temper gate question.") and the details of the stage: the groups and tasks of Build, the open findings of Review,
-the failed checks. Under about 100 columns (for example while the pane is docked) the bar uses a compact
-form without borders. `minimal` shows the chips only.
+("Plan: waiting for your answer to the Temper gate question.") and the details of the stage: the groups and tasks
+of Build, the open findings of Review, the failed checks. Under about 100 columns (for example while the pane is
+docked) the bar uses a compact form without borders. `minimal` shows the chips only.
 
 The bar has no button and decides nothing. To take a run up again, type `/temper:temper`: Claude asks
-the gate question again. The pane repeats the
-run on one card: the plan's files by group, the Build grid with each task's state, model and retries, the
-Review findings, the Check markers, the acceptance criteria ("what must be true") with their evidence,
-the loops with their reasons and your decisions; it has no button. At the commit, the report is printed in
-the terminal, and on your answer `temper report --html` writes the same as one page, `report.html` in the
-spec folder, to share with the change
-([The mod](mod.md#the-bar)).
+the question again. The pane repeats the run on one card: the plan's files by group, the Build grid with each task's
+state, model and retries, the Review findings, the Check markers, the acceptance criteria ("what must be true") with
+their evidence, the loops with their reasons and your decisions; it has no button. At the commit, the report is
+printed in the terminal, and `temper report --html` writes the same as one page, `report.html` in the spec folder.
 
 ### One flow
 
-Every gate is a question in Claude Code's own dialog, header `Temper gate`, with the options that
-`temper next --json` gives for the step the run is at (Continue to {next}, Loop back to {stage},
-Override and continue, Save for later, Grill Me, Teach Me and the stage's own). Claude asks it exactly
-as given. This is the same with the mod and without it, in every mode.
-The orchestrator still runs every stage with its own brief and the CLI still judges every check. With
-the mod loaded, the mod reads your answer from the dialog's result, counts it only when the header,
-the question and the label are exactly what the CLI wrote, and lets through the calls of that option,
-at the step the run is at; a step back or a skip needs your reason, and the dialog asks for it
-when your answer has none. Once the run moves on, the answer is spent.
+The questions are the same with the mod and without it, in every mode. The CLI judges every check, and each stage
+runs with its own brief. With the mod loaded, the mod reads your answer from the dialog's result, counts it only when
+the header, the question and the label are exactly what the CLI wrote, and lets through the calls of that option, at
+the step the run is at; a step back or a skip needs your reason, and the dialog asks for it when your answer has none.
+Once the run moves on, the answer is spent.
 
 ### Each stage
 
@@ -172,471 +129,183 @@ when your answer has none. Once the run moves on, the answer is spent.
 | Check | The spec folder only |
 | Done | Nothing is blocked |
 
-A plain `git commit` goes to the native `pre-commit` hook in every stage, and the hook decides: it
-lets a spec only commit and a Build checkpoint through, and every other commit only when every gate
-passed or was skipped with a reason. A commit the hook does not check (a merge, a cherry-pick, a revert,
-a commit of named paths) is not refused by the mod either; [Trust](trust.md) lists it. Save for later
-stops the run and lifts no rule.
+A plain `git commit` goes to the native `pre-commit` hook in every stage, and the hook decides: it lets a spec only
+commit, a Build checkpoint and a repair commit of the CLI through, and every other commit only when every gate passed
+or was skipped with a reason. A commit the hook does not check (a merge, a cherry-pick, a revert, a commit of named
+paths) is not refused by the mod either; `docs/trust.md` lists it. Save for later stops the run and lifts no rule.
 
-A file outside the Build plan is never written first. Build lists it with why it is needed and the
-change, and Claude asks you the Scope drift question: add the file to the plan, revert (go on
-without it), or allow it once (Claude's why becomes the recorded reason). Each choice is logged.
-This works the same with and without the mod; the mod also refuses the write until you answer.
-A failed Review or Check loops back to Build when you choose so, as many times as the loop budget
-(`loops.max-per-type`, and `fix.max-loops` for Check) allows.
+A file outside the plan is never written first. The agent records it with `temper drift ask`, and the CLI asks the
+Scope drift question: add the file to the plan, revert (go on without it), or allow it once (the agent's why becomes
+the recorded reason), in a run that goes on by itself too. Each choice is logged. Every repeat after a failed check
+is counted against one budget: 2 repeats for one failure and 6 for the run, then one question where only you allow
+more (ADR 0019).
 
-### Stage commands are doors
+## The stages
 
-`/temper:plan`, `/temper:design`, `/temper:build`, `/temper:review` and `/temper:check` start or
-take up a `/temper` run at their stage, so there is one flow to keep right:
+### Plan
 
-- With a run active, they take it up where the CLI says it is. A door never moves a run: when the
-  run is at another stage, Claude says so and goes on from there.
-- With no run active, `/temper:plan` starts one at Intent. The later doors start a run for the
-  spec folder that holds the feature's `plan.md` and `tasks.md`, ask each earlier gate in turn
-  (the same `Temper gate` question, Override and continue with your reason when a gate fails),
-  then run their own stage. The earlier stages are checked, not run again, against what the
-  run still has: their evidence went to the archive with the run that made it, so a check that
-  reads evidence (Plan's search record, Review's completion) fails, the question names the
-  failed rows, and you choose: **Run** that stage now (it and every stage after it run), or
-  skip it with your reason. Build at a Review or Check door passes on the newest Build PASS that
-  the spec folder's committed `gate-ledger.json` records, while no file of the plan changed since
-  that commit; when one did, the question names it, and Run Build is the fix pass on that code. A
-  loop back from such a run runs the stage it goes back to; Build's fix pass then mends the code
-  the earlier run built.
+Plan writes what a later step reads: `tasks.md` (groups of small tasks, each with its files, its test command and its
+cases), the scenarios in `intent.md` (four lines each: its name, one Then line, `Covers:` and `Test:`) and, above the
+simple tier, `plan.md` with a Context Map and a Blast Radius. A scenario is owed by the task that declares the file
+its `Test:` command runs. The planner's last calls run each group's Validate and the Integration line once on the
+current code, then the plan gate. A part of `tasks.md`:
 
-`/temper:intent` stays on its own: it captures a draft intent and builds nothing.
-
----
-
-## `/temper:intent`
-
-Capture an idea as a draft `intent.md` — the artifact that starts the pipeline —
-without starting the pipeline.
-
-```bash
-/temper:intent "handlers spend a third of call time on status-only queries"
-/temper:intent "JIRA-4521"
-/temper:intent                # interview from scratch
-```
-
-**What it does:**
-
-- Interviews the originator the way an analyst would (scope, affected users,
-  constraints, what better looks like) — no formal language required of them
-- Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (a name you
-  typed, else `the person`; never from git), Problem, measurable Success Criteria, Constraints, Target Users, and Open
-  Questions — **no scenarios and no architecture**; those are Plan's job, derived from
-  the measured blast radius later
-- Keeps criteria and constraints firm: `temper gate intent` fails a draft that uses
-  should, may, might, or possibly in one, unless the line carries a `(source: ...)`
-  marker (the hedge belongs to the source). A source "should" or "may" is never turned
-  into "must" without asking the originator; the answer goes into `### Decisions`
-- Offers to commit the draft, so author, timestamp, and revision history live in
-  version control from the moment the idea is real
-
-**Who flips `Status:`** — `draft` (this command) → `accepted` (the human's Continue at
-`/temper`'s **Intent gate**, also when a stage command started the run) → `completed` (the
-commit step).
-A later `/temper:temper "{slug}"` presents the draft at its Intent gate and builds on it,
-never overwrites it. A `temper bands` breach drafts intents in exactly the same shape
-(see `/temper:status`).
-
----
-
-## `/temper:check`
-
-Stack validation of a planned and built feature.
-
-A door into `/temper`: it starts a run at Check, or takes up the run that is active, and from
-there everything happens as `/temper` does it ([Entering at a stage](#stage-commands-are-doors)).
-
-```bash
-/temper:check
-```
-
-**What it does:**
-
-- Auto-detects your tech stack
-- Finds test, build, and lint commands
-- Reports current quality status
-
-**Output:**
-
-```
-🔍 Detecting stack...
-✅ Detected: React + TypeScript
-   • Build: npm run build
-   • Test: npm test
-   • Lint: npm run lint
-
-📊 Quality Status:
-   • Coverage: 78%
-   • TypeScript errors: 0
-   • Lint warnings: 2
-```
-
----
-
-## `/temper:plan`
-
-Plan with blast radius analysis, mermaid diagrams, and interactive walkthrough.
-
-A door into `/temper`: with no run active it starts one for the feature, and the Intent gate
-comes first, because the plan is derived from the accepted intent. With a run active it takes
-that run up ([Entering at a stage](#stage-commands-are-doors)).
-
-```bash
-/temper:plan "feature description"
-```
-
-**What it does:**
-
-- Analyzes which files will be affected
-- Identifies dependencies and risk areas
-- Generates mermaid architecture diagrams (flowchart, sequenceDiagram, etc.)
-- Derives BDD scenarios from requirements + blast radius — **before architecture**
-- Builds architecture from scenarios — every file traces to a behavior or infrastructure need
-- Generates intent.md with structured success criteria + Gherkin scenarios (medium+ complexity)
-- Detects parallel tasks for optimized ordering
-- Offers interactive step-by-step plan walkthrough with Q&A at each section
-
-**Example:**
-
-```bash
-/temper:plan "add password reset"
-```
-
-**Output:**
-
-```
-🔍 Blast Radius Analysis
-
-📦 Affected Files: 8
-   • src/auth/PasswordResetService.ts (CREATE)
-   • src/auth/AuthController.ts (MODIFY)
-   • src/email/EmailService.ts (MODIFY)
-
-🔗 Dependencies: 4
-   • Email delivery
-   • Token generation
-   • Rate limiting
-
-⚠️  Risk Areas: 2
-   • Token expiration handling
-   • Email delivery failures
-
-📝 Generated: intent.md
-   Success criteria (3):
-     ✓ Users can reset password without support → validate: scenario
-     ✓ Reset completes in under 2 minutes       → validate: manual
-     ✓ Support tickets decrease 30%              → validate: metric
-
-   Scenarios (5): 3 happy, 1 error, 1 edge case
-     Scenario: Successful password reset
-     Scenario: Expired token rejected
-     Scenario: Rate limiting enforced
-     ...
-
-📋 tasks.md: 2 groups, 4 tasks
-
+```markdown
 ## Group G1: Reset tokens
+**Depends:** none
+**Validate:** `npm test`
+
 ### Task 1: Create PasswordResetService
-  **File:** src/auth/PasswordResetService.ts, unit/PasswordResetService.test.ts
-  **Depends:** none
-  **Cases:** a fresh token resets the password; an expired token is refused
-### Task 2: Add the reset endpoint
-  **Depends:** Task 1
-
-## Group G2: Mail and limits (depends on G1)
-### Task 3: Update the email template
-### Task 4: Add rate limiting
-...
+**File:** `src/auth/PasswordResetService.ts`, `unit/PasswordResetService.test.ts`
+**Depends:** none
+**Test:** `npm test`
+**Cases:**
+- a fresh token resets the password
+- an expired token is refused
 ```
 
-**Note:** tasks with no dependency between them, and with files that do not overlap, run at the same
-time, each as its own Haiku task agent in its own worktree ([Haiku Build](grouped-build.md)).
+Tasks with no dependency between them, and with files that do not overlap, run at the same time, each as its own task
+agent in its own worktree (`docs/grouped-build.md`).
 
----
+### Design
 
-## `/temper:design`
+Design writes `design.md` (the components, the API contracts, the data changes, the decisions) only when you ask for
+it: choose `Run Design first` under More options at the approval. No tier and no risk adds it. A question Design would
+have asked is a Blocking question Plan writes, and you answer it before the approval.
 
-System design for complex/medium features. Auto-skipped for simple or trivial features.
+### Build
 
-A door into `/temper`: it starts a run at Design, or takes up the run that is active, and from
-there everything happens as `/temper` does it ([Entering at a stage](#stage-commands-are-doors)).
+Build runs the plan's groups (`docs/grouped-build.md`); the CLI drives it:
 
-```bash
-/temper:design
-```
+- First an agent that writes no code writes the acceptance tests from the intent, and they are locked.
+- It starts each group whose dependencies passed, in its own worktree, and hands out the ready tasks; each runs as a
+  small task agent (Sonnet) in its own worktree and writes the test of each listed case first (RED), then the code
+  (GREEN).
+- The CLI gates each task from the test runs it made itself, commits it on the task branch and merges it into the
+  group branch. A failed task is retried, then escalated; after that its group stops and asks you.
+- When Build ends, the CLI merges the groups and runs, once, the suite with its coverage, the scenario tests and the
+  locked acceptance tests. Check reuses those runs on the same tree.
 
-**What it does:**
+**What you see:** the bar shows the step and the groups; the pane shows the Build grid, one row a task with its state
+(waiting, running, RED, GREEN, PASS, FAIL, stopped), model and retries.
 
-Produces a system design document (`design.md`) with:
+**Taking it up again:** the run's state is the CLI's, so `/temper:temper` with no words takes Build up where it
+stopped: the CLI hands out the tasks that are still to do, or waits for the agents still running.
 
-- **Architecture overview** — System components and data flow
-- **API contracts** — Request/response shapes, endpoint changes
-- **Database changes** — Schema changes, migration strategy
-- **Integration points** — External system connections, error handling
-- **Decision log** — Architectural decisions with rationale (ADRs)
+### Review
 
-**When it runs:**
+Review reads the changed files against the intent, the enabled packs and the scenarios, and records each finding with
+its level (low, medium, high, critical) and its file and line. It names the files it read; a changed file it did not
+read fails its gate. Findings at a level of `review.block-on` (default `critical, high`) fail the Review gate. A High
+or critical finding is repaired in the stage once by rule: a fresh Build agent fixes it, the CLI commits the fix and
+runs the checks again, and a reader that did not write the fix confirms it. Only the CLI closes a finding. A Medium
+finding goes on to Check and is listed at the commit question.
 
-Automatically included in the `/temper` pipeline when:
-- `phases.design: true` in temper.config (default)
-- AND complexity is `medium` or `complex`
+### Check
 
-**Config:**
+Check runs the project's own checks on the built tree: the suite and its coverage, the acceptance criteria with a
+command, and the scenario tests, reusing what Build ran on the same tree. Coverage may not drop against the code before
+the run; a missing coverage tool is shown as not measured, never as passed or failed. A criterion you validate by hand
+is confirmed by you at the Check question. The CLI judges every row (`docs/flow.md`).
 
-```yaml
-phases:
-  design: true    # Set false to always skip design stage
-```
+## Words of `/temper:temper`
 
----
+`/temper:temper` takes a few words in place of a feature. A word counts only in its documented form: `status`,
+`report`, `timeline`, `help`, `init`, `pack`, `mode`, `enforcement`, `pane`, `pr` and the wishes count only alone,
+with nothing after them; `draft` takes the idea after it, and `pack` takes `enable guardrails` or `disable
+guardrails`. Any other text is a request, a feature description, even when it starts with one of these words:
+`/temper:temper status badge on the order page` starts a run for that feature. The short form `/temper` is an
+interactive shortcut that may not resolve in every surface; `/temper:temper` always works, and the mod's own
+messages use it.
 
-## `/temper:build`
-
-Build with TDD + quality gates.
-
-A door into `/temper`: it starts a run at Build, or takes up the run that is active, and from
-there everything happens as `/temper` does it ([Entering at a stage](#stage-commands-are-doors)).
-
-```bash
-/temper:build
-```
-
-**What it does:**
-
-Build runs the plan's groups ([Haiku Build](grouped-build.md)). `temper next --json` drives it:
-
-- It starts each group whose dependencies passed, in its own worktree.
-- It hands out the ready tasks; each runs as a small Haiku task agent in its own worktree, writes the
-  test of each listed case first (RED), then the code (GREEN).
-- The CLI gates each task from its own recorded test runs, commits it on the task branch and merges it
-  into the group branch. A failed task is retried, then escalated, then parks its group.
-- You review each group once, in the `Build group` question (Continue, Change or Stop).
-- The CLI merges the groups into the feature branch and gates Build.
-
-**What you see:** the bar shows the step and the groups; the pane shows the Build grid, one row per
-task with its state (waiting, running, RED, GREEN, PASS, FAIL, parked), model and retries.
-
-**Resume:** the run's state is the CLI's, so `/temper:temper` with no arguments takes Build up where it
-stopped: `temper next` hands out the tasks that are still to do, or waits for the agents still running.
-
----
-
-## `/temper:review`
-
-Code review with confidence scoring.
-
-A door into `/temper`: it starts a run at Review, or takes up the run that is active, and from
-there everything happens as `/temper` does it ([Entering at a stage](#stage-commands-are-doors)).
-
-```bash
-/temper:review
-```
-
-**What it does:**
-
-- Analyzes changed files
-- Checks against enabled packs
-- Validates intent: success criteria (IDD) + scenario coverage (BDD)
-- Scores confidence of findings
-- Suggests improvements
-- Diff-aware: focuses on changed lines
-- Catches N+1 queries and performance issues
-
-**Output:**
-
-```
-📊 Review Results
-
-Files reviewed: 6
-Issues found: 4
-Confidence: 91%
-
-🔴 HIGH (Confidence: 96%) [REGRESSION]
-   Missing rate limiting on password reset endpoint
-   └─ AuthController.ts:89 (CHANGED)
-   → Suggestion: Add rate limiting middleware
-
-🔴 HIGH (Confidence: 89%) [NEW ISSUE]
-   N+1 query pattern: DB call inside loop
-   └─ UserRepository.java:45 (CHANGED)
-   → Suggestion: Use batch fetch or JOIN query
-
-🟡 WARN (Confidence: 78%) [NEW ISSUE]
-   Method 'processReset' exceeds 30 lines
-   └─ PasswordResetService.ts:112 (CHANGED)
-   → Suggestion: Extract helper methods
-
-🟢 INFO (Confidence: 65%) [PRE-EXISTING]
-   Consider extracting magic number to constant
-   └─ TokenService.ts:23 (UNCHANGED)
-   → Suggestion: EXPIRATION_HOURS = 24
-
-📊 Intent Validation (IDD): 2/3 mechanically validated
-   Problem: Users unable to reset passwords without support
-   ✅ Users can reset password → validate: scenario → test_successful_reset PASS
-   ✅ Reset completes in < 2 min → validate: manual → requires human review
-   📊 Support ticket reduction → validate: metric → post-deploy monitoring required
-
-📊 Scenario Coverage (BDD): 5/5 ✅
-   ✅ Successful password reset → test_successful_reset (PASS)
-   ✅ Expired token rejected → test_expired_token (PASS)
-   ✅ Rate limiting enforced → test_rate_limiting (PASS)
-   ✅ Invalid email format → test_invalid_email (PASS)
-   ✅ Non-existent user → test_nonexistent_user (PASS)
-
-✅ All tests passing
-✅ No security pack violations
-```
-
-**Issue Classifications:**
-
-- **REGRESSION** — Code that was working, now broken by your change
-- **NEW ISSUE** — Problem introduced by this change
-- **PRE-EXISTING** — Issue existed before (lower priority)
-
-**External Engine: open-code-review:**
-
-OCR is off by default. When you set `tools.ocr.mode` to `auto` or `require` and the `ocr` CLI is on your `PATH`, `/temper:review` runs a second defect-detection pass (probed in Step 1, merged in Step 2). OCR handles line-level defects; Temper keeps intent validation, security analysis, and architecture depth.
-
-| Config Key | Default | Description |
-|------------|---------|-------------|
-| `tools.ocr.mode` | `off` | `off` (never invoke), `auto` (use if available), `require` (block if missing) |
-| `tools.ocr.replace-defect-subagent` | `true` | Drop generic defect hunting from Temper subagents when OCR is active |
-| `tools.ocr.timeout` | `10` | Minutes before OCR invocation is killed |
-
-**Evidence labels:**
-
-- `[OCR]` — Finding from the OCR engine alone
-- `[OCR+TEMPER]` — Both engines independently found the same issue (file + line +/-2 + category match). Confidence boosted: min(0.95, max(a,b) + 0.15)
-
-**Modes:**
-
-| Mode | OCR available | OCR missing | OCR fails at runtime |
-|------|--------------|-------------|---------------------|
-| `auto` | Run + dedupe | Skip with a one-line notice | Warn + degrade |
-| `require` | Run + dedupe | BLOCK, saying where to find OCR's install steps | Warn + degrade |
-| `off` (default) | Never invoke | Never invoke | Never invoke |
-
----
-
-## `/temper:fix`
-
-Root cause analysis + structured fix.
-
-```bash
-/temper:fix "issue description"
-```
-
-**What it does:**
-
-- Analyzes root cause of the issue
-- Creates fix plan
-- Implements with tests
-
-**Example:**
-
-```bash
-/temper:fix "JIRA-123: Users can't reset password"
-```
-
-**Output:**
-
-```
-🔍 Root Cause Analysis
-
-Issue: Password reset emails not being sent
-
-Investigation:
-  1. Checked email service logs → No errors
-  2. Checked token generation → Working
-  3. Checked queue → Messages stuck
-
-Root Cause: Queue consumer crashed at 2:34 AM
-  → Consumer not auto-restarting
-
-📋 Fix Plan:
-  1. Add health check to queue consumer
-  2. Implement auto-restart on failure
-  3. Add alerting for queue depth
-
-🔧 Implementing...
-
-✅ Fix applied
-   • Files changed: 3
-   • Tests added: 2
-   • Regression risk: Low
-```
-
----
-
-## `/temper:init`
-
-One-command project setup. It is idempotent, so it is safe to re-run. It never overwrites an existing config. It never writes into a folder named `hooks`, so it never writes over a git hook of yours or of another tool: when pointing git at the Temper hook would switch such a hook off, it keeps the Temper hook in the repository's git folder and shows you one line to add to your hook, with a one line hint (see "When you already have a pre-commit hook" below).
-
-```bash
-/temper:init
-```
-
-**What it does:**
-
-- Seeds `.claude/temper.config` from the bundled default (if absent; an existing config is left untouched, with a note about any retired blocks in it)
-- Scaffolds `.temper/` (the gate ledger, overrides log, feedback-loop registry)
-- Writes the **native commit gate**, the pre-commit hook that blocks `git commit` while any gate is red, to `temper-gate/pre-commit` in the repository's git folder (the folder `git rev-parse --git-common-dir` names, which git never commits and every linked worktree shares), and points the repository's `core.hooksPath` at that folder, so git runs it in every worktree. A submodule's hook goes in its own git folder. When `.git/hooks` holds hooks git would then stop running, or `core.hooksPath` already names another tool's folder, setup still writes the Temper hook to `temper-gate/pre-commit` but leaves `core.hooksPath` as it is, shows you the line to add and the hint, and goes on without the commit gate until you add it.
-- Opens no Claude Code settings file, the project's or your home folder's. Guard commands you added for the guardrails pack stay as you left them; `/temper:pack enable guardrails` prints the current ones after a plugin upgrade.
-
-**Where the hook lives.** The installer writes the Temper hook to `temper-gate/pre-commit` in the repository's git folder, through a new file moved into place, and runs `git config --local core.hooksPath` with that folder's absolute path. Git then runs that hook in every worktree, and `git rev-parse --git-path hooks/pre-commit` names it. The installer never writes into a folder named `hooks`: not `.git/hooks`, not the folder `git rev-parse --git-path hooks` names, and not a `core.hooksPath` folder that is not Temper's. It reads the hooks there only to decide. Once `core.hooksPath` is set, git runs the hooks of that folder and no longer those in `.git/hooks`, so the installer sets it only when `.git/hooks` holds no hook git would then stop running: no executable hook under one of git's hook names (an older Temper `pre-commit` does not count, and the installer then says you can delete it) and no `pre-commit.bak.<timestamp>` that an older installer set aside. When `core.hooksPath` already points at the folder, running the installer again makes the hook current, for example after a plugin upgrade moves the plugin folder. When it holds Temper's older folder (`.git/hooks-temper`, which `--global` set from 5.5.0 to 9.6.4, `.git/temper-git-hooks`, which it set in 9.6.5, or the `temper-gate` folder of where the repository used to be before it was moved or renamed), the installer points it at `temper-gate` and prints a note, unless that folder holds other hooks git runs (`git lfs install` writes its hooks into the folder `core.hooksPath` names); then it leaves the value, as it does for `.git/hooks`, and the `pre-commit` there needs the line below. The `--global` option is still accepted and now does what the default does, with a note.
-
-**After you move the repository.** `core.hooksPath` holds an absolute path, so every worktree finds the folder. Moving or renaming the repository, or a folder above it, leaves it naming the old place, and git runs no pre-commit hook until the installer runs again. Your next `/temper:temper` checks the hook and runs the installer, which points `core.hooksPath` at the new place; you can also run `/temper:init`.
-
-**When you already have a pre-commit hook.** When `.git/hooks` holds hooks git would stop running (yours, a `commit-msg` hook, git-lfs's `pre-push`, the pre-commit framework's or lefthook's), or `core.hooksPath` names another tool's folder (husky's `.husky/_`, lefthook, a team's folder), the installer leaves `core.hooksPath` and every one of those hooks as they are. It writes only the Temper hook to `temper-gate/pre-commit` in the repository's git folder and prints this line between its BEGIN and END lines:
-
-```sh
-_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _temper_hook="$(git rev-parse --git-common-dir)/temper-gate/pre-commit"; [ ! -f "$_temper_hook" ] || bash "$_temper_hook" || exit 1
-```
-
-The line holds no path of this machine, so it is safe to commit, and it keeps your hook's own result wherever it sits: when the command before it failed, it exits with that status, and otherwise it runs the Temper hook and fails only when that hook blocks. Its FAIL line says why the installer did not point git at the Temper hook (for hooks in `.git/hooks`, it names them), and its hint says where the line goes:
-
-| Your hook | Where the line goes |
+| Word | What it does |
 |---|---|
-| husky (a hooks folder in `.husky`) | `.husky/pre-commit`, which is safe to commit |
-| the pre-commit framework | a local hook in `.pre-commit-config.yaml` (repo: local, language: system, pass_filenames: false, always_run: true) with the entry `sh -c '<the line>'`, which the hint prints in full; the framework runs that entry with no shell |
-| lefthook, which writes its hook again | a pre-commit command in `lefthook.yml` that runs the line |
-| a `pre-commit` from an older Temper (in `.git/hooks` next to other hooks, in Temper's older folder, or in a team folder) | in place of all of its lines, after `#!/bin/sh`; git still runs that hook, so the installer warns about it and shows its stale plugin path |
-| any other hook | its start or its end; create the file, executable, if it does not exist |
+| `/temper:temper status` | Where the run stands: stage, task, criteria passed, loop count |
+| `/temper:temper timeline` | Your decisions in this run |
+| `/temper:temper approve`, `next`, `back`, `override`, `accept`, `drift` | Your wish, not a move: Claude runs the loop and asks the gate question exactly as the CLI gives it. You choose there. |
+| `/temper:temper report` | The run report: verdicts, skips with their reasons, loops, usage. Without the mod it is `temper report`; with it, the mod's report from `view.json` and your decisions, kept in its plugin store. The page to share is `report.html` (below). |
+| `/temper:temper pr` | Ask Claude for a pull request description from the report |
+| `/temper:temper draft <idea>` | Capture an idea as a draft `intent.md`, with no run (below) |
+| `/temper:temper init` | Set up this project: the config, `.temper` and the commit gate (below) |
+| `/temper:temper pack` | The quality packs; `pack enable guardrails` and `pack disable guardrails` print the guard hooks to add or remove (below) |
+| `/temper:temper mode` | Say how much Temper draws, and that you change it in `/config` (Temper UI mode) |
+| `/temper:temper enforcement` | Say whether denials are on, and that you change it in `/config` (Temper enforcement) |
+| `/temper:temper pane` | Open or close the pane (in full mode it also opens by itself when a run starts; see [the mod](mod.md)) |
+| `/temper:temper help` | List these |
 
-Once your hook holds the line, with no line before it that starts with `exit` or `exec`, and git can run it (it is executable; for husky v9, husky's own hook in `.husky/_` must be there and executable instead, so run `npx husky` in a fresh clone), running the installer again makes the Temper hook current, says your hook calls it, and exits 0. For the pre-commit framework and lefthook, their config file at the repository's top holding the line outside a comment counts the same way; the installer reads only its text, so a `stages` or `skip` setting there can still keep the line from running. The line that 9.6.5 printed, which runs `temper-pre-commit` in the git folder, still counts: the installer then makes that file current too. When an `exit` or `exec` line comes first, the line never runs, and the installer refuses and says to move it above that line. When the installer refuses before it knows the git folder, it writes nothing and prints the Temper hook's own lines instead, in a subshell, so that their exits end only the subshell and your hook's own result is kept.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back
+silently.
 
-**Adding a hook tool later.** The pre-commit framework refuses to install while `core.hooksPath` is set, and lefthook installs into the folder it names, which is Temper's, so run `git config --unset core.hooksPath` before you install one. If a tool has already written its `pre-commit` into Temper's folder, the installer never writes over it: it refuses and says how to move it out. The next `/temper:temper` or `/temper:init` then finds that tool's hook, keeps the Temper hook and prints the line to add, with the hint for that tool.
+A word that names a move (`approve`, `next`, `back`, `override`, `accept`, `drift`) is your wish, not
+your decision: you decide in the question dialog that follows, with one click. Claude cannot decide for
+you. With the mod loaded it answers the words that only show something (`status`, `timeline`,
+`report`, `help`, `pane`, `mode`, `enforcement`) itself; every other word goes to the prompt
+based command, so it works the same on every surface.
 
-An older Temper version may have left a hook that was not its own as `pre-commit.bak.<timestamp>` in `.git/hooks`. When one is there, the installer warns, names it and says how to get it back: move it back to `pre-commit` in git's own hooks folder and add the line between BEGIN and END in the installer's output to it (when a `pre-commit` of yours is there now, it says to add the old hook's lines to that file instead).
+With the mod loaded and enforcement on, a headless `claude -p` run stops at the first gate, because
+only a person can answer the gate question. With enforcement off a headless run goes on.
 
-**To remove the hook**, run `git config --unset core.hooksPath` when it points at the `temper-gate` folder, remove the Temper line from your own hook if you added one, and delete the `temper-gate` folder in the git folder (and any `temper-pre-commit` that 9.6.5 left there). The installer prints these steps.
+A run starts at Intent, and `/temper:temper` with no words takes up the active run where the CLI says it is. A folder an
+earlier run planned, with no run active, is started from its `intent.md`: Plan runs again.
 
-**You usually don't run it by hand.** Your first `/temper:temper "…"` in a project that is not set up does all of this automatically. The optional edit-time guardrails are a separate step: `/temper:pack enable guardrails` (see [Guardrails](#guardrails)).
+### `draft`
 
----
-
-## `/temper:pack`
-
-Manage quality packs: view, toggle, quick-create a launcher pack, configure links and phases, or build a new pack.
+Capture an idea as a draft `intent.md` (the artifact that starts the pipeline) without starting a run. Claude reads
+`reference/draft.md` and runs the interview in the main session.
 
 ```text
-/temper:pack
-/temper:pack enable guardrails
-/temper:pack disable guardrails
+/temper:temper draft handlers spend a third of call time on status-only queries
+/temper:temper draft JIRA-4521
+```
+
+- Interviews the originator the way an analyst would (scope, constraints, what better looks like), with no formal
+  language required of them.
+- Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (a name you typed, else `the person`;
+  never from git), Problem, measurable Success Criteria, Constraints, Scope and Non-goals, and Open Questions, and
+  no scenarios and no architecture: those are Plan's, derived from the measured blast radius later.
+- Keeps criteria and constraints firm: `temper gate intent` fails a draft that uses should, may, might or possibly
+  in one, unless the line carries a `(source: ...)` marker. The session that typed the word owes that gate: the
+  stop hook holds it until the gate ran (ADR 0005).
+- Offers to commit the draft, so its author, date and history live in version control.
+
+`Status:` goes from `draft` (this word) to `accepted` (your approval of the plan) to `completed` (the commit step).
+A later `/temper:temper "{slug}"` finds the folder by its `intent.md` and builds on the draft, never over it.
+
+### `init`
+
+Set up a project; the first `/temper:temper "..."` in a project that is not set up does the same by itself. Claude
+runs three calls, each once, and shows what each printed:
+
+- `temper config init` writes `.claude/temper.config` from the bundled default when it is missing; an existing config
+  is never overwritten.
+- `temper init` scaffolds `.temper/` (the gate ledger, the overrides log, the feedback loop registry).
+- `temper guards install` (`scripts/guards/install.sh`) writes the native commit gate, the pre-commit hook that
+  blocks `git commit` while a gate is red, to `temper-gate/pre-commit` in the repository's git folder (never
+  committed, shared by every worktree), and points `core.hooksPath` there.
+
+Temper opens no Claude Code settings file and never writes into a folder named `hooks`. When you already have a
+pre-commit hook (in `.git/hooks`, husky, the pre-commit framework, lefthook or a team folder), the installer leaves
+`core.hooksPath` and your hooks as they are, keeps the Temper hook in the git folder, and prints the one line to paste
+into your hook between its BEGIN and END lines, with a hint that says where it goes for your tool. The line holds no
+path of this machine, so it is safe to commit. Run the installer again after you move the repository or upgrade the
+plugin; it makes the hook current. `temper guards uninstall` removes the Temper hook and its folder, unsets
+`core.hooksPath` when it names that folder, and names a Temper line in your own hook for you to remove.
+
+### `pack`
+
+The quality packs: view, toggle, quick-create a launcher pack, configure links and stages, or build a new pack.
+
+```text
+/temper:temper pack
+/temper:temper pack enable guardrails
+/temper:temper pack disable guardrails
 ```
 
 **What it does:**
 
-- Shows every pack it finds, from three places: the project's `.claude/packs` folder, your global
-  pack folder `~/.claude/packs`, and the 8 built-in packs. A project pack shadows a global one of
-  the same name, and a global one shadows a built-in one.
-- Lets you toggle packs on/off, quick-create a launcher pack, set a pack's link and phases, or build a new pack
+- Shows every pack it finds, from two places: the project's `.claude/packs` folder and the built-in packs. A
+  project pack takes the place of a built-in one of the same name. Nothing in your home folder is read (9.8.5).
+- Lets you toggle packs on or off, quick-create a launcher pack, set a pack's link and stages, or build a new pack
 - Prints the guardrails pack's guard hooks for you to add, or says which to remove (see [Guardrails](#guardrails)).
   It opens no Claude Code settings file.
 
@@ -648,7 +317,7 @@ Manage quality packs: view, toggle, quick-create a launcher pack, configure link
 |--------|---------------|
 | NAME | The pack's name |
 | STATUS | `ON` when the pack is in `packs:`, otherwise `OFF` |
-| PHASES | The phases that load the pack (`all` when none are set) |
+| STAGES | The stages that load the pack (`all` when none are set; the key is `phases`) |
 | LINK | The pack's `plugin://` or `skill://` link, if it has one |
 | CONNECTED | Whether that link target was found |
 
@@ -658,7 +327,7 @@ Manage quality packs: view, toggle, quick-create a launcher pack, configure link
 |--------|-------------|
 | **Toggle packs on/off** | Select packs to enable or disable. Turning `guardrails` on prints its hook entries for you to add; turning it off says which to remove. Temper opens no settings file. |
 | **Quick-create launcher pack** | Wrap a skill or command as a BLOCK-level pack in the project's `.claude/packs` folder. |
-| **Configure pack (link, phases)** | Set the link target or the phases of an existing pack. |
+| **Configure pack (link, stages)** | Set the link target or the stages of an existing pack. |
 | **Done** | Exit. To open the full pack builder instead, choose **Other** and describe the pack. |
 
 **Link targets.** A launcher pack or a link points at a skill or command. The choices are the
@@ -668,35 +337,9 @@ project's own commands and skills in `.claude/commands` and `.claude/skills`. A
 plugin, and a `skill://name` link when the session lists that skill or the project has it.
 Temper reads no Claude Code file to find them.
 
-**The full pack builder** (choose **Other**, then describe the pack):
-
-```
-🔍 Scanning codebase...
-
-Found patterns:
-  • Constructor injection (92% of classes)
-  • DTO pattern (100% of APIs)
-  • Structured logging (78% of services)
-
-Questions:
-
-1. I see you use DTOs for all API responses.
-   Should this be a BLOCK rule?
-   [Yes/No/Skip] > Yes
-
-2. Constructor injection is common but not universal.
-   Make it mandatory?
-   [Yes/No/Skip] > Yes
-
-Generating pack...
-
-✅ Created: .claude/packs/company/rules.md
-
-   • BLOCK rules: 2
-   • WARN rules: 3
-   • SUGGEST rules: 4
-   • Status: ENABLED
-```
+**The full pack builder** (choose **Other**, then describe the pack): Claude reads the code base for its patterns
+(constructor injection, data transfer objects, structured logging), asks you for each one whether it is a BLOCK, WARN
+or SUGGEST rule, and writes `.claude/packs/<name>/rules.md`, which you then turn on in `packs:`.
 
 ### Guardrails
 
@@ -709,7 +352,7 @@ The secret check scans only what a call adds: the content of a Write, the new te
 or the command that unstages one, is not refused. The staged files are scanned only by the native
 `pre-commit` hook, at commit time.
 
-`/temper:pack enable guardrails`:
+`/temper:temper pack enable guardrails`:
 
 1. Refuses, in one line, when the project folder is your home folder (its settings files would
    then be your user settings), or when the plugin folder's path holds a character that cannot sit
@@ -726,7 +369,7 @@ or the command that unstages one, is not refused. The staged files are scanned o
    entry there. Temper never opens either file.
 4. Adds `guardrails` to `packs:` in `.claude/temper.config`.
 
-`/temper:pack disable guardrails` removes the `guardrails` entry from `packs:` and says which
+`/temper:temper pack disable guardrails` removes the `guardrails` entry from `packs:` and says which
 entries to remove from your settings files.
 
 A Temper guard entry is a hook command that names one of the guard scripts (`block-secrets.sh`,
@@ -739,72 +382,232 @@ relative path, a path through `CLAUDE_PROJECT_DIR`, or a path inside the project
 stays.
 
 A plugin upgrade moves the plugin folder, and a guard command added before it then points at a
-folder that is gone or out of date. Run `/temper:pack enable guardrails` again to print the current
+folder that is gone or out of date. Run `/temper:temper pack enable guardrails` again to print the current
 commands, and put them in place of the old ones.
 
 The pack does not print the stage gate pair (`stage-marker.sh` and `verify-stage-gate.sh`): the
-plugin's own hooks already run them. `/temper:pack` and `/temper:init` never open a Claude Code
+plugin's own hooks already run them. The words `pack` and `init` never open a Claude Code
 settings file, the project's or your home folder's. The commit-time layer is the native `pre-commit` hook, which
-`/temper:init` installs.
+the word `init` installs.
 
----
+### `status`
 
-## `/temper:status`
+`/temper:temper status` prints `temper status` (each criterion, passed or open, with its evidence) and the one line
+of `temper next --json` that says where the run is. The other read only calls stay calls of the CLI: `temper report`
+(the gate ledger) and `temper drift` (each finished spec against the tree as it is now).
 
-Quality metrics dashboard.
+## `/temper:fix`
+
+A bug: root cause, a regression test that fails first, a minimal fix.
 
 ```bash
-/temper:status
+/temper:fix "JIRA-123: users cannot reset their password"
 ```
 
-**What it does:**
+It asks twice, as a feature run does. The root cause agent writes `rca.md`, and its question is the approval: its
+card shows the bug as you typed it, the cause, the fix, the regression test, the files, the test command and the risk.
 
-- Shows current quality metrics
-- Tracks trends over time
-- Highlights hotspots
-
-**Output:**
-
-```
-📊 Temper Status Dashboard
-
-Project: my-service
-Stack: Spring Boot
-Packs: quality, tdd, security, company
-
-📈 Metrics (Last 30 days)
-   • Reviews run: 47
-   • Issues found: 23
-   • Auto-fixed: 18
-   • Coverage: 78% → 84% ↑
-
-🔥 Hotspots
-   • UserService.java — 4 issues (complexity)
-   • OrderProcessor.java — 3 issues (coupling)
-
-📚 Learning (planned)
-   • Pattern detected: "Missing null check"
-   → Suggestion: Add to company pack
-
-⏱️ Technical Debt
-   • Coverage gaps: 2 modules
-   • TODOs: 12 (3 critical)
-   • Deprecated: 1 dependency
+```text
+Temper gate
+RCA: the root cause and the proposed fix are on the card. Approve the fix?
+  1. Approve and fix (Recommended)   Approve the fix; the run goes on by itself ...
+  2. Ask me at every stage           Approve the fix; every later stage asks you.
+  3. Save for later                  Stop here. The run is saved; /temper:fix takes it up again.
 ```
 
-**Control bands (closing the loop):** the dashboard also runs `temper bands` — a
-deterministic drift check of the metric history against rolling mean ± k·sigma bands
-(config: `bands:` in `.claude/temper.config`). `1sigma` logs, `2sigma` means
-diagnose, and a `3sigma`/`propose`-tier breach offers to draft the breach as a
-Stage-1 `intent.md` for `/temper` to pick up — evidence in, ordinary gates out.
-Dismissals are the tuning signal (3+ on one metric → widen the window or retire the
-metric). `temper bands` is also runnable headless with no dashboard at all — exit 1 on
-a breach — from **any** scheduler (cron, Jenkins, GitLab CI, GitHub Actions; temper
-ships no platform-specific wiring on purpose, see `examples/workflow/README.md`),
-which is what lets the loop begin and end without a person starting it.
+After Approve and fix, a passed Fix, Review and Check move on by rule, and the commit question offers Commit, Loop
+back to Fix and Save for later, never a pull request. A change you type at the root cause question runs the root cause
+agent again with it. `/temper:fix` with no words takes an active fix run up again.
 
+## The config
 
-## New in 9.7.5
+A new project's `.claude/temper.config` is the template of 10 live lines (`run.default`, `packs`, `review.block-on`,
+`autonomy.park-on-touch`, `models.plan` and `models.task` with their parents) and two commented blocks
+(`check.commands` and `setup`). Every other setting has its default in one table of the CLI, `scripts/defaults.py`
+(ADR 0023), and a line of your config wins over it.
+
+```text
+temper config show              each key, its value and where it comes from: config, default, or old name <key>
+temper config show --markdown   the table below
+temper config get <key>         one value; with no default given, the table's
+temper packs --stage <stage>    the pack files the agent of that stage reads, as its prompt's Packs: line names them
+```
+
+`config show` also names each key of your file that is gone (with what replaced it) and each key it does not know
+(`not read: <key>`); neither is an error. With no `run.default` line and `autonomy.enabled: false`, `run.default` is
+`ask`, as the flow reads it: `config show` and `config get run.default` say so, with the source
+`old name autonomy.enabled`. `scripts/check_config_keys.py` holds the table to the code: every key has a
+reader, and no page names a key the table lacks.
+
+The keys, as `temper config show --markdown` prints them:
+
+| Key | Default | What it sets |
+|---|---|---|
+| `run.default` | `to-commit` | the approval's first option: to-commit (the run goes on by itself to the commit), ask, or never-unattended |
+| `packs` | `[security, tdd]` | the packs whose rules the agents follow; the CLI names their files in each prompt (`temper packs`) |
+| `review.block-on` | `[critical, high]` | the finding levels that fail the Review gate |
+| `autonomy.park-on-touch` | `["**/auth/**", "**/payment/**", "**/billing/**"]` | sensitive paths: a plan that touches one is risk H, named at the approval, and nothing there is repaired by rule |
+| `models.plan` | `opus` | the planner's model, over the table of `scripts/cli_ctx.py` |
+| `models.task` | `sonnet` | the model of the Build task agents; haiku costs less and takes longer |
+| `models.<agent>` | the table of `scripts/cli_ctx.py` | the model of one agent, over the table of `scripts/cli_ctx.py` |
+| `models.high.<agent>` | the table of `scripts/cli_ctx.py` | the model of one agent in a run of tier complex or risk H |
+| `check.commands.test` | none | the test command Check runs instead of the one it detects |
+| `check.commands.coverage` | none | the coverage command Check runs instead of the one it detects |
+| `check.coverage-threshold` | none | a coverage floor, read only when set; with none, coverage may not drop against the base |
+| `setup.run` | none | one shell line the CLI runs before each command it runs |
+| `setup.env` | none | variables set for each command; a credential name is never set or shown |
+| `setup.services` | none | services that must answer (name: host:port) before the checks run |
+| `setup.tools` | none | programs the commands need |
+| `build.grouped.max-parallel` | `4` | Build tasks running at once |
+| `build.grouped.max-groups` | `2` | groups working at once |
+| `build.grouped.keep-days` | `30` | days an earlier attempt's work is kept (0: always) |
+| `build.red-before-code` | `false` | true: a task's failing run counts only on the code as the attempt found it, with no stub |
+| `autonomy.max-blast-radius` | `15` | the plan gate splits a group that declares more files than this |
+| `budget.per-failure` | `2` | repeats for one failed check |
+| `budget.per-run` | `6` | repeats in one run |
+| `plan.context-check` | `auto` | auto: ask when the Context Map has an ignore or a gap; always; off |
+| `plan.fresh-review` | `ask` | a reader with no context reads the plan: ask, auto, always or off |
+| `plan.fresh-review-twice` | `true` | a risk H plan gets two fresh readers |
+| `plan.fresh-review-rounds` | `3` | launches of the fresh review in one run, at most |
+| `phases.pipeline` | `true` | false: no Pipeline stage after a commit that opened a pull request |
+| `protect.paths` | none | paths no agent edit may change (the guardrails pack) |
+| `format.cmd` | none | a formatter run on each agent edit, {file} for the file (the guardrails pack) |
+| `upgrade.asked` | none | the version whose one time config question was answered Keep my file |
+
+### The one time question
+
+The first `/temper:temper` run of a project whose config is an older template (9.8.4 or before) asks
+`config.tidy` before anything else: the config holds N lines that only repeat old defaults or are no longer read; the
+question names at most eight of them with what changes (the coverage floor, `phases.design`, the five packs and
+`block-on: [critical]` first) and says a copy is kept.
+
+- `Remove them (Recommended)` runs `temper config tidy --apply`: the old file is copied to
+  `.claude/temper.config.before-9.8.5`, and the file becomes the new template with the lines you changed, in place of
+  its lines or after them; a `packs:` list in block form stays as you wrote it. `autonomy.enabled: false` becomes
+  `run.default: ask`, never the new default. The copy is never overwritten: when it is there already with other text,
+  the old file goes to `.claude/temper.config.before-9.8.5.2` (or the next free number). With nothing to remove the
+  call changes nothing and writes no copy.
+- `Keep my file` runs `temper config tidy --keep`: the file stays and gets `upgrade.asked`, so the question is not
+  asked again and the old values still rule.
+
+The question is asked only at Intent before the first agent of a `/temper:temper` run. The two calls exit 1 and change
+nothing past Intent, in a fix run or in a run that goes on by itself; at Intent, or with no run active, they run, so a
+person can also type them. Typed after `Keep my file`, `--apply` still removes the old lines: `upgrade.asked` stops
+the question, not the call. A project made by `config init` is never asked.
+
+### What became of an old key
+
+| Key | Now |
+|---|---|
+| `stack` | gone: the CLI detects the stack |
+| `packs` | a live line, default `[security, tdd]`; the five packs of the old template are an old default |
+| `review.block-on` | a live line; `[critical]` is an old default |
+| `check.coverage-threshold` | read when set; `80` is an old default, and with none coverage may not drop |
+| `check.environment`, `check.mutation-threshold` | gone: Check decides from file names; the planted bug score is information |
+| `tools.mode` | gone: an agent uses a connected tool when there is one |
+| `plan.context-check`, `plan.fresh-review`, `-twice`, `-rounds` | in the table; their old template values are old defaults |
+| `plan.preflight-timeout`, `plan.preflight-skip` | gone: the plan's commands run once on the base |
+| `phases.design` | gone: Design runs only when you ask for it |
+| `phases.pipeline` | in the table; `true` is an old default |
+| `feedback.enabled`, `loops.max-per-type`, `fix.max-loops` | gone: one budget of repeats (`budget.per-failure`) |
+| `autonomy.enabled` | read as `run.default: ask` when false; the question writes that line |
+| `autonomy.policy`, `autonomy.budget.max-total-loops`, `.max-stages` | gone: `run.default` and one budget (`budget.per-run`) |
+| `autonomy.max-blast-radius` | in the table; `15` is an old default |
+| `build.grouped.task-model`, `build.grouped.escalation-model` | read as the old names of `models.task` and `models.task-escalation` |
+| `build.grouped.max-parallel`, `.max-groups`, `.keep-days`, `build.red-before-code` | in the table |
+| the `evidence` block (claimed runs) | gone: a test run an agent only claimed counts at no gate (9.8.5) |
+| the `bands` block | gone, with the control bands |
+| `tools` (the external review engine) | gone: no diff leaves the machine through Temper |
+
+## The CLI calls
+
+### `temper doctor` (9.8.5)
+
+`scripts/temper doctor` shows the environment a run will use, and changes nothing: it writes no file, ledger, state or
+`view.json`. It prints three parts:
+
+- **Toolchain:** the first line of each tool's version (`setup.tools`, else java, mvn, python3, node and git), or
+  `not on PATH`. It reads the shell as it is.
+- **Setup block:** `none`, or the run line with `(not run by doctor: it may start a service)`, each variable as
+  `NAME=value`, and each credential name it left out.
+- **Services:** for each `setup.services` entry, `answering` or `not answering` (a TCP connect, 2 seconds).
+
+The mod lets it run during a run, as any CLI call. Use it when a gate says `environment fault` or `ENV:`.
+
+**How Temper finds the setup of a project it has never seen.** Two sources, one check:
+
+1. **Rules, for common setups** (`temper doctor --propose`): the JDK a Maven enforcer, `<java.version>`, a Gradle
+   toolchain, `.java-version` or `.tool-versions` asks for, set by the project's `scripts/ensure-jdk*.sh --export` (else
+   a JDK of that version in `/usr/lib/jvm`); Docker Compose services (Postgres, MySQL, MariaDB, Redis) when a Docker
+   daemon answers; a local Postgres cluster; a Python `.venv`; an `.nvmrc`.
+2. **The project's CI and devcontainer** (the same command): GitHub Actions (`actions/setup-java` and `setup-node`
+   versions, a job's `services:` with their images and ports, the variables that point at them, such as
+   `IT_POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}`), `.gitlab-ci.yml` image tags, and
+   `.devcontainer/devcontainer.json` features. A CI service starts with Docker when its daemon answers, else with a
+   local server of that kind. Only a database variable with a local port or host is taken from a CI `env:`; deploy
+   targets and credentials never are.
+
+No agent drafts a block: the environment agent and `temper doctor` with a draft file of its are gone.
+
+**The block reaches the config only by your answer.** `temper doctor` and `temper doctor --propose` read;
+`temper doctor --propose --write --expect <hash>` adds the block, and the mod lets it run only as the call of the option
+you picked. When the environment check or Check fails on the environment and the project has no block, the question
+offers `Add this setup block and run it again` (at the red base question `base.red` first, at Check first), and the
+question shows every line of the block (the run line with its secrets masked). The call writes the block the question
+showed, bound by its hash (refused when the proposal changed since, and never over a block that is there); `--write`
+without `--expect` writes nothing. No command is run to check a block: the baseline that runs next (at `base.red`) or
+Check run again is its check. A block that fakes a tool passes every check of the CLI, so your reading of it is the
+control. When no rule proposes a block, the question says what is missing, in the words of the fault.
+What no source can make (a missing licence, a secret, a VPN, a JDK the machine does not have and the project cannot
+fetch) is said in plain words instead.
+
+### `temper baseline`
+
+`temper baseline start [--again] [--env-only]` checks the environment (the tools and services the project's files and
+the config name, in under 5 s) and runs the project's suite once on the current code, in the detached worktree
+`.claude/worktrees/temper-baseline`, in its own process; it writes `.temper/evidence/baseline.json` and always exits 0.
+The flow calls it as its own first step of a run; `--again` runs it after a repair, `--env-only` checks the environment
+and runs no suite (the flow no longer calls it, 9.8.5). `temper baseline clean` removes the worktree (`state clear` and
+`state init` call it). `temper baseline accept-red --reason '<why>'` is your answer "Go on anyway" at the red base
+question: the base's failures become a recorded skip (an override row `base-suite`); the mod lets it run only as the
+call of that answer. `python3 scripts/check_run.py owner ROOT [SPEC]` prints who owns the suite command, as one JSON
+line `{"test", "run", "source", "why"}`. See `docs/flow.md`, "The environment check and the baseline".
+
+`temper baseline plan [--cmd C]` runs each group's Validate and the Integration line of the plan once on the
+current code, in the same worktree, after the suite, in its own process, and keeps each result in `plan` of the same
+file; only a command with no result runs, and `--cmd C` runs C again. The planner's last calls run it, before
+`temper gate plan`, which runs no command. `temper baseline skip --cmd C --reason '<why>'` is your answer "Go on anyway"
+at `plan.command`: the check of that command is skipped (an override row `plan-command`); the mod lets it run only as
+the call of that answer. See `docs/flow.md`, "A command the plan wrote".
+
+### `temper plan patch` (9.8.5)
+
+`temper plan patch G1 --cmd 'bash scripts/selftest/run-selftest.sh --fast'` changes one command line of the approved
+plan (`G<n>` a group's Validate, inserted after its Depends line, or after its head, when it has none; `task N` a task's
+Test, which reopens the task when it passed, and is refused before anything is written when that reopen cannot run
+(no worktree, a task it cannot reopen, a commit on the group's branch the CLI did not record, an upstream gate it
+needs); `integration` the Integration line), keeps every other passed task, and spends one repeat.
+`temper plan patch task N --add-file F` adds a file outside the approved set to Task N and to `approved_files` (a name
+with no dot and no slash is written `./F`, so the plan reads it as a file). The static rows of the plan gate run on the
+result first, and a row it newly fails refuses the patch. You give it as your answer to "Change the group's command" at
+the group question, to "Add to plan" at a task blocked on a file no task declares, or to "Change the command" at
+`plan.command` (there, before the approval, it changes the line of the plan, which is checked again).
+
+### `temper plan amend`
+
+`temper plan amend task N --add-file F [--failure ID]` is the amendment by rule: it adds to Task N a file a task of its
+own group declares that precedes Task N or passed, and that task to its Depends line, and nothing else. The CLI writes
+both lines, refuses every other change (see `docs/flow.md`, "A blocked task and the plan amendment"), spends one repeat
+(`task:N`), appends to `.temper/evidence/amendments.json` and reopens the task. The flow calls it by itself when a task
+is blocked on such a file; any caller may, because its whole effect is bounded by the CLI.
+
+### `temper group keep`
+
+`temper group keep` is the first Build action after a replan's approval: it restores the built tasks of the earlier
+plan whose files, Depends and Test did not change, with their group branches (see `docs/flow.md`, "What a replan
+keeps"). It runs once per replan and is a no op otherwise.
+
+### New in 9.7.5
 
 | Command | What it does |
 |---|---|
@@ -813,12 +616,15 @@ which is what lets the loop begin and end without a person starting it.
 | `temper adhoc open --stage S --reason '<why>'` / `temper adhoc close` | The small change window at Build, Review, Check, Commit or Pipeline. |
 | `temper task confirm N --by '<name>'` | The person confirms a manual task (`**Test:** manual`). The name is the one they give, never read from git. |
 | `temper task accept N --reason '<why>'` / `temper task retry N` | The person's answer for a task whose tests pass before any change. |
+| `temper task gate N --model M --no-env` | 9.8.5: the person's answer "It is the code" at a task held on an environment fault: the gate reads the failed GREEN run it has and gives no ENV verdict, so the task fails and its attempt is spent. |
 | `temper group gate G<n> --timeout-s N` | A limit for the group's own runs; a timed out gate offers a rerun at double. |
+| `temper check run --fresh`, `temper group gate G<n> --fresh`, `temper integrate --fresh` | 9.8.5: the person's Run it anyway: the check runs whatever the reuse store keeps for this tree, its row is marked `forced`, and it spends one repeat of the budget. A run that goes on by itself is refused it (`BLOCKED`), and no environment variable stands in for the flag. |
+| `temper evidence add --stage check --criterion AC-NN --claim '<text>' --cmd '<how>' --exit 0 --person` | 9.8.5: the person's Confirmed at the Check question: a row marked `executed_by: person`, the only row a criterion validated by hand (or by `code` or `metric` with no command in backticks) counts from at Check. The CLI takes the flag only with a criterion and exit 0, and refuses it (`BLOCKED`) in a run that goes on by itself with no stop open; only the mod ties it to the person's click. |
 | `temper evidence add --phase note --kind input\|edit --claim '<text>'` | A note the next stage agent reads (`Task N:` and `Group G<n>:` prefixes scope it to Build tasks). |
 | `temper evidence contest --stage S --id N --cite <file>[:<line>\|:<symbol>] --quote '<text>' --reason '<why>'` | 9.7.6: the author answers a finding with evidence the reviewer could read; the CLI checks the file, the line or symbol, and that the quote is there. A comprehension finding is never contested. The finding stays open for the person. |
 | `temper evidence escalate --stage S --id N --reason '<why>'` | 9.7.6: the evidence is outside every file; the person decides. |
 | `temper drift [--run] [--json]` | 9.7.6: each finished spec compared with the tree as it is now (a planned file gone, a scenario test gone, a planned file changed since). `--run` also runs each scenario's `Test:` command and names the ones that fail now (behavior drift). Never a gate. |
 | `temper plan fresh request\|start\|again` | 9.7.6: the fresh review of the plan: the person asks for it (`plan.fresh-review: ask`), the orchestrator marks a launch (only rows recorded after it count), a reviewer that did not finish runs again. |
-| `temper model --all --source` | Each stage's model and whether it comes from a config override or a brief default. |
+| `temper model --all --source` | 9.8.5: every agent's model from the one table of models (`scripts/cli_ctx.py`), and whether it comes from the `config` or the `table`. The table has two columns: `standard`, and `high` for a run of tier complex or of risk H; `plan`, `design` and `rca` are on Opus in both, every other agent and the task agents on Sonnet. The keys, in the order they win: `models.high.<agent>` (when the class is high), `models.<agent>`, for the task agents the old `build.grouped.task-model` and `build.grouped.escalation-model`, then the table. The first planner launch of a run has no risk and no final tier yet, so its class is `standard`: the `high` column decides later launches and every agent after the plan (`models.plan: sonnet` with `models.high.plan: opus` keeps Opus at risk H). `temper model <agent>` prints one. |
 | `temper guards uninstall` | Removes the Temper commit hook and its folder; unsets `core.hooksPath` when it names that folder. |
 | `temper gate commit --from-hook` | The hook's call: it gates a commit on the run's branch only. |

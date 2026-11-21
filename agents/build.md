@@ -14,9 +14,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/build.md` once — the full TDD methodology (RED →
    GREEN → REFACTOR, task execution order). Follow it exactly; nothing here overrides it.
-   When a task calls a framework/library API, apply the `source-driven-development`
-   skill (verify the call against current docs, don't trust trained-in memory) — it's
-   the cheapest place to catch a hallucinated API.
+   Check a framework call against the version the project pins before you write it.
 
 2. **The fix pass.** The prompt has a `Feedback re-entry:` line and names the
    `review-context.json` or `check-context.json` file. Build ran in groups, so every task in
@@ -34,17 +32,24 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    is the evidence. If the fix needs a file of a later group, or a change to the plan, stop and say
    so in your panel; the person decides at the next question.
 
-   **A record pass.** When the prompt has `Record only:` and `Record scenario:` or `Record criterion:` lines, the gate fails
-   only for rows nobody recorded. Write them and change nothing else: for each scenario, find the scoped command that
-   proves it and run `TEMPER evidence run --stage build --scenario '<name>' --claim 'scenario test' -- <command>`; for each
-   criterion, `TEMPER evidence run --stage build --criterion AC-NN --claim '<what it proves>' -- <command>`. A row the CLI
-   ran and that failed is a defect to fix, not to record again. When the gate's row says a scenario test was "not found"
-   (pytest exit 4 or 5), rename the test to the exact name the `Test:` command gives; do not change the plan.
+   **A repair in place.** When the prompt has a `Repair in place:` line, Review or Check found one defect after Build,
+   and you repair it where it was found: fix exactly what the prompt names, in the files of the plan or a test, and
+   nothing else. For a finding whose proof is `test`, write the failing test first and run
+   `TEMPER repair test <id> --phase red -- <command>`, then the code, then the same call with `--phase green`. For a
+   failed row of Check no new failing test is asked: the CLI's failed row is the RED. Commit nothing (the CLI commits
+   with `temper repair commit` and runs the checks again), change no locked acceptance test, and never accept,
+   override or skip. A file outside the plan goes to `TEMPER drift ask` as at Build (step 6), and a later
+   `Drift decision:` line of the prompt applies to the repair as it does at Build. When the CLI refuses that ask, or
+   the fix needs the intent changed, stop and say so.
+
+   **Rows the CLI records.** The CLI runs each scenario's `Test:` command and each criterion's command and records the
+   rows itself (9.8.5); record none. A row it ran that failed is a defect to fix. When the gate's row says a scenario
+   test was "not found" (pytest exit 4 or 5), rename the test to the exact name the `Test:` command gives; do not
+   change the plan.
 
 3. **Cross-repo code search before writing code for a task** (definitions, prior
    art). When any cross-repo code search tool is connected (for example a Sourcegraph
-   MCP), query it; when none is connected, or `tools.mode: heuristic-only`, proceed
-   with local tools. Record the outcome in `build-context.json` as
+   MCP), query it; when none is connected, proceed with local tools. Record the outcome in `build-context.json` as
    `"code_search": {"tool": "{name}", "queries": N}` or
    `{"available": false, "reason": "{why}"}` — the tool's absence never fails a gate,
    a missing record does.
@@ -56,13 +61,14 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    integration passed. Record evidence as you go,
    not as an afterthought:
    ```
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "unit tests" --cmd '<the exact test command>' --exit <code> \
-     --phase red --label HEURISTIC     # after the RED run
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "unit tests" --cmd '<the exact test command>' --exit 0 \
-     --phase green --label PROVEN   # after the GREEN run
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage build \
+     --claim "unit tests" --phase red -- <the exact test command>     # the RED run: the CLI runs it
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence run --stage build \
+     --claim "unit tests" --phase green -- <the exact test command>   # the GREEN run: the CLI runs it
    ```
+   The CLI runs the command and records the exit code it saw. A run you record with `evidence add --exit`
+   is a claim, and no gate counts it (9.8.5); a false pass you recorded is voided with
+   `temper evidence void --stage build --id N --reason '<why>'`.
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
    `$` in it stays text.
    Keep the word `test` in the green row's `--claim` (as in `unit tests`): the build-checkpoint
@@ -74,14 +80,13 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `git commit -m "feat({slug}): {scenario} [AC-NN]"`. Never `git add -A`, never
    `--no-verify`. An infrastructure-only task (no scenario) makes no commit.
 
-6. **A file outside the plan: the person decides first.** The plan's files are the ones in
-   `plan.md`'s Files to Create and Files to Modify tables and on the `**File:**` lines of
-   `tasks.md`; test files and the spec folder are always yours. Before you change any
+6. **A file outside the plan: the person decides first.** The plan's files are the ones on
+   the `**File:**` lines of `tasks.md`; test files and the spec folder are always yours. Before you change any
    other file, stop: do not write it, not even another way. Finish what the task can do
-   without it, leave the task's box unticked, and list the file in the `DRIFT` section of
-   your panel: the path, why the task needs it (what goes wrong without it), and the change
-   you would make, in one row each. The orchestrator asks the person and launches you again
-   with one `Drift decision: {path}: {add|revert|allow-once}` line per answer. `add` and
+   without it, leave the task's box unticked, record each file with
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper drift ask --path {path} --why '{why}' --change '{the change}'`
+   (why: what goes wrong without it) and return. The CLI asks the person and launches you
+   again with one `Drift decision: {path}: {add|revert|allow-once}` line per answer. `add` and
    `allow-once` let you make that change (`allow-once`: one edit, so make it in one);
    `revert` means do the task without that file. Log every file you then wrote outside the
    plan in `build-context.json`'s `unplanned_files` with the person's decision.
@@ -99,13 +104,10 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
   exit codes, which the ledger exists to prevent.
 - `git add` and `git commit` go in two separate tool calls, so the in-agent commit
   gate sees the staged set. Never `git add -A`, never `--no-verify`.
-- A call to a framework API that does not exist is the cheapest defect to prevent.
-  Verify it against current docs (the `source-driven-development` skill) before
-  writing it.
 - Never write `.temper/build-state.json` or anything else the temper CLI owns; deviations
   go in the spec's `build-context.json`.
 - A file outside the plan is never written before the person's `Drift decision:` line
-  allows it. It goes in the `DRIFT` section, with why and what, and the task waits.
+  allows it. It goes to `temper drift ask`, with why and what, and the task waits.
 - A review finding you believe is wrong is not fixed and never accepted by you. Contest it with
   evidence the reviewer could read (`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence contest --stage review
   --id N --cite <file>[:<line>|:<symbol>] --quote '<the text there>' --reason '...'`; the CLI checks the citation), or escalate it
@@ -132,8 +134,6 @@ sections list this launch's commits and the feedback it answered:
 | {file} [{scenario}]                                                      |
 +--- COMMITS (N) ---+------------------------------------------------------+
 | {sha} {scenario} [AC-NN] — {files}                                       |
-+--- DRIFT (N) ---+--------------------------------------------------------+
-| {path} — why: {what goes wrong without it} — change: {what you'd change} |
 +--- FEEDBACK (N) ---+-----------------------------------------------------+
 | #{K} {text} -> applied|declined: {why}                                   |
 +--- BLOCKERS (N) ---+-----------------------------------------------------+

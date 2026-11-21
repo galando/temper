@@ -30,7 +30,9 @@ In the commands below, `<clone>` is the path of your Temper clone. The short for
 
 ## 2. Automated checks
 
-Run these from `<clone>`. None of them sends a request.
+Run these from `<clone>`. None of them sends a request, with one exception: when the mod's types are missing,
+`bash scripts/verify.sh` makes them by one load of the plugin through `claude -p`, which sends one short request
+when Claude Code is signed in.
 
 - [ ] `claude plugin validate --strict .` prints `Validation passed`.
 - [ ] `claude plugin test .` ends with `0 fail`.
@@ -39,7 +41,8 @@ Run these from `<clone>`. None of them sends a request.
   `claude --plugin-dir .` in the clone once and quit: loading the plugin writes them.
 - [ ] `bash scripts/check-mod-calls.sh` prints `OK` and a count of calls, with no process,
   http or env call.
-- [ ] `bash scripts/selftest/test-temper.sh` ends with `FAIL: 0`.
+- [ ] `bash scripts/verify.sh quick` ends with `verify quick: PASS` (and `bash scripts/verify.sh full` with
+  `verify full: PASS` before a push).
 - [ ] `bash scripts/quality-check.sh` ends with `All checks passed.`
 
 ## 3. A test session
@@ -168,12 +171,12 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
 - [ ] **Intent gate.** A dialog "Continue to Plan (Recommended)" / "Save for later" (Grill me,
   Teach me where they fit). Choose Continue: Plan starts.
 - [ ] **Plan gate.** A dialog of four options at most, the rest behind "More options". Choose
-  Continue: Build (or Design, for a medium run with `phases.design: true`) starts.
+  Continue: Build starts (or Design, after you chose `Run Design first` under More options).
 - [ ] **Arming autonomy.** Add `autonomy:` and `  enabled: true` to `.claude/temper.config` and
   start a new run. At the plan gate: a dialog "Stage by stage (Recommended)" / "Autonomous Build: run
   Build unattended" / "Open HTML review" / "More options" (Save for later is there). Choose Autonomous Build: Build
   goes on without asking and nothing is refused; after it, Review asks you as usual. Remove the lines afterwards.
-- [ ] **Design gate** (a medium run with `phases.design: true`). On a failed design check: a dialog
+- [ ] **Design gate** (a run where you chose `Run Design first`). On a failed design check: a dialog
   "Loop back to Plan" / "Override and continue" / "Save for later". Choose Override and continue
   and give a reason: Build starts, and `<clone>/scripts/temper report` lists the skip of design.
 - [ ] **A group gate.** A dialog, header `Build group`: Continue (Recommended) / Change / Stop.
@@ -187,9 +190,9 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   finding" / "Override and continue" / "More options" (Architecture Depth Review, Save for later). Choose Accept a finding, pick the
   finding and a reason: the review check runs again. Choose Loop back to Build with a reason:
   Build runs again, its writes are not refused, and the bar shows Review and Check as to come.
-- [ ] **The loop budget is spent.** Set `loops:` and `  max-per-type: 1` in
-  `.claude/temper.config` and loop back from Review twice. The second time Claude says the
-  budget is spent and asks again with "Override and continue" / "Save for later". Override with
+- [ ] **The budget is spent.** Set `budget:` and `  per-failure: 1` in
+  `.claude/temper.config` and loop back from Review twice. The second time Claude asks the
+  budget question: "Save for later" / "Allow two more" / "Override and continue". Override with
   a reason: Check starts.
 - [ ] **Check FAIL.** A dialog "Loop back to Build" / "Override and continue" / "Save for later".
 - [ ] **Check PASS.** One dialog "Commit (Recommended)" / "Save for later" (and "Review config
@@ -198,7 +201,7 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   in another terminal (the commit gate then wants a design check). A dialog "Override and commit"
   / "Save for later". Choose it and give a reason: the commit is made. Delete the empty
   `design.md` afterwards.
-- [ ] **An autonomous park.** In an armed run, make Review fail twice (the loop budget). Expect
+- [ ] **An autonomous park.** In an armed run, make Review fail three times (the budget). Expect
   the park report, then the dialog of the gate it parked at. Override with a reason: the run goes
   on, nothing is refused.
 - [ ] **Save for later, then go on.** At any gate choose Save for later. With the mod, the bar says
@@ -210,11 +213,10 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   with Add to plan / Revert / Allow once.
 - [ ] **A fix run.** `/temper:fix "first() fails on an empty list"`. With the mod, in every mode:
   no bar for the fix run, `/temper:temper status` says the mod stands aside, nothing is refused,
-  and every gate is a dialog (Proceed to Fix, Continue to Review, the review FAIL options,
-  Commit). Without the mod: the same dialogs.
-- [ ] **A stage command.** After a commit cleared the run, run `/temper:build` on a spec with an
-  approved plan. Expect it to start `/temper` at Build: the same gates as above, and with the
-  mod nothing else is refused.
+  and a clean bug run asks two dialogs: the root cause with its card (Approve and fix), then the
+  commit. Without the mod: the same dialogs.
+- [ ] **A word.** Run `/temper:temper status badge on the order page` with no run active. Expect it
+  to start a run for that feature: a word counts only alone.
 
 ## 5. Modes
 
@@ -245,7 +247,7 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
 
 The plugin must still load on old Claude Code versions and fall back to the prompt based
 phases. For each version below, use a copy of Claude Code at that version, set up apart
-from your own so it stays untouched, and ask it for `/temper:status` from `<clone>` with
+from your own so it stays untouched, and ask it for `/temper:temper status` from `<clone>` with
 the clone loaded (`-p --plugin-dir .`).
 
 | Version | Expect |
@@ -258,10 +260,10 @@ the clone loaded (`-p --plugin-dir .`).
   plugin load error. The message `Temper enforcement is off here (no mods support)` is
   correct and expected when a skill runs.
 - [ ] **Enforcement turned off.** On a version that loads the mod, set Temper enforcement to `off`
-  in `/config`, then run `/temper:status`. Expect the answer to open once with
+  in `/config`, then run `/temper:temper status`. Expect the answer to open once with
   `Temper enforcement is off (turned off by the user)`, not the "no mods support" sentence.
   Set it back to `on`.
-- [ ] **`claude -p` on your version.** Run `claude -p --plugin-dir . "/temper:status"`.
+- [ ] **`claude -p` on your version.** Run `claude -p --plugin-dir . "/temper:temper status"`.
   Expect an answer and no question asked of you.
 
 ## 8. The desktop app

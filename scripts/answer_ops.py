@@ -15,6 +15,9 @@ session started editing spec files of its own accord. Now one call per answer:
     leaves that section;
   - `### Decisions` gains `- {question} -> {answer} (the person, {date})`, the template's row; a placeholder row there
     (`(none yet)`, `none`) goes;
+  - an answer given after tasks.md exists is kept with the hash tasks.md has now, and with whether it is the first choice
+    of its line (scripts/decisions.py): another answer fails the plan gate until tasks.md changes, or the person says the
+    tasks already agree;
   - a question that starts with `Design:` names an area of concern in design.md: the open concern whose title it names
     (the title, as written, is the question or a part of it), else the one open concern that shares the most words with
     it, gets a `resolved: {answer}` line. When none shares enough, or two share as many, nothing is resolved here: the
@@ -27,6 +30,7 @@ import os
 import re
 import sys
 
+import decisions
 import flow
 
 PLACEHOLDER = re.compile(r"^\s*[-*]\s+\(?(none( yet)?|n/?a|tbd)\)?\.?\s*$", re.I)
@@ -39,6 +43,12 @@ def norm(t):
 def question_of(text):
     """The question part of a Blocking line: the text before ` choices:`."""
     return re.split(r"\s+choices:\s*", text, maxsplit=1)[0].strip()
+
+
+def choices_of(text):
+    """The choices of a Blocking line: the text after ` choices:`, or ''."""
+    parts = re.split(r"\s+choices:\s*", text, maxsplit=1)
+    return parts[1].strip() if len(parts) > 1 else ""
 
 
 def write(path, lines):
@@ -60,11 +70,11 @@ def answer_intent(spec, q, answer, day):
             continue
         m = re.match(r"^\s*[-*]\s+(?:\[[ xX]\]\s+)?Blocking:\s*(.+)$", l) if active else None
         if m and want and (norm(question_of(m.group(1))).startswith(want) or want.startswith(norm(question_of(m.group(1)))[:60])):
-            hit = (i, question_of(m.group(1)))
+            hit = (i, question_of(m.group(1)), choices_of(m.group(1)))
             break
     if hit is None:
         return None
-    i, asked = hit
+    i, asked, choices = hit
     del lines[i]
     if 0 < i < len(lines) and not lines[i].strip() and not lines[i - 1].strip():
         del lines[i]   # no double blank line where the question was
@@ -89,7 +99,7 @@ def answer_intent(spec, q, answer, day):
         else:   # an empty section (or one that held only the placeholder): the row, between two blank lines
             lines[dec + 1:end] = ["", row, ""]
     write(path, lines)
-    return asked
+    return asked, choices
 
 
 def resolve_concern(spec, asked, answer):
@@ -127,12 +137,14 @@ def main(argv):
         return 1
     spec, rc = argv[0], 0
     for q, answer in zip(pairs[0::2], pairs[1::2]):
-        asked = answer_intent(spec, q, answer, datetime.date.today().isoformat())
-        if asked is None:
+        hit = answer_intent(spec, q, answer, datetime.date.today().isoformat())
+        if hit is None:
             print("FAIL: no Blocking open question starts with: %s" % q[:80], file=sys.stderr)
             rc = 1
             continue
+        asked, choices = hit
         print("OK: answered: %s" % asked[:80])
+        decisions.record(decisions.project_of(spec), spec, asked, answer, choices)
         if re.match(r"^\s*design:", asked, re.I):
             title = resolve_concern(spec, asked, answer)
             print("OK: resolved in design.md: %s" % title[:80] if title else "Note: no open concern in design.md matched; the Design question resolves it")

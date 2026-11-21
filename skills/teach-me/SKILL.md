@@ -1,13 +1,14 @@
 ---
 name: teach-me
-description: "Comprehension companion — incrementally teach the user every change, confirm mastery before advancing, and quiz to close gaps. Keeps the human engaged across all phases."
+description: "Comprehension companion — incrementally teach the user every change, confirm mastery before advancing, and quiz to close gaps. Keeps the human engaged across all stages."
 ---
 
 # Teach Me
 
 Be a wise and effective teacher. The goal is to make sure the **user deeply understands** what Temper is doing — not just that code got written, but *why* the problem existed, *how* it was solved, and *what* the change impacts.
 
-Do this **incrementally, phase by phase** — not all at once at the end. Before moving past the current phase, confirm the user has mastered it at both levels:
+Do this **incrementally, one stage at a time** — not all at once at the end. Before moving past the current stage,
+confirm the user has mastered it at both levels:
 
 - **High level** — motivation, the problem, why this matters
 - **Low level** — business logic, design decisions, edge cases
@@ -21,7 +22,7 @@ Do this **incrementally, phase by phase** — not all at once at the end. Before
 | Confirms? | No | Finds weaknesses | Confirms mastery before advancing |
 | Quizzes? | No | No | Yes — open-ended + multiple choice |
 | Artifact | none | plan edits | running `comprehension.md` checklist |
-| Scope | Plan / Design | Plan / Design | **All phases** |
+| Scope | Plan / Design | Plan / Design | **All stages** |
 
 ## The Running Comprehension Doc
 
@@ -30,7 +31,8 @@ Keep a single markdown doc with a checklist of everything the user should unders
 (get `spec_path` from `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`; it is always
 a project path, never one in the plugin folder).
 
-It **accumulates across phases** — Plan adds the problem, Build adds the implementation, Check adds the impact. Never reset it between phases; append and tick items off as the user demonstrates mastery.
+It **accumulates across stages** — Plan adds the problem, Build adds the implementation, Check adds the impact. Never
+reset it between stages; append and tick items off as the user demonstrates mastery.
 
 Organize the checklist under three pillars. Understanding the **problem** well is imperative — bias your time toward pillar 1.
 
@@ -54,11 +56,11 @@ Organize the checklist under three pillars. Understanding the **problem** well i
 
 Make sure the user understands **why** — and drill down into more *whys*. Make sure they understand **what** and **how** too.
 
-## What Each Phase Teaches
+## What Each Stage Teaches
 
-Invoked from any stage gate, Teach Me focuses on that phase's artifacts and ticks off the relevant checklist items:
+Invoked from any stage gate, Teach Me focuses on that stage's artifacts and ticks off the relevant checklist items:
 
-| Phase | Source artifacts | Pillars covered |
+| Stage | Source artifacts | Pillars covered |
 |-------|------------------|-----------------|
 | Plan | `intent.md`, `plan.md`, `tasks.md` | 1 (problem, branches) + start of 3 |
 | Design | `design.md` | 2 (decisions, trade-offs, edge cases) |
@@ -69,11 +71,12 @@ Invoked from any stage gate, Teach Me focuses on that phase's artifacts and tick
 
 ### 1. Probe — have the user restate their understanding first
 
-Before teaching anything, find out where the user is. Proactively ask them to restate their current understanding of this phase. Then fill in the gaps from there — do not lecture from scratch.
+Before teaching anything, find out where the user is. Proactively ask them to restate their current understanding of
+this stage. Then fill in the gaps from there — do not lecture from scratch.
 
 ```
 AskUserQuestion:
-  question: "Before I explain — in your own words, what do you think this {phase} is doing and why?"
+  question: "Before I explain — in your own words, what do you think this {stage} is doing and why?"
   options:
     - label: "I'll explain"
       description: "Restate your understanding; I'll fill the gaps."
@@ -94,7 +97,7 @@ For each checklist item the user hasn't yet mastered:
 2. Show the **actual code** when it helps — open the changed file, point at the lines. Use the debugger or run a snippet if a concept is concrete enough to demonstrate.
 3. Connect it back to *why* — every "what" should ladder up to a "why".
 
-Teach one concept at a time. Do not dump the whole phase at once.
+Teach one concept at a time. Do not dump the whole stage at once.
 
 ### 3. Quiz — verify, don't assume
 
@@ -127,25 +130,25 @@ After submission: say whether it was right, explain *why*, and only then tick th
 
 Tick a checklist item only when the user has **demonstrated** understanding (a correct quiz answer or a solid restatement) — not merely heard the explanation. If they miss, re-teach with a different angle (try an `eli` level) and re-quiz.
 
-### 5. Loop until the phase's items are mastered
+### 5. Loop until the stage's items are mastered
 
 Continue the probe → teach → quiz → confirm loop until either:
 
-- Every checklist item for this phase is ticked, OR
+- Every checklist item for this stage is ticked, OR
 - The user selects "Done for now" (the session can resume teaching at the next gate — `comprehension.md` persists).
 
 Offer an exit each round so the user is never trapped:
 
 ```
 AskUserQuestion:
-  question: "Comprehension — {N}/{M} items mastered for {phase}. What next?"
+  question: "Comprehension — {N}/{M} items mastered for {stage}. What next?"
   options:
     - label: "Keep teaching"
       description: "Continue to the next concept."
     - label: "Quiz me harder"
       description: "Skip ahead to a tougher check."
     - label: "Done for now"
-      description: "Return to the {phase} gate; resume teaching later."
+      description: "Return to the {stage} gate; resume teaching later."
   multiSelect: false
 ```
 
@@ -154,20 +157,24 @@ AskUserQuestion:
 When the loop ends, update `comprehension.md` and show:
 
 ```
-TEACH ME — {phase} Summary
+TEACH ME — {stage} Summary
   Concepts taught:   {N}
-  Items mastered:    {N}/{M}  (cumulative across phases: {X}/{Y})
+  Items mastered:    {N}/{M}  (cumulative across stages: {X}/{Y})
   Still open:        {list of unticked items}
   Comprehension doc: {spec_path}/comprehension.md
-  Returning to {phase} gate...
+  Returning to {stage} gate...
 ```
 
 ## /goal
 
-The teaching for a phase is not complete until the user has **demonstrated** — by restating or by answering a quiz — that they understand every checklist item for that phase. Across the whole feature, aim to leave `comprehension.md` fully ticked by the time the change is committed. Understanding is the deliverable.
+The teaching for a stage is not complete until the user has **demonstrated** — by restating or by answering a quiz —
+that they understand every checklist item for that stage. Across the whole feature, aim to leave `comprehension.md`
+fully ticked by the time the change is committed. Understanding is the deliverable.
 
 ## Integration with Temper
 
 This skill is invoked from the teaching stage gates in the `/temper` unified command (Plan, Design, Build, Check) when the user selects "Teach Me" — always available, no config toggle. Review is intentionally excluded: its substance is already taught at Build, and its findings are usually minor or auto-fixed.
 
-The orchestrator passes the current phase and its artifacts. The skill reads/updates the spec's `comprehension.md` in the project, runs the teaching loop, then returns the user to the original stage gate. The phase's recommended action (e.g. "Continue to Build") is unchanged — Teach Me adds understanding, it does not advance or block the pipeline.
+The orchestrator passes the current stage and its artifacts. The skill reads/updates the spec's `comprehension.md` in
+the project, runs the teaching loop, then returns the user to the original stage gate. The stage's recommended action
+(e.g. "Continue to Build") is unchanged — Teach Me adds understanding, it does not advance or block the pipeline.

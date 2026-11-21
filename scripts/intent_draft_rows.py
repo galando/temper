@@ -25,7 +25,7 @@ if status != 'draft':
         # row; these rows say why they skipped instead of printing Python's None.
         d = ("skipped: no recognized Status header (draft, accepted or completed); this check "
              "applies to drafts only, and the status header requirement reports the missing header")
-    for name in ('task context recorded', 'criteria why', 'target users action chain',
+    for name in ('task context recorded', 'criteria why',
                  'criteria ids', 'criteria priority', 'criteria validate',
                  'open questions labeled', 'no duplicate question', 'header fields',
                  'no scenarios in draft', 'no soft words'):
@@ -100,22 +100,19 @@ add('criteria priority', not no_prio,
     else 'no [required]/[optional] on first line of: ' + ' | '.join(no_prio))
 
 bad_v = [label(c) for c in crits if not c['has_validate'] or c['vtype'] not in A.VALIDATE_TYPES]
-add('criteria validate', not bad_v,
-    'every criterion has a Validate: type' if not bad_v
-    else 'missing/unknown Validate: type on: ' + ' | '.join(bad_v))
+# WP27: the CLI runs a code or metric criterion's command, so the Validate line carries one in backticks
+no_cmd = [label(c) for c in crits if c['has_validate'] and c['vtype'] in ('code', 'metric') and not c.get('vcmd')
+          and not c.get('deferred')]
+add('criteria validate', not bad_v and not no_cmd,
+    'every criterion has a Validate: type' if not bad_v and not no_cmd
+    else ' | '.join((['missing/unknown Validate: type on: ' + ' | '.join(bad_v)] if bad_v else []) + (
+        ['no command on: %s: write the command that exits 0 when the criterion holds in backticks on the Validate '
+         'line, or use manual' % ' | '.join(no_cmd)] if no_cmd else [])))
 
 no_why = [label(c) for c in crits if not c['why']]
 add('criteria why', not no_why,
     'every criterion states the outcome or risk it serves' if not no_why
     else 'no Why: line with real text on: ' + ' | '.join(no_why))
-
-# --- target users action chain --------------------------------------------
-tusers = bullets_with_blocks(sec('Target Users'))
-bad_u = [' '.join(b['block'])[:60] for b in tusers
-         if not any(('→' in l or '->' in l) for l in b['block'])]
-add('target users action chain', not bad_u,
-    'every Target Users bullet is an action chain (user: does -> next)' if not bad_u
-    else 'no action chain (→ or ->) on: ' + ' | '.join(bad_u))
 
 # --- open questions --------------------------------------------------------
 def norm_q(text):
@@ -168,8 +165,12 @@ add('header fields', not missing_h,
 
 # --- no scenarios in draft -------------------------------------------------
 scen = A.scenario_lines(lines)
-add('no scenarios in draft', not scen,
+# 9.8.5 (WP13): a draft beside tasks.md holds the scenarios Plan wrote (the run left Intent by rule, and the person
+# accepts the intent with the plan): the gate computed again, by a door or a step back, passes them.
+planned = os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(sys.argv[2])), 'tasks.md'))
+add('no scenarios in draft', not scen or planned,
     'no Scenario: lines — Plan writes the scenarios' if not scen
+    else 'Scenario: lines written by Plan (tasks.md is beside the intent)' if planned
     else 'Scenario: line(s) at ' + ' | '.join(str(n) for _, n in scen))
 
 # --- no soft words ---------------------------------------------------------

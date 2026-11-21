@@ -1,6 +1,6 @@
 # ADR-0002: Nested Subagent Support
 
-**Status:** Proposed
+**Status:** Rejected (never built)
 **Date:** 2026-06-09
 **Supersedes:** (none)
 

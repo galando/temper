@@ -3,8 +3,14 @@
   python3 gate_rows.py intent-blocking INTENT.md   the row for a Blocking question left open in a draft intent
   python3 gate_rows.py intent-rules INTENT.md      the row for the rules checklist (### Rules covered) of a draft intent
   python3 gate_rows.py plan-rows SPEC_DIR PROJECT  the rows added to the plan gate (scenario test commands, the request's
-                                                   routes kept)
-  python3 gate_rows.py build-rows SPEC_DIR EVIDENCE.json  the rows added to the build gate (criteria validated)
+                                                   routes kept, tasks agree with decisions)
+  python3 gate_rows.py build-rows SPEC_DIR EVIDENCE.json [KEY]  the rows added to the build gate (criteria validated;
+                                                   WP23: the acceptance tests and coverage the checks when Build ends
+                                                   recorded; in a fix run tests pass and the regression proof)
+  python3 gate_rows.py check-rows LEDGER BASELINE [KEY]  the row coverage of the check gate (WP19): the coverage rule of
+                                                   check_run.py on the ledger's latest coverage row, the baseline and
+                                                   check.coverage-threshold when the project's config holds it; then the
+                                                   acceptance tests and a fix's regression proof (WP23)
 
 They live here so scripts/temper stays under the directory's 256 KiB limit. Standard library only.
 """
@@ -14,14 +20,115 @@ import re
 import sys
 
 import acceptance
+import decisions
 import intent_parse
 import tasks_md
 import maven_loop
 import plan_ops
+import runs
 
 
 def row(name, ok, detail):
+    """A gate row; ok None is the third state (WP19): not measured, which fails nothing and is never read as passed."""
+    if ok is None:
+        return {"name": name, "pass": None, "state": "not measured", "detail": "not measured: %s" % detail}
     return {"name": name, "pass": ok, "detail": detail}
+
+
+def ledger_rows(ledger):
+    try:
+        return [x for x in json.load(open(ledger, encoding="utf-8")) if isinstance(x, dict)]
+    except (OSError, ValueError, TypeError):
+        return []
+
+
+def check_rows(ledger, baseline, key):
+    """The row coverage, judged again here with the config and the baseline as they are now: the ledger's latest coverage
+    row (the CLI's, with what it measured, or a recorded value) is the measure."""
+    import check_run
+    rows = ledger_rows(ledger)
+    hits = [x for x in rows if not x.get("scenario") and re.search("coverage", str(x.get("claim") or ""), re.I)
+            and (x.get("value") is not None or x.get("state"))]
+    last = hits[-1] if hits else {}
+    measure = {"total": last.get("value"), "command": last.get("command", True), "exit": last.get("cov_exit"),
+               "hint": last.get("hint") or "", "note": last.get("note") or ("" if last else "no coverage was recorded")}
+    base, why = check_run.base_value(baseline)
+    v = check_run.coverage_verdict(measure, base, last.get("changed"), key or None, why)
+    return row("coverage", {"pass": True, "fail": False}.get(v["state"]), v["why"])
+
+
+def one_line(x, n=300):
+    return " ".join(str(x or "").split())[:n]
+
+
+def acceptance_row(rows):
+    """The row `acceptance tests written before Build`, from the ledger's latest acceptance row (the checks when Build
+    ends write it at Build, Check at Check: one name, so the flow's matchers serve both stages); None with none."""
+    hits = [x for x in rows if re.match(r"acceptance \(written before Build\)", str(x.get("claim") or ""))]
+    if not hits:
+        return None
+    ran = [x for x in hits if runs.counts(x)]   # rule 5 (ADR 0024): a row an agent wrote, or a void one, counts nowhere
+    if not ran:
+        return row("acceptance tests written before Build", False, "no run of the acceptance tests the CLI made: a row "
+                   "written with evidence add counts nowhere")
+    last, claim = ran[-1], str(ran[-1].get("claim") or "")
+    if last.get("exit_code") != 0:
+        return row("acceptance tests written before Build", False, one_line(last.get("output")))
+    ok = "they pass, unchanged since they were locked"
+    if ", corrected after the lock: " in claim:
+        ok = "they pass, as the person corrected them after the lock (%s)" % claim.split(", corrected after the lock: ", 1)[1]
+    if claim.endswith("skipped"):
+        ok = "skipped: %s" % one_line(last.get("output"))
+    return row("acceptance tests written before Build", True, ok)
+
+
+def regression_row(rows):
+    """A fix's regression proof (WP23): only a row the CLI ran counts; a proof an agent or a person wrote fails the row.
+    None when no proof row was written at all."""
+    hits = [x for x in rows if x.get("claim") == "regression proof"]
+    if not hits:
+        return None
+    cli = [x for x in hits if x.get("executed_by") == "cli" and not x.get("voided")]
+    if not cli:
+        return row("regression proof", False, "no regression proof the CLI ran: a proof row written with evidence add counts nowhere")
+    return row("regression proof", cli[-1].get("exit_code") == 0, one_line(cli[-1].get("output")))
+
+
+def fix_run():
+    try:
+        return json.load(open(os.path.join(".temper", "build-state.json"))).get("command") == "fix"
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def build_rows(spec, ledger, key):
+    """The rows the Build gate adds (WP23): criteria validated; from the checks when Build ends, the acceptance tests and
+    coverage with the names Check uses; in a fix run, the suite (`tests pass`) and the regression proof."""
+    out = []
+    if spec and os.path.isfile(os.path.join(spec, "intent.md")):
+        out.append(build_criteria(spec, ledger))
+    rows = ledger_rows(ledger)
+    acc = acceptance_row(rows)
+    if acc:
+        out.append(acc)
+    if any(x.get("claim") == "coverage" and x.get("state") for x in rows):
+        out.append(check_rows(ledger, os.path.join(".temper", "evidence", "baseline.json"), key))
+    if fix_run():
+        suite = [x for x in rows if x.get("claim") == "Integration suite"]
+        ran = [x for x in suite if runs.counts(x)]   # rule 5: only a run of the suite the CLI made (integrate) counts
+        if suite and not ran:
+            out.append(row("tests pass", False, "no run of the suite the CLI made: a row written with evidence add counts "
+                           "nowhere"))
+        elif ran:
+            s = ran[-1]
+            out.append({"name": "tests pass", "pass": None, "state": "skipped", "detail": "skipped: the base's failures, which "
+                        "you went on from"} if s.get("state") == "skipped" else
+                       row("tests pass", s.get("exit_code") == 0, "the suite (%s) exited %s" % (one_line(s.get("cmd"), 160),
+                                                                                       s.get("exit_code"))))
+        reg = regression_row(rows)
+        if reg:
+            out.append(reg)
+    return out
 
 
 def intent_blocking(path):
@@ -133,7 +240,21 @@ def plan_scenario_commands(spec, project):
     return row(name, True, "%d scenario(s), each with a Test: command" % len(blocks))
 
 
-def plan_maven_verify(spec):
+def pom_binds_jacoco(project, cmd):
+    """9.8.5: the pom of the folder a Maven command runs in binds JaCoCo's check goal, so `mvn verify` runs it with no
+    profile or flag (a project like the measured one names no jacoco on the command line)."""
+    for part in maven_loop.maven_parts(cmd or ""):
+        rel = os.path.join(part["dir"], "pom.xml") if part["dir"] else "pom.xml"
+        try:
+            pom = open(os.path.join(project or ".", rel), encoding="utf-8").read()
+        except OSError:
+            continue
+        if "jacoco" in pom.lower() and re.search(r"<goal>\s*check\s*</goal>", pom):
+            return True
+    return False
+
+
+def plan_maven_verify(spec, project=None):
     """A Maven group (a task or the group's Validate runs mvn, mvnd or mvnw, or a task declares a pom.xml) validates with
     `mvn verify` and JaCoCo on, once, at the group gate. The row names each Maven group that breaks the rule."""
     name = "maven group verify"
@@ -141,18 +262,61 @@ def plan_maven_verify(spec):
     bad, maven = [], 0
     for g in plan["groups"]:
         tasks = [t for t in plan["tasks"] if t["group"] == g["id"]]
-        if not (maven_loop.is_maven(g["validate"]) or any(maven_loop.is_maven(t["test"]) for t in tasks)
+        if not (maven_loop.maven_parts(g["validate"]) or any(maven_loop.is_maven(t["test"]) for t in tasks)
                 or any(f.endswith("pom.xml") for t in tasks for f in t["files"])):
             continue
         maven += 1
         v = g["validate"]
-        if not (maven_loop.is_maven(v) and re.search(r"\bverify\b", v) and "jacoco" in v.lower()):
+        on = "jacoco" in v.lower().replace("jacoco.skip=true", "") or ("jacoco.skip=true" not in v.lower() and pom_binds_jacoco(project, v))
+        if not (maven_loop.maven_parts(v) and re.search(r"\bverify\b", v) and on):
             bad.append(g["id"])
     if not maven:
         return row(name, True, "skipped: no Maven group")
     if bad:
         return row(name, False, "%s: a Maven group validates with `mvn verify` and JaCoCo on (for example `mvn verify -Pjacoco`), once, at the group gate" % ", ".join(bad))
     return row(name, True, "%d Maven group(s) validate with mvn verify and JaCoCo" % maven)
+
+
+def plan_maven_filtered(spec, project):
+    """A `verify` filtered by -Dtest= or -Dit.test= under a JaCoCo BUNDLE rule fails the rule: say so before the run."""
+    name = "maven filtered verify"
+    plan = tasks_md.parse(os.path.join(spec, "tasks.md"))
+    cmds = [("%s Validate" % g["id"], g["validate"]) for g in plan["groups"]]
+    cmds += [("%s Task %s Test" % (t["group"], t["n"]), t["test"]) for t in plan["tasks"]]
+    cmds.append(("Integration", plan.get("integration") or ""))
+    try:
+        lines = open(os.path.join(spec, "intent.md"), encoding="utf-8").read().splitlines()
+    except OSError:
+        lines = []
+    cmds += [('Scenario "%s" Test' % b["name"], b["cmd"]) for b in acceptance.scenario_blocks(lines)]
+    seen, bad = 0, []
+    for label, cmd in cmds:
+        for part in maven_loop.maven_parts(cmd or ""):
+            seen += 1
+            args = part["args"]
+            if "verify" not in args or "-Djacoco.skip=true" in args or not any(a.startswith(("-Dtest=", "-Dit.test=")) for a in args):
+                continue
+            rel = os.path.join(part["dir"], "pom.xml") if part["dir"] else "pom.xml"
+            try:
+                pom = open(os.path.join(project, rel), encoding="utf-8").read()
+            except OSError:
+                continue
+            if not (re.search(r"<goal>\s*check\s*</goal>", pom) and "jacoco" in pom.lower()):
+                continue
+            rules = re.findall(r"<rule>(.*?)</rule>", pom, re.S)
+            if any("<element>" not in r or re.search(r"<element>\s*BUNDLE\s*</element>", r) for r in rules):
+                bad.append("%s: %s has a JaCoCo BUNDLE rule, and a filtered verify covers only part of the bundle" % (label, rel))
+    if not seen:
+        return row(name, True, "skipped: no Maven command")
+    if bad:
+        # 9.8.5: a group's Validate must be `mvn verify` with JaCoCo on (the maven group verify row), so its fix is to drop
+        # the filter; a filtered run belongs in a task's Test (an end to end replay followed the old advice into that row)
+        validate = any(" Validate: " in b for b in bad)
+        how = ("For a group's Validate, drop the filter: `mvn verify` runs the whole module with JaCoCo on, as the maven group "
+               "verify row asks. A filtered run belongs in a task's Test: there, run `test` instead of `verify`, or add "
+               "-Djacoco.skip=true" if validate else "Run `test` instead of `verify`, or add -Djacoco.skip=true")
+        return row(name, False, "; ".join(bad) + ". " + how)
+    return row(name, True, "no filtered verify under a JaCoCo bundle rule")
 
 
 def build_criteria(spec, evidence):
@@ -181,7 +345,7 @@ def pipeline_gate(spec):
                         "every job passed" if status == "green" else "%d job(s) failed: %s" % (len(failed), ", ".join(failed[:5]) or "see pipeline-context.json")))
         if status == "red":
             rows.append(fix_paths_row(ctx.get("fix")))
-    return "%s %d" % (json.dumps(rows), 1 if all(r["pass"] for r in rows) else 0)
+    return "%s %d" % (json.dumps(rows), 0 if any(r["pass"] is False for r in rows) else 1)
 
 
 def fix_paths_row(fix):
@@ -269,14 +433,23 @@ def main(argv):
         return 0 if argv[3] in names else 1
     if len(argv) in (4, 5) and argv[1] == "plan-rows":
         print(json.dumps(plan_scenario_commands(argv[2], argv[3])))
-        print(json.dumps(plan_maven_verify(argv[2])))
+        print(json.dumps(plan_maven_verify(argv[2], argv[3])))
         print(json.dumps(plan_request_routes(argv[2], argv[3])))
         if os.path.isfile(os.path.join(argv[2], "plan.md")):   # a run with no plan.md (the trivial path) has no map to review
             print(json.dumps(plan_ops.gate_row(argv[2], argv[4] if len(argv) == 5 else "auto")))
+        print(json.dumps(decisions.row(argv[3], argv[2])))   # WP14: the answers reach tasks.md before the approval
+        print(json.dumps(plan_maven_filtered(argv[2], argv[3])))
         return 0
-    if len(argv) == 4 and argv[1] == "build-rows":
-        if os.path.isfile(os.path.join(argv[2], "intent.md")):
-            print(json.dumps(build_criteria(argv[2], argv[3])))
+    if len(argv) in (4, 5) and argv[1] == "build-rows":
+        for r in build_rows(argv[2], argv[3], argv[4] if len(argv) == 5 else ""):
+            print(json.dumps(r))
+        return 0
+    if len(argv) in (4, 5) and argv[1] == "check-rows":
+        print(json.dumps(check_rows(argv[2], argv[3], argv[4] if len(argv) == 5 else "")))
+        rows = ledger_rows(argv[2])
+        for r in (acceptance_row(rows), regression_row(rows) if fix_run() else None):   # WP23: moved out of scripts/temper
+            if r:
+                print(json.dumps(r))
         return 0
     if len(argv) == 3 and argv[1] == "intent-rules":
         print(json.dumps(intent_rules(argv[2])))

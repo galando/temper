@@ -9,9 +9,8 @@ Temper's prompts are context you pay for on every run, and so are the `CLAUDE.md
 and packs it touches in your project. This page is what Temper does about that, and what
 you should do in the projects you run it on.
 
-The reference point is Anthropic's
-[new rules of context engineering for Claude 5 generation models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
-(July 2026), which reports removing over 80% of Claude Code's own system prompt with no
+The reference point is Anthropic's post on the new rules of context engineering for Claude 5 generation models, on
+the Claude blog (July 2026), which reports removing over 80% of Claude Code's own system prompt with no
 measurable loss on coding evals. The six shifts it names — rules to judgment, examples to
 better tool interfaces, everything-upfront to progressive disclosure, repeated
 instructions to tool descriptions, manual memory to auto-memory, simple specs to rich
@@ -30,7 +29,7 @@ gate first, but it also can't tell you when the file as a whole has grown past u
 
 **Outcome briefs, not choreography.** v8 rewrote the prompt surface to state what a stage
 must produce and the handful of rules a strong model would not derive on its own —
-`reference/plan.md` went from 1,086 lines to 224 this way. A
+`reference/plan.md` went from 1,086 lines to a few hundred this way (367 at 9.8.5, counted with `wc -l`). A
 [controlled A/B on Opus 5](evidence/opus5-plan-prompt-ab.md) put the saving at 48% of the
 cost per Plan run with equal blast-radius recall. Hard rules survive where a gate
 mechanically checks them, and nowhere else.
@@ -38,20 +37,19 @@ mechanically checks them, and nowhere else.
 **Briefs are self-contained; orchestrators relay.** Every stage runs as an isolated
 Agent subprocess launched from its own small brief in `agents/`, and (v9.1) the brief
 carries everything the subprocess needs — including the summary box it returns — so a
-clean context never reads the orchestrator file (about 10 KB since 9.7.0) to fetch an 8-line template. The
+clean context never reads the orchestrator file (15,601 bytes at 9.8.5) to fetch an 8-line template. The
 orchestrator prints the returned box verbatim rather than restating formats, and
 `commands/fix.md` launches its stages through the same briefs instead of inlining its
 own copies of their prompts (22.9KB → 7.1KB in v9.1).
 
-**Features you turn on load only when on.** Since 9.7.0 the temper CLI computes an armed run's moves
-(`temper next`), so no page about autonomy is read during a run; `reference/autonomy.md` explains
+**Features you turn on load only when on.** Since 9.7.0 the temper CLI computes the moves of a run that goes on by
+itself (`temper next`), so no page about autonomy is read during a run; `reference/autonomy.md` explains
 them to people. The same shift
 dieted `reference/review.md` from 19.6KB to 13.6KB: what survived is policy a reviewer
 would not derive alone (severity floors, filter bypasses, memory thresholds); what left
 was choreography.
 
-**The stage commands are doors into `/temper`.** Since 9.7.0 `/temper:plan` through
-`/temper:check` start or take up a `/temper` run at their stage, so every stage runs in
+**Every stage runs in a `/temper:temper` run.** Every stage runs in
 the same clean subprocess, from the same stage brief, and only the summary box and the
 gate verdict return to your session. (The `stages.subprocess` key of earlier versions
 does nothing any more.)
@@ -62,7 +60,7 @@ second copy to drift; instead the prompts quote the gate function or point at it
 for model selection: `temper model --all` resolves it, so no stage prompt has to reason
 about which model it should be.
 
-**Packs declare their phases.** A pack's `rules.md` opens with frontmatter naming the
+**Packs declare their stages.** A pack's `rules.md` opens with frontmatter naming the
 stages it applies to:
 
 ```yaml
@@ -74,7 +72,7 @@ phases: [build, review, check]
 `all` (or an absent block, for third-party packs) means every stage. `[]` means no stage
 loads it — `packs/guardrails/rules.md` uses this, because it documents bash hooks that enforce
 themselves at edit- and commit-time and has nothing a stage agent can act on. Declaring
-phases is the cheapest progressive-disclosure win available to a pack author: rules only
+stages is the cheapest progressive-disclosure win available to a pack author: rules only
 reach the stages that can use them.
 
 **No generated advice blocks in `CLAUDE.md`.** Temper's own `.claude/CLAUDE.md` used to
