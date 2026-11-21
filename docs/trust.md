@@ -148,7 +148,8 @@ run's branch after the approval off the branch checked out, and a base for the d
 id of a commit of the history of HEAD. A group fix the CLI commits never holds a change of the config, a git hook,
 a sensitive path, a manifest or a CI file: such a fix is not committed, and the group's question asks you.
 Outside a run that goes on by itself, these calls pass when typed: that you, not the model, typed a plan patch, a
-budget grant, `state clear` or `guards uninstall` only the mod holds.
+budget grant, `state clear` or `guards uninstall` only the mod holds. Before the approval the classic hook refuses a
+write of a decision record under `docs/decisions/` as of any project file: Design writes the record into `design.md`.
 
 **What only the mod holds.** The rules of a run hold in the CLI or in the commit hook with the mod off, within the
 limits this page names, but one: that a person, not the model, picked an option. With the mod off, nothing but the

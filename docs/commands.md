@@ -123,7 +123,7 @@ Once the run moves on, the answer is spent.
 | Stage | Writes allowed |
 |---|---|
 | Intent | `intent.md` only |
-| Plan, Design | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records |
+| Plan, Design | `intent.md`, `plan.md`, `tasks.md` and `design.md` (a decision record goes into `design.md`) |
 | Build | The files in the plan, test files and the spec folder |
 | Review | The spec folder only |
 | Check | The spec folder only |

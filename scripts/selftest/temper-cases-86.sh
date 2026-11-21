@@ -79,6 +79,14 @@ assert_eq "review 6: budget an unattended run with no failure and no question op
   "refused|autonomous|limits 2/6 -> 2/6" \
   "$([[ $_r6_grant -ne 0 ]] && echo refused || echo granted)|$("$TEMPER" state get run_mode 2>/dev/null)|limits $_r6_before -> $(_r6_lim)"
 
+# --- review 6: rule 1 before the approval, a decision record is a project file ---
+# Rule 1: before the approval a run writes only its spec folder and Temper's own run files. The classic hook that holds it
+# with the mod off (hold_before_approval.py) lets a write of docs/decisions/*.md through at Plan and Design, as the mod's
+# stage rule does; docs/trust.md says the hook refuses a write of any path of the project outside .temper/.
+fresh; _repo86; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+assert_eq "review 6: rule 1 at Plan, before the approval, the hook refuses a write of a project file outside .temper, a decision record too" \
+  "src=deny|decision=deny" "src=$(_hold86 Write "$PWD/src/new.sh")|decision=$(_hold86 Write "$PWD/docs/decisions/0001-a-choice.md")"
+
 # --- review 6: rule 8, a finding is resolved only by the CLI; a ledger cleared by a session resolves nothing ---
 # `temper evidence clear --stage S` empties a stage's ledger with no check of stage, mode or open finding, and no question
 # of the flow offers it: only the mod refuses it (rules.ts personOnly, "clearing a ledger ... is the person's"), and
