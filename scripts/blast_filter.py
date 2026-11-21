@@ -5,7 +5,8 @@
 
 Temper's own files never count as outside the declared files, nor toward autonomy.max-blast-radius: the project's
 .claude/temper.config, the .claude/settings.json that the word init may write (matched by its path only, never opened),
-.temper/ and .claude/worktrees/. Test and build output does not count either: coverage data, htmlcov/, .pytest_cache/,
+.temper/, .claude/worktrees/ and the copy the one time config question keeps (.claude/temper.config.before-<version>,
+WP32). Test and build output does not count either: coverage data, htmlcov/, .pytest_cache/,
 __pycache__/, *.pyc, .nyc_output/, JaCoCo and surefire output, the mypy and ruff caches. A real source file named like one
 (coverage.py) counts. Standard library only.
 """
@@ -15,7 +16,7 @@ import subprocess
 import sys
 
 OWN = {".claude/temper.config", ".claude/settings.json"}
-OWN_PREFIX = (".temper/", ".claude/worktrees/")
+OWN_PREFIX = (".temper/", ".claude/worktrees/", ".claude/temper.config.before-")
 OUTPUT_SEGMENTS = {"htmlcov", ".pytest_cache", "__pycache__", ".nyc_output", ".mypy_cache", ".ruff_cache"}
 OUTPUT_NAME = re.compile(r"^(\.coverage(\..*)?|coverage\.xml|coverage\.json|\.coverage-.*|jacoco.*\.exec|.*\.pyc)$")
 OUTPUT_PATH = re.compile(r"(^|/)target/(site/jacoco[^/]*|surefire-reports|jacoco[^/]*|failsafe-reports)(/|$)")

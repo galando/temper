@@ -140,3 +140,36 @@ printf 'check:\n  coverage-threshold: 80\n' >> .claude/temper.config
 "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
 assert_eq "review 8, lane: a new project whose config config init wrote is never asked config.tidy, also with a value an old template shipped" \
   "None" "$(nx "(d.get('ask') or {}).get('id')")"
+
+# --- review 8, D62: the copy Remove them keeps is Temper's own file, not a change outside the plan ---
+# Remove them writes .claude/temper.config.before-9.8.5. scripts/blast_filter.py counts it as a project file, so the
+# commit gate's blast radius row fails "changed outside declared files: .claude/temper.config.before-9.8.5" in the first
+# run after the upgrade, and in every later run while the copy is there: a commit question the run never needed.
+_clean88; _git88; mkdir -p .claude src; _tpl88 7c7a1c1 > .claude/temper.config; printf 'echo a\n' > src/a.sh
+git add -A; git commit -q -m init
+"$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+"$TEMPER" config tidy --apply >/dev/null 2>&1 || true
+mkdir -p .temper/specs/pw
+cat > .temper/specs/pw/tasks.md <<'EOF'
+# Tasks: Password reset by email
+
+**Integration:** `true`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** `true`
+**Context:**
+The one group.
+
+### Task 1: change a
+**File:** `src/a.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- a changes
+- [x] done
+EOF
+printf 'echo b\n' > src/a.sh
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+assert_eq "review 8: the copy the one time question keeps is no change outside the plan: the blast radius row of the commit gate passes" \
+  "copy=yes|blast radius=True" "copy=$([[ -f .claude/temper.config.before-9.8.5 ]] && echo yes || echo no)|blast radius=$(_row88 commit "blast radius")"
