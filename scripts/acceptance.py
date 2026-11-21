@@ -306,8 +306,7 @@ def build_report(intent_path, ev_path):
     real = [c for c in parse_criteria(section_lines(lines, "Success Criteria")) if not c.get("placeholder") and c.get("id")]
     blocks = scenario_blocks(lines)
     rows = [r for r in load_evidence(ev_path) if isinstance(r, dict)]
-    cli_rows = ran_by(rows, "cli")
-    by_scenario = latest_by_key(cli_rows, "scenario")
+    by_scenario = scenario_runs(rows, blocks)   # rule 5: of a scenario's own Test: command, as Check reads them
     out, failed = [], 0
     for c in real:
         cid, vtype = c["id"], c.get("vtype")

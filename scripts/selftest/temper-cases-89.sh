@@ -180,3 +180,19 @@ assert_eq "round 2 reviewer 2: the acceptance tests a rule skipped after the app
   "mode=interactive|rule's move=work:acceptance skip|skipped=yes|listed=yes" \
   "mode=$("$TEMPER" state get run_mode 2>/dev/null)|rule's move=$_r2r2_f_next|skipped=$(python3 -c 'import json; print("yes" if json.load(open(".temper/evidence/acceptance-lock.json")).get("skipped") else "no")' 2>/dev/null)|listed=$_r2r2_f_listed"
 
+# --- rule 5 (fix 2b8953d): the Build gate's criteria row still takes a run of another command under a scenario's name ---
+# 2b8953d made Check (acceptance.scenario_runs) take, for a scenario with a Test: line, only runs of that command. The Build
+# gate's row `criteria validated` (acceptance.build_report) still takes the latest row the CLI ran under the scenario's
+# name: after the CLI's run of scenario first's own Test: (`false`) failed, `evidence run --stage build --scenario first
+# -- true` passes the row.
+fresh; _r2r2_repo; sed -i '0,/  Test: true/s//  Test: false/' .temper/specs/demo/intent.md
+gpass intent plan; _at build
+"$TEMPER" evidence run --stage build --scenario first --claim 'scenario: first' -- false >/dev/null 2>&1
+"$TEMPER" evidence run --stage build --scenario second --claim 'scenario: second' -- true >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+_r2r2_g_before="$(_r2r2_brow 'criteria validated')"
+"$TEMPER" evidence run --stage build --scenario first --claim 'scenario: first' -- true >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+assert_eq "round 2 reviewer 2: the Build gate's criteria row is not passed by a run of another command under the name of a scenario whose Test failed" \
+  "before=False|after=False" \
+  "before=$_r2r2_g_before|after=$(_r2r2_brow 'criteria validated')"
