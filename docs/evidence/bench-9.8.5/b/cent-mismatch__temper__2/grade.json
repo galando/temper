@@ -1,0 +1,67 @@
+{
+  "task": "cent-mismatch",
+  "arm": "temper",
+  "rep": 2,
+  "hidden_pass": 4,
+  "hidden_total": 4,
+  "hidden_rate": 1.0,
+  "hidden_all": true,
+  "hidden": {
+    "bench_hidden.test_acceptance.Mismatch.test_app_keeps_per_line_tax": "pass",
+    "bench_hidden.test_acceptance.Mismatch.test_credit_note_matches_app": "pass",
+    "bench_hidden.test_acceptance.Mismatch.test_export_matches_app": "pass",
+    "bench_hidden.test_acceptance.Mismatch.test_payment_matches_app": "pass"
+  },
+  "suite_ok": true,
+  "suite": {
+    "bench_suite.test_invoices.InvoiceTest.test_credit_note_full_amount": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_export": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_idempotent_replay": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_issue_sets_dates_in_tenant_timezone": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_other_tenant_is_404": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_pay_in_full": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_tax_per_line_half_even": "pass",
+    "bench_suite.test_invoices.InvoiceTest.test_viewer_cannot_write": "pass"
+  },
+  "code_files": 2,
+  "code_lines": 42,
+  "tool_files": 5,
+  "outside_expected": [],
+  "files": [
+    {
+      "path": ".claude/temper.config",
+      "added": 21,
+      "removed": 0
+    },
+    {
+      "path": ".temper/lessons.md",
+      "added": 8,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/support-ticket-from-acme-tax/gate-ledger.json",
+      "added": 189,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/support-ticket-from-acme-tax/rca.md",
+      "added": 27,
+      "removed": 0
+    },
+    {
+      "path": ".temper/specs/support-ticket-from-acme-tax/report.html",
+      "added": 13,
+      "removed": 0
+    },
+    {
+      "path": "ledger/amounts.py",
+      "added": 5,
+      "removed": 8
+    },
+    {
+      "path": "unit/test_money_paths_agree.py",
+      "added": 29,
+      "removed": 0
+    }
+  ]
+}
