@@ -72,13 +72,14 @@ def intent_digest(path):
 
 
 def plan_digest(m, legacy=False):
-    """The digest of a parsed plan: each task's files, Depends and Test, each group's Depends, Validate, Interfaces,
-    Context and tasks, and the Integration line (every one of them when the plan has more than one). Titles, prose and
-    checkbox ticks do not count, so the CLI's own tick is no change. None when the plan does not parse.
+    """The digest of a parsed plan: each task's files, Depends and Test (and the text a manual Test asks the person to
+    confirm, which the approval card shows), each group's Depends, Validate, Interfaces, Context and tasks, and the
+    Integration line (every one of them when the plan has more than one). Titles, prose and checkbox ticks do not
+    count, so the CLI's own tick is no change. None when the plan does not parse.
 
-    WP32 (review finding R2b): a second Integration line is bound only where the plan has one, so a plan without it
-    keeps the digest 9.8.4 and the base recorded. legacy: the digest as those versions computed it (state_ops.py
-    migrate-legacy moves a saved plan_hash that matches it)."""
+    WP32 (review findings R2b, R2c): the confirm text and a second Integration line are bound, each only where the plan
+    has it, so a plan without them keeps the digest 9.8.4 and the base recorded. legacy: the digest as those versions
+    computed it (state_ops.py migrate-legacy moves a saved plan_hash that matches it)."""
     def n(p):
         p = p.strip()
         return p[2:] if p.startswith("./") else p
@@ -87,6 +88,8 @@ def plan_digest(m, legacy=False):
         for t in m["tasks"]:
             core = {"n": t["n"], "group": t["group"], "files": [n(f) for f in t["files"]], "depends": t["depends"],
                     "test": t["test"]}
+            if t.get("confirm") and not legacy:
+                core["confirm"] = t["confirm"]
             tasks.append(core)
         core = {"tasks": tasks,
                 "groups": [{"id": g["id"], "depends": g["depends"], "validate": g["validate"],

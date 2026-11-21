@@ -92,3 +92,13 @@ sed -i '2i **Integration:** `echo r1-after-the-approval`' .temper/specs/demo/tas
 _r1_g=""; for _g in build check commit; do "$TEMPER" gate "$_g" >/dev/null 2>&1; _r1_g+="$_g=$(_r1_row "$_g" "$_R1_ROW")|"; done
 assert_eq "review 1: R2b a second Integration line put before the approved one after the approval fails the Build, Check and commit gates" \
   "build=False|check=False|commit=False|" "$_r1_g"
+
+# --- rule 2: the text a manual Test line asks the person to confirm is shown on the card and bound by no digest ---
+_r1_at_plan
+printf '\n### Task 2: the page\n**File:** `src/page.html`\n**Depends:** none\n**Test:** manual — the page shows the red banner\n**Cases:**\n- the banner\n- [ ] the page\n' >> .temper/specs/demo/tasks.md
+_r1_cmds="$(_r1_card_section commands)"
+_r1_run ask-every-stage
+sed -i 's/the page shows the red banner/nothing at all/' .temper/specs/demo/tasks.md
+"$TEMPER" gate build >/dev/null 2>&1
+assert_eq "review 1: R2c a changed manual Test line of tasks.md, shown on the approval card, fails the Build gate after the approval" \
+  "shown|False" "$([[ "$_r1_cmds" == *"red banner"* ]] && echo shown || echo "not shown: $_r1_cmds")|$(_r1_row build "$_R1_ROW")"

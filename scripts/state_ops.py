@@ -70,9 +70,9 @@ def migrate_legacy(argv):
 
 def _bind_saved(p, d):
     """WP32: a run saved by 9.8.4 or by the base, taken up once. Its plan_hash is the digest those versions computed;
-    where the plan holds what this version binds besides (a second Integration line), the saved digest of the plan as
-    it is now moves to this version's digest, so the approval still binds the plan it approved and only a later change
-    fails the gates."""
+    where the plan holds what this version binds besides (the text a manual Test asks the person to confirm, a second
+    Integration line), the saved digest of the plan as it is now moves to this version's digest, so the approval still
+    binds the plan it approved and only a later change fails the gates."""
     import json, os, tempfile
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import approval
