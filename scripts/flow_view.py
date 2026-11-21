@@ -172,7 +172,7 @@ def plan_view(run):
             t = next((x for x in plan.get("tasks", []) if x.get("n") == n), {})
             files += [f for f in t.get("files", []) if f not in files]
         by_group.append({"id": g["id"], "title": g.get("title", ""), "files": files})
-    return {"approved": isinstance(approved, list), "files": approved if isinstance(approved, list) else (plan_files(run.spec) if run.spec else []),
+    return {"approved": isinstance(approved, list), "files": approved if isinstance(approved, list) else (plan_files(run.spec, tables=False) if run.spec else []),
             "groups": by_group}
 
 

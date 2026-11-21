@@ -125,3 +125,21 @@ assert_eq "round 2 reviewer 1: rule 4 in a run that goes on by itself with no st
      _md="$("$TEMPER" state get run_mode 2>/dev/null)"
      if [[ $_s89 -ne 0 && $_sk == "not skipped" ]] || [[ $_md == interactive ]]; then echo refused-or-ended; else echo "rc=$_s89|$_sk|$_md"; fi)"
 
+# --- round 2 reviewer 1: rule 2 and 4, a file the card did not show is no file of the plan for any reader ---
+# Commit 8e08197 records approved_files from the File lines of tasks.md alone (the card's set), but every other reader
+# still takes flow_base.plan_files with the file tables of plan.md (tables=True): `temper drift ask` refuses a file of
+# such a table as "a file of the plan: no drift to ask", and repair_ops.allowed_files lets a repair commit it by rule.
+# plan.md is bound by no digest, so a table row added at any time widens what Build and a repair take as planned.
+fresh; _repo89; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '# Plan\n\n## Approach\nThe demo.\n\n## Files to modify\n| File | Why |\n|---|---|\n| `src/hidden.sh` | in no task |\n' > .temper/specs/demo/plan.md
+_a89="$("$TEMPER" state get next_stage 2>/dev/null)|approved=$("$TEMPER" state get approved_files 2>/dev/null | tr -d ' \n')"
+"$TEMPER" drift ask --path src/hidden.sh --why 'the agent needs it' --change 'a helper' >/dev/null 2>&1; _a89+="|ask=$?"
+_a89+="|repair-allows=$(python3 -c "
+import sys; sys.path.insert(0, sys.argv[1])
+import repair_ops
+from flow_run import Run
+print('yes' if 'src/hidden.sh' in repair_ops.allowed_files(Run({})) else 'no')" "$REPO_ROOT/scripts" 2>/dev/null)"
+assert_eq "round 2 reviewer 1: rule 4 a file in a table of plan.md, not on the card and not approved, is a drift to ask and no file a repair commits by rule" \
+  'build|approved=["src/demo.sh"]|ask=0|repair-allows=no' "$_a89"
+

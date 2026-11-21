@@ -318,6 +318,17 @@ def plan_files(run_or_spec, tables=True):
     return list(dict.fromkeys(out))
 
 
+def plan_set(state, spec):
+    """The files of the plan as every reader takes them once the approval recorded approved_files (WP32, review finding
+    R2-1-7): approved_files, which the card showed, and the **File:** lines of tasks.md, which the digest binds (as
+    run_env.declared reads them). A file only in a table of plan.md is not approved: plan.md is bound by no digest. A run
+    with no approved_files (before the approval) reads plan_files."""
+    a = state.get("approved_files") if isinstance(state, dict) else None
+    if not isinstance(a, list):
+        return plan_files(spec) if spec else []
+    return list(dict.fromkeys([str(x) for x in a if x] + (plan_files(spec, tables=False) if spec else [])))
+
+
 def path_tokens(text):
     out = []
     for m in re.finditer(r"`([^`]+)`", text):
