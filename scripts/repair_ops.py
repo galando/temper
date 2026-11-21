@@ -517,10 +517,11 @@ def snapshot_review():
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def rule_log(stage, what):
+def rule_log(stage, what, by_rule=True):
+    """A repair's entry: a rule starts and closes it in every mode (rule 10), but the person's Repair again is theirs."""
     try:
         import rule_log as rl
-        rl.append("repair", stage, what)
+        rl.append("repair", stage, what, by_rule=by_rule)
     except Exception:
         pass
 
@@ -569,7 +570,8 @@ def start(r, stage, again):
         return d["repair"]
     w = change_state(open_it)
     what = "; ".join(f["claim"] for f in opens[:3]) or "; ".join(rows)
-    rule_log(stage, "repair %d at %s started%s: %s" % (w["n"], stage.capitalize(), " on the person's click" if again else "", what))
+    rule_log(stage, "repair %d at %s started%s: %s" % (w["n"], stage.capitalize(), " on the person's click" if again else "", what),
+             by_rule=not again)
     print("OK: repair %d open at %s (%s); a fresh Build agent fixes it, then temper repair commit" % (w["n"], stage, line or "no repeat"))
     return 0
 

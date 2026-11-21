@@ -116,3 +116,42 @@ _r10b_card="$(_commit_card85)"
 assert_eq "review 5: the rule's run of a timed out group check with twice the limit is listed on the commit card" \
   "rule's move=auto group gate G1 --timeout-s 1200|spent=1|listed=yes" \
   "rule's move=$_r10b_next|spent=$(_used85 group:G1)|listed=$(_listed85 "$_r10b_card")"
+
+# --- rule 10: a repair the rule starts in a run that asks at every stage ---
+# After the approval with "Ask me at every stage", a High finding at Review is repaired in the stage by rule, with no
+# question (flow_repair.py: the CLI's own `repair start`, in every mode; one repeat of gate:review). repair_ops.py writes
+# its entry through rule_log.append, which keeps a rule's kind only while the run goes on by itself, so the commit card
+# lists no repair.
+fresh
+rm -rf .git src; git init -q . 2>/dev/null; git checkout -q -B master 2>/dev/null
+git config user.email t@example.com; git config user.name T
+mkdir -p src; echo 'echo demo' > src/demo.sh; printf 'a=1\nb=2\nc=3\n' > src/demo_test.sh
+git add -A -- . ':(exclude).temper' ':(exclude).claude'; git commit -q -m base
+sed -i '/block-on/d' .claude/temper.config
+git checkout -q -B feature/demo; "$TEMPER" state set branch feature/demo >/dev/null 2>&1
+"$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
+printf '%s\n' '# Tasks: demo' '' '**Integration:** `true`' '' '## Group G1: Core' '**Depends:** none' '**Validate:** `true`' \
+  '**Context:**' 'The demo group.' '' '### Task 1: first task' '**File:** `src/demo.sh`, `src/demo_test.sh`' '**Depends:** none' \
+  '**Test:** `true`' '**Cases:**' '- a holds' '- [x] done' > .temper/specs/demo/tasks.md
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state set run_mode interactive >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+python3 - "$(git rev-parse HEAD)" <<'PY'
+import json, sys
+d = {"version": 1, "slug": "demo", "cli_commits": [],
+     "groups": {"G1": {"status": "passed", "worktree": "", "branch": "temper/demo/G1", "confirmed": True, "gate": {"verdict": "PASS"}}},
+     "tasks": {"1": {"status": "passed", "group": "G1"}},
+     "integration": {"verdict": "PASS", "reason": "", "group": None, "files": [], "ts": "x", "head": sys.argv[1], "merged": True}}
+json.dump(d, open(".temper/groups.json", "w"))
+PY
+"$TEMPER" evidence run --stage build --claim 'the demo test' --phase red -- false >/dev/null 2>&1
+"$TEMPER" evidence run --stage build --claim 'the demo test' --phase green -- true >/dev/null 2>&1
+gpass build; "$TEMPER" state advance build_complete review >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'review completed' --exit 0 --label HEURISTIC --read src/demo.sh --read src/demo_test.sh >/dev/null 2>&1
+"$TEMPER" gate review >/dev/null 2>&1
+_r10c_next="$(_next85)"
+"$TEMPER" repair start --stage review >/dev/null 2>&1; _r10c_rc=$?
+assert_eq "review 5: a repair the rule starts after the approval in a run that asks at every stage is in the rule log the commit card lists" \
+  "mode=interactive|rule's move=auto repair start --stage review|ran=0|spent=1|logged=1" \
+  "mode=$("$TEMPER" state get run_mode 2>/dev/null)|rule's move=$_r10c_next|ran=$_r10c_rc|spent=$(_used85 gate:review)|logged=$(_log85 'repair')"
+rm -rf .git src
