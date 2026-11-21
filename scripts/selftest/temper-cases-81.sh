@@ -72,3 +72,23 @@ _r1_at_plan
 assert_eq "review 1: R1c at the approval question the CLI's spec branch makes no branch (rule 1: no branch before the approval)" \
   "master|1" "$(git branch --show-current)|$(git branch --list | grep -c .)"
 git config --unset core.hooksPath 2>/dev/null
+
+# --- rule 2: the Integration line, read two ways ---
+# tasks_md.parse (the digest, the card) keeps the last **Integration:** line; check_run.plan_line (the suite Check runs
+# when the config and detect name none) reads the first.
+_r1_at_plan
+sed -i '2i **Integration:** `echo r1-not-shown`' .temper/specs/demo/tasks.md
+_r1_shown="$(_r1_card_section commands)"
+_r1_run ask-every-stage; _at check
+"$TEMPER" check run >/dev/null 2>&1 || true
+_r1_ran="$(python3 -c "
+import json
+rows = json.load(open('.temper/evidence/check.json'))
+print(next((r.get('cmd') for r in rows if 'the suite' in str(r.get('claim'))), 'none'))" 2>/dev/null)"
+assert_eq "review 1: R2a the suite Check runs is the Integration command the approval card showed (rule 2: approval of what was shown)" \
+  "shown" "$([[ "$_r1_shown" == *"all: $_r1_ran"* ]] && echo shown || echo "card '$_r1_shown', Check ran '$_r1_ran'")"
+_r1_at_plan; _r1_run ask-every-stage
+sed -i '2i **Integration:** `echo r1-after-the-approval`' .temper/specs/demo/tasks.md
+_r1_g=""; for _g in build check commit; do "$TEMPER" gate "$_g" >/dev/null 2>&1; _r1_g+="$_g=$(_r1_row "$_g" "$_R1_ROW")|"; done
+assert_eq "review 1: R2b a second Integration line put before the approved one after the approval fails the Build, Check and commit gates" \
+  "build=False|check=False|commit=False|" "$_r1_g"

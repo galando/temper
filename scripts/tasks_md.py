@@ -1,9 +1,10 @@
 """tasks_md.py: the grouped tasks.md of a run, read the one way the CLI and flow.py both read it.
 
   python3 tasks_md.py parse <tasks.md>
-      prints {groups, tasks, integration} as JSON: groups [{id, title, depends, validate, interfaces,
+      prints {groups, tasks, integration, integrations} as JSON: groups [{id, title, depends, validate, interfaces,
       context, context_bytes, tasks}], tasks [{n, title, group, files, depends, test, cases,
-      block_bytes, block}]. File tokens are the backticked paths of the **File:** lines.
+      block_bytes, block}]. File tokens are the backticked paths of the **File:** lines. integration is the last
+      **Integration:** line, the one every reader runs; integrations is each of them, in order.
   python3 tasks_md.py schedule <groups.json> <max-parallel> <task model> <escalation model> <project> <tasks.md>
       prints the ready set (`temper schedule`): one JSON line per launchable task, then a done or a
       waiting line when no task is ready.
@@ -26,6 +27,7 @@ def parse(path):
     CASE = re.compile(r'^\s*[-*]\s+(?!\[[ xX]\])\S')
     groups, tasks = [], []
     integration = None
+    integrations = []
     cur_g = cur_t = None
     ctx_open = False
     cases_open = False
@@ -60,8 +62,8 @@ def parse(path):
         fm = FIELD.match(line)
         if fm:
             key, val = fm.group(1), fm.group(2)
-            if key == 'Integration':
-                integration = cmd_of(val); ctx_open = False; continue
+            if key == 'Integration':   # the last line is the plan's; every line is kept for the digest (WP32)
+                integration = cmd_of(val); integrations.append(integration); ctx_open = False; continue
             if cur_t is not None:
                 # a **File:** line per file, or several on one line: every path counts, once
                 files_open = key in ('File', 'Files')
@@ -106,7 +108,7 @@ def parse(path):
         t['block'] = ('### Task %d: %s\n%s' % (t['n'], t['title'], t['block'])).strip('\n')
         t['block_bytes'] = len(t['block'].encode('utf-8'))
 
-    return {'groups': groups, 'tasks': tasks, 'integration': integration}
+    return {'groups': groups, 'tasks': tasks, 'integration': integration, 'integrations': integrations}
 
 
 # ---- the states of a Build task, one definition each -------------------------------------------------------------------

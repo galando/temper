@@ -71,21 +71,31 @@ def intent_digest(path):
     return hashlib.sha256(kept.encode("utf-8", "surrogateescape")).hexdigest()
 
 
-def plan_digest(m):
+def plan_digest(m, legacy=False):
     """The digest of a parsed plan: each task's files, Depends and Test, each group's Depends, Validate, Interfaces,
-    Context and tasks, and the Integration line. Titles, prose and checkbox ticks do not count, so the CLI's own tick
-    is no change. None when the plan does not parse."""
+    Context and tasks, and the Integration line (every one of them when the plan has more than one). Titles, prose and
+    checkbox ticks do not count, so the CLI's own tick is no change. None when the plan does not parse.
+
+    WP32 (review finding R2b): a second Integration line is bound only where the plan has one, so a plan without it
+    keeps the digest 9.8.4 and the base recorded. legacy: the digest as those versions computed it (state_ops.py
+    migrate-legacy moves a saved plan_hash that matches it)."""
     def n(p):
         p = p.strip()
         return p[2:] if p.startswith("./") else p
     try:
-        core = {"tasks": [{"n": t["n"], "group": t["group"], "files": [n(f) for f in t["files"]],
-                           "depends": t["depends"], "test": t["test"]} for t in m["tasks"]],
+        tasks = []
+        for t in m["tasks"]:
+            core = {"n": t["n"], "group": t["group"], "files": [n(f) for f in t["files"]], "depends": t["depends"],
+                    "test": t["test"]}
+            tasks.append(core)
+        core = {"tasks": tasks,
                 "groups": [{"id": g["id"], "depends": g["depends"], "validate": g["validate"],
                             "interfaces": g["interfaces"], "context": g["context"], "tasks": g["tasks"]}
                            for g in m["groups"]],
                 "integration": m["integration"]}
-    except (KeyError, TypeError):
+        if len(m.get("integrations") or []) > 1 and not legacy:
+            core["integrations"] = list(m["integrations"])
+    except (KeyError, TypeError, AttributeError):
         return None
     return hashlib.sha256(json.dumps(core, sort_keys=True).encode("utf-8")).hexdigest()
 

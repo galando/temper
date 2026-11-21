@@ -225,12 +225,10 @@ def suite_owner(root, cfg=None, spec=""):
         return {"test": det["test"], "run": c.get("run") or det["test"], "source": "detected",
                 "why": "the %s files in %s/, the one folder one level down that has them" % (d.get("stack"), name), "det": det}
     tasks = os.path.join(spec, "tasks.md") if spec else ""
-    if tasks and os.path.isfile(tasks):
-        m = re.search(r"^\*\*Integration:\*\*\s*`([^`]+)`", _read(tasks), re.M)
-        if m and m.group(1).strip() and m.group(1).strip() != "manual":
-            line = m.group(1).strip()
-            return {"test": line, "run": line, "source": "plan", "why": "the Integration line of %s" % tasks,
-                    "det": detect(root, line)}
+    line = plan_line(spec) if tasks and os.path.isfile(tasks) else ""
+    if line:
+        return {"test": line, "run": line, "source": "plan", "why": "the Integration line of %s" % tasks,
+                "det": detect(root, line)}
     why = ("%s each have build files, one folder down, and nothing says which is the suite: set check.commands.test"
            % " and ".join("%s/" % n for n, _ in found)) if found else "no test command is configured and none was found: set check.commands.test"
     return {"test": "", "run": "", "source": "none", "why": why, "det": {}}
@@ -935,9 +933,12 @@ def acc_run(root, spec, lockfile):
 
 # ---- run -----------------------------------------------------------------------------------------------------------
 def plan_line(spec):
-    """The plan's **Integration:** text (WP23: the owner of the suite only when the config and detect name none)."""
-    m = re.search(r"^\*\*Integration:\*\*\s*`([^`]+)`", _read(os.path.join(spec, "tasks.md")) if spec else "", re.M)
-    line = m.group(1).strip() if m else ""
+    """The plan's **Integration:** text (WP23: the owner of the suite only when the config and detect name none), as
+    tasks_md.parse reads it: the one reader of the line, so the command Check runs is the one the approval card showed
+    and the plan digest binds (WP32, review finding R2a)."""
+    import tasks_md
+    path = os.path.join(spec, "tasks.md") if spec else ""
+    line = str(tasks_md.parse(path).get("integration") or "").strip() if path and os.path.isfile(path) else ""
     return "" if line == "manual" else line
 
 

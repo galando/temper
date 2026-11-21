@@ -57,6 +57,8 @@ def migrate_legacy(argv):
                 with os.fdopen(fd, "w") as f:
                     json.dump(gates, f, indent=2); f.write("\n")
                 os.replace(tmp, gp)
+        if "saved_by" not in d:
+            _bind_saved(p, d)
         d["saved_by"] = SAVED_BY;            changed = True
     if not changed:
         sys.exit(0)
@@ -64,6 +66,40 @@ def migrate_legacy(argv):
     with os.fdopen(fd, "w") as f:
         json.dump(d, f, indent=2); f.write("\n")
     os.replace(tmp, p)                  # atomic: a truncated migration would LOSE state
+
+
+def _bind_saved(p, d):
+    """WP32: a run saved by 9.8.4 or by the base, taken up once. Its plan_hash is the digest those versions computed;
+    where the plan holds what this version binds besides (a second Integration line), the saved digest of the plan as
+    it is now moves to this version's digest, so the approval still binds the plan it approved and only a later change
+    fails the gates."""
+    import json, os, tempfile
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import approval
+    import tasks_md
+    h, spec = d.get("plan_hash"), d.get("spec_path")
+    if not h or not isinstance(spec, str) or not spec:
+        return
+    root = os.path.dirname(os.path.dirname(os.path.abspath(p)))
+    tasks = os.path.join(spec if os.path.isabs(spec) else os.path.join(root, spec), "tasks.md")
+    if not os.path.isfile(tasks):
+        return
+    m = tasks_md.parse(tasks)
+    new = approval.plan_digest(m)
+    if not new or new == h or approval.plan_digest(m, legacy=True) != h:
+        return
+    d["plan_hash"] = new
+    gp = os.path.join(os.path.dirname(p) or ".", "groups.json")
+    try:
+        g = json.load(open(gp))
+    except Exception:
+        return
+    if isinstance(g, dict) and g.get("plan_hash") == h:
+        g["plan_hash"] = new
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(gp) or ".")
+        with os.fdopen(fd, "w") as f:
+            json.dump(g, f, indent=2); f.write("\n")
+        os.replace(tmp, gp)
 
 
 def may_start(argv):
