@@ -24,7 +24,11 @@ def check_markers(run):
         # A scenario's trace row names its test; it is no run of a check (as in `temper gate check`).
         hits = [r for r in rows if isinstance(r, dict) and not r.get("scenario") and re.search(rx, str(r.get("claim", "")), re.I)
                 and (name != "coverage" or r.get("executed_by") == "cli" and r.get("state"))]   # the CLI's measure only
-        gate = next((x for x in run.rows("check") if isinstance(x, dict) and x.get("name") == "coverage"), None) if name == "coverage" else None
+        if name == "tests":   # rule 5: the runs the gate counts, of the suite's own command on the verdict's tree
+            import runs
+            hits = [r for r in runs.gate_runs(rows, os.getcwd(), run.spec or "") if re.search(rx, str(r.get("claim", "")), re.I)]
+        row = {"coverage": "coverage", "tests": "tests pass"}.get(name)   # the gate's own verdict of the row, when it has one
+        gate = next((x for x in run.rows("check") if isinstance(x, dict) and x.get("name") == row), None) if row else None
         if not hits and gate is None:
             out.append({"name": name, "state": "none", "detail": "", "lines": []})
             continue
@@ -36,7 +40,7 @@ def check_markers(run):
         if name == "coverage" and last.get("state"):   # WP19: the CLI row's own verdict; not measured is never a pass
             state = {"pass": "pass", "fail": "fail"}.get(last["state"], "info")
             detail = ("not measured: " + str(last.get("output") or ""))[:200] if state == "info" else detail
-        if gate is not None:   # WP19: the gate's own verdict of the row coverage, the third state with it
+        if gate is not None:   # WP19: the gate's own verdict of the row (coverage, tests pass), the third state with it
             state = {True: "pass", False: "fail"}.get(gate.get("pass"), "info")
             detail, lines = str(gate.get("detail") or "")[:200], [] if gate.get("pass") is not False else lines
         out.append({"name": name, "state": state, "detail": detail, "value": last.get("value"), "lines": lines})

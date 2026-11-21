@@ -74,6 +74,12 @@ def suite_runs(rows, own=(), tree=None):
             and (not own or r.get("cmd") in own) and (not tree or r.get("tree") == tree)]
 
 
+def gate_runs(rows, root="", spec=""):
+    """The runs the row `tests pass` of Check reads, as `temper gate check` reads them: what the view and the commit card
+    draw as the Check's tests (a run the gate does not count draws nothing)."""
+    return suite_runs(rows, own_suite(root, spec), verdict_tree(rows))
+
+
 def check(rows, own=()):
     runs = suite_runs(rows, own, verdict_tree(rows))
     last = {}

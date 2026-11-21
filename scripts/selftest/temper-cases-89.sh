@@ -140,3 +140,17 @@ assert_eq "round 2 reviewer 2: a failed group check passed again after a change 
   "first=FAIL|again=refused or paid" \
   "first=$_r2r2_e_first|again=$([[ "$_r2r2_e_again" == PASS && "$(_r2r2_used)" == 0 ]] && echo "passed with no repeat paid for" || echo "refused or paid")"
 
+# --- rule 5 (fix cd38d16): the view's tests marker still reads the run the gate no longer counts ---
+# cd38d16 makes the row `tests pass` read only runs of the suite's own command. The view the mod draws
+# (flow_view.check_markers) still takes the latest row of any claim that names tests, so after the CLI's run of the
+# configured suite failed, an agent's `evidence run --claim tests -- true` draws the Check's tests as passed while the
+# gate fails them (a8daac8 made the coverage marker read the CLI's measure only, and left this one).
+fresh; _r2r2_repo; printf 'check:\n  commands:\n    test: "echo FAIL: test_a; exit 1"\n' >> .claude/temper.config
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+"$TEMPER" evidence run --stage check --claim 'tests: the suite (run by the CLI)' -- true >/dev/null 2>&1
+"$TEMPER" gate check >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
+assert_eq "round 2 reviewer 2: the view draws the Check's tests as the gate judged them, not from a run the gate does not count" \
+  "gate=False|view=fail" \
+  "gate=$(_r2r2_g "r = row('tests pass').get('pass')")|view=$(vw "next((x.get('state') for x in d.get('check_markers') or [] if x.get('name') == 'tests'), None)")"
+
