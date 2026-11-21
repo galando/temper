@@ -90,27 +90,24 @@ setup() {
   rm -rf .temper .claude .gitignore   # no case ignores .temper for the next one
   mkdir -p .claude .temper/specs/demo
   git init -q . 2>/dev/null || true
+  # WP29: the new template's keys with the values the cases rely on (block-on critical, a coverage floor, autonomy.enabled
+  # false read as run.default ask, two sensitive paths, claimed runs counted), stack for the cases that read a key where
+  # the guard scripts call config get, and the one time question answered, so no case that walks from Intent is asked it
   cat > .claude/temper.config <<'EOF'
 stack: auto
-packs: [quality, tdd, security, git]
+packs: [security, tdd]
 review:
   block-on: [critical]
 check:
   coverage-threshold: 80
-eval:
-  enabled: true
-  pass-threshold: 0.75
-loops:
-  max-per-type: 2
 autonomy:
   enabled: false
   max-blast-radius: 15
   park-on-touch: ["**/auth/**", "**/payment/**"]
-  budget:
-    max-total-loops: 4
-    max-stages: 12
 evidence:
   claimed-runs: count   # 9.8.5: the cases simulate runs with evidence add; temper-cases-31.sh tests the strict default
+upgrade:
+  asked: "9.8.5"
 EOF
   cat > .temper/specs/demo/intent.md <<'EOF'
 **Author:** Demo Author <demo@example.com>
@@ -245,7 +242,7 @@ _git_list() { # _git_list <git folder>: every file and folder in it, sorted, but
 }
 _cli_files() { # _cli_files <folder>: copies the CLI and the files it runs into a throwaway plugin's scripts folder
   local m
-  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" \
+  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/defaults.py" "$REPO_ROOT/scripts/tasks_md.py" \
     "$REPO_ROOT/scripts/flow.py" "$REPO_ROOT/scripts/repair_ops.py" "$REPO_ROOT/scripts/temper-help.txt" "$REPO_ROOT/scripts/cli_ctx.py" "$1"   # repair_ops: evidence add asks it of a Scope drift answer; cli_ctx: the models
   for m in $CLI_MODULES; do cp "$REPO_ROOT/$m" "$1"; done
 }

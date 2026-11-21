@@ -114,6 +114,8 @@ QUESTIONS = {
                  "goes on with the base's failures as a recorded skip."},
     "plan.command": {"kind": "gate", "decision": "Whether a command the plan wrote that fails or times out on the base gets "
                      "more time, another command, a revised plan or a skip with a reason."},
+    "config.tidy": {"kind": "gate", "decision": "Whether the lines of an older config that only repeat old defaults, or are "
+                    "no longer read, are removed so the new defaults apply, or the file is kept as it is."},
     "repair.stop": {"kind": "gate", "decision": "What happens to a repair in the stage that the rule may not resolve, or that "
                     "was reverted: revert it, repair again, step back, keep a finding, skip the check or save."},
 }
@@ -149,7 +151,9 @@ OPTION_IDS = frozenset((
     # WP24
     "repair-again", "revert-repair",
     # WP25: a file no task declares, added to the blocked task by the person's plan patch
-    "add-file"))
+    "add-file",
+    # WP29: the two answers of the one time config question
+    "tidy-config", "keep-config"))
 
 
 def question_entry(qid):

@@ -16,14 +16,13 @@ Nothing here writes into the plugin folder, and nothing here opens a Claude Code
 home folder's. Nothing here reads Claude Code's own files in the home folder either (its plugin list, other plugins'
 folders, or the skills and commands kept there); of the plugin folder, it reads only Temper's own files.
 
-## Pack Resolution: Three-Tier System
+## Pack Resolution: Two Tiers
 
-Higher tier shadows lower, by name:
+The project's tier shadows the built-in one, by name (9.8.5: nothing in the home folder is read):
 
 ```
 .claude/packs/{name}/rules.md     project-local (highest), in the project
-~/.claude/packs/{name}/rules.md   global
-the built-in files listed below   built-in (lowest), in the plugin
+the built-in files listed below   built-in, in the plugin
 ```
 
 The built-in tier is exactly these files (see Built-in Packs for what each does), and
@@ -40,11 +39,10 @@ ${CLAUDE_PLUGIN_ROOT}/packs/architecture-depth/rules.md
 ${CLAUDE_PLUGIN_ROOT}/packs/guardrails/rules.md
 ```
 
-Every stage reads this live at phase start (no cache): read the project and global pack
-folders plus the built-in files above, keep the highest-priority `rules.md` per name,
-filter to packs whose `phases` is `all` or contains the current phase (resolved as
-below), read `temper.config` for enabled/link overrides. A project or global pack name
-is lowercase letters, digits and hyphens only; skip any other folder.
+A stage's agent does not resolve packs: the CLI does (`temper packs --stage S`), and the agent's prompt names the
+files on its `Packs:` line, kept where `phases` is `all` or contains the stage, and an entry of `packs:` written in
+braces (a link, a phases list) on its `Pack entries:` line, as written: follow its link and its phases as this page
+says. A project pack name is lowercase letters, digits and hyphens only; skip any other folder.
 
 **Old name:** the guardrails pack was called `hooks` before v9.6.5. A `packs:` entry
 named `hooks` means `guardrails`: treat it exactly as a `guardrails` entry, and when
@@ -111,8 +109,7 @@ command there (`TYPE` is `LOCAL_SKILL` or `LOCAL_CMD`). Link targets from plugin
 from the user's own skills and commands in the home folder, come only from the skills
 and slash commands this Claude session lists. Nothing here reads a file of Claude Code:
 not its plugin list, not its plugin folders, and not the skills and commands folders in
-the home folder. The one home folder path Temper reads is its own global pack folder,
-`~/.claude/packs` (the global tier above).
+the home folder. Temper reads no path in the home folder.
 
 **Health:** `connected: true/false/null` (no link configured). If a link target is
 missing, the pack's own rules still load — show a warning, never block work over a
@@ -131,8 +128,8 @@ guardrails` runs **Guardrails: Disable** (both in Guardrails Hooks below), then 
 
 First stop, as in Guardrails Hooks, Enable step 1 (a) and (b), in the home folder and
 wherever the temper CLI refuses the folder, since later steps write the project's
-`.claude` folder. Then read the three tiers (above: the project and global pack folders,
-plus the built-in files listed there), merge with `.claude/temper.config`, then show:
+`.claude` folder. Then read the two tiers (above: the project's pack folder, plus the built-in files listed there),
+merge with `.claude/temper.config`, then show:
 
 ```
 +--------------------------------------------------------------------------+

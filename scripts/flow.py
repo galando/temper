@@ -269,7 +269,8 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart, RevisePart):
         if r.stage not in r.seq() or (r.stage not in ("intent", "rca") and r.spec and not os.path.isdir(r.spec)):
             out.update({"action": "broken", "say": "The run state does not fit its spec folder (%s at %s)." % (r.spec, r.stage)})
             return out
-        base = self.base_step()   # WP20: the environment check and the baseline come before any other step
+        # WP29: the one time config question comes first; WP20: the environment check and the baseline before any other step
+        base = self.tidy_step() or self.base_step()
         if base is not None:
             out.update(base)
             return out

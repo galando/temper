@@ -443,7 +443,7 @@ _b51out="$("$TEMPER" state loop review build --reason 'three' 2>&1)"; _b51rc=$?
 _b51x+="|third from Review=$_b51rc:$(head -1 <<<"$_b51out" | cut -d: -f1):$(_b51used gate:review 'step back')"
 _b51x+="|readers=$(grep -rlE 'max-per-type|max-loops|max-total-loops|max-stages|feedback\.enabled' \
   "$REPO_ROOT/scripts" --exclude-dir=selftest --exclude-dir=__pycache__ 2>/dev/null | sed "s|^$REPO_ROOT/||" \
-  | LC_ALL=C sort | paste -sd, -)"
+  | grep -vx 'scripts/defaults.py' | LC_ALL=C sort | paste -sd, -)"   # WP29: the table of keys no longer read names them
 assert_eq "budget: the old keys are read by nothing" \
   "config=9:99:false|back offered=True|third from Check=1:BLOCKED:2|third from Review=1:BLOCKED:2|readers=" "$_b51x"
 

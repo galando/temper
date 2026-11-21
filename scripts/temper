@@ -453,10 +453,8 @@ _json_append() { # _json_append <file> <entry-json>  (file holds a JSON array)
 # The v7 config is ~25 lines; this parser is intentionally not general-purpose YAML.
 # ---
 
-_cfg_get() { # _cfg_get <dot.path> [default]
-  local path="$1" default="${2:-}"
-  [[ -f "$CONFIG_FILE" ]] || { echo "$default"; return; }
-  python3 "$SCRIPTS_DIR/config_yaml.py" "$CONFIG_FILE" "$path" "$default" 2>/dev/null || echo "$default"
+_cfg_get() { # _cfg_get <dot.path> [default]: with no default, the table's (scripts/defaults.py, WP29)
+  python3 "$SCRIPTS_DIR/config_yaml.py" "$CONFIG_FILE" "$@" 2>/dev/null || echo "${2:-}"
 }
 
 # ---
@@ -1056,7 +1054,7 @@ cmd_state_clear() {
   rm -f .temper/{build-state,feedback-loops,gates,overrides,groups,usage,asked,decisions,budget,rule-log}.json
   _base_clean
   # earlier attempts' branches leave `git branch`; those kept longer than build.grouped.keep-days (30) are dropped
-  _task_py tidy "$(_cfg_get build.grouped.keep-days 30)" 2>/dev/null || true
+  _task_py tidy "$(_cfg_get build.grouped.keep-days)" 2>/dev/null || true
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
 
@@ -1331,12 +1329,13 @@ cmd_config() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     get) [[ -n "${1:-}" ]] || { echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1; }
-         _cfg_get "$1" "${2:-}" ;;
+         _cfg_get "$@" ;;
+    show|tidy) python3 -E -s "$SCRIPTS_DIR/config_tidy.py" "$sub" "${1:-}" "$CONFIG_FILE" "$STATE_FILE" ;;   # WP29 (ADR 0023)
     # 9.8.1: the project's config from the plugin's default, when it has none (a setup call; idempotent).
     init) local own="$REPO_ROOT/.claude/temper.config"
           [[ -f "$own" ]] && { echo "OK: $own is already there"; return 0; }
           mkdir -p "$REPO_ROOT/.claude" && cp "$PLUGIN_ROOT/templates/temper.config.default" "$own" && echo "OK: wrote $own" ;;
-    *) echo "FAIL: usage: temper config get <dot.path> [default] | temper config init" >&2; return 1 ;;
+    *) echo "FAIL: usage: temper config get <dot.path> [default] | init | show [--markdown] | tidy --apply|--keep" >&2; return 1 ;;
   esac
 }
 
@@ -1595,7 +1594,7 @@ cmd_schedule() { # temper schedule [--json]
     echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
     return 1
   fi
-  local max; max="$(_cfg_get build.grouped.max-parallel 4)"
+  local max; max="$(_cfg_get build.grouped.max-parallel)"
   [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
   python3 "$SCRIPTS_DIR/tasks_md.py" schedule "$GROUPS_FILE" "$max" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$PWD" "$spec_path/tasks.md"
 }
@@ -2203,7 +2202,7 @@ _task_start_body() {
     local ready max
     ready="$(cmd_schedule 2>/dev/null | python3 -I "$SCRIPTS_DIR/groups_ops.py" task-ready "$n")"
     if [[ "$ready" != "1" ]]; then
-      max="$(_cfg_get build.grouped.max-parallel 4)"; [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
+      max="$(_cfg_get build.grouped.max-parallel)"; [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
       why="$(_task_py why "$_T_PLAN" "$GROUPS_FILE" "$n" "$max")"
       [[ -n "$why" ]] || why="it is not in the ready set"
     fi
@@ -2357,7 +2356,7 @@ _task_gate_body() {
     return 1
   fi
   local v verdict reason
-  v="$(TEMPER_RED_BEFORE_CODE="$(_cfg_get build.red-before-code false)" _task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
+  v="$(TEMPER_RED_BEFORE_CODE="$(_cfg_get build.red-before-code)" _task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
   verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
   [[ -n "${TEMPER_ACCEPT_COVERED:-}" && "$verdict" == "COVERED" ]] && verdict=PASS   # the person accepted it (task accept)
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
@@ -2726,19 +2725,19 @@ gate_plan() {
       reqs+=("$g_line")
       g_ok="$(python3 -I -c "import json,sys; print(1 if json.loads(sys.argv[1])['pass'] else 0)" "$g_line")"
       [[ "$g_ok" == "1" ]] || all_pass=0
-    done <<<"$(_grouped_plan_reqs "$spec_path/tasks.md" "$(_cfg_get autonomy.max-blast-radius 15)")"
+    done <<<"$(_grouped_plan_reqs "$spec_path/tasks.md" "$(_cfg_get autonomy.max-blast-radius)")"
     # the rows scripts/gate_rows.py adds (F8: every scenario has a Test: line)
     while IFS= read -r g_line; do
       [[ -n "$g_line" ]] || continue
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
-    done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)" "$(_cfg_get plan.context-check auto)")"
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)" "$(_cfg_get plan.context-check)")"
     # 9.7.6: the fresh review of the plan (scripts/fresh_review.py; medium and complex tiers by default)
     while IFS= read -r g_line; do
       [[ -n "$g_line" ]] || continue
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
-    done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$STATE_FILE" "$(_cfg_get plan.fresh-review ask)" "$(_cfg_get plan.fresh-review-twice true)" "$(_cfg_get plan.fresh-review-rounds 3)")"
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/fresh_review.py" rows "$spec_path" "$(_evidence_file plan)" "$STATE_FILE" "$(_cfg_get plan.fresh-review)" "$(_cfg_get plan.fresh-review-twice)" "$(_cfg_get plan.fresh-review-rounds)")"
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -2748,7 +2747,7 @@ gate_build() {
   local spec_path="$1"
   local reqs=() all_pass=1
   local red_n green_n after_n   # runs the CLI ran or the person confirmed; a claim counts only with evidence.claimed-runs: count (Q3)
-  read -r red_n green_n after_n <<<"$(python3 -E -s "$SCRIPTS_DIR/runs.py" build "$(_evidence_file build)" "$(_cfg_get evidence.claimed-runs ignore)")"
+  read -r red_n green_n after_n <<<"$(python3 -E -s "$SCRIPTS_DIR/runs.py" build "$(_evidence_file build)" "$(_cfg_get evidence.claimed-runs)")"
   if [[ -f "$spec_path/tasks.md" ]] && python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
     reqs+=("$(_req "RED then GREEN" 1 "every task is manual: the person confirms each by hand, there is no test to run")")
   elif [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
@@ -2837,7 +2836,7 @@ _review_code() { # _review_code save|compare: the tracked files of the project (
 
 gate_review() {
   local block_on sev_csv
-  block_on="$(_cfg_get review.block-on critical,high)"
+  block_on="$(_cfg_get review.block-on)"
   sev_csv="$(printf '%s' "$block_on" | tr $'\x1f' ',')"
   local n; n=$(_ev_count_severity_in review "$sev_csv")
   local resolved; resolved=$(_ev_count_resolved_in review "$sev_csv")
@@ -2887,7 +2886,7 @@ gate_check() {
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
   # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
-  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$(_cfg_get evidence.claimed-runs ignore)" 2>/dev/null || echo 0)"
+  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$(_cfg_get evidence.claimed-runs)" 2>/dev/null || echo 0)"
   tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
   local skip=""; [[ -n "$tests_red" ]] && skip="$(_baseline skip-row "$(_evidence_file check)")"   # WP20: a red base gone on from
   if [[ -n "$skip" ]]; then
@@ -3092,7 +3091,7 @@ gate_commit() {
     fi
   fi
   if [[ "$run_mode" == "autonomous" || "$(cmd_state_get ran_unattended "")" == "true" ]]; then
-    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius 15)"
+    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius)"
     if [[ -z "$gspec" || ! -f "$gspec/tasks.md" ]]; then
       local changed_n; changed_n=$(_changed_since_base | grep -c .)
       if [[ "$changed_n" -le "$max_blast" ]]; then
@@ -3106,7 +3105,7 @@ gate_commit() {
     # change to such a path parked, so a billing feature parked at once and the unattended option was of no use there.
     # WP11: one matcher (scripts/sensitive.py) over the changed files; a file the person confirmed at the failed commit
     # question (temper override sensitive-path:<path>) passes
-    local patterns; patterns="$(_cfg_get autonomy.park-on-touch "")"
+    local patterns; patterns="$(_cfg_get autonomy.park-on-touch)"
     local touched=""
     if [[ -n "$patterns" ]]; then
       touched="$(_changed_since_base | python3 -I "$SCRIPTS_DIR/sensitive.py" touched "$patterns" \
@@ -3412,7 +3411,7 @@ cmd_plan() {
   fi
   if [[ "${1:-}" == "fresh" ]]; then   # 9.7.6: temper plan fresh request|start|again (scripts/fresh_review.py mark)
     local rc; _lock_acquire
-    python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds 3)" "$(_now)" "$(_evidence_file plan)"; rc=$?
+    python3 -E -s "$SCRIPTS_DIR/fresh_review.py" mark "${2:-}" "$STATE_FILE" "$(_spec_path "")" "$(_cfg_get plan.fresh-review-rounds)" "$(_now)" "$(_evidence_file plan)"; rc=$?
     _lock_release; return $rc
   fi
   [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']... | plan fresh request|start|again | plan patch | plan amend" >&2; return 1; }
@@ -3468,7 +3467,7 @@ cmd_risk() {
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
   local out rc=0
   out="$(python3 -E -s "$SCRIPTS_DIR/risk.py" compute "$spec" "$TEMPER_DIR/security-map.json" "$@" --prior "$(_json_get_path "$STATE_FILE" risk_raise "")" \
-    --sensitive "$(_cfg_get autonomy.park-on-touch "")")" || rc=$?
+    --sensitive "$(_cfg_get autonomy.park-on-touch)")" || rc=$?
   [[ $rc -eq 0 ]] || return $rc
   head -1 <<<"$out"
   python3 -I -c "
@@ -3692,14 +3691,14 @@ cmd_bands() {
   local as_json=false
   [[ "${1:-}" == "--json" ]] && as_json=true
   local window min_points drift_run metrics t1 t2 t3
-  window="$(_cfg_get bands.window 10)"
-  min_points="$(_cfg_get bands.min-points 4)"
-  drift_run="$(_cfg_get bands.drift-run 6)"
-  metrics="$(_cfg_get bands.metrics "")"
+  window="$(_cfg_get bands.window)"
+  min_points="$(_cfg_get bands.min-points)"
+  drift_run="$(_cfg_get bands.drift-run)"
+  metrics="$(_cfg_get bands.metrics)"
   [[ -n "$metrics" ]] || metrics="coverage"$'\x1f'"tests"
-  t1="$(_cfg_get bands.tiers.1sigma log)"
-  t2="$(_cfg_get bands.tiers.2sigma diagnose)"
-  t3="$(_cfg_get bands.tiers.3sigma propose)"
+  t1="$(_cfg_get bands.tiers.1sigma)"
+  t2="$(_cfg_get bands.tiers.2sigma)"
+  t3="$(_cfg_get bands.tiers.3sigma)"
   local out rc
   out=$(python3 -I "$SCRIPTS_DIR/bands.py" "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" </dev/null)
   rc=$?
@@ -3800,6 +3799,7 @@ main() {
     evidence) cmd_evidence "$@" ;;
     gate) cmd_gate "$@" ;;
     model) cmd_model "$@" ;;
+    packs) python3 "$SCRIPTS_DIR/cli_ctx.py" packs --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" "$@" ;;   # WP29
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
     status) cmd_status "$@" ;;

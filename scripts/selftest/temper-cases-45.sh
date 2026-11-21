@@ -314,7 +314,8 @@ sed -i 's/max-per-type: 2/max-per-type: 9/; s/max-total-loops: 4/max-total-loops
 for _i in 1 2; do gfail check "tests pass" "the latest run of a test command failed: unit"; "$TEMPER" state redo check --reason 'again' >/dev/null 2>&1; done
 gfail check "tests pass" "the latest run of a test command failed: unit"
 _d38e_out="$("$TEMPER" state redo check --reason 'a third time' 2>&1)"; _d38e_rc=$?
-_d38e_readers="$(grep -lE 'max-per-type|max-loops|max-total-loops|max-stages|feedback\.enabled' "$TEMPER" $(find "$REPO_ROOT/scripts" "$REPO_ROOT/scripts/guards" -maxdepth 1 -type f \( -name '*.py' -o -name '*.sh' \)) 2>/dev/null | sed "s|^$REPO_ROOT/||" | paste -sd, -)"
+# WP29: scripts/defaults.py names each of them in GONE, the table of keys no longer read; it reads none of them
+_d38e_readers="$(grep -lE 'max-per-type|max-loops|max-total-loops|max-stages|feedback\.enabled' "$TEMPER" $(find "$REPO_ROOT/scripts" "$REPO_ROOT/scripts/guards" -maxdepth 1 -type f \( -name '*.py' -o -name '*.sh' \)) 2>/dev/null | sed "s|^$REPO_ROOT/||" | grep -vx 'scripts/defaults.py' | paste -sd, -)"
 assert_eq "D38e the old loop keys are read by nothing: set high they change no refusal, and no script names them" \
   "third=1:BLOCKED|readers=none" "third=$_d38e_rc:$(head -1 <<<"$_d38e_out" | cut -d: -f1)|readers=${_d38e_readers:-none}"
 

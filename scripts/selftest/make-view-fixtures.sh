@@ -93,7 +93,8 @@ def project(name):
     write(cwd, "README.md", "x\n")
     sh("git", "add", "README.md", cwd=cwd)
     sh("git", "commit", "-qm", "init", cwd=cwd)
-    write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\n")
+    # WP29: the old review level the views were made with, and the one time question answered (an old default)
+    write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\nupgrade:\n  asked: \"9.8.5\"\n")
     return cwd
 
 
@@ -458,6 +459,13 @@ cli(rp, "state", "advance", "build_complete", "review")
 write(rp, ".temper/evidence/review.json", json.dumps([{"claim": "src/app.ts:1 the token never expires", "severity": "high", "label": "PROVEN"}]))
 verdict(rp, "review", True)
 snap2(rp, "review-pass-repair", "run-repair")
+
+# ---- 9.8.5 (WP29): the one time config question: a new run at Intent, no agent launched yet, on the template of 9.8.4 ----
+ct = project("config-tidy")
+with open(os.path.join(root, "scripts", "selftest", "saved-old.json")) as f:
+    write(ct, ".claude/temper.config", json.load(f)["7c7a1c1"]["template"].replace("@PLUGIN@", root))
+cli(ct, "state", "init", "pw", "--feature", "Password reset by email")
+snap2(ct, "config-tidy", "run-config-tidy")
 
 # A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
 for name in ("armed-review-pass", "review-fail", "armed-check-fail"):   # WP15: the cards made it grow; WP16: typed calls

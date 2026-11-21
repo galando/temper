@@ -176,7 +176,7 @@ class BuildPart:
         if not r.state.get("base_sha") and r.ctx.get("head"):
             run.append(self.c("state set base_sha %s" % r.ctx.get("head")))
         # build.grouped.max-groups groups work at once (default 2; anything but a whole number of at least 1 means 2)
-        mg = r.cfg("build.grouped.max-groups", "2")
+        mg = r.cfg("build.grouped.max-groups")
         room = (int(mg) if re.fullmatch(r"[1-9][0-9]*", mg) else 2) - sum(
             1 for g in plan.get("groups", []) if (rg.get(g["id"]) or {}).get("worktree") and not (rg.get(g["id"]) or {}).get("confirmed"))
         for g in plan.get("groups", []):
@@ -190,7 +190,7 @@ class BuildPart:
             return {"action": "work", "stage": "build", "calls": run, "agents": [], "say": "Build starts its groups."}
 
         try:
-            mx = int(r.cfg("build.grouped.max-parallel", "4"))
+            mx = int(r.cfg("build.grouped.max-parallel"))
         except ValueError:
             mx = 4
         sched = tasks_md.schedule(plan, r.groups, mx if mx > 0 else 4, self.task_model(),

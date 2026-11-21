@@ -276,7 +276,7 @@ def can_start(r, stage, again=False):
         if hot:
             return "finding #%d is %s: the person decides it" % (hot[0]["id"], hot[0]["answer"])
         import sensitive
-        pats = sensitive.patterns_of(r.cfg("autonomy.park-on-touch", ""))
+        pats = sensitive.patterns_of(r.cfg("autonomy.park-on-touch"))
         near = [f for f in opens if f.get("file") and any(sensitive.match(f["file"], p) for p in pats)]
         if near:
             return "finding #%d is on %s, a sensitive path (autonomy.park-on-touch): nothing there is repaired by rule" % (
@@ -411,7 +411,7 @@ def refused_file(p, r, spec, config, allowed):
         return "%s is a file of Temper's own run state" % p
     if norm in (load(ACC_LOCK).get("files") or {}):
         return "%s is a locked acceptance test" % p
-    if any(sensitive.match(norm, x) for x in sensitive.patterns_of(r.cfg("autonomy.park-on-touch", ""))):
+    if any(sensitive.match(norm, x) for x in sensitive.patterns_of(r.cfg("autonomy.park-on-touch"))):
         return "%s is under a sensitive path (autonomy.park-on-touch)" % p
     if MANIFEST.search(norm):
         return "%s is a dependency manifest or lockfile" % p
@@ -784,7 +784,7 @@ def close(r, cli_path):
         if m:
             verdicts[int(m.group(1))] = m.group(2).lower()
     complete = any(re.search("review completed", str(x.get("claim") or ""), re.I) and x.get("exit_code") == 0 for _, x in after)
-    block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", r.cfg("review.block-on", "critical, high")) if s.strip()]
+    block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", r.cfg("review.block-on")) if s.strip()]
     new = [x for _, x in after if str(x.get("severity") or "").lower() in block and not RECHECK.match(str(x.get("claim") or ""))]
     rows = ledger()
     fixed, held = [], []

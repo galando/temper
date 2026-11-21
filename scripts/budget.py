@@ -107,10 +107,10 @@ class Facts:
 
     def limit(self, key, default):
         if self._run is not None:
-            v = self._run.cfg(key, str(default))
+            v = self._run.cfg(key)
         else:
             import config_yaml
-            v = str(config_yaml.get(config_yaml.load(os.path.join(".claude", "temper.config")), key, default))
+            v = str(config_yaml.get(config_yaml.load(os.path.join(".claude", "temper.config")), key))
         return int(v) if re.fullmatch(r"\d+", v.strip()) else default
 
 

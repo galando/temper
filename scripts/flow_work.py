@@ -38,9 +38,41 @@ class WorkPart:
         lines.append("Spec path: %s." % r.spec)
         lines.extend(extra_lines)
         lines.extend("Person's note: %s" % x["claim"] for x in r.notes(stage, "input"))
+        lines.extend(self.packs_lines(stage))
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": model, "prompt": "\n".join(lines),
                 "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, model or "unknown"))]}
+
+    def packs_lines(self, stage):
+        """WP29: the pack files the agent of the stage reads (`temper packs --stage S`, scripts/cli_ctx.py), one line, and
+        a second line with each entry of `packs:` written in braces, as written. No line when no pack applies."""
+        import cli_ctx
+        files, entries = cli_ctx.packs(self.plugin, self.r.ctx.get("config_file") or os.path.join(".claude", "temper.config"), stage)
+        return ["Packs: %s" % ", ".join(files)] * bool(files) + ["Pack entries: %s" % ", ".join(entries)] * bool(entries)
+
+    def tidy_step(self):
+        """WP29 (ADR 0023): the one time config question, before any other step of a /temper:temper run at Intent whose
+        agent has not run yet (no intent.md, no usage row of Intent), in a run that asks, when the config holds a line that
+        only repeats an old default or a key no longer read (scripts/config_tidy.py). Each answer is one call of the CLI."""
+        r = self.r
+        if (r.command != "temper" or r.stage != "intent" or r.state.get("run_mode") == "autonomous" or r.intent
+                or any(isinstance(u, dict) and u.get("stage") == "intent" for u in r.usage if isinstance(r.usage, list))):
+            return None
+        import config_tidy
+        try:
+            with open(r.ctx.get("config_file") or os.path.join(".claude", "temper.config"), encoding="utf-8") as f:
+                found = config_tidy.stale(f.read())
+        except OSError:
+            return None
+        if not found:
+            return None
+        opts = [self.opt(label, desc, move="answer", calls=[self.c("config tidy %s" % how)], oid=oid) for label, desc, how, oid in (
+            ("Remove them (Recommended)", "The lines go and the new defaults apply; the lines you changed stay, and the old "
+             "file is kept as .claude/temper.config.before-9.8.5.", "--apply", "tidy-config"),
+            ("Keep my file", "Nothing is removed and the old values still rule; the question is not asked again.", "--keep",
+             "keep-config"))]
+        return {"action": "ask", "stage": "intent",
+                "ask": self.question(GATE_HEADER, config_tidy.question_text(found), opts, "intent", qid="config.tidy")}
 
     def armed_text(self):
         return ("Approve the %s; the run goes on by itself: a passed check moves on, a failed check gets one repair and then "
@@ -66,7 +98,8 @@ class WorkPart:
             return None
         model = r.model("rca")
         prompt = "\n".join(["Follow %s/agents/rca.md exactly. Bug: %s." % (self.plugin, r.state.get("feature") or r.slug),
-                            "RCA file: %s/rca.md" % r.spec] + ["Person's note: %s" % x["claim"] for x in notes] + [self.plugin_line()])
+                            "RCA file: %s/rca.md" % r.spec] + ["Person's note: %s" % x["claim"] for x in notes] + self.packs_lines("rca")
+                           + [self.plugin_line()])
         a = {"type": "temper:temper-rca", "model": model, "prompt": prompt,
              "after": [self.c("usage add --stage rca --model %s --ms {ms}" % (model or "unknown")), self.c("state set rca_notes %d" % len(notes))]}
         return {"action": "work", "stage": "rca", "calls": [], "agents": [a],
@@ -755,7 +788,7 @@ class WorkPart:
         """True when the CLI can run Check itself: a configured test command, one it detects for the stack, or else the
         plan's Integration line (WP23 mechanism 2, as check_run.run reads it)."""
         try:
-            return bool(check_run.det_for(os.getcwd(), self.r.cfg("check.commands.test", ""), self.r.cfg("check.commands.coverage", ""))
+            return bool(check_run.det_for(os.getcwd(), self.r.cfg("check.commands.test"), self.r.cfg("check.commands.coverage"))
                         or check_run.plan_line(self.r.spec))
         except Exception:
             return False

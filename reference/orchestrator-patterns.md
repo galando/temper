@@ -26,8 +26,8 @@ The plugin folder is the folder Temper is installed in: the folder that holds
 Only if the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall
 it." Never search the disk for the plugin folder and never guess another one. The temper
 CLI is always called by its full path, `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every
-path that does not start with the plugin folder (`.temper/`, the spec files,
-`.claude/temper.config`) is in the user's project, the current directory.
+path that does not start with the plugin folder (`.temper/`, the spec files, the project's config) is in the
+user's project, the current directory.
 
 ## The run files
 
@@ -73,9 +73,8 @@ status and gate verdict; each task's status, attempts and commit; the integratio
 
 ## MCP Tool-First Pattern
 
-`tools.mode`: `auto` (default — try MCP, fall back to grep-based heuristic) /
-`heuristic-only` (never call MCP, forces `[HEURISTIC]`) / `require` (fail if MCP
-unavailable, no fallback). Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
+An agent uses a connected MCP tool when there is one and falls back to a grep based heuristic when there is none.
+Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
 
 | Label | Meaning |
 |---|---|

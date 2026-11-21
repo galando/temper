@@ -340,8 +340,6 @@ OCR is off by default. When you set `tools.ocr.mode` to `auto` or `require` and 
 | Config Key | Default | Description |
 |------------|---------|-------------|
 | `tools.ocr.mode` | `off` | `off` (never invoke), `auto` (use if available), `require` (block if missing) |
-| `tools.ocr.replace-defect-subagent` | `true` | Drop generic defect hunting from Temper subagents when OCR is active |
-| `tools.ocr.timeout` | `10` | Minutes before OCR invocation is killed |
 
 **Evidence labels:**
 
@@ -457,9 +455,8 @@ The quality packs: view, toggle, quick-create a launcher pack, configure links a
 
 **What it does:**
 
-- Shows every pack it finds, from three places: the project's `.claude/packs` folder, your global
-  pack folder `~/.claude/packs`, and the 8 built-in packs. A project pack shadows a global one of
-  the same name, and a global one shadows a built-in one.
+- Shows every pack it finds, from two places: the project's `.claude/packs` folder and the built-in packs. A
+  project pack takes the place of a built-in one of the same name. Nothing in your home folder is read (9.8.5).
 - Lets you toggle packs on/off, quick-create a launcher pack, set a pack's link and phases, or build a new pack
 - Prints the guardrails pack's guard hooks for you to add, or says which to remove (see [Guardrails](#guardrails)).
   It opens no Claude Code settings file.
@@ -626,6 +623,106 @@ Root Cause: Queue consumer crashed at 2:34 AM
    • Tests added: 2
    • Regression risk: Low
 ```
+
+## The config
+
+A new project's `.claude/temper.config` is the template of 10 live lines (`run.default`, `packs`, `review.block-on`,
+`autonomy.park-on-touch`, `models.plan` and `models.task` with their parents) and two commented blocks
+(`check.commands` and `setup`). Every other setting has its default in one table of the CLI, `scripts/defaults.py`
+(ADR 0023), and a line of your config wins over it.
+
+```text
+temper config show              each key, its value and where it comes from: config, default, or old name <key>
+temper config show --markdown   the table below
+temper config get <key>         one value; with no default given, the table's
+temper packs --stage <stage>    the pack files the agent of that stage reads, as its prompt's Packs: line names them
+```
+
+`config show` also names each key of your file that is gone (with what replaced it) and each key it does not know
+(`not read: <key>`); neither is an error. `scripts/check_config_keys.py` holds the table to the code: every key has a
+reader, and no page names a key the table lacks.
+
+The keys, as `temper config show --markdown` prints them:
+
+| Key | Default | What it sets |
+|---|---|---|
+| `run.default` | `to-commit` | the approval's first option: to-commit (the run goes on by itself to the commit), ask, or never-unattended |
+| `packs` | `[security, tdd]` | the packs whose rules the agents follow; the CLI names their files in each prompt (`temper packs`) |
+| `review.block-on` | `[critical, high]` | the finding levels that fail the Review gate |
+| `autonomy.park-on-touch` | `["**/auth/**", "**/payment/**", "**/billing/**"]` | sensitive paths: a plan that touches one is risk H, named at the approval, and nothing there is repaired by rule |
+| `models.plan` | `opus` | the planner's model, over the table of `scripts/cli_ctx.py` |
+| `models.task` | `sonnet` | the model of the Build task agents; haiku costs less and takes longer |
+| `models.<agent>` | the table of `scripts/cli_ctx.py` | the model of one agent, over the table of `scripts/cli_ctx.py` |
+| `models.high.<agent>` | the table of `scripts/cli_ctx.py` | the model of one agent in a run of tier complex or risk H |
+| `check.commands.test` | none | the test command Check runs instead of the one it detects |
+| `check.commands.coverage` | none | the coverage command Check runs instead of the one it detects |
+| `check.coverage-threshold` | none | a coverage floor, read only when set; with none, coverage may not drop against the base |
+| `setup.run` | none | one shell line the CLI runs before each command it runs |
+| `setup.env` | none | variables set for each command; a credential name is never set or shown |
+| `setup.services` | none | services that must answer (name: host:port) before the checks run |
+| `setup.tools` | none | programs the commands need |
+| `build.grouped.max-parallel` | `4` | Build tasks running at once |
+| `build.grouped.max-groups` | `2` | groups working at once |
+| `build.grouped.keep-days` | `30` | days an earlier attempt's work is kept (0: always) |
+| `build.red-before-code` | `false` | true: a task's failing run counts only on the code as the attempt found it, with no stub |
+| `autonomy.max-blast-radius` | `15` | the plan gate splits a group that declares more files than this |
+| `budget.per-failure` | `2` | repeats for one failed check |
+| `budget.per-run` | `6` | repeats in one run |
+| `plan.context-check` | `auto` | auto: ask when the Context Map has an ignore or a gap; always; off |
+| `plan.fresh-review` | `ask` | a reader with no context reads the plan: ask, auto, always or off |
+| `plan.fresh-review-twice` | `true` | a risk H plan gets two fresh readers |
+| `plan.fresh-review-rounds` | `3` | launches of the fresh review in one run, at most |
+| `phases.pipeline` | `true` | false: no Pipeline stage after a commit that opened a pull request |
+| `protect.paths` | none | paths no agent edit may change (the guardrails pack) |
+| `format.cmd` | none | a formatter run on each agent edit, {file} for the file (the guardrails pack) |
+| `evidence.claimed-runs` | `ignore` | count: a run an agent only claimed counts at a gate too |
+| `bands.window` | `10` | the control bands: points of the rolling baseline |
+| `bands.min-points` | `4` | the control bands: fewer points are no breach |
+| `bands.drift-run` | `6` | the control bands: same side points that count as drift |
+| `bands.metrics` | none | the control bands: the series they read |
+| `bands.tiers.1sigma` | `log` | the control bands: what a 1 sigma breach does |
+| `bands.tiers.2sigma` | `diagnose` | the control bands: what a 2 sigma breach does |
+| `bands.tiers.3sigma` | `propose` | the control bands: what a 3 sigma breach does |
+| `tools.ocr.mode` | `off` | the external review engine: off, auto or require; the Review agent reads it with config get |
+| `upgrade.asked` | none | the version whose one time config question was answered Keep my file |
+
+### The one time question
+
+The first `/temper:temper` run of a project whose config is an older template (9.8.4, or the base of 9.8.5) asks
+`config.tidy` before anything else: the config holds N lines that only repeat old defaults or are no longer read; the
+question names at most eight of them with what changes (the coverage floor, `phases.design`, the five packs and
+`block-on: [critical]` first) and says a copy is kept.
+
+- `Remove them (Recommended)` runs `temper config tidy --apply`: the old file is copied to
+  `.claude/temper.config.before-9.8.5`, and the file becomes the new template with the lines you changed, in place of
+  its lines or after them. `autonomy.enabled: false` becomes `run.default: ask`, never the new default.
+- `Keep my file` runs `temper config tidy --keep`: the file stays and gets `upgrade.asked`, so the question is not
+  asked again and the old values still rule.
+
+Both calls run only at Intent before the first agent of a `/temper:temper` run; past Intent, in a fix run or in a run
+that goes on by itself they exit 1 and change nothing. A project made by `config init` is never asked.
+
+### What became of an old key
+
+| Key | Now |
+|---|---|
+| `stack` | gone: the CLI detects the stack |
+| `packs` | a live line, default `[security, tdd]`; the five packs of the old template are an old default |
+| `review.block-on` | a live line; `[critical]` is an old default |
+| `check.coverage-threshold` | read when set; `80` is an old default, and with none coverage may not drop |
+| `check.environment`, `check.mutation-threshold` | gone: Check decides from file names; the planted bug score is information |
+| `tools.mode` | gone: an agent uses a connected tool when there is one |
+| `tools.ocr.mode` | in the table; `off` is an old default |
+| `plan.context-check`, `plan.fresh-review`, `-twice`, `-rounds` | in the table; their old template values are old defaults |
+| `plan.preflight-timeout`, `plan.preflight-skip` | gone: the plan's commands run once on the base |
+| `phases.design` | gone: Design runs only when you ask for it |
+| `phases.pipeline` | in the table; `true` is an old default |
+| `feedback.enabled`, `loops.max-per-type`, `fix.max-loops` | gone: one budget of repeats (`budget.per-failure`) |
+| `autonomy.enabled` | read as `run.default: ask` when false; the question writes that line |
+| `autonomy.policy`, `autonomy.budget.max-total-loops`, `.max-stages` | gone: `run.default` and one budget (`budget.per-run`) |
+| `autonomy.max-blast-radius` | in the table; `15` is an old default |
+| `build.grouped.task-model`, `build.grouped.escalation-model` | read as the old names of `models.task` and `models.task-escalation` |
+| `build.grouped.max-parallel`, `.max-groups`, `.keep-days`, `build.red-before-code` | in the table |
 
 ## The CLI calls
 

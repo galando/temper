@@ -10,6 +10,11 @@ import { pickId, stagePerson } from './persons'
 import { ROOT, TEMPER, World, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
+// WP29: the config with lines at the top of its `check:` block, made when the template has none (the template of
+// 9.8.5 holds the block only as a comment)
+const checkLines = (text: string, lines: string): string =>
+  /^check:\n/m.test(text) ? text.replace(/^check:\n/m, `check:\n${lines}`) : `${text.replace(/\n*$/, '\n')}check:\n${lines}`
+
 export const SPEC = '.temper/specs/ci'
 
 // A scripted agent's shell call goes through the mod's rule engine like a real one.
@@ -30,7 +35,7 @@ export function startProject(w: World, config = '', before?: (w: World) => void)
   // run gives the same verdict on every machine. WP19: the lines go at the top of the check block, whatever the
   // template holds there, and no key turns the planted bug score off: it gates nothing.
   const cfg = path.join(w.dir, '.claude/temper.config')
-  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace(/^check:\n/m, `check:\n  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'\n`))
+  fs.writeFileSync(cfg, checkLines(fs.readFileSync(cfg, 'utf8'), `  commands:\n    test: ${SUITE}\n    coverage: ${SUITE} && echo 'TOTAL 100 10 90%'\n`))
   if (config) fs.appendFileSync(cfg, `\n${config}\n`)
   w.sh('git add -A && git commit -qm config')
   before?.(w)

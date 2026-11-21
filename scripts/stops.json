@@ -289,6 +289,12 @@
    "where": "Review, Check",
    "trigger": "a repair that made things worse, reverted by the CLI: repair.stop names what broke (WP24)",
    "check": "D37e after one repair the run asks one question, repair.stop"
+  },
+  {
+   "id": "config.tidy",
+   "where": "Intent, before the first agent of a run",
+   "trigger": "a config of 9.8.4 or of the base with lines that only repeat old defaults or are no longer read: only the person's answer tidies it; the CLI refuses config tidy past Intent, in a fix run and in a run that goes on by itself (WP29)",
+   "check": "D33a every stop of scripts/stops.json, built in an unattended run, is a question or a recorded stop"
   }
  ]
 }

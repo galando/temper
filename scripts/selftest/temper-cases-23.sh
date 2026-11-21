@@ -20,11 +20,12 @@ assert_eq "9.8.5 setup: a credential assignment in the run line is masked when s
 assert_eq "9.8.5 setup (WP21): the config template documents the setup block, and neither key of the old plan check" "setup=1|old keys=0" \
   "setup=$(grep -cE '^# *setup:' "$REPO_ROOT/templates/temper.config.default")|old keys=$(grep -cE '^# *  pre[f]light-(timeout|skip):' "$REPO_ROOT/templates/temper.config.default")"
 # WP08 (M8): the reader merges a repeated key, and the template has no empty key that hides a documented block
-# (only the first block from "# build:" to its keep-days line: the fix comments out the empty build key too)
-awk '!d && /^# build:$/ {on = 1} on {sub(/^# /, "")} on && /keep-days:/ {on = 0; d = 1} {print}' \
+# WP29: the template of 10 live lines documents two blocks in comments, check.commands and setup; only the first, from
+# "# check:" to its coverage line, is uncommented here (the build block of the old template is gone from it)
+awk '!d && /^# check:$/ {on = 1} on {sub(/^# /, "")} on && /coverage:/ {on = 0; d = 1} {print}' \
   "$REPO_ROOT/templates/temper.config.default" > .claude/temper.config
-assert_eq "the template with the grouped block uncommented keeps it" "claude-haiku-5-5" \
-  "$("$TEMPER" config get build.grouped.task-model 2>&1)"
+assert_eq "the template with the check commands block uncommented keeps it" "npm test|npx c8 npm test" \
+  "$("$TEMPER" config get check.commands.test 2>&1)|$("$TEMPER" config get check.commands.coverage 2>&1)"
 { cat "$REPO_ROOT/templates/temper.config.default"; printf 'autonomy:\n  policy: decide\n'; } > .claude/temper.config
 assert_eq "two autonomy blocks keep park-on-touch" "**/auth/**,**/payment/**,**/billing/**|decide" \
   "$("$TEMPER" config get autonomy.park-on-touch 2>&1 | tr '\037' ',')|$("$TEMPER" config get autonomy.policy 2>&1)"

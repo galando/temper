@@ -11,15 +11,13 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 **Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, make the very first sentence of your first reply in this conversation, before anything else and also when the arguments of `/temper:temper` start with one of its reserved first words (such as `status`, `report`, `help` or `approve`), exactly "Temper enforcement is off here (no mods support); continuing with prompt based phases.". With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: make that first sentence exactly "Temper enforcement is off (turned off by the user); continuing with prompt based phases." instead. Then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it. Skip this paragraph when you run as a stage subprocess (your launch prompt has a `Plugin folder:` line): a subprocess's system prompt never has that line, and the orchestrator or the standalone command states enforcement once, in the main conversation.
 
 ## Stack Detection
-1. `.claude/temper.config` → `stack` field
-2. The YAML preset files in the project's `.claude/presets` folder (list the folder) → `stack` section
-3. Auto-detect: pom.xml→Spring Boot, package.json→Node, pyproject.toml→Python, go.mod→Go, Cargo.toml→Rust
-4. Load `.claude/packs/stacks/{stack}.md`
+1. The YAML preset files in the project's `.claude/presets` folder (list the folder) → `stack` section
+2. Auto-detect: pom.xml→Spring Boot, package.json→Node, pyproject.toml→Python, go.mod→Go, Cargo.toml→Rust
+3. Load `.claude/packs/stacks/{stack}.md`
 
 ## Pack Resolution
-Three-tier: project-local > global > built-in. Read live (no cache) by every stage command (build, review, check, plan, design) for phase-filtered loading.
+Two tiers: project-local > built-in. The CLI resolves them (`temper packs --stage S`) and names the files on each agent's `Packs:` line.
 - `.claude/packs/{name}/rules.md` (project)
-- `~/.claude/packs/{name}/rules.md` (global)
 - built-in, exactly these files: `${CLAUDE_PLUGIN_ROOT}/packs/quality/rules.md`,
   `${CLAUDE_PLUGIN_ROOT}/packs/tdd/rules.md`, `${CLAUDE_PLUGIN_ROOT}/packs/security/rules.md`,
   `${CLAUDE_PLUGIN_ROOT}/packs/git/rules.md`, `${CLAUDE_PLUGIN_ROOT}/packs/performance/rules.md`,

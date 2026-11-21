@@ -588,6 +588,14 @@ d['repair_stop'] = {'kind': 'tests' if sys.argv[1] == 'repair.tests-removed' els
                     'n': 1, 'stage': 'review', 'lines': ['src/demo_test.sh: b=2']}
 json.dump(d, open(p, 'w'), indent=2)" "$1"
       _stop44 "$_FORBID44|repair (start|commit|revert)" ;;
+    config.tidy) _unattended build   # WP29: an unattended run on a config of 9.8.4: no rule tidies it, the CLI refuses
+      python3 -I -c 'import json, sys; sys.stdout.write(json.load(open(sys.argv[1]))["7c7a1c1"]["template"].replace("@PLUGIN@", sys.argv[2]))' \
+        "$TESTS_DIR/saved-old.json" "$REPO_ROOT" > .claude/temper.config
+      local cfg44 out44 rc44; cfg44="$(cat .claude/temper.config)"
+      out44="$(_stop44 "$_FORBID44|config tidy")"
+      "$TEMPER" config tidy --apply >/dev/null 2>&1; rc44=$?
+      if [[ "$out44" != *" runs "* && $rc44 -eq 1 && "$(cat .claude/temper.config)" == "$cfg44" && ! -e .claude/temper.config.before-9.8.5 ]]
+      then echo stop; else echo "$out44; config tidy --apply exit $rc44 by the session"; fi ;;
     *) echo "no state is built for this stop" ;;
   esac
 }

@@ -269,6 +269,25 @@ All notable changes to Temper are documented here. The plugin version lives in
   captured a draft owes the intent gate). What is lost: a planned folder with no run is started from its intent, and
   its plan is written again. A run saved by 9.8.4 or by the base after it came through a door keeps `enter` in its
   state: the key is ignored, so a stage before the door with no verdict runs its agent. It is not an error.
+- WP29: defaults live in code (ADR 0023). One table, `scripts/defaults.py`, holds every key with its default, its
+  reader and its meaning; `config get` with no default reads it, and reads a renamed key under its old name
+  (`build.grouped.task-model` as `models.task`). The template is 10 live lines (`run.default`, `packs`,
+  `review.block-on`, `autonomy.park-on-touch`, `models.plan`, `models.task`) and two commented blocks, 21 lines in all.
+  `temper config show` prints each key, its value and its source, and names a key that is gone or not read, never as
+  an error; `--markdown` prints the table of `docs/commands.md`. The default packs are two, security and tdd. The CLI
+  names the pack files: `temper packs --stage S`, and a `Packs:` line in the prompt of Plan, Design, Build, Review,
+  Check, RCA and Fix; no brief reads the config for them. A pack under `~/.claude/packs` is no longer found: the CLI
+  reads nothing in the home folder, so copy such a pack into the project's `.claude/packs`. The first run of a project
+  whose config is an older template (9.8.4, or the base) asks once, before anything else, `config.tidy`: `Remove them
+  (Recommended)` runs `temper config tidy --apply` (the lines that only repeat old defaults or are no longer read go,
+  the lines you changed stay, `autonomy.enabled: false` becomes `run.default: ask`, and the old file is kept as
+  `.claude/temper.config.before-9.8.5`); `Keep my file` runs `temper config tidy --keep` (`upgrade.asked`, and the
+  old values still rule). Both calls are refused past Intent, in a fix run and in a run that goes on by itself, and
+  with the mod they are the person's only. A person's `block-on: [critical]` reads like the 9.8.4 default: the
+  question says high will block too. `scripts/check_config_keys.py` (in `scripts/quality-check.sh`) proves every key
+  has a reader. Gone from the pages: `tools.mode`, `tools.label-findings`, `tools.ocr.timeout`,
+  `tools.ocr.replace-defect-subagent`, `check.environment`, `check.live-scenarios`, `check.debt-tracking`,
+  `review.confidence-threshold`, `review.auto-fix`, `plan.default-depth`, `branch.pattern` and `branch.commit-style`.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

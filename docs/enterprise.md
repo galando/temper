@@ -93,11 +93,6 @@ packs:
 
 review:
   block-on: [critical, high]
-  auto-fix: true
-
-branch:
-  pattern: "feature/{ticket}-{description}"
-  commit-style: conventional
 ```
 
 ## Step 4: Distribute to Teams
@@ -144,37 +139,19 @@ No other setup is needed: the project settings bring the plugin, and the project
 
 ### temper.config
 
+Only your choices live in the config; every other setting has its default in the CLI, and `temper config show` prints
+each key, its value and where it comes from (the table is in `docs/commands.md`, "The config").
+
 ```yaml
-# Stack override (auto-detect by default)
-stack: auto
-
-# Enabled packs
-packs:
-  - quality
-  - tdd
-  - security
-  - git
-  - company    # Your company pack
-
-# Planning options
-plan:
-  default-depth: auto
-
-# Review options
+run:
+  default: to-commit          # to-commit | ask | never-unattended
+packs: [security, tdd, company]
 review:
-  block-on: [critical, high]  # Block on these severities
-  auto-fix: true
-  confidence-threshold: 0.7
-
-# Check options
+  block-on: [critical, high]
+autonomy:
+  park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
 check:
-  coverage-threshold: 85
-  debt-tracking: true
-
-# Branch conventions
-branch:
-  pattern: "feature/{COMPANY}-{ticket}-{description}"
-  commit-style: conventional
+  coverage-threshold: 85      # a fixed floor; with none, coverage may not drop against the base
 ```
 
 ## Governance

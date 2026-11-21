@@ -4,6 +4,7 @@
   python3 cli_ctx.py models --plugin DIR --config-file FILE [--state-file FILE] [--source] [--all | NAME]
                                                                                (WP27: the table of models, by agent and
                                                                                class, with the config keys over it)
+  python3 cli_ctx.py packs --plugin DIR --config-file FILE --stage S   (WP29: the pack files of a stage's agent)
   python3 cli_ctx.py view --plugin DIR --cli PATH --config-file FILE --now TS   (9.8.0: the view every other command
                                                                                writes, with the models `next` resolves)
 
@@ -58,6 +59,61 @@ def resolve(plugin, cfg, state=None, state_file=os.path.join(".temper", "build-s
         over = next((str(v) for v in (config_yaml.get(cfg, k, "") for k in keys) if v and not isinstance(v, dict)), "")
         out[a] = (over, "config") if over else (TABLE[a][1 if high else 0], "table")
     return out
+
+
+# WP29: the stages whose agent follows packs; Plan also takes the packs of Build (reference/plan.md)
+PACK_STAGES = ("plan", "design", "build", "review", "check", "rca", "fix")
+
+
+def packs(plugin, config_file, stage):
+    """([rules file], [entry as written]) of the packs of the config (the table's [security, tdd] with no `packs:` line)
+    that apply at the stage: the project's .claude/packs/<name>/rules.md when it exists, else the plugin's; kept when the
+    file's `phases:` is all, is absent or holds the stage. Nothing in the home folder is read. An entry in braces (a
+    link, a phases list) is handed on as written; reference/pack.md says what an agent does with it."""
+    if stage not in PACK_STAGES:
+        return [], []
+    try:
+        with open(config_file, encoding="utf-8") as f:
+            text = [x.split(" #", 1)[0].rstrip() for x in f.read().splitlines()]
+    except OSError:
+        text = []
+    at = next((i for i, x in enumerate(text) if re.match(r"^packs:", x)), None)
+    raw = text[at].partition(":")[2].strip() if at is not None else ""
+    names = []
+    if raw.startswith("[") and raw.endswith("]"):
+        names = [x.strip() for x in re.findall(r"\s*(\{[^}]*\}|[^,]+)", raw[1:-1]) if x.strip()]
+    elif raw:
+        names = [raw]
+    elif at is not None:   # a block list (reference/pack.md): `- name`, or `- name: x` with its keys, as one entry
+        for x in text[at + 1:]:
+            if x.strip() and not x.startswith(" "):
+                break
+            if x.strip().startswith("- "):
+                names.append(x.strip()[2:].strip())
+            elif x.strip() and names and ":" in names[-1]:
+                names[-1] += ", " + x.strip()
+        names = ["{ %s }" % n if ":" in n and not n.startswith("{") else n for n in names]
+    if at is None:
+        names = [str(x) for x in config_yaml.get({}, "packs").split("\x1f") if x]
+    want = (stage, "build") if stage == "plan" else (stage,)
+    files, entries = [], []
+    for n in names:
+        if n.startswith("{"):
+            entries.append(n)
+            continue
+        n = n.strip("\"'")
+        mine = os.path.join(".claude", "packs", n, "rules.md")
+        path = mine if os.path.isfile(mine) else os.path.join(plugin, "packs", n, "rules.md")
+        try:
+            with open(path, encoding="utf-8") as f:
+                head = f.read(2000)
+        except OSError:
+            continue
+        m = re.search(r"(?m)^phases:\s*(.*)$", head.split("\n---", 1)[0] if head.startswith("---") else "")
+        ph = (m.group(1).strip() if m else "all").strip("[]").replace(",", " ").split()
+        if not ph or "all" in ph or any(s in ph for s in want):
+            files.append(path)
+    return files, entries
 
 
 def git_out(*args):
@@ -116,11 +172,19 @@ def option(argv, name, default=""):
 
 
 def main(argv):
-    if len(argv) < 2 or argv[1] not in ("next", "models", "view"):
+    if len(argv) < 2 or argv[1] not in ("next", "models", "view", "packs"):
         print(__doc__, file=sys.stderr)
         return 2
     plugin = option(argv, "--plugin")
     config_file = option(argv, "--config-file")
+    if argv[1] == "packs":   # WP29: `temper packs --stage S`, the pack files an agent of that stage reads
+        stage = option(argv, "--stage")
+        if stage not in PACK_STAGES + ("intent",):
+            print("FAIL: usage: temper packs --stage <%s>" % "|".join(PACK_STAGES), file=sys.stderr)
+            return 1
+        files, entries = packs(plugin, config_file, stage)
+        print("\n".join(files + ["Pack entries: %s" % ", ".join(entries)] * bool(entries)) or "no pack applies at %s" % stage)
+        return 0
     cfg = config_yaml.load(config_file)
     found = resolve(plugin, cfg, state_file=option(argv, "--state-file") or os.path.join(".temper", "build-state.json"))
     if argv[1] == "models":   # `temper model`: one agent's model, or every line (with its source)

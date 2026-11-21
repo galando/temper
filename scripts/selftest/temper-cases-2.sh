@@ -682,7 +682,8 @@ assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" 
 # --- mods: check.commands.* and the budget's config key (WP10: budget.per-failure, in the place of fix.max-loops) ---
 setup
 _c2limit() { python3 "$REPO_ROOT/scripts/budget.py" room "$1" | python3 -c "import json, sys; print(json.load(sys.stdin)['limit'])"; }
-assert_eq "config get budget.per-failure prints nothing when absent, and the limit a step back keeps is 2" "|2" \
+# WP29: a key the config lacks prints the table's default (scripts/defaults.py), the one the budget keeps
+assert_eq "config get budget.per-failure prints the table's 2 when absent, and the limit a step back keeps is 2" "2|2" \
   "$("$TEMPER" config get budget.per-failure)|$(_c2limit gate:check)"
 assert_eq "config get check.commands.test prints nothing when absent" "" "$("$TEMPER" config get check.commands.test)"
 cat >> .claude/temper.config <<'CFG'

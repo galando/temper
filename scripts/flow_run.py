@@ -128,20 +128,17 @@ class Run:
         import cli_ctx
         return cli_ctx.resolve("", self.config, state=self.state).get(name, ("", ""))[0]
 
-    def cfg(self, key, default=""):
-        v = config_yaml.get(self.config, key, default)
-        return default if v is None or v == "" else str(v)
-
-    def on(self, key, default=False):
-        v = self.cfg(key, "true" if default else "false").lower()
-        return v in ("true", "yes", "on", "1")
+    def cfg(self, key):
+        """A config value as text; a key the config lacks gets the table's default (scripts/defaults.py, WP29)."""
+        v = config_yaml.get(self.config, key)
+        return "" if v is None else str(v)
 
     def seq(self):
         s = list(SEQ.get(self.command, SEQ["temper"]))
         if self.command == "temper" and not self.has_design():
             s.remove("design")
         # Pipeline follows a Commit that opened a pull request, unless phases.pipeline is false
-        if self.command == "temper" and self.cfg("phases.pipeline", "true").lower() != "false" and (
+        if self.command == "temper" and self.cfg("phases.pipeline").lower() != "false" and (
                 self.state.get("pr") in ("one", "stacked") or self.stage == "pipeline"):
             s.append("pipeline")
         return s
@@ -156,8 +153,8 @@ class Run:
             return {"applies": False, "offer": False, "launched": False, "stale": False, "capped": False, "missing": [], "need": [],
                     "lazy": [], "findings": [], "contests": [], "paraphrase": "", "paraphrase_short": False, "rounds": 0, "cap": 0}
         return fresh_review.status(self.spec, os.path.join(TEMPER, "evidence", "plan.json"), os.path.join(TEMPER, "build-state.json"),
-                                   self.cfg("plan.fresh-review", "ask"), self.cfg("plan.fresh-review-twice", "true"),
-                                   self.cfg("plan.fresh-review-rounds", "3"))
+                                   self.cfg("plan.fresh-review"), self.cfg("plan.fresh-review-twice"),
+                                   self.cfg("plan.fresh-review-rounds"))
 
     def has_design(self):
         """WP14 (ADR 0019 decision 2): a run of /temper:temper has the Design stage only when the person asked for it
@@ -214,7 +211,7 @@ class Run:
         an unknown value is ask."""
         v = str(config_yaml.get(self.config, "run.default", "") or "").strip().lower()
         if not v:
-            return "ask" if self.cfg("autonomy.enabled", "").strip().lower() == "false" else "to-commit"
+            return "ask" if self.cfg("autonomy.enabled").strip().lower() == "false" else "to-commit"
         return v if v in ("to-commit", "ask", "never-unattended") else "ask"
 
     def armed(self):
@@ -229,7 +226,7 @@ class Run:
         """The files the plan declares under a sensitive path (autonomy.park-on-touch, scripts/sensitive.py): nothing there
         is repaired by rule."""
         files = [f for t in (self.plan or {}).get("tasks", []) for f in t.get("files", [])]
-        return [f for f, _ in sensitive.declared(files, self.cfg("autonomy.park-on-touch", ""))]
+        return [f for f, _ in sensitive.declared(files, self.cfg("autonomy.park-on-touch"))]
 
     def active_loops(self):
         return [l for l in (self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []) if isinstance(l, dict)]
@@ -320,7 +317,7 @@ class Run:
 
     def context_mode(self):
         """plan.context-check as the plan gate reads it: auto, always or off (an unknown value is auto)."""
-        return plan_ops.norm_mode(self.cfg("plan.context-check", "auto"))
+        return plan_ops.norm_mode(self.cfg("plan.context-check"))
 
     def context_folded(self, cm=None):
         """9.8.5 (WP13): the map is answered at the approval, not by a question of its own (scripts/plan_ops.py folds).
@@ -367,7 +364,7 @@ class Run:
         return out
 
     def open_findings(self):
-        block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", self.cfg("review.block-on", "critical, high")) if s.strip()]
+        block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", self.cfg("review.block-on")) if s.strip()]
         return [f for f in self.findings() if f["state"] == "open" and f["severity"] in block]
 
     def spec_ignored(self):
