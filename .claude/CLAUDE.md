@@ -11,7 +11,8 @@ Words of `/temper:temper`: `draft <idea>` (a draft `intent.md`, no run), and alo
 **The run to the commit (default):** the approval's first option, Approve and build, lets the run go
 on by itself to the commit question: a passed check moves on, a failed check gets one repair by rule, every other case
 stops and asks. Started only by that answer (never at invocation); never pushes or merges; the commit always asks.
-`run.default` (`to-commit`, `ask`, `never-unattended`) orders the options; `autonomy.enabled: false` reads as `ask`.
+`run.default` (`to-commit`, `ask`, `never-unattended`) orders the options; a config that turns autonomy off
+(`autonomy.enabled` set to false) reads as `ask`.
 See `reference/autonomy.md`.
 
 **The deterministic spine (v7):** every gate verdict is computed by `scripts/temper`
@@ -47,8 +48,8 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 - Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
   `reference/` (methodology) · `packs/` (rules) · `scripts/temper` and its Python modules
   (`json_ops.py`, `state_ops.py`, `ledger_ops.py`, `spec_text.py`, `commit_rows.py`, `report_ops.py`,
-  `groups_ops.py`, run as `python3 -I`): the deterministic spine, the CLI; gate logic lives in the CLI,
-  never in a prompt · `scripts/guards/` ·
+  `groups_ops.py`, run as `python3 -I`): the deterministic spine, the CLI; gate logic lives
+  in the CLI (the script and its Python modules), never in a prompt · `scripts/guards/` ·
   `scripts/plan_review.py` (renders and merges the HTML plan review).
 - Known mistakes: a gate-mechanics change is an edit of the CLI (`scripts/temper` or its module) plus a
   `test-temper.sh` case, not a prompt edit; new CLI logic goes into a module and one line into the bash
@@ -61,9 +62,10 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
   orchestrator file); new commands and agents must be listed in `.claude-plugin/plugin.json`;
   a finding is resolved by `temper repair close` (scripts/repair_ops.py), never by a brief or an agent's
   call; the person decides only in a question dialog, so never add a button that decides to the
-  mod, and never add a command (a new word is a row of the Arguments table of `commands/temper.md`, with a page in `reference/`); a cap
-  of `scripts/caps.json` is never raised by a building session (`now` follows the measure,
-  `final` never moves), and a count of the floor (`scripts/e2e/floor.json`) moves only in the
+  mod, and never add a command (a new word is a row of the Arguments table of `commands/temper.md`, with a page in `reference/`);
+  before a fault adds a row, a question, a key or an agent, show that the failing step cannot be removed or merged;
+  a cap of `scripts/caps.json` is raised only in a pull request of its own, never by a building session (`now`
+  follows the measure, `final` never moves), and a count of the floor (`scripts/e2e/floor.json`) moves only in the
   commit that moves the behaviour (`bun scripts/e2e/run.ts all <name> --floor scripts/e2e/floor.json`);
   a check is taken off the expected to fail list (`scripts/selftest/expected-fail.txt`) by the
   commit that makes it pass and by no other, and its assertion is never weakened to get there
