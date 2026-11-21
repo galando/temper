@@ -122,6 +122,20 @@ assert_eq "review 6: rule 4 an unattended run with no question open cannot patch
   "cmd=refused|add=refused|validate=true|files same|autonomous" \
   "cmd=$([[ $_r6_cmd -ne 0 ]] && echo refused || echo taken)|add=$([[ $_r6_add -ne 0 ]] && echo refused || echo taken)|validate=$(sed -n 's/^\*\*Validate:\*\* `\(.*\)`$/\1/p' .temper/specs/demo/tasks.md | head -1)|files $([[ "$("$TEMPER" state get approved_files 2>/dev/null)" == "$_r6_files0" ]] && echo same || echo widened)|$("$TEMPER" state get run_mode 2>/dev/null)"
 
+# --- review 6: rule 4, a run that goes on by itself never answers a scope drift ---
+# A Scope drift answer (`evidence add --claim "drift P: Add to plan"`) to no question is refused only inside a repair
+# window (repair_ops.py answer_of); elsewhere the CLI keeps it, and the commit gate's scope row counts it. With the mod off a
+# session of an unattended run, with no drift ask and no stop open, writes the answer for a file nobody planned, the run
+# stays unattended, and the scope row passes.
+_unattended build; _repo86; git checkout -q -B feature/demo; "$TEMPER" state set branch feature/demo >/dev/null 2>&1
+echo 'echo outside' > src/outside.sh
+"$TEMPER" evidence add --stage build --claim "drift src/outside.sh: Add to plan" >/dev/null 2>&1; _r6_drift=$?
+_r6_mode="$("$TEMPER" state get run_mode 2>/dev/null)"
+gpass build review check; _at commit; "$TEMPER" gate commit >/dev/null 2>&1
+assert_eq "review 6: rule 4 an unattended run with no drift question open cannot answer a scope drift for itself" \
+  "answer=refused|autonomous|blast=False" \
+  "answer=$([[ $_r6_drift -ne 0 ]] && echo refused || echo taken)|$_r6_mode|blast=$(_row86 commit "blast radius" | cut -d: -f1)"
+
 # --- review 6: rule 11, the commit hook is what holds the rules with the mod off; no CLI call of a session takes it away ---
 # Mid run, with no question open, an unattended run's session can end the run (`state clear`) or remove the hook (`guards
 # uninstall`): the CLI takes both, and then a commit of a file no gate saw passes. Only the mod refuses them (rules.ts:

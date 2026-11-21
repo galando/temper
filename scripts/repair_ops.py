@@ -441,7 +441,8 @@ def answer_of(claim):
     answer yet, `repair.stop` for the stop of an open repair on P, `commit.fail` for the commit gate's failed scope row
     that names P; '' for any other claim. Inside a repair window that is not committed, such an answer to no question is
     refused (ValueError): the fixer never writes the person's answer (outside one the row is kept unmarked, as before, and
-    no repair reads it). That a person gave the answer only the mod holds (docs/trust.md)."""
+    no repair reads it), and so is one in a run that goes on by itself with no stop open (WP32). That a person gave the
+    answer only the mod holds (docs/trust.md)."""
     m = re.match(ANSWER, claim or "", re.I)
     if not m:
         return ""
@@ -466,6 +467,10 @@ def answer_of(claim):
         raise ValueError("%s is a Scope drift answer to no question the CLI asked (no open drift ask of %s, no stop of the "
                          "repair on it): inside repair %s only the person's answer to that question adds a file" % (
                              claim, path, w.get("n")))
+    import person_call
+    if person_call.armed():   # WP32 (rule 4): a run that goes on by itself never answers for the person
+        raise ValueError("%s is a Scope drift answer to no question the CLI asked (no open drift ask of %s): a run that goes "
+                         "on by itself never answers one" % (claim, path))
     return ""
 
 

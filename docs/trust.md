@@ -140,8 +140,8 @@ that goes on by itself with no stop open, and the row stays in the ledger as the
 **A call only you may cause, with the mod off (9.8.5).** The mod refuses such a call unless your answer to the CLI's
 question maps to it. With the mod off the CLI holds what it can tell from the run's files (`scripts/person_call.py`).
 In a run that goes on by itself with no stop open, it refuses a plan patch, a budget grant, clearing a ledger, ending
-or starting over the run (`state clear`, `archive`, `init`) and `temper guards uninstall`. At a stop the run is
-parked, and the option you picked runs. In every mode it refuses to clear a
+or starting over the run (`state clear`, `archive`, `init`), `temper guards uninstall`, and a Scope drift answer to no
+question asked. At a stop the run is parked, and the option you picked runs. In every mode it refuses to clear a
 ledger that holds an open finding (only `temper repair close` resolves one, and you keep one with your accept), a
 start of the run that goes on by itself where the approval offers none (risk H with no fresh review), a move of the
 run's branch after the approval off the branch checked out, and a base for the diff (`base_sha`) that is not the full
