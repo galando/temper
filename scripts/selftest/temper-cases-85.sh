@@ -94,3 +94,15 @@ assert_eq "review 5: a fix of a failed group check committed by the CLI and chec
   "check failed first=FAIL|fix commits of the CLI no repeat paid for=0" \
   "check failed first=$_r9a_first|fix commits of the CLI no repeat paid for=$(( _r9a_rounds - $(_used85 group:G1) ))"
 
+
+# --- rule 10: the commit question lists what a rule decided at a failed group check ---
+# A failed group check whose recommended option is "Run the group's tasks again": the unattended run takes it by rule
+# (an `auto` action, one repeat of group:G1). `group reopen` writes no entry of the rule log, so the commit card shows
+# "repeats of the budget used: 1 of 6" and no line that says what the rule did.
+_armed85 '{"verdict": "FAIL", "reason": "uncommitted changes in the group worktree, not on its branch: src/p1.sh", "ran": false}'
+_r10a_next="$(_next85)"
+"$TEMPER" group reopen G1 --task 1 >/dev/null 2>&1; _r10a_rc=$?
+_r10a_card="$(_commit_card85)"
+assert_eq "review 5: the rule's run of a failed group's tasks again is listed on the commit card" \
+  "rule's move=auto group reopen G1 --task 1|ran=0|spent=1|listed=yes" \
+  "rule's move=$_r10a_next|ran=$_r10a_rc|spent=$(_used85 group:G1)|listed=$(_listed85 "$_r10a_card")"
