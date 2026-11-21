@@ -731,6 +731,26 @@ def cannot_run(root, cmd, timeout=300):
     return None
 
 
+def acc_built(root):
+    """The tasks that passed their task gate already (adversarial review R7b): the acceptance tests are written and locked
+    before the first task gate (row D36), so a first launch or a first lock after one is refused. A correction the
+    person reopened is not a first lock."""
+    try:
+        tasks = json.load(open(os.path.join(root, ".temper", "groups.json"))).get("tasks") or {}
+    except (OSError, ValueError, AttributeError):
+        return []
+    return sorted(str(n) for n, t in tasks.items() if isinstance(t, dict)
+                  and (t.get("status") in ("passed", "covered") or t.get("passed_at")))
+
+
+def _late(root):
+    built = acc_built(root)
+    if built:
+        print("FAIL: Task %s passed its gate already; the acceptance tests are written and locked before the first task "
+              "gate" % ", ".join(built[:3]), file=sys.stderr)
+    return bool(built)
+
+
 def acc_lock(root, spec, lockfile, cmd):
     folder = os.path.join(root, spec, "acceptance")
     files = _digests(folder, root) if os.path.isdir(folder) else {}
@@ -766,6 +786,8 @@ def acc_lock(root, spec, lockfile, cmd):
     if same and d.get("cmd") and not d.get("reopened"):
         print("FAIL: the acceptance tests are locked already; only the person reopens them (Correct the acceptance test, at the %s "
               "question)" % stage_label(root), file=sys.stderr)
+        return 1
+    if not (same and d.get("reopened")) and _late(root):
         return 1
     corrections = list(d.get("corrections") or []) if same else []
     if same and d.get("reopened"):
@@ -907,6 +929,8 @@ def acc_start(spec, lockfile):
         return 1
     if int(d.get("launches", 0)) >= ACC_MAX_LAUNCHES:
         print("FAIL: the acceptance writer was launched %d times and locked no test; skip them (temper acceptance skip --reason)" % int(d.get("launches", 0)), file=sys.stderr)
+        return 1
+    if _late(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(lockfile))))):
         return 1
     d["launches"] = int(d.get("launches", 0)) + 1
     acc_write(lockfile, d)

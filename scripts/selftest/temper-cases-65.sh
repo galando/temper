@@ -354,8 +354,14 @@ _c65_hooks="$(git config core.hooksPath 2>/dev/null)"; [[ -n "$_c65_hooks" ]] ||
 assert_eq "repair: commit refuses a file under .git: nothing is committed, the change stays, and the run asks" \
   "opened|not committed|kept|asks" "$(_drift65 "$_c65_hooks/pre-commit" '# changed by the repair' | sed 's/|asked [a-z][^|]*$/|asks/; s/|scope.drift$/|asks/')"
 _open65 none
+_lock65() { # _lock65 <command>: the acceptance lock as a run takes it, before the first task gate (the CLI refuses a first
+            # lock once a task passed: adversarial review R7b), so the record of the built task is put aside for it
+  mv .temper/groups.json .temper/groups.json.built
+  "$TEMPER" acceptance lock --cmd "$1" >/dev/null 2>&1
+  mv .temper/groups.json.built .temper/groups.json
+}
 mkdir -p .temper/specs/demo/acceptance; printf 'exit 0\n' > .temper/specs/demo/acceptance/test_acc65.sh
-"$TEMPER" acceptance lock --cmd 'sh .temper/specs/demo/acceptance/test_acc65.sh' >/dev/null 2>&1 || true
+_lock65 'sh .temper/specs/demo/acceptance/test_acc65.sh'
 assert_eq "repair: commit refuses a locked acceptance test" "$DRIFT65" "$(_drift65 .temper/specs/demo/acceptance/test_acc65.sh)"
 _open65 none
 assert_eq "repair: commit refuses a lockfile" "$DRIFT65" "$(_drift65 package-lock.json)"
@@ -679,7 +685,7 @@ _acc65() { # _acc65 <code|test>: a locked acceptance test that fails at Check, a
   _check65
   mkdir -p .temper/specs/demo/acceptance
   printf 'echo "FAIL: test_ac01 expected the field stage"; exit 1\n' > .temper/specs/demo/acceptance/test_acc65.sh
-  "$TEMPER" acceptance lock --cmd 'sh .temper/specs/demo/acceptance/test_acc65.sh' >/dev/null 2>&1 || true
+  _lock65 'sh .temper/specs/demo/acceptance/test_acc65.sh'
   "$TEMPER" check run >/dev/null 2>&1 || true
   gfail check "acceptance tests written before Build" "FAIL: test_ac01 expected the field stage"
   local stamp; stamp="$(_x65 "r = ((d.get('agents') or [{}])[0].get('after') or [''])[-1]")"   # the triage agent's last call

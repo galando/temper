@@ -101,3 +101,24 @@ assert_eq "review 4: R7a a locked acceptance test changed after the lock is not 
   "skip=refused|lock=refused|row=False" \
   "skip=$_r84_skip|lock=$_r84_relock|row=$(_row84 build 'acceptance tests written before Build')"
 
+
+# --- rule 7 (row D36: "locked by digest before the first task gate"): a lock taken after a task passed its gate ---
+printf '%s\n' '# Tasks: demo' '' '**Integration:** `true`' '' '## Group G1: Core' '**Depends:** none' '**Validate:** `true`' '**Context:**' \
+  'The demo group.' '' '### Task 1: first task' '**File:** `src/a.sh`' '**Depends:** none' '**Test:** `test -f src/a.sh`' '**Cases:**' \
+  '- a holds' '- [ ] done' | m_setup
+"$TEMPER" task start 1 >/dev/null 2>&1
+"$TEMPER" task test 1 --phase red >/dev/null 2>&1
+mkdir -p .claude/worktrees/temper-demo-T1/src; echo built > .claude/worktrees/temper-demo-T1/src/a.sh
+"$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 --model haiku >/dev/null 2>&1
+_r84_task="$(m_field 1 status)"
+"$TEMPER" acceptance start >/dev/null 2>&1
+mkdir -p .temper/specs/demo/acceptance; printf 'exit 0\n' > .temper/specs/demo/acceptance/accept_test.sh
+_r84_late="$("$TEMPER" acceptance lock --cmd 'sh .temper/specs/demo/acceptance/accept_test.sh' >/dev/null 2>&1 && echo taken || echo refused)"
+_built84
+"$TEMPER" integrate >/dev/null 2>&1 || true
+"$TEMPER" gate build >/dev/null 2>&1
+assert_eq "review 4: R7b acceptance tests locked after a task passed its gate are refused, or fail the Build row: tests come first" \
+  "task=passed|lock=refused|row=not passed" \
+  "task=$_r84_task|lock=$_r84_late|row=$([[ "$(_row84 build 'acceptance tests written before Build')" == True ]] && echo passed || echo 'not passed')"
+
