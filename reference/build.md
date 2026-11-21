@@ -11,7 +11,7 @@ the gate needs; this doc is the methodology behind what to test and in what orde
 **Modes:** the fix pass (`agents/build.md`, launched by the orchestrator) starts clean —
 no `AskUserQuestion` gate, return the summary, the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
 Prerequisites/blast-radius section, the pack files your prompt lists on its `Packs:` line (the CLI chose those of
-Build), and the project's `.claude/packs/stacks/{stack}.md` if present. The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit of the run.
+Build). The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit of the run.
 
 ## Execute Tasks in Order
 
@@ -120,12 +120,6 @@ architecture is incompatible), write the infeasibility reason in `build-context.
 say so in the panel. The person can choose "Loop back to Plan" at the Build question, which
 the CLI writes; the budget counts it.
 
-**Writing framework code:** apply the `source-driven-development` skill when a task
-uses a framework/library API — detect the pinned version, verify the call against
-current official docs rather than trained-in memory, and cite the source. It's how a
-"hallucinated API" (the exact defect the orders-api fixture plants) gets caught while
-writing, before Review has to flag it. Skip it for plain application logic.
-
 ## Post-Implementation
 
 Run the full suite and return the summary panel. The gate is the orchestrator's (its Build
@@ -144,8 +138,8 @@ complete`); the stage does not.
 
 ## Quality Gates (pattern → pack rule → level)
 
-Apply the temper-core skill for SUGGEST/WARN/BLOCK definitions. Representative mapping —
-the packs are the source of truth, this is illustrative, not exhaustive:
+A BLOCK rule must be fixed before the stage ends, a WARN is shown and the developer decides, a SUGGEST never blocks.
+Representative mapping (the packs are the source of truth; this is illustrative, not exhaustive):
 
 | Pattern | Rule | Level |
 |---|---|---|

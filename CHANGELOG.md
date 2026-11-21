@@ -288,6 +288,24 @@ All notable changes to Temper are documented here. The plugin version lives in
   has a reader. Gone from the pages: `tools.mode`, `tools.label-findings`, `tools.ocr.timeout`,
   `tools.ocr.replace-defect-subagent`, `check.environment`, `check.live-scenarios`, `check.debt-tracking`,
   `review.confidence-threshold`, `review.auto-fix`, `plan.default-depth`, `branch.pattern` and `branch.commit-style`.
+- WP30: what no default run reads is not shipped (ADR 0024, which amends ADR 0006). For a project of 9.8.4:
+  - A test run an agent only claimed (`temper evidence add --exit N`) counts at no gate, and no key makes it count: the
+    key `evidence.claimed-runs` and the `count` mode of `scripts/runs.py` are gone, and `temper config show` names the
+    key as not read. Record a run with `temper evidence run --stage S --claim C -- <command>`.
+  - The six stack packs are gone, and nothing loads a project's own stack file: write its rules as a pack of the
+    project (`.claude/packs/<name>/rules.md`) and list it in `packs:`. The eight packs stay shipped.
+  - Two skills are listed, `grill-me` and `teach-me`. `temper-core`, `context-engineering` and
+    `source-driven-development` are gone; the sentences the pages took from them are written where they are used.
+  - The external review engine is gone (its key `tools.ocr.mode` with it): no diff leaves the machine through Temper.
+  - `temper bands`, `scripts/bands.py` and the keys `bands.*` are gone, and so is `temper metrics append`: both
+    commands exit 1 as unknown. Nothing replaces them; a scheduler that ran `temper bands` should drop the job.
+  - Review memory is gone: no page reads or writes `.temper/review-memory.json`, and a rejected config suggestion is
+    simply not written. `.temper/metrics.json` and `.temper/review-memory.json` of an existing project are left where
+    they are: nothing reads them and nothing deletes them.
+  - The one time question offers to remove the lines of the keys that are gone.
+  - Grill Me asks in rounds: one question dialog of up to four questions, each with two or three concrete answers, the
+    first marked `(Recommended)`; at most 10 questions in at most 4 rounds, and a skipped question is listed as still
+    open.
 
 **The floor, the caps and the run summary (WP05).** `scripts/e2e/floor.json` holds, for each scripted scenario and
 mode, what a run with no model call did: the dialogs (by stage and by kind), the launches by agent type, the steps the

@@ -20,7 +20,7 @@ test is a RED then GREEN pair), then Review and Check are the ordinary stages.
 
 **Stages:** `/temper:fix` runs RCA, Fix, Review and Check, each as a stage agent that starts
 clean and returns a summary (no `AskUserQuestion`); the CLI judges each stage and gives the
-question the orchestrator asks. Apply the context-engineering skill for hierarchical loading.
+question the orchestrator asks.
 A clean bug run asks twice: the root cause question is the approval (its card shows `rca.md`;
 Approve and fix makes the fix branch off main or master and lets the run go on by itself), and
 the commit question. Between them a passed Fix, Review and Check move on by rule, and Check's run
@@ -84,7 +84,7 @@ at once — you can't tell which worked.
    agent during a fix run: the person runs it in their own terminal.
 
 2. **Validate the approach against the packs** before writing the fix (read the pack files your prompt lists on
-   its `Packs:` line, and the stack pack): a BLOCK-rule violation
+   its `Packs:` line): a BLOCK-rule violation
    (SQL concatenation, a logged secret, a bypassed auth check) means reconsider the
    approach, not implement it; a WARN is noted and proceeds.
 
@@ -135,9 +135,8 @@ Before that commit, the commit steps of `temper next` add one record, committed 
   - **Fix:** {commit hash or one line}
   - **Regression test:** {test file}#{test name}
   - **Watch for:** {the generalized failure shape a future RCA should recognize}
-  {- **Band change:** only if the fix came from a control-band breach: what was retuned}
   ```
-  Incident memory, distinct from review-memory (finding patterns): lessons record *what
+  Incident memory: lessons record *what
   broke and why*, so the next investigation starts from evidence, not zero.
 
 ## Rollback

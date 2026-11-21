@@ -53,13 +53,13 @@ assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPE
 
 # --- build gate: RED then GREEN required ---
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_green build "tests"
 _scen
 assert_exit "build gate FAILs on GREEN with no RED (TDD discipline)" 1 "$TEMPER" gate build
 
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 assert_exit "build gate PASSes on RED then GREEN + no unchecked tasks" 0 "$TEMPER" gate build
 
@@ -92,7 +92,7 @@ cd "$WORKDIR"; rm -rf "$WORKDIR/rv1"
 
 # --- check gate: coverage threshold ---
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 60 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -115,7 +115,7 @@ open(p, 'w').write(s)
 PY
 assert_eq "the quote-bearing threshold is read back unchanged" \
   "0') and open('threshold-injected','w').write('x') and float('0" "$("$TEMPER" config get check.coverage-threshold)"
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -130,7 +130,7 @@ rm -f threshold-injected
 
 # --- check gate: scenarios must be traced to a test (the flagship "rate limiting" story) ---
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 assert_exit "check gate FAILs when a scenario has no traced test (1/2 covered)" 1 "$TEMPER" gate check
@@ -146,13 +146,13 @@ assert_eq "PROVEN downgrades to HEURISTIC when artifact is missing" "yes" "$(gre
 setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -182,10 +182,10 @@ assert_exit "state loop blocks the third step back for one failure (budget.per-f
 # --- state loop: a /temper run clears the temper sequence from the target stage down ---
 setup
 "$TEMPER" evidence add --stage plan --claim "plan row" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_green build "tests"
 _scen
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 _at review   # a loop goes back from the stage the run is at
 "$TEMPER" state loop review build --reason r1 >/dev/null
 assert_eq "a temper-run loop keeps the plan evidence above the target" "1" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/plan.json"))))')"
@@ -203,7 +203,7 @@ _at check
 "$TEMPER" gate intent >/dev/null; "$TEMPER" gate plan >/dev/null
 echo 'fix' > loopfix.js; git add loopfix.js >/dev/null 2>&1
 "$TEMPER" state loop check build --reason "review found a defect" >/dev/null
-"$TEMPER" evidence add --stage build --claim "fix tests" --phase green --exit 0 --cmd pytest >/dev/null
+ev_green build "fix tests"
 assert_eq "state loop check build: next_stage is build" "build" "$("$TEMPER" state get next_stage)"
 assert_eq "after a loop back to build, a fix commit rides the checkpoint carve-out" "yes" \
   "$("$TEMPER" gate commit 2>&1 | grep -c 'build checkpoint commit' >/dev/null && echo yes || echo no)"
@@ -211,10 +211,10 @@ assert_eq "after a loop back to build, a fix commit rides the checkpoint carve-o
 # --- state loop: a /temper:fix run clears build, review and check on a loop back to fix (woningscout #984) ---
 setup
 "$TEMPER" state init bug3 --command fix >/dev/null; _base_known
-"$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
+ev_red build "regression test"
+ev_green build "regression test"
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 assert_exit "a fix run's review gate FAILs on the open finding" 1 "$TEMPER" gate review
 _at review
 assert_exit "state loop review fix is accepted in a fix run" 0 "$TEMPER" state loop review fix --reason "fix the injection"
@@ -257,12 +257,12 @@ assert_exit "a /temper:fix run rejects temper-only stage names (plan_complete)" 
 # --- /temper:fix commits: no plan gate required (fix has no such stage) ---
 setup
 "$TEMPER" state init bug1 --command fix >/dev/null; _base_known
-"$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
+ev_red build "regression test"
+ev_green build "regression test"
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -333,8 +333,8 @@ assert_eq "the allowed commit actually landed" "yes" "$(git log --oneline 2>&1 |
 #    fixture above already writes one (see the config heredoc), so this run's whole
 #    green suite is itself evidence; this case makes the claim explicit and standalone.
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 assert_exit "gate build runs cleanly against a config with a stale eval: block" 0 "$TEMPER" gate build
 
@@ -342,13 +342,13 @@ assert_exit "gate build runs cleanly against a config with a stale eval: block" 
 setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -399,13 +399,13 @@ assert_exit "verify-tests-ran.sh passes once the CLI has healed the state to che
 # it in STAGE_SEQ_TEMPER — the spine-level backstop behind the orchestrator's
 # kill-before-clear ordering.
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence clear --stage check >/dev/null
 assert_eq "evidence clear truncates a stage's ledger to []" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
 
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -729,117 +729,6 @@ rm -f .temper/build-state.json
 assert_exit "shield: no state file fails open" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"anything.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
 
-# --- temper bands: deterministic control-band drift check (closing the loop) ---
-# Detection is pure arithmetic over .temper/metrics.json history arrays — no model, no
-# network. BREACH (exit 1) only at 2sigma+; 1sigma logs but never breaches; too few
-# points is INSUFFICIENT-DATA, never a breach (degradation contract).
-setup
-rm -f .temper/metrics.json
-assert_exit "bands: no metrics.json is INSUFFICIENT-DATA, exit 0" 0 "$TEMPER" bands
-OUT=$("$TEMPER" bands 2>&1)
-assert_eq "bands: no metrics.json reports INSUFFICIENT-DATA" "yes" "$(grep -q 'INSUFFICIENT-DATA' <<<"$OUT" && echo yes || echo no)"
-
-echo 'this is not json' > .temper/metrics.json
-assert_exit "bands: malformed metrics.json degrades to insufficient data, never crashes" 0 "$TEMPER" bands
-
-python3 -c "
-import json
-json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 85, 86], 'test_count_history': []},
-          open('.temper/metrics.json', 'w'))
-"
-assert_exit "bands: an in-band latest point is OK, exit 0" 0 "$TEMPER" bands
-OUT=$("$TEMPER" bands 2>&1)
-assert_eq "bands: in-band verdict is OK" "yes" "$(grep -q 'temper bands -> OK' <<<"$OUT" && echo yes || echo no)"
-assert_eq "bands: a metric with no points reports insufficient data without failing the run" "yes" "$(grep -q 'tests — insufficient data' <<<"$OUT" && echo yes || echo no)"
-
-# A collapsed latest point (85-86 baseline, then 60) is far beyond 3 sigma.
-python3 -c "
-import json
-json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 85, 86, 60]},
-          open('.temper/metrics.json', 'w'))
-"
-assert_exit "bands: a 3sigma coverage collapse is a BREACH, exit 1" 1 "$TEMPER" bands
-OUT=$("$TEMPER" bands 2>&1; true)
-assert_eq "bands: the breach names the metric and tier" "yes" "$(grep -q '\[3sigma\] coverage' <<<"$OUT" && echo yes || echo no)"
-assert_eq "bands: the 3sigma tier maps to the propose action by default" "yes" "$(grep -q 'action=propose' <<<"$OUT" && echo yes || echo no)"
-assert_eq "bands: a breach names the closing-the-loop next step (intent.md)" "yes" "$(grep -q 'intent.md' <<<"$OUT" && echo yes || echo no)"
-
-# A flat baseline (sigma = 0) treats ANY deviation as 3sigma — documented behavior.
-python3 -c "
-import json
-json.dump({'coverage_history': [80, 80, 80, 80, 80, 80, 79]}, open('.temper/metrics.json', 'w'))
-"
-assert_exit "bands: any deviation from a perfectly flat baseline is a BREACH" 1 "$TEMPER" bands
-
-# Slow drift: six consecutive same-side points elevate to 2sigma even when each point
-# is individually inside the bands (the Western-Electric-style run rule).
-python3 -c "
-import json
-json.dump({'coverage_history': [10, 10, 10, 10, 11, 11, 11, 11, 11, 11]},
-          open('.temper/metrics.json', 'w'))
-"
-assert_exit "bands: a 6-point same-side run is a drift BREACH" 1 "$TEMPER" bands
-OUT=$("$TEMPER" bands 2>&1; true)
-assert_eq "bands: drift is labeled as drift" "yes" "$(grep -q 'drift' <<<"$OUT" && echo yes || echo no)"
-
-# 1 sigma logs but does not breach: baseline mean 82.5, sigma ~2.5, latest ~1.4 sigma out.
-python3 -c "
-import json
-json.dump({'coverage_history': [80, 85, 80, 85, 80, 85, 79]}, open('.temper/metrics.json', 'w'))
-"
-assert_exit "bands: a 1sigma excursion logs but is not a breach" 0 "$TEMPER" bands
-OUT=$("$TEMPER" bands 2>&1)
-assert_eq "bands: the 1sigma excursion is reported with the log action" "yes" "$(grep -q 'action=log' <<<"$OUT" && echo yes || echo no)"
-
-# History points as objects ({value: N}) parse the same as bare numbers.
-python3 -c "
-import json
-json.dump({'coverage_history': [{'value': 85}, {'value': 86}, {'value': 85}, {'value': 86}, {'value': 60}]},
-          open('.temper/metrics.json', 'w'))
-"
-assert_exit "bands: object-shaped history points ({value: N}) are read like numbers" 1 "$TEMPER" bands
-
-# Config overrides: window, min-points, metrics list, and tier actions all honored.
-cat >> .claude/temper.config <<'EOF'
-bands:
-  window: 4
-  min-points: 6
-  metrics: [coverage]
-  tiers:
-    3sigma: page-a-human
-EOF
-python3 -c "
-import json
-json.dump({'coverage_history': [85, 86, 85, 86, 60]}, open('.temper/metrics.json', 'w'))
-"
-assert_exit "bands: config min-points 6 turns a 5-point series into insufficient data" 0 "$TEMPER" bands
-python3 -c "
-import json
-json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 60]}, open('.temper/metrics.json', 'w'))
-"
-OUT=$("$TEMPER" bands 2>&1; true)
-assert_eq "bands: config tier action overrides the default" "yes" "$(grep -q 'action=page-a-human' <<<"$OUT" && echo yes || echo no)"
-assert_eq "bands: metrics list from config drops the tests series" "no" "$(grep -q 'tests' <<<"$OUT" && echo yes || echo no)"
-
-# --json emits the persisted verdict file, machine-readable.
-OUT=$("$TEMPER" bands --json 2>&1; true)
-assert_eq "bands: --json output parses and carries the verdict" "BREACH" "$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['verdict'])" 2>/dev/null)"
-assert_eq "bands: verdict is persisted to .temper/bands.json" "yes" "$([[ -f .temper/bands.json ]] && echo yes || echo no)"
-
-# Unknown metric names are skipped with a notice, never a crash or a breach.
-setup
-python3 -c "
-import json
-json.dump({'coverage_history': [85, 86, 85, 86]}, open('.temper/metrics.json', 'w'))
-"
-cat >> .claude/temper.config <<'EOF'
-bands:
-  metrics: [coverage, made-up-series]
-EOF
-assert_exit "bands: an unknown metric name is skipped, not fatal" 0 "$TEMPER" bands
-OUT=$("$TEMPER" bands 2>&1)
-assert_eq "bands: the unknown metric is named in a skip notice" "yes" "$(grep -q 'made-up-series — unknown metric' <<<"$OUT" && echo yes || echo no)"
-
 # --- v9: intent gate — the fail-fast gate ---
 # intent.md absent => trivial path => PASS. Present => Problem stated (not template
 # placeholders), >=1 success criterion, a Status header. The commit gate requires an
@@ -961,13 +850,13 @@ rm -rf "$QUOTED_DIR"
 # The commit gate demands an intent verdict exactly when intent.md exists.
 setup
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -1010,13 +899,13 @@ assert_exit "design gate PASSes once concerns are flagged (or explicitly none)" 
 setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -1071,7 +960,7 @@ setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" override plan --reason "test archive" >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --label HEURISTIC >/dev/null
+"$TEMPER" evidence run --stage build --claim "tests" --label HEURISTIC -- true >/dev/null
 "$TEMPER" state archive >/dev/null
 assert_eq "state archive writes the ledger WITHOUT deleting live state" "yes" \
   "$([[ -f .temper/specs/demo/gate-ledger.json && -f .temper/gates.json ]] && echo yes || echo no)"
@@ -1082,21 +971,3 @@ assert_eq "the archived ledger carries the plan verdict" "PASS" \
   "$(python3 -c "import json; print(json.load(open('.temper/specs/demo/gate-ledger.json'))['gates']['plan']['verdict'])")"
 assert_eq "the archived ledger carries the override" "test archive" \
   "$(python3 -c "import json; print(json.load(open('.temper/specs/demo/gate-ledger.json'))['overrides'][0]['reason'])")"
-
-# --- v9: temper metrics append + data-driven bands series ---
-setup
-rm -f .temper/metrics.json
-assert_exit "metrics append rejects a non-numeric value" 1 "$TEMPER" metrics append coverage abc
-assert_exit "metrics append rejects a malformed series name" 1 "$TEMPER" metrics append "Bad Name" 1
-"$TEMPER" metrics append my_series 10 >/dev/null
-"$TEMPER" metrics append my_series 10 >/dev/null
-"$TEMPER" metrics append my_series 10 >/dev/null
-"$TEMPER" metrics append my_series 10 >/dev/null
-"$TEMPER" metrics append my_series 99 >/dev/null
-assert_eq "metrics append creates and grows <series>_history" "5" \
-  "$(python3 -c "import json; print(len(json.load(open('.temper/metrics.json'))['my_series_history']))")"
-cat >> .claude/temper.config <<'EOF'
-bands:
-  metrics: [my_series]
-EOF
-assert_exit "bands reads a custom appended series by name and detects the breach" 1 "$TEMPER" bands

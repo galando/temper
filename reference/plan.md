@@ -46,12 +46,12 @@ it, refine its wording only with a stated reason, never re-derive the Problem fr
 `- consulted:` source its `### Context Sources` records** — the intent summarizes them, but you plan against them; treat
 every `- unavailable:` line as an explicit gap (a `- gap:` line of the Context Map, and add an Open Question back into
 `intent.md` if it hides a decision). Do not re-derive context Intent already gathered. A `Status: draft` intent
-(captured with `/temper:temper draft` or a control-band breach) is the same input, plus: resolve or explicitly re-carry each
+(captured with `/temper:temper draft`) is the same input, plus: resolve or explicitly re-carry each
 Open Question (you ask nobody: a question that must be settled is marked `Blocking`, and the orchestrator asks it before
 the gate question); the intent is accepted (`temper intent accept`) when the person leaves Intent. **Risk multipliers**
 (each pushes complexity up one tier): touches auth/payment/security code; changes what the consumers of a library with
 5+ consumers already use (a signature, a behaviour, a default; adding a new function or option they never call does not
-count); changes a DB schema; a module with a historically high defect rate (`.temper/metrics.json` if present); a
+count); changes a DB schema; a module with a historically high defect rate; a
 CRITICAL/HIGH security hot path (below).
 
 ## What `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` Checks

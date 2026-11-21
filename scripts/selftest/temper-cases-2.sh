@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Part 2 of the temper CLI test suite: config, evidence run, metrics, plans and the plugin folder.
+# Part 2 of the temper CLI test suite: config, evidence run, plans and the plugin folder.
 # Sourced in order by test-temper.sh, which sets up the helpers, WORKDIR and the counters;
 # not meant to run on its own.
 
@@ -75,53 +75,6 @@ assert_exit "imports hook: empty denylist stays a no-op" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/risky.js\"}}' | bash '$IMPORTS'"
 
 # --- v9 hardening: adversarial-review fixes (must never regress) ---
-
-# metrics append: the value is parsed by float() INSIDE python (argv), never
-# interpolated into source. A crafted payload must NOT execute and must exit 1.
-setup
-rm -f INJECTED
-"$TEMPER" metrics append cov "1');import os;os.system('touch INJECTED')#" >/dev/null 2>&1
-assert_eq "metrics append: an injection payload does not execute" "no" "$([[ -f INJECTED ]] && echo yes || echo no)"
-assert_exit "metrics append: an injection payload is rejected as non-numeric" 1 \
-  "$TEMPER" metrics append cov "1');import os;os.system('touch INJECTED')#"
-rm -f INJECTED
-
-# metrics append + bands agree on the friendly alias: `tests` lands in test_count_history,
-# which bands' `tests` metric reads — a recorded point must actually be band-able.
-setup
-rm -f .temper/metrics.json
-"$TEMPER" metrics append tests 42 >/dev/null
-assert_eq "metrics append tests writes the alias array bands reads (test_count_history)" "yes" \
-  "$(python3 -c "import json; d=json.load(open('.temper/metrics.json')); print('yes' if 'test_count_history' in d and 'tests_history' not in d else 'no')")"
-
-# bands never crashes on valid-but-small config — the spine's 'never a crash' contract.
-setup
-rm -f .temper/metrics.json
-for v in 80 81 82 83 84; do "$TEMPER" metrics append coverage $v >/dev/null; done
-cat >> .claude/temper.config <<'EOF'
-bands:
-  window: 0
-  metrics: [coverage]
-EOF
-assert_exit "bands: window 0 does not crash (exit 0/1, never a traceback)" 1 "$TEMPER" bands
-setup
-rm -f .temper/metrics.json
-for v in 80 81 82 83 84; do "$TEMPER" metrics append coverage $v >/dev/null; done
-cat >> .claude/temper.config <<'EOF'
-bands:
-  window: 2.5
-  metrics: [coverage]
-EOF
-assert_exit "bands: a non-integer window does not crash" 1 "$TEMPER" bands
-setup
-rm -f .temper/metrics.json
-"$TEMPER" metrics append coverage 80 >/dev/null
-cat >> .claude/temper.config <<'EOF'
-bands:
-  min-points: 1
-  metrics: [coverage]
-EOF
-assert_exit "bands: min-points 1 with a single point is graceful, not a crash" 0 "$TEMPER" bands
 
 # _glob_touch_match (park-on-touch): proper segment match, not a loose substring.
 # Assert on the park-on-touch requirement LINE, not the whole gate verdict (which also
@@ -529,7 +482,7 @@ assert_eq "a Validate: scenario criterion with no covering scenario is an error"
   "$(grep -q 'no scenario Covers: it' <<<"$OUT" && echo yes || echo no)"
 
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null   # no cmd, no artifact -> unsupported
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
@@ -537,7 +490,7 @@ assert_eq "an exit-0 row with no cmd and no artifact is NOT a supported pass" "y
   "$(grep -q "scenario 'first' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
 
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 echo proof > .temper/specs/demo/artifact.txt
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --artifact .temper/specs/demo/artifact.txt >/dev/null
@@ -577,8 +530,8 @@ assert_exit "a latest nonzero completion row FAILs the gate" 1 "$TEMPER" gate re
 
 # --- gate build: checkpoint feedback answered ---
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 assert_exit "no feedback rows => requirement skipped" 0 "$TEMPER" gate build
 "$TEMPER" evidence add --stage build --phase feedback --claim "feedback #1: use the builder pattern" >/dev/null
@@ -606,7 +559,7 @@ setup
 _at build
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests green task 1" --phase green --exit 0 --cmd pytest >/dev/null
+ev_green build "tests green task 1"
 echo 'code' > src.js
 git add src.js >/dev/null 2>&1
 OUT=$("$TEMPER" gate commit 2>&1; true)
@@ -619,8 +572,8 @@ setup
 _at build
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 0 --cmd pytest >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 1 --cmd pytest >/dev/null
+ev_green build "tests green then regress"
+"$TEMPER" evidence run --stage build --phase green --claim "tests green then regress" -- false >/dev/null 2>&1
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "a RED latest test run fails the checkpoint commit, naming the claim" 1 "$TEMPER" gate commit
 assert_eq "the RED carve-out names the failing claim" "yes" "$(grep -q 'tests green then regress' <<<"$OUT" && echo yes || echo no)"
@@ -639,7 +592,7 @@ setup
 _at review   # past build => no carve-out
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests green" --phase green --exit 0 --cmd pytest >/dev/null
+ev_green build "tests green"
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "next_stage != build => the final completion commit faces every gate" "no" \
   "$(grep -q 'build checkpoint commit' <<<"$OUT" && echo yes || echo no)"
@@ -648,7 +601,7 @@ assert_eq "next_stage != build => the final completion commit faces every gate" 
 setup
 "$TEMPER" override review --reason "old run" >/dev/null
 "$TEMPER" gate intent >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+ev_green check "tests"
 "$TEMPER" state init demo2 --command temper >/dev/null; _base_known
 assert_eq "state init clears inherited overrides" "[]" "$(cat .temper/overrides.json | tr -d '[:space:]')"
 assert_eq "state init clears inherited gate verdicts" "{}" "$(cat .temper/gates.json | tr -d '[:space:]')"
@@ -1069,7 +1022,7 @@ assert_eq "state clear writes no ledger there either" "no" "$([[ -e "$WORKDIR/ou
 
 # --- the ledger archive and the status view read the listed stage files only ---
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence run --stage build --claim "tests" -- true >/dev/null 2>&1
 echo '[{"claim": "stray", "criterion": "AC-01", "cmd": "x", "exit_code": 0, "ts": "2099-01-01T00:00:00Z"}]' > .temper/evidence/stray.json
 "$TEMPER" state archive >/dev/null
 assert_eq "the archived ledger counts the listed stage files only" "build" \

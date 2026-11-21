@@ -156,7 +156,7 @@ _d05() { # _d05 <case>: the state of one of the eight (or plain, a High finding 
       "$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
       gfail review "review completed" "no review completed row" ;;
     environment) _unattended check
-      "$TEMPER" evidence add --stage check --claim 'tests: the suite (run by the CLI)' --exit 1 >/dev/null 2>&1
+      ev_red check 'tests: the suite (run by the CLI)'
       "$TEMPER" evidence add --stage check --claim 'setup fault: the JDK is 21 and pom.xml needs 24' --exit 1 >/dev/null 2>&1
       gfail check "tests pass" "the latest run of a test command failed: the suite" ;;
     unmeasured) _unattended check; gfail check "tests pass" "no passing test-run evidence recorded" ;;
@@ -531,7 +531,7 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
     scope.drift) _drift44 ;;
     review.unfinished) _unattended review; gfail review "review completed" "no review completed row"; _stop44 "$_FORBID44" ;;
     check.setup) _unattended check
-      "$TEMPER" evidence add --stage check --claim 'tests: the suite (run by the CLI)' --exit 1 >/dev/null 2>&1
+      ev_red check 'tests: the suite (run by the CLI)'
       "$TEMPER" evidence add --stage check --claim 'setup fault: the JDK is 21 and pom.xml needs 24' --exit 1 >/dev/null 2>&1
       gfail check "tests pass" "the latest run of a test command failed: the suite"; _stop44 "$_FORBID44|doctor" ;;
     check.person-criterion) _unattended check; sed -i '0,/Validate: scenario/s//Validate: manual/' .temper/specs/demo/intent.md
@@ -664,7 +664,9 @@ print(next((x['name'] for x in e.get('requirements') or [] if x.get('name', '').
 fresh; sed -i '/^evidence:$/d; /claimed-runs:/d' .claude/temper.config; gpass intent plan build review; _at check
 "$TEMPER" evidence add --stage check --claim 'tests: unit' --exit 0 >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
 _d34a_default="$(_tests_row44)"
-fresh; gpass intent plan build review; _at check   # the fixture's config holds evidence.claimed-runs: count
+fresh; sed -i '/^evidence:$/d; /claimed-runs:/d' .claude/temper.config   # WP30: the key written here, so the half stays a
+printf 'evidence:\n  claimed-runs: count\n' >> .claude/temper.config        # case of it when the selftest's config drops it
+gpass intent plan build review; _at check
 "$TEMPER" evidence add --stage check --claim 'tests: unit' --exit 0 >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
 assert_eq "D34a a test run recorded with evidence add passes no row, and evidence.claimed-runs: count changes nothing" \
   "default=False|count=False" "default=$_d34a_default|count=$(_tests_row44)"

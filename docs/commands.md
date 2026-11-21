@@ -333,27 +333,6 @@ Confidence: 91%
 - **NEW ISSUE** — Problem introduced by this change
 - **PRE-EXISTING** — Issue existed before (lower priority)
 
-**External Engine: open-code-review:**
-
-OCR is off by default. When you set `tools.ocr.mode` to `auto` or `require` and the `ocr` CLI is on your `PATH`, Review runs a second defect-detection pass (probed in Step 1, merged in Step 2). OCR handles line-level defects; Temper keeps intent validation, security analysis, and architecture depth.
-
-| Config Key | Default | Description |
-|------------|---------|-------------|
-| `tools.ocr.mode` | `off` | `off` (never invoke), `auto` (use if available), `require` (block if missing) |
-
-**Evidence labels:**
-
-- `[OCR]` — Finding from the OCR engine alone
-- `[OCR+TEMPER]` — Both engines independently found the same issue (file + line +/-2 + category match). Confidence boosted: min(0.95, max(a,b) + 0.15)
-
-**Modes:**
-
-| Mode | OCR available | OCR missing | OCR fails at runtime |
-|------|--------------|-------------|---------------------|
-| `auto` | Run + dedupe | Skip with a one-line notice | Warn + degrade |
-| `require` | Run + dedupe | BLOCK, saying where to find OCR's install steps | Warn + degrade |
-| `off` (default) | Never invoke | Never invoke | Never invoke |
-
 ### Check
 
 Check runs the project's own checks on the built tree: the test, build and lint commands of your stack, the
@@ -572,9 +551,7 @@ the word `init` installs.
 
 `/temper:temper status` prints `temper status` (each criterion, passed or open, with its evidence) and the one line
 of `temper next --json` that says where the run is. The other read only calls stay calls of the CLI: `temper report`
-(the gate ledger), `temper drift` (each finished spec against the tree as it is now) and `temper bands` (a
-deterministic drift check of the metric history against rolling bands; exit 1 on a breach, runnable from any
-scheduler, see `examples/workflow/README.md`).
+(the gate ledger) and `temper drift` (each finished spec against the tree as it is now).
 
 ## `/temper:fix`
 
@@ -675,15 +652,6 @@ The keys, as `temper config show --markdown` prints them:
 | `phases.pipeline` | `true` | false: no Pipeline stage after a commit that opened a pull request |
 | `protect.paths` | none | paths no agent edit may change (the guardrails pack) |
 | `format.cmd` | none | a formatter run on each agent edit, {file} for the file (the guardrails pack) |
-| `evidence.claimed-runs` | `ignore` | count: a run an agent only claimed counts at a gate too |
-| `bands.window` | `10` | the control bands: points of the rolling baseline |
-| `bands.min-points` | `4` | the control bands: fewer points are no breach |
-| `bands.drift-run` | `6` | the control bands: same side points that count as drift |
-| `bands.metrics` | none | the control bands: the series they read |
-| `bands.tiers.1sigma` | `log` | the control bands: what a 1 sigma breach does |
-| `bands.tiers.2sigma` | `diagnose` | the control bands: what a 2 sigma breach does |
-| `bands.tiers.3sigma` | `propose` | the control bands: what a 3 sigma breach does |
-| `tools.ocr.mode` | `off` | the external review engine: off, auto or require; the Review agent reads it with config get |
 | `upgrade.asked` | none | the version whose one time config question was answered Keep my file |
 
 ### The one time question
@@ -712,7 +680,6 @@ that goes on by itself they exit 1 and change nothing. A project made by `config
 | `check.coverage-threshold` | read when set; `80` is an old default, and with none coverage may not drop |
 | `check.environment`, `check.mutation-threshold` | gone: Check decides from file names; the planted bug score is information |
 | `tools.mode` | gone: an agent uses a connected tool when there is one |
-| `tools.ocr.mode` | in the table; `off` is an old default |
 | `plan.context-check`, `plan.fresh-review`, `-twice`, `-rounds` | in the table; their old template values are old defaults |
 | `plan.preflight-timeout`, `plan.preflight-skip` | gone: the plan's commands run once on the base |
 | `phases.design` | gone: Design runs only when you ask for it |
@@ -723,6 +690,9 @@ that goes on by itself they exit 1 and change nothing. A project made by `config
 | `autonomy.max-blast-radius` | in the table; `15` is an old default |
 | `build.grouped.task-model`, `build.grouped.escalation-model` | read as the old names of `models.task` and `models.task-escalation` |
 | `build.grouped.max-parallel`, `.max-groups`, `.keep-days`, `build.red-before-code` | in the table |
+| the `evidence` block (claimed runs) | gone: a test run an agent only claimed counts at no gate (9.8.5, WP30) |
+| the `bands` block | gone, with the control bands (WP30) |
+| `tools` (the external review engine) | gone: no diff leaves the machine through Temper (WP30) |
 
 ## The CLI calls
 

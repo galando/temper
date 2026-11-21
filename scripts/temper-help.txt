@@ -17,8 +17,6 @@ Usage:
   temper override <stage> --reason "..."
   temper report [--json]
   temper status [--json] [--spec-path P]
-  temper bands [--json]
-  temper metrics append <series> <value>
   temper config get <dot.path> [default]
   temper config init                      (write .claude/temper.config from the plugin's default, when it is missing)
   temper config show [--markdown]         (each key, its value and its source: config, default, old name; the table

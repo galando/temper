@@ -368,7 +368,7 @@ _d39d() { # _d39d <stop>: its state in an unattended run; the recorded stop is r
     gate.failed) _unattended build; gfail build "RED then GREEN" "have red=0 green=0" ;;
     review.unfinished) _unattended review; gfail review "review completed" "no review completed row" ;;
     check.setup) _unattended check
-      "$TEMPER" evidence add --stage check --claim 'tests: the suite (run by the CLI)' --exit 1 >/dev/null 2>&1
+      ev_red check 'tests: the suite (run by the CLI)'
       "$TEMPER" evidence add --stage check --claim 'setup fault: the JDK is 21 and pom.xml needs 24' --exit 1 >/dev/null 2>&1
       gfail check "tests pass" "the latest run of a test command failed: the suite" ;;
   esac
@@ -557,7 +557,7 @@ export PATH="${PATH#"$WORKDIR/.git/bin45:"}"
 
 # --- D50 (M10): an environment fault at Check does not recommend the same repair twice ---
 _setup45() { # the Check of the demo run met a fault of the environment
-  "$TEMPER" evidence add --stage check --claim "tests: the suite (run by the CLI)" --cmd "bash scripts/temper-check.sh" --exit 4 >/dev/null 2>&1
+  "$TEMPER" evidence run --stage check --claim "tests: the suite (run by the CLI)" -- sh -c 'exit 4' >/dev/null 2>&1
   "$TEMPER" evidence add --stage check --claim "setup fault: no Postgres answering on 127.0.0.1:5432" --cmd "bash scripts/temper-check.sh" --exit 1 >/dev/null 2>&1
   gfail check "tests pass" "the latest run of a test command failed"
 }
@@ -578,7 +578,7 @@ assert_eq "D51 only the commit gate's own row failed: the first option is check-
 _check45; mkdir -p backend scripts
 printf '<project><build><plugins><plugin><configuration><rules><requireJavaVersion><version>[24,)</version></requireJavaVersion></rules></configuration></plugin></plugins></build></project>\n' > backend/pom.xml
 printf '#!/usr/bin/env bash\n[[ "$1" == --export ]] && echo "export JAVA_HOME=/opt/jdk24"\n' > scripts/ensure-jdk24.sh; chmod +x scripts/ensure-jdk24.sh
-"$TEMPER" evidence add --stage check --claim "tests: the suite (run by the CLI)" --cmd "mvn verify" --exit 1 >/dev/null 2>&1
+ev_red check "tests: the suite (run by the CLI)"
 "$TEMPER" evidence add --stage check --claim "setup fault: needs JDK [24,) (found 21.0.12)" --cmd "mvn verify" --exit 1 >/dev/null 2>&1
 gfail check "tests pass" "the latest run of a test command failed"
 _d53_block="$("$TEMPER" doctor --propose 2>/dev/null | sed -n '/^setup:/,/^[^ ]/p' | grep -E '^(setup:|  )')"

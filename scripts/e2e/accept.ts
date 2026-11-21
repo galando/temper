@@ -332,7 +332,7 @@ export const fixTwo = (w: World): void => {
     },
     'temper:temper-review': wd => reviewDone(wd),
     'temper:temper-check': wd => {
-      t(wd, "evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'")
+      t(wd, "evidence run --stage check --claim 'tests' -- python3 -m unittest discover -s unit -t .")
       t(wd, "evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'")
     },
     'temper:temper-build': () => undefined,

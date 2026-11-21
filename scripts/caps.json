@@ -49,7 +49,7 @@
    "measure": "measure_listed_commands: commands of .claude-plugin/plugin.json"
   },
   "listed_skills": {
-   "now": 5,
+   "now": 2,
    "final": 2,
    "measure": "measure_listed_skills: skills of .claude-plugin/plugin.json"
   },
@@ -69,17 +69,17 @@
    "measure": "measure_config_lines: lines of the config template"
   },
   "prompt_bytes": {
-   "now": 255504,
+   "now": 250302,
    "final": 307712,
    "measure": "measure_prompt_bytes: bytes of commands/*.md, agents/*.md and reference/**/*.md"
   },
   "pack_skill_bytes": {
-   "now": 79382,
+   "now": 58588,
    "final": 79658,
    "measure": "measure_pack_skill_bytes: bytes of the markdown under packs and skills"
   },
   "cli_bytes": {
-   "now": 211277,
+   "now": 206289,
    "final": 222144,
    "measure": "measure_cli_bytes: bytes of scripts/temper"
   },

@@ -91,7 +91,7 @@ setup() {
   mkdir -p .claude .temper/specs/demo
   git init -q . 2>/dev/null || true
   # WP29: the new template's keys with the values the cases rely on (block-on critical, a coverage floor, autonomy.enabled
-  # false read as run.default ask, two sensitive paths, claimed runs counted), stack for the cases that read a key where
+  # false read as run.default ask, two sensitive paths), stack for the cases that read a key where
   # the guard scripts call config get, and the one time question answered, so no case that walks from Intent is asked it
   cat > .claude/temper.config <<'EOF'
 stack: auto
@@ -104,8 +104,6 @@ autonomy:
   enabled: false
   max-blast-radius: 15
   park-on-touch: ["**/auth/**", "**/payment/**"]
-evidence:
-  claimed-runs: count   # 9.8.5: the cases simulate runs with evidence add; temper-cases-31.sh tests the strict default
 upgrade:
   asked: "9.8.5"
 EOF

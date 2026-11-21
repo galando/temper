@@ -204,7 +204,7 @@ assert_eq "w19 the old key: the template and the plugin's own config hold no cov
 
 # --- 5. a planted bug score in Check's ledger is no row of the gate and fails nothing ---
 fresh
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null 2>&1
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null 2>&1
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null 2>&1
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null 2>&1

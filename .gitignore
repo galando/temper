@@ -19,10 +19,6 @@
 # Project-specific index (regenerated on each plan)
 .temper/index/
 
-# These should be committed to track metrics over time
-# .temper/metrics.json
-# .temper/review-memory.json
-
 # Dependencies (never commit)
 node_modules/
 package-lock.json

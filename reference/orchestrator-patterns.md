@@ -81,7 +81,6 @@ Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
 | `PROVEN` | Mechanically verified: a real command or tool ran with a real exit code and artifact. `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` re-checks this itself; a missing artifact or unexplained nonzero exit auto-downgrades to HEURISTIC. |
 | `HEURISTIC` | Grep/reading-based analysis, best-effort, not mechanically verified. |
 | `SEMANTIC` | Claude's judgment/interpretation — inherently subjective. |
-| `OCR` | External engine (open-code-review) finding — informational, same trust tier as HEURISTIC. |
 
 Recommended servers: code-review-graph for AST-level dependency graphs and blast radius
 (install it as its own page says: https://github.com/tirth8205/code-review-graph), and
@@ -116,19 +115,15 @@ justifications a gate doesn't need but a re-launched agent does.
   "test_failures": [ { "test_name": "", "error_message": "", "file": "", "line": 0, "scenario": "" } ] }
 ```
 
-`review-memory.json` (Review writes, Status + Review read — the single finding memory:
-pattern acceptance/dismissal, promotion, and suppression). See
-`${CLAUDE_PLUGIN_ROOT}/reference/review.md` → "Metrics + Memory".
-
 | Stage | Reads | Writes |
 |---|---|---|
 | Intent | nothing (first stage) | intent.md (Problem/criteria/constraints — no scenarios) |
 | Plan | intent.md (accepted) | intent.md (adds Scenarios), tasks.md, plan.md |
 | Design | intent.md, plan.md | design.md |
 | Build | tasks.md, intent.md, review/check-context.json (on re-entry) | build-context.json |
-| Review | intent.md, `git diff`, build-context.json, review-memory.json | review-context.json, review-memory.json |
+| Review | intent.md, `git diff`, build-context.json | review-context.json |
 | Check | intent.md, review-context.json | check-context.json |
-| Status | metrics.json, review-memory.json, gates.json, evidence/ | — |
+| Status | gates.json, evidence/ | — |
 
 **Cleanup:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (on commit) removes the run state (`build-state.json`,
 the loop counters, `gates.json`, `overrides.json`) and the evidence ledger. Nothing under

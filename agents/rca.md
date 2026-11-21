@@ -20,7 +20,7 @@ carries over except the bug description in your launch prompt.
    (multi-hypothesis investigation, call-chain tracing, blast radius). Follow it
    exactly; nothing here overrides it. Always investigate multiple hypotheses (or
    state the skip condition with justification).
-2. Read the pack files your prompt lists on its `Packs:` line, plus stack-specific rules, and
+2. Read the pack files your prompt lists on its `Packs:` line, and
    check whether the bug violates a pack rule (e.g. security: was input validation
    skipped?) — a pack violation is often the root cause's name.
 3. If the `code-review-graph` MCP server is available, use `query_graph_tool` for

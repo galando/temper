@@ -17,9 +17,6 @@
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
 #   temper status [--json] [--spec-path P]        per-criterion passed/open view; writes .temper/status.json
-#   temper bands [--json]                         deterministic control-band drift check
-#                                                 over .temper/metrics.json history
-#   temper metrics append <series> <value>        append a numeric point to <series>_history
 #   temper config get <dot.path> [default]        read temper.config (for hook and CI scripts)
 # Build, in groups of small tasks:
 #   temper schedule [--json]                      the launchable tasks, one JSON line each
@@ -99,8 +96,6 @@ GATES_FILE="$TEMPER_DIR/gates.json"
 STATUS_FILE="$TEMPER_DIR/status.json"
 OVERRIDES_FILE="$TEMPER_DIR/overrides.json"
 EVIDENCE_DIR="$TEMPER_DIR/evidence"
-METRICS_FILE="$TEMPER_DIR/metrics.json"
-BANDS_FILE="$TEMPER_DIR/bands.json"
 
 STAGES="intent plan design build review check commit pipeline"
 # Grouped Build (9.7.0) byte budgets: the slim task brief, a group's Context block, one task block.
@@ -2746,8 +2741,8 @@ gate_plan() {
 gate_build() {
   local spec_path="$1"
   local reqs=() all_pass=1
-  local red_n green_n after_n   # runs the CLI ran or the person confirmed; a claim counts only with evidence.claimed-runs: count (Q3)
-  read -r red_n green_n after_n <<<"$(python3 -E -s "$SCRIPTS_DIR/runs.py" build "$(_evidence_file build)" "$(_cfg_get evidence.claimed-runs)")"
+  local red_n green_n after_n   # runs the CLI ran or the person confirmed; a claim never counts (Q3, WP30)
+  read -r red_n green_n after_n <<<"$(python3 -E -s "$SCRIPTS_DIR/runs.py" build "$(_evidence_file build)")"
   if [[ -f "$spec_path/tasks.md" ]] && python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
     reqs+=("$(_req "RED then GREEN" 1 "every task is manual: the person confirms each by hand, there is no test to run")")
   elif [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
@@ -2886,7 +2881,7 @@ gate_check() {
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
   # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
-  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$(_cfg_get evidence.claimed-runs)" 2>/dev/null || echo 0)"
+  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" 2>/dev/null || echo 0)"
   tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
   local skip=""; [[ -n "$tests_red" ]] && skip="$(_baseline skip-row "$(_evidence_file check)")"   # WP20: a red base gone on from
   if [[ -n "$skip" ]]; then
@@ -3604,113 +3599,6 @@ cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--gr
 }
 
 # ---
-# metrics — deterministic metric ingestion for the bands monitor.
-#
-# `temper metrics append <series> <value>` appends one numeric point to
-# <series>_history in .temper/metrics.json (creating file and array as needed) —
-# the same CLI-owned bookkeeping discipline as `temper evidence add`, so the
-# bands monitor reads a ledger the spine wrote, not prose-maintained state. Any
-# appended series is band-able by name (`bands.metrics: [coverage, my_series]`).
-# External sources (CI failure rate, post-deploy 5xx) enter the loop the same
-# way: a pipeline step calls append, the scheduled bands check does the rest.
-# ---
-
-cmd_metrics() {
-  local sub="${1:-}"; shift || true
-  case "$sub" in
-    append)
-      local series="${1:-}" value="${2:-}"
-      [[ -n "$series" && -n "$value" ]] || { echo "FAIL: usage: temper metrics append <series> <value>" >&2; return 1; }
-      [[ "$series" =~ ^[a-z][a-z0-9_-]*$ ]] || { echo "FAIL: series must match [a-z][a-z0-9_-]* (got '$series')" >&2; return 1; }
-      _ensure_dirs
-      [[ -f "$METRICS_FILE" ]] || echo '{}' > "$METRICS_FILE"
-      # value crosses the boundary as an argv element and is parsed by float() INSIDE
-      # python — never interpolated into source (a metric value can be attacker-influenced:
-      # a CI failure rate, a 5xx count fed from a pipeline step). A non-numeric value is a
-      # clean exit 1, not code that runs.
-      local out rc
-      out=$(python3 -I - "$METRICS_FILE" "$series" "$value" <<'PY'
-import json, sys
-path, series, value = sys.argv[1:4]
-try:
-    v = float(value)
-except ValueError:
-    sys.stderr.write(f"FAIL: value must be numeric (got '{value}')\n")
-    sys.exit(1)
-try:
-    d = json.load(open(path))
-    if not isinstance(d, dict):
-        d = {}
-except Exception:
-    d = {}
-# Same alias map `temper bands` uses (kept in sync): appending the friendly name
-# `tests` must land in the SAME array bands reads for it (test_count_history), or a
-# recorded point would never be banded. Any other name -> <name>_history.
-ALIASES = {'coverage': 'coverage_history', 'tests': 'test_count_history'}
-key = ALIASES.get(series) or (series if series.endswith('_history') else f"{series}_history")
-arr = d.get(key)
-if not isinstance(arr, list):
-    arr = []
-arr.append(int(v) if v.is_integer() else v)
-d[key] = arr
-with open(path, 'w') as f:
-    json.dump(d, f, indent=2)
-    f.write('\n')
-print(f"OK: {key} += {value} ({len(arr)} point(s))")
-PY
-)
-      rc=$?
-      echo "$out"
-      return $rc
-      ;;
-    *) echo "FAIL: usage: temper metrics append <series> <value>" >&2; return 1 ;;
-  esac
-}
-
-# ---
-# bands — closing the loop (deterministic drift detection, no model).
-#
-# Watches the history arrays in .temper/metrics.json against control bands
-# (rolling mean ± k·sigma over a window, plus a same-side-run drift rule).
-# Detection is entirely deterministic — this subcommand never invokes a model,
-# reads the network, or edits code. What a breach *triggers* is tiered in
-# config (`bands:` in .claude/temper.config — log / diagnose / propose) and
-# always lands in the normal pipeline: /temper:temper status renders the verdict, and
-# a `propose`-tier breach is drafted into a `.temper/specs/<slug>/intent.md`
-# for /temper to run — through every ordinary gate, never around them.
-#
-# Verdict: OK (nothing at 2sigma+), BREACH (>=1 metric at 2sigma+, exit 1),
-# INSUFFICIENT-DATA (no metric has enough recorded points yet). A flat
-# baseline (sigma = 0) treats any deviation as 3sigma — a perfectly stable
-# series moving at all is out of band by definition. History points may be
-# bare numbers or objects carrying a numeric `value`/`coverage`/`count`/`pct`.
-# ---
-
-cmd_bands() {
-  _ensure_dirs
-  local as_json=false
-  [[ "${1:-}" == "--json" ]] && as_json=true
-  local window min_points drift_run metrics t1 t2 t3
-  window="$(_cfg_get bands.window)"
-  min_points="$(_cfg_get bands.min-points)"
-  drift_run="$(_cfg_get bands.drift-run)"
-  metrics="$(_cfg_get bands.metrics)"
-  [[ -n "$metrics" ]] || metrics="coverage"$'\x1f'"tests"
-  t1="$(_cfg_get bands.tiers.1sigma)"
-  t2="$(_cfg_get bands.tiers.2sigma)"
-  t3="$(_cfg_get bands.tiers.3sigma)"
-  local out rc
-  out=$(python3 -I "$SCRIPTS_DIR/bands.py" "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" </dev/null)
-  rc=$?
-  if [[ "$as_json" == "true" ]]; then
-    cat "$BANDS_FILE" 2>/dev/null || echo '{}'
-  else
-    echo "$out"
-  fi
-  return $rc
-}
-
-# ---
 # main
 # ---
 
@@ -3803,8 +3691,6 @@ main() {
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
     status) cmd_status "$@" ;;
-    bands) cmd_bands "$@" ;;
-    metrics) cmd_metrics "$@" ;;
     config) cmd_config "$@" ;;
     schedule) cmd_schedule "$@" ;;
     group) cmd_group "$@" ;;
@@ -3850,7 +3736,7 @@ main() {
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule|drift|doctor|review|card) ;;
+    config|model|guards|""|-h|--help|report|status|schedule|drift|doctor|review|card) ;;
     next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;

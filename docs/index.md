@@ -46,9 +46,8 @@ INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
   evidence ledger and prints PASS/FAIL per requirement. A red gate blocks `git commit`
   via a real pre-commit hook; a human can override (recorded, never erased) — a
   confused model can't.
-- **The loop closes itself** — `temper bands` watches metric history with control
-  bands (pure arithmetic); a breach is drafted as the next intent and rides the same
-  pipeline. Fixes write a committed `lessons.md` every future RCA reads first.
+- **Fixes leave lessons:** a fix writes a committed `lessons.md` every future RCA
+  reads first.
 
 ## The Temper mod (Claude Code 2.1.287 or later)
 

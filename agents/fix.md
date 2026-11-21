@@ -14,9 +14,8 @@ the plugin folder.
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/fix.md` once — the full fix methodology. Follow
    it exactly; nothing here overrides it. Read the pack files your prompt lists on its `Packs:` line and
-   validate the fix approach against their rules before implementing. Before writing framework-specific
-   code, apply the `source-driven-development` skill (verify calls against current
-   docs, don't trust trained-in memory).
+   validate the fix approach against their rules before implementing. Check a framework call against the version
+   the project pins before you write it.
 2. Write a regression test for the scenario `rca.md` names — it MUST FAIL before the
    fix. Fix evidence maps onto the `build` gate (a regression test is exactly a
    RED-then-GREEN pair; the "no unchecked tasks" requirement is skipped automatically —

@@ -115,7 +115,7 @@ export const AGENTS: Record<string, Agent> = {
   'temper:temper-build-task': buildTask,
   'temper:temper-review': w => reviewDone(w),
   'temper:temper-check': w => {
-    t(w, `evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
+    t(w, `evidence run --stage check --claim 'tests' -- python3 -m unittest discover -s unit -t .`)
     t(w, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
     for (const s of ['CI JSON shape is stable across a run', 'Override rows name the approver', 'Same ledger gives the same bytes'])
       t(w, `evidence add --stage check --scenario '${s}' --claim 'scenario: ${s}' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
@@ -984,7 +984,7 @@ export const fixRun = (w: World): void => {
       reviewDone(wd)
     },
     'temper:temper-check': wd => {
-      t(wd, `evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
+      t(wd, `evidence run --stage check --claim 'tests' -- python3 -m unittest discover -s unit -t .`)
       t(wd, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
     },
   }

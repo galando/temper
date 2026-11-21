@@ -6,26 +6,24 @@ _strict
 "$TEMPER" evidence add --stage build --claim "unit tests" --exit 1 --phase red >/dev/null 2>&1
 "$TEMPER" evidence add --stage build --claim "unit tests" --exit 0 --phase green >/dev/null 2>&1
 assert_eq "9.8.5 Q3: RED and GREEN an agent only claimed (evidence add --exit) do not count at the Build gate" "0 0 0" \
-  "$(python3 -E -s "$REPO_ROOT/scripts/runs.py" build .temper/evidence/build.json ignore)"
+  "$(python3 -E -s "$REPO_ROOT/scripts/runs.py" build .temper/evidence/build.json)"
 "$TEMPER" evidence run --stage build --claim "unit tests" --phase red -- false >/dev/null 2>&1
 "$TEMPER" evidence run --stage build --claim "unit tests" --phase green -- true >/dev/null 2>&1
 assert_eq "9.8.5 Q3: the same runs through evidence run (the CLI ran them) count" "1 1 1" \
-  "$(python3 -E -s "$REPO_ROOT/scripts/runs.py" build .temper/evidence/build.json ignore)"
-assert_eq "9.8.5 Q3: with evidence.claimed-runs: count the claims count too, as before" "2 2 2" \
-  "$(python3 -E -s "$REPO_ROOT/scripts/runs.py" build .temper/evidence/build.json count)"
+  "$(python3 -E -s "$REPO_ROOT/scripts/runs.py" build .temper/evidence/build.json)"
 _strict
 "$TEMPER" evidence add --stage check --claim "tests: unit" --exit 0 >/dev/null 2>&1
-assert_eq "9.8.5 Q3: Check does not count a claimed passing test run" "0|" "$(python3 -E -s "$REPO_ROOT/scripts/runs.py" check .temper/evidence/check.json ignore)"
+assert_eq "9.8.5 Q3: Check does not count a claimed passing test run" "0|" "$(python3 -E -s "$REPO_ROOT/scripts/runs.py" check .temper/evidence/check.json)"
 
-# void: only a pass, with a reason; the row stays and is marked; it counts in neither mode
+# void: only a pass, with a reason; the row stays and is marked; it counts no more
 _strict
 "$TEMPER" evidence run --stage build --claim "unit tests" --phase red -- false >/dev/null 2>&1
 "$TEMPER" evidence run --stage build --claim "unit tests" --phase green -- true >/dev/null 2>&1
 assert_exit "9.8.5 Q3: void needs a reason" 1 "$TEMPER" evidence void --stage build --id 2
 assert_exit "9.8.5 Q3: a failure is never voided (that would make a gate easier)" 1 "$TEMPER" evidence void --stage build --id 1 --reason 'x'
 assert_exit "9.8.5 Q3: a pass is voided with a reason" 0 "$TEMPER" evidence void --stage build --id 2 --reason 'the run failed before it started (wrong JDK)'
-assert_eq "9.8.5 Q3: the void pass stays in the ledger, is shown as void, and counts in no mode" "2|True|1 0 0|1 0 0" \
-  "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$("$TEMPER" evidence list --stage build | grep -c '#2 .*\[void: the run failed before it started (wrong JDK)\]' >/dev/null && echo True || echo False)|$(python3 -E -s "$REPO_ROOT/scripts/runs.py" build .temper/evidence/build.json ignore)|$(python3 -E -s "$REPO_ROOT/scripts/runs.py" build .temper/evidence/build.json count)"
+assert_eq "9.8.5 Q3: the void pass stays in the ledger, is shown as void, and counts no more" "2|True|1 0 0" \
+  "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$("$TEMPER" evidence list --stage build | grep -c '#2 .*\[void: the run failed before it started (wrong JDK)\]' >/dev/null && echo True || echo False)|$(python3 -E -s "$REPO_ROOT/scripts/runs.py" build .temper/evidence/build.json)"
 assert_exit "9.8.5 Q3: a void row is not voided twice" 1 "$TEMPER" evidence void --stage build --id 2 --reason 'again'
 assert_eq "9.8.5 Q3: the build and fix briefs record RED and GREEN with evidence run" "2|2" \
   "$(grep -cE -- '--phase (red|green) -- <the exact test command>' "$REPO_ROOT/agents/build.md")|$(grep -cE -- '--phase (red|green) -- <the exact test command>' "$REPO_ROOT/agents/fix.md")"
