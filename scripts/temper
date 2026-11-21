@@ -524,6 +524,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
     echo "      (the slug is letters of either case, digits, '.', '_' or '-', starts with a letter or digit, and has no '/' or '..'; got '$slug')" >&2
     return 1
   fi
+  git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1 || { echo "FAIL: $REPO_ROOT is not in a git repository: a verdict names the tree it judged, by git (git init first)" >&2; return 1; }
   _ensure_dirs
   local command="temper" branch="" feature=""
   while [[ $# -gt 0 ]]; do

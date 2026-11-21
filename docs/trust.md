@@ -43,6 +43,8 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   in the project, never through a shell since 9.8.1), launches the agents the CLI names and asks its questions. It runs
   no command the CLI did not give, and a call of an answer only after you picked that answer in the question dialog.
   What needs a model or your words goes back to the conversation ([The mod](mod.md), The run driver).
+- **A git repository.** A run needs one: `temper state init` refuses a folder outside git, because each verdict names
+  the tree it judged by its git digest, and the commit gate is a git hook.
 - **Git hook.** On the first run `scripts/guards/install.sh` writes a `pre-commit` hook (a secret scan of the staged
   files, then `temper gate commit`) to `temper-gate/pre-commit` in the repository's git folder and points
   `core.hooksPath` at that folder, so every worktree runs it. The hook runs the gate of every project the commit

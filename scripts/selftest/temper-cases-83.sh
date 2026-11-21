@@ -83,3 +83,10 @@ assert_eq "review 3: acceptance tests that were skipped, never run, are not a pa
   "$(_g83 "x = row('acceptance tests'); r = 'not passed' if x and x.get('pass') is not True and x.get('state') in ('skipped', 'not measured') else 'passed=%s:%s' % (x.get('pass'), x.get('detail'))")"
 
 # --- rule 5: a verdict outside a git repository names no tree ---
+# --- rule 5: a project outside git: a verdict there could name no tree, so no run starts there ---
+# The review's check ran a Check gate outside git and asked for a tree; the fix refuses the run at `state init` instead
+# (git is what names a tree, and the commit gate is git's), so the check asks for that refusal.
+fresh; rm -rf .git
+_r83="$("$TEMPER" state init demo --feature 'the demo thing' 2>&1)"; _r83_rc=$?
+assert_eq "review 3: a run does not start in a project outside git, where a verdict could name no tree" "refused|said=1" \
+  "$([[ $_r83_rc -ne 0 ]] && echo refused || echo started)|said=$(grep -c 'is not in a git repository' <<<"$_r83")"
