@@ -173,3 +173,17 @@ printf 'echo b\n' > src/a.sh
 "$TEMPER" gate commit >/dev/null 2>&1 || true
 assert_eq "review 8: the copy the one time question keeps is no change outside the plan: the blast radius row of the commit gate passes" \
   "copy=yes|blast radius=True" "copy=$([[ -f .claude/temper.config.before-9.8.5 ]] && echo yes || echo no)|blast radius=$(_row88 commit "blast radius")"
+
+# --- review 8, Getting Started word for word: "Save for later. Every question offers it" ---
+# The first question a user of 9.8.4 meets after the upgrade, config.tidy, offers only tidy-config and keep-config.
+# WP32 (lane advfix1): the reviewer's check asked for a save option on config.tidy; the fix is the page, since the
+# question keeps its two answers (no option is added to a question, and the option caps hold). So the check holds the
+# page to the question: it no longer says every question offers Save for later, and it names config.tidy as one that
+# does not, while config.tidy still offers no save.
+_clean88; _git88; mkdir -p .claude; _tpl88 7c7a1c1 > .claude/temper.config
+printf 'x\n' > README.md; git add -A; git commit -q -m init
+"$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+_gs88="$REPO_ROOT/docs/getting-started.md"
+assert_eq "review 8: Getting Started says config.tidy offers no Save for later, as the question offers none, and claims it of no question it lacks" \
+  "config.tidy|save=no|every=0|named=1" \
+  "$(nx "(d.get('ask') or {}).get('id')")|save=$(nx "'yes' if any(o.get('id') == 'save' for o in (d.get('ask') or {}).get('options') or []) else 'no'")|every=$(grep -c 'Every question offers it' "$_gs88")|named=$(tr '\n' ' ' < "$_gs88" | grep -o 'The one time config question after the upgrade does not' | grep -c .)"
