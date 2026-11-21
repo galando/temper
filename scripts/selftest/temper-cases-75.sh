@@ -255,6 +255,28 @@ print("ok" if not missing and not bare else "missing %s; no replacement for %s" 
 PY
 )"
 
+# P8 (R8-W31-1): a plugin test reads no file, so the mod test words.test.tsx writes the retired list itself; it holds every
+# retired word of scripts/words.json, so a word words.json retires is one the mod test looks for in what the mod draws,
+# in its section and in its answer to the word status. The test file is found by git's pathspec, as check_done.py finds
+# the mod's tests, since no script here names a folder of the mod (validate-directory.sh, rule 10).
+assert_eq "w31 the retired list of the mod test words.test.tsx holds every retired word of scripts/words.json" "ok" \
+  "$(python3 -I - "$REPO_ROOT" <<'PY'
+import json, os, re, subprocess, sys
+root = sys.argv[1]
+found = subprocess.run(["git", "-C", root, "ls-files", "--", "*words.test.tsx"], capture_output=True, text=True).stdout.split()
+try:
+    r = json.load(open(os.path.join(root, "scripts", "words.json"))).get("retired")
+    t = open(os.path.join(root, found[0]), encoding="utf-8").read()
+except (OSError, ValueError, AttributeError, IndexError):
+    print("no scripts/words.json or no words.test.tsx"); sys.exit(0)
+words = list(r.keys()) if isinstance(r, dict) else [x if isinstance(x, str) else (x.get("word") if isinstance(x, dict) else x[0]) for x in r or []]
+m = re.search(r"const RETIRED = \[(.*?)\]", t, re.S)
+have = {w.lower() for w in re.findall(r"'([^']*)'", m.group(1))} if m else set()
+missing = [w for w in words if isinstance(w, str) and w.lower() not in have]
+print("ok" if m and not missing else "no RETIRED list" if not m else "missing %s" % missing)
+PY
+)"
+
 # --- 2. no retired word in a question ---
 assert_eq "w31 no retired word in a question: no view of the two fixture files holds one in its question, an option's label or description, its say, its status or its card" \
   "none" "$(_hits75 views)"

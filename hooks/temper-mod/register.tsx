@@ -11,7 +11,7 @@ import type { UiMode } from './core/config'
 import { answeredResult, answersIn, noteOf } from './core/answers'
 import { evaluate } from './core/rules'
 import { callWords, readShell } from './core/shell'
-import { evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
+import { bugOf, evaluateSession, factsOf, featureWhy, requestOf, skillChosen } from './core/session'
 import { dialogQuestions, dialogQuestionsAll, drive, driveFix, driverThrew, isSavedStop, logRows, lookAtAgents, slugOf } from './core/driver'
 import type { AgentEnd, DriveEnd, GoAgent, GoQuestion, Picked, Port } from './core/driver'
 import type { RuleContext } from './core/rules'
@@ -750,7 +750,7 @@ export const register: Register = (on, opts) => {
       // 9.8.0: /temper:fix <bug> with no run active is carried by the mod as well; WP16: so is /temper:fix with no
       // words while a fix run is active (taken up again). The one step of a hand back goes to fix.md.
       if (e.command === 'temper:fix' || e.command === 'fix') {
-        const bug = requestOf(e.args)
+        const bug = bugOf(e.args)
         const snap = await refresh($).catch(() => null)
         const takeUp = bug === null && e.args.trim() === '' && snap !== null && snap.slug !== null && snap.runCommand === 'fix'
         if (snap !== null && enforces(snap) && ((bug !== null && snap.slug === null) || takeUp)) {

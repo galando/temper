@@ -339,7 +339,7 @@ describe('the system prompt: one flow in every mode', () => {
       begin(on, 'plan', { plan: 'PASS' })
       await api.session.start(START)
       const text = await system(api)
-      expect(text).toContain('Phase: Plan')
+      expect(text).toContain('Stage: Plan')
       expect(text).toContain('ask the `Temper gate` question exactly as `temper next --json` gives it')
       expect(text).not.toMatch(/key \d|press \d|Temper bar|\/temper:temper approve/i)
     })

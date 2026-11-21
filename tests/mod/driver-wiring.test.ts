@@ -171,6 +171,20 @@ describe('the mod carries a /temper:temper run (the run driver)', () => {
     expect(r.text).toBe('The fix is committed.')
   })
 
+  // P8 (WP28-1): /temper:fix has no words of its own, so a bug that starts with a word of /temper:temper that takes text
+  // (draft, discuss, chose) is still a bug, and the driver carries its fix: the CLI's go, then the root cause agent's model.
+  for (const args of ['draft emails are sent twice', 'discuss button does nothing', 'chose the wrong plan on upgrade']) {
+    test(`/temper:fix ${args}: the bug is driven (P8)`, async ($, on) => {
+      const api = $ as unknown as Api
+      const w = world(on, {}, { projectRoot: '/repo' })
+      const { ran } = engine(on, w, [{ action: 'none', say: 'No run is active.' }])
+      await api.session.start(START)
+      await api.command.run({ command: 'temper:fix', args, origin: { kind: 'composer' } })
+      expect(ran.filter(isGo).length).toBe(1)
+      expect(ran.some(c => /scripts\/temper model rca$/.test(c))).toBe(true)
+    })
+  }
+
   test('a run word, and a request while another run is active, go to the model loop as before', async ($, on) => {
     const api = $ as unknown as Api
     const w = world(on, runFiles({ gates: { plan: 'PASS' } }), { projectRoot: '/repo' })

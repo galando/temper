@@ -231,6 +231,13 @@ export function requestOf(args: string): string | null {
   return t === '' || isWord(t) ? null : t
 }
 
+// The bug of /temper:fix: all its words, unquoted (commands/fix.md has no words of its own, so a bug that starts with
+// `draft`, `discuss` or `chose` is a bug); null only when there are none.
+export function bugOf(args: string): string | null {
+  const t = unquoted(args)
+  return t === '' ? null : t
+}
+
 export const FEATURE_DENY =
   "Temper: the run's request is the person's words, word for word: pass what they typed after /temper:temper to --feature, " +
   "unshortened (the agents plan from it). Next: run temper state init again with --feature '{their request}', each ' in it written as '\\''."
