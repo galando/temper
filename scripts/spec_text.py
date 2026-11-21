@@ -140,8 +140,12 @@ def uncovered_scenarios(argv):
             names.append(m.group(1))
     covered = set()
     try:
-        entries = json.load(open(ev_path))
-        covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
+        import importlib.util, os   # ledger_ops.py by its full path (this module runs isolated): the count's own reading
+        spec = importlib.util.spec_from_file_location('ledger_ops', os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                                                 'ledger_ops.py'))
+        ledger_ops = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ledger_ops)
+        covered = ledger_ops.covered_scenarios(json.load(open(ev_path)))
     except Exception:
         pass
     missing = [n for n in names if n not in covered]

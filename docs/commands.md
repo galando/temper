@@ -491,7 +491,8 @@ question names at most eight of them with what changes (the coverage floor, `pha
 
 The question is asked only at Intent before the first agent of a `/temper:temper` run. The two calls exit 1 and change
 nothing past Intent, in a fix run or in a run that goes on by itself; at Intent, or with no run active, they run, so a
-person can also type them. A project made by `config init` is never asked.
+person can also type them. Typed after `Keep my file`, `--apply` still removes the old lines: `upgrade.asked` stops
+the question, not the call. A project made by `config init` is never asked.
 
 ### What became of an old key
 

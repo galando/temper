@@ -94,8 +94,8 @@ cd "$WORKDIR"; rm -rf "$WORKDIR/rv1"
 setup
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 60 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check first
+ev_scen check second
 assert_exit "check gate FAILs below coverage threshold (60 < 80)" 1 "$TEMPER" gate check
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 assert_exit "check gate PASSes above coverage threshold (90 >= 80)" 0 "$TEMPER" gate check
@@ -117,8 +117,8 @@ assert_eq "the quote-bearing threshold is read back unchanged" \
   "0') and open('threshold-injected','w').write('x') and float('0" "$("$TEMPER" config get check.coverage-threshold)"
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check first
+ev_scen check second
 rm -f threshold-injected
 assert_exit "check gate FAILs on a quote-bearing coverage threshold" 1 "$TEMPER" gate check
 assert_eq "a quote-bearing coverage threshold writes no file" "no" "$([[ -e threshold-injected ]] && echo yes || echo no)"
@@ -132,9 +132,9 @@ rm -f threshold-injected
 setup
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+ev_scen check first
 assert_exit "check gate FAILs when a scenario has no traced test (1/2 covered)" 1 "$TEMPER" gate check
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check second
 assert_exit "check gate PASSes once every scenario is traced (2/2 covered)" 0 "$TEMPER" gate check
 
 # --- evidence: PROVEN downgrade on missing artifact ---
@@ -154,8 +154,8 @@ review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check first
+ev_scen check second
 "$TEMPER" gate check >/dev/null
 assert_exit "commit gate PASSes once every upstream gate is green" 0 "$TEMPER" gate commit
 
@@ -264,8 +264,8 @@ review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check first
+ev_scen check second
 "$TEMPER" gate check >/dev/null
 assert_exit "fix commit gate PASSes without a plan gate" 0 "$TEMPER" gate commit
 
@@ -350,8 +350,8 @@ review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check first
+ev_scen check second
 "$TEMPER" gate check >/dev/null
 python3 -c "
 import json
@@ -407,8 +407,8 @@ assert_eq "evidence clear truncates a stage's ledger to []" "[]" "$(cat .temper/
 setup
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check first
+ev_scen check second
 "$TEMPER" gate check >/dev/null
 _at check
 "$TEMPER" state loop check build --reason "regression found downstream" >/dev/null
@@ -858,8 +858,8 @@ review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check first
+ev_scen check second
 "$TEMPER" gate check >/dev/null
 assert_exit "commit gate FAILs when intent.md exists but its gate never ran" 1 "$TEMPER" gate commit
 "$TEMPER" gate intent >/dev/null
@@ -907,8 +907,8 @@ review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
 ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+ev_scen check first
+ev_scen check second
 "$TEMPER" gate check >/dev/null
 assert_exit "commit gate PASSes with no design.md and no design verdict" 0 "$TEMPER" gate commit
 printf '# Design\n## Areas of Concern\nNone flagged — simple change.\n' > .temper/specs/demo/design.md

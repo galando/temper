@@ -449,6 +449,21 @@ _old73 7c7a1c1; printf 'an older copy\n' > .claude/temper.config.before-9.8.5
 _k4_73+="|copy there=$_rc73 $(cat .claude/temper.config.before-9.8.5) $(cmp -s .git/old-config-73 .claude/temper.config.before-9.8.5.2 && echo next number || echo lost)"
 assert_eq "w29 config tidy --apply never overwrites the copy: a second call keeps the old file, with nothing stale it writes nothing, an existing copy stays" \
   "second=0 copy old file file same|nothing stale=0 copy none file same|copy there=0 an older copy next number" "$_k4_73"
+# the phase 8 recheck, A-1: --apply typed after Keep my file does what it says (step 7 of WP29 bounds the question by
+# upgrade.asked, never the call): the old default and the gone key go, the person's own value stays, and it says so
+_old73 7c7a1c1 's/coverage-threshold: 80/coverage-threshold: 60/; s/^autonomy:$/autonomy:\n  enabled: false/'
+"$TEMPER" config tidy --keep >/dev/null 2>&1
+_a1_73="$("$TEMPER" config tidy --apply 2>&1)"; _rc73=$?
+assert_eq "p8r A-1 config tidy --apply after --keep removes the old lines and says so: block-on gives way to the new default, enabled false becomes run.default ask, coverage 60 stays" \
+  "exit=0|said=removed|block-on critical,high|run.default ask config|coverage 60 config|no enabled" \
+  "exit=$_rc73|said=$(grep -c '^OK: removed ' <<<"$_a1_73" | sed 's/^1$/removed/')|block-on $(_get73 review.block-on)|run.default $(_get73 run.default) $(_src73 run.default)|coverage $(_get73 check.coverage-threshold) $(_src73 check.coverage-threshold)|$(grep -cE '^[[:space:]]+enabled:' .claude/temper.config | sed 's/^0$/no enabled/')"
+# A-2: a packs list in block form that holds the old five is printed in the question on one line, as the kept pairs are
+_old73 7c7a1c1 's/^packs: \[.*\]$/packs:\n  - quality\n  - tdd\n  - security\n  - git\n  - performance/'
+assert_eq "p8r A-2 the config.tidy question prints a block form packs list on one line" "one line|named" \
+  "$(python3 -I -c '
+import json, sys
+q = ((json.loads(sys.argv[1]).get("ask") or {}).get("question") or {}).get("question") or ""
+print("%s|%s" % ("one line" if "\n" not in q else "newlines", "named" if "packs: [quality, tdd, security, git, performance] (two packs by default, security and tdd)" in q else q[:300]))' "$("$TEMPER" next --json 2>/dev/null)")"
 
 # --- the question is a stop that must stay, and a project of the selftest or of config init is never asked ---
 assert_eq "w29 scripts/stops.json holds config.tidy, the one time config question, as a stop that must stay" "config.tidy listed" \

@@ -87,12 +87,18 @@ def feedback_answered(argv):
         print(' | '.join(unanswered) if unanswered else 'OK')
 
 
-def last_green(argv):
-    import json, os, sys
+def _runs():
+    import os
     import importlib.util   # runs.py by its full path, no folder on the import path (this module runs isolated)
     spec = importlib.util.spec_from_file_location('runs', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'runs.py'))
     runs = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(runs)
+    return runs
+
+
+def last_green(argv):
+    import json, sys
+    runs = _runs()
     try:
         rows = json.load(open(argv[1]))
     except Exception:
@@ -244,8 +250,15 @@ def last_value(argv):
 def scenarios_covered(argv):
     import json, sys
     entries = json.load(open(argv[1]))
-    covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
-    print(len(covered))
+    # rule 5 (ADR 0024): a scenario is traced by a run the CLI made (evidence run --scenario, Check, integrate), never
+    # by a row an agent wrote or a void one, as the acceptance evidence row reads it (acceptance.py)
+    print(len(covered_scenarios(entries)))
+
+
+def covered_scenarios(entries):
+    """The scenarios whose trace rows hold a pass the CLI counts (runs.counts); spec_text.py's missing list uses it."""
+    runs = _runs()
+    return {e['scenario'] for e in entries if runs.counts(e) and e.get('scenario') and e.get('exit_code') == 0}
 
 
 def latest_claim_exit(argv):

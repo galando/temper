@@ -113,6 +113,10 @@ ev_red() { # ev_red <stage> <claim>: a failing test run the CLI made and recorde
 ev_green() { # ev_green <stage> <claim>: a passing test run the CLI made and recorded (WP30)
   "$TEMPER" evidence run --stage "$1" --phase green --claim "$2" -- true >/dev/null 2>&1
 }
+ev_scen() { # ev_scen <stage> <scenario>: a passing run of a scenario's test the CLI made and recorded (rule 5: a trace
+            # an agent wrote with `temper evidence add --scenario` counts at no gate)
+  "$TEMPER" evidence run --stage "$1" --scenario "$2" --claim "scenario: $2" -- true >/dev/null 2>&1
+}
 fresh() { # a new run of the demo spec at Intent, with the run state written by the CLI
   setup
   rm -f .temper/groups.json .temper/view.json

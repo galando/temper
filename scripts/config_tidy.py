@@ -10,7 +10,8 @@ ADR 0023). Standard library only.
 --apply drops each line whose value an earlier template shipped as a default (defaults.OLD) and each key no longer
 read (defaults.GONE), moves a renamed key to its new name, turns autonomy.enabled: false into run.default: ask, keeps a
 copy (.claude/temper.config.before-<version>) and writes the new template with the lines the person changed in place of
-its own or after them. --keep appends `upgrade:` with `asked: "<version>"`, so the question is not asked again. An
+its own or after them, whatever upgrade.asked says (the question is asked once; the call, typed after Keep my file,
+still does what it says). --keep appends `upgrade:` with `asked: "<version>"`, so the question is not asked again. An
 unknown key is never an error: both keep it.
 """
 import json
@@ -94,10 +95,11 @@ def template_text():
         return f.read()
 
 
-def stale(text):
+def stale(text, every=False):
     """The lines the question offers to remove, [{path, raw, what}], the four that change a run first; none when the
-    config already answered the question of that version (upgrade.asked)."""
-    asked = vtuple(config_yaml.get(config_yaml.parse_yaml_subset(text), "upgrade.asked", ""))
+    config already answered the question of that version (upgrade.asked). every: each such line whatever upgrade.asked
+    says, the lines `--apply` removes (step 7 of WP29: a typed call after Keep my file does what it says)."""
+    asked = () if every else vtuple(config_yaml.get(config_yaml.parse_yaml_subset(text), "upgrade.asked", ""))
     tpl = {p: norm(value(r)) for p, r, _ in leaves(template_text()) if r is not None}
     out = []
     for path, raw, _ in leaves(text):
@@ -120,7 +122,7 @@ def stale(text):
 
 def question_text(found):
     """The text of config.tidy: the count, the copy, at most eight lines with what changes, then `and M more`."""
-    shown = ["%s: %s (%s)" % (x["path"], x["raw"], x["what"]) for x in found[:8]]
+    shown = ["%s (%s)" % (said(x["path"], x["raw"]), x["what"]) for x in found[:8]]   # a block list on one line
     more = len(found) - len(shown)
     return ("Your config holds %d lines that only repeat old defaults or are no longer read. Remove them so the new "
             "defaults apply? A copy is kept. %s%s." % (len(found), "; ".join(shown), "; and %d more" % more if more else ""))
@@ -129,7 +131,7 @@ def question_text(found):
 def kept(text):
     """[(path, raw)] the person's own lines, after --apply: no old default, no gone key; a renamed key under its new
     name; autonomy.enabled false as run.default: ask; an empty key dropped."""
-    gone = {x["path"] for x in stale(text)}
+    gone = {x["path"] for x in stale(text, every=True)}
     have = {p for p, r, _ in leaves(text) if r is not None}
     out = []
     for path, raw, _ in leaves(text):
@@ -232,7 +234,7 @@ def tidy(how, config, state_file):
             f.write(("" if text.endswith("\n") or not text else "\n") + 'upgrade:\n  asked: "%s"\n' % defaults.VERSION)
         print("OK: kept %s as it is; upgrade.asked is %s, so the question is not asked again" % (config, defaults.VERSION))
         return 0
-    found = stale(text)
+    found = stale(text, every=True)
     if not found:
         print("OK: nothing to remove: %s holds no old default and no key that is gone; nothing changed" % config)
         return 0
