@@ -485,7 +485,9 @@ assert_eq "live run 5: the park report is in the clone's info/exclude, so it is 
   "$([[ -f .temper/autonomy-report.md ]] && echo 1 || echo 0)|$(git status --porcelain --untracked-files=all | grep -c 'autonomy-report')"
 
 # --- live run 7: each test command counts by its latest run, and a passed Check can still go back to Build ---
-fresh
+# review 3 of WP32: with the suite known (the plan's Integration line), only its command counts; here no suite is known,
+# so the test commands are those the Check agent found, each counted by its latest run
+fresh; sed -i '/^\*\*Integration:\*\*/d' .temper/specs/demo/tasks.md
 ev_green check 'unit tests'
 ev_red check 'integration tests'
 "$TEMPER" evidence add --stage check --claim coverage --value 90 --exit 0 >/dev/null 2>&1

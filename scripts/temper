@@ -2882,7 +2882,7 @@ gate_check() {
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
   # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
-  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" 2>/dev/null || echo 0)"
+  local tests_n tests_red; tests_n="$(python3 -E -s "$SCRIPTS_DIR/runs.py" check "$(_evidence_file check)" "$REPO_ROOT" "$spec_path" 2>/dev/null || echo 0)"
   tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
   local skip=""; [[ -n "$tests_red" ]] && skip="$(_baseline skip-row "$(_evidence_file check)")"   # WP20: a red base gone on from
   if [[ -n "$skip" ]]; then
