@@ -802,7 +802,7 @@ export const register: Register = (on, opts) => {
     try {
       const snap = await ensure($)
       if (snap.inert || snap.prAttribution !== 'on' || snap.slug === null) return result
-      return { text: `${result.text}\n\nMade with Temper. The phases have gates. /temper:temper report shows the report.` }
+      return { text: `${result.text}\n\nMade with Temper. The stages have gates. /temper:temper report shows the report.` }
     } catch {
       return result
     }

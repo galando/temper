@@ -125,7 +125,7 @@ describe('the pane: the whole run, read only', () => {
     runWith(on, v)
     await $.session.start(START)
     const text = JSON.stringify(await (await mount($, 'Pane', PANE(), 'temper')).drawn())
-    for (const word of ['○ waiting', '◐ running', '● RED', '● GREEN', '◇ COVERED', '✓ PASS', '✗ FAIL', '⏸ parked']) expect(text, word).toContain(word)
+    for (const word of ['○ waiting', '◐ running', '● RED', '● GREEN', '◇ COVERED', '✓ PASS', '✗ FAIL', '⏸ stopped']) expect(text, word).toContain(word)
   })
 
   test('an inline pane keeps each section short', async ($, on) => {

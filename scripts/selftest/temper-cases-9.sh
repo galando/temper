@@ -423,7 +423,7 @@ assert_eq "live run 3: a loop back to Plan gives the Plan agent the person's rea
 fresh; gpass intent plan build review check commit; _at commit
 "$TEMPER" park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed' >/dev/null 2>&1
 assert_eq "live run 5: the parked commit question says the armed run parked there and names its report" "1|1" \
-  "$(nx "int('the armed run parked here for you' in d['ask']['question']['question'])")|$(nx "int('.temper/autonomy-report.md' in d['ask']['question']['question'])")"
+  "$(nx "int('the run that went on by itself stopped here for you' in d['ask']['question']['question'])")|$(nx "int('.temper/autonomy-report.md' in d['ask']['question']['question'])")"
 assert_eq "live run 5: the park report is in the clone's info/exclude, so it is never an untracked file" "1|0" \
   "$([[ -f .temper/autonomy-report.md ]] && echo 1 || echo 0)|$(git status --porcelain --untracked-files=all | grep -c 'autonomy-report')"
 

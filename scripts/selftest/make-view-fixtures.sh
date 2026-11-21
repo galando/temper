@@ -95,6 +95,8 @@ def project(name):
     sh("git", "commit", "-qm", "init", cwd=cwd)
     # WP29: the old review level the views were made with, and the one time question answered (an old default)
     write(cwd, ".claude/temper.config", "review:\n  block-on: [critical]\nupgrade:\n  asked: \"9.8.5\"\n")
+    # WP31: the one time notice was said, as `temper init` writes it for a new project (a view shows no notice)
+    write(cwd, ".temper/notice.json", '{"9.8.5": "the fixtures"}\n')
     return cwd
 
 

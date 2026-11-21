@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-10-13
+**Amended by:** ADR-0019 (9.8.5, decision 4 here: a stop keeps the run's mode)
+**Amended by:** ADR-0023 (9.8.5: the one time config question is asked first; decision 8, the doors, is gone)
 **Supersedes:** the mod's own run state and its bar buttons (docs/mods-plan.md, sections 3.3 and 3.8)
 
 ## Context

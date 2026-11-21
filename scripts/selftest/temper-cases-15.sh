@@ -196,13 +196,13 @@ _ran_unattended   # WP11: a run the person started at the approval, now at the c
 mkdir -p src/billing; echo r > src/billing/rates.sh
 printf 'autonomy:\n  enabled: true\n  park-on-touch: ["**/billing/**"]\n' > .claude/temper.config
 assert_eq "9.8.0: an unattended run's planned change to a park-on-touch path does not park" "yes" \
-  "$(_gcm | grep -c '\[v\] park-on-touch paths' >/dev/null && echo yes || echo no)"
+  "$(_gcm | grep -c '\[v\] sensitive paths' >/dev/null && echo yes || echo no)"
 echo x > src/billing/other.sh
 assert_eq "9.8.0: a change to a park-on-touch path outside the plan still parks" "yes" \
-  "$(_gcm | grep -c '\[x\] park-on-touch paths — src/billing/other.sh matches \*\*/billing/\*\* and is not in the plan' >/dev/null && echo yes || echo no)"
+  "$(_gcm | grep -c '\[x\] sensitive paths — src/billing/other.sh matches \*\*/billing/\*\* and is not in the plan' >/dev/null && echo yes || echo no)"
 "$TEMPER" state set run_mode interactive >/dev/null 2>&1   # a skip or a step back ended it: the run asks the person again
 assert_eq "WP11: a run that went on by itself keeps that record, and the commit gate still holds it to park-on-touch after it ended" "true|yes" \
-  "$("$TEMPER" state get ran_unattended)|$(_gcm | grep -c '\[x\] park-on-touch paths — src/billing/other.sh' >/dev/null && echo yes || echo no)"
+  "$("$TEMPER" state get ran_unattended)|$(_gcm | grep -c '\[x\] sensitive paths — src/billing/other.sh' >/dev/null && echo yes || echo no)"
 assert_exit "9.8.0: the record is the CLI's: state set ran_unattended is refused" 1 "$TEMPER" state set ran_unattended false
 
 # --- 6. The Context check names what the plan leaves out; an answer other than "As planned" sends Plan back with it ---

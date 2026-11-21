@@ -473,7 +473,7 @@ _resolve_task_escalation_model() { cmd_model task-escalation; }
 _RUN_FILES="build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
 stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ \
 security-map.json test-gap-report.json view.json agents-named.json brief.md evidence/ index/ reviews/ archive/ check/ .lock/ runs.jsonl asked.json \
-decisions.json budget.json rule-log.json trivial.json"
+decisions.json budget.json rule-log.json trivial.json notice.json"
 
 
 cmd_init() {
@@ -493,6 +493,7 @@ cmd_init() {
     done
     grep -qxF "/${pre}.claude/worktrees/" "$ex" 2>/dev/null || printf '/%s.claude/worktrees/\n' "$pre" >> "$ex" 2>/dev/null || true
   fi
+  python3 -I "$SCRIPTS_DIR/notice.py" init "$(_now)" 2>/dev/null || true   # WP31: a new project is never told
   echo "OK: .temper/ scaffolded at $TEMPER_DIR"
 }
 
@@ -3107,9 +3108,9 @@ gate_commit() {
         "$(python3 -I "$SCRIPTS_DIR/commit_rows.py" declared-list "$plan_json")" "$OVERRIDES_FILE")"
     fi
     if [[ -z "$touched" ]]; then
-      reqs+=("$(_req "park-on-touch paths" 1 "no changed file matches a park-on-touch pattern")")
+      reqs+=("$(_req "sensitive paths" 1 "no changed file matches a park-on-touch pattern")")
     else
-      reqs+=("$(_req "park-on-touch paths" 0 "$touched")")
+      reqs+=("$(_req "sensitive paths" 0 "$touched")")
       all_pass=0
     fi
   fi
@@ -3382,7 +3383,7 @@ cmd_park() {
     echo "# Autonomy report"
     echo
     echo "**Verdict:** $verdict"
-    echo "**Parked at:** $stage"
+    echo "**Stopped at:** $stage"
     echo "**Reason:** ${reason:-none given}"
     echo "**Branch:** $branch"
     echo
@@ -3390,9 +3391,9 @@ cmd_park() {
     cmd_report 2>/dev/null
     echo '```'
     echo
-    echo "The run waits for you at the gate it parked at."
+    echo "The run waits for you at the question of the stage where it stopped."
   } > "$TEMPER_DIR/autonomy-report.md"
-  echo "OK: parked at $stage ($verdict); the report is in .temper/autonomy-report.md"
+  echo "OK: stopped at $stage ($verdict); the report is in .temper/autonomy-report.md"
 }
 
 

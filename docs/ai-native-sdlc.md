@@ -91,12 +91,12 @@ file, and the commit hook refuses a commit of a project file; a write by a shell
 is outside the hook, and Temper is not a sandbox either way: a Claude set on getting around a
 gate through Bash can ([Trust](trust.md)).
 
-**Auto mode.** Aligned, more conservative than the playbook: Autonomous Continuation
-is armed by a human at the plan gate only, and always parks before the final commit:
-it never makes that commit, pushes, or merges to a remote (its only commits are the
-CLI's local task commits and merges in Build). The playbook's
-"auto-accept becomes the default for routine work" is a posture a project can adopt
-by arming it per-run; the fence stays hardcoded.
+**Auto mode.** Aligned, more conservative than the playbook: the run goes on by itself
+only from the option a person picks at the approval, and always stops before the final
+commit: it never makes that commit, pushes, or merges to a remote (its only commits are
+the CLI's local task commits, merges and repair commits). The playbook's "auto-accept
+becomes the default for routine work" is the default run here (`run.default: to-commit`);
+the commit question stays fixed.
 
 **CLAUDE.md.** Aligned, with the feedback arc automated: Check writes
 `config-suggestions.json` and offers each suggestion at the gate (accept → written
@@ -271,4 +271,4 @@ Honest list, in rough adoption order:
 2. Packs + guardrails pack → skills-with-deterministic-backstops.
 3. `/temper:temper draft` → capture-first flow; commit the spec artifacts.
 4. Wire `temper gate review` into whatever CI you run → the review loop, org-visible.
-5. `autonomy:` block → longer unattended arcs, parked before commit.
+5. `run.default` → the run goes on by itself from the approval, and stops before the commit.

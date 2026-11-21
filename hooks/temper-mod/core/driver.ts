@@ -62,6 +62,8 @@ export type GoOut = {
   needs?: string
   option?: string
   restart?: GoRestart
+  // WP31: the one time notice of a project that ran an earlier Temper, also at the front of `say`
+  notice?: string
 }
 
 export type Ran = { code: number; out: string }
@@ -469,6 +471,7 @@ export function* driveSteps(cli: string, request: string | null, slug: string | 
       const r = yield* run(c)
       if (r.code !== 0) yield* show(`Temper: a setup call failed (${c.split('/').pop()}): ${r.out.trim().split('\n').slice(-3).join(' ')}`)
     }
+    if (g.action === 'none' && g.notice) yield* show(g.notice)
     if (g.action === 'none') {
       if (!started && request !== null) {
         const init = yield* run(`${cli} state init ${slug ?? slugOf(request)} --feature ${shq(request)}`)

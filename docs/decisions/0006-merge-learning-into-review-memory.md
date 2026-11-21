@@ -1,6 +1,6 @@
 # ADR-0006: Merge adaptive learning into review memory
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0024 (what 9.8.5 removed)
 **Date:** 2026-08-24
 **Supersedes:** [ADR-0001](0001-separate-learning-state-file.md)
 

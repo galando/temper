@@ -117,7 +117,7 @@ const TASK_GLYPH: Record<string, string> = { waiting: '○', running: '◐', pas
 // One line a group in Build: "G2 Payments  ✓1 ✓2 ◐3 ○4".
 export function groupLine(g: GroupRow): string {
   const tasks = g.tasks.map(t => `${TASK_GLYPH[t.state] ?? '○'}${t.n}`).join(' ')
-  const state = g.state === 'parked' ? ' (parked)' : g.state === 'passed' ? ' (passed)' : ''
+  const state = g.state === 'parked' ? ' (stopped)' : g.state === 'passed' ? ' (passed)' : ''
   return `${g.id}${g.title ? ` ${g.title}` : ''}${state}  ${tasks}`
 }
 
@@ -241,7 +241,7 @@ export const TASK_STATE: Record<GridTask['state'], [string, string]> = {
   covered: ['◇', 'COVERED'],
   pass: ['✓', 'PASS'],
   fail: ['✗', 'FAIL'],
-  parked: ['⏸', 'parked'],
+  parked: ['⏸', 'stopped'],
 }
 
 const cap = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}`

@@ -9,8 +9,8 @@ Packs are collections of rules that Temper uses to validate and guide AI-generat
 
 ## Built-in Packs
 
-Temper ships with 8 built-in packs: the 7 rule packs below, enforced during code generation and
-review, plus `guardrails`, whose guard hooks you turn on separately (see [Enabling Packs](#enabling-packs)).
+Temper ships eight packs: seven rule packs, enforced during code generation and review (a new project turns on
+`security` and `tdd`), plus `guardrails`, whose guard hooks you turn on separately (see [Enabling Packs](#enabling-packs)).
 
 ### `quality`
 

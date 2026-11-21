@@ -21,7 +21,7 @@ in the plugin folder.
    correctness risk you can't fully trace) is worth spawning a nested Agent on Opus to
    re-judge — use your judgment, this isn't a fixed rule.
 3. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` checks three things: zero *open* findings at or above
-   `review.block-on` severity (default: `critical,high`), a `review completed` row that
+   `review.block-on` severity (default: `critical, high`), a `review completed` row that
    names every changed file, and no code changed at Review. Record every finding as evidence: the ledger is the record of what was
    found; report EVERY CRITICAL and HIGH finding in your panel, never only "the top
    issues". You do not change code at Review (with the mod, a write outside the spec

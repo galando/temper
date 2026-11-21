@@ -395,6 +395,25 @@ describe('the driver carries a run from the request to the end', () => {
   })
 })
 
+// WP31: the one time notice of a project that ran an earlier Temper. `temper go` keeps it in `notice` (and at the front of
+// `say`); with no active run the driver shows it once before it starts the run, and never asks about it.
+describe('the one time notice of 9.8.5', () => {
+  const NOTICE = 'Temper 9.8.5 asks twice: before any code is written, and at the commit. Pick Ask me at every stage at the first question for the old flow. What changed: docs/getting-started.md.'
+  test('a project with no active run is shown the notice once, then the run starts', async () => {
+    const { p, log } = port({ goes: [{ action: 'none', say: `${NOTICE} No run is active.`, notice: NOTICE }, { action: 'none', say: 'The run is done.' }] })
+    await drive(p, CLI, 'Refund an invoice', 'refunds')
+    expect(log.shown.filter(t => t.startsWith('Temper 9.8.5 asks twice'))).toEqual([NOTICE])
+    expect(log.asked).toEqual([])
+    expect(log.ran).toContain(`${CLI} state init refunds --feature 'Refund an invoice'`)
+  })
+
+  test('a go with no notice shows none', async () => {
+    const { p, log } = port({ goes: [{ action: 'none', say: 'No run is active.' }, { action: 'none', say: 'The run is done.' }] })
+    await drive(p, CLI, 'Refund an invoice', 'refunds')
+    expect(log.shown.filter(t => t.includes('asks twice'))).toEqual([])
+  })
+})
+
 describe('a call that printed its own marker recorded a verdict, whatever its exit code (WP09)', () => {
   const again = `${CLI} group gate G1 --timeout-s 1200`
   const twice = 'Run the check again with twice the time (Recommended)'

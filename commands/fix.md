@@ -11,11 +11,11 @@ the pipeline of `/temper`, with RCA in place of Intent and Plan, and Fix in plac
 
 **First output.** Look at your system prompt for a line that starts with `Temper enforcement:`. With
 none, your first line is exactly `Temper enforcement is off here (no mods support); continuing with
-prompt based phases.` With `Temper enforcement: off (UI only)`, it is exactly `Temper enforcement is
-off (turned off by the user); continuing with prompt based phases.` With `active`, say nothing about
+prompt based stages.` With `Temper enforcement: off (UI only)`, it is exactly `Temper enforcement is
+off (turned off by the user); continuing with prompt based stages.` With `active`, say nothing about
 it. Say it once per conversation. With the Temper mod, the mod stands aside in a `/temper:fix` run:
 it draws nothing for it and judges none of its moves, but nothing goes around the native commit hook.
-With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+With the mod off, every stage works the same; the mod adds the bar, the pane and its write guards. Nothing falls back silently.
 
 ## Usage
 
@@ -32,7 +32,8 @@ regression test is a RED then GREEN pair), Review and Check are the same stages 
 
 ## 1. RCA (before the run exists)
 
-First run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`. When it lists `setup`, run those calls
+First run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`; when its `say` starts with `Temper 9.8.5 asks twice`,
+say that one sentence first, as it is. When it lists `setup`, run those calls
 first, each once, as the Start section of `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` says: they
 install the native commit hook, without which nothing gates the fix's commit.
 

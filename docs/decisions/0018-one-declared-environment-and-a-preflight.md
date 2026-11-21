@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-11-15
+**Amended by:** ADR-0020 (9.8.5: the preflight goes; a plan command runs once on the base; checks judged against it)
 **Supersedes:** (none)
 
 ## Context

@@ -35,11 +35,9 @@ setting changes that.
 
 ## Verify Setup
 
-Run `/temper:temper status` to check:
-
-- Live scenario verification status
-- MCP tool availability (code-review-graph, semgrep)
-- Evidence ratio (proven vs heuristic findings)
+During a run, `/temper:temper status` prints each criterion of the intent, passed or open, with its evidence, the
+model of each agent, and the line of `temper next --json` that says where the run stands. `temper config show` prints
+each key of the config with its value and where it comes from.
 
 ```
 /temper:temper status

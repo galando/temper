@@ -206,12 +206,15 @@ def main(argv):
         flow.run_view({"plugin": plugin, "cli": option(argv, "--cli"), "config_file": config_file, "now": option(argv, "--now"),
                        "models": models, "task_model": models.get("task", ""), "escalation_model": models.get("task-escalation", "")})
         return 0
+    import notice   # WP31: the one time notice, said in front of the say of the first next of an older project
     ctx = {"plugin": plugin, "cli": option(argv, "--cli"), "config_file": config_file, "models": models,
            "task_model": models.get("task", ""), "escalation_model": models.get("task-escalation", ""),
            "now": option(argv, "--now"), "setup": setup_calls(plugin, config_file, option(argv, "--run-files"))}
+    ctx["notice"] = notice.take(ctx["now"])
     print(flow.run_next(ctx))
     flow.run_view({"plugin": plugin, "cli": ctx["cli"], "config_file": config_file, "now": ctx["now"], "models": models,
-                   "task_model": ctx["task_model"], "escalation_model": ctx["escalation_model"], "asked": True})
+                   "task_model": ctx["task_model"], "escalation_model": ctx["escalation_model"], "asked": True,
+                   "notice": ctx["notice"]})
     return 0
 
 

@@ -175,6 +175,16 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# --- The words a user learns, and no retired word in a text a user reads (9.8.5, WP31) ---
+if words_out="$(python3 -I "$REPO_ROOT/scripts/check_words.py" 2>&1)"; then
+  echo "[PASS] Words (scripts/check_words.py): ${words_out##*$'\n'}"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] Words (scripts/check_words.py):"
+  printf '%s\n' "$words_out" | sed 's/^/  /'
+  FAIL=$((FAIL+1))
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Summary ==="

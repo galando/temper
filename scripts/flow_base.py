@@ -97,7 +97,7 @@ QUESTIONS = {
     "group.pass": {"kind": "group", "decision": "Whether a passed group is right, or what to change in it."},
     "group.change": {"kind": "group", "decision": "Which task of the group changes."},
     "group.fail": {"kind": "group", "decision": "What happens to a group whose check failed."},
-    "group.parked": {"kind": "group", "decision": "What happens to a parked group."},
+    "group.parked": {"kind": "group", "decision": "What happens to a group that stopped."},
     "review.pass": {"kind": "gate", "decision": "Whether the change goes on to Check with the open findings, or is repaired."},
     "review.fail": {"kind": "gate", "decision": "Whether to repair the findings, keep one or skip the failed check."},
     "check.pass": {"kind": "gate", "decision": "Whether the change is committed, and how."},

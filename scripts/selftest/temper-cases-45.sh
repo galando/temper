@@ -570,7 +570,7 @@ assert_eq "D50 the same fault of the environment at Check, after a run again, re
 
 # --- D51 (M11): when only the commit gate's own row fails, an option runs the gate again ---
 _check45; gpass check; "$TEMPER" state advance check_complete commit >/dev/null 2>&1
-gfail commit "park-on-touch paths" "src/auth/login.ts is under a park-on-touch pattern (**/auth/**)"
+gfail commit "sensitive paths" "src/auth/login.ts is under a park-on-touch pattern (**/auth/**)"
 assert_eq "D51 only the commit gate's own row failed: the first option is check-again, and it runs the commit gate" "check-again|gate commit" \
   "$(_x45 "o = (opts(d) or [{}])[0]; r = '%s|%s' % (o.get('id'), re.sub(r'^\S*/temper ', '', (o.get('calls') or ['none'])[-1]))")"
 

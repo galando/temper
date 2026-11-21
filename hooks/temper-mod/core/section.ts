@@ -9,7 +9,7 @@ import type { View } from './view'
 export const SECTION_ID = 'temper:phase'
 
 // What a message from the user at a gate means: the gate's "Other" choice. Also in commands/temper.md.
-export const GATE_MESSAGE = 'If the user writes a message at a gate, answer it. If it asks for a change, make the change, run the gate again, then ask the gate question again.'
+export const GATE_MESSAGE = 'If the user writes a message at a gate, answer it. A change it asks for is a typed answer: run the question\'s typed calls with it (the stage runs again with that note) and never edit a file for it yourself; then ask the gate question again.'
 
 export type SectionInput = {
   enforcement: 'on' | 'off'

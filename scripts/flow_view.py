@@ -119,11 +119,11 @@ def status_line(run, nxt):
             return "%s: your answer to the Is this the right context for the plan? question is not recorded yet." % label
         return "%s: waiting for your answer to the %s question." % (label, (nxt.get("ask") or {}).get("question", {}).get("header", GATE_HEADER))
     if a == "auto":
-        return nxt.get("say") or "%s: the armed run goes on." % label
+        return nxt.get("say") or "%s: the run goes on by itself." % label
     if a == "broken":
         return nxt.get("say")
     if run.state.get("parked") and a != "work":
-        return "%s: parked for you." % label
+        return "%s: stopped for you." % label
     return nxt.get("say") or "%s: Claude is working on it." % label
 
 

@@ -2,8 +2,8 @@
 
 **Claude cannot write code before you approve the intent.**
 
-A Claude Code plugin that runs AI written code through gates you approve. A small CLI computes each gate from
-recorded evidence; the model never decides a verdict.
+A Claude Code plugin that runs AI written code through gates. You approve once before any code is written and once
+at the commit; in between, a CLI judges every check from recorded evidence, and the model never decides a verdict.
 
 [![Version](https://img.shields.io/badge/version-v9.8.5-blue)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -19,54 +19,27 @@ On Claude Code 2.1.275 or later, one step: `/plugin install temper --marketplace
 
 Then run `/temper:temper "describe the feature"` in your project.
 
-## See it
-
-[![Temper in 70 seconds: one run from intent to commit](https://galando.github.io/temper/media/workflow.jpg)](https://galando.github.io/temper/media/workflow.mp4)
-
-[![The Temper mod in 55 seconds: the run driver, the band and the pane](https://galando.github.io/temper/media/tour.jpg)](https://galando.github.io/temper/media/tour.mp4)
-
-## How it works
-
-You approve the intent and the plan in one question before any code is written, and you approve the commit.
-
-- **Intent:** the rules your request left out (who, when, how much, exceptions) come back as questions with ready answers.
-- **Plan:** tasks a builder can follow without guessing; files outside the plan need your OK.
-- **Build:** tests first; acceptance tests written from your intent before any code, and locked.
-- **Review and Check:** the CLI runs the suite, coverage judged against your project and the acceptance tests; a
-  planted bug score beside Review is information. A red gate blocks `git commit`.
-
-## What you get and what it costs
-
-Measured on 11 tasks against plain Claude Code ([the evidence](docs/evidence/bench-2026-11.md)):
-
-- **A vague request:** Temper met 98% of the rules the person had in mind. Plain Claude Code met 73%, and 85% when
-  told to ask before building.
-- **A request that states every rule:** plain Claude Code is as correct. Temper's gain there is the tests it leaves
-  behind: they caught 93% of planted bugs, against 79%.
-- **The price:** a bug fix costs about 1.3 times as much with the mod (2.3 times without it). A feature costs 3 to 13
-  times as much and takes 5 to 18 times as long: minutes, where plain Claude Code takes about one.
-
-Temper's author wrote the tasks, and each ran a few times on a code base under 1,000 lines, so read this as a
-first measure.
-
-## When to use it, and when not
-
-Use it when a wrong guess is expensive: the request leaves rules out, the change touches money, access or data, or
-you need a record of who approved what.
-
-Skip it for a quick script, a one line fix, or a change whose rules are already written down. Plain Claude Code is
-as correct there and far cheaper. `/temper:fix` is the cheapest way to try Temper: one bug, a regression test that
-fails first, a minimal fix.
-
-How it differs from Superpowers, Spec Kit, OpenSpec and BMAD Method, and where they are ahead:
-[the comparison](docs/evidence/comparison.md).
-
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
-| `/temper:temper "..."` | The whole flow, from intent to commit; `draft`, `status`, `report`, `init` and `pack` after it are its words |
+| `/temper:temper "..."` | The whole run, from your request to the commit |
 | `/temper:fix "..."` | Root cause, a failing regression test, a minimal fix |
+
+Its words, each alone after `/temper:temper`: `draft <idea>`, `status`, `report`, `init` and `pack`.
+
+## How it works
+
+Intent, Plan, Build, Review, Check
+
+- **The first question** shows the intent and the plan on one card: the rules your request left out come back as
+  questions with ready answers, and the tasks name every file that will change. Pick Approve and build.
+- **In between**, tests come first; the CLI runs your suite, coverage and the acceptance tests, and a failed check
+  gets one repair. Temper stops and asks only when a check still fails after that repair.
+- **The second question** is the commit, with everything a rule decided since the approval. A red gate blocks
+  `git commit`. A trivial request ends with no question: its one change is yours to commit.
+
+**Cost and time:** a run costs more and takes longer than plain Claude Code; the earlier measurements are in [the bench](docs/evidence/bench-2026-11.md).
 
 ## What the mod reads and writes
 
@@ -84,4 +57,9 @@ credential. In short:
 
 The full list: [The mod](docs/mod.md#what-the-mod-reads-and-writes) and [Trust](docs/trust.md).
 
-[Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Trust](docs/trust.md) · [CHANGELOG](CHANGELOG.md) · [Privacy](https://galando.github.io/temper/privacy.html) · MIT © [Gal Naor](https://github.com/galando)
+## Read more
+
+[Getting Started](docs/getting-started.md) walks a first run; [the flow](docs/flow.md) is what the CLI says next;
+[the decision records](docs/decisions/) say why it works this way.
+
+[Trust](docs/trust.md) · [CHANGELOG](CHANGELOG.md) · [Privacy](https://galando.github.io/temper/privacy.html) · MIT © [Gal Naor](https://github.com/galando)
