@@ -55,3 +55,16 @@ print(next((str(r.get('pass')) for r in g.get('requirements') or [] if r.get('na
 assert_eq "review 7: a passing evidence run of another command under a scenario's name does not cover the scenario whose Test fails" \
   "before=False|after=False" "before=$_f1s_before|after=$_f1s_after"
 
+
+# --- F2: D38e sets three of the old loop keys high with a sed that, since WP29, matches nothing in the selftest config ---
+# D38e (case 45) said it set loops.max-per-type, autonomy.budget.max-total-loops and autonomy.budget.max-stages high with
+# a sed over the config setup() writes, which holds none of them since WP29, so "set high they change no refusal" was
+# proven for fix.max-loops alone. The check runs D38e's own setup lines (from the line that sets fix.max-loops to the
+# first repeat) on the same config and reads what they set. The review's check ran a copy of the sed; a copy would stay
+# as it was when D38e changes, so the check reads case 45 itself.
+fresh
+_f2_setup="$(awk '/max-loops: 9/ {on = 1} on && /^for _i in 1 2; do gfail check/ {exit} on' "$TESTS_DIR/temper-cases-45.sh")"
+eval "$_f2_setup"
+assert_eq "review 7: D38e's config holds each old loop key it says it sets high" \
+  "max-per-type: 9|max-total-loops: 99|max-stages: 99" \
+  "$(grep -oE 'max-per-type: 9|max-total-loops: 99|max-stages: 99' .claude/temper.config | paste -sd'|' -)"

@@ -309,8 +309,8 @@ assert_eq "D38c an inherited TEMPER_FRESH and check build-checks --fresh run not
 rm -rf .git src
 
 _check45
-printf 'fix:\n  max-loops: 9\nfeedback:\n  enabled: false\n' >> .claude/temper.config
-sed -i 's/max-per-type: 2/max-per-type: 9/; s/max-total-loops: 4/max-total-loops: 99/; s/max-stages: 12/max-stages: 99/' .claude/temper.config
+printf 'fix:\n  max-loops: 9\nfeedback:\n  enabled: false\nloops:\n  max-per-type: 9\n' >> .claude/temper.config
+printf 'autonomy:\n  budget:\n    max-total-loops: 99\n    max-stages: 99\n' >> .claude/temper.config   # a second block adds to the first
 for _i in 1 2; do gfail check "tests pass" "the latest run of a test command failed: unit"; "$TEMPER" state redo check --reason 'again' >/dev/null 2>&1; done
 gfail check "tests pass" "the latest run of a test command failed: unit"
 _d38e_out="$("$TEMPER" state redo check --reason 'a third time' 2>&1)"; _d38e_rc=$?
