@@ -33,10 +33,13 @@ FIRST = ("check.coverage-threshold", "phases.design", "packs", "review.block-on"
 
 def leaves(text):
     """[(dot path, raw value, line index)] of the file, in order, read as config_yaml reads it; an empty key that opens
-    no block is a leaf with the raw value None."""
-    out, stack = [], [(-1, "")]
+    no block is a leaf with the raw value None. A key whose block is a list (`- name` lines, the block form of `packs:`
+    in reference/pack.md) is one leaf whose raw value is its block as written, starting with a newline."""
+    out, stack, skip = [], [(-1, "")], 0
     lines = text.splitlines()
     for i, raw in enumerate(lines):
+        if i < skip:
+            continue
         line = raw.split(" #", 1)[0].rstrip()
         if not line.strip() or line.strip().startswith("#") or ":" not in line:
             continue
@@ -49,7 +52,13 @@ def leaves(text):
             out.append((path, val.strip(), i))
             continue
         nxt = next((x for x in lines[i + 1:] if x.split(" #", 1)[0].strip() and not x.strip().startswith("#")), "")
-        if len(nxt) - len(nxt.lstrip(" ")) > indent:
+        if len(nxt) - len(nxt.lstrip(" ")) > indent and nxt.strip().startswith("- "):
+            skip = next((j for j in range(i + 1, len(lines)) if lines[j].strip()
+                         and len(lines[j]) - len(lines[j].lstrip(" ")) <= indent), len(lines))
+            while skip > i + 1 and not lines[skip - 1].strip():
+                skip -= 1
+            out.append((path, "\n" + "\n".join(lines[i + 1:skip]), i))
+        elif len(nxt) - len(nxt.lstrip(" ")) > indent:
             stack.append((indent, path))
         else:
             out.append((path, None, i))
@@ -57,7 +66,15 @@ def leaves(text):
 
 
 def value(raw):
+    if raw is not None and raw.startswith("\n"):   # a block list: its entries, as cli_ctx.packs reads them
+        return config_yaml.block_list(raw.split("\n")[1:])
     return config_yaml.parse_yaml_subset("k: %s" % raw).get("k") if raw is not None else None
+
+
+def said(path, raw):
+    """A kept pair as the call prints it: a block list by its entries."""
+    return "%s: %s" % (path, "[%s]" % ", ".join("{ %s }" % e if ":" in e else e for e in value(raw))
+                       if raw.startswith("\n") else raw)
 
 
 def norm(v):
@@ -136,6 +153,11 @@ def rewrite(pairs):
     own = {p: i for p, r, i in leaves("\n".join(lines)) if r is not None}
     tail = []
     for path, raw in pairs:
+        if path in own and raw.startswith("\n"):   # a block list stays as written, in place of the template's line
+            i = own[path]
+            lines[i:i + 1] = [lines[i].split(":", 1)[0] + ":"] + raw.split("\n")[1:]
+            own = {p: i for p, r, i in leaves("\n".join(lines)) if r is not None}
+            continue
         if path in own:
             i = own[path]
             m = re.match(r"^(\s*[^:#]+:\s*)(.*?)(\s+#.*)?$", lines[i])
@@ -162,7 +184,7 @@ def rewrite(pairs):
         while same < min(len(prev), len(parts) - 1) and prev[same] == parts[same]:
             same += 1
         block += ["%s%s:" % ("  " * d, parts[d]) for d in range(same, len(parts) - 1)]
-        block.append("%s%s: %s" % ("  " * (len(parts) - 1), parts[-1], raw))
+        block.append("%s%s:%s%s" % ("  " * (len(parts) - 1), parts[-1], "" if raw.startswith("\n") else " ", raw))
         prev = parts[:-1]
     if block:
         out = out.rstrip("\n") + "\n" + "\n".join(block) + "\n"
@@ -172,7 +194,7 @@ def rewrite(pairs):
 def nested(path, raw, depth=1):
     parts = path.split(".")[1:]
     return ["%s%s:" % ("  " * (depth + d), parts[d]) for d in range(len(parts) - 1)] + \
-           ["%s%s: %s" % ("  " * (depth + len(parts) - 1), parts[-1], raw)]
+           ("%s%s:%s%s" % ("  " * (depth + len(parts) - 1), parts[-1], "" if raw.startswith("\n") else " ", raw)).split("\n")
 
 
 def refused(state_file):
@@ -211,16 +233,37 @@ def tidy(how, config, state_file):
         print("OK: kept %s as it is; upgrade.asked is %s, so the question is not asked again" % (config, defaults.VERSION))
         return 0
     found = stale(text)
-    copy = "%s.before-%s" % (config, defaults.VERSION)
-    with open(copy, "w", encoding="utf-8") as f:
-        f.write(text)
+    if not found:
+        print("OK: nothing to remove: %s holds no old default and no key that is gone; nothing changed" % config)
+        return 0
+    copy, kept_copy = keep_copy(config, text)
     pairs = kept(text)
     with open(config, "w", encoding="utf-8") as f:
         f.write(rewrite(pairs))
-    print("OK: removed %d lines (%s); kept your %d (%s); the old file is %s" % (
+    print("OK: removed %d lines (%s); kept your %d (%s); the old file is %s%s" % (
         len(found), ", ".join(x["path"] for x in found) or "none", len(pairs),
-        ", ".join("%s: %s" % p for p in pairs) or "none", copy))
+        ", ".join(said(*p) for p in pairs) or "none", copy, kept_copy))
     return 0
+
+
+def keep_copy(config, text):
+    """(the copy that holds the old text, a note): .claude/temper.config.before-<version>, written only when it does not
+    exist yet. A copy is never overwritten: when one exists with other text, the old text goes to the first free
+    .before-<version>.<n>."""
+    base, n = "%s.before-%s" % (config, defaults.VERSION), 1
+    while True:
+        copy = base if n == 1 else "%s.%d" % (base, n)
+        try:
+            with open(copy, encoding="utf-8") as f:
+                if f.read() == text:
+                    return copy, " (the copy was there already, kept as it was)"
+        except FileNotFoundError:
+            with open(copy, "w", encoding="utf-8") as f:
+                f.write(text)
+            return copy, "" if n == 1 else " (%s was there already, kept as it was)" % base
+        except (OSError, UnicodeDecodeError):
+            pass
+        n += 1
 
 
 def match(path):
@@ -256,9 +299,9 @@ def show(config, markdown):
         if "<" in k:
             print("%-28s %-44s default" % (k, "the table of scripts/cli_ctx.py"))
             continue
-        here, src = config_yaml._at(cfg, k), "config"
-        if here is config_yaml._TABLE and k in defaults.RENAMED and config_yaml._at(cfg, defaults.RENAMED[k]) is not config_yaml._TABLE:
-            here, src = config_yaml._at(cfg, defaults.RENAMED[k]), "old name %s" % defaults.RENAMED[k]
+        here, src, old = config_yaml._at(cfg, k), "config", config_yaml.old_name(cfg, k)
+        if old:   # a renamed key under its old name, or run.default as ask when autonomy.enabled is false
+            here, src = "ask" if old == "autonomy.enabled" else config_yaml._at(cfg, old), "old name %s" % old
         if here is config_yaml._TABLE or here == "":
             here, src = d, "default"
         print("%-28s %-44s %s" % (k, "(a block)" if isinstance(here, dict) else shown(here), src))
@@ -271,8 +314,8 @@ def show(config, markdown):
         if raw is None or path in defaults.KEYS:
             continue
         if path in defaults.GONE:
-            new = {v: k for k, v in defaults.RENAMED.items()}.get(path)
-            if not new or config_yaml._at(cfg, new) is not config_yaml._TABLE:   # else its new key's line names it
+            new = {v: k for k, v in defaults.RENAMED.items()}.get(path, defaults.GONE[path][0])
+            if not new or config_yaml.old_name(cfg, new) != path:   # else its new key's line names it
                 print("gone: %s (not read; %s)" % (path, defaults.GONE[path][1]))
         elif match(path) is not None:
             if "<" in match(path):

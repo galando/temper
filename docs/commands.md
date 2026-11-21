@@ -433,7 +433,9 @@ temper packs --stage <stage>    the pack files the agent of that stage reads, as
 ```
 
 `config show` also names each key of your file that is gone (with what replaced it) and each key it does not know
-(`not read: <key>`); neither is an error. `scripts/check_config_keys.py` holds the table to the code: every key has a
+(`not read: <key>`); neither is an error. With no `run.default` line and `autonomy.enabled: false`, `run.default` is
+`ask`, as the flow reads it: `config show` and `config get run.default` say so, with the source
+`old name autonomy.enabled`. `scripts/check_config_keys.py` holds the table to the code: every key has a
 reader, and no page names a key the table lacks.
 
 The keys, as `temper config show --markdown` prints them:
@@ -480,12 +482,16 @@ question names at most eight of them with what changes (the coverage floor, `pha
 
 - `Remove them (Recommended)` runs `temper config tidy --apply`: the old file is copied to
   `.claude/temper.config.before-9.8.5`, and the file becomes the new template with the lines you changed, in place of
-  its lines or after them. `autonomy.enabled: false` becomes `run.default: ask`, never the new default.
+  its lines or after them; a `packs:` list in block form stays as you wrote it. `autonomy.enabled: false` becomes
+  `run.default: ask`, never the new default. The copy is never overwritten: when it is there already with other text,
+  the old file goes to `.claude/temper.config.before-9.8.5.2` (or the next free number). With nothing to remove the
+  call changes nothing and writes no copy.
 - `Keep my file` runs `temper config tidy --keep`: the file stays and gets `upgrade.asked`, so the question is not
   asked again and the old values still rule.
 
-Both calls run only at Intent before the first agent of a `/temper:temper` run; past Intent, in a fix run or in a run
-that goes on by itself they exit 1 and change nothing. A project made by `config init` is never asked.
+The question is asked only at Intent before the first agent of a `/temper:temper` run. The two calls exit 1 and change
+nothing past Intent, in a fix run or in a run that goes on by itself; at Intent, or with no run active, they run, so a
+person can also type them. A project made by `config init` is never asked.
 
 ### What became of an old key
 
