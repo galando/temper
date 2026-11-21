@@ -50,3 +50,21 @@ assert_eq "round 2 reviewer 1: rule 8 a clear of a ledger with an open finding i
   "plain=refused|twice=refused|rows=1" \
   "plain=$([[ $_c89a -ne 0 ]] && echo refused || echo taken)|twice=$([[ $_c89b -ne 0 ]] && echo refused || echo taken)|rows=$_n89"
 
+# --- round 2 reviewer 1: rule 11, base_sha is a full commit id with the mod off, also when typed as a path below it ---
+# person_call.py checks `state set base_sha V` (the third word exactly base_sha); cmd_state_set takes a dotted path and
+# refuses a second base_sha only when $1 is exactly base_sha. `temper state set base_sha.x HEAD` at Intent writes base_sha
+# as the object {"x": "HEAD"}, plan_complete keeps it (it is not empty), and every diff from the base is read against a
+# name git does not know: a file committed mid Build drops out of Review's file list, as the check of case 86 shows for
+# `state set base_sha HEAD`.
+fresh; _repo89
+"$TEMPER" state set base_sha.x HEAD >/dev/null 2>&1; _b89=$?
+gpass intent plan
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+git checkout -q -B feature/demo 2>/dev/null
+echo 'echo outside' > src/outside.sh; git add src/outside.sh
+git -c core.hooksPath=/dev/null commit -q -m 'a checkpoint mid Build' >/dev/null 2>&1
+_rv89="$("$TEMPER" review files 2>/dev/null | paste -sd, -)"
+assert_eq "round 2 reviewer 1: rule 11 base_sha typed as a path below it (base_sha.x) is refused, and a file committed mid Build stays a changed file" \
+  "set=refused|review=src/outside.sh" \
+  "set=$([[ $_b89 -ne 0 ]] && echo refused || echo "taken:$("$TEMPER" state get base_sha 2>/dev/null)")|review=$_rv89"
+
