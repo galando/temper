@@ -69,20 +69,29 @@ def migrate_legacy(argv):
 
 
 def _bind_saved(p, d):
-    """WP32: a run saved by 9.8.4 or by the base, taken up once. Its plan_hash is the digest those versions computed;
-    where the plan holds what this version binds besides (the text a manual Test asks the person to confirm, a second
-    Integration line), the saved digest of the plan as it is now moves to this version's digest, so the approval still
-    binds the plan it approved and only a later change fails the gates."""
+    """WP32: a run saved by 9.8.4 or by the base, taken up once. Past its approval, it binds intent.md as found (those
+    versions recorded no digest of it). Its plan_hash is the digest those versions computed; where the plan holds what
+    this version binds besides (the text a manual Test asks the person to confirm, a second Integration line), the
+    saved digest of the plan as it is now moves to this version's digest, so the approval still binds the plan it
+    approved and only a later change fails the gates."""
     import json, os, tempfile
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import approval
     import tasks_md
     h, spec = d.get("plan_hash"), d.get("spec_path")
-    if not h or not isinstance(spec, str) or not spec:
+    if not isinstance(spec, str) or not spec:
         return
     root = os.path.dirname(os.path.dirname(os.path.abspath(p)))
-    tasks = os.path.join(spec if os.path.isabs(spec) else os.path.join(root, spec), "tasks.md")
-    if not os.path.isfile(tasks):
+    sp = spec if os.path.isabs(spec) else os.path.join(root, spec)
+    # review finding R8-1: those versions recorded no digest of the intent. A run past its approval binds intent.md as
+    # it is when this version takes it up, so a change made after the upgrade fails the row as for a run of this one.
+    if (d.get("command") or "temper") == "temper" and d.get("next_stage") not in (None, "", "intent", "plan") \
+            and "intent_hash" not in d:
+        b = approval.bound(os.path.join(sp, "intent.md"))
+        if b:
+            d["intent_hash"] = b
+    tasks = os.path.join(sp, "tasks.md")
+    if not h or not os.path.isfile(tasks):
         return
     m = tasks_md.parse(tasks)
     new = approval.plan_digest(m)

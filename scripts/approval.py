@@ -174,17 +174,20 @@ def row(name, ok, detail):
 
 
 def binding_row(state, spec):
-    """Pass when the state holds no intent_hash key (a run saved before WP12), or when intent.md and tasks.md are as
-    recorded: intent.md with the digest recorded, or still absent when the approval recorded it absent, and tasks.md
-    with plan_hash when one is recorded. Else fail, naming the file that changed."""
+    """Pass when intent.md and tasks.md are as recorded: intent.md with the digest recorded, or still absent when the
+    approval recorded it absent, and tasks.md with plan_hash when one is recorded. A state with no intent_hash key (a run
+    saved before WP12) binds tasks.md alone (WP32, review finding R8-1: 9.8.4 and the base record plan_hash at the
+    approval), and passes with no plan_hash either. Else fail, naming the file that changed."""
     st = read_state(state)
-    if "intent_hash" not in st:
+    if "intent_hash" not in st and not st.get("plan_hash"):
         return row(ROW, True, "no digest was recorded at the approval (a run saved before 9.8.5)")
     # WP17: a fix run's approval binds rca.md, in the place of intent.md
     text = "rca.md" if st.get("command") == "fix" else "intent.md"
     want = {text: st.get("intent_hash"), "tasks.md": st.get("plan_hash")}
     changed = []
-    if want[text] == ABSENT:
+    if "intent_hash" not in st:
+        pass
+    elif want[text] == ABSENT:
         if os.path.isfile(os.path.join(spec, text)):
             changed.append(text)
     elif digest(os.path.join(spec, text)) != want[text]:
@@ -192,8 +195,9 @@ def binding_row(state, spec):
     if want["tasks.md"] and digest(os.path.join(spec, "tasks.md")) != want["tasks.md"]:
         changed.append("tasks.md")
     if not changed:
-        return row(ROW, True, "rca.md is as the person approved it" if text == "rca.md" else
-                   "the intent and the plan are as the person approved them")
+        return row(ROW, True, "the plan is as the person approved it (a run saved before 9.8.5 recorded no digest of "
+                   "the intent)" if "intent_hash" not in st else "rca.md is as the person approved it" if text == "rca.md"
+                   else "the intent and the plan are as the person approved them")
     return row("intent unchanged since the approval", False,
                "%s changed since the approval; %s, or restore %s"
                % (" and ".join(changed), "start the fix again" if text == "rca.md" else "step back to Plan and approve again",
