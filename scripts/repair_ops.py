@@ -522,10 +522,11 @@ def snapshot_review():
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def rule_log(stage, what):
+def rule_log(stage, what, by_rule=True):
+    """A repair's entry: a rule starts and closes it in every mode (rule 10), but the person's Repair again is theirs."""
     try:
         import rule_log as rl
-        rl.append("repair", stage, what)
+        rl.append("repair", stage, what, by_rule=by_rule)
     except Exception:
         pass
 
@@ -574,7 +575,8 @@ def start(r, stage, again):
         return d["repair"]
     w = change_state(open_it)
     what = "; ".join(f["claim"] for f in opens[:3]) or "; ".join(rows)
-    rule_log(stage, "repair %d at %s started%s: %s" % (w["n"], stage.capitalize(), " on the person's click" if again else "", what))
+    rule_log(stage, "repair %d at %s started%s: %s" % (w["n"], stage.capitalize(), " on the person's click" if again else "", what),
+             by_rule=not again)
     print("OK: repair %d open at %s (%s); a fresh Build agent fixes it, then temper repair commit" % (w["n"], stage, line or "no repeat"))
     return 0
 
@@ -603,17 +605,26 @@ def test(argv):
     named = sorted({t for c in cmd for t in shlex.split(c) if os.path.isfile(t)})
     row = {"id": int(fid), "phase": phase, "cmd": text, "exit_code": rc, "hashes": digests(named), "ts": now()}
     if phase == "red":
-        row["ok"] = task_ops.red_ok(row)
+        # As the task gate's red_staged (adversarial review R7c): a RED counts only on the code as the window found it, so
+        # a RED made after the fix is no failing-first proof. Test files may change; any other file may not.
+        import adhoc_ops
+        was, cur = w.get("dirty") or {}, adhoc_ops.dirty()
+        moved = sorted(p for p in set(was) | set(cur) if was.get(p) != cur.get(p) and not is_test(p))
+        row["ok"] = task_ops.red_ok(row) and not moved
+        if moved:
+            row["why"] = "the RED run came after a change to %s: write the test first, see it fail, then the fix" % ", ".join(moved[:3])
     else:
         reds = [x for x in w.get("tests") or [] if x.get("id") == int(fid) and x.get("phase") == "red" and x.get("ok")]
-        row["ok"] = rc == 0 and bool(reds) and reds[-1].get("hashes") == row["hashes"] and bool(named)
+        row["ok"] = (rc == 0 and bool(reds) and reds[-1].get("hashes") == row["hashes"] and bool(named)
+                     and reds[-1].get("cmd") == text)   # the GREEN runs the command the RED ran
 
     def add(d):
         d["repair"].setdefault("tests", []).append(row)
     change_state(add)
     sys.stdout.write(output.decode("utf-8", "replace")[-2000:] if isinstance(output, bytes) else str(output)[-2000:])
     print("%s: %s of finding #%s (exit %s)%s" % ("OK" if row["ok"] else "NOTE", phase.upper(), fid, rc,
-                                                "" if row["ok"] else ": it does not count"))
+                                                "" if row["ok"] else ": it does not count%s" % (
+                                                    " (%s)" % row["why"] if row.get("why") else "")))
     return 0
 
 
@@ -839,7 +850,7 @@ def close(r, cli_path):
         why = "; ".join(worse)
         rule_log(w["stage"], "%s; reverted: %s" % (head, why))
         return revert(r, cli_path, why)
-    resolved = []
+    resolved, kept = [], {}
     if fixed:
         import findings
         sha, bad = findings.fixed_by(w["commit"], STATE, GROUPS)
@@ -853,10 +864,11 @@ def close(r, cli_path):
                     if isinstance(e, dict) and not e.get("resolved") and not e.get("accepted"):
                         e["resolved"] = {"fixed_by": sha, "ts": now(), "recheck": "recheck #%d: fixed" % fid, "repair": w["n"]}
                         resolved.append(fid)
+                        kept[str(fid)] = row_key(e)
                 save(REVIEW, rows)
     done = ", ".join("#%d" % f for f in resolved)
     change_state(lambda d: close_window(d, "resolved" if resolved and not held else "closed", resolved=resolved,
-                                        held=[[f, y] for f, y in held], recheck_answer=answer, complete=complete or not need))
+                                        resolved_rows=kept, held=[[f, y] for f, y in held], recheck_answer=answer, complete=complete or not need))
     rule_log(w["stage"], "%s; %s" % (head, "resolved %s" % done if resolved else "nothing resolved"))
     print("OK: repair %s closed: %s%s" % (w["n"], "resolved %s" % done if resolved else "nothing resolved",
                                          "; open: %s" % "; ".join("#%d (%s)" % (f, y) for f, y in held) if held else ""))
@@ -966,6 +978,11 @@ def closed_chain(state, frm, to):
     return cur == to
 
 
+def row_key(e):
+    """What names one finding row whatever its id: its claim, severity, file and time (a later round can reuse the id)."""
+    return hashlib.sha256(json.dumps([e.get(k) for k in ("claim", "severity", "file", "ts")]).encode()).hexdigest()[:16]
+
+
 def recheck_after(state, sha, fid=None):
     """WP18's fifth condition of `evidence resolve`: the commit is one the CLI recorded as its repair, and a recheck row was
     written after it (in the ledger, or the repair was closed with its recheck complete). A hand resolve names its finding
@@ -977,6 +994,15 @@ def recheck_after(state, sha, fid=None):
     if fid is not None and fid not in (w[-1].get("resolved") or []):
         return "repair close resolves a finding by its repair commit %s, for what its recheck confirmed, and it did not resolve #%s" % (
             sha[:7], fid)
+    # adversarial review R8b: the id must still name the row the close resolved, not a finding of a later Review round
+    # that took the same id after a step back emptied the ledger
+    kept = w[-1].get("resolved_rows") if isinstance(w[-1].get("resolved_rows"), dict) else None
+    if fid is not None and kept is not None:
+        rows = ledger()
+        e = rows[fid - 1] if 0 < fid <= len(rows) and isinstance(rows[fid - 1], dict) else {}
+        if kept.get(str(fid)) != row_key(e):
+            return "finding #%s is not the row repair %s resolved: a finding of a later Review is resolved only by its own repair" % (
+                fid, w[-1].get("n"))
     if w[-1].get("closed") or w[-1].get("outcome") in ("resolved", "closed"):
         return None if w[-1].get("complete") and w[-1].get("outcome") in ("resolved", "closed") else (
             "repair commit %s was closed with no completed recheck" % sha[:7])

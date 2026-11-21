@@ -5,7 +5,8 @@
   python3 rule_log.py show                       prints the record as JSON
 
 The kinds `advance`, `repair`, `group fix`, `covered` and `amend` (WP25) are what a rule did: they are written only while the run state
-says the run goes on by itself (run_mode autonomous, started at an earlier stage than STAGE) and no stop is open. The
+says the run goes on by itself (run_mode autonomous, started at an earlier stage than STAGE) and no stop is open, or,
+for a repair in the stage (scripts/repair_ops.py), in every mode while no stop is open, since a rule starts it. The
 kinds `stop`, `answer` and `ended` are always written: a stop, the person's answer to it, and the end of the unattended
 run. Nothing but the CLI calls this; the record is the CLI's (the mod guards the file). Runs in the project folder;
 standard library only. A record that cannot be read or written never stops the call that writes it.
@@ -41,11 +42,14 @@ def unattended(state, stage):
     return state.get("run_mode") == "autonomous" and bool(start) and start != stage and not state.get("parked")
 
 
-def append(kind, stage, what):
+def append(kind, stage, what, by_rule=False):
+    """by_rule: the caller knows a rule took this step whatever the mode (a repair the CLI starts and closes by itself after
+    the approval, in a run that asks at every stage too): written while no stop is open (rule 10)."""
     if kind not in RULE_KINDS + ALWAYS:
         print("FAIL: rule_log.py: unknown kind %r" % kind, file=sys.stderr)
         return 2
-    if kind in RULE_KINDS and not unattended(read_json(STATE, {}), stage):
+    state = read_json(STATE, {})
+    if kind in RULE_KINDS and not unattended(state, stage) and not (by_rule and not state.get("parked")):
         return 0
     rows = entries()
     rows.append({"kind": kind, "stage": stage or "run", "what": " ".join(str(what).split())[:300] or kind,

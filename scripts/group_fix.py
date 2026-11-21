@@ -7,7 +7,8 @@
                                                          the foreign commit check never parks on it), clears the request and
                                                          the group's gate, so the next action checks the group again;
                                                          a change of the config, a hook, a sensitive path, a manifest or
-                                                         a CI file is not committed (exit 1, WP32)
+                                                         a CI file is not committed (exit 1, WP32);
+                                                         refused when no request is open (only the request spends)
 
 The fix works on the merged tree of the group (every task's work, on the group's branch), so the whole is mended once
 instead of every task running again. The agent commits nothing itself; the CLI does, and `temper group gate G` checks the
@@ -109,6 +110,8 @@ def main(argv):
         save(path, d)
         print("OK: group %s: one Build fix agent works on its merged tree, then the CLI commits it and checks the group again" % gid)
         return 0
+    if not isinstance(g.get("fix"), dict):   # rule 9: only the request spends group:G, so no commit comes without one
+        return fail("no fix of group %s was asked (temper group fix %s asks for one)" % (gid, gid))
     if not os.path.isdir(wt):
         return fail("group %s's worktree %s is gone" % (gid, wt))
     rc, out = git(wt, "add", "-A", "--", ".", *(EXCLUDE + byproducts(wt)))

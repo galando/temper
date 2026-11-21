@@ -1784,6 +1784,7 @@ cmd_group_gate() {
     echo "FAIL: usage: temper group gate G<n> [--timeout-s N] [--fresh]" >&2
     return 1
   fi
+  [[ -n "$tmo" && "$(python3 -I "$SCRIPTS_DIR/groups_ops.py" gate-verdict "$GROUPS_FILE" "$g")" == FAIL ]] && _rule_log repair build "group $g checked again with ${tmo}s"   # rule 10
   local spec_path plan chk validate notpassed wt
   spec_path="$(_spec_path "")"
   if [[ -z "$spec_path" || ! -f "$spec_path/tasks.md" ]]; then
@@ -2069,7 +2070,7 @@ _group_reopen_body() {
     _task_box "$spec_path/tasks.md" "$n" " "
     _groups_mutate task-reopen "$n" "$(_now)" "$feedback" "$g" || return 1
   done <<<"$chk"
-  echo "OK: reopened ${tasks[*]/#/Task } in group $g"
+  echo "OK: reopened ${tasks[*]/#/Task } in group $g"; _rule_log repair build "group $g: ${tasks[*]/#/Task } again"   # rule 10
   # M3: a task that was running when the group parked kept its work; it has no ready line in the schedule, so say how to gate it
   local rn
   for rn in $(python3 -I "$SCRIPTS_DIR/groups_ops.py" running-tasks "$GROUPS_FILE" "$g"); do
