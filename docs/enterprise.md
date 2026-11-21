@@ -168,15 +168,10 @@ check:
 - Graduate to WARN rules after team feedback
 - Use BLOCK rules only for critical security/architecture
 
-### Metrics Collection
+### Run Records
 
-Each project's `.temper/metrics.json` tracks:
-
-- Reviews run, issues found, auto-fixed
-- Coverage trends
-- Pattern frequencies
-
-Aggregate these across projects to measure improvement.
+Each project's `.temper/runs.jsonl` holds one line a run, and each spec folder keeps its committed gate ledger
+(`gate-ledger.json`). Aggregate these across projects to measure improvement.
 
 ## Support
 

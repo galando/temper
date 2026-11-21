@@ -31,7 +31,7 @@ as what was asked and what was built.
 | Build | `plan.md`, the diff | plan gate → `plan.md`/`tasks.md`; Build's RED→GREEN evidence |
 | Test | tests + eval results | check gate: scenario-traced tests, coverage, live verification |
 | Deploy | PR + review findings | review gate pre-commit; `temper gate review`'s exit code is the merge check under any CI |
-| Maintain | incident → next intent | `temper bands` **[NEW]** → breach drafted as the next `intent.md` |
+| Maintain | incident → next intent | `/temper:fix` writes `.temper/lessons.md`; an incident write-up is drafted as the next `intent.md` |
 
 ## Play-by-play
 
@@ -48,7 +48,7 @@ from the intent, so an intent correction at this gate costs words, and the same
 correction after Plan costs the plan.
 `temper gate intent` is the deterministic floor (Problem stated, ≥1 criterion, Status
 header), and the commit gate requires an intent verdict whenever the artifact exists.
-`/temper:temper draft` remains the capture-only entry (an idea, a ticket, a bands breach —
+`/temper:temper draft` remains the capture-only entry (an idea, a ticket, an incident —
 possibly from someone who will never run the build); its draft is exactly what the
 pipeline's intent gate later presents. The lifecycle has named owners: `draft`
 (capture or the Intent stage) → `accepted` (the human's approval of the plan, which accepts the
@@ -154,7 +154,7 @@ hook of a `/temper:temper draft` session, which refuses to end it until its gate
 ### Stage 5 — Deploy
 
 **AI in the PR review loop.** Temper's review runs pre-commit — earlier than the
-playbook's PR review, with confidence scoring, review memory, intent validation.
+playbook's PR review, with confidence scoring and intent validation.
 **[NEW]** Two bridges to the review loop, both host-agnostic: `reference/review.md`
 reads a repo-root `REVIEW.md` as org review policy (passes, Important-vs-Nit, nit
 caps, do-not-report — which can re-aim the review but never lower the gate), and the
@@ -191,22 +191,9 @@ rehearsal are a project's pipeline concern.
 
 ### Stage 6 — Maintain
 
-**Closing the loop.** This was Temper's largest gap — `/temper:temper status` was a
-dashboard with, as its own doc said, "no separate alerting system". **[NEW]**
-`temper bands`: a deterministic control-band check (rolling mean ± k·sigma + a
-same-side-run drift rule) over the metric histories, with the response tiered in
-version-controlled config — 1σ logs, 2σ diagnoses, 3σ proposes — and the proposal is
-exactly the playbook's move: the breach is drafted as a Stage-1 `intent.md`
-(evidence verbatim, criteria with `Validate: metric`) that rides the ordinary
-pipeline through every gate. **[NEW]** Ingestion is CLI-owned and open-ended:
-`temper metrics append <series> <value>` feeds any series — the pipeline's own
-(coverage, tests, lint) or external production metrics (CI failure rate, post-deploy
-5xx appended by a pipeline step) — and bands watches any appended series by name.
-The trigger layer is **any scheduler you already run** (cron, a pipeline schedule):
-`temper bands` is stateless and token-free until a breach, exits 1 when one exists,
-and the breach is drafted into the ordinary pipeline — the loop begins and ends with
-no one starting it, and lands in the review gate, never around it. Dismissals tune
-the bands.
+**Closing the loop.** No scheduled monitor ships with Temper: the control bands of earlier versions were removed in
+9.8.5, because no run read them. A production signal enters the loop as an incident write-up drafted with
+`/temper:temper draft`, which rides the ordinary pipeline through every gate.
 
 **Claude on call (Claude Tag).** Channel-resident incident response is a platform
 capability, out of scope for a plugin — but the plugin-shaped half is now in:
@@ -214,7 +201,7 @@ capability, out of scope for a plugin — but the plugin-shaped half is now in:
 (root cause, trigger, fix, regression test, the generalized failure shape) and every
 future RCA *reads it first* — the playbook's "post-mortem to a version-controlled
 lessons file that future investigations can read", verbatim. An incident write-up
-dropped into `/temper:temper draft` (or a bands breach) enters the same loop.
+dropped into `/temper:temper draft` enters the same loop.
 
 ## Deliberate divergences
 
@@ -242,7 +229,7 @@ intent:
    `temper gate review` as a pipeline check adds the org-visible audit record
    without replacing the local pass.
 5. **No CI-platform files, on purpose.** Temper's automation surface is commands
-   and exit codes (`temper bands`, `temper gate review`, `temper metrics append`),
+   and exit codes (`temper gate review`, `temper gate check`),
    equally at home under GitHub Actions, GitLab CI, Jenkins, or cron — shipping any
    one host's workflow files would couple a host-agnostic spine to a vendor.
 
@@ -261,7 +248,7 @@ Honest list, in rough adoption order:
   repository conventions + connectors; the artifact shape is ready for it.
 - **Review-comment loops** — host-platform features (comment-driven fixes,
   babysit-to-merge) Temper composes with; human review comments never feed
-  review-memory today.
+  a later review today.
 - **Server-side gate verification** — the pre-commit hook is per-clone, so
   `git commit --no-verify` bypasses the spine locally; re-verifying the gates where
   your host's merge protection lives (e.g. from the committed `gate-ledger.json`)
@@ -285,4 +272,3 @@ Honest list, in rough adoption order:
 3. `/temper:temper draft` → capture-first flow; commit the spec artifacts.
 4. Wire `temper gate review` into whatever CI you run → the review loop, org-visible.
 5. `autonomy:` block → longer unattended arcs, parked before commit.
-6. `bands:` + `temper bands` on any scheduler → the loop closes itself.

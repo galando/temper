@@ -793,9 +793,9 @@ once. What a rule decided, each stop and each answer are entries of `.temper/rul
 - **The person's note** (`evidence add --phase note --kind input`) is labelled `PERSON`, not `HEURISTIC`.
 - **Runs the CLI saw.** The Build gate's `RED then GREEN` row and Check's `tests pass` row count a test run only when the CLI
   ran it (`temper evidence run`, a task test, a group check, integrate, Check) or the person confirmed it
-  (`scripts/runs.py`). A run an agent recorded with `evidence add --exit` is a claim and counts nowhere, unless the
-  config says `evidence.claimed-runs: count`. `temper evidence void --stage S --id N --reason R` marks a false pass void:
-  the row stays, `evidence list` shows `[void: R]`, and it counts in no mode. Only a pass is voided.
+  (`scripts/runs.py`). A run an agent recorded with `evidence add --exit` is a claim and counts nowhere; no
+  config key makes it count (9.8.5). `temper evidence void --stage S --id N --reason R` marks a false pass void:
+  the row stays, `evidence list` shows `[void: R]`, and it counts no more. Only a pass is voided.
 - **A note in the question.** `temper state set ask_note '<step>: <text>'` adds the orchestrator's note to the question
   of that step, marked `Note from Claude (not from Temper)`; the options stay the CLI's.
 

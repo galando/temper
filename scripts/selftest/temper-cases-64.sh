@@ -117,8 +117,8 @@ _run64() { # _run64 [no-coverage]: a one group run at Build on its feature branc
            # locked, the test runs of its task recorded, ready for `temper integrate`; the log starts empty
   _tasks64 | m_setup
   _progs64; _cmds64 "${1:-}"; _intent64; _acc64; _passed64
-  "$TEMPER" evidence add --stage build --phase red --claim 'unit tests' --cmd 'true' --exit 1 >/dev/null 2>&1
-  "$TEMPER" evidence add --stage build --phase green --claim 'unit tests' --cmd 'true' --exit 0 >/dev/null 2>&1
+  ev_red build 'unit tests'
+  ev_green build 'unit tests'
   : > "$P64/log"
 }
 _integ64() { "$TEMPER" integrate >/dev/null 2>&1 || true; }
@@ -269,8 +269,8 @@ assert_eq "w23 Check reuses: on the tree integrate left check run runs no comman
 # CLI and reuses integrate's run of it, and never ends for want of a test command
 _tasks64 | sed "s|^\*\*Integration:\*\* \`true\`\$|**Integration:** \`$P64/suite\`|" | m_setup
 _progs64; _intent64; _acc64; _passed64
-"$TEMPER" evidence add --stage build --phase red --claim 'unit tests' --cmd 'true' --exit 1 >/dev/null 2>&1
-"$TEMPER" evidence add --stage build --phase green --claim 'unit tests' --cmd 'true' --exit 0 >/dev/null 2>&1
+ev_red build 'unit tests'
+ev_green build 'unit tests'
 : > "$P64/log"; _integ64; gpass build review; _at check
 _w3b="next=$(_x64 "r = 'the CLI runs Check' if any(short(c).startswith('check run') for c in d.get('calls') or []) else '%s:%s' % (d.get('action'), [short(c)[:40] for c in d.get('calls') or []])")"
 "$TEMPER" check run >/dev/null 2>&1; _w3b+="|check run=exit $?"

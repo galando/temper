@@ -915,7 +915,7 @@ def skip_row(root, ledger, config=""):
     import runs
     last = {}
     for r in rows:
-        if (isinstance(r, dict) and runs.counts(r, "ignore") and not r.get("scenario") and isinstance(r.get("exit_code"), int)
+        if (isinstance(r, dict) and runs.counts(r) and not r.get("scenario") and isinstance(r.get("exit_code"), int)
                 and runs.is_test(r) and not str(r.get("claim") or "").startswith("acceptance (written before Build)")):
             last[" ".join(str(r.get("claim")).lower().split())] = r
     red = [r for r in last.values() if r.get("exit_code") != 0]

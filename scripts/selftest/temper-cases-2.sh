@@ -482,7 +482,7 @@ assert_eq "a Validate: scenario criterion with no covering scenario is an error"
   "$(grep -q 'no scenario Covers: it' <<<"$OUT" && echo yes || echo no)"
 
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null   # no cmd, no artifact -> unsupported
 OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
@@ -490,7 +490,7 @@ assert_eq "an exit-0 row with no cmd and no artifact is NOT a supported pass" "y
   "$(grep -q "scenario 'first' has no supported passing evidence" <<<"$OUT" && echo yes || echo no)"
 
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 echo proof > .temper/specs/demo/artifact.txt
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --artifact .temper/specs/demo/artifact.txt >/dev/null
@@ -530,8 +530,8 @@ assert_exit "a latest nonzero completion row FAILs the gate" 1 "$TEMPER" gate re
 
 # --- gate build: checkpoint feedback answered ---
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 assert_exit "no feedback rows => requirement skipped" 0 "$TEMPER" gate build
 "$TEMPER" evidence add --stage build --phase feedback --claim "feedback #1: use the builder pattern" >/dev/null
@@ -559,7 +559,7 @@ setup
 _at build
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests green task 1" --phase green --exit 0 --cmd pytest >/dev/null
+ev_green build "tests green task 1"
 echo 'code' > src.js
 git add src.js >/dev/null 2>&1
 OUT=$("$TEMPER" gate commit 2>&1; true)
@@ -572,8 +572,8 @@ setup
 _at build
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 0 --cmd pytest >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 1 --cmd pytest >/dev/null
+ev_green build "tests green then regress"
+"$TEMPER" evidence run --stage build --phase green --claim "tests green then regress" -- false >/dev/null 2>&1
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "a RED latest test run fails the checkpoint commit, naming the claim" 1 "$TEMPER" gate commit
 assert_eq "the RED carve-out names the failing claim" "yes" "$(grep -q 'tests green then regress' <<<"$OUT" && echo yes || echo no)"
@@ -592,7 +592,7 @@ setup
 _at review   # past build => no carve-out
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests green" --phase green --exit 0 --cmd pytest >/dev/null
+ev_green build "tests green"
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "next_stage != build => the final completion commit faces every gate" "no" \
   "$(grep -q 'build checkpoint commit' <<<"$OUT" && echo yes || echo no)"
@@ -601,7 +601,7 @@ assert_eq "next_stage != build => the final completion commit faces every gate" 
 setup
 "$TEMPER" override review --reason "old run" >/dev/null
 "$TEMPER" gate intent >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+ev_green check "tests"
 "$TEMPER" state init demo2 --command temper >/dev/null; _base_known
 assert_eq "state init clears inherited overrides" "[]" "$(cat .temper/overrides.json | tr -d '[:space:]')"
 assert_eq "state init clears inherited gate verdicts" "{}" "$(cat .temper/gates.json | tr -d '[:space:]')"
@@ -1022,7 +1022,7 @@ assert_eq "state clear writes no ledger there either" "no" "$([[ -e "$WORKDIR/ou
 
 # --- the ledger archive and the status view read the listed stage files only ---
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence run --stage build --claim "tests" -- true >/dev/null 2>&1
 echo '[{"claim": "stray", "criterion": "AC-01", "cmd": "x", "exit_code": 0, "ts": "2099-01-01T00:00:00Z"}]' > .temper/evidence/stray.json
 "$TEMPER" state archive >/dev/null
 assert_eq "the archived ledger counts the listed stage files only" "build" \

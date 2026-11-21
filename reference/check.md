@@ -14,8 +14,8 @@ return the summary, the orchestrator owns the gate and the commit. Load `.temper
 
 ## Step 1: Detect Stack
 
-Apply the temper-core skill's detection order. A YAML preset file in the project's `.claude/presets` folder
-overrides auto-detected commands.
+Detect the stack from the build file at the root: pom.xml Spring Boot, package.json Node, pyproject.toml Python, go.mod Go,
+Cargo.toml Rust. A YAML preset file in the project's `.claude/presets` folder overrides auto-detected commands.
 
 **Configured commands first.** Before using the table below, run
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get check.commands.test`, then the same call for

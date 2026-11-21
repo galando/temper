@@ -14,9 +14,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/build.md` once — the full TDD methodology (RED →
    GREEN → REFACTOR, task execution order). Follow it exactly; nothing here overrides it.
-   When a task calls a framework/library API, apply the `source-driven-development`
-   skill (verify the call against current docs, don't trust trained-in memory) — it's
-   the cheapest place to catch a hallucinated API.
+   Check a framework call against the version the project pins before you write it.
 
 2. **The fix pass.** The prompt has a `Feedback re-entry:` line and names the
    `review-context.json` or `check-context.json` file. Build ran in groups, so every task in
@@ -106,9 +104,6 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
   exit codes, which the ledger exists to prevent.
 - `git add` and `git commit` go in two separate tool calls, so the in-agent commit
   gate sees the staged set. Never `git add -A`, never `--no-verify`.
-- A call to a framework API that does not exist is the cheapest defect to prevent.
-  Verify it against current docs (the `source-driven-development` skill) before
-  writing it.
 - Never write `.temper/build-state.json` or anything else the temper CLI owns; deviations
   go in the spec's `build-context.json`.
 - A file outside the plan is never written before the person's `Drift decision:` line

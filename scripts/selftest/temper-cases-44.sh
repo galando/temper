@@ -156,7 +156,7 @@ _d05() { # _d05 <case>: the state of one of the eight (or plain, a High finding 
       "$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
       gfail review "review completed" "no review completed row" ;;
     environment) _unattended check
-      "$TEMPER" evidence add --stage check --claim 'tests: the suite (run by the CLI)' --exit 1 >/dev/null 2>&1
+      ev_red check 'tests: the suite (run by the CLI)'
       "$TEMPER" evidence add --stage check --claim 'setup fault: the JDK is 21 and pom.xml needs 24' --exit 1 >/dev/null 2>&1
       gfail check "tests pass" "the latest run of a test command failed: the suite" ;;
     unmeasured) _unattended check; gfail check "tests pass" "no passing test-run evidence recorded" ;;
@@ -531,7 +531,7 @@ _walk44() { # _walk44 <stop id>: the state of that stop in an unattended run, th
     scope.drift) _drift44 ;;
     review.unfinished) _unattended review; gfail review "review completed" "no review completed row"; _stop44 "$_FORBID44" ;;
     check.setup) _unattended check
-      "$TEMPER" evidence add --stage check --claim 'tests: the suite (run by the CLI)' --exit 1 >/dev/null 2>&1
+      ev_red check 'tests: the suite (run by the CLI)'
       "$TEMPER" evidence add --stage check --claim 'setup fault: the JDK is 21 and pom.xml needs 24' --exit 1 >/dev/null 2>&1
       gfail check "tests pass" "the latest run of a test command failed: the suite"; _stop44 "$_FORBID44|doctor" ;;
     check.person-criterion) _unattended check; sed -i '0,/Validate: scenario/s//Validate: manual/' .temper/specs/demo/intent.md

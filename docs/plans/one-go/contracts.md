@@ -101,6 +101,7 @@ Files that go: `scripts/preflight.py` and `agents/env.md` (WP21); nine command f
 | `temper model <agent>` (one line of the table, any agent of it); `temper budget revise --key plan-revise:<reason> --reason R` (the before call of a revise launch; it spends one repeat) | WP27 | none |
 | `temper packs --stage S`; `temper config show [--markdown]`; `temper config tidy --apply` and `--keep` | WP29 | WP30, WP31 |
 | `python3 scripts/config_tidy.py show ""\|--markdown CONFIG STATE` and `tidy --apply\|--keep CONFIG STATE`; `python3 scripts/cli_ctx.py packs --plugin DIR --config-file FILE --stage S`; `python3 scripts/check_config_keys.py` | WP29 | `scripts/quality-check.sh` |
+| `python3 scripts/runs.py build LEDGER` and `check LEDGER` (no mode: a run counts only when the CLI ran it or the person confirmed it); `runs.counts(row)` | WP30 | none |
 | `python3 scripts/check_done.py --summary`; `TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke.sh approval` | WP32 | none |
 | `temper repair answer CLAIM` (prints the question a Scope drift answer answers, `repair_ops.answer_of`; `temper evidence add` runs it for a Build row) | lane E of the phase 6 fixes | `temper evidence add` |
 
@@ -296,6 +297,8 @@ Keys that go, each in the package that removes its reader: `fix.max-loops`, `fee
 and the `autonomy.budget` block (WP10); `phases.design` (WP14); `autonomy.policy` (WP11);
 `check.mutation-threshold` (WP19); `plan.preflight-timeout` and `plan.preflight-skip` (WP21);
 `evidence.claimed-runs` (WP30). WP29 checks each one and removes none twice; its `GONE` table holds them all.
+WP30 also moves `tools.ocr.mode` and the seven keys of the `bands` block into `GONE`, each in the commit that removes
+its reader; `temper config show` names a key of `GONE` with `not read`.
 
 Environment variables of the tests: `TEMPER_E2E_TRACE_DIR` and `TEMPER_E2E_LIMIT_S` (WP01), `TEMPER_CAPTURE_DIR`
 (WP02), `TEMPER_E2E_COUNT` (WP05), `MOCK_SLOW_S`, `MOCK_RED`, `MOCK_FLAKY_BASE` and `MOCK_FLAKY_LATER` (WP06),

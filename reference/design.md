@@ -8,8 +8,7 @@ description: "System design exploration for complex features (optional stage)"
 
 **Mode:** Design runs as a stage of `/temper`, in a clean subprocess with no `AskUserQuestion` gate:
 return the summary, the orchestrator owns the gate. Load `intent.md`, `plan.md`, and the pack files your prompt lists
-on its `Packs:` line (the CLI chose those of Design), plus the project's `.claude/packs/stacks/{detected-stack}.md` if
-present.
+on its `Packs:` line (the CLI chose those of Design).
 
 ## Step 1: Analyze the Plan
 

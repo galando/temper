@@ -88,9 +88,8 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   them, as plain `git commit` and `git merge` calls that use git's own identity and settings (signing too, when
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none
   from your system account), and uses the fixed `Temper <temper@localhost>` when none is.
-- **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`
-  set to `auto` or `require` and `ocr` on your `PATH`, Review uses it, and `ocr` sends the diff to
-  the provider you set up. Temper adds no tool; the guardrails pack and autonomy run only when you ask.
+- **No diff leaves the machine through Temper.** Review runs inside Claude Code, and 9.8.5 removed the external
+  review engine. Temper adds no tool; the guardrails pack and autonomy run only when you ask.
 - **Guardrails pack (opt in).** `/temper:temper pack enable guardrails` prints the guard hooks, with the plugin
   folder's absolute path written in, for you to add to the project's `.claude/settings.local.json` or
   `.claude/settings.json`; `/temper:temper pack disable guardrails` says which to remove. Temper never opens a Claude Code

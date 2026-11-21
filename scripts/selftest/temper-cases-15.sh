@@ -422,10 +422,10 @@ gpass build review; "$TEMPER" state advance build_complete review >/dev/null 2>&
 # the suite's runs only, so the person still gets the triage and the way to correct a test, not a step back to Build
 # that cannot make right code pass a wrong test.
 cat > .temper/evidence/check.json <<'JSON'
-[{"claim": "tests: the suite (run by the CLI)", "cmd": "true", "exit_code": 0, "output": "OK"},
- {"claim": "acceptance (written before Build), corrected after the lock: The test asks for what the intent does not say", "cmd": "x", "exit_code": 1,
+[{"claim": "acceptance (written before Build), corrected after the lock: The test asks for what the intent does not say", "cmd": "x", "exit_code": 1,
   "output": "FAIL: test_ac05 AssertionError: 401 != 423"}]
 JSON
+ev_green check "tests: the suite (run by the CLI)"   # WP30: the suite's run, made by the CLI (a claimed one counts nowhere)
 assert_eq "9.8.0: a corrected acceptance run that fails again fails its own row, never the tests row" "yes|yes" \
   "$(_gc | grep -c '\[v\] tests pass' >/dev/null && echo yes || echo no)|$(_gc | grep -c '\[x\] acceptance tests written before Build' >/dev/null && echo yes || echo no)"
 

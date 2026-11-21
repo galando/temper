@@ -42,9 +42,6 @@
     "./agents/acceptance.md"
   ],
   "skills": [
-    "./skills/temper-core",
-    "./skills/context-engineering",
-    "./skills/source-driven-development",
     "./skills/grill-me",
     "./skills/teach-me"
   ],

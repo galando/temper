@@ -11,8 +11,6 @@ because the integration surface is just commands and exit codes:
 | What you wire | The command | Exit contract |
 |---|---|---|
 | Review as a merge/pipeline check | In a throwaway checkout: `scripts/temper state init <slug>`, then the Review brief headless (`claude -p "Follow <temper>/agents/review.md exactly. Spec path: ..."`), then `scripts/temper gate review` | gate exits 0 = no open findings at a severity **listed in** `review.block-on` (set membership, default `[critical]`: list every severity you want blocking); nonzero fails the check. The verdict is computed from the evidence ledger, never model narration. |
-| Closing-the-loop monitoring | `scripts/temper bands` on a schedule (no tokens until a breach) | exit 1 = 2sigma+ breach → have your automation invoke `claude -p` to draft the breach as a Stage-1 `intent.md` (in the shape of `reference/draft.md`) and route it into whatever review flow your host uses |
-| Feeding external metrics | `scripts/temper metrics append <series> <value>` from any pipeline step | any appended series becomes band-able by name |
 
 Two cautions that apply on every platform: run headless steps in a sandboxed runner
 (a throwaway checkout, with `--dangerously-skip-permissions` only inside it), and guard

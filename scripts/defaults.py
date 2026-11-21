@@ -58,17 +58,6 @@ KEYS = {
     "phases.pipeline": (True, "phases.pipeline", "false: no Pipeline stage after a commit that opened a pull request"),
     "protect.paths": ("", "protect.paths", "paths no agent edit may change (the guardrails pack)"),
     "format.cmd": ("", "format.cmd", "a formatter run on each agent edit, {file} for the file (the guardrails pack)"),
-    "evidence.claimed-runs": ("ignore", "evidence.claimed-runs", "count: a run an agent only claimed counts at a gate "
-                              "too"),
-    "bands.window": (10, "bands.window", "the control bands: points of the rolling baseline"),
-    "bands.min-points": (4, "bands.min-points", "the control bands: fewer points are no breach"),
-    "bands.drift-run": (6, "bands.drift-run", "the control bands: same side points that count as drift"),
-    "bands.metrics": ("", "bands.metrics", "the control bands: the series they read"),
-    "bands.tiers.1sigma": ("log", "bands.tiers.1sigma", "the control bands: what a 1 sigma breach does"),
-    "bands.tiers.2sigma": ("diagnose", "bands.tiers.2sigma", "the control bands: what a 2 sigma breach does"),
-    "bands.tiers.3sigma": ("propose", "bands.tiers.3sigma", "the control bands: what a 3 sigma breach does"),
-    "tools.ocr.mode": ("off", "config get tools.ocr.mode", "the external review engine: off, auto or require; the Review "
-                       "agent reads it with config get"),
     "upgrade.asked": ("", "upgrade.asked", "the version whose one time config question was answered Keep my file"),
 }
 
@@ -85,7 +74,6 @@ OLD = {
     "plan.fresh-review-rounds": [(3, VERSION)],
     "phases.pipeline": [(True, VERSION)],
     "autonomy.max-blast-radius": [(15, VERSION)],
-    "tools.ocr.mode": [("off", VERSION)],
 }
 
 GONE = {
@@ -115,6 +103,16 @@ GONE = {
     "review.auto-fix": ("", "a finding is repaired in its stage", VERSION),
     "branch.pattern": ("", "never read", VERSION),
     "branch.commit-style": ("", "never read", VERSION),
+    # WP30: each with its reader
+    "evidence.claimed-runs": ("", "a run an agent only claimed counts at no gate", VERSION),
+    "tools.ocr.mode": ("", "the external review engine is gone", VERSION),
+    "bands.window": ("", "the control bands are gone", VERSION),
+    "bands.min-points": ("", "the control bands are gone", VERSION),
+    "bands.drift-run": ("", "the control bands are gone", VERSION),
+    "bands.metrics": ("", "the control bands are gone", VERSION),
+    "bands.tiers.1sigma": ("", "the control bands are gone", VERSION),
+    "bands.tiers.2sigma": ("", "the control bands are gone", VERSION),
+    "bands.tiers.3sigma": ("", "the control bands are gone", VERSION),
 }
 
 # The old names `config get` still reads: a key moved to its replacement (autonomy.enabled is read by its own rule).

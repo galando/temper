@@ -73,8 +73,8 @@ for g in d.get("groups", {}).values():
 d["tasks"] = {"1": {"status": "passed", "group": "G1"}}
 json.dump(d, open(".temper/groups.json", "w"))
 PY
-"$TEMPER" evidence add --stage build --phase red --claim 'unit tests' --cmd 'true' --exit 1 >/dev/null 2>&1
-"$TEMPER" evidence add --stage build --phase green --claim 'unit tests' --cmd 'true' --exit 0 >/dev/null 2>&1
+ev_red build 'unit tests'
+ev_green build 'unit tests'
 "$TEMPER" integrate >/dev/null 2>&1 || true; "$TEMPER" gate build >/dev/null 2>&1
 assert_eq "WP23 Q6: the Build question after integrate says SETUP; I repaired it, run the checks again is first and recommended; no fix agent, and nothing that mends the code is recommended" \
   "True|check-again|0|no agent" \

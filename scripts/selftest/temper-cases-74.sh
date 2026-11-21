@@ -20,7 +20,7 @@ print(r[0].get("pass") if r else "absent")
 PY
 }
 _files74() { # _files74 <git grep args...>: the tracked files git grep finds in the repository, at most five, or "none"
-  git -C "$REPO_ROOT" grep "$@" 2>/dev/null | head -5 | tr '\n' ',' | sed 's/,$//;s/^$/none/'
+  git -C "$REPO_ROOT" grep "$@" 2>/dev/null | head -5 | { tr '\n' ','; echo; } | sed 's/,$//;s/^$/none/'
 }
 _strict74() { # a fresh run whose config holds no line of the key evidence.claimed-runs
   fresh; sed -i '/^evidence:$/d; /claimed-runs:/d' .claude/temper.config
@@ -59,7 +59,7 @@ _DORMANT74=(-- agents reference commands templates scripts README.md docs ':(exc
 # --- 1. no stack pack ---
 assert_eq "w30 no stack pack: git ls-files packs/stacks prints nothing, and no tracked file but the CHANGELOG and docs/history holds packs/stacks" \
   "tracked=none|named=none" \
-  "tracked=$(git -C "$REPO_ROOT" ls-files packs/stacks | head -3 | tr '\n' ',' | sed 's/,$//;s/^$/none/')|named=$(_files74 -l -F 'packs/stacks' -- . \
+  "tracked=$(git -C "$REPO_ROOT" ls-files packs/stacks | head -3 | { tr '\n' ','; echo; } | sed 's/,$//;s/^$/none/')|named=$(_files74 -l -F 'packs/stacks' -- . \
      ':(exclude)CHANGELOG.md' ':(exclude)docs/history' ':(exclude)docs/plans' \
      ':(exclude)scripts/selftest/temper-cases-46.sh' ':(exclude)scripts/selftest/temper-cases-74.sh')"
 
@@ -89,7 +89,7 @@ _gone74() { # _gone74 <args...>: "<exit>,<usage named>,<metrics.json written>" o
 }
 assert_eq "w30 the two commands are gone: temper bands and temper metrics append x 1 exit non zero with the usage text and write nothing, and temper --help names neither" \
   "bands=nonzero,usage,nothing|metrics=nonzero,usage,nothing|help=none" \
-  "bands=$(_gone74 bands)|metrics=$(_gone74 metrics append x 1)|help=$("$TEMPER" --help 2>&1 | grep -E 'temper (bands|metrics)\b' | head -2 | tr '\n' ',' | sed 's/,$//;s/^$/none/')"
+  "bands=$(_gone74 bands)|metrics=$(_gone74 metrics append x 1)|help=$("$TEMPER" --help 2>&1 | grep -E 'temper (bands|metrics)\b' | head -2 | { tr '\n' ','; echo; } | sed 's/,$//;s/^$/none/')"
 
 # --- 5. a claim never counts ---
 _strict74; _claims74; _at build; "$TEMPER" gate build >/dev/null 2>&1; _w30c="default=$(_row74 build 'RED then GREEN')"

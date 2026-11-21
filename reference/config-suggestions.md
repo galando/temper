@@ -74,9 +74,7 @@ After all validation levels of Check pass (no failures), before the Commit gate:
    `.temper/specs/{feature}/config-suggestions.json`.
 2. **User interaction:** Accept, Reject, or Defer each one at the Check gate.
 3. **Accepted:** written to CLAUDE.md or AGENTS.md immediately.
-4. **Rejected:** recorded as a dismissal in `review-memory.json` (the single finding
-   memory) under a `config:{pattern_id}` key — 3+ dismissals of the same suggestion
-   pattern auto-suppress it from future checks.
+4. **Rejected:** simply not written.
 5. **Deferred:** left in the spec's `config-suggestions.json` for the next check.
 
 ## Suggestion Format

@@ -1,18 +1,18 @@
 ---
-description: "Technical code review with confidence scoring, review memory, and intent validation"
+description: "Technical code review with confidence scoring and intent validation"
 ---
 
 # Review: Confidence-Scored Code Review
 
-**Goal:** High signal-to-noise review — parallel subagents, confidence scoring, review
-memory, intent validation. The review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add
+**Goal:** High signal-to-noise review — parallel subagents, confidence scoring, intent
+validation. The review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add
 --severity` invocation the gate needs; this doc is the policy behind what to look for
 and how to score it. It states rules a strong reviewer would not derive alone —
-severity floors, filter bypasses, memory thresholds — not review technique.
+severity floors, filter bypasses — not review technique.
 
 **Do not run if** code doesn't compile or tests are failing — run only after Build
-succeeds. Confidence scoring and review memory follow the temper-core skill's
-definitions.
+succeeds. Each finding carries a confidence from 0.0 to 1.0: how sure you are that it is a real defect, not how
+severe it is. Below 0.7 a finding is dropped (Step 4), save the categories that bypass the filter.
 
 **Mode:** Review runs as a stage of `/temper`, in a clean subprocess that never shows an
 `AskUserQuestion`: return the summary, the orchestrator owns the gate. Load the changed files (`${CLAUDE_PLUGIN_ROOT}/scripts/temper review files` prints them) plus
@@ -23,40 +23,15 @@ definitions.
 
 `git diff --stat` + changed files; `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get review.block-on` for the levels
 that block (default `[critical, high]`); the pack files your prompt lists on its `Packs:` line (the CLI chose those
-of Review);
-`.temper/review-memory.json`; the active `intent.md` (in the spec folder your launch
-prompt's `Spec path:` line names).
+of Review); the active `intent.md` (in the spec folder your launch prompt's `Spec path:` line names).
 
 **`REVIEW.md` at the repo root (optional org review policy):** apply it layered on top
 of the packs — its passes/emphases steer subagent attention; its Important-vs-Nit
 definitions map to severities (nit caps at LOW, Important floors at HIGH); its nit cap
-bounds how many LOWs the summary lists (excess summarized as a count, not dropped from
-metrics); its do-not-report list suppresses matches — but never a pack **BLOCK** rule,
+bounds how many LOWs the summary lists (excess summarized as a count, not dropped); its do-not-report list suppresses matches — but never a pack **BLOCK** rule,
 a `review.block-on` severity, or a security finding: those bypass every filter,
 REVIEW.md included. Policy can re-aim the review; only config + packs can lower the
 gate. Absent → skip silently.
-
-**OCR (external review engine, optional, off by default):** read the mode with
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper config get tools.ocr.mode off`. The default is `off`, and a config
-without the key reads as `off`: skip OCR silently and never run `ocr`. OCR sends the diff
-to the model provider the user set up for it, so it runs only when the user turns it on
-by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in the project's config.
-This page is the source of truth for how OCR behaves in a review:
-
-- **Probe (here, in Step 1).** Run `command -v ocr`, then `ocr review --preview`. Both
-  succeed: record `ocr_status = ready`.
-- **`ocr` not on the PATH.** `require` blocks the review and names the tool,
-  open-code-review, with a link to its own install page,
-  https://github.com/alibaba/open-code-review (never an install command to run).
-  `auto` skips OCR with a one-line notice and the review goes on without it.
-- **`ocr` present but the probe fails** (often no model provider set up for OCR). Both
-  modes print a one-line warning and continue with Temper's own review; this never
-  blocks.
-- **Run and merge (Step 2).** When `ocr_status` is ready, run OCR over the diff (at most 10 minutes) and fold its findings in as `[OCR]`, or as
-  `[OCR+TEMPER]` when a Temper finding matches; the merge mechanics are in
-  `${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md`. A failure or a timeout during the run is
-  handled like a failed probe: a one-line warning, then Temper's own review, never a
-  block.
 
 ## Step 1.5: Diff-Aware Fingerprinting
 
@@ -70,8 +45,7 @@ so review effort concentrates where the risk actually is.
 Split the changed files across subagents when the diff is large enough that parallel
 reading pays for each subagent's context setup; a small diff is reviewed inline. One
 hard constraint, because it bounds recursion: a review subagent never spawns subagents
-of its own (say so in its prompt). Each subagent gets the pack rules, the stack pattern
-file, the fingerprint, its file list, and this prompt shape (write the plugin folder in
+of its own (say so in its prompt). Each subagent gets the pack rules, the fingerprint, its file list, and this prompt shape (write the plugin folder in
 place of the CLAUDE_PLUGIN_ROOT variable in its first line):
 
 ```
@@ -91,10 +65,6 @@ reported at 0.4 costs less than a dropped one. Omit only pure style or naming
 preferences that violate no pack rule. Classify each finding REGRESSION (was working,
 now broken — highest priority) / NEW ISSUE / PRE-EXISTING (lower priority).
 ```
-
-If `ocr_status == ready`, OCR owns line-level defect detection; the subagent covers pack rules,
-security, AI-code detection, architecture drift, test gaps, and intent validation,
-folding in OCR's `[OCR]` findings.
 
 **Performance severity floors:** N+1 query, missing pagination on an unbounded list,
 sync I/O in a hot path, non-atomic shared-state mutation in a concurrent handler →
@@ -174,9 +144,7 @@ never edit the file from review.
 
 Per changed file, compare its error-handling / API-response / validation / async
 pattern against same-type files. A new pattern not documented as intentional in
-`intent.md`/`tasks.md` → MEDIUM "pattern drift", confidence 0.6. Track dominant
-pattern + exceptions in `review-memory.json.patterns`; 3+ dismissals of the same drift
-type → auto-suppress.
+`intent.md`/`tasks.md` → MEDIUM "pattern drift", confidence 0.6.
 
 ## Step 3.7: API Contract Validation
 
@@ -196,9 +164,7 @@ options), and the orchestrator then runs `${CLAUDE_PLUGIN_ROOT}/reference/archit
 ## Step 4: Confidence Filtering
 
 Pack-rule findings override the threshold (BLOCK→CRITICAL, WARN→HIGH/MEDIUM,
-SUGGEST→LOW — always shown). Otherwise: below a confidence of 0.7 → discard entirely (not shown, not counted, not stored). From
-`review-memory.json`: 5+ prior dismissals of the pattern → suppress; 3-4 → downgrade
-one severity level.
+SUGGEST→LOW — always shown). Otherwise: below a confidence of 0.7 → discard entirely (not shown, not counted, not stored).
 
 ## Summary + Gate
 
@@ -254,30 +220,6 @@ lists escalated and contested findings first.
   `temper evidence escalate --stage review --id N --reason '<what only the person knows>'`.
 
 "This was intentional" is not evidence. A Review agent never contests or accepts its own finding.
-
-## Metrics + Memory
-
-Append to `.temper/metrics.json`: `reviews.total += 1`, `issues_found`, per-severity
-and per-category counts, `auto_fixed`, `confidence_avg`. Then update the single finding
-memory, `.temper/review-memory.json.patterns[{key}]` (key = category + file-path prefix
-+ first description keywords): `total_shown`/`accepted`/`dismissed`, `last_seen`,
-`acceptance_rate = accepted/total_shown`. This one store drives both promotion and
-suppression:
-
-- **Promote** (surfaced by the word `status`, never auto-applied): 3+ accepted at
-  acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ at ≥ 80% in security or
-  architecture → suggest a **BLOCK** rule. The human picks BLOCK / WARN /
-  keep-advisory; an accepted rule is written into the project's copy of the active pack,
-  `.claude/packs/<name>/rules.md`. If the project has no copy yet (the pack is built-in or
-  global), create it first from that pack's current rules so it shadows them, then add the
-  rule. Never edit a file in the plugin folder.
-- **Suppress**: 3+ dismissals at acceptance_rate < 30% → downgrade one severity level;
-  5+ at < 10% → auto-suppress (Step 4 then drops it).
-
-Context-specific dismissals (`config/` paths, test fixtures, DTOs, listed legacy
-modules, `@generated` headers) are tracked per context — dismissed in `auth/` doesn't
-suppress the pattern in `payments/`; ask "this file only, or all {context} files?" on
-dismissal.
 
 ## Multi-Agent Severity Consensus
 

@@ -273,7 +273,7 @@ def show(config, markdown):
         if path in defaults.GONE:
             new = {v: k for k, v in defaults.RENAMED.items()}.get(path)
             if not new or config_yaml._at(cfg, new) is not config_yaml._TABLE:   # else its new key's line names it
-                print("gone: %s (%s)" % (path, defaults.GONE[path][1]))
+                print("gone: %s (not read; %s)" % (path, defaults.GONE[path][1]))
         elif match(path) is not None:
             if "<" in match(path):
                 print("%-28s %-44s config" % (path, raw))

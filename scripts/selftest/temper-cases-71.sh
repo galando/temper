@@ -211,8 +211,8 @@ for g in d.get("groups", {}).values():
 d["tasks"] = {"1": {"status": "passed", "group": "G1"}}
 json.dump(d, open(".temper/groups.json", "w"))
 PY
-  "$TEMPER" evidence add --stage build --phase red --claim 'unit tests' --cmd 'true' --exit 1 >/dev/null 2>&1
-  "$TEMPER" evidence add --stage build --phase green --claim 'unit tests' --cmd 'true' --exit 0 >/dev/null 2>&1
+  ev_red build 'unit tests'
+  ev_green build 'unit tests'
   mkdir -p "$(dirname "$2")"; printf '%s\n' "$3" > "$2"
   git add -- "$2" >/dev/null 2>&1; git commit -q -m "the file the criterion reads" -- "$2" >/dev/null 2>&1
 }

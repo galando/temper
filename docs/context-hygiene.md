@@ -9,9 +9,8 @@ Temper's prompts are context you pay for on every run, and so are the `CLAUDE.md
 and packs it touches in your project. This page is what Temper does about that, and what
 you should do in the projects you run it on.
 
-The reference point is Anthropic's
-[new rules of context engineering for Claude 5 generation models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)
-(July 2026), which reports removing over 80% of Claude Code's own system prompt with no
+The reference point is Anthropic's post on the new rules of context engineering for Claude 5 generation models, on
+the Claude blog (July 2026), which reports removing over 80% of Claude Code's own system prompt with no
 measurable loss on coding evals. The six shifts it names — rules to judgment, examples to
 better tool interfaces, everything-upfront to progressive disclosure, repeated
 instructions to tool descriptions, manual memory to auto-memory, simple specs to rich

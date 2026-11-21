@@ -73,7 +73,7 @@
     <ul>
       <li><strong>Share HTML review.</strong> When you pick it at the plan gate and confirm, Claude Code's Artifact tool publishes the plan review as a private Claude artifact, and you decide who can open it. Without the Artifact tool, Temper offers the local review instead.</li>
       <li><strong>Pull requests, only when you choose them.</strong> When you pick a pull request option at the Check question, Temper runs <code>git push</code> and <code>gh pr create --draft</code> from your machine to your own repository's remote, and later reads that pull request's checks with <code>gh</code>. Every pull request is a draft, and Temper never marks one ready.</li>
-      <li><strong>OCR, off by default.</strong> If you turn it on with <code>tools.ocr.mode</code> and the <code>ocr</code> tool is on your machine, Review uses it, and <code>ocr</code> sends the diff to the model provider you set up for it.</li>
+      <li><strong>No diff goes to another provider.</strong> Review runs inside Claude Code: no diff leaves your machine through Temper.</li>
     </ul>
 
     <h2>Claude Code</h2>

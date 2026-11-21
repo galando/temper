@@ -1,15 +1,15 @@
 """runs.py: which recorded test runs count at a gate, and voiding a false pass (9.8.5, Q3).
 
-  python3 runs.py build LEDGER MODE         "red green after": the Build gate's failing-first counts
-  python3 runs.py check LEDGER MODE         "n|red claims": the Check gate's passing runs and the claims whose last run failed
+  python3 runs.py build LEDGER              "red green after": the Build gate's failing-first counts
+  python3 runs.py check LEDGER              "n|red claims": the Check gate's passing runs and the claims whose last run failed
   python3 runs.py void LEDGER ID REASON     marks the passing run #ID void, with the reason; the row stays, it counts no more
 
 A run counts when the CLI ran it (`temper evidence run`, a task test, a group check, integrate, Check) or the person
 confirmed it. A row an agent wrote with `temper evidence add --exit N` is a claim: the CLI never saw that exit code (a
-source run kept a GREEN an agent recorded after a run that had failed before it started). MODE is the config's
-`evidence.claimed-runs`: `ignore` (the default) counts no claim; `count` counts claims as before 9.8.5.
+source run kept a GREEN an agent recorded after a run that had failed before it started), so it counts at no gate, and
+no key of the config makes it count (WP30).
 
-A void row never counts, in either mode. Only a pass can be voided: voiding a failure would make a gate easier to pass.
+A void row never counts. Only a pass can be voided: voiding a failure would make a gate easier to pass.
 Standard library only.
 """
 import json
@@ -27,27 +27,25 @@ def load(path):
         return []
 
 
-def counts(r, mode):
-    if not isinstance(r, dict) or r.get("voided"):
-        return False
-    return mode == "count" or r.get("executed_by") in ("cli", "person")
+def counts(r):
+    return isinstance(r, dict) and not r.get("voided") and r.get("executed_by") in ("cli", "person")
 
 
 def is_test(r):
     return bool(re.search("test", r.get("claim") or "", re.I))
 
 
-def build(rows, mode):
-    rows = [r for r in rows if counts(r, mode) and is_test(r)]
+def build(rows):
+    rows = [r for r in rows if counts(r) and is_test(r)]
     red = [i for i, r in enumerate(rows) if r.get("phase") == "red" and r.get("exit_code") not in (0, None)]
     green = [i for i, r in enumerate(rows) if r.get("phase") == "green" and r.get("exit_code") == 0]
     after = sum(1 for i in green if red and i > red[0])
     return "%d %d %d" % (len(red), len(green), after)
 
 
-def check(rows, mode):
+def check(rows):
     # the acceptance run has a row of its own (a correction names its tests: 'corrected after the lock: test_...')
-    runs = [r for r in rows if counts(r, mode) and not r.get("scenario") and isinstance(r.get("exit_code"), int)
+    runs = [r for r in rows if counts(r) and not r.get("scenario") and isinstance(r.get("exit_code"), int)
             and is_test(r) and not (r.get("claim") or "").startswith("acceptance (written before Build)")]
     last = {}
     for r in runs:
@@ -81,9 +79,8 @@ def void(path, id_s, reason):
 
 
 def main(argv):
-    if len(argv) == 4 and argv[1] in ("build", "check"):
-        mode = "count" if argv[3].strip().lower() == "count" else "ignore"
-        print((build if argv[1] == "build" else check)(load(argv[2]), mode))
+    if len(argv) == 3 and argv[1] in ("build", "check"):
+        print((build if argv[1] == "build" else check)(load(argv[2])))
         return 0
     if len(argv) == 5 and argv[1] == "void":
         out = void(argv[2], argv[3], argv[4])

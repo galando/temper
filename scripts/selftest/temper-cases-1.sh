@@ -53,13 +53,13 @@ assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPE
 
 # --- build gate: RED then GREEN required ---
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_green build "tests"
 _scen
 assert_exit "build gate FAILs on GREEN with no RED (TDD discipline)" 1 "$TEMPER" gate build
 
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 assert_exit "build gate PASSes on RED then GREEN + no unchecked tasks" 0 "$TEMPER" gate build
 
@@ -92,7 +92,7 @@ cd "$WORKDIR"; rm -rf "$WORKDIR/rv1"
 
 # --- check gate: coverage threshold ---
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 60 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -115,7 +115,7 @@ open(p, 'w').write(s)
 PY
 assert_eq "the quote-bearing threshold is read back unchanged" \
   "0') and open('threshold-injected','w').write('x') and float('0" "$("$TEMPER" config get check.coverage-threshold)"
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -130,7 +130,7 @@ rm -f threshold-injected
 
 # --- check gate: scenarios must be traced to a test (the flagship "rate limiting" story) ---
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 assert_exit "check gate FAILs when a scenario has no traced test (1/2 covered)" 1 "$TEMPER" gate check
@@ -146,13 +146,13 @@ assert_eq "PROVEN downgrades to HEURISTIC when artifact is missing" "yes" "$(gre
 setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -182,10 +182,10 @@ assert_exit "state loop blocks the third step back for one failure (budget.per-f
 # --- state loop: a /temper run clears the temper sequence from the target stage down ---
 setup
 "$TEMPER" evidence add --stage plan --claim "plan row" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_green build "tests"
 _scen
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 _at review   # a loop goes back from the stage the run is at
 "$TEMPER" state loop review build --reason r1 >/dev/null
 assert_eq "a temper-run loop keeps the plan evidence above the target" "1" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/plan.json"))))')"
@@ -203,7 +203,7 @@ _at check
 "$TEMPER" gate intent >/dev/null; "$TEMPER" gate plan >/dev/null
 echo 'fix' > loopfix.js; git add loopfix.js >/dev/null 2>&1
 "$TEMPER" state loop check build --reason "review found a defect" >/dev/null
-"$TEMPER" evidence add --stage build --claim "fix tests" --phase green --exit 0 --cmd pytest >/dev/null
+ev_green build "fix tests"
 assert_eq "state loop check build: next_stage is build" "build" "$("$TEMPER" state get next_stage)"
 assert_eq "after a loop back to build, a fix commit rides the checkpoint carve-out" "yes" \
   "$("$TEMPER" gate commit 2>&1 | grep -c 'build checkpoint commit' >/dev/null && echo yes || echo no)"
@@ -211,10 +211,10 @@ assert_eq "after a loop back to build, a fix commit rides the checkpoint carve-o
 # --- state loop: a /temper:fix run clears build, review and check on a loop back to fix (woningscout #984) ---
 setup
 "$TEMPER" state init bug3 --command fix >/dev/null; _base_known
-"$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
+ev_red build "regression test"
+ev_green build "regression test"
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 assert_exit "a fix run's review gate FAILs on the open finding" 1 "$TEMPER" gate review
 _at review
 assert_exit "state loop review fix is accepted in a fix run" 0 "$TEMPER" state loop review fix --reason "fix the injection"
@@ -257,12 +257,12 @@ assert_exit "a /temper:fix run rejects temper-only stage names (plan_complete)" 
 # --- /temper:fix commits: no plan gate required (fix has no such stage) ---
 setup
 "$TEMPER" state init bug1 --command fix >/dev/null; _base_known
-"$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
+ev_red build "regression test"
+ev_green build "regression test"
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -333,8 +333,8 @@ assert_eq "the allowed commit actually landed" "yes" "$(git log --oneline 2>&1 |
 #    fixture above already writes one (see the config heredoc), so this run's whole
 #    green suite is itself evidence; this case makes the claim explicit and standalone.
 setup
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 assert_exit "gate build runs cleanly against a config with a stale eval: block" 0 "$TEMPER" gate build
 
@@ -342,13 +342,13 @@ assert_exit "gate build runs cleanly against a config with a stale eval: block" 
 setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -399,13 +399,13 @@ assert_exit "verify-tests-ran.sh passes once the CLI has healed the state to che
 # it in STAGE_SEQ_TEMPER — the spine-level backstop behind the orchestrator's
 # kill-before-clear ordering.
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence clear --stage check >/dev/null
 assert_eq "evidence clear truncates a stage's ledger to []" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
 
 setup
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -850,13 +850,13 @@ rm -rf "$QUOTED_DIR"
 # The commit gate demands an intent verdict exactly when intent.md exists.
 setup
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -899,13 +899,13 @@ assert_exit "design gate PASSes once concerns are flagged (or explicitly none)" 
 setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+ev_red build "tests"
+ev_green build "tests"
 _scen
 "$TEMPER" gate build >/dev/null
 review_done --cmd "review panel"
 "$TEMPER" gate review >/dev/null
-"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+ev_green check "tests"
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
@@ -960,7 +960,7 @@ setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" override plan --reason "test archive" >/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --label HEURISTIC >/dev/null
+"$TEMPER" evidence run --stage build --claim "tests" --label HEURISTIC -- true >/dev/null
 "$TEMPER" state archive >/dev/null
 assert_eq "state archive writes the ledger WITHOUT deleting live state" "yes" \
   "$([[ -f .temper/specs/demo/gate-ledger.json && -f .temper/gates.json ]] && echo yes || echo no)"

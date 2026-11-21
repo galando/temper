@@ -8,6 +8,4 @@ selftest:D29d                  WP31           D29
 selftest:D79b                  WP31           D79
 selftest:D102                  WP31           D102
 selftest:D103                  WP31           D103
-selftest:D104                  WP30           D104
 selftest:D108                  WP31           D108
-selftest:D34a                  WP30           D34

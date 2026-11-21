@@ -125,11 +125,11 @@ rm -rf "$D9" "$WORKDIR/r4-base"
 fresh; "$TEMPER" state set base_sha 0123456 >/dev/null 2>&1
 assert_exit "round 4, 11: base_sha is recorded once; a second one is refused" 1 "$TEMPER" state set base_sha 89abcde
 setup
-"$TEMPER" evidence add --stage build --phase green --exit 0 --claim "unit tests" >/dev/null 2>&1
-"$TEMPER" evidence add --stage build --phase red --exit 1 --claim "unit tests" >/dev/null 2>&1
+ev_green build "unit tests"
+ev_red build "unit tests"
 assert_eq "round 4, low: a passing run recorded before the failing one is no RED then GREEN" "FAIL" \
   "$("$TEMPER" gate build >/dev/null 2>&1; python3 -c "import json; print([r for r in json.load(open('.temper/gates.json'))['build']['requirements'] if r['name'] == 'RED then GREEN'][0]['pass'] and 'PASS' or 'FAIL')")"
-"$TEMPER" evidence add --stage build --phase green --exit 0 --claim "unit tests" >/dev/null 2>&1
+ev_green build "unit tests"
 assert_eq "round 4, low: a passing run after the failing one is" "PASS" \
   "$("$TEMPER" gate build >/dev/null 2>&1; python3 -c "import json; print([r for r in json.load(open('.temper/gates.json'))['build']['requirements'] if r['name'] == 'RED then GREEN'][0]['pass'] and 'PASS' or 'FAIL')")"
 fresh; gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
@@ -208,7 +208,7 @@ setup
 "$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> unit/test_a.py:test_first' --exit 0 >/dev/null 2>&1
 assert_eq "re-audit: a scenario row that names its test does not count as a passing test run" "0" \
   "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
-"$TEMPER" evidence add --stage check --claim "tests" --cmd "pytest" --exit 0 >/dev/null 2>&1
+ev_green check "tests"
 assert_eq "re-audit: the test run row does" "1" "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
 
 # --- re-audit: a code file moved into the spec folder is no artifact only commit ---
@@ -338,7 +338,7 @@ assert_eq "live run: the passed Review question offers Loop back to Build, and A
 
 # --- live run: the end of the run leaves the committed spec folder as it is, and the report prints first ---
 setup; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
-"$TEMPER" evidence add --stage build --claim "tests" --cmd "true" --exit 0 --phase green --label PROVEN >/dev/null 2>&1
+ev_green build "tests"
 "$TEMPER" evidence add --stage build --claim "lint" --cmd "true" --exit 0 --label HEURISTIC >/dev/null 2>&1
 gpass commit; "$TEMPER" state archive >/dev/null 2>&1
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm "the change" >/dev/null 2>&1
@@ -429,13 +429,13 @@ assert_eq "live run 5: the park report is in the clone's info/exclude, so it is 
 
 # --- live run 7: each test command counts by its latest run, and a passed Check can still go back to Build ---
 fresh
-"$TEMPER" evidence add --stage check --claim 'unit tests' --exit 0 --label PROVEN >/dev/null 2>&1
-"$TEMPER" evidence add --stage check --claim 'integration tests' --exit 1 --label PROVEN >/dev/null 2>&1
+ev_green check 'unit tests'
+ev_red check 'integration tests'
 "$TEMPER" evidence add --stage check --claim coverage --value 90 --exit 0 >/dev/null 2>&1
 OUT="$("$TEMPER" gate check 2>&1)"
 assert_eq "live run 7: a failing integration run beside a passing unit run fails tests pass" "1" \
   "$(grep -c '\[x\] tests pass — the latest run of a test command failed: integration tests' <<<"$OUT")"
-"$TEMPER" evidence add --stage check --claim 'Integration  tests' --exit 0 --label PROVEN >/dev/null 2>&1
+ev_green check 'Integration  tests'
 assert_eq "live run 7: a later passing run of the same command clears it" "1" \
   "$("$TEMPER" gate check 2>&1 | grep -c '\[v\] tests pass')"
 _at check; gpass check
