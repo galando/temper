@@ -90,10 +90,23 @@ def may_start(argv):
             stage or "no stage")
     elif g.get("verdict") != "PASS" or any(isinstance(o, dict) and o.get("stage") == stage for o in over):
         why = "the run goes on by itself only from an approval whose check passed; the %s check did not pass" % stage
+    elif not run_alone():
+        why = ("at risk H the run goes on by itself only after the fresh review ran on the plan as it is and left no open "
+               "finding at high; the approval offers no such option")
     else:
         return
     print(why)
     sys.exit(1)
+
+
+def run_alone():
+    """WP32: the condition the approval offers approve-run by (flow_run.Run.may_run_alone), read from the run's files."""
+    import os, sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    from flow_run import Run
+    return Run({}).may_run_alone()
 
 
 def park_end(argv):

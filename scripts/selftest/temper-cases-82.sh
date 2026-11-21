@@ -69,3 +69,12 @@ while IFS= read -r _c82; do [[ -n "$_c82" ]] && bash -c "${_c82//\{reason\}/I ac
   < <(_x82 "r = '\n'.join((opt(d, 'override') or {}).get('calls') or [])")
 assert_eq "review 2: the person's skip of the acceptance tests at that stop is recorded and ends the unattended run" \
   "skipped,interactive" "$(python3 -c 'import json; print("skipped" if json.load(open(".temper/evidence/acceptance-lock.json")).get("skipped") else "not skipped")'),$(_mode82)"
+#     approve-run (risk H with no fresh review, row D18d), the session's typed call is the only way to start one, and the
+#     CLI must refuse it, as it does under never-unattended ---
+fresh; sed -i '/^  enabled: false$/d' .claude/temper.config
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; riskH
+_r82_arm="riskH-offered=$(_x82 "r = opt(d, 'approve-run') is not None")"
+_r82_arm+=",$("$TEMPER" state set run_mode autonomous >/dev/null 2>&1 && echo taken || echo refused),$(_mode82)"
+assert_eq "review 2: at risk H with no fresh review the approval offers no approve-run, and the typed call cannot start the unattended run" \
+  "riskH-offered=False,refused,interactive" "$_r82_arm"
+
