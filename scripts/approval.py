@@ -13,6 +13,7 @@ commit gates until the person approves again.
   python3 approval.py check STATE SPEC NAME=DIGEST...
                                                exit 1 with the reason when a named file of SPEC has another digest now
   python3 approval.py plan-digest PARSED_JSON  the digest of a parsed tasks.md (the CLI's _plan_digest)
+  python3 approval.py saved STATE              what a run saved by 9.8.4 or by the base binds once taken up (JSON)
   python3 approval.py held STATE SPEC          exit 0 with the reason when the run is before its approval and no
                                                approving answer passed its check at this step (rule 1, row D30: no
                                                branch and no commit before the approval); exit 1 otherwise
@@ -79,7 +80,7 @@ def plan_digest(m, legacy=False):
 
     WP32 (review findings R2b, R2c): the confirm text and a second Integration line are bound, each only where the plan
     has it, so a plan without them keeps the digest 9.8.4 and the base recorded. legacy: the digest as those versions
-    computed it (state_ops.py migrate-legacy moves a saved plan_hash that matches it)."""
+    computed it (state_ops.py migrate-legacy moves a saved plan_hash that matches it, through saved)."""
     def n(p):
         p = p.strip()
         return p[2:] if p.startswith("./") else p
@@ -204,6 +205,44 @@ def binding_row(state, spec):
                   "them" if len(changed) > 1 else "it"))
 
 
+def saved(state):
+    """WP32: a run saved by 9.8.4 or by the base, taken up once (state_ops.py migrate-legacy prints nothing of it; it
+    merges what this returns). Past its approval it binds intent.md as found, since those versions recorded no digest
+    of it (review finding R8-1): a change made after the upgrade fails the row as for a run of this version. Its
+    plan_hash is the digest those versions computed; where the plan holds what this version binds besides (the text a
+    manual Test asks the person to confirm, a second Integration line), the saved digest of the plan as it is now moves
+    to this version's digest, in groups.json too, so the approval still binds the plan it approved and only a later
+    change fails the gates (row D60). The keys to set: intent_hash, plan_hash, or none."""
+    st, out = read_state(state), {}
+    h, spec = st.get("plan_hash"), st.get("spec_path")
+    if not isinstance(spec, str) or not spec:
+        return out
+    root = os.path.dirname(os.path.dirname(os.path.abspath(state)))
+    sp = spec if os.path.isabs(spec) else os.path.join(root, spec)
+    if (st.get("command") or "temper") == "temper" and st.get("next_stage") not in (None, "", "intent", "plan") \
+            and "intent_hash" not in st:
+        b = bound(os.path.join(sp, "intent.md"))
+        if b:
+            out["intent_hash"] = b
+    tasks = os.path.join(sp, "tasks.md")
+    if not h or not os.path.isfile(tasks):
+        return out
+    m = tasks_md.parse(tasks)
+    new = plan_digest(m)
+    if not new or new == h or plan_digest(m, legacy=True) != h:
+        return out
+    out["plan_hash"] = new
+    gp = os.path.join(os.path.dirname(os.path.abspath(state)), "groups.json")
+    g = read_state(gp)
+    if g.get("plan_hash") == h:
+        g["plan_hash"] = new
+        try:
+            write_state(gp, g)
+        except OSError:
+            pass
+    return out
+
+
 def bind_rca(state):
     """WP17: the approval of a fix run (`state advance rca_complete fix`) records the digest of rca.md as the person
     approved it, as intent_hash: the row then names rca.md in the place of intent.md."""
@@ -243,6 +282,9 @@ def main(argv):
         if d:
             print(d)
         return 0 if d else 1
+    if word == "saved" and len(argv) == 3:
+        print(json.dumps(saved(argv[2])))
+        return 0
     if word == "bind-rca" and len(argv) == 3:
         return bind_rca(argv[2])
     if word == "row" and len(argv) == 4:
@@ -261,7 +303,7 @@ def main(argv):
             print(why)
         return 0 if why else 1
     print("usage: approval.py digest FILE | bound FILE | row STATE SPEC | check STATE SPEC NAME=DIGEST... "
-          "| plan-digest JSON | bind-rca STATE | held STATE SPEC", file=sys.stderr)
+          "| plan-digest JSON | bind-rca STATE | held STATE SPEC | saved STATE", file=sys.stderr)
     return 2
 
 

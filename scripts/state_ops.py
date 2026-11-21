@@ -58,7 +58,7 @@ def migrate_legacy(argv):
                     json.dump(gates, f, indent=2); f.write("\n")
                 os.replace(tmp, gp)
         if "saved_by" not in d:
-            _bind_saved(p, d)
+            d.update(_bind_saved(p))
         d["saved_by"] = SAVED_BY;            changed = True
     if not changed:
         sys.exit(0)
@@ -68,47 +68,17 @@ def migrate_legacy(argv):
     os.replace(tmp, p)                  # atomic: a truncated migration would LOSE state
 
 
-def _bind_saved(p, d):
-    """WP32: a run saved by 9.8.4 or by the base, taken up once. Past its approval, it binds intent.md as found (those
-    versions recorded no digest of it). Its plan_hash is the digest those versions computed; where the plan holds what
-    this version binds besides (the text a manual Test asks the person to confirm, a second Integration line), the
-    saved digest of the plan as it is now moves to this version's digest, so the approval still binds the plan it
-    approved and only a later change fails the gates."""
-    import json, os, tempfile
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import approval
-    import tasks_md
-    h, spec = d.get("plan_hash"), d.get("spec_path")
-    if not isinstance(spec, str) or not spec:
-        return
-    root = os.path.dirname(os.path.dirname(os.path.abspath(p)))
-    sp = spec if os.path.isabs(spec) else os.path.join(root, spec)
-    # review finding R8-1: those versions recorded no digest of the intent. A run past its approval binds intent.md as
-    # it is when this version takes it up, so a change made after the upgrade fails the row as for a run of this one.
-    if (d.get("command") or "temper") == "temper" and d.get("next_stage") not in (None, "", "intent", "plan") \
-            and "intent_hash" not in d:
-        b = approval.bound(os.path.join(sp, "intent.md"))
-        if b:
-            d["intent_hash"] = b
-    tasks = os.path.join(sp, "tasks.md")
-    if not h or not os.path.isfile(tasks):
-        return
-    m = tasks_md.parse(tasks)
-    new = approval.plan_digest(m)
-    if not new or new == h or approval.plan_digest(m, legacy=True) != h:
-        return
-    d["plan_hash"] = new
-    gp = os.path.join(os.path.dirname(p) or ".", "groups.json")
+def _bind_saved(p):
+    """WP32: what a run saved by 9.8.4 or by the base binds once this version takes it up (scripts/approval.py saved):
+    intent_hash and a moved plan_hash, or nothing. Run as its own process, so this module stays isolated."""
+    import json, os, subprocess
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "approval.py")
     try:
-        g = json.load(open(gp))
+        r = subprocess.run([sys.executable, "-I", here, "saved", p], capture_output=True, text=True, timeout=60)
+        u = json.loads(r.stdout or "{}")
     except Exception:
-        return
-    if isinstance(g, dict) and g.get("plan_hash") == h:
-        g["plan_hash"] = new
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(gp) or ".")
-        with os.fdopen(fd, "w") as f:
-            json.dump(g, f, indent=2); f.write("\n")
-        os.replace(tmp, gp)
+        return {}
+    return {k: v for k, v in u.items() if k in ("intent_hash", "plan_hash") and isinstance(v, str)} if isinstance(u, dict) else {}
 
 
 def may_start(argv):
