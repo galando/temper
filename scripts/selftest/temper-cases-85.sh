@@ -106,3 +106,13 @@ _r10a_card="$(_commit_card85)"
 assert_eq "review 5: the rule's run of a failed group's tasks again is listed on the commit card" \
   "rule's move=auto group reopen G1 --task 1|ran=0|spent=1|listed=yes" \
   "rule's move=$_r10a_next|ran=$_r10a_rc|spent=$(_used85 group:G1)|listed=$(_listed85 "$_r10a_card")"
+
+# The first time out of a group's check: the CLI runs it again with twice the limit as its own `auto` call (one repeat of
+# group:G1 when the base did not measure the suite). No entry of the rule log names it.
+_armed85 '{"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: true", "ran": true, "timeout_s": 600}'
+_r10b_next="$(_next85)"
+"$TEMPER" group gate G1 --timeout-s 1200 >/dev/null 2>&1
+_r10b_card="$(_commit_card85)"
+assert_eq "review 5: the rule's run of a timed out group check with twice the limit is listed on the commit card" \
+  "rule's move=auto group gate G1 --timeout-s 1200|spent=1|listed=yes" \
+  "rule's move=$_r10b_next|spent=$(_used85 group:G1)|listed=$(_listed85 "$_r10b_card")"
