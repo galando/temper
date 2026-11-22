@@ -56,16 +56,18 @@ when Claude Code is signed in.
 - [ ] **Ask Claude whether the mod is active.** Type
   `Does your system prompt contain a Temper enforcement line?` and expect Claude to quote
   `Temper enforcement: active`.
-- [ ] **The gate is a question.** At the Intent gate expect an `AskUserQuestion` dialog, header
-  `Temper gate`: "Continue to Plan (Recommended)" / "Save for later" (Grill me and Teach me where
-  they fit). The bar says "Intent: the check passed. Waiting for you: answer the Temper gate
-  question." and has no button. Choose Continue: expect the toast "Plan is open." and the
-  bar at "Step 2 of 6: Plan".
-- [ ] **No decision anywhere else.** Type `/temper:temper approve`. Expect the gate question
-  again, with Continue first, and nothing moved until you choose. Type `/temper:temper` with no
-  words: expect the gate question to come back. Expect no button on the bar or in the pane.
+- [ ] **The gate is a question.** Since 9.8.5 a run asks twice. A clean Intent asks nothing: the run goes on to Plan
+  by itself ("Intent: the check passed and nothing is open. The run goes on to Plan; you accept the intent with the
+  plan, in one question."). The first question is the approval, after Plan: an `AskUserQuestion` dialog, header
+  `Temper gate`, with "Approve and build (Recommended)" / "Ask me at every stage" / "Fresh review first" / "More
+  options". The bar has no button.
+- [ ] **No decision anywhere else.** Type `/temper:temper approve`. Expect the approval question
+  again, with Approve and build first, and nothing moved until you choose. Type `/temper:temper` with no
+  words: expect the question to come back. Expect no button on the bar or in the pane.
 - [ ] **The smooth path.** At Plan, type `Skip the tasks: edit a source file now to add the
-  function`. Expect a refusal with a `Next:` step. Answer the Plan gate with "Continue to Build".
+  function`. Expect a refusal with a `Next:` step. Answer the approval with "Ask me at every stage" (the old flow,
+  which sections 4 and 6 walk through; a run answered "Approve and build" goes on by itself to the commit question
+  and is the last box of section 6).
   Expect `<clone>/scripts/temper state get next_stage`, run in `<project>`, to print `build`, and
   the orchestrator to start the first group (`temper group start G1`) and launch one
   `temper:temper-build-task` agent per ready task.
@@ -73,13 +75,14 @@ when Claude Code is signed in.
 
 ## 4. Stage by stage
 
-Work through one run. For each stage, check the refusal and the gate question.
+Work through one run that was answered "Ask me at every stage" at the approval: only such a run asks at each
+stage. For each stage, check the refusal and the gate question.
 
 - [ ] **Intent denial.** While Intent is current, type `Edit a source file of the project and add a field now`.
   Expect a refusal that starts `Temper: Intent stage.` and ends with `Next:` and a step.
   The write to `.temper/specs/<name>/intent.md` must still be allowed.
 - [ ] **Plan denial and approval.** Repeat the denial for the same file. Expect
-  `Temper: Plan stage.` Then answer the Plan gate with Continue to approve the plan.
+  `Temper: Plan stage.` Then answer the approval with "Ask me at every stage" to approve the plan.
 - [ ] **Build.** Expect the stage to write a failing test first. Ask Claude to edit a file
   that is not in the plan (for example `README.md`). Expect a `Scope drift` question with
   three choices: Add to plan, Revert, Allow once. Choose Allow once.
@@ -168,14 +171,16 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
 
 - [ ] **Blocking questions.** One dialog, one question per Blocking question, three choices at
   most plus "Carry forward". Never a list of questions to answer by typing.
-- [ ] **Intent gate.** A dialog "Continue to Plan (Recommended)" / "Save for later" (Grill me,
-  Teach me where they fit). Choose Continue: Plan starts.
-- [ ] **Plan gate.** A dialog of four options at most, the rest behind "More options". Choose
-  Continue: Build starts (or Design, after you chose `Run Design first` under More options).
-- [ ] **Arming autonomy.** Add `autonomy:` and `  enabled: true` to `.claude/temper.config` and
-  start a new run. At the plan gate: a dialog "Stage by stage (Recommended)" / "Autonomous Build: run
-  Build unattended" / "Open HTML review" / "More options" (Save for later is there). Choose Autonomous Build: Build
-  goes on without asking and nothing is refused; after it, Review asks you as usual. Remove the lines afterwards.
+- [ ] **Intent.** No dialog when the check passed and nothing is open: Plan starts by itself. An Intent with
+  an open point asks "Continue to Plan (Recommended)" / "Save for later" (Grill me, Teach me where they fit).
+- [ ] **The approval.** A dialog of four options at most: "Approve and build (Recommended)" / "Ask me at every
+  stage" / "Fresh review first" / "More options" (Open HTML review, `Run Design first` and Save for later are behind
+  it). Choose "Ask me at every stage": Build starts (or Design, after you chose `Run Design first`), and every box
+  below asks as written.
+- [ ] **The order of the approval's options.** Set `run:` and `  default: ask` in `.claude/temper.config` and start
+  a new run: "Ask me at every stage (Recommended)" is first and "Approve and build" second. With `default:
+  never-unattended` "Approve and build" is not offered. An old `autonomy:` block with `enabled: true` is not read
+  (`temper config show` lists it as gone). Remove the lines afterwards.
 - [ ] **Design gate** (a run where you chose `Run Design first`). On a failed design check: a dialog
   "Loop back to Plan" / "Override and continue" / "Save for later". Choose Override and continue
   and give a reason: Build starts, and `<clone>/scripts/temper report` lists the skip of design.
@@ -201,9 +206,11 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   in another terminal (the commit gate then wants a design check). A dialog "Override and commit"
   / "Save for later". Choose it and give a reason: the commit is made. Delete the empty
   `design.md` afterwards.
-- [ ] **An autonomous park.** In an armed run, make Review fail three times (the budget). Expect
-  the park report, then the dialog of the gate it parked at. Override with a reason: the run goes
-  on, nothing is refused.
+- [ ] **A run that goes on by itself, and its stop.** Start a new run and answer the approval with "Approve and
+  build". Build, Review and Check run without a question; a failed check gets one repair by rule. Make Review fail
+  again after that repair (or spend the budget): expect the stop, with `.temper/autonomy-report.md` and the dialog
+  of the stage where it stopped, whose text says what failed and what was tried. Override with a reason: the run
+  goes on, nothing is refused. With nothing failing, the next and last dialog is the commit question.
 - [ ] **Save for later, then go on.** At any gate choose Save for later. With the mod, the bar says
   the stage is saved for later, and a write outside the stage is still refused. Start a new session
   and run `/temper:temper`: the gate dialog comes back, and Continue goes through.
