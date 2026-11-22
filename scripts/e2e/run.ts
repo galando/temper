@@ -1,4 +1,4 @@
-// bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N] [--floor FILE | --write-floor FILE]  (all: plain, mod and the mod's run driver; a scenario of slow.ts, broken.ts or accept.ts runs only in the modes it names; a scenario on scripts/selftest/expected-fail.txt prints XFAIL when it throws)  (a live model smoke is not part of this: it stays off, and out of CI)
+// bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N] [--list] [--floor FILE | --write-floor FILE]  (all: plain, mod and the mod's run driver; a scenario of slow.ts, broken.ts or accept.ts runs only in the modes it names; a scenario on scripts/selftest/expected-fail.txt prints XFAIL when it throws)  (a live model smoke is not part of this: it stays off, and out of CI)
 import { coverageDrop, defaultRun, redBaseAfterApproval, failedChecks, fixBreaksSuite, freshAsk, policyRun, freshContest, freshNotRun, freshReview, armedRun, branchClash, branchClashCarry, contextCheck, contextFold, designRun, failingScenario, fixRun, mavenRun, threeGroups, coveredAndManual, fullRun, hookScope, modGuards, prAndPipeline, saveAndResume, smallChange, trivialRun } from './scenarios'
 import { pyjokesBlocked, pyjokesFull, pyjokesRun } from './pyjokes'
 import { ACCEPT_SCENARIOS } from './accept'
@@ -54,11 +54,13 @@ const modes: Mode[] = want === 'both' ? ['plain', 'mod'] : want === 'all' ? ['pl
 // --floor FILE (9.8.5, WP05): each finished scenario's counts (dialogs, launches by agent type, the CLI's own steps,
 // steps back, hand backs, suite runs) are compared with the `now` values of FILE by scripts/check_floor.py; any
 // difference, and a scenario with no entry, fails. --write-floor FILE writes the `now` values instead (one process
-// writes the file, so it is refused with --shard).
+// writes the file, so it is refused with --shard). --list prints the names of the scenarios this call would run, one a
+// line, and runs none: the shards of CI are checked with it (N calls cover every scenario once).
 const words: string[] = []
 let shard: [number, number] | null = null
 let floor = ''
 let writeFloor = ''
+let list = false
 const rest = process.argv.slice(3)
 for (let i = 0; i < rest.length; i++) {
   const a = rest[i]!
@@ -77,6 +79,8 @@ for (let i = 0; i < rest.length; i++) {
       process.exit(2)
     }
     shard = [Number(m[1]), Number(m[2])]
+  } else if (a === '--list') {
+    list = true
   } else if (a.startsWith('--')) {
     console.log(`FAIL: unknown flag ${a} (bun scripts/e2e/run.ts [mod|plain|driver|both|all] [scenario...] [--shard K/N])`)
     process.exit(2)
@@ -93,6 +97,10 @@ if (unknown.length > 0) {
 }
 const order = Object.keys(SCENARIOS)
 const names = (words.length > 0 ? words : order).filter(n => shard === null || order.indexOf(n) % shard[1] === shard[0] - 1)
+if (list) {
+  for (const n of names) console.log(n)
+  process.exit(0)
+}
 // TEMPER_E2E_TRACE_DIR: each finished trace, calls included, goes to <dir>/<scenario>.<mode>.txt with the world's folder,
 // commit ids and time stamps replaced by fixed text, so two runs of one tree give equal folders
 const traceDir = process.env.TEMPER_E2E_TRACE_DIR ? path.resolve(process.env.TEMPER_E2E_TRACE_DIR) : ''

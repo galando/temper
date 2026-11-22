@@ -140,25 +140,28 @@ jobs:
     # Review, Check, Commit, the pull request and Pipeline, a fix run and the small change window. Each scenario runs
     # without the mod (plain), with the mod's rule engine guarding every call (mod), and carried by the mod's run
     # driver (driver); a scenario fails when the flow with the mod differs from the flow without it. The pyjokes scenarios
-    # (scripts/e2e/pyjokes.ts) replay the faults of 9.8.4 on a second mock project. Four shards side by side; every mode
+    # (scripts/e2e/pyjokes.ts) replay the faults of 9.8.4 on a second mock project. Eight shards side by side; every mode
     # of a scenario stays in one shard, because the compare reads two traces of one process. Each shard compares the
     # counts of its scenarios with the `now` values of scripts/e2e/floor.json, so a count that moved fails here.
-    name: End to end (shard ${{ matrix.shard }} of 4)
+    # Eight, not four: with four the longest shard took 23 minutes 44 seconds (run 44971152893), against the line of
+    # no run over 20 minutes. By the times of that run a shard of eight takes at most about 12 and a half minutes.
+    # `bun scripts/e2e/run.ts all --shard K/8 --list` prints the scenarios of a shard.
+    name: End to end (shard ${{ matrix.shard }} of 8)
     needs: changes
     if: needs.changes.outputs.long == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30   # shard 2 passed in 20 minutes and was cancelled at the limit
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4   # the version the scenarios were run with
       - name: Run the scenarios of this shard in every mode
-        run: bun scripts/e2e/run.ts all --shard ${{ matrix.shard }}/4 --floor scripts/e2e/floor.json
+        run: bun scripts/e2e/run.ts all --shard ${{ matrix.shard }}/8 --floor scripts/e2e/floor.json
 
   floor-and-caps:
     # What keeps the product from growing back (9.8.5). The caps: each `now` of scripts/caps.json equals its measure and

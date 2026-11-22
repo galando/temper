@@ -97,6 +97,31 @@ for w in want:
 print("; ".join(bad) or "ok")
 PY
 )"
+# the end to end shards (R0-R1-1, DEVIATIONS-5): the matrix is 1 to N, the command and the job's name say the same N,
+# N is at least 8 (with 4 the longest shard took 23 minutes 44 seconds), and no long job may run past 20 minutes
+assert_eq "tooling: the end to end job has at least 8 shards, one N in its matrix, command and name, and no long job runs past 20 minutes" "ok" \
+  "$(python3 -I - "$_t32_wf" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+jobs = text.split("\njobs:\n", 1)[1] if "\njobs:\n" in text else ""
+blocks = {m.group(1): m.group(2) for m in re.finditer(r"^  ([A-Za-z0-9_-]+):\n((?:(?:    .*|\s*)\n)*)", jobs, re.M)}
+bad = []
+for job, cmd in (("e2e", r"run\.ts all --shard \$\{\{ matrix\.shard \}\}/(\d+)"), ("temper-cli", r"run-selftest\.sh --shard \$\{\{ matrix\.shard \}\}/(\d+)")):
+    b = blocks.get(job, "")
+    m = re.search(r"^\s+shard: \[([0-9, ]+)\]", b, re.M)
+    matrix = [int(x) for x in m.group(1).split(",")] if m else []
+    n = [int(x) for x in re.findall(cmd, b)]
+    name = [int(x) for x in re.findall(r"^\s+name: .*of (\d+)\)", b, re.M)]
+    limit = [int(x) for x in re.findall(r"^\s+timeout-minutes: (\d+)", b, re.M)]
+    if not matrix or matrix != list(range(1, len(matrix) + 1)) or n != [len(matrix)] or name != [len(matrix)]:
+        bad.append("%s: matrix %s, command %s, name %s" % (job, matrix, n, name))
+    if len(limit) != 1 or limit[0] > 20:
+        bad.append("%s: timeout-minutes %s" % (job, limit))
+    if job == "e2e" and len(matrix) < 8:
+        bad.append("e2e: %d shards" % len(matrix))
+print("; ".join(bad) or "ok")
+PY
+)"
 _t32_r="$REPO_ROOT/scripts/selftest/run-selftest.sh"
 assert_eq "tooling: the runner refuses a bad commit and a shard with no value" "2|2" \
   "$(bash "$_t32_r" --touched no-such-commit >/dev/null 2>&1; echo -n "$?|"; bash "$_t32_r" --shard >/dev/null 2>&1; echo "$?")"
