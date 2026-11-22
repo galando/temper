@@ -68,3 +68,7 @@ The two plan figures: no run of (b) or (c) wrote an amendments record, so no app
 Three runs a task are few: a difference of one run moves a mean, and a line that sits near its value misses about one
 round in two. The tasks are small Python and TypeScript projects with a fast suite; a slow build (row D97) was not
 measured. The scripted person answers every question with the recommended option and does not read the plan.
+
+Two figures the plan names per run are not in the scorecard: the seconds to the first decision (the bench writes the
+time of each answer and the scorecard does not read it; the answers of these rounds were not kept in the tree) and
+the permission prompts (the bench runs with permissions bypassed, so none is raised).

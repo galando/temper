@@ -67,6 +67,12 @@ against the pass lines of part H of `docs/plans/one-go/done.md` (`bug`, `clear`,
 one more dialog for every four Blocking answers. A line with no data says so and is not a pass. A missed line is
 reported with its numbers; it is never tuned.
 
+Two figures the plan names per run (`docs/plans/two-approval-run.md`, item 1b) are left out of the scorecard.
+Seconds to the first decision: `run.mjs` writes the milliseconds since the start (`t`) on every line of
+`person.jsonl`, and `scorecard.py` does not read it. Permission prompts: `run.mjs` runs with permissions bypassed, so
+a run raises none and there is nothing to count. The rounds of 9.8.5 are in the tree as `run.json` and `grade.json`
+only (`docs/evidence/bench-9.8.5/`), without their person lines, so neither figure can be worked out for them now.
+
 Two figures show a weak plan before it fails hard. `amendments` counts the entries of the run's amendments record
 (`.temper/evidence/amendments.json`), and apart those made by rule (`amendments_by_rule`, `temper plan amend`) and
 those the person made (`amendments_by_person`, `temper plan patch`). `first_review_high` counts the findings of level
