@@ -66,6 +66,37 @@ assert_eq "tooling: the workflow cancels a superseded pull request run and ends 
   "$(grep -c '^concurrency:' "$_t32_wf")|$(grep -c '^ *cancel-in-progress:' "$_t32_wf")|$(grep -c '^ *if: always()' "$_t32_wf")|$(awk '/^  changes:/ {on=1; next} /^  [a-z0-9_-]+:/ {on=0} on' "$_t32_wf" | grep -c 'github.base_ref' | sed 's/^[1-9][0-9]*$/1/')"
 assert_eq "tooling: the changes job lists a renamed file by both paths" "2" \
   "$(awk '/^  changes:/ {on=1; next} /^  [a-z0-9_-]+:/ {on=0} on' "$_t32_wf" | grep -c 'git diff --no-renames --name-only')"
+# the steps of verify.sh that cost no model call and little time are steps of a job the gate needs (TESTS-3): each row
+# of done.md names a check, each changed assertion is listed, the four rules of the end to end driver, and the replay
+# against the floor; the two that read only python3 and git run for a change of the docs too (no `if:` on the step)
+assert_eq "tooling: CI runs check_done.py, check_changed_tests.py, the four --check rules and the replay compare in a job the gate needs" "ok" \
+  "$(python3 -I - "$_t32_wf" <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+jobs = text.split("\njobs:\n", 1)[1] if "\njobs:\n" in text else ""
+blocks = {m.group(1): m.group(2) for m in re.finditer(r"^  ([A-Za-z0-9_-]+):\n((?:(?:    .*|\s*)\n)*)", jobs, re.M)}
+m = re.search(r"needs:\s*\[([^\]]*)\]", blocks.get("gate", ""), re.S)
+needs = [x.strip() for x in m.group(1).split(",")] if m else []
+def steps(block):   # the steps of a job, each as its text
+    return re.split(r"\n(?=      - )", block)
+want = ["python3 scripts/check_done.py", "python3 scripts/check_changed_tests.py", "bun scripts/e2e/xfail.ts --check",
+        "bun scripts/e2e/broken.ts --check", "bun scripts/e2e/persons.ts --check", "bun scripts/e2e/loop.ts --check",
+        "bun scripts/e2e/replay.ts final | tail -n 1 | python3 scripts/check_floor.py --replay"]
+bad = []
+for w in want:
+    hit = [(n, st) for n, b in blocks.items() if n in needs for st in steps(b)
+           if re.search(r"^\s+(?:run: )?%s\s*$" % re.escape(w), st, re.M)]
+    if not hit:
+        bad.append("no step of a needed job runs: %s" % w)
+    elif w.startswith("python3") and any("if:" in st for n, st in hit):
+        bad.append("not always: %s" % w)
+    elif "|" in w and not any(re.search(r"^\s+shell: bash\b", st, re.M) for n, st in hit):
+        bad.append("a pipe with no shell: bash (no pipefail): %s" % w)
+    elif any(re.search(r"continue-on-error|\|\| true", st) for n, st in hit):
+        bad.append("a failure is let through: %s" % w)
+print("; ".join(bad) or "ok")
+PY
+)"
 _t32_r="$REPO_ROOT/scripts/selftest/run-selftest.sh"
 assert_eq "tooling: the runner refuses a bad commit and a shard with no value" "2|2" \
   "$(bash "$_t32_r" --touched no-such-commit >/dev/null 2>&1; echo -n "$?|"; bash "$_t32_r" --shard >/dev/null 2>&1; echo "$?")"

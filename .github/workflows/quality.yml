@@ -169,6 +169,16 @@ jobs:
     # the base branch (a push to main: at the commit before the push), so a size that is over its final, recorded for
     # the owner, stays green and cannot grow, and nothing else can pass its final. Once no `now` is above its `final`,
     # both steps take --final.
+    # The records (TESTS-3): every row of done.md names a check that exists (check_done.py) and every changed or
+    # removed assertion is listed (check_changed_tests.py), python3 and git only, always, so a change of the docs
+    # alone is held too. With the long suites: the four rules the end to end driver is built on, each on made up
+    # input (--check), and the replay of the measured run against the floor's replay entry.
+    # What of scripts/verify.sh stays local, and why: ab-replay.sh (it checks out the base 10e965a and replays both
+    # trees, to compare with a column that never changes), and the closing checks of `verify.sh final`
+    # (check_done.py --final, check_caps.py --final, check_floor.py --final, the lines of the bench scorecard, the
+    # form of the summary), which close a build and are red today by design: three caps are above their final and
+    # three lines of the bench are missed, both recorded for the owner. Every other step of verify.sh full is a job
+    # here or a case of the selftest (the fixture compares are in case file 8, the name check in case file 32).
     name: Floor and caps
     needs: changes
     runs-on: ubuntu-latest
@@ -185,6 +195,10 @@ jobs:
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: python3 scripts/check_floor.py --base "$BASE"
+      - name: Every row of done.md names a check that exists
+        run: python3 scripts/check_done.py
+      - name: Every changed or removed assertion is listed
+        run: python3 scripts/check_changed_tests.py
       - uses: oven-sh/setup-bun@v2
         if: needs.changes.outputs.long == 'true'
         with:
@@ -192,6 +206,17 @@ jobs:
       - name: The counts of default-run, full-run and fix in every mode against the floor
         if: needs.changes.outputs.long == 'true'
         run: bun scripts/e2e/run.ts all default-run full-run fix --floor scripts/e2e/floor.json
+      - name: The rules of the end to end driver, on made up input
+        if: needs.changes.outputs.long == 'true'
+        run: |
+          bun scripts/e2e/xfail.ts --check
+          bun scripts/e2e/broken.ts --check
+          bun scripts/e2e/persons.ts --check
+          bun scripts/e2e/loop.ts --check
+      - name: The replay of the measured run against the floor's replay entry
+        if: needs.changes.outputs.long == 'true'
+        shell: bash   # with pipefail, so a replay that fails is not hidden by the pipe
+        run: bun scripts/e2e/replay.ts final | tail -n 1 | python3 scripts/check_floor.py --replay
 
   mod:
     name: Mod (Claude Code 2.1.287)
