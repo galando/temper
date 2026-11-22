@@ -105,12 +105,30 @@ def current(text):
     return bool(head.strip()) and text.split("\n", 1)[0].rstrip() == head.rstrip()
 
 
+def answered():
+    """NEW-FLOW-2: the clone's mark that config.tidy was answered for this version or a later one (notice.py; written
+    by both answers), so an edit of the file's first line or of its upgrade block does not bring the question back."""
+    try:
+        import notice
+        return any(vtuple(v) >= vtuple(defaults.VERSION) for v in notice.shared("config.tidy"))
+    except Exception:
+        return False
+
+
+def _answer(how):
+    try:
+        import notice
+        notice.mark_shared("config.tidy", defaults.VERSION, how.lstrip("-"))
+    except Exception:
+        pass
+
+
 def stale(text, every=False):
     """The lines the question offers to remove, [{path, raw, what}], the four that change a run first; none when the
     config already answered the question of that version (upgrade.asked), or was written from this version's template
     (current: a value the person sets later is theirs, never an old default). every: each such line whatever
     upgrade.asked says, the lines `--apply` removes (step 7 of WP29: a typed call after Keep my file does what it says)."""
-    if not every and current(text):
+    if not every and (current(text) or answered()):
         return []
     asked = () if every else vtuple(config_yaml.get(config_yaml.parse_yaml_subset(text), "upgrade.asked", ""))
     tpl = {p: norm(value(r)) for p, r, _ in leaves(template_text()) if r is not None}
@@ -245,6 +263,7 @@ def tidy(how, config, state_file):
     if how == "--keep":
         with open(config, "a", encoding="utf-8") as f:
             f.write(("" if text.endswith("\n") or not text else "\n") + 'upgrade:\n  asked: "%s"\n' % defaults.VERSION)
+        _answer(how)
         print("OK: kept %s as it is; upgrade.asked is %s, so the question is not asked again" % (config, defaults.VERSION))
         return 0
     found = stale(text, every=True)
@@ -255,6 +274,7 @@ def tidy(how, config, state_file):
     pairs = kept(text)
     with open(config, "w", encoding="utf-8") as f:
         f.write(rewrite(pairs))
+    _answer(how)
     print("OK: removed %d lines (%s); kept your %d (%s); the old file is %s%s" % (
         len(found), ", ".join(x["path"] for x in found) or "none", len(pairs),
         ", ".join(said(*p) for p in pairs) or "none", copy, kept_copy))

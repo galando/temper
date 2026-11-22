@@ -152,6 +152,7 @@ Run files:
 | `.temper/evidence/amendments.json` entry | `{"n", "ts", "kind": "amend" or "patch", "what", "old", "new", "hash_before", "hash_after", "failure", "reopened"}`; a patch before the approval writes none | WP25 | the commit card section `plan_changes` |
 | `run_id`, `plan` of an archived `groups.json`; `kept_from`, and `kept` of a group, in `groups.json` | the plan the archived tasks were built from; the replan `temper group keep` read (once per replan) and what it kept of a group | WP25 | none |
 | `.temper/notice.json` | the one time notice was said | WP31 | none |
+| `temper-marks.json` in the repository's git folder (`git rev-parse --git-common-dir`) | `{"notice": {version: when}, "config.tidy": {version: "apply" or "keep"}}`: the same two marks for every worktree of the clone, read before the config is (`scripts/notice.py` `shared`, `mark_shared`) | the audit's NEW-FLOW-2 | none |
 | `.claude/temper.config.before-9.8.5` | the copy the config question keeps, of a config of 9.8.4 or of the base | WP29 | none |
 
 Files that go: `.temper/preflight.json` and `.temper/setup-tried.json` (WP21), `.temper/check/ahead.json` (WP22).

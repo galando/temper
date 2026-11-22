@@ -50,8 +50,10 @@ on the current code, in a worktree of its own:
 The environment is checked, and the project's suite runs once on the current code, before any agent.
 ```
 
-When the suite already fails there, one question asks before any agent runs: run it again, go on anyway (the failures
-it found are then a recorded skip), or save the run for later. Later limits of time are three times what the suite
+A fault of the environment check (a tool version, a service that does not answer) is one question before any agent
+runs. When the suite already fails on the current code, one question asks as soon as its result is known (nothing
+waits for the suite, so an agent may be at work by then), and always before the approval: run it again, go on anyway
+(the failures it found are then a recorded skip), or save the run for later. Later limits of time are three times what the suite
 took here.
 
 **Intent.** The Intent agent turns your request into `intent.md`: what will be true when the work is done, one

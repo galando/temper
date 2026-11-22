@@ -51,11 +51,14 @@ def version(tool, cwd):
     return lines[0][:200] if lines else "(no version printed, exit %d)" % p.returncode
 
 
-def answers(addr):
+def answers(addr, limit=SERVICE_LIMIT_S):
+    """True when the address takes a connection, False when it refuses one, None when it gave no answer in `limit` s."""
     host, _, port = addr.rpartition(":")
     try:
-        with socket.create_connection((host or "127.0.0.1", int(port)), timeout=SERVICE_LIMIT_S):
+        with socket.create_connection((host or "127.0.0.1", int(port)), timeout=max(0.05, limit)):
             return True
+    except socket.timeout:
+        return None
     except (OSError, ValueError):
         return False
 
@@ -247,10 +250,29 @@ def _major(text):
     return int(m.group(1)) if m else 0
 
 
+COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
+
+
+def file_services(project, ci):
+    """[(name, address, file)] of the database and cache services the project's own files ask for (BLACKBOX-4): those of
+    a compose file in the root that publish a port, then those of the CI file (ci_facts), each on 127.0.0.1 at its
+    published port; one entry a name and one an address. Text reads of files in known places: no docker call, no
+    tree walk."""
+    out = []
+    compose = next((f for f in COMPOSE_FILES if os.path.isfile(os.path.join(project, f))), "")
+    found = [(n, "127.0.0.1:%s" % port, compose) for n, _, port in compose_services(read(os.path.join(project, compose)))] if compose else []
+    for n, addr, f in found + [(n, "127.0.0.1:%s" % port, src) for n, _, port, _, src in ci["services"]]:
+        if not any(n == x[0] or addr == x[1] for x in out):
+            out.append((n, addr, f))
+    return out
+
+
 def stated(project, setup):
     """What the project's own files and the config state it needs: {"java": (N, file) or None, "node": (N, file) or
     None, "tools": [(program, file)], "services": [(name, address, file)]}. Read as propose() reads them; nothing
-    runs."""
+    runs. The services are the config's (`setup.services`) when it names any: they are the person's statement of what
+    must answer here, where a local server may stand in for the CI's. With none named, they are the ones the project's
+    files ask for (file_services)."""
     out = {"java": None, "node": None, "tools": [], "services": []}
 
     def need(key, n, f):
@@ -284,18 +306,22 @@ def stated(project, setup):
         need("node", int(m.group(1)), "package.json")
     cfg = os.path.join(".claude", "temper.config")
     out["tools"] = [(t, cfg) for t in (setup or {}).get("tools") or [] if t]
-    out["services"] = [(n, a, cfg) for n, a in ((setup or {}).get("services") or {}).items()]
+    out["services"] = [(n, a, cfg) for n, a in ((setup or {}).get("services") or {}).items()] or file_services(project, ci)
     return out
 
 
 def needs(project, setup, commands=()):
     """The environment check: (faults, notes, tools). It only reads, and makes one shell call under the setup block
     (limit 5 s) that resolves each program the commands start and the config's tools, and prints the version line of
-    java and node when a file names one; then it connects to each service of the setup block, all at once, 2 s each.
-    A fault is {"kind", "file", "need", "have", "why"}: kind program-missing, tool-version, service-down or
-    setup-line. A shell call over 5 s gives no fault and the note `not checked in 5 s`. `tools` are the version
-    lines, part of the baseline's key."""
+    java and node when a file names one; then it connects to each service, all at once, 2 s each (after the shell call:
+    the setup line may be what starts a service). The whole check is held to 5 s from its start (R6-4): a service gets
+    what the shell call left of them, and one that gave no answer in less than its 2 s is no fault but the note `not
+    checked in 5 s`. A fault is {"kind", "file", "need", "have", "why"}: kind program-missing, tool-version,
+    service-down or setup-line. A shell call over 5 s gives no fault and the note `not checked in 5 s`. `tools` are the
+    version lines, part of the baseline's key."""
     import threading
+    import time
+    deadline = time.monotonic() + NEEDS_LIMIT_S
     st = stated(project, setup)
     faults, notes, tools = [], [], {}
     progs = []   # (program, folder it runs in, the file that names it)
@@ -322,7 +348,9 @@ def needs(project, setup, commands=()):
         lines.append(("(cd %s 2>/dev/null && __w %s %d)" % (shlex.quote(folder), shlex.quote(p), i)) if "/" in p and folder
                      else "__w %s %d" % (shlex.quote(p), i))
     if st["java"]:
-        lines.append('echo "version java $(java -version 2>&1 | head -n 1)"')
+        # R6-1: the JVM's version line, not its first line: with JAVA_TOOL_OPTIONS set it prints `Picked up ...` first
+        lines.append('__j="$(java -version 2>&1)"; echo "version java $(printf \'%s\\n\' "$__j" | grep -m 1 \'version "\' '
+                     '|| printf \'%s\\n\' "$__j" | head -n 1)"')
     if st["node"]:
         lines.append('echo "version node $(node --version 2>&1 | head -n 1)"')
     out, rc = run_env.run_cmd(project, NEEDS_LIMIT_S, ["\n".join(lines)], setup)
@@ -355,20 +383,26 @@ def needs(project, setup, commands=()):
             faults.append({"kind": "tool-version", "file": f, "need": str(n), "have": str(have),
                            "why": "%s needs %s %d; the shell has %s %d" % (f, label, n, label, have)})
     res = {}
+    left = min(SERVICE_LIMIT_S, deadline - time.monotonic())   # what the shell call left of the 5 s
 
     def probe(name, addr):
-        res[name] = answers(addr)
-    threads = [threading.Thread(target=probe, args=(n, a)) for n, a, _ in st["services"]]
+        res[name] = answers(addr, left)
+    threads = [threading.Thread(target=probe, args=(n, a), daemon=True) for n, a, _ in st["services"]]
     for t in threads:
         t.start()
     for t in threads:
-        t.join(SERVICE_LIMIT_S + 1)
+        t.join(max(0.0, deadline - time.monotonic()) if left < SERVICE_LIMIT_S else SERVICE_LIMIT_S + 1)
+    late = []
     for n, a, f in st["services"]:
-        if not res.get(n):
+        if res.get(n) is None and left < SERVICE_LIMIT_S:   # cut short by the 5 s, and no refusal: not known
+            late.append("%s at %s" % (n, a))
+        elif not res.get(n):
             faults.append({"kind": "service-down", "file": f, "need": "%s at %s" % (n, a), "have": "no answer",
                            "why": "the service %s at %s does not answer (%s names it)" % (n, a, f)})
+    if late:
+        notes.append("not checked in 5 s: the service %s" % ", ".join(late))
     if not (st["java"] or st["node"] or st["tools"] or st["services"]):
-        notes.append("the project's files name no tool version and the config names no service")
+        notes.append("the project's files name no tool version and no service, and the config names none")
     return faults, notes, tools
 
 
@@ -426,8 +460,7 @@ def propose(project):
                 facts.append("JDK %d is needed and none was found: install it, then run temper doctor --propose again" % need)
     kinds = set()
     # Docker Compose: the databases and caches the project runs as services, started when docker is there (9.8.5)
-    compose = next((os.path.join(project, f) for f in ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
-                    if os.path.isfile(os.path.join(project, f))), "")
+    compose = next((os.path.join(project, f) for f in COMPOSE_FILES if os.path.isfile(os.path.join(project, f))), "")
     ready = bool(compose) and docker_ready(project)
     if compose and not ready and compose_services(read(compose)):
         facts.append("%s runs database services, and docker does not answer here (no program, or no daemon): they are not "
@@ -612,10 +645,11 @@ def main(argv):
             print("  " + run_env.shown_var(k, v))
         for k in setup["dropped"]:
             print("  left out (credential name): %s" % k)
-    services = setup.get("services") or {}
+    services = stated(project, setup)["services"]   # the config's, else the ones the project's files ask for
     print("Services:" + ("" if services else " none named"))
-    for name, addr in services.items():
-        print("  %s %s: %s" % (name, addr, "answering" if answers(addr) else "not answering"))
+    for name, addr, src in services:
+        print("  %s %s: %s%s" % (name, addr, "answering" if answers(addr) else "not answering",
+                                 "" if src == os.path.join(".claude", "temper.config") else " (%s names it)" % src))
     return 0
 
 

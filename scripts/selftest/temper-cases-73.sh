@@ -21,6 +21,7 @@ _old73() { # _old73 <commit> [sed expression]: a new /temper:temper run at Inten
            # the template of that Temper with the change the expression makes; the old file is kept in .git/old-config-73
   setup
   rm -f .temper/specs/demo/intent.md .temper/specs/demo/tasks.md .temper/view.json
+  rm -f .git/temper-marks.json   # a project of 9.8.4 was never asked: no answer of an earlier check of this file in its clone
   _saved73 "$1" > .claude/temper.config
   [[ -z "${2:-}" ]] || sed -i "$2" .claude/temper.config
   cp .claude/temper.config .git/old-config-73

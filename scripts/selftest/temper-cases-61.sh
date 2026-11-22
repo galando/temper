@@ -196,6 +196,83 @@ assert_eq "w20 environment check: a JDK below the pom's and a closed service are
   'have' if '21' in json.dumps(d.get('env')) else 'no have', 'service' if '127.0.0.1:1' in json.dumps(d.get('env')) else 'no service',
   '%d faults' % len(d.get('env') or [])])")|runs=$(_runs61)|$( (( _t1 - _t0 < 5000000000 )) && echo 'under 5 s' || echo "$(( (_t1 - _t0) / 1000000 )) ms")"
 _clean61
+# R6-1: a JVM told its options by the environment prints `Picked up JAVA_TOOL_OPTIONS: ...` before its version line
+fresh; _clean61; _jdk61; _repo61; _tools61; rm -f .temper/evidence/baseline.json
+printf '#!/bin/sh\necho "Picked up JAVA_TOOL_OPTIONS: -Dfoo=bar" >&2\necho "openjdk version \\"21.0.2\\" 2024-01-16" >&2\n' > .git/bin61/java
+PATH="$WORKDIR/.git/bin61:$PATH" _start61
+assert_eq "w20 environment check: a JVM that prints the JAVA_TOOL_OPTIONS line before its version line is still read as its JDK" \
+  "red|tool-version|backend/pom.xml needs JDK 24; the shell has JDK 21" \
+  "$(_b61 "'|'.join([str(d.get('result')), str(d.get('kind')), '; '.join(str(x.get('why')) for x in d.get('env') or [])])")"
+_clean61
+# R6-4: the whole check is held to 5 s: a setup line that takes 4.5 s leaves a service half a second, and a service
+# whose port takes no connection and refuses none in that time is not known (a note), never a fault after 6.5 s
+fresh; _clean61
+python3 -B - "$REPO_ROOT/scripts" <<'PY' > r64.out 2>&1
+import socket, sys, time
+sys.path.insert(0, sys.argv[1])
+import doctor
+srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(0)
+port = srv.getsockname()[1]
+held = []
+for _ in range(8):   # the queue of a listener that accepts nothing fills, and a later connect hangs
+    c = socket.socket(); c.setblocking(False)
+    try:
+        c.connect(("127.0.0.1", port))
+    except OSError:
+        pass
+    held.append(c)
+time.sleep(0.2)
+t0 = time.monotonic()
+faults, notes, _ = doctor.needs(".", {"run": "sleep 4.5", "env": {}, "services": {"db": "127.0.0.1:%d" % port}, "tools": []}, ["true"])
+took = time.monotonic() - t0
+print("%s|faults=%d|%s" % ("within 5 s" if took < 5.5 else "%.1f s" % took, len(faults),
+                           "note" if any("not checked in 5 s" in n and "db" in n for n in notes) else "no note: %s" % notes))
+t0 = time.monotonic()
+faults, notes, _ = doctor.needs(".", {"run": "", "env": {}, "services": {"db": "127.0.0.1:%d" % port}, "tools": []}, ["true"])
+print("%s|%s" % ("within 5 s" if time.monotonic() - t0 < 5.5 else "late", ",".join(f["kind"] for f in faults)))
+PY
+assert_eq "w20 environment check: a slow setup line and a service that gives no answer end within 5 s, the service not known; with its whole 2 s it is a fault" \
+  "within 5 s|faults=0|note / within 5 s|service-down" "$(paste -sd'/' r64.out | sed 's|/| / |')"
+rm -f r64.out
+_clean61
+# BLACKBOX-4: a service the project's own files ask for (the CI file, a compose file in the root) is checked with no
+# setup block; the services the config names, when it names any, are the whole statement
+_svc61() { # _svc61: result|kind|the faults' why lines of the baseline file after an environment check of this folder
+  _repo61; rm -f .temper/evidence/baseline.json; _start61
+  _b61 "'|'.join([str(d.get('result')), str(d.get('kind')), '; '.join(str(x.get('why')) for x in d.get('env') or [])])"
+}
+fresh; _clean61; _cmd61 "bash pass61.sh"; _scripts61
+printf 'services:\n  db:\n    image: postgres:16\n    ports:\n      - "1:5432"\n' > docker-compose.yml
+_bb4="compose=$(_svc61)"
+rm -f docker-compose.yml; mkdir -p .github/workflows
+printf 'jobs:\n  test:\n    runs-on: ubuntu-latest\n    services:\n      pg:\n        image: postgres:16\n        ports:\n          - 1:5432\n    steps:\n      - run: make test\n' > .github/workflows/ci.yml
+_bb4+=" / ci=$(_svc61)"
+printf 'setup:\n  services:\n    mine: 127.0.0.1:2\n' >> .claude/temper.config
+_bb4+=" / config=$(_svc61)"
+rm -rf .github
+assert_eq "w20 environment check: a service of a root compose file or of the CI file that does not answer is a fault with no setup block; the config's services, when named, are the ones checked" \
+  "compose=red|service-down|the service db at 127.0.0.1:1 does not answer (docker-compose.yml names it) / ci=red|service-down|the service pg at 127.0.0.1:1 does not answer (.github/workflows/ci.yml names it) / config=red|service-down|the service mine at 127.0.0.1:2 does not answer (.claude/temper.config names it)" \
+  "$_bb4"
+_clean61
+# R6-5: a fault of the base that was repaired is no open failure record: a green baseline resolves the base's record
+_fr61() { python3 -B -c "
+import json
+try:
+    f = json.load(open('.temper/evidence/failures.json'))
+except (OSError, ValueError):
+    f = []
+print(','.join('%s %s' % (x.get('kind'), 'open' if x.get('resolved') is None else 'resolved by %s' % (x.get('resolved') or {}).get('by'))
+               for x in f if isinstance(x, dict) and x.get('scope') == 'base') or 'no record')"; }
+fresh; _clean61; _scripts61; _cmd61 "bash pass61.sh"
+printf 'setup:\n  services:\n    db61: 127.0.0.1:1\n' >> .claude/temper.config
+_repo61; rm -f .temper/evidence/baseline.json .temper/evidence/failures.json; _start61
+_r65="red=$(_b61 "d.get('result')"):$(_fr61)"
+sed -i '/^setup:$/,$d' .claude/temper.config; git add -A >/dev/null 2>&1; git commit -q -m 'the service is not needed'
+_start61 --again
+_r65+="|repaired=$(_b61 "d.get('result')"):$(_fr61)"
+assert_eq "w23 a pass resolves: a green baseline after a repaired fault of the base resolves the base's failure record" \
+  "red=red:service-down open|repaired=green:service-down resolved by pass" "$_r65"
+_clean61
 
 # --- w20 three results: green with seconds and coverage, red with its fail lines, unknown with a reason ---
 _suite61 "bash pass61.sh" "bash cov61.sh"; _start61

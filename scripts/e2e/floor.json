@@ -3799,6 +3799,110 @@
     }
    }
   },
+  "upgrade-keep": {
+   "plain": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "commit": 1,
+      "intent": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 7,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "commit": 1,
+      "intent": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 7,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   }
+  },
+  "upgrade-tidy": {
+   "plain": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "commit": 1,
+      "intent": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 7,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   },
+   "mod": {
+    "now": {
+     "dialogs": 3,
+     "by_stage": {
+      "commit": 1,
+      "intent": 1,
+      "plan": 1
+     },
+     "by_kind": {
+      "gate": 3
+     },
+     "launches": {
+      "temper:temper-acceptance": 1,
+      "temper:temper-build-task": 2,
+      "temper:temper-intent": 1,
+      "temper:temper-plan": 1,
+      "temper:temper-review": 1
+     },
+     "launch_total": 6,
+     "auto": 7,
+     "back": 0,
+     "handbacks": 0,
+     "suite_runs": 2
+    }
+   }
+  },
   "vague-run": {
    "plain": {
     "now": {

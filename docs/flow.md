@@ -47,7 +47,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `run` | `{id, step, slug, stage, command, mode}`, or `null` when no run is active |
 | `action` | what to do: `none`, `work`, `ask`, `wait`, `auto`, `broken` (below) |
 | `stage` | the stage the action belongs to |
-| `say` | one sentence for the person. Once, in a project that ran an earlier Temper (`.temper/specs` or `.temper/archive` there, and no `.temper/notice.json`), the first `next` puts the one time notice in front of it, `Temper 9.8.5 asks twice: ...`, and writes that mark; `temper go` keeps it in front of the `say` it prints and in its key `notice`, which the mod's run driver shows when no run is active yet. `temper init` writes the mark for a new project, which is never told |
+| `say` | one sentence for the person. Once, in a project that ran an earlier Temper (`.temper/specs` or `.temper/archive` there, and no `.temper/notice.json`), the first `next` puts the one time notice in front of it, `Temper 9.8.5 asks twice: ...`, and writes that mark; `temper go` keeps it in front of the `say` it prints and in its key `notice`, which the mod's run driver shows when no run is active yet. `temper init` writes the mark for a new project, which is never told. The clone keeps the same mark in `temper-marks.json` in the repository's git folder (the one `git rev-parse --git-common-dir` names), so a new worktree of the clone is not told again, also when the config is not committed; a fresh clone has no such file and is told when its config is not one of 9.8.5 |
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step; 9.8.5: id `run.restart`, kind `resume`, options `start-over` and `cancel` (kind `cancel`) |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
 | `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); 9.8.5: `question` goes to the dialog as it is, so its ids sit beside it in `question_ids`: `{id, kind, options}`, with id `intent.blocking`, kind `blocking`, and each option's `id` in the same order (`choice-1` to `choice-3`, `type`, `carry`), Carry forward with the kind `carry`; `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
@@ -218,7 +218,9 @@ The first question of a `/temper:temper` run at Intent, before the baseline and 
 no usage row of Intent yet), in a run that asks, when the project's config holds a line whose value an earlier template
 shipped (`OLD` of `scripts/defaults.py`) or a key no longer read (`GONE`), no `upgrade.asked` of 9.8.5, and a first
 line that is not the first line of the 9.8.5 template (WP32: what `config init` and `Remove them` write is never asked,
-also when the person later sets a value an old template shipped):
+also when the person later sets a value an old template shipped), and no answer on record in the clone (both answers
+write `config.tidy` into `temper-marks.json` in the repository's git folder, so an edit of the file's first line or of
+its `upgrade` block does not bring the question back in that clone):
 `config.tidy`, header `Temper gate`. Its text counts the lines and says a copy is kept, then names at most eight with
 what changes (the coverage floor, `phases.design`, the five packs and `block-on: [critical]` first) and `and M more`.
 Its two options are one call of the CLI each:
@@ -251,9 +253,15 @@ new run starts one; a step back does not. The call always exits 0 and returns in
   level down that `detect` reads, with `cd <folder> && ` in front (none when two do); else the plan's `**Integration:**`
   line; else none, with the reason. For Maven, `detect` gives `mvn -q verify`.
 - **The environment check** (`doctor.needs`, under 5 s, no suite): the JDK a `pom.xml`, a Gradle file, `.java-version`,
-  `.tool-versions` or the CI names, the Node version of `package.json` or the CI, the config's `setup.tools` and
-  `setup.services`, against one shell call under the setup block (each program the suite command starts must resolve,
-  and the version lines of `java` and `node`) and a connect to each service. A fault (`program-missing`,
+  `.tool-versions` or the CI names, the Node version of `package.json` or the CI, the config's `setup.tools`, and the
+  services: those of the config's `setup.services` when it names any (the person's statement of what must answer
+  here, where a local server may stand in for the CI's), else the database and cache services the project's files ask
+  for (a compose file in the root that publishes a port, the `services` of a GitHub Actions job; text reads, no docker
+  call), each on `127.0.0.1` at its published port; against one shell call under the setup block (each program the suite command starts must resolve,
+  and the version lines of `java` and `node`) and then a connect to each service, 2 s each (after the shell call: the
+  setup line may be what starts one). The whole check is held to 5 s from its start: a service gets what the shell call
+  left of them, and one that neither took nor refused a connection in less than its 2 s is the note `not checked in
+  5 s`, not a fault. A fault (`program-missing`,
   `tool-version`, `service-down`, `setup-line`) names the file that states the need, the need and what the shell has.
 - **The baseline**: the suite once on the current code, in the detached worktree `.claude/worktrees/temper-baseline`
   at HEAD (the place Build uses: no branch, no commit, no project file), in its own process
@@ -275,8 +283,10 @@ a red base; a run that goes on by itself records a stop with its notice, then as
 
 "Go on anyway" is a recorded skip: a row `base-suite` in `.temper/overrides.json` (by the person), the answer in the
 file and in the reuse store under the baseline's key (the base tree, the command, the setup block, the tool versions).
-At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is `pass:
-null, state: skipped`; one new fail line fails it, after the eighth too: the base keeps every fail line it showed, and so
+At Check the row `tests pass` of a failed suite run that shows only the base's fail lines is `pass: null, state:
+skipped`. Two lines are the same when they differ only in a number that stands by itself (a count, a duration, a line
+number) or in an address; a digit in a test's name or in its bracketed id (`test_v2`, `test_add[7]`) is part of the
+line, so a new test named like an old one is a new fail line. One new fail line fails it, after the eighth too: the base keeps every fail line it showed, and so
 does each run of the suite (its ledger row and its entry in the reuse store). At Build the integration suite and a
 group's Validate that fail only as on that base are a recorded skip the same way; a list of exactly eight lines may be
 one cut by an older entry, so it never matches. A base
@@ -652,7 +662,10 @@ question (the Design question is then the approval), and when `may_run_alone()` 
 unless the run is at Plan or Design with that check passed and not skipped, and under `never-unattended`; it records
 the stage in `unattended_from`, which `state set` refuses. A state with `run_mode: autonomous` and no `unattended_from`
 (a run that 9.8.4 approved for Build alone) reads as `interactive`. `state init` stamps `saved_by`; a
-state with none, saved at Review, loses its Review verdict once, so Review runs once more.
+state with none, saved at Review, loses its Review verdict once, so Review runs once more. The limit: a state with
+none saved at Check or at the commit keeps the Review verdict the older Temper gave it (the person answered that
+Review's question there, and its completion row names no file read); Review runs again, under the rule that compares
+the files read with the change, only after a step back to Build.
 
 `Run.armed` is `run_mode: autonomous`, an `unattended_from` other than the stage the run is at, and no `parked`. Then a
 passed Design, Build, group, Review or Check is an `auto` advance. Review: an open finding at a level of

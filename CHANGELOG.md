@@ -47,9 +47,12 @@ number 9.8.5 is the owner's choice.
   still passes and the time spent.
 - **The checks are judged against your project.** A run's first step is the environment check and the baseline
   (`temper baseline start`): the tools and services the project names, then your suite once on the current code, in a
-  worktree of its own. A red base is one question before any agent. A row the CLI could not measure is shown as not
-  measured (`[?]`), never as passed or failed. Coverage may not drop: the changed lines where line data exists, else the
-  total against the base; `check.coverage-threshold` is read only when your config holds it. A time limit is three
+  worktree of its own. The services are the ones your config names under `setup.services`, else the database and cache
+  services a compose file in the root or the CI file asks for. A fault of the environment check is one question before
+  any agent. A red suite is one question as soon as its result is known: nothing waits for the suite, so it is asked
+  before Plan when the suite ends while Intent works, and always before the approval. A row the CLI could not measure
+  is shown as not measured (`[?]`), never as passed or failed. Coverage may not drop: the changed lines where line data
+  exists, else the total against the base; `check.coverage-threshold` is read only when your config holds it. A time limit is three
   times the measured time of the base. The planted bug score is information on the commit card.
 - **A check runs once.** When Build ends the CLI runs the suite with its coverage, the scenario tests and the locked
   acceptance tests once (`temper check build-checks`); Check reuses those runs on the same tree. The same command on
@@ -92,16 +95,19 @@ number 9.8.5 is the owner's choice.
 - **One line, once.** The first `temper next` of a project that has `.temper/specs` or `.temper/archive` and no mark
   says, in front of its `say` and never in a dialog: "Temper 9.8.5 asks twice: before any code is written, and at the
   commit. Pick Ask me at every stage at the first question for the old flow. What changed: docs/getting-started.md."
-  The mark is `.temper/notice.json`; `temper init` writes it for a new project, which is never told.
+  The mark is `.temper/notice.json`; `temper init` writes it for a new project, which is never told. The clone keeps
+  it too (`temper-marks.json` in the repository's git folder), so a new worktree is not told again.
 - **One config question.** The first run of a project whose config is an older template asks `config.tidy` before
   anything else: Remove them (Recommended) drops the lines that only repeat old defaults or are no longer read and keeps
-  a copy as `.claude/temper.config.before-9.8.5`; Keep my file keeps the old values (`upgrade.asked`).
+  a copy as `.claude/temper.config.before-9.8.5`; Keep my file keeps the old values (`upgrade.asked`). The answer
+  is on record in the clone as well, so a later edit of the file does not bring the question back.
   `autonomy.enabled: false` becomes `run.default: ask`. A `block-on: [critical]` reads like the old default: the
   question says high will block too.
 - **A saved run.** A run saved by 9.8.4 is taken up where it was and asks at every stage. A run that came through a door
   keeps `enter` in its state, which is ignored. A planned folder with no run is started from its intent, and its plan
-  is written again. A run saved after its Review has a completion row with no read list: it fails once, and Review
-  runs again.
+  is written again. A run saved at its Review question has a completion row with no read list: it fails once, and
+  Review runs again. A run saved later, at Check or at the commit, keeps the Review verdict 9.8.4 gave it (you answered
+  that Review's question there); Review runs again under the new rule only after a step back to Build.
 - **The installed commit hook.** The setup check asks `temper init` and `temper guards install` once: the list of run
   files git ignores grew, and the hook is written in its current form.
 - **What is gone from your files.** `.temper/metrics.json` and `.temper/review-memory.json` are left where they are;

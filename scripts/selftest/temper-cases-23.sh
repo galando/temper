@@ -23,6 +23,24 @@ assert_eq "9.8.5 setup (U18): an unquoted number of setup.env reaches the comman
 assert_eq "9.8.5 setup (U18): mask hides a URL's password and a PW or PWD name, a display rule only" \
   "DATABASE_URL=postgres://u:<left out>@h/db MY_PW=<left out> DB_PWD=<left out> PWD=/w OLDPWD=/o psql https://u:<left out>@h:5432 https://u@h PWM=1|zzz" \
   "$(_re x "import os; os.environ['MY_PW'] = 'zzz'; print(run_env.mask('DATABASE_URL=postgres://u:secret@h/db MY_PW=zzz DB_PWD=y PWD=/w OLDPWD=/o psql https://u:p4ss@h:5432 https://u@h PWM=1') + '|' + run_env.test_env().get('MY_PW', 'gone'))")"
+# NEW-FLOW-5, R0-R1-4: the shapes U18 left shown, one line each. A display rule still: no masker is complete (a flag
+# such as -psecret and a key of no known shape under a plain name are still shown; docs/commands.md says so).
+_mk() { _re x "print(run_env.mask(sys.argv[2]))" "$1"; }
+assert_eq "9.8.5 setup (U18): mask hides a name with PASS as a whole part, and no name that only holds the letters" \
+  "DB_PASS=<left out> SMTP_PASS=<left out> PASS=<left out> COMPASS=n PASSENGER=2" "$(_mk 'DB_PASS=hunter2 SMTP_PASS=s3cret PASS=x COMPASS=n PASSENGER=2')"
+assert_eq "9.8.5 setup (U18): mask hides a URL's password up to the last @ before the host, and leaves a URL with a port and no user" \
+  "DATABASE_URL=postgres://u:<left out>@h/db curl https://h:8080/p?mail=a@b.c" "$(_mk 'DATABASE_URL=postgres://u:p@ss@h/db curl https://h:8080/p?mail=a@b.c')"
+assert_eq "9.8.5 setup (U18): mask hides a secret key inside a value, after ? or & (a JDBC URL)" \
+  "JDBC_URL=jdbc:postgresql://h/db?user=app&password=<left out>|jdbc:postgresql://h/db?password=<left out>" \
+  "$(_re x "print(run_env.shown_var('JDBC_URL', 'jdbc:postgresql://h/db?user=app&password=hunter2') + '|' + run_env.mask('jdbc:postgresql://h/db?password=hunter2&user=app'))")"
+assert_eq "9.8.5 setup (U18): mask hides a secret key inside a value, after ; (a connection string, a second assignment of a run line)" \
+  "CONN=Server=h;User=u;Password=<left out>;Pwd=<left out>;|export A=1;TOKEN=<left out> go" \
+  "$(_re x "print(run_env.shown_var('CONN', 'Server=h;User=u;Password=hunter2;Pwd=hunter3;') + '|' + run_env.mask('export A=1;TOKEN=abc go'))")"
+assert_eq "9.8.5 setup (U18): mask hides a value of a well known key shape under a plain name" \
+  "export API=<left out> GH=<left out> AWS=<left out> SKU=sk-1" "$(_mk 'export API=sk-live-abcdef0123456789 GH=ghp_abcdefghijklmnopqrstuvwxyz0123456789 AWS=AKIAABCDEFGHIJKLMNOP SKU=sk-1')"
+printf '    PYTHON_VERSION: 3.10\n    BUILD_ID: 007\n' >> .claude/temper.config   # two more lines of the setup block's env
+assert_eq "9.8.5 setup (U18): config get prints a value of setup.env as the file writes it (3.10, not 3.1)" "3.10|007|5433" \
+  "$("$TEMPER" config get setup.env.PYTHON_VERSION 2>&1)|$("$TEMPER" config get setup.env.BUILD_ID 2>&1)|$("$TEMPER" config get setup.env.IT_POSTGRES_PORT 2>&1)"
 # WP21: the two keys of the plan gate's old per command check are gone from the template (the pattern is spelled so that
 # the grep of the package's "Done when" does not find it here)
 assert_eq "9.8.5 setup (WP21): the config template documents the setup block, and neither key of the old plan check" "setup=1|old keys=0" \

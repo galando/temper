@@ -178,11 +178,18 @@ def load_setup(config=None):
             'dropped': dropped}
 
 
-# U18: what is shown also hides a name with PW or PWD as a whole part (MY_PW, DB_PWD; the shell's own PWD is a folder), and
-# the password of a URL's user info in any value (scheme://user:SECRET@host keeps the user and the host). A display rule
-# only: test_env and load_setup leave out by CREDENTIAL_NAME alone, so a command receives what it received before.
-SHOWN_SECRET = re.compile(r'(?:^|_)PWD?(?:_|$)')
-URL_PASSWORD = re.compile(r'\b([A-Za-z][A-Za-z0-9+.-]*://[^\s/:@]*:)[^\s/@]+@')
+# U18: what is shown also hides a name with PW, PWD or PASS as a whole part (MY_PW, DB_PWD, DB_PASS; the shell's own PWD
+# is a folder), and the password of a URL's user info in any value (scheme://user:SECRET@host keeps the user and the
+# host; the password runs to the last @ before the host, so one that holds an @ is hidden whole). A secret key inside a
+# value, after `;`, `&` or `?` (a connection string, a JDBC URL, a second assignment of the run line), and a value of a
+# well known key shape under any name are hidden too (NEW-FLOW-5, R0-R1-4). A display rule only: test_env and
+# load_setup leave out by CREDENTIAL_NAME alone, so a command receives what it received before. No masker is complete:
+# a flag that holds a password (`-psecret`) and a key of no known shape under a plain name are still shown.
+SHOWN_SECRET = re.compile(r'(?:^|_)(?:PWD?|PASS)(?:_|$)')
+URL_PASSWORD = re.compile(r'\b([A-Za-z][A-Za-z0-9+.-]*://[^\s/:@]*:)[^\s/]+@')
+INNER_KEY = re.compile(r'([;&?])([A-Za-z_]\w*)=([^;&\s]*)')
+KEY_VALUE = re.compile(r'\b(?:(?:sk|pk|rk)[-_][A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|AKIA[0-9A-Z]{16}'
+                       r'|xox[abprs]-[A-Za-z0-9-]{10,})')
 
 
 def shown_secret(name):
@@ -191,12 +198,17 @@ def shown_secret(name):
 
 def mask(text):
     """The run line (or a line of the block) as shown to an agent or a person: a NAME=value (or a line NAME: value) whose
-    NAME is a credential, or has PW or PWD as a part, reads NAME=<left out>; a URL's password reads <left out>."""
+    NAME is a credential, or has PW, PWD or PASS as a part, reads NAME=<left out>, also inside a value after `;`, `&` or
+    `?`; a URL's password and a value of a well known key shape read <left out>."""
     text = re.sub(r'^(\s*([A-Za-z_]\w*): ).+$', lambda m: m.group(1) + '<left out>' if shown_secret(m.group(2)) else m.group(0),
                   text or '', flags=re.M)
-    text = re.sub(r'\b([A-Za-z_]\w*)=(\S+)', lambda m: m.group(1) + '=<left out>' if shown_secret(m.group(1)) else m.group(0),
-                  text)
-    return URL_PASSWORD.sub(lambda m: m.group(1) + '<left out>@', text)
+    def inner(value):   # inside a value Pwd is a password, never the shell's folder
+        return INNER_KEY.sub(lambda m: m.group(1) + m.group(2) + '=<left out>'
+                             if shown_secret(m.group(2)) or m.group(2).upper() == 'PWD' else m.group(0), value)
+    text = re.sub(r'\b([A-Za-z_]\w*)=(\S+)',
+                  lambda m: m.group(1) + '=' + ('<left out>' if shown_secret(m.group(1)) else inner(m.group(2))), text)
+    text = URL_PASSWORD.sub(lambda m: m.group(1) + '<left out>@', text)
+    return KEY_VALUE.sub('<left out>', text)
 
 
 def shown_var(name, value):

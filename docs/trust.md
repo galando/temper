@@ -55,6 +55,9 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   that setting and prints a path-free line for your hook, with a hint; 9.6.5's line still counts. After a move of the
   repository, the next `/temper` points the setting at the new place. Unset it before adding the pre-commit framework
   or lefthook. To remove, unset it, drop any Temper line, delete `temper-gate` and any 9.6.5 `temper-pre-commit`.
+  The same git folder holds one more file of Temper's, `temper-marks.json`: that the one time notice of 9.8.5 was
+  said and how the one time config question was answered, so that no worktree of the clone meets either again. It
+  decides no gate; delete it and both may come once more.
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
   or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence. A grouped
   Build runs each task's declared test command in its worktree, the way your shell would, but without the

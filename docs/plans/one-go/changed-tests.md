@@ -590,3 +590,5 @@ The table goes on in `changed-tests-2.md` (256 KiB limit); new lines go to the l
 | `F8: the pass runs once per round: the next call asks the gate question` | `scripts/selftest/temper-cases-11.sh` | removed | step 8 | WP27 |
 | `after Revise the plan the Plan agent runs with the findings to answer` | `scripts/selftest/temper-cases-14.sh` | replaced by `after Revise the plan the revise agent runs with the findings to answer` (the revise type, the item `Finding #6 [high]: ...`) | row D24: a revision is the revise agent's | WP27 |
 | `Fresh review findings to answer` | `scripts/e2e/scenarios.ts` | `fresh-review`: one planner and one revise launch, the finding whole, `Affected tasks: 2` | row D24 | WP27 |
+| `D13 the first question names the service, the database (${idOf(ask)}: ${text.slice(0, 160)})` | `scripts/e2e/broken.ts` | the service in the fault sentence | BLACKBOX-4 | audit |
+| `D60` | `docs/plans/one-go/done.md` | saved at Review; what case 46 proves | R7-2, R7-4 | audit |
