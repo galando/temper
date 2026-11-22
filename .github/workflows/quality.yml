@@ -141,7 +141,8 @@ jobs:
     # without the mod (plain), with the mod's rule engine guarding every call (mod), and carried by the mod's run
     # driver (driver); a scenario fails when the flow with the mod differs from the flow without it. The pyjokes scenarios
     # (scripts/e2e/pyjokes.ts) replay the faults of 9.8.4 on a second mock project. Four shards side by side; every mode
-    # of a scenario stays in one shard, because the compare reads two traces of one process.
+    # of a scenario stays in one shard, because the compare reads two traces of one process. Each shard compares the
+    # counts of its scenarios with the `now` values of scripts/e2e/floor.json, so a count that moved fails here.
     name: End to end (shard ${{ matrix.shard }} of 4)
     needs: changes
     if: needs.changes.outputs.long == 'true'
@@ -157,13 +158,17 @@ jobs:
         with:
           bun-version: 1.4.4   # the version the scenarios were run with
       - name: Run the scenarios of this shard in every mode
-        run: bun scripts/e2e/run.ts all --shard ${{ matrix.shard }}/4
+        run: bun scripts/e2e/run.ts all --shard ${{ matrix.shard }}/4 --floor scripts/e2e/floor.json
 
   floor-and-caps:
     # What keeps the product from growing back (9.8.5). The caps: each `now` of scripts/caps.json equals its measure and
     # no `final` was raised (python3 and git only, always). The floor: the counts of the scripted default run, the full
     # run and a fix run in every mode (dialogs, launches by agent type, the CLI's own steps, steps back, hand backs,
     # suite runs) equal the `now` values of scripts/e2e/floor.json, and no `final` there was raised.
+    # The bound: in both files a `now` above its `final` fails when it is also above its value at the merge base with
+    # the base branch (a push to main: at the commit before the push), so a size that is over its final, recorded for
+    # the owner, stays green and cannot grow, and nothing else can pass its final. Once no `now` is above its `final`,
+    # both steps take --final.
     name: Floor and caps
     needs: changes
     runs-on: ubuntu-latest
@@ -171,11 +176,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # a final is held against its first committed value, read from the history of the file
+          fetch-depth: 0   # a final is held against its first committed value, a now against the merge base
       - name: The caps
-        run: python3 scripts/check_caps.py
-      - name: The floor's shape, and no final raised
-        run: python3 scripts/check_floor.py
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: python3 scripts/check_caps.py --base "$BASE"
+      - name: The floor's shape, no final raised, and no now above its final that grew
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: python3 scripts/check_floor.py --base "$BASE"
       - uses: oven-sh/setup-bun@v2
         if: needs.changes.outputs.long == 'true'
         with:

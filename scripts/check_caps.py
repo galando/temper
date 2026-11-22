@@ -10,9 +10,13 @@ docs/plans/one-go/done.md (row D108 for `readme_lines`). Three rules:
      the file in git; a key no commit holds yet is exempt): a rule that read only the file as it is would be passed by
      the very commit that raises a value. A removed bound is a raised one: a final of that first commit that the file
      no longer holds (its key deleted), or holds as no number (null), fails too;
-  3. with --final, no `now` is above its `final`.
+  3. no `now` above its `final` is also above its value in the earlier version of the file (scripts/growth_base.py:
+     the file at the merge base with the main branch, or with --base REV; when that cannot be read, a line says so
+     and the previous committed version of the file stands in, and with none the rule passes): an overrun recorded
+     for the owner stays green and cannot grow, and a new cap does not start above its final;
+  4. with --final, no `now` is above its `final` at all (rule 3 is then left out).
 
-  python3 scripts/check_caps.py [--final] [--caps FILE]
+  python3 scripts/check_caps.py [--final] [--base REV] [--caps FILE]
 
 FILE defaults to scripts/caps.json; the measure is always of the plugin folder this script sits in. Each cap's line
 also gives the same measure taken on the base 10e965a (git show of that commit; "not found" when the history lacks it),
@@ -332,21 +336,24 @@ def first_values(path):
 
 
 def main(argv):
-    path, final = CAPS, False
+    path, final, base_rev = CAPS, False, None
     i = 0
     while i < len(argv):
         if argv[i] == "--final":
             final = True
-        elif argv[i] == "--caps" and i + 1 < len(argv):
-            path = argv[i + 1]
+        elif argv[i] in ("--caps", "--base") and i + 1 < len(argv):
+            if argv[i] == "--caps":
+                path = argv[i + 1]
+            else:
+                base_rev = argv[i + 1]
             i += 1
         else:
-            print("check_caps.py: unknown argument %s (python3 scripts/check_caps.py [--final] [--caps FILE])" % argv[i], file=sys.stderr)
+            print("check_caps.py: unknown argument %s (python3 scripts/check_caps.py [--final] [--base REV] [--caps FILE])" % argv[i], file=sys.stderr)
             return 2
         i += 1
     with open(path, encoding="utf-8") as f:
         doc = json.load(f)
-    problems, report = [], []
+    problems, report, over = [], [], []
     caps = doc.get("caps") or {}
     for k, c in sorted(caps.items()):
         fn = MEASURES.get(k)
@@ -366,11 +373,27 @@ def main(argv):
             problems.append("%s: the measure is %d, the file says now %d (set now to the measure in this commit)" % (k, got, c["now"]))
         if final and c["now"] > c["final"]:
             problems.append("%s: now %d is above its final %d" % (k, c["now"], c["final"]))
+        elif c["now"] > c["final"]:
+            over.append(k)
     for k in sorted(set(MEASURES) - set(caps)):
         problems.append("%s: measured here, and the file holds no cap for it" % k)
     problems += raised(finals(doc), first_values(path))
     for line in report:
         print(line)
+    if over:   # rule 3: a now above its final may not be above its earlier value
+        sys.path.insert(0, HERE)   # python3 -I leaves the script's folder off the path
+        import growth_base
+        old, where, note = growth_base.earlier(path, base_rev)
+        if note:
+            print("caps: %s" % note)
+        for k in over if old is not None else []:
+            was = ((old.get("caps") or {}).get(k) or {}).get("now") if isinstance((old.get("caps") or {}).get(k), dict) else None
+            if type(was) is not int:
+                problems.append("%s: now %d is above its final %d, and the file %s holds no now for it (a new cap "
+                                "does not start above its final)" % (k, caps[k]["now"], caps[k]["final"], where))
+            elif caps[k]["now"] > was:
+                problems.append("%s: now %d is above its final %d and above its value %d %s (a size above its final "
+                                "may not grow)" % (k, caps[k]["now"], caps[k]["final"], was, where))
     for p in problems:
         print("FAIL caps: %s" % p)
     if not problems:

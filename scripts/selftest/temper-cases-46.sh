@@ -699,16 +699,39 @@ PY
 )"
 
 # --- D79a, D79b: what keeps the product from growing back ---
-assert_eq "D79a CI runs the caps and the floor in a job that the gate job needs" "ok" "$(python3 -I - "$REPO_ROOT/.github/workflows/quality.yml" <<'PY'
+# the job holds the bound (R0-R1-3, TESTS-1, DEVIATIONS-3): each of the two scripts is a command of a step, in the mode
+# that fails a now above its final that grew (no flag but --base, case 41) or in --final; the job has the whole history,
+# which both rules read; and every end to end shard compares its counts with the floor
+assert_eq "D79a CI runs the caps and the floor in a job that the gate job needs, in a mode that holds the bound, and each end to end shard compares the floor" "ok" "$(python3 -I - "$REPO_ROOT/.github/workflows/quality.yml" <<'PY'
 import re, sys
 text = open(sys.argv[1], encoding="utf-8").read()
 jobs = text.split("\njobs:\n", 1)[1] if "\njobs:\n" in text else ""
 blocks = {m.group(1): m.group(2) for m in re.finditer(r"^  ([A-Za-z0-9_-]+):\n((?:(?:    .*|\s*)\n)*)", jobs, re.M)}
-fc = [n for n, b in blocks.items() if "scripts/check_caps.py" in b and "scripts/check_floor.py" in b]
+def runs(block, script):   # the arguments of each step that runs the script
+    return [m.group(1).split() for m in re.finditer(r"^\s+run: python3 %s(.*)$" % re.escape(script), block, re.M)]
+def holds(args):   # --final, or the default mode with nothing but a base to compare with
+    return args == ["--final"] or args == [] or (len(args) == 2 and args[0] == "--base")
+fc = [n for n, b in blocks.items() if runs(b, "scripts/check_caps.py") and runs(b, "scripts/check_floor.py")]
 gate = blocks.get("gate", "")
 m = re.search(r"needs:\s*\[([^\]]*)\]", gate, re.S)
 needs = [x.strip() for x in m.group(1).split(",")] if m else []
-print("ok" if fc and any(n in needs for n in fc) else "jobs %s, gate needs %s" % (fc, needs))
+bad = []
+if not (fc and any(n in needs for n in fc)):
+    bad.append("jobs %s, gate needs %s" % (fc, needs))
+for n in fc:
+    b = blocks[n]
+    if not all(holds(a) for s in ("scripts/check_caps.py", "scripts/check_floor.py") for a in runs(b, s)):
+        bad.append("%s: a step runs a script in a mode that holds no bound" % n)
+    if not re.search(r"^\s+fetch-depth: 0\b", b, re.M):
+        bad.append("%s: no fetch-depth: 0" % n)
+    if re.search(r"continue-on-error|\|\| true", b):
+        bad.append("%s: a failure is let through" % n)
+shards = re.findall(r"^\s+run: (bun scripts/e2e/run\.ts all --shard .*)$", jobs, re.M)
+if not shards or [x for x in shards if "--floor scripts/e2e/floor.json" not in x.split("#")[0]]:
+    bad.append("an end to end shard does not compare the floor: %s" % shards)
+if "e2e" not in needs:
+    bad.append("the gate does not need the end to end job")
+print("; ".join(bad) or "ok")
 PY
 )"
 assert_eq "D79b .claude/CLAUDE.md holds the two standing rules: a failing step shown not removable first, and a cap raised alone" \
