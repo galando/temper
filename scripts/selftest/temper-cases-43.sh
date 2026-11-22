@@ -199,6 +199,16 @@ _c43_commit "$_c43/root" "a final raised to match the table"
 r2="$(_c43_done --final)|$(grep -c 'D75b: scripts/caps.json things: the final 6 is above 5, its value in the commit that first added it' "$_c43/done.out")"
 assert_eq "done: the final mode compares each final with the number of done.md" "0|1|1 1|1" "$r1 $r2"
 
+# a caps row whose now is above its final is never ok (R0-R1-2, DEVIATIONS-2): open with both numbers, and in the final
+# mode failing; at its final it is ok again
+_c43_root
+printf '%s\n' '{"version": 1, "caps": {"things": {"now": 6, "final": 5}}}' > "$_c43/root/scripts/caps.json"
+r1="$(_c43_done)|$(grep -c '^D02 open (caps things: now 6 is above its final 5)$' "$_c43/done.out")|$(grep -c '^D02 ok' "$_c43/done.out")"
+r2="$(_c43_done --final)|$(grep -c '^D02 FAIL: caps things: now 6 is above its final 5$' "$_c43/done.out")|$(grep -c '^D02 ok' "$_c43/done.out")"
+printf '%s\n' '{"version": 1, "caps": {"things": {"now": 5, "final": 5}}}' > "$_c43/root/scripts/caps.json"
+assert_eq "done: a caps row whose now is above its final is open, and failing in the final mode, never ok" "0|1|0 1|1|0 0|1" \
+  "$r1 $r2 $(_c43_done --final)|$(grep -c '^D02 ok' "$_c43/done.out")"
+
 # D105: every scenario of the three files calls the shared assert (twoDown reaches it through a function it calls)
 _c43_root
 sed -i 's/^  worldCheck(w)$/  void w/' "$_c43/root/scripts/e2e/accept.ts"

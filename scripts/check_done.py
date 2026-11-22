@@ -43,8 +43,8 @@ of part 3 is a table row whose first cell is the id, and its state is a cell tha
 `built and not proven` or `not built`.
 
 It prints one line a row: the id and `ok`, `expected to fail` (a check of the row is on the list) or `open` (the row
-needs a model or a person, or a `final` it names is not written yet), or `FAIL` with what is missing; then the count of
-the list. Python 3 and git only. Exit 0 when every rule holds, else 1 (2 for a wrong call).
+needs a model or a person, a `final` it names is not written yet, or a cap it names has its `now` above its `final`:
+such a row is never `ok`, and with `--final` it fails), or `FAIL` with what is missing; then the count of the list. Python 3 and git only. Exit 0 when every rule holds, else 1 (2 for a wrong call).
 """
 import json
 import os
@@ -702,6 +702,12 @@ def main(argv):
                     listed = True
             elif it["kind"] in ("floor", "caps") and it["value"] is not None and not final_keys(it):
                 opened.append("%s %s has no final yet" % (it["kind"], " ".join(it["words"])))
+            elif it["kind"] == "caps" and it["value"] is not None:
+                # a cap whose now is above its final is never ok: the row is open, and in the final mode it fails
+                c = (caps_doc.get("caps") or {}).get(" ".join(it["words"])) if isinstance(caps_doc, dict) else None
+                now, cap = (c.get("now"), c.get("final")) if isinstance(c, dict) else (None, None)
+                if type(now) is int and type(cap) is int and now > cap:
+                    (missing if final else opened).append("caps %s: now %d is above its final %d" % (" ".join(it["words"]), now, cap))
         if nomodel == "yes" and not items:
             missing.append("the row needs no model and names no check")
         if rid in RULE_ROWS and not any(it["kind"] == "case" or (it["kind"] == "scenario" and "plain" in it["modes"])
