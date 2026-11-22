@@ -139,12 +139,21 @@ number 9.8.5 is the owner's choice.
 - Every scenario of the floor holds its counts of dialogs, launches, steps back, hand backs and suite runs exactly, and
   a `final` is never raised.
 
-**What is a target, not measured here**
+**Measured with a real model** (`docs/evidence/bench-9.8.5.md`, scorecard `docs/evidence/scorecard-9.8.5.json`; six
+tasks, three runs each, graded by tests no run sees)
 
-- The cost and the time of a run with a real model against plain Claude Code. This release ships no new figure; the
-  earlier measurements are in `docs/evidence/bench-2026-11.md`.
-- Fewer launches of the front for a request that leaves nothing open, and the planner on a cheaper model: both wait
-  for a bench round.
+| | Cost a run | Seconds a run | Dialogs (median) | Hidden tests passed |
+|---|---|---|---|---|
+| plain Claude Code | 0.39 dollars | 71 | 0 | 0.948 |
+| the code before this release | 2.44 dollars | 545 | 13 | 0.906 |
+| this release | 1.30 dollars | 358 | 5 | 1.0 |
+
+- Against plain Claude Code a run costs 1.7 times (a bug) to 4.0 times (a clear feature) as much and takes 3.2 to 5.9
+  times as long; the lines of the plan (1.5 and 2.5 times for a bug, 2 and 4.5 times for a clear feature) are missed.
+- The planner stays on Opus: with Sonnet below risk H a run cost 0.82 dollars, but its code passed 0.901 of the hidden
+  tests, below this release's 1.0.
+- These runs are the run with a real model of this release: all 18 runs of the release round ended at the commit.
+- Fewer launches of the front for a request that leaves nothing open is still a target.
 
 **What keeps it from growing back.** `scripts/caps.json` holds the growth caps (question and option sites, option
 labels, question ids, gate rows, briefs, listed commands and skills, config lines, prompt bytes, `cli_bytes`, README

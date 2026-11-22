@@ -39,7 +39,7 @@ Intent, Plan, Build, Review, Check
 - **The second question** is the commit, with everything a rule decided since the approval. A red gate blocks
   `git commit`. A trivial request ends with no question: its one change is yours to commit.
 
-**Cost and time:** a run costs more and is slower than plain Claude Code ([the bench](docs/evidence/bench-2026-11.md)).
+**Cost and time:** 1.7 to 4x the cost and 3 to 6x the time of plain Claude Code: docs/evidence/scorecard-9.8.5.json
 
 ## What the mod reads and writes
 

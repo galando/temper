@@ -1,0 +1,1034 @@
+{
+ "arm": "b/temper",
+ "before": "a/temper",
+ "blocks": {
+  "a/temper": {
+   "all": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "clean_handed_back": 6,
+    "cost": {
+     "max": 4.7296,
+     "mean": 2.438,
+     "median": 2.7226,
+     "min": 0.406,
+     "n": 18
+    },
+    "dialogs": {
+     "max": 60,
+     "mean": 16.7222,
+     "median": 13.0,
+     "min": 4,
+     "n": 18
+    },
+    "dialogs_over": 18,
+    "first_review_high": {
+     "max": 1,
+     "mean": 0.5,
+     "median": 0.5,
+     "min": 0,
+     "n": 2
+    },
+    "hidden_rate": 0.9061,
+    "launches": {
+     "temper:temper-acceptance": 16,
+     "temper:temper-build": 18,
+     "temper:temper-build-task": 14,
+     "temper:temper-check": 9,
+     "temper:temper-design": 18,
+     "temper:temper-fix": 28,
+     "temper:temper-intent": 12,
+     "temper:temper-plan": 22,
+     "temper:temper-rca": 6,
+     "temper:temper-review": 29
+    },
+    "rules_met": 1.0,
+    "runs": 18,
+    "steps_back": {
+     "max": 1,
+     "mean": 0.5556,
+     "median": 1.0,
+     "min": 0,
+     "n": 18
+    },
+    "two_reviews_share": 0.4444,
+    "wall": {
+     "max": 1222,
+     "mean": 545,
+     "median": 596.5,
+     "min": 83,
+     "n": 18
+    }
+   },
+   "bug": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 3,
+    "cost": {
+     "max": 2.0236,
+     "mean": 0.9354,
+     "median": 0.718,
+     "min": 0.406,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 60,
+     "mean": 17.6667,
+     "median": 7.0,
+     "min": 4,
+     "n": 6
+    },
+    "dialogs_over": 6,
+    "first_review_high": {
+     "max": 0,
+     "mean": 0,
+     "median": 0,
+     "min": 0,
+     "n": 1
+    },
+    "hidden_rate": 1.0,
+    "launches": {
+     "temper:temper-fix": 28,
+     "temper:temper-rca": 6,
+     "temper:temper-review": 8
+    },
+    "rules_met": null,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.1667,
+    "wall": {
+     "max": 533,
+     "mean": 225,
+     "median": 168.0,
+     "min": 83,
+     "n": 6
+    }
+   },
+   "clear": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 1,
+    "cost": {
+     "max": 3.2359,
+     "mean": 2.8201,
+     "median": 2.9441,
+     "min": 2.1072,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 19,
+     "mean": 13.6667,
+     "median": 12.5,
+     "min": 10,
+     "n": 6
+    },
+    "dialogs_over": 6,
+    "first_review_high": null,
+    "hidden_rate": 0.8198,
+    "launches": {
+     "temper:temper-acceptance": 6,
+     "temper:temper-build": 7,
+     "temper:temper-build-task": 8,
+     "temper:temper-check": 2,
+     "temper:temper-design": 8,
+     "temper:temper-intent": 6,
+     "temper:temper-plan": 10,
+     "temper:temper-review": 10
+    },
+    "rules_met": null,
+    "runs": 6,
+    "steps_back": {
+     "max": 1,
+     "mean": 0.6667,
+     "median": 1.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.6667,
+    "wall": {
+     "max": 731,
+     "mean": 629.3333,
+     "median": 631.5,
+     "min": 508,
+     "n": 6
+    }
+   },
+   "commits": [
+    "10e965a71c66ef3d9868fc93acd760825209f47c"
+   ],
+   "vague": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 2,
+    "cost": {
+     "max": 4.7296,
+     "mean": 3.5586,
+     "median": 3.3452,
+     "min": 2.5102,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 34,
+     "mean": 18.8333,
+     "median": 15.0,
+     "min": 13,
+     "n": 6
+    },
+    "dialogs_over": 6,
+    "first_review_high": {
+     "max": 1,
+     "mean": 1,
+     "median": 1,
+     "min": 1,
+     "n": 1
+    },
+    "hidden_rate": 1.0,
+    "launches": {
+     "temper:temper-acceptance": 10,
+     "temper:temper-build": 11,
+     "temper:temper-build-task": 6,
+     "temper:temper-check": 7,
+     "temper:temper-design": 10,
+     "temper:temper-intent": 6,
+     "temper:temper-plan": 12,
+     "temper:temper-review": 11
+    },
+    "rules_met": 1.0,
+    "runs": 6,
+    "steps_back": {
+     "max": 1,
+     "mean": 1,
+     "median": 1.0,
+     "min": 1,
+     "n": 6
+    },
+    "two_reviews_share": 0.5,
+    "wall": {
+     "max": 1222,
+     "mean": 780.6667,
+     "median": 689.5,
+     "min": 533,
+     "n": 6
+    }
+   }
+  },
+  "a/vanilla": {
+   "all": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 0.5619,
+     "mean": 0.3933,
+     "median": 0.3999,
+     "min": 0.218,
+     "n": 18
+    },
+    "dialogs": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "dialogs_over": 0,
+    "first_review_high": null,
+    "hidden_rate": 0.9484,
+    "launches": {},
+    "rules_met": 0.7576,
+    "runs": 18,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 120,
+     "mean": 70.9444,
+     "median": 73.5,
+     "min": 28,
+     "n": 18
+    }
+   },
+   "bug": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 0.4336,
+     "mean": 0.2814,
+     "median": 0.2609,
+     "min": 0.218,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "dialogs_over": 0,
+    "first_review_high": null,
+    "hidden_rate": 1.0,
+    "launches": {},
+    "rules_met": null,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 42,
+     "mean": 34.6667,
+     "median": 34.0,
+     "min": 28,
+     "n": 6
+    }
+   },
+   "clear": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 0.5097,
+     "mean": 0.4052,
+     "median": 0.4099,
+     "min": 0.2701,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "dialogs_over": 0,
+    "first_review_high": null,
+    "hidden_rate": 1.0,
+    "launches": {},
+    "rules_met": null,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 90,
+     "mean": 75.3333,
+     "median": 76.0,
+     "min": 58,
+     "n": 6
+    }
+   },
+   "commits": [
+    "10e965a71c66ef3d9868fc93acd760825209f47c"
+   ],
+   "vague": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 0.5619,
+     "mean": 0.4933,
+     "median": 0.5214,
+     "min": 0.3919,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "dialogs_over": 0,
+    "first_review_high": null,
+    "hidden_rate": 0.8472,
+    "launches": {},
+    "rules_met": 0.7576,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 120,
+     "mean": 102.8333,
+     "median": 106.5,
+     "min": 81,
+     "n": 6
+    }
+   }
+  },
+  "b/temper": {
+   "all": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 2.2961,
+     "mean": 1.2959,
+     "median": 1.4979,
+     "min": 0.366,
+     "n": 18
+    },
+    "dialogs": {
+     "max": 13,
+     "mean": 5,
+     "median": 5.0,
+     "min": 2,
+     "n": 18
+    },
+    "dialogs_over": 12,
+    "first_review_high": {
+     "max": 1,
+     "mean": 0.1667,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "hidden_rate": 1.0,
+    "launches": {
+     "temper:temper-acceptance": 14,
+     "temper:temper-build": 13,
+     "temper:temper-build-task": 12,
+     "temper:temper-fix": 6,
+     "temper:temper-intent": 12,
+     "temper:temper-plan": 12,
+     "temper:temper-plan-review": 52,
+     "temper:temper-plan-revise": 13,
+     "temper:temper-rca": 6,
+     "temper:temper-review": 25
+    },
+    "rules_met": 1.0,
+    "runs": 18,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "two_reviews_share": 0.2222,
+    "wall": {
+     "max": 718,
+     "mean": 357.6111,
+     "median": 434.0,
+     "min": 86,
+     "n": 18
+    }
+   },
+   "bug": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 0.5619,
+     "mean": 0.4731,
+     "median": 0.5073,
+     "min": 0.366,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 2,
+     "mean": 2,
+     "median": 2.0,
+     "min": 2,
+     "n": 6
+    },
+    "dialogs_over": 0,
+    "first_review_high": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "hidden_rate": 1.0,
+    "launches": {
+     "temper:temper-fix": 6,
+     "temper:temper-rca": 6,
+     "temper:temper-review": 6
+    },
+    "rules_met": null,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 145,
+     "mean": 111.8333,
+     "median": 110.0,
+     "min": 86,
+     "n": 6
+    }
+   },
+   "clear": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 2.0629,
+     "mean": 1.6237,
+     "median": 1.6578,
+     "min": 1.2147,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 8,
+     "mean": 5.6667,
+     "median": 5.0,
+     "min": 4,
+     "n": 6
+    },
+    "dialogs_over": 6,
+    "first_review_high": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "hidden_rate": 1.0,
+    "launches": {
+     "temper:temper-acceptance": 8,
+     "temper:temper-build": 3,
+     "temper:temper-build-task": 6,
+     "temper:temper-intent": 6,
+     "temper:temper-plan": 6,
+     "temper:temper-plan-review": 28,
+     "temper:temper-plan-revise": 7,
+     "temper:temper-review": 7
+    },
+    "rules_met": null,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.1667,
+    "wall": {
+     "max": 531,
+     "mean": 445.6667,
+     "median": 454.0,
+     "min": 365,
+     "n": 6
+    }
+   },
+   "commits": [
+    "a47cdcb45c470187e25985767145711b8fbd23e2"
+   ],
+   "vague": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 2.2961,
+     "mean": 1.7908,
+     "median": 1.7581,
+     "min": 1.4462,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 13,
+     "mean": 7.3333,
+     "median": 6.5,
+     "min": 5,
+     "n": 6
+    },
+    "dialogs_over": 6,
+    "first_review_high": {
+     "max": 1,
+     "mean": 0.5,
+     "median": 0.5,
+     "min": 0,
+     "n": 6
+    },
+    "hidden_rate": 1.0,
+    "launches": {
+     "temper:temper-acceptance": 6,
+     "temper:temper-build": 10,
+     "temper:temper-build-task": 6,
+     "temper:temper-intent": 6,
+     "temper:temper-plan": 6,
+     "temper:temper-plan-review": 24,
+     "temper:temper-plan-revise": 6,
+     "temper:temper-review": 12
+    },
+    "rules_met": 1.0,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.5,
+    "wall": {
+     "max": 718,
+     "mean": 515.3333,
+     "median": 481.0,
+     "min": 414,
+     "n": 6
+    }
+   }
+  },
+  "c/temper": {
+   "all": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 1.4052,
+     "mean": 0.8195,
+     "median": 0.8404,
+     "min": 0.3883,
+     "n": 18
+    },
+    "dialogs": {
+     "max": 7,
+     "mean": 4.3889,
+     "median": 5.0,
+     "min": 2,
+     "n": 18
+    },
+    "dialogs_over": 13,
+    "first_review_high": {
+     "max": 0,
+     "mean": 0,
+     "median": 0,
+     "min": 0,
+     "n": 17
+    },
+    "hidden_rate": 0.9014,
+    "launches": {
+     "temper:temper-acceptance": 16,
+     "temper:temper-build": 2,
+     "temper:temper-build-task": 15,
+     "temper:temper-fix": 6,
+     "temper:temper-intent": 12,
+     "temper:temper-plan": 12,
+     "temper:temper-plan-review": 36,
+     "temper:temper-plan-revise": 8,
+     "temper:temper-rca": 6,
+     "temper:temper-review": 17
+    },
+    "rules_met": 0.9697,
+    "runs": 18,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 18
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 444,
+     "mean": 261.5556,
+     "median": 287.0,
+     "min": 90,
+     "n": 18
+    }
+   },
+   "bug": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 0.5724,
+     "mean": 0.4552,
+     "median": 0.442,
+     "min": 0.3883,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 7,
+     "mean": 2.8333,
+     "median": 2.0,
+     "min": 2,
+     "n": 6
+    },
+    "dialogs_over": 1,
+    "first_review_high": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "hidden_rate": 1.0,
+    "launches": {
+     "temper:temper-fix": 6,
+     "temper:temper-rca": 6,
+     "temper:temper-review": 6
+    },
+    "rules_met": null,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 126,
+     "mean": 104.5,
+     "median": 99.5,
+     "min": 90,
+     "n": 6
+    }
+   },
+   "clear": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 1.4052,
+     "mean": 0.9904,
+     "median": 0.9629,
+     "min": 0.6171,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 7,
+     "mean": 5.1667,
+     "median": 4.5,
+     "min": 4,
+     "n": 6
+    },
+    "dialogs_over": 6,
+    "first_review_high": {
+     "max": 0,
+     "mean": 0,
+     "median": 0,
+     "min": 0,
+     "n": 5
+    },
+    "hidden_rate": 0.8198,
+    "launches": {
+     "temper:temper-acceptance": 10,
+     "temper:temper-build": 1,
+     "temper:temper-build-task": 9,
+     "temper:temper-intent": 6,
+     "temper:temper-plan": 6,
+     "temper:temper-plan-review": 12,
+     "temper:temper-plan-revise": 3,
+     "temper:temper-review": 5
+    },
+    "rules_met": null,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 444,
+     "mean": 334.1667,
+     "median": 340.5,
+     "min": 208,
+     "n": 6
+    }
+   },
+   "commits": [
+    "a47cdcb45c470187e25985767145711b8fbd23e2"
+   ],
+   "vague": {
+    "amendments": null,
+    "amendments_by_person": null,
+    "amendments_by_rule": null,
+    "blocked": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "clean_handed_back": 0,
+    "cost": {
+     "max": 1.0736,
+     "mean": 1.0129,
+     "median": 1.0191,
+     "min": 0.9489,
+     "n": 6
+    },
+    "dialogs": {
+     "max": 6,
+     "mean": 5.1667,
+     "median": 5.0,
+     "min": 5,
+     "n": 6
+    },
+    "dialogs_over": 6,
+    "first_review_high": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "hidden_rate": 0.9861,
+    "launches": {
+     "temper:temper-acceptance": 6,
+     "temper:temper-build": 1,
+     "temper:temper-build-task": 6,
+     "temper:temper-intent": 6,
+     "temper:temper-plan": 6,
+     "temper:temper-plan-review": 24,
+     "temper:temper-plan-revise": 5,
+     "temper:temper-review": 6
+    },
+    "rules_met": 0.9697,
+    "runs": 6,
+    "steps_back": {
+     "max": 0,
+     "mean": 0,
+     "median": 0.0,
+     "min": 0,
+     "n": 6
+    },
+    "two_reviews_share": 0.0,
+    "wall": {
+     "max": 372,
+     "mean": 346,
+     "median": 351.5,
+     "min": 304,
+     "n": 6
+    }
+   }
+  }
+ },
+ "lines": {
+  "bug": {
+   "clean_handed_back": 0,
+   "cost_line": 1.5,
+   "cost_ratio": 1.681,
+   "dialogs": {
+    "max": 2,
+    "mean": 2,
+    "median": 2.0,
+    "min": 2,
+    "n": 6
+   },
+   "pass": false,
+   "runs_over_dialogs": 0,
+   "time_line": 2.5,
+   "time_ratio": 3.226
+  },
+  "clear": {
+   "clean_handed_back": 0,
+   "cost_line": 2.0,
+   "cost_ratio": 4.007,
+   "dialogs": {
+    "max": 8,
+    "mean": 5.6667,
+    "median": 5.0,
+    "min": 4,
+    "n": 6
+   },
+   "pass": false,
+   "runs_over_dialogs": 6,
+   "time_line": 4.5,
+   "time_ratio": 5.916
+  },
+  "hidden": {
+   "before": 0.9061,
+   "pass": true,
+   "rate": 1.0
+  },
+  "reviews": {
+   "before": 0.4444,
+   "pass": true,
+   "share": 0.2222
+  },
+  "rules_met": {
+   "line": 0.95,
+   "pass": true,
+   "rate": 1.0
+  },
+  "steps_back": {
+   "before": 0.5556,
+   "blocked": 0,
+   "blocked_before": 0,
+   "mean": 0,
+   "pass": true
+  },
+  "vague": {
+   "clean_handed_back": 0,
+   "cost_line": 3.0,
+   "cost_ratio": 3.63,
+   "dialogs": {
+    "max": 13,
+    "mean": 7.3333,
+    "median": 6.5,
+    "min": 5,
+    "n": 6
+   },
+   "pass": false,
+   "runs_over_dialogs": 6,
+   "time_line": 4.5,
+   "time_ratio": 5.011
+  }
+ },
+ "pass": false,
+ "plain": "a/vanilla",
+ "version": 1
+}
