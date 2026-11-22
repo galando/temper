@@ -19,10 +19,13 @@ first cell of a row of the table of `docs/plans/one-go/changed-tests.md` and the
 file in a code span (a code span elsewhere on that page names nothing).
 So a changed expected value under an unchanged name is a changed assertion, and must be listed.
 
-The second base (row D84b): for the case files 43 to 46, `scripts/e2e/accept.ts`, `scripts/e2e/slow.ts`,
-`scripts/e2e/broken.ts` and `docs/plans/one-go/done.md` the base is the commit that first added the file to the
-branch (the first parent line). An assertion of those files, or a row of the table of `done.md` (its name is its id),
-that changed or went since then must be listed too. A file no commit holds yet has no second base.
+The second base (row D84b): for every test file the first base does not hold (a case file, a scenario file or a test
+file of the mod that the branch added) and for `docs/plans/one-go/done.md` the base is the commit that first added
+the file to the branch (the first parent line). An assertion of those files, or a row of the table of `done.md` (its
+name is its id), that changed or went since then must be listed too. A file no commit holds yet has no second base.
+
+What it does not compare (row D84 says so): a second change under a name that is already listed, the lines before an
+assertion that set up what it reads, and the helper files the case files source.
 
 The generated fixture modules are left out. Python 3 and git only. Exit 0 when every change is listed, else 1 (2 for
 a wrong call, or a base git does not know).
@@ -37,9 +40,13 @@ LISTING = "docs/plans/one-go/changed-tests.md"
 DONE = "docs/plans/one-go/done.md"
 PATHSPECS = ["scripts/selftest/temper-cases-*.sh", "scripts/selftest/test-temper.sh", "scripts/e2e/*.ts",
              "*.test.ts", "*.test.tsx", ":(exclude)*view-fixtures*"]
-SECOND = ["scripts/selftest/temper-cases-43.sh", "scripts/selftest/temper-cases-44.sh",
-          "scripts/selftest/temper-cases-45.sh", "scripts/selftest/temper-cases-46.sh", "scripts/e2e/accept.ts",
-          "scripts/e2e/slow.ts", "scripts/e2e/broken.ts", DONE]
+
+
+def second_files(root, base):
+    """The files of the second base: every tracked test file that the first base does not hold, and done.md."""
+    held = set(git(root, "ls-tree", "-r", "--name-only", base, check=False).split("\n"))
+    now = git(root, "ls-files", "--", *PATHSPECS, check=False).split("\n")
+    return sorted(f for f in now if f and f not in held) + [DONE]
 # `expect(` and `test(` as calls of their own, not a method such as a regular expression's `.test(`
 MARKERS = re.compile(r"\bassert_eq\b|\bassert_exit\b|(?<![.\w$])expect\(|(?<![.\w$])test\(")
 EXPECT = re.compile(r"(?<![.\w$])expect\(")
@@ -377,7 +384,7 @@ def check(root, base):
     names = listed_names(root)
     tree = tree_text(root, PATHSPECS)
     found = [(p, n, nm, base) for p, n, nm in changes(root, base, PATHSPECS, tree)]
-    for path in SECOND:
+    for path in second_files(root, base):
         second = first_added(root, path)
         if second is None:
             continue

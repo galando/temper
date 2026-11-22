@@ -355,7 +355,7 @@ _c43_git "$_c43/ct" config --unset diff.noprefix; _c43_git "$_c43/ct" config dif
 r2="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-11.sh:1 .*T1 one' "$_c43/ct.out")"
 assert_eq "done: a removed assertion is found under diff.noprefix and under diff.mnemonicPrefix" "1|1 1|1" "$r1 $r2"
 
-# D84b: the second base, the commit that first added the file, for done.md and the case files 43 to 46
+# D84b: the second base, the commit that first added the file, for done.md and the test files the base does not hold
 CT_BASE="$(_c43_ct_repo)"
 mkdir -p "$_c43/ct/docs/plans/one-go"
 printf '%s\n' '## The table' '' '| Id | Promise | Check | No model call | Passes after |' '|---|---|---|---|---|' \
@@ -368,6 +368,20 @@ sed -i 's/"D01 one" "1"/"D01 one" "0"/' "$_c43/ct/scripts/selftest/temper-cases-
 r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED docs/plans/one-go/done.md:5 .*: D01$' "$_c43/ct.out")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-44.sh:1 .*: D01 one$' "$_c43/ct.out")"
 _c43_ct_listed 'D01' docs/plans/one-go/done.md; _c43_ct_listed 'D01 one' scripts/selftest/temper-cases-44.sh
 assert_eq "done: a changed check of done.md fails until it is listed" "0 1|1|1 0" "$r0 $r1 $(_c43_ct "$CT_BASE")"
+
+# the second base holds for every test file the base does not hold (TESTS-2): a case file outside 43 to 46 and a test
+# file of the mod, both added after the base, then one assertion of each changed
+CT_BASE="$(_c43_ct_repo)"
+mkdir -p "$_c43/ct/tests/mod"
+printf '%s\n' 'assert_eq "N1 new" "1" "$(echo 1)"' > "$_c43/ct/scripts/selftest/temper-cases-77.sh"
+printf '%s\n' "test('N2 new', () => { expect(1).toBe(1) })" > "$_c43/ct/tests/mod/new.test.ts"
+_c43_commit "$_c43/ct" "two test files the base does not hold"
+r0="$(_c43_ct "$CT_BASE")"
+sed -i 's/"N1 new" "1"/"N1 new" "0"/' "$_c43/ct/scripts/selftest/temper-cases-77.sh"
+sed -i 's/toBe(1)/toBe(2)/' "$_c43/ct/tests/mod/new.test.ts"
+r1="$(_c43_ct "$CT_BASE")|$(grep -c 'UNLISTED scripts/selftest/temper-cases-77.sh:1 .*: N1 new$' "$_c43/ct.out")|$(grep -c 'UNLISTED tests/mod/new.test.ts:1 .*: N2 new$' "$_c43/ct.out")"
+_c43_ct_listed 'N1 new' scripts/selftest/temper-cases-77.sh; _c43_ct_listed 'N2 new' tests/mod/new.test.ts
+assert_eq "done: a changed assertion of any test file added after the base fails until it is listed" "0 1|1|1 0" "$r0 $r1 $(_c43_ct "$CT_BASE")"
 
 # a name identifies its statement (phase 2 fixes): three expects share the first quoted string `,` (of `.join(',')`)
 # and two share `a,b`, so the first two are named by their message and the last by `a,c`; a row covers a change only in
