@@ -254,6 +254,25 @@ assert_eq "w20 environment check: a service of a root compose file or of the CI 
   "compose=red|service-down|the service db at 127.0.0.1:1 does not answer (docker-compose.yml names it) / ci=red|service-down|the service pg at 127.0.0.1:1 does not answer (.github/workflows/ci.yml names it) / config=red|service-down|the service mine at 127.0.0.1:2 does not answer (.claude/temper.config names it)" \
   "$_bb4"
 _clean61
+# R6-5: a fault of the base that was repaired is no open failure record: a green baseline resolves the base's record
+_fr61() { python3 -B -c "
+import json
+try:
+    f = json.load(open('.temper/evidence/failures.json'))
+except (OSError, ValueError):
+    f = []
+print(','.join('%s %s' % (x.get('kind'), 'open' if x.get('resolved') is None else 'resolved by %s' % (x.get('resolved') or {}).get('by'))
+               for x in f if isinstance(x, dict) and x.get('scope') == 'base') or 'no record')"; }
+fresh; _clean61; _scripts61; _cmd61 "bash pass61.sh"
+printf 'setup:\n  services:\n    db61: 127.0.0.1:1\n' >> .claude/temper.config
+_repo61; rm -f .temper/evidence/baseline.json .temper/evidence/failures.json; _start61
+_r65="red=$(_b61 "d.get('result')"):$(_fr61)"
+sed -i '/^setup:$/,$d' .claude/temper.config; git add -A >/dev/null 2>&1; git commit -q -m 'the service is not needed'
+_start61 --again
+_r65+="|repaired=$(_b61 "d.get('result')"):$(_fr61)"
+assert_eq "w23 a pass resolves: a green baseline after a repaired fault of the base resolves the base's failure record" \
+  "red=red:service-down open|repaired=green:service-down resolved by pass" "$_r65"
+_clean61
 
 # --- w20 three results: green with seconds and coverage, red with its fail lines, unknown with a reason ---
 _suite61 "bash pass61.sh" "bash cov61.sh"; _start61

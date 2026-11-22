@@ -343,6 +343,12 @@ def finish(root, doc, started):
     if doc.get("result") == "red":   # WP23: a red base is one failure record of class environment
         failed_record(root, "base", "suite", doc.get("kind"), doc.get("why"), doc.get("run") or doc.get("cmd") or "",
                       doc.get("exit_code"), doc.get("fail_lines"), "base" if doc.get("kind") == "red-base" else "exit")
+    elif doc.get("result") == "green":   # R6-5: a pass of the same check and scope resolves the base's open record
+        try:
+            import failure
+            failure.resolve_pass("base", "suite", doc.get("key") or "", root)
+        except Exception:
+            pass
 
 
 def failed_record(root, scope, check, kind, why, cmd, rc, lines, by, key=""):
