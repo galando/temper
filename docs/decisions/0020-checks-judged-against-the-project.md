@@ -40,8 +40,10 @@ WP20 now find a missing tool, a wrong JDK or a service that is down from the pro
 5. **The environment check and the baseline come first (9.8.5, WP20).** A run's first step is the CLI's own
    `temper baseline start`: the tools and services the project's files and the config name are checked in under 5 s,
    then the project's own suite runs once on the current code, in a detached worktree, in its own process, and
-   `.temper/evidence/baseline.json` says green, red or unknown. A fault or a red base is one question, `base.red`,
-   before any agent, and after the approval no new task agent is launched on it. Every time limit is the larger of its
+   `.temper/evidence/baseline.json` says green, red or unknown. A fault of the environment check is one question,
+   `base.red`, before any agent. A red suite is the same question as soon as its result is known: nothing waits for
+   the suite, so it is asked before Plan when the suite ends while Intent works, and always before the approval; after
+   the approval no new task agent is launched on it. Every time limit is the larger of its
    default and three times the base's time of the same suite; a first time out of a group's check runs again with
    twice the limit, as the CLI's own call.
 
