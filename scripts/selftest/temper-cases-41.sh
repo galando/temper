@@ -408,6 +408,47 @@ _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" be
 assert_eq "summary: the bench scorecard holds the round after against the plain arm and the round before" \
   "0 after/temper before/temper after/vanilla 1.4 2.4 True True True True None
 {'temper:temper-review': 2} 1.4" "$_c41_sc"
+# the pass lines of the bench gate are the numbers of part H of done.md (R0-R1-6): blocks that sit exactly at every
+# line pass every line, and one value just over its line, each in turn, fails that line and no other
+assert_eq "summary: the bench gate passes at each line of part H and fails just over it: cost 1.5, 2 and 3 times, time 2.5 and 4.5 times, hidden tests equal, 95% of the rules, Reviews halved" \
+  "lines 1.5 2.5|2.0 4.5|3.0 4.5|0.95 at: all pass|bug|bug|clear|clear|vague|vague|hidden|rules_met|reviews|steps_back|steps_back|bug|clear" \
+  "$(python3 -I - "$REPO_ROOT/bench" <<'PY'
+import copy, sys
+sys.path.insert(0, sys.argv[1])
+import scorecard
+def kind(cost, wall):
+    return {"cost": {"mean": cost}, "wall": {"mean": wall}, "dialogs": {"mean": 2}, "dialogs_over": 0, "clean_handed_back": 0}
+def everything(hidden, share, back, blocked):
+    return {"hidden_rate": hidden, "two_reviews_share": share, "steps_back": {"mean": back}, "blocked": {"mean": blocked}}
+at = {"p": {k: kind(1.0, 100) for k in ("bug", "clear", "vague")},
+      "b": {"all": everything(0.9, 0.5, 1, 1)},
+      "a": {"bug": kind(1.5, 250), "clear": kind(2.0, 450), "vague": dict(kind(3.0, 450), rules_met=0.95),
+            "all": everything(0.9, 0.25, 1, 1)}}
+def failed(change=None):
+    blocks = copy.deepcopy(at)
+    if change:
+        change(blocks["a"])
+    lines = scorecard.gate(blocks, "a", "b", "p")
+    return lines, ",".join(k for k in ("bug", "clear", "vague", "hidden", "rules_met", "reviews", "steps_back") if lines[k]["pass"] is not True)
+def put(path, value):
+    def f(a):
+        d = a
+        for k in path[:-1]:
+            d = d[k]
+        d[path[-1]] = value
+    return f
+lines, bad = failed()
+out = ["lines %s at: %s" % ("|".join(["%s %s" % (lines[k]["cost_line"], lines[k]["time_line"]) for k in ("bug", "clear", "vague")]
+                                      + [str(lines["rules_met"]["line"])]), bad or "all pass")]
+for change in (put(("bug", "cost", "mean"), 1.51), put(("bug", "wall", "mean"), 251), put(("clear", "cost", "mean"), 2.01),
+               put(("clear", "wall", "mean"), 451), put(("vague", "cost", "mean"), 3.01), put(("vague", "wall", "mean"), 451),
+               put(("all", "hidden_rate"), 0.89), put(("vague", "rules_met"), 0.9), put(("all", "two_reviews_share"), 0.26),
+               put(("all", "steps_back", "mean"), 1.1), put(("all", "blocked", "mean"), 1.1),
+               put(("bug", "dialogs_over"), 1), put(("clear", "clean_handed_back"), 1)):
+    out.append(failed(change)[1] or "none")
+print("|".join(out))
+PY
+)"
 _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" b2 a2 --gate gate2.json >/dev/null 2>&1; echo -n "$? "
   python3 -c 'import json; l=json.load(open("gate2.json"))["lines"]; s=l["steps_back"]
 print(s["mean"], s["before"], s["blocked"], s["blocked_before"], s["pass"], l["bug"]["runs_over_dialogs"], l["vague"]["runs_over_dialogs"])')"
