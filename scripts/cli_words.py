@@ -106,7 +106,7 @@ def next_feedback(rows):
 def drift_ask(argv):
     """`temper drift ask --path P --why W --change C`: one row of the Build ledger (a fix run's Fix is judged by the
     build gate, and the scope row reads that ledger). A path of the plan, or one with a space or a quote, is refused."""
-    import flow
+    import flow_base
     args = dict(zip(argv[0::2], argv[1::2])) if len(argv) == 6 else {}
     path, why, change = (" ".join(str(args.get(k) or "").split()) for k in ("--path", "--why", "--change"))
     if not (path and why and change) or set(args) != {"--path", "--why", "--change"}:
@@ -120,7 +120,7 @@ def drift_ask(argv):
     if stage not in ("build", "fix") and not fixer:   # WP24: the fixer of an open repair is held to Build's rule
         return fail("a drift is asked at Build or Fix, or by the fixer of an open repair; the run is at %s" % (stage or "no stage"))
     spec = state.get("spec_path") or ""
-    if spec and path in flow.plan_files(spec):
+    if spec and path in flow_base.plan_set(state, spec):
         return fail("%s is a file of the plan: no drift to ask" % path)
     if fixer:   # lane E: a file no answer lets a repair commit (a manifest, a CI file, the config, the spec folder, a
         import repair_ops   # sensitive path) is refused here, so the person is never asked a question that cannot take effect

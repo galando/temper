@@ -207,21 +207,24 @@ def binding_row(state, spec):
 
 def saved(state):
     """WP32: a run saved by 9.8.4 or by the base, taken up once (state_ops.py migrate-legacy prints nothing of it; it
-    merges what this returns). Past its approval it binds intent.md as found, since those versions recorded no digest
-    of it (review finding R8-1): a change made after the upgrade fails the row as for a run of this version. Its
-    plan_hash is the digest those versions computed; where the plan holds what this version binds besides (the text a
-    manual Test asks the person to confirm, a second Integration line), the saved digest of the plan as it is now moves
-    to this version's digest, in groups.json too, so the approval still binds the plan it approved and only a later
-    change fails the gates (row D60). The keys to set: intent_hash, plan_hash, or none."""
+    merges what this returns). Past its approval it binds intent.md as found (rca.md for a fix run past its root cause
+    question), since those versions recorded no digest of it (review finding R8-1): a change made after the upgrade
+    fails the row as for a run of this version. Its plan_hash is the digest those versions computed; where the plan
+    holds what this version binds besides (the text a manual Test asks the person to confirm, a second Integration
+    line), the saved digest of the plan as it is now moves to this version's digest, in groups.json too, so the
+    approval still binds the plan it approved and only a later change fails the gates (row D60). The keys to set:
+    intent_hash, plan_hash, or none."""
     st, out = read_state(state), {}
     h, spec = st.get("plan_hash"), st.get("spec_path")
     if not isinstance(spec, str) or not spec:
         return out
     root = os.path.dirname(os.path.dirname(os.path.abspath(state)))
     sp = spec if os.path.isabs(spec) else os.path.join(root, spec)
-    if (st.get("command") or "temper") == "temper" and st.get("next_stage") not in (None, "", "intent", "plan") \
-            and "intent_hash" not in st:
-        b = bound(os.path.join(sp, "intent.md"))
+    # a fix run past its root cause question binds rca.md, in the place of intent.md (bind_rca)
+    cmd = st.get("command") or "temper"
+    past = {"temper": (None, "", "intent", "plan"), "fix": (None, "", "rca")}.get(cmd)
+    if past and st.get("next_stage") not in past and "intent_hash" not in st:
+        b = bound(os.path.join(sp, "rca.md" if cmd == "fix" else "intent.md"))
         if b:
             out["intent_hash"] = b
     tasks = os.path.join(sp, "tasks.md")

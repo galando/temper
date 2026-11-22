@@ -48,6 +48,15 @@ export function reviewDone(w: World, cmd = 'review panel'): void {
   t(`evidence add --stage review --claim 'review completed' --exit 0 --cmd '${cmd}'${files.map(f => ` --read '${f.replace(/'/g, "'\\''")}'`).join('')}`)
 }
 
+// The scripted acceptance writer (agents/acceptance.md): one passing acceptance test in the spec folder, locked with the
+// command that runs it. These projects can run tests, and a skip ends a run that goes on by itself (rule 3).
+// It writes the test and returns the words of the lock call, which the caller runs as its other calls.
+export function acceptanceLock(w: World, spec: string): string {
+  const dir = `${spec}/acceptance`
+  w.write(`${dir}/test_ac01.py`, 'import unittest\n\n\nclass AcceptanceTest(unittest.TestCase):\n    def test_ac01(self):\n        self.assertTrue(True)\n')
+  return `acceptance lock --cmd 'python3 -m unittest discover -s ${dir} -t ${dir}'`
+}
+
 export class World {
   dir: string
   trace: string[] = []

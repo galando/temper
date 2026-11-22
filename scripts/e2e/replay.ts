@@ -19,7 +19,7 @@ import path from 'node:path'
 import { POM, installTools } from './faketools'
 import { orchestrate } from './loop'
 import type { Script } from './loop'
-import { ROOT, TEMPER, World, reviewDone } from './world'
+import { ROOT, TEMPER, World, acceptanceLock, reviewDone } from './world'
 import type { Agent, Json } from './world'
 
 // WP29: the config with lines at the top of its `check:` block, made when the template has none (the template of
@@ -195,7 +195,7 @@ const AGENTS: Record<string, Agent> = {
     if (/\[x\] maven filtered verify/.test(gate)) w.write(`${SPEC}/tasks.md`, tasksMd(GOOD_VALIDATE))
   },
   'temper:temper-plan-review': () => undefined,
-  'temper:temper-acceptance': w => { t(w, "acceptance skip --reason 'the replay writes no acceptance tests'") },
+  'temper:temper-acceptance': w => { t(w, acceptanceLock(w, SPEC)) },
   'temper:temper-build-task': (w, a) => {
     const model = /\nModel:\s*(\S+?)\.?\s*$/m.exec(String(a.prompt))?.[1] ?? 'haiku'
     const tasks = (/Tasks?:\s*([\d, ]+)/.exec(String(a.prompt))?.[1] ?? '').split(',').map(x => Number(x.trim())).filter(Boolean)

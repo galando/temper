@@ -74,13 +74,19 @@ def patch_lines(lines, target, num, cmd):
             return None, "tasks.md has no %s %s" % ("group" if target == "group" else "task", num)
         # a group's own lines end at its first task's head, a task's lines at the next head
         end = next((i for i in range(start + 1, len(lines)) if re.match(r"^#{1,3}\s", lines[i])), len(lines))
-    for i in range(start, end):
+    # the Integration line every reader runs is the last one tasks_md.parse reads (a head at the margin)
+    walk = range(end - 1, start - 1, -1) if target == "integration" else range(start, end)
+    for i in walk:
+        if target == "integration" and not re.match(r"^\*\*Integration:\*\*", lines[i]):
+            continue
         m = re.match(r"^(\s*\*\*%s:\*\*\s*)`([^`]*)`(.*)$" % key, lines[i])
         if m:
             old = m.group(2)
             lines = list(lines)
             lines[i] = "%s`%s`%s" % (m.group(1), cmd, m.group(3))
             return lines, old
+        if target == "integration":
+            break
     if target == "group":   # WP25: a group with no Validate line gets one, after its **Depends:** line (or its head)
         dep = next((i for i in range(start, end) if re.match(r"^\s*\*\*Depends:\*\*", lines[i])), start)
         return list(lines[:dep + 1]) + ["**Validate:** `%s`" % cmd] + list(lines[dep + 1:]), ""
@@ -140,7 +146,8 @@ def main(argv):
         return fail("tasks.md differs from the approved plan in more than this line; loop back to Plan")
     got = plan_amend.parse_text("\n".join(new))   # the plan must read the change as the call wrote it
     if (add and cmd not in [plan_amend.norm(f) for t in got["tasks"] if str(t["n"]) == num for f in t.get("files") or []]) or \
-            (target == "group" and next((x.get("validate") for x in got["groups"] if x["id"] == num), None) != cmd):
+            (target == "group" and next((x.get("validate") for x in got["groups"] if x["id"] == num), None) != cmd) or \
+            (target == "integration" and got.get("integration") != cmd):
         return fail("the plan would not read %s as written there; tasks.md is as it was" % cmd)
     if approved and target == "task" and not add:   # the CLI's group reopen runs after this call: what refuses it, first
         why = reopen_refusal(groups, num, got, spec)

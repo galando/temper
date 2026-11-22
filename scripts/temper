@@ -649,7 +649,7 @@ cmd_state_set() {
     adhoc|adhoc_done|repair|repairs|repair_stop) echo "FAIL: $top is kept by the CLI (temper adhoc open|close; the gates mark the steps a small change owes)" >&2; return 1 ;;
     redo) echo "FAIL: redo is kept by the CLI (temper state redo <stage> --reason R)" >&2; return 1 ;;
     trivial) echo "FAIL: trivial is kept by the CLI (temper intent trivial --why TEXT)" >&2; return 1 ;;
-    run_mode|pipeline_round|regression_test)
+    run_mode|pipeline_round|regression_test|base_sha|branch)
       [[ "$1" == "$top" ]] || { echo "FAIL: $top takes a value, not a path below it; got '$1'" >&2; return 1; } ;;
   esac
   case "$1" in
@@ -3654,7 +3654,7 @@ cmd_acceptance() {
   done
   case "$sub" in
     lock|skip|start|reopen|restore|triage|triaged) python3 -E -s "$SCRIPTS_DIR/check_run.py" acceptance "$REPO_ROOT" "$spec" "$sub" "$text" \
-      && { [[ "$sub" != skip || -z "$(_json_get_path "$STATE_FILE" parked "")" ]] || _unattended_end "the person skipped the acceptance tests"; } ;;
+      && { [[ "$sub" != skip ]] || _unattended_end "the acceptance tests were skipped"; } ;;   # rule 3: a skip ends it
     *) echo "FAIL: usage: temper acceptance lock --cmd '<command>' | skip --reason '<why>' | start | reopen --reason '<why>' | restore | triage --reason 'code|test: <why>'" >&2; return 1 ;;
   esac
 }

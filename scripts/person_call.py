@@ -74,19 +74,21 @@ def refusal(words):
         return ("BLOCKED: temper %s is the person's answer at a question; a run that goes on by itself never makes it (no "
                 "stop is open)" % " ".join(w[:2]))
     if w[:2] == ["evidence", "clear"]:
-        stage = next((y for x, y in zip(w, w[1:]) if x == "--stage"), "")
-        opens = open_findings(stage) if re.fullmatch(r"[a-z]+", stage) else []
-        if opens:
-            return ("FAIL: the %s ledger holds %d open finding(s) (%s); a cleared ledger would erase them. The CLI resolves a "
-                    "finding (temper repair close), and the person keeps one with temper evidence accept"
-                    % (stage, len(opens), str(opens[0].get("claim"))[:120]))
+        # every --stage of the call: the CLI clears the stage its own loop reads, the last one, so each one is checked
+        for stage in [y for x, y in zip(w, w[1:]) if x == "--stage"]:
+            opens = open_findings(stage) if re.fullmatch(r"[a-z]+", stage) else []
+            if opens:
+                return ("FAIL: the %s ledger holds %d open finding(s) (%s); a cleared ledger would erase them. The CLI "
+                        "resolves a finding (temper repair close), and the person keeps one with temper evidence accept"
+                        % (stage, len(opens), str(opens[0].get("claim"))[:120]))
     if w[:4] == ["state", "set", "run_mode", "autonomous"]:
         from flow_run import Run
         if not Run({}).may_run_alone():
             return ("FAIL: at risk H the run goes on by itself only after the fresh review ran on the plan as it is and "
                     "left no open finding at high; the approval offers no such option")
     state = load(os.path.join(TEMPER, "build-state.json"), {})
-    if w[:3] == ["state", "set", "branch"] and len(w) > 3 and state.get("plan_hash"):
+    # after the approval: a feature run's records plan_hash and intent_hash, a fix run's (rca_complete) intent_hash alone
+    if w[:3] == ["state", "set", "branch"] and len(w) > 3 and (state.get("plan_hash") or "intent_hash" in state):
         here = git("rev-parse", "--abbrev-ref", "HEAD")[1]
         if w[3] != here:
             return ("FAIL: after the approval the run's branch is the branch it stands on (%s): the commit hook gates it, "

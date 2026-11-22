@@ -16,7 +16,10 @@ import subprocess
 import sys
 
 OWN = {".claude/temper.config", ".claude/settings.json"}
-OWN_PREFIX = (".temper/", ".claude/worktrees/", ".claude/temper.config.before-")
+OWN_PREFIX = (".temper/", ".claude/worktrees/")
+# the copy is one file, named as config_tidy.keep_copy names it (a version, then a number when one was there already);
+# a folder below such a name is a project folder like any other
+OWN_COPY = re.compile(r"\.claude/temper\.config\.before-\d+(\.\d+)*")
 OUTPUT_SEGMENTS = {"htmlcov", ".pytest_cache", "__pycache__", ".nyc_output", ".mypy_cache", ".ruff_cache"}
 OUTPUT_NAME = re.compile(r"^(\.coverage(\..*)?|coverage\.xml|coverage\.json|\.coverage-.*|jacoco.*\.exec|.*\.pyc)$")
 OUTPUT_PATH = re.compile(r"(^|/)target/(site/jacoco[^/]*|surefire-reports|jacoco[^/]*|failsafe-reports)(/|$)")
@@ -24,7 +27,7 @@ OUTPUT_PATH = re.compile(r"(^|/)target/(site/jacoco[^/]*|surefire-reports|jacoco
 
 def counts(path):
     p = path[2:] if path.startswith("./") else path
-    if p in OWN or p.startswith(OWN_PREFIX):
+    if p in OWN or p.startswith(OWN_PREFIX) or OWN_COPY.fullmatch(p):
         return False
     segs = p.split("/")
     if any(s in OUTPUT_SEGMENTS for s in segs[:-1]):

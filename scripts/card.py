@@ -30,7 +30,7 @@ import output_ops  # noqa: E402
 import plan_ops  # noqa: E402
 import run_summary  # noqa: E402
 import sensitive  # noqa: E402
-from flow_base import criteria, plan_files  # noqa: E402
+from flow_base import criteria, plan_set  # noqa: E402
 from flow_view import PERSON_ROWS  # noqa: E402
 from panel import plain, rca_fields, section  # noqa: E402
 import check_run  # noqa: E402
@@ -536,7 +536,7 @@ def commit(b, nxt):
         out.append(s)
     changed = r.ctx.get("changed") or []
     if changed:
-        allowed = set(plan_files(r.spec) if r.spec else [])
+        allowed = set(plan_set(r.state, r.spec))
         if r.command == "fix":   # WP17: the files rca.md names, the regression test, a file the person allowed
             allowed.update(fix_files(r)[0] + [str(r.state.get("regression_test") or "")]
                            + [x["path"] for x in r.drifts() if x["choice"] in ("Add to plan", "Allow once")])

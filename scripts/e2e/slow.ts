@@ -36,7 +36,7 @@ import { POM, installTools, toolRuns, withRemote } from './faketools'
 import { orchestrate } from './loop'
 import type { Script } from './loop'
 import { defaultPerson, idOf, pickId, worldCheck } from './persons'
-import { ROOT, TEMPER, World, reviewDone } from './world'
+import { ROOT, TEMPER, World, acceptanceLock, reviewDone } from './world'
 import type { Agent, Json, Person } from './world'
 
 export const SPEC = '.temper/specs/report'
@@ -205,7 +205,7 @@ export function mavenAgents(plan: { plan?: string; tasks?: string } = {}, after?
       t(w, 'gate plan')
     },
     'temper:temper-plan-review': () => undefined,
-    'temper:temper-acceptance': w => { t(w, "acceptance skip --reason 'the scripted project writes no acceptance tests'") },
+    'temper:temper-acceptance': w => { t(w, acceptanceLock(w, SPEC)) },
     'temper:temper-build-task': buildTasks(after),
     'temper:temper-build': () => undefined,
     'temper:temper-review': w => reviewDone(w),

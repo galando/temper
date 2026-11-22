@@ -427,7 +427,7 @@ def allowed_files(r):
     plan or allowed once by answering a question the CLI asked (a row the CLI marked `answer` as it wrote it: answer_of),
     never a row that only reads like one (lane E: the fixer could write that row itself)."""
     import flow_base
-    files = set(r.state.get("approved_files") or []) | set(flow_base.plan_files(r.spec) if r.spec else [])
+    files = set(flow_base.plan_set(r.state, r.spec))
     for x in load(os.path.join(TEMPER, "evidence", "build.json"), list):
         m = re.match(ANSWER, str((x or {}).get("claim") or ""), re.I)
         if m and isinstance(x, dict) and x.get("answer"):
