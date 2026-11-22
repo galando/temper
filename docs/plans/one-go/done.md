@@ -127,7 +127,7 @@ run with a real model (`D107` to `D109`).
 | D42 | M2. A passed Review with an open Medium finding keeps Accept a finding, Grill Me, Teach Me, Make a small change and Save for later in reach | `case 45 D42` | yes | WP08 |
 | D43 | M3. In an unattended run the group fix agent is launched after a failed group check | `case 45 D43` | yes | WP08 |
 | D44 | M4. An unattended run never steps back to Plan: it stops and asks | `case 45 D44`. Row `D33` walks the same stop. | yes | WP08 |
-| D45 | M5. After a step back to Plan the run asks at every stage whatever the person answers, and a passed Design is not skipped | `case 44 D32b` | yes | WP08 |
+| D45 | M5. After a step back to Plan the run asks at every stage whatever the person answers, and a passed Design is not skipped | `case 44 D32b`; `case 44 D45b` (the Design half) | yes | WP08 |
 | D46 | M6. A criterion only the person can confirm stops an unattended run with the confirmation on offer; it never loops back to Build | `case 45 D46` | yes | WP08 |
 | D47 | M7. No brief records a claimed test run; where the CLI is given a test command, the run it makes passes the test row | `case 45 D47a`; `case 45 D47b` | yes | WP08 |
 | D48 | M8. The config reader merges a repeated key, and the template has no empty key that hides a documented block | `case 45 D48a`; `case 45 D48b` | yes | WP08; kept by WP29 |

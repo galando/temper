@@ -443,6 +443,18 @@ _nogit44; _unattended build; "$TEMPER" state loop build plan --reason x >/dev/nu
 _unattended build; "$TEMPER" state set next_stage intent >/dev/null 2>&1; _d32b_intent="$("$TEMPER" state get run_mode 2>/dev/null)"
 assert_eq "D32b after a step back to Plan or Intent the run asks at every stage" "plan=interactive|intent=interactive" \
   "plan=$_d32b_plan|intent=$_d32b_intent"
+# the Design half of row D45 (R0-R1-9): a run that goes on by itself passes a passed Design by rule; after a step back
+# to Plan and the approval again, the passed Design is asked, not passed over
+_nogit44; _unattended design; gpass design
+_d45b_auto="$(nx "d['action']")"
+"$TEMPER" state advance design_complete build >/dev/null 2>&1
+"$TEMPER" state loop build plan --reason x >/dev/null 2>&1
+gpass plan
+_d45b_plan="$(nx "(d.get('ask') or {}).get('id')")"
+_run44 ask-every-stage >/dev/null 2>&1
+gpass design
+assert_eq "D45b after a step back to Plan a passed Design is asked, not passed over by rule" "auto|plan.approve|ask design.pass" \
+  "$_d45b_auto|$_d45b_plan|$(nx "d['action'] + ' ' + str((d.get('ask') or {}).get('id'))")"
 _unattended check; gfail check "tests pass" "the latest run of a test command failed: unit"
 "$TEMPER" override check --reason 'the flaky suite is known' >/dev/null 2>&1; _d32d_skip="$("$TEMPER" state get run_mode 2>/dev/null)"
 _unattended review
