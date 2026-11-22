@@ -536,6 +536,15 @@ file starts with the first line of the template, and a value set in it later is 
   each with the file that names it. These are the services the environment check of a run tries; to say which
   services must answer on this machine, name them under `setup.services`.
 
+  A variable with a credential name (`PASSWORD`, `TOKEN`, `SECRET`, `KEY` and the like as a part of the name) is never
+  set and never shown. What is shown here, in an agent's prompt and in the red base question also hides: a name with
+  `PW`, `PWD` or `PASS` as a whole part; the password of a URL (`scheme://user:<left out>@host`); a secret key inside a
+  value after `;`, `&` or `?` (`Server=h;Password=<left out>`, `?user=app&password=<left out>`); and a value of a well
+  known key shape (`sk-...`, `ghp_...`, `AKIA...`). This is a display rule, and no such rule is complete: a password in
+  a flag (`mysql -uroot -psecret`), a key of no known shape under a plain name and a URL password that holds a `/` are
+  still shown. The values are in `.claude/temper.config` in plain text either way, which an agent can read: keep a
+  real secret out of that file.
+
 The mod lets it run during a run, as any CLI call. Use it when a gate says `environment fault` or `ENV:`.
 
 **How Temper finds the setup of a project it has never seen.** Two sources, one check:

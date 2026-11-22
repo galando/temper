@@ -133,4 +133,5 @@ def get(d, path, default=_TABLE):
 
 
 if __name__ == "__main__":
-    print(get(load(sys.argv[1]), sys.argv[2], *sys.argv[3:4]))
+    # R0-R1-4 (U18): a value of setup.env prints as the file writes it (3.10, never the float 3.1), as a command gets it
+    print(get(load(sys.argv[1], as_text=sys.argv[2].startswith("setup.env.")), sys.argv[2], *sys.argv[3:4]))
