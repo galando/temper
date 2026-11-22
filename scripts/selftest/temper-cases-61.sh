@@ -204,6 +204,37 @@ assert_eq "w20 environment check: a JVM that prints the JAVA_TOOL_OPTIONS line b
   "red|tool-version|backend/pom.xml needs JDK 24; the shell has JDK 21" \
   "$(_b61 "'|'.join([str(d.get('result')), str(d.get('kind')), '; '.join(str(x.get('why')) for x in d.get('env') or [])])")"
 _clean61
+# R6-4: the whole check is held to 5 s: a setup line that takes 4.5 s leaves a service half a second, and a service
+# whose port takes no connection and refuses none in that time is not known (a note), never a fault after 6.5 s
+fresh; _clean61
+python3 -B - "$REPO_ROOT/scripts" <<'PY' > r64.out 2>&1
+import socket, sys, time
+sys.path.insert(0, sys.argv[1])
+import doctor
+srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(0)
+port = srv.getsockname()[1]
+held = []
+for _ in range(8):   # the queue of a listener that accepts nothing fills, and a later connect hangs
+    c = socket.socket(); c.setblocking(False)
+    try:
+        c.connect(("127.0.0.1", port))
+    except OSError:
+        pass
+    held.append(c)
+time.sleep(0.2)
+t0 = time.monotonic()
+faults, notes, _ = doctor.needs(".", {"run": "sleep 4.5", "env": {}, "services": {"db": "127.0.0.1:%d" % port}, "tools": []}, ["true"])
+took = time.monotonic() - t0
+print("%s|faults=%d|%s" % ("within 5 s" if took < 5.5 else "%.1f s" % took, len(faults),
+                           "note" if any("not checked in 5 s" in n and "db" in n for n in notes) else "no note: %s" % notes))
+t0 = time.monotonic()
+faults, notes, _ = doctor.needs(".", {"run": "", "env": {}, "services": {"db": "127.0.0.1:%d" % port}, "tools": []}, ["true"])
+print("%s|%s" % ("within 5 s" if time.monotonic() - t0 < 5.5 else "late", ",".join(f["kind"] for f in faults)))
+PY
+assert_eq "w20 environment check: a slow setup line and a service that gives no answer end within 5 s, the service not known; with its whole 2 s it is a fault" \
+  "within 5 s|faults=0|note / within 5 s|service-down" "$(paste -sd'/' r64.out | sed 's|/| / |')"
+rm -f r64.out
+_clean61
 
 # --- w20 three results: green with seconds and coverage, red with its fail lines, unknown with a reason ---
 _suite61 "bash pass61.sh" "bash cov61.sh"; _start61

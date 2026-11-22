@@ -51,11 +51,14 @@ def version(tool, cwd):
     return lines[0][:200] if lines else "(no version printed, exit %d)" % p.returncode
 
 
-def answers(addr):
+def answers(addr, limit=SERVICE_LIMIT_S):
+    """True when the address takes a connection, False when it refuses one, None when it gave no answer in `limit` s."""
     host, _, port = addr.rpartition(":")
     try:
-        with socket.create_connection((host or "127.0.0.1", int(port)), timeout=SERVICE_LIMIT_S):
+        with socket.create_connection((host or "127.0.0.1", int(port)), timeout=max(0.05, limit)):
             return True
+    except socket.timeout:
+        return None
     except (OSError, ValueError):
         return False
 
@@ -291,11 +294,15 @@ def stated(project, setup):
 def needs(project, setup, commands=()):
     """The environment check: (faults, notes, tools). It only reads, and makes one shell call under the setup block
     (limit 5 s) that resolves each program the commands start and the config's tools, and prints the version line of
-    java and node when a file names one; then it connects to each service of the setup block, all at once, 2 s each.
-    A fault is {"kind", "file", "need", "have", "why"}: kind program-missing, tool-version, service-down or
-    setup-line. A shell call over 5 s gives no fault and the note `not checked in 5 s`. `tools` are the version
-    lines, part of the baseline's key."""
+    java and node when a file names one; then it connects to each service, all at once, 2 s each (after the shell call:
+    the setup line may be what starts a service). The whole check is held to 5 s from its start (R6-4): a service gets
+    what the shell call left of them, and one that gave no answer in less than its 2 s is no fault but the note `not
+    checked in 5 s`. A fault is {"kind", "file", "need", "have", "why"}: kind program-missing, tool-version,
+    service-down or setup-line. A shell call over 5 s gives no fault and the note `not checked in 5 s`. `tools` are the
+    version lines, part of the baseline's key."""
     import threading
+    import time
+    deadline = time.monotonic() + NEEDS_LIMIT_S
     st = stated(project, setup)
     faults, notes, tools = [], [], {}
     progs = []   # (program, folder it runs in, the file that names it)
@@ -357,18 +364,24 @@ def needs(project, setup, commands=()):
             faults.append({"kind": "tool-version", "file": f, "need": str(n), "have": str(have),
                            "why": "%s needs %s %d; the shell has %s %d" % (f, label, n, label, have)})
     res = {}
+    left = min(SERVICE_LIMIT_S, deadline - time.monotonic())   # what the shell call left of the 5 s
 
     def probe(name, addr):
-        res[name] = answers(addr)
-    threads = [threading.Thread(target=probe, args=(n, a)) for n, a, _ in st["services"]]
+        res[name] = answers(addr, left)
+    threads = [threading.Thread(target=probe, args=(n, a), daemon=True) for n, a, _ in st["services"]]
     for t in threads:
         t.start()
     for t in threads:
-        t.join(SERVICE_LIMIT_S + 1)
+        t.join(max(0.0, deadline - time.monotonic()) if left < SERVICE_LIMIT_S else SERVICE_LIMIT_S + 1)
+    late = []
     for n, a, f in st["services"]:
-        if not res.get(n):
+        if res.get(n) is None and left < SERVICE_LIMIT_S:   # cut short by the 5 s, and no refusal: not known
+            late.append("%s at %s" % (n, a))
+        elif not res.get(n):
             faults.append({"kind": "service-down", "file": f, "need": "%s at %s" % (n, a), "have": "no answer",
                            "why": "the service %s at %s does not answer (%s names it)" % (n, a, f)})
+    if late:
+        notes.append("not checked in 5 s: the service %s" % ", ".join(late))
     if not (st["java"] or st["node"] or st["tools"] or st["services"]):
         notes.append("the project's files name no tool version and the config names no service")
     return faults, notes, tools

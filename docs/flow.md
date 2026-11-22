@@ -253,7 +253,10 @@ new run starts one; a step back does not. The call always exits 0 and returns in
 - **The environment check** (`doctor.needs`, under 5 s, no suite): the JDK a `pom.xml`, a Gradle file, `.java-version`,
   `.tool-versions` or the CI names, the Node version of `package.json` or the CI, the config's `setup.tools` and
   `setup.services`, against one shell call under the setup block (each program the suite command starts must resolve,
-  and the version lines of `java` and `node`) and a connect to each service. A fault (`program-missing`,
+  and the version lines of `java` and `node`) and then a connect to each service, 2 s each (after the shell call: the
+  setup line may be what starts one). The whole check is held to 5 s from its start: a service gets what the shell call
+  left of them, and one that neither took nor refused a connection in less than its 2 s is the note `not checked in
+  5 s`, not a fault. A fault (`program-missing`,
   `tool-version`, `service-down`, `setup-line`) names the file that states the need, the need and what the shell has.
 - **The baseline**: the suite once on the current code, in the detached worktree `.claude/worktrees/temper-baseline`
   at HEAD (the place Build uses: no branch, no commit, no project file), in its own process
