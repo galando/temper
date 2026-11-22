@@ -7,7 +7,8 @@ back, the hand backs of the run driver and the runs of the whole suite. Each has
 some a `final`, the number of docs/plans/one-go/done.md. The entry `replay` holds the same for the replay of the
 measured run (`bun scripts/e2e/replay.ts`), and `replay_base` the numbers of the base (`10e965a`) on that replay.
 
-  python3 scripts/check_floor.py [--floor FILE]                      the shape, and no `final` above its first value
+  python3 scripts/check_floor.py [--floor FILE] [--base REV]         the shape, no `final` above its first value, and
+                                                                     no `now` above its `final` that also grew
   python3 scripts/check_floor.py --counts FILE [--floor FILE]         each scenario's counts against its `now`
   python3 scripts/check_floor.py --counts FILE --write [--floor FILE] the counts become the `now` values
   python3 scripts/check_floor.py --replay [LINE_FILE]                 the replay's last JSON line against `replay.now`
@@ -24,7 +25,11 @@ Nothing raises a `final`: a `final` above its value in the commit of the file th
 from the history of the file in git (a key no commit holds yet is exempt). A rule that read only the file as it is would
 be passed by the very commit that raises a value. A `final` removed, or set to a value that is no number, loosens
 its bound and fails the same way. In `launches` of a `final`, a type it does not name stands at 0.
-A count of `final` is an upper bound; `true` and `false` must be equal. Exit 0 when every rule holds, else 1 (2 for
+A count of `final` is an upper bound; `true` and `false` must be equal. Without --final (the mode CI runs), a `now`
+outside its `final` fails when it is also above (a bool: differs from) its value in the earlier version of the file
+(scripts/growth_base.py: the file at the merge base with the main branch, or with --base REV; when that cannot be read
+a line says so and the previous committed version stands in, and with none the rule passes), so an overrun recorded
+for the owner stays green and nothing can grow. Exit 0 when every rule holds, else 1 (2 for
 a wrong call). Python 3 and git only.
 """
 import json
@@ -124,9 +129,22 @@ def launch_dicts(doc):
             if isinstance(e, dict) and isinstance(e.get("final"), dict) and isinstance(e["final"].get("launches"), dict)}
 
 
-def within(now, final, where):
-    """The lines for each value of now above its final (a bool must equal; in `launches` an unnamed type stands at 0)."""
+def within(now, final, where, old=None, at=""):
+    """The lines for each value of now above its final (a bool must equal; in `launches` an unnamed type stands at 0).
+    With old, the now values of the same entry in an earlier version of the file ({} when it holds none, named by at),
+    only a value that is also above its old one is a line (a bool: one that differs from the old one too), and an
+    entry with no now value is none."""
     out = []
+
+    def grew(v, was):   # None: not a line; else what the line adds
+        if old is None:
+            return ""
+        if was is None or isinstance(was, bool) != isinstance(v, bool):
+            return ", and the file %s holds no value for it" % at
+        if isinstance(v, bool):
+            return None if was == v else ", and %s it is %s" % (at, json.dumps(was))
+        return " and above its value %s %s" % (was, at) if v > was else None
+
     for k, f in final.items():
         if k in ("launches", "agent_launches") and isinstance(f, dict):
             # a scenario's `launches`: a type its final does not name stands at 0. The replay's `agent_launches` bounds
@@ -134,18 +152,23 @@ def within(now, final, where):
             got = now.get(k) or {}
             for t in sorted(set(got) | set(f)):
                 n, cap = got.get(t, 0), f.get(t, 0 if k == "launches" else None)
-                if cap is not None and n > cap:
-                    out.append("%s: %s.%s is %s, above its final %s" % (where, k, t, n, cap))
+                more = grew(n, ((old or {}).get(k) or {}).get(t, 0 if isinstance((old or {}).get(k), dict) else None))
+                if cap is not None and n > cap and more is not None:
+                    out.append("%s: %s.%s is %s, above its final %s%s" % (where, k, t, n, cap, more))
             continue
         if k not in now:
-            out.append("%s: %s has a final and no now value" % (where, k))
+            if old is None:
+                out.append("%s: %s has a final and no now value" % (where, k))
             continue
         v = now[k]
+        more = grew(v, (old or {}).get(k))
+        if more is None:
+            continue
         if isinstance(f, bool) or isinstance(v, bool):
             if v != f:
-                out.append("%s: %s is %s, its final is %s" % (where, k, json.dumps(v), json.dumps(f)))
+                out.append("%s: %s is %s, its final is %s%s" % (where, k, json.dumps(v), json.dumps(f), more))
         elif isinstance(f, (int, float)) and isinstance(v, (int, float)) and v > f:
-            out.append("%s: %s is %s, above its final %s" % (where, k, v, f))
+            out.append("%s: %s is %s, above its final %s%s" % (where, k, v, f, more))
     return out
 
 
@@ -235,12 +258,15 @@ def main(argv):
     line_file = None
     mode = "check"
     write = final = False
+    base_rev = None
     i = 0
     while i < len(args):
         a = args[i]
-        if a in ("--floor", "--counts") and i + 1 < len(args):
+        if a in ("--floor", "--counts", "--base") and i + 1 < len(args):
             if a == "--floor":
                 floor = args[i + 1]
+            elif a == "--base":
+                base_rev = args[i + 1]
             else:
                 counts = args[i + 1]
             i += 2
@@ -308,14 +334,32 @@ def main(argv):
 
     problems += shape(doc)
     problems += raised(finals(doc), first_values(floor, finals), launch_dicts(doc))
-    if final:
+
+    def outside(old=None, at=""):
+        """The lines of every now outside its final; with old (an earlier floor document), of those that also grew."""
+        def was(e):
+            return None if old is None else (e.get("now") if isinstance(e, dict) and isinstance(e.get("now"), dict) else {})
+        out = []
         for s, modes in sorted((doc.get("scenarios") or {}).items()):
             for m, e in sorted((modes or {}).items()):
                 if isinstance(e, dict) and isinstance(e.get("final"), dict):
-                    problems += within(e.get("now") or {}, e["final"], "%s [%s]" % (s, m))
+                    earlier = was(((old or {}).get("scenarios") or {}).get(s, {}).get(m))
+                    out += within(e.get("now") or {}, e["final"], "%s [%s]" % (s, m), earlier, at)
         rp = doc.get("replay") or {}
         if isinstance(rp.get("final"), dict):
-            problems += within(rp.get("now") or {}, rp["final"], "replay")
+            out += within(rp.get("now") or {}, rp["final"], "replay", was((old or {}).get("replay")), at)
+        return out
+
+    if final:
+        problems += outside()
+    elif [p for p in outside() if not p.endswith("has a final and no now value")]:
+        sys.path.insert(0, HERE)   # python3 -I leaves the script's folder off the path
+        import growth_base
+        old, at, note = growth_base.earlier(floor, base_rev)
+        if note:
+            print("floor: %s" % note)
+        if old is not None:
+            problems += outside(old, at)
     for p in problems:
         print("FAIL floor: %s" % p)
     print("floor: %s" % ("FAIL" if problems else "every rule holds%s" % (" (final)" if final else "")))

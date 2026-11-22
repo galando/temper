@@ -157,7 +157,48 @@ assert_eq "caps: the report gives each cap's measure on the base 10e965a beside 
   "16 lines|gate_rows base 86|option_labels base 74|cli_bytes base" \
   "$(grep -c 'base 10e965a' <<<"$_c41_rep") lines|$(grep -o 'gate_rows: now [0-9]*, base 10e965a 86' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a/ base/')|$(grep -o 'option_labels: now [0-9]*, base 10e965a 74' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a/ base/')|$(grep -o 'cli_bytes: now [0-9]*, base 10e965a [0-9]' <<<"$_c41_rep" | sed 's/: now [0-9]*, base 10e965a [0-9]/ base/')"
 
+# a now above its final may not grow (R0-R1-3, TESTS-1, DEVIATIONS-3): in the mode CI runs, a now above its final that
+# is also above its value in the earlier version of the file fails (the merge base with main, or --base REV; with no
+# such base the previous committed version, and a line says so); an overrun that did not grow, or shrank, passes; a
+# cap that is new and above its final fails; with no history the rule passes and a line says so
+_c41_ci() { git -C "$1" -c user.name=t -c user.email=t@example.com commit -qam "$2"; }
+_c41_grow() { # _c41_grow <name> <python statement over d for the first commit> [--base REV]: prints the exit, output in <name>.out
+  cp "$REPO_ROOT/scripts/caps.json" "$_c41_dir/$1.first.json"; _c41_edit "$_c41_dir/$1.first.json" "$2"
+  _c41_hist "$_c41_dir/$1" caps.json "$_c41_dir/$1.first.json"
+  cp "$REPO_ROOT/scripts/caps.json" "$_c41_dir/$1/caps.json"
+  python3 -I "$_c41_caps" --caps "$_c41_dir/$1/caps.json" "${@:3}" > "$_c41_dir/$1.out" 2>&1; echo -n "$?"
+}
+_c41_ol="$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["caps"]["option_labels"]; print(c["now"], c["final"])' "$REPO_ROOT/scripts/caps.json")"
+_c41_want="option_labels: now ${_c41_ol% *} is above its final ${_c41_ol#* } and above its value $(( ${_c41_ol% *} - 1 )) in the file's previous committed version (HEAD)"
+assert_eq "caps: a now above its final and above its earlier value fails in the mode CI runs; one that did not grow, or shrank, passes"   "1 yes|0|0|1 yes"   "$(_c41_grow gu 'd["caps"]["option_labels"]["now"] -= 1'; grep -qF "$_c41_want" "$_c41_dir/gu.out" && echo -n " yes|" || echo -n " no|"
+     _c41_grow gs 'pass'; echo -n "|"
+     _c41_grow gd 'd["caps"]["option_labels"]["now"] += 1'; echo -n "|"
+     _c41_ci "$_c41_dir/gu" grown
+     python3 -I "$_c41_caps" --caps "$_c41_dir/gu/caps.json" --base HEAD~1 > "$_c41_dir/gu2.out" 2>&1; echo -n "$? "
+     grep -q "option_labels: now .* and above its value .* at the merge base with HEAD~1" "$_c41_dir/gu2.out" && echo yes || echo no)"
+assert_eq "caps: a committed growth of a now above its final fails after the commit too, and a line says which version it is held against"   "1 yes yes"   "$(python3 -I "$_c41_caps" --caps "$_c41_dir/gu/caps.json" > "$_c41_dir/gu3.out" 2>&1; echo -n "$? "
+     grep -q "^caps: .*: a now above its final is held against the file's previous committed version" "$_c41_dir/gu3.out" && echo -n "yes " || echo -n "no "
+     grep -q "^FAIL caps: option_labels: now .* and above its value .* in the file's previous committed version" "$_c41_dir/gu3.out" && echo yes || echo no)"
+assert_eq "caps: a new cap that starts above its final fails; with no history the rule passes and says so" "1 yes|0 yes"   "$(_c41_grow gn 'd["caps"].pop("question_ids")'; grep -q "question_ids: now .* is above its final .*holds no now for it" "$_c41_dir/gn.out" && echo -n " yes|" || echo -n " no|"
+     python3 -I "$_c41_caps" --caps "$_c41_dir/below.json" > "$_c41_dir/nohist.out" 2>&1; echo -n "$? "
+     grep -q "^caps: no commit of git holds below.json: a now above its final is held against no earlier value" "$_c41_dir/nohist.out" && echo yes || echo no)"
+
 # --- floor ---
+# the same rule for the floor: default-run [plain] dialogs one above its final
+_c41_hist "$_c41_dir/fg" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
+_c41_edit "$_c41_dir/fg/floor.json" 'e = d["scenarios"]["default-run"]["plain"]; e["now"]["dialogs"] = e["final"]["dialogs"] + 1'
+_c41_fg1="$(python3 -I "$_c41_floor" --floor "$_c41_dir/fg/floor.json" 2>&1; echo "exit $?")"
+_c41_ci "$_c41_dir/fg" grown
+_c41_fg2="$(python3 -I "$_c41_floor" --floor "$_c41_dir/fg/floor.json" 2>&1; echo "exit $?")"
+_c41_fg3="$(python3 -I "$_c41_floor" --floor "$_c41_dir/fg/floor.json" --base HEAD~1 2>&1; echo "exit $?")"
+cp "$_c41_dir/fg/floor.json" "$_c41_dir/fg.json"
+_c41_hist "$_c41_dir/fr" floor.json "$_c41_dir/fg.json"
+assert_eq "floor: a now above its final and above its earlier value fails in the mode CI runs, before and after its commit; one recorded and not grown fails only with --final"   "yes exit 1|yes exit 1|yes exit 1|0 1"   "$(grep -q "FAIL floor: default-run \[plain\]: dialogs is 3, above its final 2 and above its value 2 in the file's previous committed version (HEAD)" <<< "$_c41_fg1" && echo -n yes; echo -n " ${_c41_fg1##*$'\n'}|"
+     grep -q "FAIL floor: default-run \[plain\]: dialogs is 3, above its final 2 and above its value 2 in the file's previous committed version" <<< "$_c41_fg2" && echo -n yes; echo -n " ${_c41_fg2##*$'\n'}|"
+     grep -q "FAIL floor: default-run \[plain\]: dialogs is 3, above its final 2 and above its value 2 at the merge base with HEAD~1" <<< "$_c41_fg3" && echo -n yes; echo -n " ${_c41_fg3##*$'\n'}|"
+     python3 -I "$_c41_floor" --floor "$_c41_dir/fr/floor.json" >/dev/null 2>&1; echo -n "$? "
+     python3 -I "$_c41_floor" --floor "$_c41_dir/fr/floor.json" --final >/dev/null 2>&1; echo "$?")"
+
 _c41_hist "$_c41_dir/hf" floor.json "$REPO_ROOT/scripts/e2e/floor.json"
 _c41_edit "$_c41_dir/hf/floor.json" 'd["scenarios"]["default-run"]["plain"]["final"]["dialogs"] += 1'
 git -C "$_c41_dir/hf" -c user.name=t -c user.email=t@example.com commit -qam raise
@@ -367,6 +408,47 @@ _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" be
 assert_eq "summary: the bench scorecard holds the round after against the plain arm and the round before" \
   "0 after/temper before/temper after/vanilla 1.4 2.4 True True True True None
 {'temper:temper-review': 2} 1.4" "$_c41_sc"
+# the pass lines of the bench gate are the numbers of part H of done.md (R0-R1-6): blocks that sit exactly at every
+# line pass every line, and one value just over its line, each in turn, fails that line and no other
+assert_eq "summary: the bench gate passes at each line of part H and fails just over it: cost 1.5, 2 and 3 times, time 2.5 and 4.5 times, hidden tests equal, 95% of the rules, Reviews halved" \
+  "lines 1.5 2.5|2.0 4.5|3.0 4.5|0.95 at: all pass|bug|bug|clear|clear|vague|vague|hidden|rules_met|reviews|steps_back|steps_back|bug|clear" \
+  "$(python3 -I - "$REPO_ROOT/bench" <<'PY'
+import copy, sys
+sys.path.insert(0, sys.argv[1])
+import scorecard
+def kind(cost, wall):
+    return {"cost": {"mean": cost}, "wall": {"mean": wall}, "dialogs": {"mean": 2}, "dialogs_over": 0, "clean_handed_back": 0}
+def everything(hidden, share, back, blocked):
+    return {"hidden_rate": hidden, "two_reviews_share": share, "steps_back": {"mean": back}, "blocked": {"mean": blocked}}
+at = {"p": {k: kind(1.0, 100) for k in ("bug", "clear", "vague")},
+      "b": {"all": everything(0.9, 0.5, 1, 1)},
+      "a": {"bug": kind(1.5, 250), "clear": kind(2.0, 450), "vague": dict(kind(3.0, 450), rules_met=0.95),
+            "all": everything(0.9, 0.25, 1, 1)}}
+def failed(change=None):
+    blocks = copy.deepcopy(at)
+    if change:
+        change(blocks["a"])
+    lines = scorecard.gate(blocks, "a", "b", "p")
+    return lines, ",".join(k for k in ("bug", "clear", "vague", "hidden", "rules_met", "reviews", "steps_back") if lines[k]["pass"] is not True)
+def put(path, value):
+    def f(a):
+        d = a
+        for k in path[:-1]:
+            d = d[k]
+        d[path[-1]] = value
+    return f
+lines, bad = failed()
+out = ["lines %s at: %s" % ("|".join(["%s %s" % (lines[k]["cost_line"], lines[k]["time_line"]) for k in ("bug", "clear", "vague")]
+                                      + [str(lines["rules_met"]["line"])]), bad or "all pass")]
+for change in (put(("bug", "cost", "mean"), 1.51), put(("bug", "wall", "mean"), 251), put(("clear", "cost", "mean"), 2.01),
+               put(("clear", "wall", "mean"), 451), put(("vague", "cost", "mean"), 3.01), put(("vague", "wall", "mean"), 451),
+               put(("all", "hidden_rate"), 0.89), put(("vague", "rules_met"), 0.9), put(("all", "two_reviews_share"), 0.26),
+               put(("all", "steps_back", "mean"), 1.1), put(("all", "blocked", "mean"), 1.1),
+               put(("bug", "dialogs_over"), 1), put(("clear", "clean_handed_back"), 1)):
+    out.append(failed(change)[1] or "none")
+print("|".join(out))
+PY
+)"
 _c41_sc="$(cd "$_c41_dir/bench" && python3 -I "$REPO_ROOT/bench/scorecard.py" b2 a2 --gate gate2.json >/dev/null 2>&1; echo -n "$? "
   python3 -c 'import json; l=json.load(open("gate2.json"))["lines"]; s=l["steps_back"]
 print(s["mean"], s["before"], s["blocked"], s["blocked_before"], s["pass"], l["bug"]["runs_over_dialogs"], l["vague"]["runs_over_dialogs"])')"

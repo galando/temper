@@ -159,7 +159,9 @@ tasks, three runs each, graded by tests no run sees)
 labels, question ids, gate rows, briefs, listed commands and skills, config lines, prompt bytes, `cli_bytes`, README
 lines), each with `now` equal to the measure and a `final` nobody raises, checked by `scripts/check_caps.py` in
 `scripts/quality-check.sh`. `scripts/e2e/floor.json` holds the floor, checked by `scripts/check_floor.py`; CI runs
-both in a job the gate needs. `scripts/check_words.py` holds the twelve words a user learns (`scripts/words.json`)
+both in a job the gate needs, and every end to end shard compares its counts with the floor. In CI a `now` above its
+`final` fails when it is also above its value at the merge base with main, so the three sizes that are over their
+final today (gate rows, option labels, question ids) cannot grow and no other size can pass its final. `scripts/check_words.py` holds the twelve words a user learns (`scripts/words.json`)
 and keeps the retired ones out of every text a user reads; `scripts/check_config_keys.py` proves every config key has
 a reader. Every question carries an id from one registry (`QUESTIONS` of `scripts/flow_base.py`) and every option an
 id from a closed list, and no reader selects by label text. `temper state clear` appends one line a run to

@@ -15,9 +15,11 @@
 # and the A/B replay against the base, the mod's tests, its manifest, its reviewed calls, the type check and the test
 # of the directory rules.
 # quick and full also run scripts/check_done.py (every row of docs/plans/one-go/done.md names a check that exists) and
-# print the count of the checks still expected to fail (scripts/selftest/expected-fail.txt).
+# scripts/check_changed_tests.py (every changed assertion is listed), as CI does, and print the count of the checks
+# still expected to fail (scripts/selftest/expected-fail.txt). CI runs every step of full but ab-replay.sh, and none of
+# the closing checks of final: .github/workflows/quality.yml says why at its Floor and caps job.
 # final (9.8.5, WP07): full, then check_done.py --final (the list is empty and every final is the number of done.md),
-# check_caps.py --final, check_floor.py --final and check_changed_tests.py (every changed assertion is listed), and the
+# check_caps.py --final and check_floor.py --final, and the
 # bench block: with docs/evidence/scorecard-9.8.5.json every line of it must pass, the lines of part H of done.md; with
 # no such file it prints the line OPEN: the bench gate (needs the owner's word and a model access), and goes on. WP32:
 # in final the A/B replay fails when a counted number of this tree is above the base (full passes --base-only, so only
@@ -140,6 +142,7 @@ step "broken: broken.ts --check (the faults of the broken project and its checks
 step "world: persons.ts --check (the D105 planner clause, on made up input)" bun scripts/e2e/persons.ts --check
 step "loop: loop.ts --check (the bound on the hand backs of the e2e driver, on made up input)" bun scripts/e2e/loop.ts --check
 step "done: check_done.py (every row of done.md names a check that exists)" python3 -I scripts/check_done.py
+step "done: check_changed_tests.py (every changed assertion is listed, D84; CI runs it too)" python3 -I scripts/check_changed_tests.py
 
 if [[ "$WORD" == quick ]]; then
   REV="${2:-}"
@@ -205,7 +208,6 @@ if [[ "$WORD" == final ]]; then
     python3 -I scripts/check_done.py --final
   step "caps: check_caps.py --final" python3 -I scripts/check_caps.py --final
   step "floor: check_floor.py --final" python3 -I scripts/check_floor.py --final
-  step "done: check_changed_tests.py (every changed assertion is listed, D84)" python3 -I scripts/check_changed_tests.py
   if [[ -f "$SCORECARD" ]]; then
     step "bench: $SCORECARD inside the lines of part H" bench_lines
   else
