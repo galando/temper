@@ -531,7 +531,10 @@ file starts with the first line of the template, and a value set in it later is 
   `not on PATH`. It reads the shell as it is.
 - **Setup block:** `none`, or the run line with `(not run by doctor: it may start a service)`, each variable as
   `NAME=value`, and each credential name it left out.
-- **Services:** for each `setup.services` entry, `answering` or `not answering` (a TCP connect, 2 seconds).
+- **Services:** for each `setup.services` entry, `answering` or `not answering` (a TCP connect, 2 seconds). With no
+  such entry, the database and cache services the project's files ask for (a compose file in the root, the CI file),
+  each with the file that names it. These are the services the environment check of a run tries; to say which
+  services must answer on this machine, name them under `setup.services`.
 
 The mod lets it run during a run, as any CLI call. Use it when a gate says `environment fault` or `ENV:`.
 

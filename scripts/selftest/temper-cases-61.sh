@@ -235,6 +235,25 @@ assert_eq "w20 environment check: a slow setup line and a service that gives no 
   "within 5 s|faults=0|note / within 5 s|service-down" "$(paste -sd'/' r64.out | sed 's|/| / |')"
 rm -f r64.out
 _clean61
+# BLACKBOX-4: a service the project's own files ask for (the CI file, a compose file in the root) is checked with no
+# setup block; the services the config names, when it names any, are the whole statement
+_svc61() { # _svc61: result|kind|the faults' why lines of the baseline file after an environment check of this folder
+  _repo61; rm -f .temper/evidence/baseline.json; _start61
+  _b61 "'|'.join([str(d.get('result')), str(d.get('kind')), '; '.join(str(x.get('why')) for x in d.get('env') or [])])"
+}
+fresh; _clean61; _cmd61 "bash pass61.sh"; _scripts61
+printf 'services:\n  db:\n    image: postgres:16\n    ports:\n      - "1:5432"\n' > docker-compose.yml
+_bb4="compose=$(_svc61)"
+rm -f docker-compose.yml; mkdir -p .github/workflows
+printf 'jobs:\n  test:\n    runs-on: ubuntu-latest\n    services:\n      pg:\n        image: postgres:16\n        ports:\n          - 1:5432\n    steps:\n      - run: make test\n' > .github/workflows/ci.yml
+_bb4+=" / ci=$(_svc61)"
+printf 'setup:\n  services:\n    mine: 127.0.0.1:2\n' >> .claude/temper.config
+_bb4+=" / config=$(_svc61)"
+rm -rf .github
+assert_eq "w20 environment check: a service of a root compose file or of the CI file that does not answer is a fault with no setup block; the config's services, when named, are the ones checked" \
+  "compose=red|service-down|the service db at 127.0.0.1:1 does not answer (docker-compose.yml names it) / ci=red|service-down|the service pg at 127.0.0.1:1 does not answer (.github/workflows/ci.yml names it) / config=red|service-down|the service mine at 127.0.0.1:2 does not answer (.claude/temper.config names it)" \
+  "$_bb4"
+_clean61
 
 # --- w20 three results: green with seconds and coverage, red with its fail lines, unknown with a reason ---
 _suite61 "bash pass61.sh" "bash cov61.sh"; _start61

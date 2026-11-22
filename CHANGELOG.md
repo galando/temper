@@ -47,9 +47,12 @@ number 9.8.5 is the owner's choice.
   still passes and the time spent.
 - **The checks are judged against your project.** A run's first step is the environment check and the baseline
   (`temper baseline start`): the tools and services the project names, then your suite once on the current code, in a
-  worktree of its own. A red base is one question before any agent. A row the CLI could not measure is shown as not
-  measured (`[?]`), never as passed or failed. Coverage may not drop: the changed lines where line data exists, else the
-  total against the base; `check.coverage-threshold` is read only when your config holds it. A time limit is three
+  worktree of its own. The services are the ones your config names under `setup.services`, else the database and cache
+  services a compose file in the root or the CI file asks for. A fault of the environment check is one question before
+  any agent. A red suite is one question as soon as its result is known: nothing waits for the suite, so it is asked
+  before Plan when the suite ends while Intent works, and always before the approval. A row the CLI could not measure
+  is shown as not measured (`[?]`), never as passed or failed. Coverage may not drop: the changed lines where line data
+  exists, else the total against the base; `check.coverage-threshold` is read only when your config holds it. A time limit is three
   times the measured time of the base. The planted bug score is information on the commit card.
 - **A check runs once.** When Build ends the CLI runs the suite with its coverage, the scenario tests and the locked
   acceptance tests once (`temper check build-checks`); Check reuses those runs on the same tree. The same command on

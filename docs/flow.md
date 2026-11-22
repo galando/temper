@@ -251,8 +251,11 @@ new run starts one; a step back does not. The call always exits 0 and returns in
   level down that `detect` reads, with `cd <folder> && ` in front (none when two do); else the plan's `**Integration:**`
   line; else none, with the reason. For Maven, `detect` gives `mvn -q verify`.
 - **The environment check** (`doctor.needs`, under 5 s, no suite): the JDK a `pom.xml`, a Gradle file, `.java-version`,
-  `.tool-versions` or the CI names, the Node version of `package.json` or the CI, the config's `setup.tools` and
-  `setup.services`, against one shell call under the setup block (each program the suite command starts must resolve,
+  `.tool-versions` or the CI names, the Node version of `package.json` or the CI, the config's `setup.tools`, and the
+  services: those of the config's `setup.services` when it names any (the person's statement of what must answer
+  here, where a local server may stand in for the CI's), else the database and cache services the project's files ask
+  for (a compose file in the root that publishes a port, the `services` of a GitHub Actions job; text reads, no docker
+  call), each on `127.0.0.1` at its published port; against one shell call under the setup block (each program the suite command starts must resolve,
   and the version lines of `java` and `node`) and then a connect to each service, 2 s each (after the shell call: the
   setup line may be what starts one). The whole check is held to 5 s from its start: a service gets what the shell call
   left of them, and one that neither took nor refused a connection in less than its 2 s is the note `not checked in

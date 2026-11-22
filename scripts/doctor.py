@@ -250,10 +250,29 @@ def _major(text):
     return int(m.group(1)) if m else 0
 
 
+COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
+
+
+def file_services(project, ci):
+    """[(name, address, file)] of the database and cache services the project's own files ask for (BLACKBOX-4): those of
+    a compose file in the root that publish a port, then those of the CI file (ci_facts), each on 127.0.0.1 at its
+    published port; one entry a name and one an address. Text reads of files in known places: no docker call, no
+    tree walk."""
+    out = []
+    compose = next((f for f in COMPOSE_FILES if os.path.isfile(os.path.join(project, f))), "")
+    found = [(n, "127.0.0.1:%s" % port, compose) for n, _, port in compose_services(read(os.path.join(project, compose)))] if compose else []
+    for n, addr, f in found + [(n, "127.0.0.1:%s" % port, src) for n, _, port, _, src in ci["services"]]:
+        if not any(n == x[0] or addr == x[1] for x in out):
+            out.append((n, addr, f))
+    return out
+
+
 def stated(project, setup):
     """What the project's own files and the config state it needs: {"java": (N, file) or None, "node": (N, file) or
     None, "tools": [(program, file)], "services": [(name, address, file)]}. Read as propose() reads them; nothing
-    runs."""
+    runs. The services are the config's (`setup.services`) when it names any: they are the person's statement of what
+    must answer here, where a local server may stand in for the CI's. With none named, they are the ones the project's
+    files ask for (file_services)."""
     out = {"java": None, "node": None, "tools": [], "services": []}
 
     def need(key, n, f):
@@ -287,7 +306,7 @@ def stated(project, setup):
         need("node", int(m.group(1)), "package.json")
     cfg = os.path.join(".claude", "temper.config")
     out["tools"] = [(t, cfg) for t in (setup or {}).get("tools") or [] if t]
-    out["services"] = [(n, a, cfg) for n, a in ((setup or {}).get("services") or {}).items()]
+    out["services"] = [(n, a, cfg) for n, a in ((setup or {}).get("services") or {}).items()] or file_services(project, ci)
     return out
 
 
@@ -383,7 +402,7 @@ def needs(project, setup, commands=()):
     if late:
         notes.append("not checked in 5 s: the service %s" % ", ".join(late))
     if not (st["java"] or st["node"] or st["tools"] or st["services"]):
-        notes.append("the project's files name no tool version and the config names no service")
+        notes.append("the project's files name no tool version and no service, and the config names none")
     return faults, notes, tools
 
 
@@ -441,8 +460,7 @@ def propose(project):
                 facts.append("JDK %d is needed and none was found: install it, then run temper doctor --propose again" % need)
     kinds = set()
     # Docker Compose: the databases and caches the project runs as services, started when docker is there (9.8.5)
-    compose = next((os.path.join(project, f) for f in ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
-                    if os.path.isfile(os.path.join(project, f))), "")
+    compose = next((os.path.join(project, f) for f in COMPOSE_FILES if os.path.isfile(os.path.join(project, f))), "")
     ready = bool(compose) and docker_ready(project)
     if compose and not ready and compose_services(read(compose)):
         facts.append("%s runs database services, and docker does not answer here (no program, or no daemon): they are not "
@@ -627,10 +645,11 @@ def main(argv):
             print("  " + run_env.shown_var(k, v))
         for k in setup["dropped"]:
             print("  left out (credential name): %s" % k)
-    services = setup.get("services") or {}
+    services = stated(project, setup)["services"]   # the config's, else the ones the project's files ask for
     print("Services:" + ("" if services else " none named"))
-    for name, addr in services.items():
-        print("  %s %s: %s" % (name, addr, "answering" if answers(addr) else "not answering"))
+    for name, addr, src in services:
+        print("  %s %s: %s%s" % (name, addr, "answering" if answers(addr) else "not answering",
+                                 "" if src == os.path.join(".claude", "temper.config") else " (%s names it)" % src))
     return 0
 
 

@@ -5,8 +5,9 @@
 //
 // The project: backend/pom.xml wants JDK 24 (the enforcer rule [24,)) and binds a JaCoCo check; the shell has 21;
 // scripts/ensure-jdk24.sh --export prints what fixes it; the integration tests read IT_POSTGRES_PORT and need Postgres,
-// which is down (fake pg_lsclusters, pg_isready, pg_ctlcluster); its existing tests are LegacyTest, ClockTest and
-// RetryTest. The config is the replay's: check.commands run the whole suite with the integration tests (the planted
+// which is down (fake pg_lsclusters, pg_isready, pg_ctlcluster); the project's CI file names that service (on a port
+// of its own, which nothing listens on: the local cluster stands in for it in the proposed block), so the environment
+// check finds it down before any agent; its existing tests are LegacyTest, ClockTest and RetryTest. The config is the replay's: check.commands run the whole suite with the integration tests (the planted
 // bug score gates nothing).
 //
 // The faults the fixture plants (scripts/e2e/faketools.ts):
@@ -49,6 +50,24 @@ export const FLAKY = 'ClockTest'
 export const FLAKY_LATER = 'RetryTest'
 const ALLOWED = ['base.red', 'plan.approve', 'commit.confirm']   // the setup block, the red base, the approval, the commit
 
+export const CI_PORT = 54329   // the CI's own port for its Postgres: nothing listens on it here
+const CI_YML = `name: ci
+on: [push]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - ${CI_PORT}:5432
+    env:
+      IT_POSTGRES_PORT: \${{ job.services.postgres.ports[5432] }}
+    steps:
+      - run: cd backend && mvn -s settings.xml verify
+`
+// The sentence of the environment check in a question: its faults, without the proposed block that follows it.
+export const faultSentence = (text: string): string => /The environment check found [^\n]*?before any agent: ([^\n]*)/.exec(text)?.[1] ?? ''
 const testClass = (name: string): string => `class ${name} { void check() { } }\n`
 export const BROKEN_FILES: Record<string, string> = {
   'README.md': '# demo\n', '.gitignore': '__pycache__/\ntarget/\n', 'backend/pom.xml': POM, 'backend/settings.xml': '<settings/>\n',
@@ -57,6 +76,8 @@ export const BROKEN_FILES: Record<string, string> = {
   [`backend/src/test/java/${FLAKY}.java`]: testClass(FLAKY),
   [`backend/src/test/java/${FLAKY_LATER}.java`]: testClass(FLAKY_LATER),
   'scripts/ensure-jdk24.sh': '#!/usr/bin/env bash\n[ "$1" = --export ] && echo "export TOOL_JDK=24"\n',
+  // BLACKBOX-4: the service the project's files ask for, as its CI runs it
+  '.github/workflows/ci.yml': CI_YML,
 }
 // The config of the replay: the whole suite with the integration tests and a total it prints (WP19: the planted bug
 // score gates nothing, so no key turns it off).
@@ -132,7 +153,11 @@ export const brokenFirstRun = (w: World): void => {
     if (asked.length === 1) {
       expect(rec.agents.length === 0, `D13 the first question is asked with no agent launched (launched: ${types().join(', ')}; asked ${idOf(ask)})`)
       expect(/JDK|Java/.test(text) && /\b24\b/.test(text), `D13 the first question names the tool version, JDK 24 (${idOf(ask)}: ${text.slice(0, 160)})`)
-      expect(/Postgres|database|Connection refused/i.test(text), `D13 the first question names the service, the database (${idOf(ask)}: ${text.slice(0, 160)})`)
+      // BLACKBOX-4: the service is named as a fault of the environment check (the file that asks for it, its address,
+      // that it does not answer), not only inside the proposed block
+      const faults = faultSentence(text).split(/\.\s|$/)[0] ?? ''
+      expect(new RegExp(`the service postgres at 127\\.0\\.0\\.1:${CI_PORT} does not answer \\(\\.github/workflows/ci\\.yml names it\\)`).test(faults),
+        `D13 the first question names the service in the fault sentence of the environment check (${idOf(ask)}: ${text.slice(0, 240)})`)
       const rec1 = ((ask.options ?? []) as Json[]).find(o => o.recommended === true)
       expect(rec1?.id === 'add-setup', `D13 the recommended option of the first question adds the setup block (it is ${rec1?.id ?? 'none'})`)
     }
