@@ -15,6 +15,14 @@ sed -i 's/^  run: .*/  run: exit 3/' .claude/temper.config
 assert_eq "9.8.5 setup: a failing run line is exit 125 with temper-setup: FAIL, and the command does not run" "125|temper-setup: FAIL (exit 3)" \
   "$(_re x "o, rc = run_env.run_cmd('.', 10, ['echo never']); print(str(rc) + '|' + o.decode().strip())")"
 assert_eq "9.8.5 setup: a credential assignment in the run line is masked when shown" "TOKEN=<left out> X=1 go" "$(_re x "print(run_env.mask('TOKEN=abc X=1 go'))")"
+# U18 (WP29): a value of setup.env reaches the command exactly as the file writes it; the reader keeps no float of it
+printf 'setup:\n  env:\n    PYTHON_VERSION: 3.10\n    NODE: 20.10\n    PORT: 5433\n    QUOTED: "1.50"\n' > u18.config
+assert_eq "9.8.5 setup (U18): an unquoted number of setup.env reaches the command as written (3.10, not 3.1)" "3.10|20.10|5433|1.50" \
+  "$(_re x "o, rc = run_env.run_cmd('.', 10, ['printenv PYTHON_VERSION NODE PORT QUOTED'], run_env.load_setup('u18.config')); print('|'.join(o.decode().split()))")"
+# U18 (WP20): what is shown hides a URL's password in any value and the names PW and PWD; the command still receives them
+assert_eq "9.8.5 setup (U18): mask hides a URL's password and a PW or PWD name, a display rule only" \
+  "DATABASE_URL=postgres://u:<left out>@h/db MY_PW=<left out> DB_PWD=<left out> PWD=/w OLDPWD=/o psql https://u:<left out>@h:5432 https://u@h PWM=1|zzz" \
+  "$(_re x "import os; os.environ['MY_PW'] = 'zzz'; print(run_env.mask('DATABASE_URL=postgres://u:secret@h/db MY_PW=zzz DB_PWD=y PWD=/w OLDPWD=/o psql https://u:p4ss@h:5432 https://u@h PWM=1') + '|' + run_env.test_env().get('MY_PW', 'gone'))")"
 # WP21: the two keys of the plan gate's old per command check are gone from the template (the pattern is spelled so that
 # the grep of the package's "Done when" does not find it here)
 assert_eq "9.8.5 setup (WP21): the config template documents the setup block, and neither key of the old plan check" "setup=1|old keys=0" \
@@ -38,6 +46,9 @@ assert_eq "9.8.5 prompts: the Intent agent's prompt holds the line once, with th
   "$(nx "p = d['agents'][0]['prompt']; '|'.join(map(str, [p.count('Environment setup'), 'ensure-jdk24.sh --export' in p, 'IT_POSTGRES_PORT=5433' in p, 'hunter2' in p or 'DB_PASSWORD' in p]))")"
 sed -i '/^  run: /d' .claude/temper.config
 assert_eq "9.8.5 prompts: a block with only env says run: (none)" "True" "$(nx "'run: (none)' in d['agents'][0]['prompt']")"
+printf '    DATABASE_URL: postgres://u:s3cret@h/db\n    MY_PW: zzz\n' >> .claude/temper.config
+assert_eq "9.8.5 prompts (U18): a URL's password and a PW name of setup.env are not shown in a prompt" "True|True|False" \
+  "$(nx "p = d['agents'][0]['prompt']; '|'.join(map(str, ['DATABASE_URL=postgres://u:<left out>@h/db' in p, 'MY_PW=<left out>' in p, 's3cret' in p or 'zzz' in p]))")"
 
 # --- 9.8.5: temper doctor reports the toolchain, the setup block and the services, and changes nothing ---
 fresh

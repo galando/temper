@@ -164,7 +164,8 @@ def load_setup(config=None):
     if not isinstance(blk, dict) or not blk:
         return {}
     env, dropped = {}, []
-    for k, v in (blk.get('env') if isinstance(blk.get('env'), dict) else {}).items():
+    raw = (config_yaml.load(path, as_text=True).get('setup') or {}).get('env')   # U18: 3.10 stays 3.10, never the float 3.1
+    for k, v in (raw if isinstance(raw, dict) else {}).items():
         if is_credential(k):
             dropped.append(k)
         else:
@@ -177,10 +178,30 @@ def load_setup(config=None):
             'dropped': dropped}
 
 
+# U18: what is shown also hides a name with PW or PWD as a whole part (MY_PW, DB_PWD; the shell's own PWD is a folder), and
+# the password of a URL's user info in any value (scheme://user:SECRET@host keeps the user and the host). A display rule
+# only: test_env and load_setup leave out by CREDENTIAL_NAME alone, so a command receives what it received before.
+SHOWN_SECRET = re.compile(r'(?:^|_)PWD?(?:_|$)')
+URL_PASSWORD = re.compile(r'\b([A-Za-z][A-Za-z0-9+.-]*://[^\s/:@]*:)[^\s/@]+@')
+
+
+def shown_secret(name):
+    return is_credential(name) or (name.upper() != 'PWD' and bool(SHOWN_SECRET.search(name.upper())))
+
+
 def mask(text):
-    """The run line as shown to an agent or a person: a NAME=value whose NAME is a credential reads NAME=<left out>."""
-    return re.sub(r'\b([A-Za-z_]\w*)=(\S+)', lambda m: m.group(1) + '=<left out>' if is_credential(m.group(1)) else m.group(0),
-                  text or '')
+    """The run line (or a line of the block) as shown to an agent or a person: a NAME=value (or a line NAME: value) whose
+    NAME is a credential, or has PW or PWD as a part, reads NAME=<left out>; a URL's password reads <left out>."""
+    text = re.sub(r'^(\s*([A-Za-z_]\w*): ).+$', lambda m: m.group(1) + '<left out>' if shown_secret(m.group(2)) else m.group(0),
+                  text or '', flags=re.M)
+    text = re.sub(r'\b([A-Za-z_]\w*)=(\S+)', lambda m: m.group(1) + '=<left out>' if shown_secret(m.group(1)) else m.group(0),
+                  text)
+    return URL_PASSWORD.sub(lambda m: m.group(1) + '<left out>@', text)
+
+
+def shown_var(name, value):
+    """A variable of the setup block as shown: NAME=value, masked as mask masks it (the whole value of a secret name)."""
+    return name + '=' + ('<left out>' if shown_secret(name) else mask(str(value)))
 
 
 # The run line runs in the same bash as the command. The EXIT trap turns any end of the line that is not a success (an

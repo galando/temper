@@ -293,9 +293,9 @@ _json_get_path() { # _json_get_path <file> <dot.path> [default]
 # between the two could still be moved aside is narrowed to a few microseconds, not closed (a directory rename
 # cannot be made conditional on its age); it needs a holder that was past 30 s and released at that very moment.
 # A lock is stale only when its owner's process is gone; it is freed by one rename, never seen without its owner.
-# A lock still held after TEMPER_LOCK_WAIT_S (default 10) seconds by an owner that is gone or unknown, or by a live
-# one past TEMPER_LOCK_MAX_S (60), is written past with a WARN (fail open), so a stuck holder never wedges a run. A lock this call
-# did not take is never released. Calls nest (a depth count: only the outermost release frees the folder),
+# Past TEMPER_LOCK_WAIT_S (10) s a live owner's lock is waited on and a gone owner's lock over 30 s old is broken
+# and taken, up to TEMPER_LOCK_MAX_S (120) s from the start; else the call fails, exit 75, nothing written (9.8.5).
+# A lock this call did not take is never released. Calls nest (a depth count: only the outermost release frees the folder),
 # and a trap frees a held lock on EXIT/INT/TERM/HUP. Held around a file write, or a short git commit plus
 # the writes that record it, never while a test runs.
 _LOCK_DIR=".temper/.lock"
