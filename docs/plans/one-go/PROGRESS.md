@@ -100,8 +100,8 @@ under a heading that starts with the package id and "added by the owner on 2026-
 builds it with the package; none of them is a new stage, agent or question.
 
 - [x] WP26: Intent looks a fact up and never asks it (`wp/phase-7-and-8-front-and-surface.md`, before WP27).
-- [ ] WP30: Grill Me asks in rounds, each question with a recommended answer (same file, before WP31).
-- [ ] WP32: the scorecard gains `amendments` and `first_review_high`, and rule (d) of the model test reads both
+- [x] WP30: Grill Me asks in rounds, each question with a recommended answer (same file, before WP31).
+- [x] WP32: the scorecard gains `amendments` and `first_review_high`, and rule (d) of the model test reads both
   (`wp/phase-0-and-9-setup-and-final.md`, at the end of WP32). Its code is in place before round (b).
 
 ## Found on the way
