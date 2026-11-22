@@ -9,12 +9,18 @@ folders but not the ignored mark). The first `temper next` puts the notice in fr
 carriers show it once, as a line of text and never in a question. `temper init` writes the mark for a new project
 (neither folder there), so a new project is never told. `state clear` keeps the mark; git ignores it (`_RUN_FILES`).
 
+The clone holds the same mark (NEW-FLOW-2): `temper-marks.json` in the folder `git rev-parse --git-common-dir` names,
+which every worktree of the clone shares and no checkout holds. It is read before the config is: a new worktree of a
+project whose config is not committed, or of a 9.8.4 project with nothing to tidy, is not told again. It also holds the
+answer to the one time config question (config_tidy.py). A fresh clone has no such file and falls back to the config.
+
   python3 notice.py init    write the mark when the project is not an older one (neither folder, or a config of 9.8.5)
 
 Standard library only. Fail open: a mark that cannot be read or written never stops a command.
 """
 import json
 import os
+import subprocess
 import sys
 
 VERSION = "9.8.5"
@@ -22,6 +28,51 @@ TEXT = ("Temper 9.8.5 asks twice: before any code is written, and at the commit.
         "first question for the old flow. What changed: docs/getting-started.md.")
 TEMPER = ".temper"
 MARK = os.path.join(TEMPER, "notice.json")
+SHARED = "temper-marks.json"   # in the clone's own folder (git rev-parse --git-common-dir), shared by its worktrees
+
+
+def _shared_file():
+    """The clone's mark file, or "" outside a git repository."""
+    try:
+        p = subprocess.run(["git", "rev-parse", "--git-common-dir"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, timeout=10)
+        d = p.stdout.decode("utf-8", "replace").strip()
+        return os.path.join(os.path.abspath(d), SHARED) if p.returncode == 0 and d else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def shared(key):
+    """What the clone's mark file holds under key (a dict, {} when there is none or it cannot be read)."""
+    try:
+        with open(_shared_file(), encoding="utf-8") as f:
+            d = json.load(f)
+        v = d.get(key) if isinstance(d, dict) else None
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def mark_shared(key, name, value):
+    """Writes {name: value} under key in the clone's mark file, the other keys kept. Never fails a command."""
+    path = _shared_file()
+    if not path or os.path.islink(path):
+        return False
+    try:
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            d = {}
+        d = d if isinstance(d, dict) else {}
+        d[key] = dict(d[key] if isinstance(d.get(key), dict) else {}, **{name: value or "told"})
+        with open(path + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(d, f)
+            f.write("\n")
+        os.replace(path + ".tmp", path)
+        return True
+    except OSError:
+        return False
 
 
 def _older():
@@ -39,7 +90,7 @@ def _older():
         return True
 
 
-def _marked():
+def _local():
     try:
         with open(MARK, encoding="utf-8") as f:
             d = json.load(f)
@@ -48,7 +99,17 @@ def _marked():
         return False
 
 
-def _write(now):
+def _marked():
+    """The mark of this checkout, else the clone's (then written here too, so the next call reads one file)."""
+    if _local():
+        return True
+    got = shared("notice").get(VERSION)
+    if got:
+        _write_local(str(got))
+    return bool(got)
+
+
+def _write_local(now):
     if not os.path.isdir(TEMPER) or os.path.islink(TEMPER) or os.path.islink(MARK):
         return False
     try:
@@ -60,9 +121,16 @@ def _write(now):
         return False
 
 
+def _write(now):
+    """Both marks; the checkout's own decides whether the notice is said (as before the clone's mark)."""
+    done = _write_local(now)
+    mark_shared("notice", VERSION, now)
+    return done
+
+
 def take(now=""):
     """The notice when it is due (an older project, no mark), with the mark written; else ''."""
-    if _marked() or not _older():
+    if _local() or not _older() or _marked():   # the clone's mark last: it costs a call of git
         return ""
     return TEXT if _write(now) else ""
 

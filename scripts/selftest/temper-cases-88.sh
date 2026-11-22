@@ -115,6 +115,32 @@ _d102_88+="|worktree=$(_ev "'told' if str(d.get('say') or '').startswith('Temper
 cd "$WORKDIR" || exit 1
 assert_eq "review 8: a worktree of a project that only ran 9.8.5 is never told Temper 9.8.5 asks twice" \
   "first=quiet|worktree=quiet" "$_d102_88"
+# NEW-FLOW-2 (a): the same project as Temper itself leaves it: the config is not committed (the run's commit names no
+# file under .claude/), so a new worktree has the spec folders and no config. The mark of the clone (in the folder
+# `git rev-parse --git-common-dir` names) says that this project was set up by 9.8.5.
+_told88() { _ev "'told' if str(d.get('say') or '').startswith('Temper 9.8.5 asks twice') else 'quiet'" "$("$TEMPER" next --json 2>/dev/null)"; }
+_clean88; mkdir -p p; cd p || exit 1; _git88
+printf 'x\n' > README.md; git add README.md; git commit -q -m init
+"$TEMPER" config init >/dev/null 2>&1; "$TEMPER" init >/dev/null 2>&1
+mkdir -p .temper/specs/done1; printf '# Intent: a finished run\n' > .temper/specs/done1/intent.md
+git add .temper/specs; git commit -q -m 'docs(done1): record the run' 2>/dev/null
+_nf2a88="config=$(git ls-files .claude | grep -c . | tr -d ' ')|first=$(_told88)"
+git worktree add -q "$WORKDIR/wt" 2>/dev/null; cd "$WORKDIR/wt" || exit 1
+_nf2a88+="|worktree=$(_told88)"
+cd "$WORKDIR" || exit 1
+assert_eq "NEW-FLOW-2: a worktree of a project that only ran 9.8.5 and never committed its config is never told" \
+  "config=0|first=quiet|worktree=quiet" "$_nf2a88"
+# NEW-FLOW-2 (c): a project of 9.8.4 whose config holds nothing to tidy is told once, not once in every new worktree
+_clean88; mkdir -p p; cd p || exit 1; _git88; mkdir -p .claude .temper/specs/old1
+printf '# our config\nreview:\n  block-on: [critical, high]\n' > .claude/temper.config
+printf '# Intent: an old run\n' > .temper/specs/old1/intent.md
+git add -A; git commit -q -m init 2>/dev/null
+_nf2c88="first=$(_told88)|again=$(_told88)"
+git worktree add -q "$WORKDIR/wt" 2>/dev/null; cd "$WORKDIR/wt" || exit 1
+_nf2c88+="|worktree=$(_told88)"
+cd "$WORKDIR" || exit 1
+assert_eq "NEW-FLOW-2: a project that ran 9.8.4 is told once, and a new worktree of that clone is not told again" \
+  "first=told|again=quiet|worktree=quiet" "$_nf2c88"
 
 # --- review 8, D62: the one time config question is never asked again ---
 # The person answers Remove them (the recommended answer) on the template of 9.8.4. Later they set a coverage floor of
@@ -131,6 +157,23 @@ printf 'check:\n  coverage-threshold: 80\n' >> .claude/temper.config
 _d62_88+="|later=$(nx "(d.get('ask') or {}).get('id')")"
 assert_eq "review 8: after Remove them the one time question config.tidy is never asked again, also when the person later sets a value an old template shipped" \
   "first=config.tidy|later=None" "$_d62_88"
+# NEW-FLOW-2 (b): the answer is on record in the clone, not only in the file's first line: a line the person writes
+# above the header, or the header taken out, does not bring the question back; nor does Keep my file with its
+# upgrade block taken out again.
+_after88() { # _after88 <answer of config.tidy> <sed script on the config>: the question of a later run, after that edit
+  _clean88; _git88; mkdir -p .claude; _tpl88 7c7a1c1 > .claude/temper.config
+  printf 'x\n' > README.md; git add -A; git commit -q -m init
+  "$TEMPER" init >/dev/null 2>&1; "$TEMPER" state init pw --feature 'Password reset by email' >/dev/null 2>&1
+  "$TEMPER" config tidy "$1" >/dev/null 2>&1 || true
+  "$TEMPER" state clear >/dev/null 2>&1 || true
+  sed -i "$2" .claude/temper.config
+  printf 'check:\n  coverage-threshold: 80\n' >> .claude/temper.config
+  "$TEMPER" state init pw2 --feature 'Export totals' >/dev/null 2>&1
+  nx "(d.get('ask') or {}).get('id')"
+}
+assert_eq "NEW-FLOW-2: after an answer to config.tidy an edit of the config's first line or of its upgrade block does not bring the question back" \
+  "above=None|header out=None|keep, block out=None" \
+  "above=$(_after88 --apply '1i # our team config')|header out=$(_after88 --apply 1d)|keep, block out=$(_after88 --keep '/^upgrade:/,$d')"
 # The lane's check beside the finding (WP32): a new project, whose config config init wrote, sets the same value on
 # purpose; it never ran an older Temper, so it is never asked the upgrade question.
 _clean88; _git88; "$TEMPER" config init >/dev/null 2>&1

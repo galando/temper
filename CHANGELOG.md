@@ -95,10 +95,12 @@ number 9.8.5 is the owner's choice.
 - **One line, once.** The first `temper next` of a project that has `.temper/specs` or `.temper/archive` and no mark
   says, in front of its `say` and never in a dialog: "Temper 9.8.5 asks twice: before any code is written, and at the
   commit. Pick Ask me at every stage at the first question for the old flow. What changed: docs/getting-started.md."
-  The mark is `.temper/notice.json`; `temper init` writes it for a new project, which is never told.
+  The mark is `.temper/notice.json`; `temper init` writes it for a new project, which is never told. The clone keeps
+  it too (`temper-marks.json` in the repository's git folder), so a new worktree is not told again.
 - **One config question.** The first run of a project whose config is an older template asks `config.tidy` before
   anything else: Remove them (Recommended) drops the lines that only repeat old defaults or are no longer read and keeps
-  a copy as `.claude/temper.config.before-9.8.5`; Keep my file keeps the old values (`upgrade.asked`).
+  a copy as `.claude/temper.config.before-9.8.5`; Keep my file keeps the old values (`upgrade.asked`). The answer
+  is on record in the clone as well, so a later edit of the file does not bring the question back.
   `autonomy.enabled: false` becomes `run.default: ask`. A `block-on: [critical]` reads like the old default: the
   question says high will block too.
 - **A saved run.** A run saved by 9.8.4 is taken up where it was and asks at every stage. A run that came through a door

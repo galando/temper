@@ -47,7 +47,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `run` | `{id, step, slug, stage, command, mode}`, or `null` when no run is active |
 | `action` | what to do: `none`, `work`, `ask`, `wait`, `auto`, `broken` (below) |
 | `stage` | the stage the action belongs to |
-| `say` | one sentence for the person. Once, in a project that ran an earlier Temper (`.temper/specs` or `.temper/archive` there, and no `.temper/notice.json`), the first `next` puts the one time notice in front of it, `Temper 9.8.5 asks twice: ...`, and writes that mark; `temper go` keeps it in front of the `say` it prints and in its key `notice`, which the mod's run driver shows when no run is active yet. `temper init` writes the mark for a new project, which is never told |
+| `say` | one sentence for the person. Once, in a project that ran an earlier Temper (`.temper/specs` or `.temper/archive` there, and no `.temper/notice.json`), the first `next` puts the one time notice in front of it, `Temper 9.8.5 asks twice: ...`, and writes that mark; `temper go` keeps it in front of the `say` it prints and in its key `notice`, which the mod's run driver shows when no run is active yet. `temper init` writes the mark for a new project, which is never told. The clone keeps the same mark in `temper-marks.json` in the repository's git folder (the one `git rev-parse --git-common-dir` names), so a new worktree of the clone is not told again, also when the config is not committed; a fresh clone has no such file and is told when its config is not one of 9.8.5 |
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step; 9.8.5: id `run.restart`, kind `resume`, options `start-over` and `cancel` (kind `cancel`) |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
 | `blocking_asks` | 9.8.0, with `blocking`: each as the session asks it, `{question, answer, carry}`: `question` is the AskUserQuestion entry (header `Question N`, the text before `choices:`, the choices as options, the first marked `Recommended`, then `Carry forward`); 9.8.5: `question` goes to the dialog as it is, so its ids sit beside it in `question_ids`: `{id, kind, options}`, with id `intent.blocking`, kind `blocking`, and each option's `id` in the same order (`choice-1` to `choice-3`, `type`, `carry`), Carry forward with the kind `carry`; `answer` is `temper intent answer '<question>' '{answer}'`, which writes the answer into Decisions (and a `Design:` question's concern in design.md), and `carry` is `temper intent carry '<question>'`. `temper go` prints this list as `blocking` |
@@ -218,7 +218,9 @@ The first question of a `/temper:temper` run at Intent, before the baseline and 
 no usage row of Intent yet), in a run that asks, when the project's config holds a line whose value an earlier template
 shipped (`OLD` of `scripts/defaults.py`) or a key no longer read (`GONE`), no `upgrade.asked` of 9.8.5, and a first
 line that is not the first line of the 9.8.5 template (WP32: what `config init` and `Remove them` write is never asked,
-also when the person later sets a value an old template shipped):
+also when the person later sets a value an old template shipped), and no answer on record in the clone (both answers
+write `config.tidy` into `temper-marks.json` in the repository's git folder, so an edit of the file's first line or of
+its `upgrade` block does not bring the question back in that clone):
 `config.tidy`, header `Temper gate`. Its text counts the lines and says a copy is kept, then names at most eight with
 what changes (the coverage floor, `phases.design`, the five packs and `block-on: [critical]` first) and `and M more`.
 Its two options are one call of the CLI each:

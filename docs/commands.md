@@ -494,7 +494,11 @@ The question is asked only at Intent before the first agent of a `/temper:temper
 nothing past Intent, in a fix run or in a run that goes on by itself; at Intent, or with no run active, they run, so a
 person can also type them. Typed after `Keep my file`, `--apply` still removes the old lines: `upgrade.asked` stops
 the question, not the call. A project made by `config init`, or a file `Remove them` wrote, is never asked: such a
-file starts with the first line of the template, and a value set in it later is the person's own.
+file starts with the first line of the template, and a value set in it later is the person's own. Both answers are
+also on record in the clone (`temper-marks.json` in the repository's git folder, which every worktree of the clone
+shares), so a later edit of that first line or of the `upgrade` block does not bring the question back. The limit: a
+fresh clone has no such record and reads the file alone, so a file with an old default, no `upgrade.asked` and another
+first line is asked there once more.
 
 ### What became of an old key
 
@@ -531,10 +535,6 @@ file starts with the first line of the template, and a value set in it later is 
   `not on PATH`. It reads the shell as it is.
 - **Setup block:** `none`, or the run line with `(not run by doctor: it may start a service)`, each variable as
   `NAME=value`, and each credential name it left out.
-- **Services:** for each `setup.services` entry, `answering` or `not answering` (a TCP connect, 2 seconds). With no
-  such entry, the database and cache services the project's files ask for (a compose file in the root, the CI file),
-  each with the file that names it. These are the services the environment check of a run tries; to say which
-  services must answer on this machine, name them under `setup.services`.
 
   A variable with a credential name (`PASSWORD`, `TOKEN`, `SECRET`, `KEY` and the like as a part of the name) is never
   set and never shown. What is shown here, in an agent's prompt and in the red base question also hides: a name with
@@ -544,6 +544,10 @@ file starts with the first line of the template, and a value set in it later is 
   a flag (`mysql -uroot -psecret`), a key of no known shape under a plain name and a URL password that holds a `/` are
   still shown. The values are in `.claude/temper.config` in plain text either way, which an agent can read: keep a
   real secret out of that file.
+- **Services:** for each `setup.services` entry, `answering` or `not answering` (a TCP connect, 2 seconds). With no
+  such entry, the database and cache services the project's files ask for (a compose file in the root, the CI file),
+  each with the file that names it. These are the services the environment check of a run tries; to say which
+  services must answer on this machine, name them under `setup.services`.
 
 The mod lets it run during a run, as any CLI call. Use it when a gate says `environment fault` or `ENV:`.
 
