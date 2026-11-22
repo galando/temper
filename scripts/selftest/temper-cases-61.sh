@@ -196,6 +196,14 @@ assert_eq "w20 environment check: a JDK below the pom's and a closed service are
   'have' if '21' in json.dumps(d.get('env')) else 'no have', 'service' if '127.0.0.1:1' in json.dumps(d.get('env')) else 'no service',
   '%d faults' % len(d.get('env') or [])])")|runs=$(_runs61)|$( (( _t1 - _t0 < 5000000000 )) && echo 'under 5 s' || echo "$(( (_t1 - _t0) / 1000000 )) ms")"
 _clean61
+# R6-1: a JVM told its options by the environment prints `Picked up JAVA_TOOL_OPTIONS: ...` before its version line
+fresh; _clean61; _jdk61; _repo61; _tools61; rm -f .temper/evidence/baseline.json
+printf '#!/bin/sh\necho "Picked up JAVA_TOOL_OPTIONS: -Dfoo=bar" >&2\necho "openjdk version \\"21.0.2\\" 2024-01-16" >&2\n' > .git/bin61/java
+PATH="$WORKDIR/.git/bin61:$PATH" _start61
+assert_eq "w20 environment check: a JVM that prints the JAVA_TOOL_OPTIONS line before its version line is still read as its JDK" \
+  "red|tool-version|backend/pom.xml needs JDK 24; the shell has JDK 21" \
+  "$(_b61 "'|'.join([str(d.get('result')), str(d.get('kind')), '; '.join(str(x.get('why')) for x in d.get('env') or [])])")"
+_clean61
 
 # --- w20 three results: green with seconds and coverage, red with its fail lines, unknown with a reason ---
 _suite61 "bash pass61.sh" "bash cov61.sh"; _start61

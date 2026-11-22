@@ -322,7 +322,9 @@ def needs(project, setup, commands=()):
         lines.append(("(cd %s 2>/dev/null && __w %s %d)" % (shlex.quote(folder), shlex.quote(p), i)) if "/" in p and folder
                      else "__w %s %d" % (shlex.quote(p), i))
     if st["java"]:
-        lines.append('echo "version java $(java -version 2>&1 | head -n 1)"')
+        # R6-1: the JVM's version line, not its first line: with JAVA_TOOL_OPTIONS set it prints `Picked up ...` first
+        lines.append('__j="$(java -version 2>&1)"; echo "version java $(printf \'%s\\n\' "$__j" | grep -m 1 \'version "\' '
+                     '|| printf \'%s\\n\' "$__j" | head -n 1)"')
     if st["node"]:
         lines.append('echo "version node $(node --version 2>&1 | head -n 1)"')
     out, rc = run_env.run_cmd(project, NEEDS_LIMIT_S, ["\n".join(lines)], setup)
