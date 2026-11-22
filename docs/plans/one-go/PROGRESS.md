@@ -314,7 +314,7 @@ builds it with the package; none of them is a new stage, agent or question.
 - [ ] U17 dropped: the proposal treats any mention of a variable as "the code reads it"; the block is shown whole (M13).
 - [x] U18 (WP29, WP20): secrets are masked by name only; `3.10` reaches a command as `3.1`. WP32: `run_env.load_setup` reads setup.env as the text the file writes (`config_yaml.load(path, as_text=True)`), and `run_env.mask` hides a URL's password in any value and a name with PW or PWD as a part, in what is shown only (the run line, the variables of a prompt, the red base question, `temper doctor`); case 23 `9.8.5 setup (U18): ...` and `9.8.5 prompts (U18): ...` prove it.
 - [x] U19 (WP08): three run files are not in the exclude list and outlive the run.
-- [ ] U20 (WP08 its own lines, done; WP18 `agents/review.md:27`; WP31 the rest): documents that disagree with the code.
+- [x] U20 (WP08 its own lines, done; WP18 `agents/review.md:27`; WP31 the rest): documents that disagree with the code. WP32: the lock comment of `scripts/temper` said a held lock is written past with a WARN after 60 s; it now says what the code does (a wait of up to 120 s, then exit 75 and nothing written).
 - [ ] U21 (WP08 the policy run, done; WP07 the scripted promises, done; WP30 the fixture): no end to end test ran the policy, a failing preflight, a setup block or a plan patch; the shared selftest fixture counts claimed runs.
 - [x] U22 (WP16): the mod counts a typed answer of at most 100 characters; the CLI takes 2,000.
 - [ ] U23 kept as shipped (WP32 names it in the pull request text, for the owner): the Interfaces check matches any `send(msg)`.
