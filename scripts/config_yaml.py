@@ -16,7 +16,9 @@ _TABLE = object()   # get() with no default: the table's
 # A deliberately small YAML subset: nested maps by indentation, scalars, and
 # INLINE flow lists ([a, b, c]) only — the v7 config never needs block-style
 # '- item' lists, so that form is intentionally not supported here.
-def parse_yaml_subset(text):
+# as_text=True keeps every scalar as the text the file writes (quotes taken off), never an int, a float or a bool: a value of
+# setup.env reaches a command as written (U18: `PYTHON_VERSION: 3.10` once came out as 3.1); every other reader keeps numbers.
+def parse_yaml_subset(text, as_text=False):
     root = {}
     stack = [(-1, root)]
     for raw in text.splitlines():
@@ -40,6 +42,8 @@ def parse_yaml_subset(text):
         elif val.startswith('[') and val.endswith(']'):
             items = [i.strip().strip('"\'') for i in val[1:-1].split(',') if i.strip()]
             parent[key] = items
+        elif as_text:
+            parent[key] = val[1:-1] if len(val) >= 2 and val[0] == val[-1] and val[0] in '"\'' else val
         elif val in ('true', 'false'):
             parent[key] = (val == 'true')
         else:
@@ -57,11 +61,11 @@ def parse_yaml_subset(text):
     return root
 
 
-def load(path):
-    """The parsed config, or {} when the file is missing or unreadable."""
+def load(path, as_text=False):
+    """The parsed config, or {} when the file is missing or unreadable; as_text: scalars as written (parse_yaml_subset)."""
     try:
         with open(path) as f:
-            return parse_yaml_subset(f.read())
+            return parse_yaml_subset(f.read(), as_text)
     except (OSError, UnicodeDecodeError):
         return {}
 

@@ -164,7 +164,8 @@ def load_setup(config=None):
     if not isinstance(blk, dict) or not blk:
         return {}
     env, dropped = {}, []
-    for k, v in (blk.get('env') if isinstance(blk.get('env'), dict) else {}).items():
+    raw = (config_yaml.load(path, as_text=True).get('setup') or {}).get('env')   # U18: 3.10 stays 3.10, never the float 3.1
+    for k, v in (raw if isinstance(raw, dict) else {}).items():
         if is_credential(k):
             dropped.append(k)
         else:

@@ -15,6 +15,10 @@ sed -i 's/^  run: .*/  run: exit 3/' .claude/temper.config
 assert_eq "9.8.5 setup: a failing run line is exit 125 with temper-setup: FAIL, and the command does not run" "125|temper-setup: FAIL (exit 3)" \
   "$(_re x "o, rc = run_env.run_cmd('.', 10, ['echo never']); print(str(rc) + '|' + o.decode().strip())")"
 assert_eq "9.8.5 setup: a credential assignment in the run line is masked when shown" "TOKEN=<left out> X=1 go" "$(_re x "print(run_env.mask('TOKEN=abc X=1 go'))")"
+# U18 (WP29): a value of setup.env reaches the command exactly as the file writes it; the reader keeps no float of it
+printf 'setup:\n  env:\n    PYTHON_VERSION: 3.10\n    NODE: 20.10\n    PORT: 5433\n    QUOTED: "1.50"\n' > u18.config
+assert_eq "9.8.5 setup (U18): an unquoted number of setup.env reaches the command as written (3.10, not 3.1)" "3.10|20.10|5433|1.50" \
+  "$(_re x "o, rc = run_env.run_cmd('.', 10, ['printenv PYTHON_VERSION NODE PORT QUOTED'], run_env.load_setup('u18.config')); print('|'.join(o.decode().split()))")"
 # WP21: the two keys of the plan gate's old per command check are gone from the template (the pattern is spelled so that
 # the grep of the package's "Done when" does not find it here)
 assert_eq "9.8.5 setup (WP21): the config template documents the setup block, and neither key of the old plan check" "setup=1|old keys=0" \
