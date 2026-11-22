@@ -779,3 +779,17 @@ _red44() { # _red44 <test command>: a red base the person passed with go-on-anyw
 }
 assert_eq "D35e a red base passed with go-on-anyway is a recorded skip: its old failing lines are skipped, a new one fails the row" \
   "old=None:skipped|new=False" "old=$(_red44 'echo FAIL: test_a; exit 1')|new=$(_red44 'echo FAIL: test_a; echo FAIL: test_b; exit 1')"
+# R6-2: a digit that is part of a test's name or of its bracketed id is not a number to leave out
+_red44d() { # _red44d <base fail line> <test command>: _red44 with that one fail line on the base
+  fresh; _repo44; printf 'check:\n  commands:\n    test: "%s"\n' "$2" >> .claude/temper.config
+  python3 -c "
+import json, sys
+json.dump({'result': 'red', 'kind': 'red-base', 'why': '1 test fails on the base', 'fail_lines': [sys.argv[1]], 'seconds': 1},
+          open('.temper/evidence/baseline.json', 'w'))" "$1"
+  "$TEMPER" baseline accept-red --reason 'the base was red before this run' >/dev/null 2>&1 || true
+  gpass intent plan build review; _at check
+  "$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1; _row44 check "tests pass"
+}
+assert_eq "D35e a new failing test whose name or bracketed id differs from an old one only in digits fails the row; a line number and a duration do not" \
+  "name=False|swap=False|id=False|number=None:skipped" \
+  "name=$(_red44d 'FAIL: test_v1' 'echo FAIL: test_v1; echo FAIL: test_v2; exit 1')|swap=$(_red44d 'FAIL: test_v1' 'echo FAIL: test_v2; exit 1')|id=$(_red44d 'FAILED t.py::test_add[3] - assert 1 == 2' 'echo FAILED t.py::test_add[3] - assert 1 == 2; echo FAILED t.py::test_add[7] - assert 5 == 9; exit 1')|number=$(_red44d 'FAIL: test_v1 at t.py:12 in 0.03s' 'echo FAIL: test_v1 at t.py:14 in 1.2s; exit 1')"

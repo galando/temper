@@ -275,8 +275,10 @@ a red base; a run that goes on by itself records a stop with its notice, then as
 
 "Go on anyway" is a recorded skip: a row `base-suite` in `.temper/overrides.json` (by the person), the answer in the
 file and in the reuse store under the baseline's key (the base tree, the command, the setup block, the tool versions).
-At Check the row `tests pass` of a failed suite run that shows only the base's fail lines (numbers masked) is `pass:
-null, state: skipped`; one new fail line fails it, after the eighth too: the base keeps every fail line it showed, and so
+At Check the row `tests pass` of a failed suite run that shows only the base's fail lines is `pass: null, state:
+skipped`. Two lines are the same when they differ only in a number that stands by itself (a count, a duration, a line
+number) or in an address; a digit in a test's name or in its bracketed id (`test_v2`, `test_add[7]`) is part of the
+line, so a new test named like an old one is a new fail line. One new fail line fails it, after the eighth too: the base keeps every fail line it showed, and so
 does each run of the suite (its ledger row and its entry in the reuse store). At Build the integration suite and a
 group's Validate that fail only as on that base are a recorded skip the same way; a list of exactly eight lines may be
 one cut by an older entry, so it never matches. A base

@@ -852,8 +852,8 @@ FAIL_CAP = 8   # the fail lines a cut list keeps (run_env.fail_lines); a run's l
 def like_base(root, cmd, lines):
     """Whether a failed run of the plan's command cmd at its gate shows only the failures it showed on the base, on a
     base the person went on from (its result `fails like the base`, or cmd is the suite the baseline ran): every fail
-    line is one of the base's, digits left out. No line to compare with is no match. A list longer than FAIL_CAP is
-    whole (run_cached keeps every line; a cut one holds FAIL_CAP at most)."""
+    line is one of the base's, the numbers that stand by themselves left out (`mask`). No line to compare with is no
+    match. A list longer than FAIL_CAP is whole (run_cached keeps every line; a cut one holds FAIL_CAP at most)."""
     d = read(root)
     e = (d.get("plan") or {}).get(cmd) if isinstance(d.get("plan"), dict) else None
     e = e if isinstance(e, dict) and e.get("result") == "fails like the base" else None
@@ -889,8 +889,17 @@ def skip(root, cmd, reason):
 
 
 # ---- the recorded skip: the row `tests pass` of a red base the person went on from ----------------------------------
+# What differs between two runs of one failing test and names no test: an address, and a number that stands by itself
+# (a count, a duration, a line number). A digit that is part of a name (`test_v2`, `case-2`) or of the bracketed id a
+# name carries (`test_add[7]`) names a test, so it stays (R6-2: with every digit left out a new failing test passed as an
+# old one). A number that stands by itself in a test's title (`adds 1 and 2`) is still left out: the limit of a mask.
+_MASKED = re.compile(r"(?<=[\w)\]])\[[^\]]*\]"
+                     r"|\b0x[0-9a-fA-F]+\b"
+                     r"|(?<![A-Za-z_\d])(?<![A-Za-z]-)\d+(?:[.,]\d+)*(?:m?s\b)?(?![A-Za-z_\d])")
+
+
 def mask(line):
-    return re.sub(r"\d+", "#", " ".join(str(line).split()))
+    return _MASKED.sub(lambda m: m.group(0) if m.group(0)[0] == "[" else "#", " ".join(str(line).split()))
 
 
 def skip_row(root, ledger, config=""):
