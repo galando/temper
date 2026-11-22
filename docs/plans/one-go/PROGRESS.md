@@ -312,7 +312,7 @@ builds it with the package; none of them is a new stage, agent or question.
 - [ ] U15 (WP21): a failed preflight row goes whole into the question.
 - [ ] U16 (WP21): the wrong reason on a red Maven base.
 - [ ] U17 dropped: the proposal treats any mention of a variable as "the code reads it"; the block is shown whole (M13).
-- [ ] U18 (WP29, WP20): secrets are masked by name only; `3.10` reaches a command as `3.1`.
+- [x] U18 (WP29, WP20): secrets are masked by name only; `3.10` reaches a command as `3.1`. WP32: `run_env.load_setup` reads setup.env as the text the file writes (`config_yaml.load(path, as_text=True)`), and `run_env.mask` hides a URL's password in any value and a name with PW or PWD as a part, in what is shown only (the run line, the variables of a prompt, the red base question, `temper doctor`); case 23 `9.8.5 setup (U18): ...` and `9.8.5 prompts (U18): ...` prove it.
 - [x] U19 (WP08): three run files are not in the exclude list and outlive the run.
 - [ ] U20 (WP08 its own lines, done; WP18 `agents/review.md:27`; WP31 the rest): documents that disagree with the code.
 - [ ] U21 (WP08 the policy run, done; WP07 the scripted promises, done; WP30 the fixture): no end to end test ran the policy, a failing preflight, a setup block or a plan patch; the shared selftest fixture counts claimed runs.

@@ -609,7 +609,7 @@ def main(argv):
         if setup["run"]:
             print("  run: %s (not run by doctor: it may start a service)" % run_env.mask(setup["run"]))
         for k, v in setup["env"].items():
-            print("  %s=%s" % (k, v))
+            print("  " + run_env.shown_var(k, v))
         for k in setup["dropped"]:
             print("  left out (credential name): %s" % k)
     services = setup.get("services") or {}

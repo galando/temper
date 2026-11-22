@@ -162,11 +162,11 @@ class WorkPart:
         if not block:
             return None   # WP21: no rule proposes a block: the question says what is missing, in the fault's words
         parts = doctor.parts(block)
-        run, env = parts["run"], ", ".join("%s=%s" % kv for kv in parts["env"].items())
+        run, env = parts["run"], ", ".join(run_env.shown_var(*kv) for kv in parts["env"].items())
         what = "; ".join(x for x in [("run: " + run_env.mask(run)) if run else "", ("variables: " + env) if env else ""] if x)
-        # M13 of WP08: the question shows the block whole, line by line (the run line masked), since the person who
+        # M13 of WP08: the question shows the block whole, line by line (masked: run_env.mask), since the person who
         # reads it is the check: a block that fakes a tool passes the CLI's own
-        shown = [("  run: " + run_env.mask(l[len("  run: "):])) if l.startswith("  run: ") else l for l in block]
+        shown = [run_env.mask(l) for l in block]   # U18: a URL's password on any line too
         self.shown_block = "\n".join(shown) if base else " | ".join(l.strip() for l in shown if l.strip())
         desc = "%s. Temper writes the block as shown into .claude/temper.config, then checks the environment and runs the suite again." % what
         calls = [self.c("doctor --propose --write --expect %s" % doctor.block_hash(block)), self.c("baseline start --again")]

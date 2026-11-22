@@ -41,7 +41,7 @@ class AskPart:
         s = run_env.load_setup(self.r.ctx.get("config_file") or os.path.join(".claude", "temper.config"))
         if not s:
             return ""
-        env = ", ".join("%s=%s" % kv for kv in s["env"].items()) or "(none)"
+        env = ", ".join(run_env.shown_var(*kv) for kv in s["env"].items()) or "(none)"
         return ("\nEnvironment setup (.claude/temper.config setup:): in each new shell, before a build or test command, "
                 "run: %s; variables: %s. The CLI applies it to every command it runs." % (run_env.mask(s["run"]) or "(none)", env))
 
