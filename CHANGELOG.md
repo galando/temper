@@ -103,8 +103,9 @@ number 9.8.5 is the owner's choice.
   question says high will block too.
 - **A saved run.** A run saved by 9.8.4 is taken up where it was and asks at every stage. A run that came through a door
   keeps `enter` in its state, which is ignored. A planned folder with no run is started from its intent, and its plan
-  is written again. A run saved after its Review has a completion row with no read list: it fails once, and Review
-  runs again.
+  is written again. A run saved at its Review question has a completion row with no read list: it fails once, and
+  Review runs again. A run saved later, at Check or at the commit, keeps the Review verdict 9.8.4 gave it (you answered
+  that Review's question there); Review runs again under the new rule only after a step back to Build.
 - **The installed commit hook.** The setup check asks `temper init` and `temper guards install` once: the list of run
   files git ignores grew, and the hook is written in its current form.
 - **What is gone from your files.** `.temper/metrics.json` and `.temper/review-memory.json` are left where they are;

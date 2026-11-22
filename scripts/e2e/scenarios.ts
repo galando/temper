@@ -24,13 +24,15 @@ export function sh(w: World, command: string): { code: number; out: string } {
 }
 export const t = (w: World, args: string) => sh(w, `${TEMPER} ${args}`)
 
-export function startProject(w: World, config = '', before?: (w: World) => void): void {
+// template: the text of the config instead of the template of the day (scripts/e2e/upgrade.ts: the one 9.8.4 shipped)
+export function startProject(w: World, config = '', before?: (w: World) => void, template = ''): void {
   for (const [rel, text] of Object.entries(BASE_FILES)) {
     fs.mkdirSync(path.dirname(path.join(w.dir, rel)), { recursive: true })
     fs.writeFileSync(path.join(w.dir, rel), text)
   }
   w.sh('git add -A && git commit -qm base')
   w.sh(`mkdir -p .claude && cp ${ROOT}/templates/temper.config.default .claude/temper.config`)
+  if (template) fs.writeFileSync(path.join(w.dir, '.claude/temper.config'), template)
   // 9.8.0: Check is run by the CLI. The driver names its commands (the suite, with a coverage total it prints), so a
   // run gives the same verdict on every machine. WP19: the lines go at the top of the check block, whatever the
   // template holds there, and no key turns the planted bug score off: it gates nothing.

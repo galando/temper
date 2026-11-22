@@ -4,6 +4,7 @@ import { pyjokesBlocked, pyjokesFull, pyjokesRun } from './pyjokes'
 import { ACCEPT_SCENARIOS } from './accept'
 import { BROKEN_SCENARIOS } from './broken'
 import { SLOW_SCENARIOS } from './slow'
+import { UPGRADE_SCENARIOS } from './upgrade'
 import { planCommandFails, setupAtBuild } from './scenarios'   // WP21 and WP23, registered below with the scenarios of the base
 import { blockedOutsidePlan, blockedTaskAmended } from './scenarios'   // WP25, registered below
 import { listed, loadList, skipsCompare, stale, verdict } from './xfail'
@@ -19,7 +20,7 @@ const SCENARIOS: Record<string, (w: World) => void> = { 'default-run': defaultRu
 // The scenarios of the two scripted projects (WP06) and the acceptance scenarios of docs/plans/one-go/done.md (WP07)
 // run only in the modes each names.
 const ONLY: Record<string, string[]> = {}
-for (const [name, s] of Object.entries({ ...SLOW_SCENARIOS, ...BROKEN_SCENARIOS, ...ACCEPT_SCENARIOS })) {
+for (const [name, s] of Object.entries({ ...SLOW_SCENARIOS, ...BROKEN_SCENARIOS, ...ACCEPT_SCENARIOS, ...UPGRADE_SCENARIOS })) {
   SCENARIOS[name] = s.run
   ONLY[name] = s.modes
 }

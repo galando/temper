@@ -660,7 +660,10 @@ question (the Design question is then the approval), and when `may_run_alone()` 
 unless the run is at Plan or Design with that check passed and not skipped, and under `never-unattended`; it records
 the stage in `unattended_from`, which `state set` refuses. A state with `run_mode: autonomous` and no `unattended_from`
 (a run that 9.8.4 approved for Build alone) reads as `interactive`. `state init` stamps `saved_by`; a
-state with none, saved at Review, loses its Review verdict once, so Review runs once more.
+state with none, saved at Review, loses its Review verdict once, so Review runs once more. The limit: a state with
+none saved at Check or at the commit keeps the Review verdict the older Temper gave it (the person answered that
+Review's question there, and its completion row names no file read); Review runs again, under the rule that compares
+the files read with the change, only after a step back to Build.
 
 `Run.armed` is `run_mode: autonomous`, an `unattended_from` other than the stage the run is at, and no `parked`. Then a
 passed Design, Build, group, Review or Check is an `auto` advance. Review: an open finding at a level of
