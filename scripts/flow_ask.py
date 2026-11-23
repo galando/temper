@@ -289,6 +289,31 @@ class AskPart:
                         calls=[self.c("repair start --stage %s --again" % stage)], oid="repair-again")
 
     # -- gate questions ----------------------------------------------------------------------
+    def suite_timeouts(self, stage):
+        """R6-3 (WP20 mechanism 14, outside the group gate): the open time out records of the stage's suite, oldest first."""
+        import failure
+        return [x for x in failure.open_records(scope="gate:%s" % stage)
+                if x.get("check") == "suite" and x.get("kind") == "timeout"]
+
+    def timeout_rerun(self, stage, integ_failed=False):
+        """R6-3: the first time out of a suite command outside the group gate is no question either (WP20 mechanism 14):
+        the CLI runs the stage again by itself, under the doubled limit the time out kept (baseline.timed_out); a second
+        time out asks (the record count then holds two, so None). Only a suite time out with no other open failure of the
+        gate's scope takes it."""
+        tm = self.suite_timeouts(stage)
+        import failure
+        if len(tm) != 1 or len(failure.open_records(scope="gate:%s" % stage)) != 1:
+            return None
+        if stage == "check":
+            calls = [self.c("check run"), self.c("gate check")]
+        elif stage in ("build", "fix") and integ_failed:
+            calls = [self.c("integrate"), self.c("gate build")]
+        else:
+            return None
+        return {"action": "auto", "stage": stage, "calls": calls,
+                "say": "%s: the suite ran out of time (%s); the CLI runs it again with twice the limit." % (
+                    LABEL.get(stage, stage), tm[0].get("cmd") or "the suite's command")}
+
     def ask(self, stage):
         r = self.r
         verdict = r.verdict(stage)
@@ -461,6 +486,9 @@ class AskPart:
             if setup:   # WP23: a fault of the environment when Build ended: the setup question, and no fix agent
                 return self.setup_question(stage, setup, back_opt(rec=False) + [override_opt(go)] + (
                     [self.run_anyway(["integrate --fresh", "gate build"])] if integ_failed else []))
+            tm = self.timeout_rerun(stage, integ_failed)   # R6-3: a first time out runs again with twice the limit, by itself
+            if tm:
+                return tm
             # 9.8.4: the same failure after a Run again is not run again by the recommendation: the run converges on the
             # person (an e2e run that followed it relaunched Build's fix pass forty times on one failure)
             redo = r.state.get("redo") if isinstance(r.state.get("redo"), dict) else {}
@@ -603,6 +631,12 @@ class AskPart:
                 return self.question(GATE_HEADER, "Check: the check failed (%s).%s %s?" % (why, said, self.bare(lead)), stage=stage,
                                      options=opts + [override_opt(go), anyway, self.save()], qid="check.fail")
             fix = [self.repair_opt(stage, rep)] if rep is not None and not gap else []
+            tm = self.timeout_rerun(stage)   # R6-3: a first time out of Check's suite runs again with twice the limit
+            if tm:
+                return tm
+            if self.suite_timeouts(stage):   # R6-3: a second time out asks, and the text says it was a time out
+                why = "the suite ran out of time (%s), also after it ran again with twice the limit" % (
+                    self.suite_timeouts(stage)[-1].get("cmd") or "the suite's command")
             return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, "Run Check again" if gap else "Repair it in the stage" if fix and rep
                                  else "Loop back to %s" % LABEL[back or "build"]), stage=stage,
                                  options=fix + again + back_opt(rec=not gap and not (fix and rep)) + [override_opt(go), anyway, self.save()], qid="check.fail")
@@ -654,21 +688,33 @@ class AskPart:
             return self.round_limit() + 1
         return n if n >= 1 else self.round_limit() + 1
 
+    def pipeline_round_unreadable(self):
+        """R2-2: whether the stored round cannot be read as a round (pipeline_round counts it past the limit by
+        construction). Only then does the question drop the fix round itself; a readable round past the budget's limit
+        keeps the fix question, whose round spends `pipeline`, so budget_guard asks run.budget there."""
+        v = self.r.state.get("pipeline_round")
+        if v in (None, ""):
+            return False
+        try:
+            return int(str(v).strip()) < 1
+        except ValueError:
+            return True
+
     def pipeline_question(self, passed, why):
         r = self.r
         ctx = read_json(os.path.join(r.spec, "pipeline-context.json"), {}) if r.spec else {}
         status = ctx.get("status") if ctx else None
         rnd = self.pipeline_round()
         mx = self.round_limit()
-        end = self.opt("End the run" + (" (Recommended)" if passed or rnd > mx else ""), "Finish here; the run state is cleared.", move="advance", calls=[self.c("state clear")],
-                       oid="end-run")
+        end = self.opt("End the run" + (" (Recommended)" if passed or (rnd > mx and self.pipeline_round_unreadable()) else ""),
+                       "Finish here; the run state is cleared.", move="advance", calls=[self.c("state clear")], oid="end-run")
         if passed:
             return self.question(GATE_HEADER, "Pipeline: every job passed. End the run?", stage="pipeline", options=[end, self.save()], qid="pipeline.pass")
         if status not in ("green", "red"):
             return self.question(GATE_HEADER, "Pipeline: the check failed (%s). Run Pipeline again?" % (why or "the Pipeline result is missing or not final"), stage="pipeline", qid="pipeline.fail", options=[
                 self.opt("Run Pipeline again (Recommended)", "Read the pull request's checks again.", move="redo",
                          calls=[self.c("state redo pipeline --reason 'the Pipeline result is missing or not final'")], oid="redo"), self.save()])
-        if rnd > mx:
+        if rnd > mx and self.pipeline_round_unreadable():
             return self.question(GATE_HEADER, "Pipeline: the fix limit is reached (round %d of %d). End the run?" % (rnd, mx), stage="pipeline", options=[end, self.save()],
                                  qid="pipeline.fail")
         fix = ["Apply the changes the fix list in %s/pipeline-context.json names: the step names the file, never the CI text." % r.spec,
