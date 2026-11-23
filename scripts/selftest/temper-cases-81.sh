@@ -73,6 +73,26 @@ assert_eq "review 1: R1c at the approval question the CLI's spec branch makes no
   "master|1" "$(git branch --show-current)|$(git branch --list | grep -c .)"
 git config --unset core.hooksPath 2>/dev/null
 
+# --- R1d (R2-4): the calls of one approving option run as one shell call that does not stop at the first failure: the
+#     tasks.md the question showed is changed, so the approval is stale, and no call of it may advance the run. Each
+#     call carries the digests of what the question showed (`--shown`) and compares them itself (scripts/spec_ops.py,
+#     WP12), so the spec branch and the spec commit of the stale approval refuse on their own, however they were run.
+_r1_at_plan
+python3 -c "
+import pathlib
+p = pathlib.Path('.temper/specs/demo/intent.md')
+p.write_text(p.read_text().replace('**Status:** accepted', '**Status:** draft'))"
+gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+_r1_opt="$(_r1_calls approve-run)"
+python3 -c "
+import pathlib
+p = pathlib.Path('.temper/specs/demo/tasks.md')
+p.write_text(p.read_text().replace('src/demo.sh', 'src/other.sh'))"
+while IFS= read -r _r1_c; do [[ -n "$_r1_c" ]] && bash -c "$_r1_c" >/dev/null 2>&1; done <<<"$_r1_opt"
+assert_eq "review 1: R1d the calls of a stale approval run as one shell call that does not stop: no branch and no commit (rule 1)" \
+  "master|1|1|plan|interactive" \
+  "$(git branch --show-current)|$(git branch --list | grep -c .)|$(git rev-list --count HEAD)|$("$TEMPER" state get next_stage 2>/dev/null)|$("$TEMPER" state get run_mode 2>/dev/null)"
+
 # --- rule 2: the Integration line, read two ways ---
 # tasks_md.parse (the digest, the card) keeps the last **Integration:** line; check_run.plan_line (the suite Check runs
 # when the config and detect name none) reads the first.

@@ -132,8 +132,9 @@ the word `status` read it); the loop only needs `temper go`.
 - **`none`** after a commit: the steps printed the report before they cleared the run (a report printed
   now is empty); the page is `report.html` in its spec folder. Say where it is and stop.
 
-Run the calls of one action in one Bash call, one per line, when they are only `temper` calls; a
-`git` call goes in a call of its own.
+Run the calls of one action in one Bash call, one per line joined with `&&`, when they are only `temper`
+calls; a `git` call goes in a call of its own. The `&&` matters: a refused call (a stale approval's) must
+not leave its later calls running.
 
 **A failed call stops its action.** A call or a step that exits non-zero stops the action it belongs to:
 run no later call or step of it, say in one line which one failed, and run `temper next --json` again.

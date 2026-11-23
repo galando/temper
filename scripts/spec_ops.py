@@ -2,7 +2,7 @@
 """spec_ops.py: the git steps of leaving Intent, Plan and Design, run by the CLI (9.8.0).
 
   spec_ops.py WORD BRANCH SPEC ARG...  BRANCH and SPEC are the run's branch and spec folder ('' with no run):
-  spec_ops.py branch BRANCH SPEC [--carry NAME | --if-protected]
+  spec_ops.py branch BRANCH SPEC [--carry NAME | --if-protected] [--shown NAME=DIGEST...]
                                        `temper spec branch`: switch to the run's branch (create it when it is new);
                                        with --carry NAME (WP16), switch to the branch NAME an earlier run left, and
                                        carry the spec files across through a temp folder (never git stash, whose stack
@@ -11,7 +11,7 @@
                                        branch record that branch as the run's and switch nothing
   spec_ops.py deviations BRANCH SPEC   `temper spec deviations`: the deviations build-context.json records, written to
                                        deviations.md in the spec folder (WP26; nothing when it records none)
-  spec_ops.py commit BRANCH SPEC MESSAGE [-- FILE...]
+  spec_ops.py commit BRANCH SPEC MESSAGE [--shown NAME=DIGEST...] [-- FILE...]
                                        `temper spec commit '<message>' [-- FILE...]`: stage the spec folder (and the files
                                        named after `--`, the run's record commit) and commit, when that holds a change
 
@@ -23,7 +23,10 @@ answer is a `temper` call, so the session runs them with `temper go` in one Bash
 
 Rule 1 (row D30): before the approval (a /temper:temper run at Intent or Plan, a fix run at its root cause) `branch` and
 `commit` are refused unless the approving answer's first call passed its digest check at this step (scripts/approval.py
-held): the approval's own calls go on, and no other branch or commit is made before it.
+held): the approval's own calls go on, and no other branch or commit is made before it. The approving option carries the
+digests of what its question showed (`--shown NAME=DIGEST`, WP12) on its `branch` and `commit` calls too, and each of
+them checks them again before it acts (R2-4): so a stale approval fails on its own every call of it runs, also when the
+session ran them as one shell call that does not stop at the first failure.
 """
 import subprocess
 import sys
@@ -173,12 +176,35 @@ def main(argv):
     """argv: the word, the run's branch, the run's spec folder ('' with no run), then the word's own arguments."""
     word, name, spec = (list(argv[:3]) + ["", "", ""])[:3]
     rest = list(argv[3:])
+    # --shown NAME=DIGEST pairs come off the word's own arguments (R2-4): each call of the approving answer compares
+    # them itself, before anything is written, so a stale approval advances nothing however its calls were run
+    shown = []
+    if word in ("branch", "commit"):
+        kept = []
+        want = False
+        for a in rest:
+            if want:
+                shown.append(a)
+                want = False
+            elif a == "--shown":
+                want = True
+            else:
+                kept.append(a)
+        rest = kept
+        if want or any(not s.partition("=")[0] or "=" not in s for s in shown):
+            print("FAIL: --shown takes NAME=DIGEST, NAME a file of the spec folder", file=sys.stderr)
+            return 1
     if word in ("branch", "commit"):
         import approval
         why = approval.held(".temper/build-state.json", spec)
         if why:
             print("FAIL: spec %s: %s" % (word, why), file=sys.stderr)
             return 1
+        if shown:
+            bad = approval.check(spec, shown)
+            if bad:
+                print("FAIL: spec %s: %s" % (word, bad), file=sys.stderr)
+                return 1
     if word == "branch":
         if rest[:1] == ["--carry"] and len(rest) == 2:
             return carry(spec, rest[1], name)
@@ -193,8 +219,8 @@ def main(argv):
         return deviations(spec)
     if word == "commit" and rest and (len(rest) == 1 or rest[1] == "--"):
         return commit(spec, rest[0], rest[2:])
-    print("FAIL: usage: temper spec branch [--carry NAME | --if-protected] | deviations | commit '<message>' [-- FILE...]",
-          file=sys.stderr)
+    print("FAIL: usage: temper spec branch [--carry NAME | --if-protected] [--shown NAME=DIGEST...] | deviations | "
+          "commit '<message>' [--shown NAME=DIGEST...] [-- FILE...]", file=sys.stderr)
     return 1
 
 
