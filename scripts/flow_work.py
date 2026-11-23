@@ -84,7 +84,22 @@ class WorkPart:
         (`spec branch --if-protected`) and leave RCA with the digest on the advance; run.default orders them as at the
         plan question (approval). A typed answer is the note the root cause agent runs again with (rca_work). The branch
         call carries the digest of rca.md as the card shows it (R2-4): spec_ops.py compares it before it switches, so a
-        stale approval makes no branch however its calls were run."""
+        stale approval makes no branch however its calls were run.
+        R3-1: when rca.md is missing or gives no CAUSE or no FIX, there is nothing to approve: the approving options
+        wait, and the question offers the root cause agent again (with the person's note) or Save for later."""
+        r = self.r
+        import panel
+        text = panel.read(os.path.join(r.spec, "rca.md")) if r.spec else ""
+        f = panel.rca_fields(text)
+        lacks = [k for k in ("CAUSE", "FIX") if not f.get(k)]
+        if not text.strip() or lacks:
+            what = "no rca.md was written" if not text.strip() else "rca.md gives no %s line" % " and no ".join(lacks)
+            again = self.again_opt("The root cause agent runs again with what you type below as its Person's note.",
+                                   [self.c("evidence add --stage rca --phase note --kind input --claim '{answer}'")],
+                                   answer=(GATE_HEADER, "RCA: what should the root cause agent look at again? Type it below."))
+            return self.question(GATE_HEADER, "RCA: %s, so there is nothing to approve yet. Run the root cause agent "
+                                 "again with your note, or save the run?" % what, stage="rca", qid="rca.approve",
+                                 options=[self.set_rec(again, True), self.save()])
         go = lambda m: [self.bind(m), self.c("spec branch --if-protected" + self.shown()),
                         self.c("state advance rca_complete fix" + self.shown())]
         return self.question(GATE_HEADER, "RCA: the root cause and the proposed fix are on the card. Approve the fix?", stage="rca",
@@ -353,9 +368,9 @@ class WorkPart:
         else:
             again = ([self.c("integrate")] if (r.groups.get("integration") or {}).get("verdict") else [self.c("check build-checks")]) + [self.c("gate build")]
             code = [self.c("state redo %s --reason %s" % (stage, shlex.quote(("it is the code: " + setup)[:300])))]
-        check = self.set_rec(self.opt("Run it again", "You repaired the environment (temper doctor shows what is missing; the "
-                                      "setup: block of .claude/temper.config makes it ready): the checks run again.", move="redo",
-                                      calls=again, oid="check-again"), True)
+        check = self.set_rec(self.again_opt("You repaired the environment (temper doctor shows what is missing; the "
+                                            "setup: block of .claude/temper.config makes it ready): the checks run again.",
+                                            again, oid="check-again"), True)
         add = self.setup_offer()   # no block, and one proposed: written as shown, bound by its hash (WP21)
         if add:
             self.set_rec(check, False)

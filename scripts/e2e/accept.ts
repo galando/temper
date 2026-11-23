@@ -323,7 +323,16 @@ export const fixTwo = (w: World): void => {
   if (w.mode !== 'driver') w.sh(`${TEMPER} state init bug --command fix --feature 'the shape drops the verdict'`)
   const bug = '.temper/specs/bug'
   const agents: Record<string, Agent> = {
-    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
+    // R3-1: rca.md as agents/rca.md asks for it: the fields the CLI's card and question read, not headings only
+    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n'
+      + 'CAUSE: `stage_object` returns only the stage, so a caller that reads the verdict gets undefined.\n'
+      + 'AT: src/ci_shape.py:1\nCONFIDENCE: HIGH\nSINCE: unknown\n'
+      + 'CHAIN: report -> stage_object -> the caller reads the verdict\n'
+      + 'FIX: Return the verdict and the requirements beside the stage.\n'
+      + 'TEST: the regression test locks that stage_object returns the verdict and the requirements\n\n'
+      + '## Root cause\n\n`stage_object` returns only the stage.\n\n'
+      + '## Blast radius\n\n- report: the caller that reads the verdict\n\n'
+      + '## Read first\n\n- src/ci_shape.py: the shape as it is\n'),
     'temper:temper-fix': wd => {
       wd.write('unit/test_ci_shape.py', SHAPE_TEST)
       t(wd, `evidence run --stage build --phase red --claim 'regression test: the shape keeps its verdict' -- python3 -m unittest unit.test_ci_shape`)
@@ -358,6 +367,10 @@ export const fixTwo = (w: World): void => {
   })
   expect(seen.ids.join(',') === 'rca.approve,commit.confirm' && w.counts.dialogs === 2,
     `D03 the bug run asks rca.approve, then commit.confirm, and no other (${seen.ids.join(', ')}; ${w.counts.dialogs} dialogs)`)
+  const appr = cardAt(seen, 'rca.approve')
+  const have = ((appr?.sections ?? []) as Json[]).map(s => String(s.id ?? ''))
+  expect(have.includes('cause') && have.includes('fix'),
+    `D03 the root cause question's card shows the cause and the fix (sections ${have.join(', ') || 'none'})`)
   const review = launchesOf(w, 'temper:temper-review')[0]
   const ahead = w.trace.findIndex(l => /^\s*call .*\bcheck ahead\b/.test(l))
   expect(review !== undefined && ahead >= 0 && ahead <= review.at, `D03 the Review launch starts the run of Check (check ahead at ${ahead}, Review launched at ${review?.at ?? 'never'})`)
@@ -542,10 +555,12 @@ export const groupFailTwice = (w: World): void => {
     'temper:temper-build': groupFixer(text => `${text.replace(/\n*$/, '\n')}# the fix agent tried\n`),
   }
   let stop = ''
+  let stopCard: Json | null = null
   const base = defaultPerson()
   const { person, seen } = seeing(w, (ask, wd) => {
     if (seen.approvalAt >= 0) {
-      stop = shown(ask, (wd.json('.temper/view.json').card ?? null) as Json | null)
+      stop = String(ask.question?.question ?? '')
+      stopCard = (wd.json('.temper/view.json').card ?? null) as Json | null
       return null
     }
     return base(ask, wd)
@@ -553,8 +568,13 @@ export const groupFailTwice = (w: World): void => {
   promise('D06', () => orchestrate(w, script({ agents, person })))
   expect(w.counts.handbacks === 0, `D06 a failed group check hands nothing back (${w.counts.handbacks} hand backs)`)
   expect(launchesOf(w, 'temper:temper-build').length === 1, `D06 the fix agent is launched once (${launchesOf(w, 'temper:temper-build').length})`)
-  expect(seen.approvalAt >= 0 && afterApproval(seen).length === 1 && /tried|fix of its merged work did not/i.test(stop),
-    `D06 when the fix does not pass, one question shows what was tried (${seen.ids.join(', ')}: ${stop.slice(0, 200)})`)
+  // R3-3: the question names the failed group and its count, and the card's tried section counts the same repeats
+  // (the budget under group:G1), with the group in WHAT FAILS — never "no repeat yet"
+  const tried = sectionOf(stopCard, 'tried')
+  const failsRow = JSON.stringify(sectionOf(stopCard, 'what_fails') ?? {})
+  expect(seen.approvalAt >= 0 && afterApproval(seen).length === 1 && /Group G\d+ failed its check \d+ times/.test(stop)
+      && tried !== null && !/no repeat yet/.test(String(tried.note ?? '')) && failsRow.includes('Group G'),
+    `D06 when the fix does not pass, one question shows what was tried, and the card counts the same repeats (${seen.ids.join(', ')}: ${stop.slice(0, 160)}; ${JSON.stringify(tried)})`)
   expect(launchesOf(w, 'temper:temper-plan').length === 1, `D33c temper:temper-plan is launched once in the whole run (${launchesOf(w, 'temper:temper-plan').length})`)
   ownAutos(w)
   worldCheck(w)
@@ -630,16 +650,25 @@ export const budgetStop = (w: World): void => {
     'temper:temper-build': groupFixer(text => `${text.replace(/\n*$/, '\n')}# the fix agent tried\n`),
   }
   const agents = Object.fromEntries(Object.entries(raw).map(([k, a]) => [k, counted(k, a)]))
-  let budget = ''
+  let budgetQ = ''
+  let budgetCard: Json | null = null
   const base = defaultPerson()
   const { person, seen } = seeing(w, (ask, wd) => {
-    if (idOf(ask) === 'run.budget') budget = shown(ask, (wd.json('.temper/view.json').card ?? null) as Json | null)
+    if (idOf(ask) === 'run.budget') {
+      budgetQ = String(ask.question?.question ?? '')
+      budgetCard = (wd.json('.temper/view.json').card ?? null) as Json | null
+    }
     return base(ask, wd)
   })
   promise('D08', () => orchestrate(w, script({ agents, person })))
   expect(repeats() <= 2, `D08 at most 2 repeats for the one failure (${repeats()})`)
-  expect(seen.ids.filter(i => i === 'run.budget').length === 1 && /\b2\b/.test(budget),
-    `D38d at the limit one question, run.budget, shows the count (${seen.ids.join(', ')}: ${budget.slice(0, 200)})`)
+  // R3-3: the count the question shows and the count in the card's tried section are the same repeats of the budget
+  const times = /was repeated (\d+) times \(limit (\d+)\)/.exec(budgetQ)
+  const tried = sectionOf(budgetCard, 'tried')
+  const perFailure = /(\d+) of (\d+) repeats for this failure/.exec(String(tried?.note ?? ''))
+  expect(seen.ids.filter(i => i === 'run.budget').length === 1 && times !== null && tried !== null
+      && perFailure !== null && perFailure[1] === times![1] && perFailure[2] === times![2],
+    `D38d at the limit one question, run.budget, shows the count, and the card's tried section counts the same repeats (${seen.ids.join(', ')}: ${budgetQ.slice(0, 160)}; ${JSON.stringify(tried)})`)
   ownAutos(w)
   worldCheck(w)
 }
