@@ -107,6 +107,60 @@ _r82_cfg+="|threshold=$("$TEMPER" config get check.coverage-threshold 2>/dev/nul
 assert_eq "review 2: no call an unattended run makes by itself commits or merges a change of the config" \
   "rule=auto group fix|cli-commits=0|threshold=80" "$_r82_cfg"
 
+# --- review 2 (NEW-RULES-4, NEW-FLOW-6): the same in a project below the top of its repository: the group fix reads the
+#     staged paths with the project's prefix, so the config, and a file named like the kept copy of the config, still
+#     refuse their commit ---
+N82="$WORKDIR/r2-nested"; rm -rf "$N82"; mkdir -p "$N82/packages/app/src"
+(
+  cd "$N82" && git init -q . && echo r > README && echo 'echo demo' > packages/app/src/demo.sh
+  git add -A && git -c user.email=t@example.com -c user.name=T commit -qm init && git checkout -q -b feature/demo
+  cd packages/app && mkdir -p .claude .temper/specs/demo && cp "$REPO_ROOT/templates/temper.config.default" .claude/temper.config
+  "$TEMPER" init >/dev/null 2>&1 && "$TEMPER" state init demo >/dev/null 2>&1
+  cat > .temper/specs/demo/tasks.md <<'TASKS'
+# Tasks: demo
+
+**Integration:** `true`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** `true`
+**Context:**
+The demo group.
+
+### Task 1: first task
+**File:** `src/demo.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- a holds
+- [ ] done
+TASKS
+  echo '# Plan' > .temper/specs/demo/plan.md
+  git add .claude .temper/specs && git -c user.email=t@example.com -c user.name=T commit -qm spec
+  "$TEMPER" override intent --reason r >/dev/null 2>&1; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+  "$TEMPER" override plan --reason r >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  "$TEMPER" group start G1 >/dev/null 2>&1
+  python3 -c "
+import json
+p = '.temper/groups.json'; d = json.load(open(p))
+d['tasks'] = {'1': {'status': 'passed', 'group': 'G1'}}; d.pop('integration', None)
+d['groups']['G1'].update(fails=1, gate={'verdict': 'FAIL', 'reason': 'group G1 Validate failed (exit 1): make test', 'ran': True, 'fail_lines': ['FAIL: test_a']})
+json.dump(d, open(p, 'w'), indent=2)"
+) >/dev/null 2>&1
+_wt82n="$(cd "$N82/packages/app" && python3 -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('worktree') or '')" 2>/dev/null)"
+[[ -n "$_wt82n" && "$_wt82n" != /* ]] && _wt82n="$N82/packages/app/$_wt82n"
+_r82_nest="fix=$((cd "$N82/packages/app" && "$TEMPER" group fix G1 >/dev/null 2>&1; echo $?)"
+sed -i 's/coverage-threshold: 80/coverage-threshold: 0/' "$_wt82n/packages/app/.claude/temper.config" 2>/dev/null
+_r82_nest+="|commit=$(cd "$N82/packages/app" && "$TEMPER" group fix G1 --commit 2>&1 | grep -o 'is the config' | head -n 1); ${_r82_nest##*fix=}"   # the refusal names the config
+_r82_nest="${_r82_nest%%; *}|commits=$(git -C "$N82" log --all --format=%s -- packages/app/.claude/temper.config 2>/dev/null | grep -c 'G1 group check')"
+_r82_nest+="|threshold=$(cd "$N82/packages/app" && "$TEMPER" config get check.coverage-threshold 2>/dev/null)"
+(cd "$N82/packages/app" && "$TEMPER" group fix G1 >/dev/null 2>&1)   # the request again, for Temper's own kept copy
+printf 'stack: auto\n' > "$_wt82n/packages/app/.claude/temper.config.before-1"
+_r82_nest+="|copy=$(cd "$N82/packages/app" && "$TEMPER" group fix G1 --commit 2>&1 | grep -o "is Temper's own file" | head -n 1); x"
+_r82_nest="${_r82_nest%%; x}|copy-commits=$(git -C "$N82" log --all --format=%s -- "packages/app/.claude/temper.config.before-*" 2>/dev/null | grep -c 'G1 group check')"
+assert_eq "review 2: below the top of the repository the group fix still refuses the config, and Temper's own kept copy, and commits neither" \
+  "fix=0|commit=is the config|commits=0|threshold=80|copy=is Temper's own file|copy-commits=0" "$_r82_nest"
+
 # --- review 2: rule 3, an accepted finding ends the unattended run: clearing the Review ledger would drop the finding as
 #     surely as accepting it, with no reason recorded. The CLI refuses the clear (only repair close resolves a finding,
 #     and the person keeps one with evidence accept), so the finding stays. Corrected from the reviewer's check, which

@@ -611,9 +611,11 @@ def run_line(r):
 
 # ---- a stop ----------------------------------------------------------------------------------------------------------
 
-def budget_key(b, ask, gate):
-    """The budget key the stop's question is about (audit R3-3): at run.budget the --key of the grant option's call,
-    else the first key one of the options' calls spends (budget.key_in), else gate:<stage>."""
+def budget_key(b, ask, gate, stage=None):
+    """The budget key the stop's WHAT WAS TRIED counts (audit R3-3, BLACKBOX-3): at run.budget the --key of the grant
+    option's call, else the first key one of the options' calls spends (budget.key_in), else the first key with a
+    repeat on it among a failed or running task of the grouped Build and a parked or failed group (their stop is the
+    group's question), else gate:<stage>."""
     opts = list(ask.get("options") or []) + list((ask.get("more") or {}).get("options") or [])
     if (ask.get("id") or "") == "run.budget":
         for o in opts:
@@ -621,13 +623,20 @@ def budget_key(b, ask, gate):
                 m = re.search(r"budget grant --key (\S+)", str(c))
                 if m:
                     return m.group(1)
-    facts = budget.Facts(b.r)
+    r = b.r
+    facts = budget.Facts(r)
     for o in opts:
         for c in list(o.get("calls") or []) + list(o.get("steps") or []):
             k = budget.key_in(str(c), b.cli, facts)
             if k:
                 return k
-    return "gate:%s" % gate
+    cands = ["gate:%s" % gate]
+    if stage in ("build", "fix"):
+        cands += ["task:%s" % n for n, v in sorted((r.groups.get("tasks") or {}).items(), key=lambda x: str(x[0]))
+                  if isinstance(v, dict) and v.get("status") in ("failed", "running")]
+        cands += ["group:%s" % g for g, x in sorted((r.groups.get("groups") or {}).items())
+                  if isinstance(x, dict) and (x.get("status") == "parked" or (x.get("gate") or {}).get("verdict") == "FAIL")]
+    return next((k for k in cands if budget.room(k, facts)["used"]), cands[0])
 
 
 def stop(b, nxt):
@@ -644,7 +653,7 @@ def stop(b, nxt):
     # R3-3: a group the Build gate has no failed row for (its check failed, or it is parked, the rule of
     # budget.key_of) is the failure the question is about: its row leads WHAT FAILS and the budget is read under
     # group:<G>, the key the question's options spend
-    key = budget_key(b, ask, gate)
+    key = budget_key(b, ask, gate, stage)
     if stage == "build" and not failed_rows(r, stage):
         held = [g for g, x in sorted(((r.groups or {}).get("groups") or {}).items()) if isinstance(x, dict)
                 and ((x.get("gate") or {}).get("verdict") == "FAIL" or x.get("status") == "parked")]

@@ -166,9 +166,11 @@ def fixed_by(name, state_path, groups_path, fid=None):
 
 def since_base(base):
     """The commit gate's set of changed files: what differs from BASE (base_sha), the tracked changes and the untracked
-    files, each from the project folder, the ones blast_filter leaves out (Temper's own files, test output) left out."""
+    files, each from the project folder, the ones blast_filter leaves out (Temper's own files, test output) left out.
+    A file named like the kept copy of the config stays out only while it is untracked (NEW-FLOW-6): a tracked one is a
+    change like any other, and the scope row must name it."""
     import blast_filter
-    names = []
+    names, unt = [], set()
     if base and not git("cat-file", "-e", base)[0]:
         names += git("diff", "--name-only", "--no-renames", "-z", base)[1].split("\0")
     ents = git("status", "--porcelain", "-z", "--untracked-files=all")[1].split("\0")
@@ -178,10 +180,14 @@ def since_base(base):
         i += 1
         if len(e) >= 4:
             names.append(e[3:])
+            if e.startswith("??"):
+                unt.add(e[3:])
             i += 1 if e[0] in "RC" else 0
     top = git("rev-parse", "--show-toplevel")[1].strip()
-    out = {os.path.relpath(os.path.join(top, n)) if top else n for n in names if n}
-    return sorted(n for n in out if blast_filter.counts(n))
+    rel = lambda n: os.path.relpath(os.path.join(top, n)) if top else n
+    out = {rel(n) for n in names if n}
+    return sorted(n for n in out if blast_filter.counts(n)
+                  or (n not in {rel(x) for x in unt} and blast_filter.OWN_COPY.fullmatch(n)))
 
 
 def review_files(state):

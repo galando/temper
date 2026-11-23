@@ -51,13 +51,27 @@ def refused(staged):
     """WP32 (rule 4): why a staged path is no fix agent's to commit, as for a repair commit (repair_ops.refused_file): the
     config, a git hook, Temper's own files, a locked acceptance test, a sensitive path, a manifest or a CI file; '' for
     none. The group's own files are the agent's (the approved set is not asked here: the commit gate's scope row holds
-    it). A check that cannot run refuses nothing."""
+    it). The staged names are from the repository top (git diff --cached names them so), so the project's prefix below
+    the top goes first (NEW-RULES-4): refused_file compares with the config path relative to the project folder. A check
+    that cannot run refuses nothing."""
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import repair_ops
         from flow_run import Run
         r, config = Run({}), os.path.relpath(os.environ.get("TEMPER_CONFIG") or os.path.join(".claude", "temper.config"))
-        return next((w for w in (repair_ops.refused_file(p, r, "", config, {os.path.normpath(p)}) for p in staged) if w), "")
+        prefix = PREFIX or _show_prefix()
+        rel = [p[len(prefix):] if prefix and p.startswith(prefix) else p for p in staged]
+        return next((w for w in (repair_ops.refused_file(p, r, "", config, {os.path.normpath(p)}) for p in rel) if w), "")
+    except Exception:
+        return ""
+
+
+def _show_prefix():
+    """The project folder's path inside the repository (`git rev-parse --show-prefix` from here), '' at the top."""
+    try:
+        p = subprocess.run(["git", "rev-parse", "--show-prefix"], stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, cwd=os.getcwd())
+        return p.stdout.decode("utf-8", "replace").strip() if p.returncode == 0 else ""
     except Exception:
         return ""
 

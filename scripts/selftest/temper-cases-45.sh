@@ -367,6 +367,8 @@ _d39d() { # _d39d <stop>: its state in an unattended run; the recorded stop is r
   case "$1" in
     gate.failed) _unattended build; gfail build "RED then GREEN" "have red=0 green=0" ;;
     review.unfinished) _unattended review; gfail review "review completed" "no review completed row" ;;
+    scope.drift) _unattended build   # R2-1: a drift of an armed run stops first; its question is the stop's answer
+      "$TEMPER" drift ask --path src/outside.sh --why 'the fix needs it' --change 'one line' >/dev/null 2>&1 ;;
     check.setup) _unattended check
       ev_red check 'tests: the suite (run by the CLI)'
       "$TEMPER" evidence add --stage check --claim 'setup fault: the JDK is 21 and pom.xml needs 24' --exit 1 >/dev/null 2>&1
@@ -385,8 +387,8 @@ print('yes' if any(isinstance(x, dict) and x.get('kind') == 'stop' and x.get('st
   printf 'next=%s' "$(_x45 "r = '%s:%s' % (d.get('action'), d.get('stage'))")"
 }
 _d39d_got=""; _d39d_want=""
-for _s in gate.failed review.unfinished check.setup; do
-  _st="${_s%%.*}"; _st="${_st/gate/build}"
+for _s in gate.failed review.unfinished scope.drift check.setup; do
+  _st="${_s%%.*}"; _st="${_st/gate/build}"; [[ "$_s" == scope.drift ]] && _st=build
   _d39d_want+="$_s=park=yes,log=yes,next=ask:$_st|"; _d39d_got+="$_s=$(_d39d "$_s")|"
 done
 assert_eq "D39d every stop of an unattended run is a recorded stop in the rule log, then the stage's question" "$_d39d_want" "$_d39d_got"

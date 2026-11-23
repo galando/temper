@@ -48,6 +48,10 @@ SPENDS = (
     (("plan", "amend"), "plan amend", "always: task:<N> (WP25: the amendment by rule, spent by scripts/plan_amend.py once "
                                       "every check of it holds)"),
     (("task", "retry"), "task again", "always: task:<N>"),
+    (("task", "start"), "task relaunch", "of a task whose gate failed (its record holds a failed attempt): task:<N> "
+                                         "(BLACKBOX-3: attempts 2 and 3 of a failing task are the two counted repeats of "
+                                         "its one failure; a task's first start, and the start after `group reopen`, "
+                                         "spend nothing)"),
     (("task", "test"), "check again", "--phase green of a task that holds env_fault: task:<N>"),
     (("acceptance", "reopen"), "test corrected", "always: acceptance"),
     (("state", "set", "pipeline_round"), "CI fix", "always: pipeline (the entry marks the failed Pipeline it answers)"),
@@ -209,6 +213,14 @@ def key_of(words, facts):
         return ("task:" + e, "plan amend") if c == "task" and e.isdigit() else None
     if a == "task" and b == "retry":
         return ("task:" + c, "task again") if c.isdigit() else None
+    if a == "task" and b == "start":
+        # BLACKBOX-3: a failed task the flow starts again is one counted repeat of its failure (D08: 2 per failure, then
+        # one question); its first start, and the start of a task `group reopen` set back to its first attempt, spend
+        # nothing. The failed attempt is the record's (groups.json, the one read the Run class reads too).
+        t = (facts.groups().get("tasks") or {}).get(c)
+        failed = isinstance(t, dict) and (t.get("status") == "failed" or any(
+            isinstance(x, dict) and x.get("outcome") == "FAIL" for x in t.get("attempts") or []))
+        return ("task:" + c, "task relaunch") if c.isdigit() and failed else None
     if a == "task" and b == "test":
         green = any(x == "--phase" and y == "green" for x, y in zip(words, list(words[1:]))) or "--phase=green" in words
         task = (facts.groups().get("tasks") or {}).get(c)

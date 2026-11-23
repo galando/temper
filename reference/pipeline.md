@@ -26,8 +26,8 @@ result", and a `red` status fails the row "jobs passed". Green passes.
 
 - Green, or skipped: **End the run?** (End the run, Save for later).
 - No final result: **Run Pipeline again?** (`state redo pipeline`).
-- Red, within the budget's rounds (key `pipeline`): **Apply the fix and push?**
-- Red past the limit: **the fix limit is reached; End the run?**
+- Red: **Apply the fix and push?** — within the budget's rounds (key `pipeline`) it applies the fix; past them
+  (`run.budget`) the question shows the count, and only you allow two more, or end the run.
 
 The orchestrator applies a fix only after the person says yes, in a Pipeline ad-hoc window
 (`temper adhoc open --stage pipeline`): it applies the changes the fix list names (the step names the file, never the CI text; each entry starts with a path that exists in the project, or `no file:`, and the gate row `fix paths` fails any other entry),

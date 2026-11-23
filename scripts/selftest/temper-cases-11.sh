@@ -234,8 +234,9 @@ assert_eq "F16: Run Plan again is a loop from Build to Plan with a reason" "back
 for _f16 in 1 2; do   # WP10: each Run Plan again from tasks with no groups spends gate:build; two spend it
   "$TEMPER" state loop build plan --reason "no groups" >/dev/null 2>&1; gpass plan; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 done
-assert_eq "F16: with the loop budget spent the text says to write the groups by hand or save" "1" \
-  "$(nx "str(int('write the groups by hand' in d['ask']['question']['question']))")"
+assert_eq "F16: with the loop budget spent the question is run.budget: the count, Save for later, Allow two more" \
+  "run.budget|count|Save for later (Recommended)|Allow two more" \
+  "$(nx "'|'.join([d['ask']['id'], 'count' if 'Build was repeated 2 times (limit 2)' in d['ask']['question']['question'] else d['ask']['question']['question'][:70], d['ask']['options'][0]['label'], d['ask']['options'][1]['label']])")"
 
 # --- F17. After a first timed out group gate the CLI runs the gate again with twice the limit, as its own call ---
 # WP20: the option "Run the gate again with twice the time" is gone; the first time out is no question

@@ -26,13 +26,16 @@ class BuildPart:
     def drift_next(self, stage):
         """WP16: Scope drift is the CLI's question. A file a Build or Fix agent asked about (`temper drift ask`) and
         the person has not answered gives scope.drift, before the gate question and before any launch, in an
-        unattended run too (a drift is never answered for the person). With every one answered, the stage's agent
+        unattended run too (a drift is never answered for the person): there the park call comes first (WP11, R2-1),
+        and the question is its answer. With every one answered, the stage's agent
         runs again with one `Drift decision:` line a file; its before call marks them given. None when there is
         nothing to ask or give."""
         r = self.r
         asks = r.drifts()
         a = next((x for x in asks if not x["choice"]), None)
         if a is not None:
+            if r.armed():   # R2-1 (WP11): never ask from an armed run without the park call first; the park is the record
+                return self.stop(stage, "scope drift: %s is outside the plan" % a["path"])
             opts = [self.opt(label, DRIFT_WHAT[label], move="drift", oid=ids["id"], calls=[self.c("evidence add --stage build --phase feedback --claim %s" % shlex.quote(
                 "drift %s: %s: %s" % (a["path"], label, a["why"])))]) for label, ids in zip(DRIFT_OPTIONS, DRIFT_IDS)]
             text = "%s %s\nWhy: %s\nChange: %s" % (DRIFT_PREFIX, a["path"], a["why"], a["change"])
@@ -110,19 +113,15 @@ class BuildPart:
 
     def no_groups(self):
         """tasks.md has tasks and no group: Build stops before any group starts, with no agent. A run that goes on by itself
-        records the stop first (WP11), so no question waits without a record."""
+        records the stop first (WP11), so no question waits without a record. Run Plan again is always on offer (R2-2):
+        when the step back has no budget left, budget_guard asks run.budget here, and the person grants more at it."""
         r = self.r
         if r.armed():
             return self.stop("build", "tasks.md has tasks but no groups")
-        text = "Build stopped: tasks.md has tasks but no groups, so Build cannot run them in isolated groups."
-        opts = []
-        if r.can_loop("build", "plan"):
-            opts.append(self.opt("Run Plan again (Recommended)", "Plan writes the tasks in groups.", move="back",
-                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The tasks have no groups"], oid="back"))
-            text += " Run Plan again to write the tasks in groups."
-        else:
-            text += " Plan has run again already: write the groups by hand in tasks.md, or save the run."
-        opts.append(self.save())
+        text = "Build stopped: tasks.md has tasks but no groups, so Build cannot run them in isolated groups. Run Plan again to write the tasks in groups."
+        opts = [self.opt("Run Plan again (Recommended)", "Plan writes the tasks in groups.", move="back",
+                         calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The tasks have no groups"], oid="back"),
+                self.save()]
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts, qid="build.ungrouped")}
 
     def build_work(self):
