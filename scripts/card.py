@@ -599,6 +599,19 @@ def run_line(r):
 
 # ---- a stop ----------------------------------------------------------------------------------------------------------
 
+def tried_key(r, stage, gate):
+    """BLACKBOX-3: the budget key the stop's WHAT WAS TRIED counts. The stage gate's, unless a failed or running task of
+    the grouped Build, or a parked or failed group, holds repeats on its own key (their stop is the group's question):
+    the first key with a repeat on it, so the card shows the true attempt count."""
+    cands = ["gate:%s" % gate]
+    if stage in ("build", "fix"):
+        cands += ["task:%s" % n for n, v in sorted((r.groups.get("tasks") or {}).items(), key=lambda x: str(x[0]))
+                  if isinstance(v, dict) and v.get("status") in ("failed", "running")]
+        cands += ["group:%s" % g for g, x in sorted((r.groups.get("groups") or {}).items())
+                  if isinstance(x, dict) and (x.get("status") == "parked" or (x.get("gate") or {}).get("verdict") == "FAIL")]
+    return next((k for k in cands if budget.room(k, budget.Facts(r))["used"]), cands[0])
+
+
 def stop(b, nxt):
     r = b.r
     stage = (nxt.get("ask") or {}).get("stage") or r.stage
@@ -614,7 +627,7 @@ def stop(b, nxt):
                 if isinstance(x, dict) and x.get("kind") == "stop"]
         rows = [cell(last[-1].get("what") or "the run stopped here")] if last else [cell("the run stopped here")]
     out.append(sec("what_fails", "WHAT FAILS", rows, None, 8, os.path.join(TEMPER, "gates.json")))
-    key = "gate:%s" % gate
+    key = tried_key(r, stage, gate)
     rm = budget.room(key, budget.Facts(r))
     tried = [cell(k) for k in budget.kinds(key, budget.Facts(r))] or [cell("no repeat yet: this is its first failure")]
     out.append(sec("tried", "WHAT WAS TRIED", tried, "%d of %d repeats for this failure, %d of %d for the run" % (

@@ -1072,7 +1072,7 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
   [[ "$stage" == "review" ]] && _review_code save
   local held; held="$(_json_get_path "$STATE_FILE" parked "")"
   python3 -I "$SCRIPTS_DIR/state_ops.py" state-redo "$STATE_FILE" "$stage" "$reason" "$(_now)" || return 1
-  [[ -z "$held" ]] && _rule_log repair "$stage" "$stage runs again: $reason"
+  [[ -z "$held" ]] && _rule_log repair "$stage" "$stage runs again: $reason" --by-rule   # a rule's step in every mode
   echo "OK: $stage runs again${reason:+ ($reason)}"
 }
 
@@ -2105,7 +2105,7 @@ cmd_group_continue() {
   local v; v="$(python3 -I "$SCRIPTS_DIR/groups_ops.py" gate-verdict "$GROUPS_FILE" "$g")"
   [[ "$v" == "PASS" ]] || { echo "FAIL: group $g has not passed its gate (temper group gate $g)" >&2; return 1; }
   _groups_mutate group-confirm "$g" "$(_now)" || return 1
-  _rule_log advance build "group $g passed: it continues"   # WP16: a rule's move, in the record of the commit card
+  _rule_log advance build "group $g passed: it continues" --by-rule   # WP16: a rule's move, in every mode and in the card
   echo "OK: group $g continues"
 }
 
@@ -3303,9 +3303,11 @@ cmd_override() {
   return 0
 }
 
-_rule_log() { # _rule_log <kind> <stage> <what>: one entry of .temper/rule-log.json (scripts/rule_log.py decides when a kind of a
-             # rule is written: while the run goes on by itself and no stop is open)
-  python3 -I "$SCRIPTS_DIR/rule_log.py" append "$1" "$2" "$3" >/dev/null 2>&1 || true
+_rule_log() { # _rule_log <kind> <stage> <what> [--by-rule]: one entry of .temper/rule-log.json (scripts/rule_log.py decides
+             # when a kind of a rule is written: while the run goes on by itself and no stop is open; --by-rule marks a
+             # step a rule takes in every mode, and is written while no stop is open whatever the mode)
+  local args=("$1" "$2" "$3"); [[ "${4:-}" == "--by-rule" ]] && args+=("$4")
+  python3 -I "$SCRIPTS_DIR/rule_log.py" append "${args[@]}" >/dev/null 2>&1 || true
 }
 
 _approval_bound() { # _approval_bound NAME=DIGEST...: refuses an approval whose files changed since its question showed
@@ -3683,7 +3685,7 @@ main() {
        _config_pin ;;
   esac
   case "$sub ${1:-} ${2:-}" in   # WP10: a repeat after a failed check spends the run's budget, or is refused (budget.py)
-    "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"task retry "*|"task test "*|\
+    "state loop "*|"state redo "*|"group fix "*|"group reopen "*|"group gate "*|"task retry "*|"task test "*|"task start "*|\
 "acceptance reopen "*|"state set pipeline_round"|"state set next_stage"|"integrate "*|"check run "*) python3 -E -s "$SCRIPTS_DIR/budget.py" spend "$sub" "$@" || return 1 ;;
   esac
   case "$sub ${1:-} ${2:-}" in   # WP32: a person only call, refused where the CLI can tell (scripts/person_call.py)
