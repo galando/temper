@@ -36,6 +36,16 @@ def git(*args, check=False):
     return subprocess.run(["git"] + list(args), capture_output=True, text=True, check=check)
 
 
+def id_args():
+    """-c user.name=Temper -c user.email=temper@localhost when git has no identity, as scripts/temper's _git_id_args
+    (WP12): the approval's spec commit is a project's first commit when the run starts in a folder with no git, and a
+    machine without a global identity would refuse it ("Author identity unknown") and stop the approving answer."""
+    for ident in ("GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"):
+        if git("-c", "user.useConfigOnly=true", "var", ident).returncode != 0:
+            return ["-c", "user.name=Temper", "-c", "user.email=temper@localhost"]
+    return []
+
+
 def branch(name):
     cur = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if not name:
@@ -124,7 +134,7 @@ def commit(spec, message, files=()):
     if git("diff", "--cached", "--quiet", *only).returncode == 0:
         print("OK: nothing to commit in %s" % spec)
         return 0
-    r = git("commit", "-q", "-m", message, *only)
+    r = git(*id_args(), "commit", "-q", "-m", message, *only)
     out = (r.stdout + r.stderr).strip()
     if r.returncode != 0:
         print("FAIL: git commit: %s" % out[-600:], file=sys.stderr)
