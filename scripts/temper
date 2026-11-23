@@ -2703,18 +2703,18 @@ gate_plan() {
   fi
   local complexity; complexity="$(cmd_state_get complexity "")"
   # The tier the run records is the one its files record (their Complexity lines). WP26: the CLI
-  # bounds the simple tier (one group, at most 3 production files, risk below H).
-  if [[ -n "$complexity" ]]; then
-    local tier_off tier_cap; tier_off="$(_tier_lines "$spec_path" check "$complexity" | paste -sd';' - | sed 's/;/; /g')"
-    tier_cap="$(python3 -I "$SCRIPTS_DIR/plan_ops.py" tier-bound "$spec_path" "$complexity" "$STATE_FILE")"
-    if [[ -n "$tier_off" ]]; then
-      reqs+=("$(_req "tier recorded" 0 "$tier_off, while the run records $complexity: temper state set complexity <tier> records one tier in the run and in those lines")")
-      all_pass=0
-    elif [[ -n "$tier_cap" ]]; then
-      reqs+=("$(_req "tier recorded" 0 "$tier_cap")"); all_pass=0
-    else
-      reqs+=("$(_req "tier recorded" 1 "no Complexity line names another tier than the run's ($complexity)")")
-    fi
+  # bounds every tier below medium (one group, at most 3 production files, risk below H), trivial and
+  # a tier not recorded alike (R5-3).
+  local tier_off tier_cap
+  tier_off="$(_tier_lines "$spec_path" check "$complexity" | paste -sd';' - | sed 's/;/; /g')"
+  tier_cap="$(python3 -I "$SCRIPTS_DIR/plan_ops.py" tier-bound "$spec_path" "$complexity" "$STATE_FILE")"
+  if [[ -n "$tier_off" ]]; then
+    reqs+=("$(_req "tier recorded" 0 "$tier_off, while the run records $complexity: temper state set complexity <tier> records one tier in the run and in those lines")")
+    all_pass=0
+  elif [[ -n "$tier_cap" ]]; then
+    reqs+=("$(_req "tier recorded" 0 "$tier_cap")"); all_pass=0
+  elif [[ -n "$complexity" ]]; then
+    reqs+=("$(_req "tier recorded" 1 "no Complexity line names another tier than the run's ($complexity)")")
   fi
   # Grouped Build (the default): the grouped requirement rows of the run's tasks.md
   if [[ -f "$spec_path/tasks.md" ]]; then

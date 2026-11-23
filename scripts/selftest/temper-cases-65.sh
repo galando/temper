@@ -542,6 +542,47 @@ assert_eq "repair: a behaviour finding stays open without a RED and a GREEN on a
   "no test run=open|test changed=open|in order=resolved" \
   "no test run=$(_proof65 none)|test changed=$(_proof65 changed)|in order=$(_proof65 order)"
 
+# --- R4-3: a proof: test finding whose test command names no file (a glob over the unit folder): the test files the
+# repair changed are hashed at the RED and the GREEN alike, so a correct repair resolves; a test file changed between
+# the two holds the finding, and the revert's repair.stop says why the GREEN did not count ---
+_glob65() { # _glob65 <order|changed>: the proof: test repair of _proof65 with a command that names no file. Prints the
+            # finding's state
+  _open65 test; _start65
+  _err65; "$TEMPER" repair test 1 --phase red -- sh -c 'for t in unit/*_test.sh; do sh "$t" || exit 1; done' >/dev/null 2>&1 || true
+  _fix65
+  [[ "$1" == changed ]] && printf '%s\n' 'sh src/demo.sh 2>&1 >/dev/null | grep -q demo' > unit/err_test.sh
+  "$TEMPER" repair test 1 --phase green -- sh -c 'for t in unit/*_test.sh; do sh "$t" || exit 1; done' >/dev/null 2>&1 || true
+  _commit65; _recheck65 fixed; _close65
+  _res65 1 | sed 's/:.*//'
+}
+_c65_glob="order=$(_glob65 order)|changed=$(_glob65 changed)"
+_c65_glob+="|stop=$(_x65 "q = d.get('ask') or {}; r = 'why' if q.get('id') == 'repair.stop' and re.search(r'GREEN|test files', json.dumps(q)) else 'no reason'")"
+assert_eq "repair: a proof: test command that names no file is proven by the test files the repair changed; a changed one holds the finding and the revert says why" \
+  "order=resolved|changed=open|stop=why" "$_c65_glob"
+
+# --- R4-2: a repair never deletes test lines, whatever the test file is called (D37c: a name outside the commit gate's
+# pattern, a folder and a name the plan gate's own rule reads), at Review and at Check ---
+_c65_swift() { # _c65_swift <review|check>: a repair that empties Tests/DemoTests.swift, a test file the commit gate's
+               # name pattern does not know (the plan declares it): not committed, the run asks. Prints what happened
+  local head
+  _open65 none Tests/DemoTests.swift
+  if [[ "$1" == check ]]; then
+    "$TEMPER" state advance review_complete check >/dev/null 2>&1
+    echo fail > "$P65/suite.mode"
+    "$TEMPER" check run >/dev/null 2>&1 || true; "$TEMPER" gate check >/dev/null 2>&1 || true
+  fi
+  head="$(git rev-parse HEAD)"
+  _start65 "$1"
+  : > Tests/DemoTests.swift
+  _commit65
+  printf '%s|%s|%s' "$([[ "$(git rev-parse HEAD)" == "$head" ]] && echo 'not committed' || echo committed)" \
+    "$(_x65 "r = (d.get('ask') or {}).get('id')")" \
+    "$(_x65 "r = 'names the file' if 'Tests/DemoTests.swift' in json.dumps(d.get('ask') or {}) else 'no file'")"
+}
+assert_eq "repair: a repair that empties a test file the commit gate's name pattern does not know is stopped at Review and at Check alike" \
+  "review=not committed|repair.stop|names the file|check=not committed|repair.stop|names the file" \
+  "review=$(_c65_swift review)|check=$(_c65_swift check)"
+
 # --- close resolves only what a recheck row written after the commit confirms ---
 _review65
 _finding65 high "$CLAIM65" 'src/demo.sh writes nothing to stderr on error' 'print a line to stderr' none

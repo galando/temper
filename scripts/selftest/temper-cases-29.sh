@@ -312,6 +312,38 @@ assert_eq "patch: a missing Validate line is inserted" "rc=0|**Validate:** \`bas
   "rc=$_p29_rc|$(awk '/^## Group G1/{g=1} g && d {print; exit} g && /^\*\*Depends:\*\*/{d=1}' .temper/specs/demo/tasks.md)|plan_hash=$(python3 -c "
 import json, sys; sys.path.insert(0, sys.argv[1]); import approval, tasks_md
 print('digest' if json.load(open('.temper/build-state.json')).get('plan_hash') == approval.plan_digest(tasks_md.parse('.temper/specs/demo/tasks.md')) else 'other')" "$REPO_ROOT/scripts")"
+# patch: a Validate line that is there with no backquoted command (empty, or prose) is replaced, not left beside a
+# second one the plan would still read as its command (R4-7)
+_broken29() { # _broken29 <line>: _pp with G1's Validate line replaced by <line>, the approved hash following it
+  _pp
+  python3 - "$1" <<'PY'
+import sys
+p = ".temper/specs/demo/tasks.md"
+s = open(p).read()
+i = s.index("**Validate:**")
+open(p, "w").write(s[:i] + sys.argv[1] + s[s.index("\n", i):])
+PY
+  python3 -B - "$REPO_ROOT/scripts" <<'PY'
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import approval, tasks_md
+h = approval.plan_digest(tasks_md.parse(".temper/specs/demo/tasks.md"))
+for p in (".temper/build-state.json", ".temper/groups.json"):
+    d = json.load(open(p)); d["plan_hash"] = h; json.dump(d, open(p, "w"), indent=2)
+PY
+}
+_v29() { # G1's Validate line(s) as they stand: how many, and the first
+  printf '%s line(s), first: %s' \
+    "$(awk '/^## Group G1/{g=1; next} /^## /{g=0} g && /^\*\*Validate:\*\*/{c++} END{print c+0}' .temper/specs/demo/tasks.md)" \
+    "$(awk '/^## Group G1/{g=1; next} /^## /{g=0} g && /^\*\*Validate:\*\*/{print; exit}' .temper/specs/demo/tasks.md)"
+}
+_broken29 '**Validate:**'
+"$TEMPER" plan patch G1 --cmd 'bash v.sh' >/dev/null 2>&1; _p29_e_rc=$?; _p29_e="$(_v29)"
+_broken29 '**Validate:** run the suite'
+"$TEMPER" plan patch G1 --cmd 'bash v.sh' >/dev/null 2>&1; _p29_p_rc=$?; _p29_p="$(_v29)"
+assert_eq "patch: a Validate line with no backquoted command, empty or prose, is replaced by the patched one" \
+  "empty=0|1 line(s), first: **Validate:** \`bash v.sh\`|prose=0|1 line(s), first: **Validate:** \`bash v.sh\`" \
+  "empty=$_p29_e_rc|$_p29_e|prose=$_p29_p_rc|$_p29_p"
 _amplan29 | m_setup; _built29 1 src/a.sh
 _p29_before="$(_g29 "d['tasks']['1'].get('status')")"
 "$TEMPER" plan patch task 1 --cmd 'test -s src/a.sh' >/dev/null 2>&1; _p29_rc=$?
