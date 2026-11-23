@@ -120,6 +120,9 @@ R4-7, R5-4, R5-5 and R5-6 were not reached; they stay open, in the completion li
   `last_check` coverage filter — the gate side was verified already held), **BLACKBOX-1**, **NEW-FLOW-1**,
   **R2-5**, **TESTS-4**, **RULES-8**, **RULES-9**, **RULES-10**, **R3-5**, **R3-6**, **R6-3**, **R4-1**, **R4-5**,
   **R4-7**, **R5-3** (finish), **R5-4**, **R5-5**, **R5-6**, the rest of **NEW-FLOW-3**, and **BLACKBOX-9**.
+- The three gaps the builder's own summary named, still true: `state clear` in the middle of a run is refused only
+  by the mod; a rule step taken through `state redo` or `group continue` is not written to the rule log; and
+  `temper status` shows criteria from rows of any writer (it decides no gate).
 - The three caps above their finals (`gate_rows` 81/55, `option_labels` 83/71, `question_ids` 38/35): each is
   restated only in a pull request of its own; CI now blocks further growth.
 - The bench's cost and time lines for every kind of task, and the median-under-12 CI line: missed by design,
