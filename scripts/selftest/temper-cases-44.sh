@@ -452,7 +452,7 @@ _d45b_auto="$(nx "d['action']")"
 gpass plan
 _d45b_plan="$(nx "(d.get('ask') or {}).get('id')")"
 _run44_d45b_diag="$(_run44 ask-every-stage)"
-echo "D45BDIAG run44=[$run44_d45b_diag]" >&2
+echo "D45BDIAG run44=[$_run44_d45b_diag]" >&2
 gpass design
 "$TEMPER" next --json > .temper/d45b-next.json 2>&1
 python3 - .temper/d45b-next.json <<'PY' >&2
