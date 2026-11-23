@@ -637,7 +637,7 @@ cmd_state_set() {
   fi
   # ADR 0013: the files the person approved, and the digest of the tasks they approved, are recorded when the run
   # leaves Plan, and Build is held to them.
-  if [[ "$1" == "approved_files" || "$1" == "plan_hash" || "$1" == "intent_hash" || "$1" == "from_branch" || "${1%%.*}" == approval_shown ]]; then
+  if [[ "$1" == "approved_files" || "$1" == "plan_hash" || "$1" == "intent_hash" || "$1" == "shown_hash" || "$1" == "from_branch" || "${1%%.*}" == approval_shown ]]; then
     echo "FAIL: $1 is kept by the CLI (state advance plan_complete records what the person approved)" >&2
     return 1
   fi
@@ -845,14 +845,15 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   if [[ "$stage" == "plan_complete" ]]; then
     # The commit the diff is read against, the files the person approved and the digest of the tasks they approved:
     # Build is held to these, so a plan.md or tasks.md edited after the plan gate does not change what Build runs
-    local spec files digest=""
+    local spec files digest="" shown=""
     spec="$(_json_get_path "$STATE_FILE" spec_path "")"
     files="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$spec" 2>/dev/null || echo '[]')"
     [[ -n "$spec" && -f "$spec/tasks.md" ]] && digest="$(_plan_digest "$(_grouped_parse "$spec/tasks.md")" 2>/dev/null)"
+    [[ -n "$digest" ]] && shown="$(_tasks_digest "$(_grouped_parse "$spec/tasks.md")" 2>/dev/null)"   # R2-3: the titles and the Cases the card showed
     # The approved tasks as parsed, so a later question can name what changed (the Design question, 9.8.0)
     [[ -n "$digest" ]] && mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$spec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
     _lock_acquire
-    python3 -I "$SCRIPTS_DIR/state_ops.py" approve-plan "$STATE_FILE" "$files" "$digest" "$(_intent_digest "$spec")"
+    python3 -I "$SCRIPTS_DIR/state_ops.py" approve-plan "$STATE_FILE" "$files" "$digest" "$(_intent_digest "$spec")" "$shown"
     _lock_release
     if [[ -z "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
       local head; head="$(git rev-parse HEAD 2>/dev/null || true)"
@@ -874,9 +875,10 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     if [[ -n "$dspec" && -f "$dspec/tasks.md" && -n "$(_json_get_path "$STATE_FILE" plan_hash "")" ]]; then
       local ddigest; ddigest="$(_plan_digest "$(_grouped_parse "$dspec/tasks.md")" 2>/dev/null)"
       if [[ -n "$ddigest" && "$ddigest" != "$(_json_get_path "$STATE_FILE" plan_hash "")" ]]; then
-        local dfiles; dfiles="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$dspec" 2>/dev/null || echo '[]')"
+        local dfiles dshown; dfiles="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$dspec" 2>/dev/null || echo '[]')"
+        dshown="$(_tasks_digest "$(_grouped_parse "$dspec/tasks.md")" 2>/dev/null)"   # R2-3: the shown text moves with the plan
         _lock_acquire
-        python3 -I "$SCRIPTS_DIR/state_ops.py" approve-design-tasks "$STATE_FILE" "$dfiles" "$ddigest"
+        python3 -I "$SCRIPTS_DIR/state_ops.py" approve-design-tasks "$STATE_FILE" "$dfiles" "$ddigest" "$dshown"
         _lock_release
         mkdir -p "$TEMPER_DIR/evidence" && _grouped_parse "$dspec/tasks.md" > "$TEMPER_DIR/evidence/approved-tasks.json" 2>/dev/null
         echo "OK: the tasks Design changed are approved with the design"
@@ -1586,6 +1588,11 @@ _grouped_parse() { # _grouped_parse <tasks.md>
 # and Integration count; titles, prose and checkbox ticks do not, so the CLI's own tick is no change.
 _plan_digest() { # _plan_digest <parsed-plan-json>
   python3 -I "$SCRIPTS_DIR/approval.py" plan-digest "$1"
+}
+# R2-3: what the approving calls carry for tasks.md beside _plan_digest: the plan and what the card shows of the
+# titles and the Cases, which the plan digest does not hold (recorded as shown_hash at the approval).
+_tasks_digest() { # _tasks_digest <parsed-plan-json>
+  python3 -I "$SCRIPTS_DIR/approval.py" tasks-digest "$1"
 }
 _intent_digest() { python3 -I "$SCRIPTS_DIR/approval.py" bound "$1/intent.md" 2>/dev/null; }   # _intent_digest <spec>
 

@@ -33,11 +33,14 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   that writes a file are outside it; for those the commit hook still refuses a commit of a project file before the
   approval. It reads the run state and the path, and only ever answers deny. All four fail open.
 - **The approval is bound to what was shown (9.8.5).** The approving call carries the digests of `intent.md` and
-  `tasks.md` as the question showed them, and the CLI refuses it when a file changed since. With the mod the click is
-  checked against those digests (the call is matched word for word); with the mod off nothing checks the click, but
-  the Build, Check and commit gates still fail on a later change to either file (the row `intent unchanged since the
-  approval`) until you approve again. Before the approval a run makes no branch and no commit; the commit hook gates
-  the branch the run stands on then too.
+  `tasks.md` as the question showed them — for `tasks.md`, the plan (its files, Depends, Test, Validate, Interfaces,
+  Context and Integration lines) beside what the card shows of the group titles, the task titles and the Cases lines —
+  and the CLI refuses it when a file changed since. With the mod the click is
+  checked against those digests (the call is matched word for word); with the mod off nothing checks the click, and
+  nothing checks who ran the approval's first call, so its branch and its commit of the spec folder can be made by
+  typing that call; but the Build, Check and commit gates still fail on a later change to either file (the row
+  `intent unchanged since the approval`) until you approve again. Before the approval a run makes no branch and no
+  commit; the commit hook gates the branch the run stands on then too.
 - **The run driver (9.8.0).** With the mod loaded, the mod carries a `/temper:temper` run itself: it runs the temper
   CLI's calls (`temper go` and the calls it gives: the plugin's own `scripts/temper` by its path with plain arguments,
   in the project, never through a shell since 9.8.1), launches the agents the CLI names and asks its questions. It runs

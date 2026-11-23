@@ -202,26 +202,29 @@ class AskPart:
         return ("the tasks follow your answers: %s" % unmet)[:300] if unmet else ""
 
     # -- the steps that leave Intent and Plan ------------------------------------------------
-    def spec_commit(self, message, changes=False):
+    def spec_commit(self, message, changes=False, shown=False):
         """The spec folder's commit, only when it has something to commit: a commit with nothing staged is refused by the
-        commit hook (no spec only carve out applies), which would stop the answer's calls."""
+        commit hook (no spec only carve out applies), which would stop the answer's calls. In an approving option
+        (shown, R2-4) the call carries the digests of what the question showed, and spec_ops.py compares them before it
+        commits, so a stale approval commits nothing however its calls were run."""
         if self.r.spec_ignored() or not self.r.spec or not (changes or self.r.ctx.get("spec_dirty")):
             return []
         # 9.8.0: one CLI call (scripts/spec_ops.py) in place of `git add` and `git commit`, which had to go in two Bash
         # calls; now every call of the answer is a temper call, run with `temper go` in one.
-        return [self.c("spec commit %s" % shlex.quote(message))]
+        return [self.c("spec commit %s%s" % (shlex.quote(message), self.shown() if shown else ""))]
 
     def to_branch(self):
         """The switch to the run's branch (`feature/{slug}`) when the project is on another one: the first commit of the
         run, the approved intent and plan, goes there, never onto main. WP12: a branch an earlier run left is the carried
-        switch, so the new spec files go across."""
+        switch, so the new spec files go across. The call carries the digests of what the question showed (R2-4), and
+        spec_ops.py compares them before it switches, so a stale approval makes no branch."""
         branch = self.r.state.get("branch") or ""
         if not branch or (self.r.ctx.get("branch") or "") == branch:
             return []
         clash = self.branch_clash()
         # 9.8.0: git checkout (-b) of the run's branch, by the CLI; WP16: a clash carries the spec files across
         # (spec_ops.py)
-        return [self.c("spec branch" + (" --carry %s" % shlex.quote(clash["branch"]) if clash else ""))]
+        return [self.c("spec branch%s%s" % (" --carry %s" % shlex.quote(clash["branch"]) if clash else "", self.shown()))]
 
     def shown(self):
         """WP12 (ADR 0019 decision 4): the digests of intent.md and tasks.md as the question shows them, as the arguments

@@ -82,8 +82,11 @@ class WorkPart:
         """WP17: the root cause question of a fix run is its approval. Approve and fix (arm) and Ask me at every stage
         each bind the run's mode to rca.md as the card shows it (bind), make the fix branch off main or master only
         (`spec branch --if-protected`) and leave RCA with the digest on the advance; run.default orders them as at the
-        plan question (approval). A typed answer is the note the root cause agent runs again with (rca_work)."""
-        go = lambda m: [self.bind(m), self.c("spec branch --if-protected"), self.c("state advance rca_complete fix" + self.shown())]
+        plan question (approval). A typed answer is the note the root cause agent runs again with (rca_work). The branch
+        call carries the digest of rca.md as the card shows it (R2-4): spec_ops.py compares it before it switches, so a
+        stale approval makes no branch however its calls were run."""
+        go = lambda m: [self.bind(m), self.c("spec branch --if-protected" + self.shown()),
+                        self.c("state advance rca_complete fix" + self.shown())]
         return self.question(GATE_HEADER, "RCA: the root cause and the proposed fix are on the card. Approve the fix?", stage="rca",
                              qid="rca.approve", options=self.approval(go, "rca") + [self.save()])
 

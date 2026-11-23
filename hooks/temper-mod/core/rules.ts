@@ -363,7 +363,7 @@ const AUTONOMY_DENY =
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
 // trivial (WP17) is the verdict of `temper intent trivial`, a path below it too: set by hand it would open the window.
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'intent_hash', 'from_branch', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason', 'trivial'])
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'intent_hash', 'shown_hash', 'from_branch', 'archived', 'enter', 'built_before', 'review_snapshot', 'risk', 'risk_raise', 'risk_reasons', 'risk_raise_reason', 'trivial'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +
@@ -581,10 +581,15 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   if (a === 'repair') return b !== 'test' && b !== 'status'
   // WP22 (step 11): Run it anyway, a check run whatever the reuse store holds, is the person's option only.
   if (w.includes('--fresh') && ((a === 'check' && (b === 'run' || b === 'build-checks')) || (a === 'group' && b === 'gate') || a === 'integrate')) return true
+  // WP12 (NEW-RULES-3): before the approval the run makes no branch and no commit; the approving answer's own calls do.
+  // So `spec branch` and `spec commit` while the run stands at Intent or Plan, and a `state set run_mode` that carries
+  // the digests of what the question showed (`--shown`, the first call of every approving option, whatever mode it
+  // sets), map only to the option the person picked.
+  if (a === 'spec' && (b === 'branch' || b === 'commit') && (r.stage === 'intent' || r.stage === 'plan')) return true
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true
-  if (b === 'set' && c === 'run_mode') return d !== 'interactive'
+  if (b === 'set' && c === 'run_mode') return d !== 'interactive' || w.includes('--shown')
   // A step back (a set to the stage the run is at changes nothing; a step forward is the CLI's to check).
   if (b === 'set' && c === 'next_stage') return !(d !== undefined && isStage(d) && stageIndex(d) >= stageIndex(r.stage))
   return false

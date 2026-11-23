@@ -193,6 +193,35 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
   })
 
+  // NEW-RULES-3 (WP12, rule 1): the branch and the first commit before the approval are the approving answer's own
+  // calls: typed alone at Intent or Plan they are denied, as the option's calls they run.
+  test('spec branch and spec commit before the approval map only to the person\'s answer', () => {
+    const opts = optionCalls('plan-pass-autonomy', 'Ask me at every stage')
+    const branch = opts.find(c => c.includes(' spec branch'))!.replace(/^\S+/, CLI)
+    const commit = opts.find(c => c.includes(' spec commit'))!.replace(/^\S+/, CLI)
+    expect('allow' in bash(ctx('plan', { allowed: opts }), branch)).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: opts }), commit)).toBe(true)
+    expect(isDeny(bash(ctx('plan'), branch))).toBe(true)
+    expect(isDeny(bash(ctx('plan'), commit))).toBe(true)
+    expect(isDeny(bash(ctx('plan'), `${CLI} spec branch`))).toBe(true)
+    expect(isDeny(bash(ctx('plan'), `${CLI} spec commit 'docs(plan): pw'`))).toBe(true)
+    expect(isDeny(bash(ctx('intent'), `${CLI} spec branch`))).toBe(true)
+    expect('allow' in bash(ctx('design'), `${CLI} spec branch`)).toBe(true)
+  })
+
+  // NEW-RULES-3 (WP12): the approving first call carries the digests the question showed (--shown), whatever mode it
+  // sets: typed alone it is denied at any stage; without --shown only the arming form is.
+  test('a state set run_mode with --shown maps only to the person\'s answer', () => {
+    const opts = optionCalls('plan-pass-autonomy', 'Ask me at every stage')
+    const bind = opts.find(c => c.includes('run_mode interactive'))!.replace(/^\S+/, CLI)
+    expect('allow' in bash(ctx('plan', { allowed: opts }), bind)).toBe(true)
+    expect(isDeny(bash(ctx('plan'), bind))).toBe(true)
+    expect(isDeny(bash(ctx('plan'), `${CLI} state set run_mode interactive --shown intent.md=x --shown tasks.md=y`))).toBe(true)
+    expect(isDeny(bash(ctx('build'), `${CLI} state set run_mode interactive --shown intent.md=x`))).toBe(true)
+    expect(isDeny(bash(ctx('build'), `${CLI} state set run_mode autonomous --shown intent.md=x`))).toBe(true)
+    expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
+  })
+
   // WP24: the rule's loop back to Build is gone: at a failed Review the CLI's own move is the repair in the stage, or a
   // recorded stop (the park call) where the repair may not start (this fixture is no repository with a reviewed HEAD)
   test('WP24 the run to the commit: its own moves keep the mode, and Review never loops back by rule: its own move is the repair in the stage or a park', () => {

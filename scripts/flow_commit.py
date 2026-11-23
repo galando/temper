@@ -305,7 +305,7 @@ class CommitPart:
         acc = self.accept_draft()
         what = "accept the intent and approve the plan" if acc else "approve the intent and the plan"
         return [self.bind(mode)] + list(then) + list(fold) + self.to_branch() + acc + \
-            self.spec_commit("docs(plan): %s of %s" % (what, r.slug), changes=bool(acc or fold)) + \
+            self.spec_commit("docs(plan): %s of %s" % (what, r.slug), changes=bool(acc or fold), shown=True) + \
             [self.c("state advance plan_complete %s%s" % (nxt, self.shown()))]
 
     def skip_then(self):

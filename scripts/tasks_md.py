@@ -2,8 +2,9 @@
 
   python3 tasks_md.py parse <tasks.md>
       prints {groups, tasks, integration, integrations} as JSON: groups [{id, title, depends, validate, interfaces,
-      context, context_bytes, tasks}], tasks [{n, title, group, files, depends, test, cases,
-      block_bytes, block}]. File tokens are the backticked paths of the **File:** lines. integration is the last
+      context, context_bytes, tasks}], tasks [{n, title, group, files, depends, test, cases, case_lines,
+      block_bytes, block}]. File tokens are the backticked paths of the **File:** lines. case_lines is the text of
+      each **Cases:** bullet (R2-3: the approval binds what the card shows). integration is the last
       **Integration:** line, the one every reader runs; integrations is each of them, in order.
   python3 tasks_md.py schedule <groups.json> <max-parallel> <task model> <escalation model> <project> <tasks.md>
       prints the ready set (`temper schedule`): one JSON line per launchable task, then a done or a
@@ -52,7 +53,8 @@ def parse(path):
             continue
         if tm:
             cur_t = {'n': int(tm.group(1)), 'title': tm.group(2), 'group': cur_g['id'] if cur_g else None,
-                     'files': [], 'depends': [], 'test': '', 'manual': False, 'confirm': '', 'cases': 0, 'block_bytes': 0, 'block': ''}
+                     'files': [], 'depends': [], 'test': '', 'manual': False, 'confirm': '', 'cases': 0,
+                     'case_lines': [], 'block_bytes': 0, 'block': ''}
             tasks.append(cur_t); ctx_open = False; cases_open = False; files_open = False
             if cur_g: cur_g['tasks'].append(cur_t['n'])
             continue
@@ -77,7 +79,9 @@ def parse(path):
                     cur_t['test'] = 'manual' if mm else cmd_of(val)
                 # the concrete cases Plan wrote for the task's test, one bullet each (an inline value counts as one)
                 cases_open = key == 'Cases'
-                if cases_open and val.strip(): cur_t['cases'] += 1
+                if cases_open and val.strip():
+                    cur_t['cases'] += 1
+                    cur_t['case_lines'].append(val.strip())
                 cur_t['block'] += line + '\n'; continue
             if cur_g is not None:
                 ctx_open = False
@@ -97,7 +101,9 @@ def parse(path):
                 cur_t['files'] += [f for f in got if f not in cur_t['files']]
             elif files_open and line.strip() and not re.match(r'^\s*[-*]\s+\[[ xX]\]', line):
                 files_open = False
-            if cases_open and CASE.match(line): cur_t['cases'] += 1
+            if cases_open and CASE.match(line):
+                cur_t['cases'] += 1
+                cur_t['case_lines'].append(re.sub(r'^\s*[-*]\s+', '', line).strip())
             cur_t['block'] += line + '\n'
         elif cur_g is not None and ctx_open:
             cur_g['context'] += line + '\n'
