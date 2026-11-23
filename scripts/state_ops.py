@@ -37,9 +37,10 @@ def migrate_legacy(argv):
         d["run_mode"] = "interactive";        changed = True
     # WP11 (row D60): a run saved by an older Temper (no saved_by). Saved after its Review, its completion row names no
     # file Review read (WP18), so its Review verdict is no verdict of this version: the verdict goes, and Review runs once
-    # more. The stamp is written once, so this happens once.
+    # more. A run saved past its Review question (at Check or at the commit, R7-2) keeps that Review too: its verdict and
+    # every verdict after it go, and the run goes back to its Review. The stamp is written once, so this happens once.
     if d.get("saved_by") != SAVED_BY:
-        if "saved_by" not in d and d.get("next_stage") == "review":
+        if "saved_by" not in d and d.get("next_stage") in ("review", "check", "commit"):
             top = os.path.dirname(p) or "."
             gp, lp = os.path.join(top, "gates.json"), os.path.join(top, "evidence", "review.json")
             try:
@@ -52,7 +53,12 @@ def migrate_legacy(argv):
                 rows = []
             named = any(isinstance(r, dict) and r.get("read") for r in rows if isinstance(rows, list))
             if isinstance(gates, dict) and "review" in gates and not named:
-                gates.pop("review", None)
+                past = d.get("next_stage") != "review"
+                for gone in (("review", "check", "commit") if past else ("review",)):
+                    gates.pop(gone, None)
+                if past:   # the run is before its Review again, so Check and the commit run once more after it
+                    d["stage"] = "build_complete"
+                    d["next_stage"] = "review"
                 fd, tmp = tempfile.mkstemp(dir=top)
                 with os.fdopen(fd, "w") as f:
                     json.dump(gates, f, indent=2); f.write("\n")

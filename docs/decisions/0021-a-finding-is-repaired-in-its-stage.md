@@ -38,9 +38,11 @@ and until this record no commit was ever one `evidence resolve` takes).
    person can confirm, an acceptance test the triage does not blame on the code, a skipped stage, a fix run, and a diff
    that removes test lines. Each is a question, or a recorded stop in a run that goes on by itself.
 5. **The budget.** One repair by rule a stage, counted in the one budget of ADR-0019, and one more on the person's
-   click (Repair again); then the option is gone. With the budget spent the question still offers Accept a finding,
-   Override and continue, Loop back to Build and Save for later. The loop back stays the way out and is never taken by
-   rule.
+   click (Repair again); then the option is gone. With the budget spent the question is `run.budget` (ADR 0019, D38c):
+   Save for later, Allow two more (the person's grant), Accept a finding and Override and continue. Loop back to Build
+   is offered again once the person allows two more, as ADR 0019 and reference/review.md say (R4-6: an earlier form of
+   this decision said the loop back was offered with the budget spent; the CLI asks `run.budget` there, and D38 wins).
+   The loop back stays the way out and is never taken by rule.
 6. **A verdict is of the tree it judged.** The commit gate's row `checked tree` passes a Review verdict of an older tree
    only when the difference is repair commits the CLI recorded, whose checks ran again and whose recheck completed.
 
