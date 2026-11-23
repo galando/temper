@@ -405,6 +405,9 @@ def refused_file(p, r, spec, config, allowed):
         return "%s is %s" % (p, "a locked acceptance test" if norm in locked else "a file of the run's spec folder")
     if config and norm == os.path.normpath(os.path.relpath(config)):
         return "%s is the config" % p
+    import blast_filter   # NEW-FLOW-6: a file named like the kept copy of the config is Temper's own, whatever it holds
+    if blast_filter.OWN_COPY.fullmatch(norm):
+        return "%s is Temper's own file (the copy the one time config question keeps)" % p
     if norm == ".git" or norm.startswith(".git/") or any(norm.startswith(os.path.normpath(h) + "/") for h in hook_dirs()):
         return "%s is under the git folder (a hook)" % p
     if norm.startswith(".temper/"):
