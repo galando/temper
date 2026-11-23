@@ -68,3 +68,130 @@ eval "$_f2_setup"
 assert_eq "review 7: D38e's config holds each old loop key it says it sets high" \
   "max-per-type: 9|max-total-loops: 99|max-stages: 99" \
   "$(grep -oE 'max-per-type: 9|max-total-loops: 99|max-stages: 99' .claude/temper.config | paste -sd'|' -)"
+
+# --- F3: NEW-RULES-1 (rule 5): one `evidence run` of `true` under a claim only the CLI's checks write ---
+# The acceptance row, a fix's regression proof and a fix's `tests pass` read rows by claim; a run of another command
+# under such a claim stands for no run of the locked tests or of the suite (as F1 holds for Check's suite). The gates
+# count only a run of the lock's command (acceptance) or of the suite owner's command (a fix run), and the audit's
+# scratch run showed the Build verdict itself flipping PASS in an unattended run.
+_built87() { # the group and its task passed, as the CLI's group gate leaves them
+  python3 - <<'PY'
+import json
+d = json.load(open(".temper/groups.json"))
+d["groups"]["G1"].update({"status": "passed", "confirmed": True, "gate": {"verdict": "PASS"}})
+d["tasks"] = {"1": {"status": "passed", "group": "G1"}}
+json.dump(d, open(".temper/groups.json", "w"))
+PY
+}
+_row87() { # _row87 <row name> [python over r that sets r]: pass of that row of the Build verdict, or absent
+  python3 - "$1" "${2:-r = str(x.get('pass'))}" <<'PY'
+import json, sys
+try:
+    e = json.load(open(".temper/gates.json")).get("build") or {}
+except (OSError, ValueError):
+    e = {}
+x = next((x for x in e.get("requirements") or [] if x.get("name") == sys.argv[1]), None)
+if x is None:
+    print("absent")
+else:
+    r = None
+    exec(sys.argv[2])
+    print(r)
+PY
+}
+_acc87() { # a run at Build whose acceptance test (exit 1) is locked, the task passed, a RED and a GREEN recorded
+  printf '%s\n' '# Tasks: demo' '' '**Integration:** `true`' '' '## Group G1: Core' '**Depends:** none' '**Validate:** `true`' \
+    '**Context:**' 'The demo group.' '' '### Task 1: first task' '**File:** `src/demo.sh`, `src/demo_test.sh`' '**Depends:** none' \
+    '**Test:** `true`' '**Cases:**' '- a holds' '- [x] done' | m_setup
+  "$TEMPER" acceptance start >/dev/null 2>&1
+  mkdir -p .temper/specs/demo/acceptance; printf 'FAIL: acc\nexit 1\n' > .temper/specs/demo/acceptance/accept_test.sh
+  "$TEMPER" acceptance lock --cmd 'sh .temper/specs/demo/acceptance/accept_test.sh' >/dev/null 2>&1
+  "$TEMPER" evidence run --stage build --claim 'the demo test' --phase red -- false >/dev/null 2>&1
+  "$TEMPER" evidence run --stage build --claim 'the demo test' --phase green -- true >/dev/null 2>&1
+  _built87
+  "$TEMPER" integrate >/dev/null 2>&1 || true
+  "$TEMPER" gate build >/dev/null 2>&1
+}
+_fix87() { # a fix run whose suite's second test still fails and that changed no test: both fix rows fail the Build gate
+  setup; rm -rf .git src unit; git init -q . 2>/dev/null; git checkout -q -B main 2>/dev/null
+  git config user.email t@example.com; git config user.name T
+  printf '/.temper/\n' >> .git/info/exclude
+  mkdir -p src unit
+  echo 'echo 1' > src/total87.sh; echo 'echo a' > src/other87.sh
+  printf '[ "$(bash src/total87.sh)" = 2 ] || { echo "FAIL: test_total expected 2"; exit 1; }\n' > unit/test_total87.sh
+  printf '[ "$(bash src/other87.sh)" = a ] || { echo "FAIL: test_other expected a"; exit 1; }\n' > unit/test_other87.sh
+  python3 -B - <<'PY'
+p = ".claude/temper.config"
+s = open(p).read()
+s = s.replace("  coverage-threshold: 80\n", '  coverage-threshold: 80\n  commands:\n    test: "bash unit/test_total87.sh && bash unit/test_other87.sh"\n', 1)
+open(p, "w").write(s)
+PY
+  git add -A >/dev/null 2>&1; git commit -q -m base
+  rm -f .temper/groups.json .temper/view.json .temper/build-state.json
+  "$TEMPER" state init bug --command fix --feature "the total is one short" >/dev/null 2>&1; _base_known
+  "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
+  mkdir -p .temper/specs/bug
+  printf '# RCA: the total is one short\n\n## Root cause\n\nsrc/total87.sh prints 1.\n\n## Fix\n\nPrint 2.\n' > .temper/specs/bug/rca.md
+  gpass rca; "$TEMPER" state advance rca_complete fix >/dev/null 2>&1
+  echo 'echo 2' > src/total87.sh   # the fix; unit/test_other87.sh still fails (it needed a too)
+  "$TEMPER" check build-checks >/dev/null 2>&1 || true
+  "$TEMPER" gate build >/dev/null 2>&1
+}
+_f3_next() { # what next does while the run is marked as going on by itself: its action and calls
+  _ran_unattended; _next87
+}
+_acc87
+_f3_before="$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['build']['verdict'])" 2>/dev/null)"
+_f3n_before="$(_f3_next)"
+"$TEMPER" evidence run --stage build --claim 'acceptance (written before Build)' -- true >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+_f3_after="$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['build']['verdict'])" 2>/dev/null)"
+_f3n_after="$(_f3_next)"
+assert_eq "review 7: a passing evidence run of true under the acceptance claim passes no Build verdict, and no unattended run goes on by it" \
+  "before=FAIL|after=FAIL|row=False|no advance before|no advance after" \
+  "before=$_f3_before|after=$_f3_after|row=$(_row87 'acceptance tests written before Build')|$([[ "$_f3n_before" == auto*'state advance build_complete'* ]] && echo 'advance before' || echo 'no advance before')|$([[ "$_f3n_after" == auto*'state advance build_complete'* ]] && echo 'advance after' || echo 'no advance after')"
+
+# A genuine re-run of the locked command through evidence run is read: the row fails on the test's own output, not
+# with the "no run of the locked acceptance command" note.
+"$TEMPER" evidence run --stage build --claim 'acceptance (written before Build)' \
+  -- sh .temper/specs/demo/acceptance/accept_test.sh >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+assert_eq "review 7: a re-run of the locked acceptance command still counts: the row fails on its output, never on the note" \
+  "row=False|detail=FAIL: acc" \
+  "row=$(_row87 'acceptance tests written before Build')|detail=$(_row87 'acceptance tests written before Build' "r = ' '.join(str(x.get('detail') or '').split())[:60]")"
+
+# The ': skipped' form: a run of `true` under either claim leaves the writer's skip a skip (never a pass).
+_acc87; "$TEMPER" acceptance skip --reason 'the writer locked no test' >/dev/null 2>&1
+mkdir -p .temper/specs/demo/acceptance; printf 'exit 0\n' > .temper/specs/demo/acceptance/accept_test.sh
+"$TEMPER" integrate >/dev/null 2>&1 || true
+"$TEMPER" gate build >/dev/null 2>&1
+_f3s_before="$(_row87 'acceptance tests written before Build' "r = '%s:%s' % (x.get('pass'), x.get('state'))")"
+"$TEMPER" evidence run --stage build --claim 'acceptance (written before Build)' -- true >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+_f3s_after="$(_row87 'acceptance tests written before Build' "r = '%s:%s' % (x.get('pass'), x.get('state'))")"
+"$TEMPER" evidence run --stage build --claim 'acceptance (written before Build): skipped' -- true >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+_f3s_after2="$(_row87 'acceptance tests written before Build' "r = '%s:%s' % (x.get('pass'), x.get('state'))")"
+assert_eq "review 7: a passing evidence run of true under the acceptance claim or its ': skipped' form leaves the writer's skip a skip" \
+  "before=None:skipped|after=None:skipped|after2=None:skipped" \
+  "before=$_f3s_before|after=$_f3s_after|after2=$_f3s_after2"
+
+# A fix run: `true` under the regression proof's claim or the suite's claim ('Integration suite') passes no row, while
+# the suite's own command still counts (its run is read, and fails on its output here).
+_fix87
+_f3f_before="$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['build']['verdict'])" 2>/dev/null)"
+"$TEMPER" evidence run --stage build --claim 'Integration suite' -- true >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+_f3f_suite="$(_row87 'tests pass')"
+"$TEMPER" evidence run --stage build --claim 'regression proof' -- true >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+_f3f_verdict="$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['build']['verdict'])" 2>/dev/null)"
+assert_eq "review 7: a passing evidence run of true under a fix run's suite claim or regression proof claim passes neither row nor the Build verdict" \
+  "before=FAIL|suite=False|after=FAIL" \
+  "before=$_f3f_before|suite=$_f3f_suite|after=$_f3f_verdict"
+"$TEMPER" evidence run --stage build --claim 'regression proof' \
+  -- bash unit/test_total87.sh '&&' bash unit/test_other87.sh >/dev/null 2>&1
+"$TEMPER" gate build >/dev/null 2>&1
+assert_eq "review 7: a re-run of the suite's own command still counts as the proof: the row fails on the suite's run, never on the note" \
+  "row=False|note=absent" \
+  "row=$(_row87 'regression proof')|note=$([[ "$(_row87 'regression proof' "r = str(x.get('detail') or '')")" == *'counts nowhere'* ]] && echo present || echo absent)"

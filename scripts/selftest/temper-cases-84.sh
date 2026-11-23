@@ -122,6 +122,53 @@ assert_eq "review 4: R7b acceptance tests locked after a task passed its gate ar
   "task=passed|lock=refused|row=not passed" \
   "task=$_r84_task|lock=$_r84_late|row=$([[ "$(_row84 build 'acceptance tests written before Build')" == True ]] && echo passed || echo 'not passed')"
 
+# --- rule 7 (NEW-RULES-2, with the mod off): a copy of the spec folder and a rewritten spec_path lifts no locked test ---
+# `state set spec_path` took any .temper/specs/<slug> and acc_run returned [] when the lock named another folder, so a
+# copy of the spec folder (its failing test inside) and a rewritten spec_path took the locked acceptance tests out of
+# every gate before the first checks. The CLI now accepts spec_path only as the repair of a lost value, exactly the
+# folder the run's slug names, refuses the slug key while a run is active, and a lock that names another folder than
+# the run's spec_path is a failed acceptance row, never silence.
+_acc84
+cp -R .temper/specs/demo .temper/specs/demo2
+_r84_set="$("$TEMPER" state set spec_path .temper/specs/demo2 >/dev/null 2>&1 && echo taken || echo refused)"
+_r84_slug="$("$TEMPER" state set spec demo2 >/dev/null 2>&1 && echo taken || echo refused)"
+_built84
+"$TEMPER" integrate >/dev/null 2>&1 || true
+"$TEMPER" gate build >/dev/null 2>&1
+assert_eq "review 4: NEW-RULES-2 a copy of the spec folder is not taken for the run: spec_path and the slug are refused, and the Build gate keeps the locked acceptance tests" \
+  "spec_path=refused|slug=refused|row=False" \
+  "spec_path=$_r84_set|slug=$_r84_slug|row=$(_row84 build 'acceptance tests written before Build')"
+
+# The repair of a lost value is the one call that sets it, and only with the folder the run's slug names.
+_acc84
+python3 - <<'PY'
+import json
+p = ".temper/build-state.json"
+d = json.load(open(p)); d.pop("spec_path", None); json.dump(d, open(p, "w"), indent=2)
+PY
+_r84_lost="$("$TEMPER" state set spec_path .temper/specs/demo2 >/dev/null 2>&1 && echo taken || echo refused)"
+_r84_repair="$("$TEMPER" state set spec_path .temper/specs/demo >/dev/null 2>&1 && echo taken || echo refused)"
+assert_eq "review 4: NEW-RULES-2 spec_path is set only as the repair of a lost value, exactly the folder the run's slug names" \
+  "another=refused|repair=taken" \
+  "another=$_r84_lost|repair=$_r84_repair"
+
+# A lock of another spec folder than the run's spec_path (state rewritten by hand, as the audit ran it) is a failed
+# acceptance row at the gate, never silence.
+_acc84
+python3 - <<'PY'
+import json
+p = ".temper/build-state.json"
+d = json.load(open(p)); d["spec_path"] = ".temper/specs/demo2"; json.dump(d, open(p, "w"), indent=2)
+PY
+_built84
+"$TEMPER" integrate >/dev/null 2>&1 || true
+"$TEMPER" gate build >/dev/null 2>&1
+_r84_moved="$(_row84 build 'acceptance tests written before Build')"
+_r84_detail="$(_row84 build 'acceptance tests written before Build' "r = ' '.join(str(x.get('detail') or '').split())[:200]")"
+assert_eq "review 4: NEW-RULES-2 a lock that names another spec folder than the run's spec_path is a failed acceptance row that names both folders" \
+  "row=False|names both=yes" \
+  "row=$_r84_moved|names both=$([[ "$_r84_detail" == *'.temper/specs/demo'* && "$_r84_detail" == *'.temper/specs/demo2'* ]] && echo yes || echo "no: $_r84_detail")"
+
 
 # --- rule 7 for a repair (ADR 0021: "for a finding marked proof: test, the CLI ran a RED before the fix and a GREEN after
 # it on unchanged test files"): the fixer fixes first, then records as RED a command that fails without running the test ---

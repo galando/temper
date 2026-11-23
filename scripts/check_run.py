@@ -942,9 +942,23 @@ def acc_start(spec, lockfile):
 
 
 def acc_run(root, spec, lockfile):
-    """The acceptance row(s) for the checks when Build ends and for Check: [] when this run has no lock."""
+    """The acceptance row(s) for the checks when Build ends and for Check: [] when this run has no lock. A lock (or a
+    skip) that names another spec folder than the run's, while the run's own slug still names the lock's folder, is that
+    folder moved aside under this run: a failed row, never silence (rule 7 with the mod off: a copy of the spec folder
+    and a rewritten spec_path takes the locked tests out of the gates)."""
     d = acc_read(lockfile)
-    if not spec or d.get("spec") != os.path.relpath(spec, root) or not (d.get("cmd") or d.get("skipped")):
+    if not spec or not (d.get("cmd") or d.get("skipped")):
+        return []
+    rel = os.path.relpath(spec, root)
+    if d.get("spec") != rel:
+        try:
+            st = json.load(open(os.path.join(root, ".temper", "build-state.json")))
+        except (OSError, ValueError):
+            st = {}
+        if isinstance(st, dict) and st.get("spec") and d.get("spec") == os.path.join(".temper", "specs", str(st.get("spec"))):
+            return [row("acceptance (written before Build)", d.get("cmd") or "", 1,
+                        "the acceptance tests are locked under %s, and this run's spec_path says %s: the lock and the "
+                        "locked tests go as one (state set spec_path repairs a lost value only)" % (d.get("spec"), rel))]
         return []
     if d.get("skipped"):
         return [row("acceptance (written before Build): skipped", "", 0, d["skipped"], label="HEURISTIC")]

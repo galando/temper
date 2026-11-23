@@ -21,11 +21,14 @@ def check_markers(run):
              ("coverage", r"coverage"), ("lint", r"lint|ruff|eslint|flake8"), ("security", r"security|secret|audit|semgrep|bandit|scan")]
     out = []
     for name, rx in kinds:
-        # A scenario's trace row names its test; it is no run of a check (as in `temper gate check`).
+        # A scenario's trace row names its test; it is no run of a check (as in `temper gate check`). Rule 5: a row is a
+        # measure only when the CLI ran it or the person confirmed it (runs.counts) — a compile, lint or security value an
+        # agent recorded with `evidence add --exit 0` draws nothing, as the tests and coverage markers already do.
+        import runs
         hits = [r for r in rows if isinstance(r, dict) and not r.get("scenario") and re.search(rx, str(r.get("claim", "")), re.I)
+                and runs.counts(r)
                 and (name != "coverage" or r.get("executed_by") == "cli" and r.get("state"))]   # the CLI's measure only
         if name == "tests":   # rule 5: the runs the gate counts, of the suite's own command on the verdict's tree
-            import runs
             hits = [r for r in runs.gate_runs(rows, os.getcwd(), run.spec or "") if re.search(rx, str(r.get("claim", "")), re.I)]
         row = {"coverage": "coverage", "tests": "tests pass"}.get(name)   # the gate's own verdict of the row, when it has one
         gate = next((x for x in run.rows("check") if isinstance(x, dict) and x.get("name") == row), None) if row else None
