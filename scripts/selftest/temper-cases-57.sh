@@ -148,8 +148,27 @@ r = '|'.join([str(d.get('action')), str(len(dl)),
     'more allow-once' if any('src/more.sh' in l and l.endswith(': allow-once') for l in dl) else 'more: %s' % dl])")"
 _unattended build
 "$TEMPER" drift ask --path src/other.sh --why 'the parser needs it' --change 'one helper' >/dev/null 2>&1
+assert_eq "w16 drift: an unattended run records the stop first: the park call comes before the Scope drift question" \
+  "auto|park --verdict PARKED-NEEDS-DECISION" \
+  "$(_x57 "c = [str(x).split('/temper ', 1)[-1] for x in d.get('calls') or []]
+pk = next((x for x in c if x.startswith('park --verdict') and '--end' not in x), '')
+r = '%s|%s' % (d.get('action'), pk[:34] if pk else 'none')")"
+while IFS= read -r _c57; do [[ -n "$_c57" ]] && bash -c "$_c57" >/dev/null 2>&1; done < <(_x57 "r = '\n'.join(c for c in d.get('calls') or [] if ' park ' in ' %s ' % c and '--end' not in c) if d.get('action') == 'auto' else ''")
+assert_eq "w16 drift: the park is the recorded stop: parked is set and the rule log holds it" "yes|yes" \
+  "$(python3 -B -c "
+import json, os
+try:
+    d = json.load(open('.temper/build-state.json'))
+except (OSError, ValueError):
+    d = {}
+try:
+    e = json.load(open('.temper/rule-log.json'))
+except (OSError, ValueError):
+    e = []
+print('%s|%s' % ('yes' if d.get('parked') else 'no',
+                 'yes' if any(isinstance(x, dict) and x.get('kind') == 'stop' and x.get('stage') == 'build' for x in e) else 'no'))")"
 _go57="$("$TEMPER" go 2>/dev/null | tail -n 1)"
-assert_eq "w16 drift: an unattended run with a pending drift asks the Scope drift question and never moves by rule" \
+assert_eq "w16 drift: after the park the run asks the Scope drift question, and never moves by rule" \
   "ask|scope.drift|ask|scope.drift|0" \
   "$(_x57 "r = '%s|%s' % (d.get('action'), (d.get('ask') or {}).get('id'))")|$(python3 -B -c "
 import json, sys
@@ -159,6 +178,11 @@ except ValueError:
     g = {}
 moved = [c for c in g.get('ran') or [] if ' state advance ' in ' %s ' % c]
 print('%s|%s|%d' % (g.get('action'), (g.get('ask') or {}).get('id'), len(moved)))" "$_go57")"
+assert_eq "w16 drift: the question at the stop ends with park --end --answer on every option, and says the run goes on by itself" \
+  "3|goes on by itself" \
+  "$(_x57 "os = d.get('ask', {}).get('options') or []
+r = '%d|%s' % (sum(1 for o in os if any('park --end --answer %s' % o.get('id') in c for c in o.get('calls') or [])),
+    'goes on by itself' if 'goes on by itself' in str((d.get('ask', {}).get('question') or {}).get('question', '')) else 'no notice')")"
 
 # --- the report step and the no record note are kinds (step 4): `step_kinds` beside `steps`, in next and in go ---
 _kinds57() { # the kind of the report step and of the no record note, in `temper next --json` and in `temper go`
