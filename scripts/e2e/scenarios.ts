@@ -965,7 +965,16 @@ export const fixRun = (w: World): void => {
   const bug = '.temper/specs/bug'
   let atReview = ''
   const agents: Record<string, Agent> = {
-    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
+    // R3-1: rca.md as agents/rca.md asks for it: the fields the CLI's card and question read, not headings only
+    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n'
+      + 'CAUSE: `stage_object` returns only the stage, so a caller that reads the verdict gets undefined.\n'
+      + 'AT: src/ci_shape.py:1\nCONFIDENCE: HIGH\nSINCE: unknown\n'
+      + 'CHAIN: report -> stage_object -> the caller reads the verdict\n'
+      + 'FIX: Return the verdict and the requirements beside the stage.\n'
+      + 'TEST: the regression test locks that stage_object returns the verdict and the requirements\n\n'
+      + '## Root cause\n\n`stage_object` returns only the stage.\n\n'
+      + '## Blast radius\n\n- report: the caller that reads the verdict\n\n'
+      + '## Read first\n\n- src/ci_shape.py: the shape as it is\n'),
     // 9.8.5 (Q3): the CLI runs the regression test (evidence run), as agents/fix.md says; a claimed run counts nowhere
     'temper:temper-fix': wd => {
       wd.write('unit/test_ci_shape.py', SHAPE_TEST)
