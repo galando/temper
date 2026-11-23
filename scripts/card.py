@@ -25,6 +25,7 @@ import textwrap
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import acceptance  # noqa: E402
 import budget  # noqa: E402
+import failure  # noqa: E402
 import group_keep  # noqa: E402
 import output_ops  # noqa: E402
 import plan_ops  # noqa: E402
@@ -90,7 +91,7 @@ def git(*args):
         r = subprocess.run(["git"] + list(args), capture_output=True, text=True, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return ""
-    return r.stdout.strip() if r.returncode == 0 else ""
+    return r.stdout.rstrip() if r.returncode == 0 else ""   # rstrip: a porcelain line's leading status columns stay
 
 
 # ---- which question gets which card ----------------------------------------------------------------------------------
@@ -145,8 +146,9 @@ def strip_tags(text):
 
 
 def criterion_text(c):
-    """`AC-01 the text` of a criterion line, its priority tag, source and the mark (proposed) left out."""
-    t = re.sub(r"^(AC-\d+)\s*\[(?:required|optional)\]:\s*", r"\1 ", c.get("first_line") or "")
+    """`AC-01 the text` of a criterion, its whole statement (its wrapped lines, acceptance.statements), its priority
+    tag, source and the mark (proposed) left out."""
+    t = re.sub(r"^(AC-\d+)\s*\[(?:required|optional)\]:\s*", r"\1 ", c.get("statement") or c.get("first_line") or "")
     t = re.sub(r"\s*\((?:source:[^)]*|proposed)\)", "", t)
     return " ".join(t.split())
 
@@ -224,7 +226,10 @@ def launches(b):
         parts.append("1 designer (%s)" % short(r.model("design")))
     n = len(plan.get("tasks", []))
     if n:
-        parts.append("%d builder%s (%s)" % (n, "" if n == 1 else "s", short(b.task_model())))
+        # BLACKBOX-8: the builders launch one a chain of tasks, not one a task, so the row names the tasks, the
+        # number the plan fixes; how many chains they make is Build's to find
+        parts.append("%s for %d task%s (%s)" % ("a builder" if n == 1 else "builders", n, "" if n == 1 else "s",
+                                                short(b.task_model())))
     parts.append("1 reviewer (%s)" % short(r.model("review")))
     return [cell(", ".join(parts))]
 
@@ -329,10 +334,14 @@ def fix_approval(b, nxt):
     r = b.r
     names, f, path = fix_files(r)
     out = [request_section(r)]
-    cause = [cell(f["CAUSE"])] if f["CAUSE"] else []
+    # BLACKBOX-7: a section with no source is never guessed, but the cause and the fix are what the question is about,
+    # so a missing one is named, never left out (the approval itself waits in the flow, rca_approval)
+    no_file = not read(path).strip()
+    absent = lambda k: "no rca.md was written" if no_file else "rca.md gives no %s line" % k
+    cause = [cell(f["CAUSE"])] if f["CAUSE"] else [cell(absent("CAUSE"), "not found")]
     cause += [cell("%s: %s" % (k.capitalize(), f[k])) for k in ("AT", "CONFIDENCE", "SINCE", "CHAIN") if f[k]]
-    out.append(sec("cause", "THE CAUSE", cause, None, None, path) if cause else None)
-    out.append(sec("fix", "THE FIX", [cell(f["FIX"])]) if f["FIX"] else None)
+    out.append(sec("cause", "THE CAUSE", cause, None, None, path))
+    out.append(sec("fix", "THE FIX", [cell(f["FIX"])] if f["FIX"] else [cell(absent("FIX"), "not found")]))
     out.append(sec("test", "THE REGRESSION TEST", [cell(f["TEST"])], "written first; it must fail before the fix")
                if f["TEST"] else None)
     hot = dict(sensitive.declared(names, r.cfg("autonomy.park-on-touch")))
@@ -373,7 +382,8 @@ def approval(b, nxt):
     crits = [c for c in acceptance.parse_criteria(acceptance.section_lines(lines, "Success Criteria"))
              if c.get("id") and not c.get("placeholder")]
     if crits:
-        rows = [cell(criterion_text(c), "proposed" if "(proposed)" in (c.get("first_line") or "") else None)
+        rows = [cell(criterion_text(c), "proposed" if "(proposed)" in (c.get("statement") or c.get("first_line") or "")
+                     else None)
                 for c in crits]
         out.append(sec("criteria", "WHAT WILL BE TRUE", rows, "%d criteria; each gets a test written and locked first"
                        % len(rows), 8, ipath))
@@ -498,7 +508,9 @@ def commit(b, nxt):
     elif t is not None:
         code = t.get("exit_code")
         what = "passed" if code == 0 else "failed (exit %s)" % code if isinstance(code, int) else "recorded"
-        out.append(sec("suite", "THE SUITE", [cell("%s: %s" % (t.get("cmd") or t.get("claim") or "the tests", what))]))
+        # WP15 step 4: the row's time goes beside the verdict (R3-7); the counts the CLI does not parse are in PROGRESS.md
+        secs = ", %s s" % t["seconds"] if isinstance(t.get("seconds"), (int, float)) and not isinstance(t.get("seconds"), bool) else ""
+        out.append(sec("suite", "THE SUITE", [cell("%s: %s%s" % (t.get("cmd") or t.get("claim") or "the tests", what, secs))]))
     else:
         out.append(sec("suite", "THE SUITE", [cell("no run is recorded", "not measured")]))
     # WP22: a check that failed once and passed when the CLI ran it again at once (its fixed rule, step 9) is listed,
@@ -599,9 +611,29 @@ def run_line(r):
 
 # ---- a stop ----------------------------------------------------------------------------------------------------------
 
+def budget_key(b, ask, gate):
+    """The budget key the stop's question is about (audit R3-3): at run.budget the --key of the grant option's call,
+    else the first key one of the options' calls spends (budget.key_in), else gate:<stage>."""
+    opts = list(ask.get("options") or []) + list((ask.get("more") or {}).get("options") or [])
+    if (ask.get("id") or "") == "run.budget":
+        for o in opts:
+            for c in o.get("calls") or []:
+                m = re.search(r"budget grant --key (\S+)", str(c))
+                if m:
+                    return m.group(1)
+    facts = budget.Facts(b.r)
+    for o in opts:
+        for c in list(o.get("calls") or []) + list(o.get("steps") or []):
+            k = budget.key_in(str(c), b.cli, facts)
+            if k:
+                return k
+    return "gate:%s" % gate
+
+
 def stop(b, nxt):
     r = b.r
-    stage = (nxt.get("ask") or {}).get("stage") or r.stage
+    ask = nxt.get("ask") if isinstance(nxt.get("ask"), dict) else {}
+    stage = ask.get("stage") or r.stage
     gate = r.gate_of(stage) or stage
     label = STAGE_NAMES.get(stage, stage)
     out = []
@@ -609,33 +641,58 @@ def stop(b, nxt):
     run = output_ops.last_failed(TEMPER, gate)
     if run is not None:
         rows += [cell(str(x)) for x in (run.get("fail_lines") or [])][:5]
+    # R3-3: a group the Build gate has no failed row for (its check failed, or it is parked, the rule of
+    # budget.key_of) is the failure the question is about: its row leads WHAT FAILS and the budget is read under
+    # group:<G>, the key the question's options spend
+    key = budget_key(b, ask, gate)
+    if stage == "build" and not failed_rows(r, stage):
+        held = [g for g, x in sorted(((r.groups or {}).get("groups") or {}).items()) if isinstance(x, dict)
+                and ((x.get("gate") or {}).get("verdict") == "FAIL" or x.get("status") == "parked")]
+        if held:
+            gid = key.split(":", 1)[1] if key.startswith("group:") else held[0]
+            ginfo = ((r.groups or {}).get("groups") or {}).get(gid) or {}
+            why = " ".join(str((ginfo.get("gate") or {}).get("reason") or "").split())
+            rows.insert(0, cell("Group %s failed its check%s" % (gid, ": %s" % why if why else "")))
+            key = "group:%s" % gid
     if not rows:
         last = [x for x in load(os.path.join(TEMPER, "rule-log.json"), [])
                 if isinstance(x, dict) and x.get("kind") == "stop"]
         rows = [cell(last[-1].get("what") or "the run stopped here")] if last else [cell("the run stopped here")]
-    out.append(sec("what_fails", "WHAT FAILS", rows, None, 8, os.path.join(TEMPER, "gates.json")))
-    key = "gate:%s" % gate
-    rm = budget.room(key, budget.Facts(r))
-    tried = [cell(k) for k in budget.kinds(key, budget.Facts(r))] or [cell("no repeat yet: this is its first failure")]
-    out.append(sec("tried", "WHAT WAS TRIED", tried, "%d of %d repeats for this failure, %d of %d for the run" % (
-        rm["used"], rm["limit"], rm["run_used"], rm["run_limit"])))
-    t = b.acc_triage() if stage == "check" else {}
+    passed = r.verdict(stage) == "PASS" and not failed_rows(r, stage)   # BLACKBOX-6: a stop at a passed stage (Esc)
+    out.append(sec("what_fails", "WHY IT STOPPED" if passed else "WHAT FAILS", rows, None, 8,
+                   os.path.join(TEMPER, "gates.json")))
+    facts = budget.Facts(r)
+    rm = budget.room(key, facts)
+    if not passed:
+        tried = [cell(k) for k in budget.kinds(key, facts)] or [cell("no repeat yet: this is its first failure")]
+        out.append(sec("tried", "WHAT WAS TRIED", tried, "%d of %d repeats for this failure, %d of %d for the run" % (
+            rm["used"], rm["limit"], rm["run_used"], rm["run_limit"])))
+    reading = []
+    t = b.acc_triage()   # R3-7: the reading is not Check's alone
     if t.get("verdict"):
-        out.append(sec("reading", "THE READING", [cell("the %s looks wrong%s" % (
-            t["verdict"], ": %s" % t["reason"] if t.get("reason") else ""))]))
+        reading.append(cell("the %s looks wrong%s" % (t["verdict"], ": %s" % t["reason"] if t.get("reason") else "")))
+    try:
+        recs = failure.open_records(stage=stage)
+    except Exception:
+        recs = []
+    reading += [cell("%s: %s" % (x.get("class") or "a failure", " ".join(str(x.get("why") or "").split())[:200]))
+                for x in recs[:4] if isinstance(x, dict)]
+    if reading:
+        out.append(sec("reading", "THE READING", reading))
     seq = r.seq()
     green = [STAGE_NAMES.get(s, s) for s in seq[:seq.index(stage)] if stage in seq and r.verdict(s) == "PASS"]
     if green:
         out.append(sec("still_green", "STILL GREEN", [cell(" · ".join(green))]))
     ms = sum(x.get("ms") for x in r.usage if isinstance(x, dict) and isinstance(x.get("ms"), int))
-    launched = sum(1 for x in r.usage if isinstance(x, dict))
+    # BLACKBOX-8: the launches as run_summary counts them (a usage row of an agent stage), as the RUN row already does
+    launched = sum(((run_summary.summary(TEMPER, None) or {}).get("launches") or {}).get("by_stage", {}).values())
     out.append(sec("spent", "SPENT", [cell("%d min of agent time, %d launch%s" % (minutes(ms), launched,
                                                                                  "" if launched == 1 else "es"))]))
     alone = r.state.get("run_mode") == "autonomous" and r.state.get("unattended_from") and r.state.get("parked")
     foot = ["After your answer the run goes on by itself." if alone else
             "After your answer the run asks you at each stage.",
             "Nothing is pushed."]
-    return "STOPPED: %s DID NOT PASS" % label.upper(), out, foot
+    return "STOPPED: %s %s" % (label.upper(), "PASSED" if passed else "DID NOT PASS"), out, foot
 
 
 # ---- the text form ---------------------------------------------------------------------------------------------------

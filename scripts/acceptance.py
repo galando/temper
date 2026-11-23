@@ -135,9 +135,26 @@ def covers_ids_in_lines(lines):
     return ids
 
 
+STATEMENT_END = re.compile(r"^\s*(Why|Validate|Deferred|Blocking):", re.I)
+
+
+def statements(block, first_line):
+    """The whole criterion: the bullet line plus its wrapped continuation lines, up to the first Why:/Validate:/
+    Deferred:/Blocking: line, as scripts/intent_draft_rows.py statements() already reads it. The approval card shows
+    this (a criterion is not cut at its first line, 9.8.5 audit R3-2)."""
+    out = [first_line]
+    for l in block[1:]:
+        if STATEMENT_END.match(l):
+            break
+        s = l.strip()
+        if s:
+            out.append(s)
+    return " ".join(out)
+
+
 def parse_criteria(lines):
     """Success Criteria bullets -> list of dicts:
-    {id, optional, deferred, has_validate, vtype, vdetails, why, first_line, lineno}.
+    {id, optional, deferred, has_validate, vtype, vdetails, why, first_line, statement, lineno}.
     Placeholder bullets (content starting with `{`) are skipped by every counter."""
     crits, cur = [], None
     in_fence = False
@@ -164,6 +181,7 @@ def parse_criteria(lines):
     for c in crits:
         if c.get("placeholder"):
             continue
+        c["statement"] = statements(c["block"], c["first_line"])
         m = re.match(r"^(AC-\d+)\s*\[(required|optional)\]:", c["first_line"])
         c["id"] = m.group(1) if m else None
         c["priority"] = m.group(2) if m else None
@@ -291,7 +309,7 @@ def status_report(intent_path, ev_dir):
             if names and all(h and supported_pass(h[2]) for h in hits):
                 status = "passed"
                 evidence = ["%s#%d scenario %s" % (h[0], h[1], n) for n, h in zip(names, hits)]
-        text = re.sub(r"^AC-\d+\s*\[(?:required|optional)\]:\s*", "", c.get("first_line") or "").strip()
+        text = re.sub(r"^AC-\d+\s*\[(?:required|optional)\]:\s*", "", c.get("statement") or c.get("first_line") or "").strip()
         out.append({"id": c["id"], "priority": c["priority"], "status": status, "text": text,
                     "evidence": [e.strip() for e in evidence]})
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

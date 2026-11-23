@@ -136,6 +136,11 @@ class AskPart:
         return self.opt("Save for later", "Stop here. The run is saved; /temper:%s takes it up again." % ("fix" if self.r.command == "fix" else "temper"),
                         move="pause", stop=True, oid="save")
 
+    def again_opt(self, description, calls, oid="redo", answer=None):
+        """Run the stage's work again ('Run it again'); with `answer`, what to look at is typed below and fills
+        {answer} in the calls."""
+        return self.opt("Run it again", description, move="redo", calls=calls, oid=oid, answer=answer)
+
     def skill(self, name, label, what):
         o = self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name, oid=name,
                      needs="talk")
