@@ -85,6 +85,13 @@ def patch_lines(lines, target, num, cmd):
             lines = list(lines)
             lines[i] = "%s`%s`%s" % (m.group(1), cmd, m.group(3))
             return lines, old
+        if target == "group" and re.match(r"^\s*\*\*Validate:\*\*", lines[i]):
+            # a Validate line that is there with no backquoted command (empty, or prose) is replaced, not left beside a
+            # second one the plan would still read as the command (R4-7)
+            old = re.sub(r"^\s*\*\*Validate:\*\*\s*", "", lines[i]).strip()
+            lines = list(lines)
+            lines[i] = "**Validate:** `%s`" % cmd
+            return lines, old
         if target == "integration":
             break
     if target == "group":   # WP25: a group with no Validate line gets one, after its **Depends:** line (or its head)

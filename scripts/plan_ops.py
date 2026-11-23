@@ -149,9 +149,9 @@ SIMPLE_FILES = 3
 
 
 def tier_bound(spec, tier, state_file):
-    """The bounds of the simple tier a run recorded as simple crosses, as one detail naming the call that records medium;
-    '' when it crosses none, or when the tier is not simple."""
-    if str(tier or "").strip().lower() != "simple":
+    """The bounds of the tiers below medium a run recorded (simple, trivial, or none at all — R5-3) crosses, as one
+    detail naming the call that records medium; '' when it crosses none, or when the tier is medium or complex."""
+    if str(tier or "").strip().lower() in ("medium", "complex"):
         return ""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import risk
@@ -171,7 +171,8 @@ def tier_bound(spec, tier, state_file):
         out.append("the run's risk is H (a simple plan is below risk H)")
     if not out:
         return ""
-    return "the run records simple, and %s: temper state set complexity medium records the tier above" % "; ".join(out)
+    return "the run records %s, and %s: temper state set complexity medium records the tier above" % (
+        str(tier or "").strip().lower() or "no tier", "; ".join(out))
 
 
 def table(m):

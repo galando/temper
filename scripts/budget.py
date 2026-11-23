@@ -61,9 +61,11 @@ SPENDS = (
     (("check", "run"), "run anyway", "with --fresh (WP22, the person's Run it anyway): gate:check; `group gate G --fresh` "
                                      "spends group:<G>, `integrate --fresh` gate:build"),
     (("budget", "revise"), "revise", "always: --key plan-revise:<reason> (WP27: a launch of the narrow revise agent, its "
-                                     "before call; the flow launches the planner after two before the approval). A launch "
-                                     "that the person's run again or a step back into Plan paid for counts for its reason, "
-                                     "not again for the run (paid_by)"),
+                                     "before call; the flow launches the planner after two before the approval), except "
+                                     "at a plan gate that stands PASS: a revise that answers a note at a passed gate "
+                                     "answers no failure and spends nothing (R5-2). A launch that the person's run again "
+                                     "or a step back into Plan paid for counts for its reason, not again for the run "
+                                     "(paid_by)"),
     (("repair", "start"), "repair", "the gate of --stage is FAIL and not skipped, or it is Review: gate:<stage> (WP24: the repair "
                                     "in the stage, spent by scripts/repair_ops.py once every condition holds)"),
 )
@@ -170,7 +172,12 @@ def key_of(words, facts):
         return ("gate:build", "step back") if plan.get("tasks") and not plan.get("groups") else None
     if a == "budget" and b == "revise":
         key = next((y for x, y in zip(words, list(words[1:])) if x == "--key"), "")
-        return (key, "revise") if key.startswith("plan-revise:") and KEY_RE.match(key) else None
+        if not (key.startswith("plan-revise:") and KEY_RE.match(key)):
+            return None
+        g = facts.run().gates.get("plan") if isinstance(facts.run().gates.get("plan"), dict) else {}
+        if g.get("verdict") == "PASS":   # R5-2: a revise at a passed gate answers a note, not a failure: it spends nothing
+            return None
+        return key, "revise"
     if a == "repair" and b == "start":
         st = next((y for x, y in zip(words, list(words[1:])) if x == "--stage"), "")
         return ("gate:" + st, "repair") if st and (facts.failed(st) or st == "review") else None   # a passed Review: the click
@@ -408,10 +415,14 @@ def main(argv):
         return grant(argv[2:], facts)
     if sub == "revise":   # WP27: one launch of the revise agent; refused (exit 1, nothing written) at the limit
         w = ["budget"] + argv[1:]
-        rc, line = spend(w, facts) if key_of(w, facts) else (1, "FAIL: usage: temper budget revise --key plan-revise:<reason> "
-                                                                "--reason R")
-        if line:
-            print(line)
+        key = next((y for x, y in zip(w, list(w[1:])) if x == "--key"), "")
+        if not (key.startswith("plan-revise:") and KEY_RE.match(key)):
+            print("FAIL: usage: temper budget revise --key plan-revise:<reason> --reason R", file=sys.stderr)
+            return 1
+        rc, line = spend(w, facts)
+        if not line:   # R5-2: the plan gate stands PASS: the launch answers a note at a green gate, not a failure
+            line = "OK: the plan gate passed: a revise that answers a note at a green gate spends nothing"
+        print(line)
         return rc
     if sub == "show" and len(argv) <= 2:
         return show(facts)

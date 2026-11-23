@@ -92,15 +92,26 @@ class RevisePart:
                     {"fresh findings": "the findings", "the person's note": "your note", "a failed plan row": "the failed check"}.get(
                         reason, "the step back" if reason.startswith("a loop back") else "your answer"), on_model([a]), goes_on(False))}
 
+    def revise_since_pass(self, key):
+        """The launches of the key since the plan gate last passed (R5-2): only they count toward the fall back, so a
+        revise that answers a note at a passed gate never brings the planner — the planner comes after two revisions
+        in a row left the gate failing (plan 7, 5c). While the gate stands failed every launch counts, as before."""
+        import budget
+        g = self.r.gates.get("plan") if isinstance(self.r.gates.get("plan"), dict) else {}
+        at = str(g.get("ts") or "") if g.get("verdict") == "PASS" else ""
+        return [x for x in budget.record(budget.Facts(self.r))["used"]
+                if x.get("key") == key and (not at or str(x.get("ts") or "") > at)]
+
     def revise_work(self):
         """WP27 (step 3): the revise agent when tasks.md exists, an item exists, no loop back passes through Intent, and
-        fewer than two revise launches were made for the reason; before the approval the planner after two (the fall
-        back), after it the same launch, which the budget turns into its question (a rule never plans again)."""
+        fewer than two revise launches were made for the reason since the plan gate last passed; before the approval
+        the planner after two (the fall back), after it the same launch, which the budget turns into its question (a
+        rule never plans again)."""
         got = self.revise_items()
         if not got:
             return None
         key = self.revise_key(got[0])
-        if self.r.room(key)["used"] >= 2 and not self.r.state.get("plan_hash"):
+        if len(self.revise_since_pass(key)) >= self.r.room(key)["limit"] and not self.r.state.get("plan_hash"):
             return None
         return self.revise_agent(got[0], got[1], key)
 
@@ -137,14 +148,17 @@ class RevisePart:
 
     def tier_step(self):
         """The plan gate failed only on the bound of the simple tier (WP26, plan_ops.tier_bound): the CLI records the tier
-        above, as the row says, and checks the plan again. No agent: the revise agent runs no state set, and a tier is no
+        above, as the row says, and checks the plan again. The rows of the fresh round a sensitive path asks for
+        (fresh review ran, fresh reader's paraphrase) wait on the reviewers the re-check launches, not on the tier
+        (R5-1), so they do not hold this step back. No agent: the revise agent runs no state set, and a tier is no
         reason to plan again."""
         r = self.r
-        rows = r.failed_rows("plan")
+        rows = [x for x in r.failed_rows("plan") if x.get("name") not in ("fresh review ran", "fresh reader's paraphrase")]
+        tier = str(r.state.get("complexity") or "").strip().lower()
         if (r.verdict("plan") != "FAIL" or [x.get("name") for x in rows] != ["tier recorded"]
-                or str(r.state.get("complexity") or "").strip().lower() != "simple"):
-            return None
-        bound = plan_ops.tier_bound(r.spec, "simple", os.path.join(TEMPER, "build-state.json")) if r.spec else ""
+                or tier in ("medium", "complex")):
+            return None   # the bound holds for every tier below medium, trivial and none recorded alike (R5-3)
+        bound = plan_ops.tier_bound(r.spec, tier, os.path.join(TEMPER, "build-state.json")) if r.spec else ""
         if not bound or rows[0].get("detail") != bound:
             return None   # a Complexity line that names another tier: which tier is right is the planner's or the person's
         why = bound.split(", and ", 1)[-1].split(": temper state set", 1)[0]

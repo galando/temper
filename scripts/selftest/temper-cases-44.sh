@@ -165,13 +165,21 @@ _d05() { # _d05 <case>: the state of one of the eight (or plain, a High finding 
     acceptance) _unattended check
       printf '{"verdict": "test", "why": "the locked test asserts the wrong text"}\n' > .temper/evidence/acceptance-triage.json
       gfail check "acceptance tests written before Build" "the locked acceptance tests fail: 1 of 2" ;;
+    plansensitive) _unattended review   # R4-4/D33: the plan declares a sensitive path, the finding is on another file
+      sed -i 's|`src/demo.sh`|`src/demo.sh`, `src/auth/login.sh`|' .temper/specs/demo/tasks.md
+      "$TEMPER" evidence add --stage review --claim 'src/demo.sh:1 the demo prints nothing on error' --severity high --label PROVEN >/dev/null 2>&1
+      gfail review "no blocking findings" "1 open high finding" ;;
+    planfail) _unattended check   # R4-4/D33: the same at Check, a failed suite of class code
+      ev_red check 'tests: the suite (run by the CLI)'
+      gfail check "tests pass" "the latest run of a test command failed: the suite"
+      sed -i 's|`src/demo.sh`|`src/demo.sh`, `src/auth/login.sh`|' .temper/specs/demo/tasks.md ;;
   esac
   _head44
   printf '%s,%s' "$(_stop44 'repair start|state loop')" \
     "$(python3 -c "import json; print('window' if json.load(open('.temper/build-state.json')).get('repair') else 'no window')" 2>/dev/null)"
 }
 _d05_got=""; _d05_want=""
-for _c in contested outside sensitive unfinished environment unmeasured person acceptance; do
+for _c in contested outside sensitive unfinished environment unmeasured person acceptance plansensitive planfail; do
   _d05_want+="$_c=stop,no window|"; _d05_got+="$_c=$(_d05 "$_c")|"
 done
 assert_eq "D05b in an unattended run none of the eight is repaired by rule: each is a question or a recorded stop, no repair window" \

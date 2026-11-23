@@ -93,10 +93,11 @@ TASKS
 _group70() { # appends a second group to tasks.md, one task of two cases
   printf '\n## Group G2: Later\n**Depends:** G1\n**Validate:** `true`\n**Context:**\nThe later work.\n\n### Task 3: later\n**File:** `src/z.sh`, `unit/z_test.sh`\n**Depends:** none\n**Test:** `bash unit/z_test.sh`\n**Cases:**\n- z prints its line\n- an empty z exits 0\n- [ ] done\n' >> .temper/specs/demo/tasks.md
 }
-_plan70() { # _plan70 <tier>: a run at Plan, at that tier, with the intent and tasks.md of this file and no plan.md
+_plan70() { # _plan70 <tier>: a run at Plan, at that tier (none records no tier), with the intent and tasks.md of this
+             # file and no plan.md
   fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
   _intent70; _tasks70; rm -f .temper/specs/demo/plan.md
-  "$TEMPER" state set complexity "${1:-simple}" >/dev/null 2>&1
+  [[ "${1:-}" == none ]] || "$TEMPER" state set complexity "${1:-simple}" >/dev/null 2>&1
 }
 _rows70() { # _rows70 <stage>: the plan gate's verdict and the names of its rows, as verdict|n rows|name,name,...
   python3 -I -c "

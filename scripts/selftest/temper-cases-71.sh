@@ -596,6 +596,18 @@ _two71; "$TEMPER" gate plan >/dev/null 2>&1
 _w27_11+="|first plan=$(nx "'%s,agents=%d,%s' % (d.get('action'), len(d.get('agents') or []), ';'.join(__import__('re').sub(r'^\S*/temper ', '', c) for c in d.get('calls') or []))")"
 assert_eq "w27 the tier bound: a simple run with two groups gets temper state set complexity medium from the CLI when the bound is the only failed row, after one revise of a step back and at a first plan alike; never a second revise or run.budget" \
   "after the approval=work temper:temper-plan-revise|ask plan.approve|tier=medium|first plan=work,agents=0,state set complexity medium;gate plan" "$_w27_11"
+# R5-1: a small plan on a sensitive path (risk H by rule) is no dead end at the failed plan question: the CLI records
+# medium itself and the fresh round the risk asks for is launched (its rows wait on the reviewers, not on the tier)
+fresh; _tasks71; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+sed -i 's|^\*\*File:\*\* `src/report.sh`, `unit/report_test.sh`|**File:** `src/auth/login.sh`, `unit/report_test.sh`|' .temper/specs/demo/tasks.md
+rm -f .temper/specs/demo/plan.md; "$TEMPER" state set complexity simple >/dev/null 2>&1
+"$TEMPER" risk >/dev/null 2>&1 || true
+_w27_11e="risk=$("$TEMPER" state get risk 2>/dev/null)|$(nx "'%s,agents=%d,%s' % (d.get('action'), len(d.get('agents') or []), ';'.join(__import__('re').sub(r'^\S*/temper ', '', c) for c in d.get('calls') or []))")"
+while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "chr(10).join(d.get('calls') or [])")
+_w27_11e+="|tier=$("$TEMPER" state get complexity 2>/dev/null)"
+_w27_11e+="|next=$(nx "','.join(str(a.get('type')) for a in d.get('agents') or []) if d.get('action') == 'work' else '%s %s' % (d.get('action'), (d.get('ask') or {}).get('id'))")"
+assert_eq "w27 the tier bound at risk H: a simple plan on a sensitive path is recorded medium by the CLI and the two fresh reviewers follow, not a dead end at plan.fail" \
+  "risk=H|work,agents=0,state set complexity medium;gate plan|tier=medium|next=temper:temper-plan-review,temper:temper-plan-review" "$_w27_11e"
 # WP27-R1: the planner launched as the fall back after two revises spends one entry, as any repeat of a failed gate does
 _plan71; fresh_reviewed
 "$TEMPER" evidence add --stage plan --phase fresh --severity high --claim "$_W27_4" >/dev/null 2>&1; "$TEMPER" gate plan >/dev/null 2>&1
@@ -603,6 +615,22 @@ _w27_11b="$(_drive71 2 "$_W27_4" | sed 's/|items=.*//')|before=$(_room71 gate:pl
 _w27_11b+="|$(_drive71 1 "$_W27_4" | sed 's/|items=.*//')|after=$(_room71 gate:plan)"
 assert_eq "w27 the fall back planner spends: after two revise launches the planner's launch writes one entry of gate:plan" \
   "work temper:temper-plan-revise|work temper:temper-plan-revise|before=used=1,run=2|work temper:temper-plan|after=used=2,run=3" "$_w27_11b"
+# R5-2: three notes typed at a passed plan gate (no failure between them): each launches the narrow revise agent, the
+# third no less, and none spends an entry of the budget
+_notes71() { # _notes71: three notes at a green gate, each driven through its launch; prints the agent of each
+  local i out=""
+  _plan71; "$TEMPER" gate plan >/dev/null 2>&1
+  for i in 1 2 3; do
+    "$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71 (note $i)" >/dev/null 2>&1
+    out+="$(_agent71 "a.get('type') if d.get('action') == 'work' else 'ask %s' % (d.get('ask') or {}).get('id')")|"
+    while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done \
+      < <(_agent71 "'\n'.join(c for a in d.get('agents') or [] for c in (a.get('before') or []) + (a.get('after') or []))")
+  done
+  printf '%s' "$out"
+}
+assert_eq "w27 notes at a green gate: every one is the narrow revise agent, the third no less, and none spends an entry" \
+  "temper:temper-plan-revise|temper:temper-plan-revise|temper:temper-plan-revise|used=0,run=0" \
+  "$(_notes71)|$(_room71 plan-revise:note)"
 # WP27-R2: the revise the person picks at a failed plan gate is one launch and one spend: the run again paid for it, and
 # the launch still counts for its reason (the fall back comes after two)
 _plan71 one-case; "$TEMPER" gate plan >/dev/null 2>&1

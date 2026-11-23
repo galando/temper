@@ -648,13 +648,15 @@ class WorkPart:
     ACC_REASONS = ["The test asks for what the intent does not say", "The test contradicts how the code base works"]
 
     def acc_failure(self):
-        """(detail, digest) when the gate of the stage the run is at (Build, where integrate ran them, or Check) failed on
-        the locked acceptance tests and on nothing else, they were not changed after the lock and are not reopened: a test
-        or the code is wrong. Else None; also when the environment failed them (WP23: the setup question comes first)."""
+        """(detail, digest) when the gate of the stage the run is at (Build, where integrate ran them, or Check) failed
+        with the locked acceptance tests among its failed rows, they were not changed after the lock and are not
+        reopened: a test or the code is wrong (R4-1: beside another failed row too — the triage reads the failure
+        before the question or any fix pass). Else None; also when the environment failed them (WP23: the setup
+        question comes first)."""
         d = self.acceptance()
         rows = self.r.failed_rows(self.check_stage())
         acc = [x for x in rows if str(x.get("name", "")).startswith("acceptance tests written before Build")]
-        if not d.get("cmd") or d.get("reopened") or not acc or len(acc) != len(rows) or self.setup_fault():
+        if not d.get("cmd") or d.get("reopened") or not acc or self.setup_fault():
             return None
         detail = str(acc[0].get("detail", ""))
         if detail.startswith(("changed after they were locked", "reopened")):
@@ -725,16 +727,16 @@ class WorkPart:
                 "say": "Build: the check failed on the code (%s); the rule runs Build's fix pass once." % why[:120]}
 
     def acceptance_options(self, rows):
-        """9.8.0: the options when the locked acceptance tests failed and nothing else did (WP23: at the Build gate, where
-        integrate ran them, or at Check). A builder changed them: put them back as locked (no decision: the person's lock
-        holds), then check again. They fail as locked: Build mends the code, or the person says the test is wrong and the
-        writer corrects it. After a fix pass or a step back left the same failure, the correction is the recommended way.
-        [] when this does not apply."""
+        """9.8.0: the options when the locked acceptance tests are among the failed rows (WP23: at the Build gate, where
+        integrate ran them, or at Check; R4-1: beside another failed row too). A builder changed them: put them back as
+        locked (no decision: the person's lock holds), then check again. They fail as locked: Build mends the code, or
+        the person says the test is wrong and the writer corrects it. After a fix pass or a step back left the same
+        failure, the correction is the recommended way. [] when this does not apply."""
         r = self.r
         d = self.acceptance()
         st = self.check_stage()
         acc = [x for x in rows if str(x.get("name", "")).startswith("acceptance tests written before Build")]
-        if not d.get("cmd") or not acc or len(acc) != len(rows):
+        if not d.get("cmd") or not acc:
             return []
         detail = str(acc[0].get("detail", ""))
         if detail.startswith("changed after they were locked"):

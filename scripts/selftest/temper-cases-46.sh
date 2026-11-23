@@ -363,9 +363,11 @@ assert_eq "D26e plan patch adds the missing Validate line of a group whose appro
   "patch=taken|G1=bash v.sh|row=True" "$_d26e"
 
 # --- D27a to D27c: the simple tier writes tasks.md only, the briefs ask for nothing unread, and the CLI bounds the tier ---
-_tier46() { # a run at Plan, tier simple, the plan gate run on the plan as it stands
+_tier46() { # _tier46 [tier|none]: a run at Plan, at that tier (default simple; none records no tier), the plan gate run
+            # on the plan as it stands
   fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
-  "$TEMPER" state set complexity simple >/dev/null 2>&1; rm -f .temper/specs/demo/plan.md
+  [[ "${1:-simple}" == none ]] || "$TEMPER" state set complexity "${1:-simple}" >/dev/null 2>&1
+  rm -f .temper/specs/demo/plan.md
 }
 _row46() { # _row46 <stage> <row>: pass of that row of the stage's verdict, or absent
   python3 -I -c "
@@ -390,8 +392,10 @@ _tier46; second_group; "$TEMPER" gate plan >/dev/null 2>&1; _d27c+="two groups=$
 _tier46; sed -i 's|^\*\*File:\*\* `src/demo.sh`|**File:** `src/demo.py`, `src/one.py`, `src/two.py`, `src/three.py`|' .temper/specs/demo/tasks.md
 "$TEMPER" gate plan >/dev/null 2>&1; _d27c+="|four files=$(_row46 plan 'tier recorded')"
 _tier46; riskH; "$TEMPER" gate plan >/dev/null 2>&1; _d27c+="|risk H=$(_row46 plan 'tier recorded')"
-assert_eq "D27c tier simple with two groups, with four production files or at risk H fails the row tier recorded" \
-  "two groups=False|four files=False|risk H=False" "$_d27c"
+_tier46 trivial; second_group; "$TEMPER" gate plan >/dev/null 2>&1; _d27c+="|trivial two groups=$(_row46 plan 'tier recorded')"
+_tier46 none; second_group; "$TEMPER" gate plan >/dev/null 2>&1; _d27c+="|no tier two groups=$(_row46 plan 'tier recorded')"
+assert_eq "D27c tier simple with two groups, with four production files or at risk H fails the row tier recorded, and so do trivial and no tier recorded at all (the bound holds below medium)" \
+  "two groups=False|four files=False|risk H=False|trivial two groups=False|no tier two groups=False" "$_d27c"
 
 # --- D28: the builders on Sonnet with a key for Haiku; the planner on Opus behind a key ---
 _models46() { # the plan and task lines of temper model --all --source, as <model> <source>

@@ -297,6 +297,21 @@ _w4+="|unattended=$(_triage64)"
 assert_eq "w23 triage first, in every mode: with a failing locked test at the Build gate, next launches the triage agent at Build, also when the run goes on by itself" \
   "default=work:temper:temper-acceptance:Triage at Build:usage build:triaged|unattended=work:temper:temper-acceptance:Triage at Build:usage build:triaged" "$_w4"
 
+# --- w23 the triage comes first when the locked test fails beside another failed row (the suite, a coverage drop):
+# D21's "in every mode" covers a failure that is not alone (R4-1) ---
+_accfail64x() { # _accfail64x <fail|cov>: a run at Build, integrated, whose gate failed on the locked acceptance test
+                # and on the row the mode names (the suite, or coverage at 50); prints what next launches
+  _run64
+  echo fail > "$P64/acc"
+  if [[ "$1" == cov ]]; then echo 50 > "$P64/cov"; else echo "$1" > "$P64/suite.mode"; fi
+  _integ64
+  "$TEMPER" gate build >/dev/null 2>&1
+  _triage64
+}
+assert_eq "w23 the triage comes first beside another failed row: the locked acceptance test failing with the suite or with a coverage drop still gets the triage agent before the Build question" \
+  "suite=work:temper:temper-acceptance:Triage at Build|coverage=work:temper:temper-acceptance:Triage at Build" \
+  "suite=$(_accfail64x fail | cut -d: -f1-4)|coverage=$(_accfail64x cov | cut -d: -f1-4)"
+
 # --- w23 the triage picks the step: code is one fix pass as the CLI's own action; test is the person's question ---
 _triaged64() { # _triaged64 [verdict text]: the triage agent's work: its verdict (none when not given), then its after calls
   local after; after="$(_x64 "r = '\n'.join((d.get('agents') or [{}])[0].get('after') or [])")"
