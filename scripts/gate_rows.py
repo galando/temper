@@ -62,16 +62,30 @@ def one_line(x, n=300):
     return " ".join(str(x or "").split())[:n]
 
 
-def acceptance_row(rows):
+def acc_cmd():
+    """The command the acceptance lock record keeps (.temper/evidence/acceptance-lock.json, which only the CLI writes;
+    no cmd when the writer skipped the tests), or "" with no record: a run of another command under the acceptance
+    claim stands for no run of the locked tests, as it does under the suite's claim (docs/flow.md)."""
+    try:
+        d = json.load(open(os.path.join(".temper", "evidence", "acceptance-lock.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return str(d.get("cmd") or "") if isinstance(d, dict) else ""
+
+
+def acceptance_row(rows, lock_cmd=""):
     """The row `acceptance tests written before Build`, from the ledger's latest acceptance row (the checks when Build
-    ends write it at Build, Check at Check: one name, so the flow's matchers serve both stages); None with none."""
+    ends write it at Build, Check at Check: one name, so the flow's matchers serve both stages); None with none.
+    Rule 5: only a run of the locked command counts — the CLI ran it (integrate, check run, or a re-run of the same
+    command through `evidence run`); a run of another command under the claim, a void row, or a row an agent wrote
+    with evidence add counts nowhere."""
     hits = [x for x in rows if re.match(r"acceptance \(written before Build\)", str(x.get("claim") or ""))]
     if not hits:
         return None
-    ran = [x for x in hits if runs.counts(x)]   # rule 5 (ADR 0024): a row an agent wrote, or a void one, counts nowhere
+    ran = [x for x in hits if runs.counts(x) and str(x.get("cmd") or "") == lock_cmd]
     if not ran:
-        return row("acceptance tests written before Build", False, "no run of the acceptance tests the CLI made: a row "
-                   "written with evidence add counts nowhere")
+        return row("acceptance tests written before Build", False, "no run of the locked acceptance command the CLI "
+                   "made: a row of another command, or written with evidence add, counts nowhere")
     last, claim = ran[-1], str(ran[-1].get("claim") or "")
     if claim.endswith("skipped"):   # rule 6: no test ran; skipped, as the red base's skip of `tests pass`, never passed
         return {"name": "acceptance tests written before Build", "pass": None, "state": "skipped",
@@ -84,15 +98,17 @@ def acceptance_row(rows):
     return row("acceptance tests written before Build", True, ok)
 
 
-def regression_row(rows):
-    """A fix's regression proof (WP23): only a row the CLI ran counts; a proof an agent or a person wrote fails the row.
+def regression_row(rows, own=()):
+    """A fix's regression proof (WP23): only a run of the suite owner's command the CLI made counts (a proof of another
+    command under the claim stands for no run of the suite, rule 5); a proof an agent or a person wrote fails the row.
     None when no proof row was written at all."""
     hits = [x for x in rows if x.get("claim") == "regression proof"]
     if not hits:
         return None
-    cli = [x for x in hits if x.get("executed_by") == "cli" and not x.get("voided")]
+    cli = [x for x in hits if x.get("executed_by") == "cli" and not x.get("voided") and x.get("cmd") in own]
     if not cli:
-        return row("regression proof", False, "no regression proof the CLI ran: a proof row written with evidence add counts nowhere")
+        return row("regression proof", False, "no regression proof the CLI ran of the suite's command: a proof of "
+                   "another command, or written with evidence add, counts nowhere")
     return row("regression proof", cli[-1].get("exit_code") == 0, one_line(cli[-1].get("output")))
 
 
@@ -110,24 +126,25 @@ def build_rows(spec, ledger, key):
     if spec and os.path.isfile(os.path.join(spec, "intent.md")):
         out.append(build_criteria(spec, ledger))
     rows = ledger_rows(ledger)
-    acc = acceptance_row(rows)
+    own = runs.own_suite(os.getcwd(), spec)   # rule 5: the suite's own commands (runs.py)
+    acc = acceptance_row(rows, acc_cmd())
     if acc:
         out.append(acc)
     if any(x.get("claim") == "coverage" and x.get("state") for x in rows):
         out.append(check_rows(ledger, os.path.join(".temper", "evidence", "baseline.json"), key))
     if fix_run():
         suite = [x for x in rows if x.get("claim") == "Integration suite"]
-        ran = [x for x in suite if runs.counts(x)]   # rule 5: only a run of the suite the CLI made (integrate) counts
+        ran = [x for x in suite if runs.counts(x) and x.get("cmd") in own]   # rule 5: a run of the suite the CLI made
         if suite and not ran:
-            out.append(row("tests pass", False, "no run of the suite the CLI made: a row written with evidence add counts "
-                           "nowhere"))
+            out.append(row("tests pass", False, "no run of the suite the CLI made: a row of another command, or written "
+                           "with evidence add, counts nowhere"))
         elif ran:
             s = ran[-1]
             out.append({"name": "tests pass", "pass": None, "state": "skipped", "detail": "skipped: the base's failures, which "
                         "you went on from"} if s.get("state") == "skipped" else
                        row("tests pass", s.get("exit_code") == 0, "the suite (%s) exited %s" % (one_line(s.get("cmd"), 160),
                                                                                        s.get("exit_code"))))
-        reg = regression_row(rows)
+        reg = regression_row(rows, own)
         if reg:
             out.append(reg)
     return out
@@ -446,10 +463,12 @@ def main(argv):
         for r in build_rows(argv[2], argv[3], argv[4] if len(argv) == 5 else ""):
             print(json.dumps(r))
         return 0
-    if len(argv) in (4, 5) and argv[1] == "check-rows":
-        print(json.dumps(check_rows(argv[2], argv[3], argv[4] if len(argv) == 5 else "")))
+    if len(argv) in (4, 5, 6) and argv[1] == "check-rows":
+        print(json.dumps(check_rows(argv[2], argv[3], argv[4] if len(argv) >= 5 else "")))
         rows = ledger_rows(argv[2])
-        for r in (acceptance_row(rows), regression_row(rows) if fix_run() else None):   # WP23: moved out of scripts/temper
+        own = runs.own_suite(os.getcwd(), argv[5] if len(argv) == 6 else "")   # rule 5: the suite's own commands
+        for r in (acceptance_row(rows, acc_cmd()),   # WP23: moved out of scripts/temper
+                  regression_row(rows, own) if fix_run() else None):
             if r:
                 print(json.dumps(r))
         return 0

@@ -607,8 +607,27 @@ cmd_state_set() {
   [[ $# -ge 2 ]] || { echo "FAIL: usage: temper state set <dot.path> <value>" >&2; return 1; }
   # spec_path names the folder `state archive` writes into: only the shape `state init`
   # records (.temper/specs/<slug>) is accepted, so it can never point anywhere else.
-  if [[ "$1" == "spec_path" && -z "$(_spec_slug "$2")" ]]; then
-    echo "FAIL: spec_path must be .temper/specs/<slug> (slug: letters of either case, digits, '.', '_' or '-', no '/' or '..'); got '$2'" >&2
+  # NEW-RULES-2 (rule 7 with the mod off): and only as the repair of a lost value — the folder
+  # `state init` recorded for this run's slug. A copy of the spec folder and a rewritten
+  # spec_path would take the locked acceptance tests out of the gates, so another value is
+  # refused, with a run active or not.
+  if [[ "$1" == "spec_path" ]]; then
+    if [[ -z "$(_spec_slug "$2")" ]]; then
+      echo "FAIL: spec_path must be .temper/specs/<slug> (slug: letters of either case, digits, '.', '_' or '-', no '/' or '..'); got '$2'" >&2
+      return 1
+    fi
+    local sp_want=""
+    [[ -f "$STATE_FILE" ]] && sp_want=".temper/specs/$(cmd_state_get spec "")"
+    if [[ -z "$sp_want" || "$sp_want" == ".temper/specs/" || "$2" != "$sp_want" ]]; then
+      echo "FAIL: spec_path is kept by the CLI (state init records .temper/specs/<slug>); it is set only as the repair of a lost value," >&2
+      echo "      exactly the folder the run's slug names$( [[ -n "$sp_want" && "$sp_want" != ".temper/specs/" ]] && echo " ($sp_want)" || echo " (no run state names a slug here)" ); got '$2'" >&2
+      return 1
+    fi
+  fi
+  # NEW-RULES-2: the slug key is `state init`'s as well (a rewritten slug would point the run's
+  # records at another folder); a run is active here, so the call is refused.
+  if [[ "$1" == "spec" || "$1" == spec.* ]] && [[ -f "$STATE_FILE" ]]; then
+    echo "FAIL: spec is kept by the CLI (state init records it with the run); a run is active, so it is not set by hand" >&2
     return 1
   fi
   # ADR 0012: the run id and the step count are the CLI's (state init, a move of next_stage).
@@ -2925,7 +2944,7 @@ gate_check() {
   fi
   # WP19: the row coverage, judged against the project (scripts/gate_rows.py check-rows); not measured fails nothing. WP23:
   # then the acceptance tests written before Build, run as they were locked, and a fix's regression proof the CLI ran
-  local cov; cov="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" check-rows "$(_evidence_file check)" "$TEMPER_DIR/evidence/baseline.json" "$(_cfg_get check.coverage-threshold)")"
+  local cov; cov="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" check-rows "$(_evidence_file check)" "$TEMPER_DIR/evidence/baseline.json" "$(_cfg_get check.coverage-threshold)" "$spec_path")"
   reqs+=("$cov"); grep -q '"pass": false' <<<"$cov" && all_pass=0
   if [[ -f "$spec_path/intent.md" ]]; then
     # Every criterion has explicit, SUPPORTED passing evidence — the same checker
