@@ -365,6 +365,11 @@ def approve_plan(argv):
         d['intent_hash'] = argv[4]
     else:
         d.pop('intent_hash', None)
+    # R2-3: what the card shows of the titles and the Cases, bound beside the plan digest
+    if len(argv) > 5 and argv[5]:
+        d['shown_hash'] = argv[5]
+    else:
+        d.pop('shown_hash', None)
     tmp = '%s.tmp.%d' % (p, os.getpid())
     with open(tmp, 'w') as f:
         json.dump(d, f, indent=2)
@@ -383,6 +388,8 @@ def approve_design_tasks(argv):
     if isinstance(files, list):
         d['approved_files'] = files
     d['plan_hash'] = argv[3]
+    if len(argv) > 4 and argv[4]:
+        d['shown_hash'] = argv[4]   # R2-3: the shown text of the changed tasks moves with the plan
     d['tasks_changed_by_design'] = True
     _amendments_close(p)
     tmp = '%s.tmp.%d' % (p, os.getpid())
