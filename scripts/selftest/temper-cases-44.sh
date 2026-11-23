@@ -454,22 +454,40 @@ _d45b_plan="$(nx "(d.get('ask') or {}).get('id')")"
 _run44_d45b_diag="$(_run44 ask-every-stage)"
 gpass design
 "$TEMPER" next --json > .temper/d45b-next.json 2>&1
+_d45b_calls="$("$TEMPER" next --json 2>/dev/null | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+a = d.get('ask') or {}
+for o in (a.get('options') or []):
+    if o.get('id') == 'ask-every-stage':
+        for c in o.get('calls') or []:
+            print('CALL:' + c)
+")"
+_d45b_digests="intent=$(python3 -I "${TEMPER%/temper}/approval.py" digest .temper/specs/demo/intent.md 2>/dev/null) tasks=$(python3 -I "${TEMPER%/temper}/approval.py" digest .temper/specs/demo/tasks.md 2>/dev/null)"
+_d45b_shown="$(python3 -c "
+import json
+try:
+    st = json.load(open('.temper/state.json'))
+    print('step=%s shown=%s' % (st.get('step'), json.dumps(st.get('approval_shown'))))
+except Exception as e:
+    print('state-unreadable:', e)
+")"
 _d45b_evidence="$(python3 - .temper/d45b-next.json <<'PY'
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
     a = d.get("ask") or {}
     r = d.get("run") or {}
-    print("action=%s stage=%s askid=%s gate=%s restart=%s opts=%s" % (
-        d.get("action"), r.get("stage"), a.get("id"), d.get("gate"), bool(d.get("restart")),
+    print("action=%s stage=%s askid=%s restart=%s opts=%s" % (
+        d.get("action"), r.get("stage"), a.get("id"), bool(d.get("restart")),
         json.dumps([(o.get("id"), len(o.get("calls") or [])) for o in a.get("options") or []])))
 except Exception as e:
     print("json-unreadable:", e)
 PY
 )"
-_d45b_env="(git $(git --version | awk '{print $3}') email=$(git config user.email || echo NONE))"
+_d45b_env="(git $(git --version | awk '{print $3}') email=$(git config user.email || echo NONE) py=$(python3 --version 2>&1 | awk '{print $2}'))"
 assert_eq "D45bDIAG evidence carrier (temporary, always fails)" "NO-EVIDENCE" \
-  "run44=[$_run44_d45b_diag] next=[$_d45b_evidence] $_d45b_env"
+  "run44=[$_run44_d45b_diag] next=[$_d45b_evidence] digests=[$_d45b_digests] $_d45b_shown CALLS[$_d45b_calls] $_d45b_env"
 assert_eq "D45b after a step back to Plan a passed Design is asked, not passed over by rule" "auto|plan.approve|ask design.pass" \
   "$_d45b_auto|$_d45b_plan|$(nx "d['action'] + ' ' + str((d.get('ask') or {}).get('id'))" "$(cat .temper/d45b-next.json)")"
 _unattended check; gfail check "tests pass" "the latest run of a test command failed: unit"
