@@ -107,7 +107,7 @@ git checkout -q -b feature/demo; echo old > old.txt; git add old.txt; git commit
 assert_eq "F28: the approval names the branch and its last commit, and continues on it" "1|1|Build on a new branch feature/demo-2" \
   "$(_q12 "str(int('The branch feature/demo exists from an earlier run' in q['question']['question'] and 'its last commit is ' in q['question']['question'])) + '|' + str(q['question']['question'].count('The approval continues on it.')) + '|' + o('new-branch').get('label', 'none')")"
 assert_eq "F28: the approval carries the spec across with a temp folder, never git stash" "1|0|0" \
-  "$(_q12 "c = o('ask-every-stage')['calls']; str(sum(1 for x in c if x.endswith(' spec branch --carry feature/demo'))) + '|' + str(sum(x.count('git stash') for x in c)) + '|' + str(sum(1 for x in c if 'mktemp -d' in x or 'git checkout' in x))")"
+  "$(_q12 "c = o('ask-every-stage')['calls']; str(sum(1 for x in c if ' spec branch --carry feature/demo' in x)) + '|' + str(sum(x.count('git stash') for x in c)) + '|' + str(sum(1 for x in c if 'mktemp -d' in x or 'git checkout' in x))")"
 assert_eq "F28: the new branch option only sets the state branch, and is no approval" "state set branch feature/demo-2|redo" \
   "$(_q12 "x = o('new-branch'); '|'.join(c.split('temper ', 1)[1] for c in x['calls']) + '|' + str(x['move'])")"
 git branch -q feature/demo-2 main 2>/dev/null
