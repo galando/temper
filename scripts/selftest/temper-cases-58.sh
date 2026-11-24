@@ -425,4 +425,17 @@ git reset -q src/a.sh; git checkout -q -- src/a.sh
 _add58 suite.sh 30; git add suite.sh; _gc58; _rn58+="|suite.sh=$_gc58_rc"; git reset -q --hard
 assert_eq "trivial: a rename staged before the verdict is its two paths, and the file its old name ends in is counted" \
   "renamed.sh,xx_suite.sh|one line=0|suite.sh=1" "$_rn58"
+# R3-1, BLACKBOX-7: an rca.md with no CAUSE, no FIX or not written is nothing to approve. One question and one question
+# site (the cap of question_sites): its two shapes are told apart in rca_approval (flow_work.py).
+_q58="a = d.get('ask') or {}; r = '%s:%s:%s' % (d.get('action'), a.get('id'), ','.join(x.get('id') for x in opts(d)))"
+_shape58() { rm -f .temper/view.json; _x58 "$_q58"; }   # the question next asks, read anew
+fresh; _fix58; _s58="whole=$(_shape58)"
+sed -i '/^FIX: /d' .temper/specs/bug/rca.md; _s58+="|no-fix=$(_shape58)"
+_t58="$(_x58 "a = d.get('ask') or {}; r = (a.get('question') or {}).get('question')")"
+sed -i '/^CAUSE: /d' .temper/specs/bug/rca.md; _s58+="|no-cause=$(_shape58)"
+rm -f .temper/specs/bug/rca.md; _s58+="|none=$(_shape58)"
+assert_eq "fix: an rca.md with a CAUSE and a FIX is the approval; with no FIX line, no CAUSE line or none written the same question offers the root cause agent again, or Save" \
+  "whole=ask:rca.approve:approve-run,ask-every-stage,save|no-fix=ask:rca.approve:redo,save|no-cause=ask:rca.approve:redo,save|none=ask:rca.approve:redo,save" "$_s58"
+assert_eq "fix: with nothing to approve the question says what rca.md lacks and offers the root cause agent again with a note" \
+  "RCA: rca.md gives no FIX line, so there is nothing to approve yet. Run the root cause agent again with your note, or save the run?" "$_t58"
 setup

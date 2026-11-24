@@ -86,7 +86,8 @@ class WorkPart:
         call carries the digest of rca.md as the card shows it (R2-4): spec_ops.py compares it before it switches, so a
         stale approval makes no branch however its calls were run.
         R3-1: when rca.md is missing or gives no CAUSE or no FIX, there is nothing to approve: the approving options
-        wait, and the question offers the root cause agent again (with the person's note) or Save for later."""
+        wait, and the question offers the root cause agent again (with the person's note) or Save for later.
+        It is one question and one question site (the cap of question_sites): its two shapes are told apart here."""
         r = self.r
         import panel
         text = panel.read(os.path.join(r.spec, "rca.md")) if r.spec else ""
@@ -97,13 +98,15 @@ class WorkPart:
             again = self.again_opt("The root cause agent runs again with what you type below as its Person's note.",
                                    [self.c("evidence add --stage rca --phase note --kind input --claim '{answer}'")],
                                    answer=(GATE_HEADER, "RCA: what should the root cause agent look at again? Type it below."))
-            return self.question(GATE_HEADER, "RCA: %s, so there is nothing to approve yet. Run the root cause agent "
-                                 "again with your note, or save the run?" % what, stage="rca", qid="rca.approve",
-                                 options=[self.set_rec(again, True), self.save()])
-        go = lambda m: [self.bind(m), self.c("spec branch --if-protected" + self.shown()),
-                        self.c("state advance rca_complete fix" + self.shown())]
-        return self.question(GATE_HEADER, "RCA: the root cause and the proposed fix are on the card. Approve the fix?", stage="rca",
-                             qid="rca.approve", options=self.approval(go, "rca") + [self.save()])
+            header = ("RCA: %s, so there is nothing to approve yet. Run the root cause agent "
+                      "again with your note, or save the run?" % what)
+            options = [self.set_rec(again, True), self.save()]
+        else:
+            go = lambda m: [self.bind(m), self.c("spec branch --if-protected" + self.shown()),
+                            self.c("state advance rca_complete fix" + self.shown())]
+            header = "RCA: the root cause and the proposed fix are on the card. Approve the fix?"
+            options = self.approval(go, "rca") + [self.save()]
+        return self.question(GATE_HEADER, header, stage="rca", qid="rca.approve", options=options)
 
     def rca_work(self):
         """WP17: the person typed a change at the root cause question (a note at stage rca): the root cause agent runs
