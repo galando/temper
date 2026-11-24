@@ -215,7 +215,8 @@ fi
 # option and name no move (the CLI gives each one), ask every question exactly as the CLI wrote it, never send
 # the person to type a command or press a button, and no door into a later stage is left. Each row is a
 # page, a regular expression it must hold (+) or must not hold (-), and why. Whitespace in a pattern matches
-# any run of spaces and line breaks, so a reflowed paragraph still matches.
+# any run of spaces and line breaks, so a reflowed paragraph still matches. An apostrophe is written \x27, never
+# as a quote character: bash 3.2 (the default of macOS) miscounts one in a here-document inside $( ), and reads no further.
 FLOW_TEXT=$(python3 - "$REPO_ROOT" <<'PY'
 import re, sys
 root = sys.argv[1]
@@ -236,10 +237,10 @@ ROWS = [
     ('commands/temper.md', '+', r'reference/pack.md', 'the word pack reads its page'),
     ('commands/temper.md', '-', r'state set complexity \{tier\}', 'the tier is the one Plan records through the CLI, not a guess of the page'),
     ('commands/temper.md', '+', r'run_in_background: false', 'a stage agent runs in the foreground, so the run goes on the moment it returns'),
-    ('commands/temper.md', '+', r'Never end a turn with an agent\'s `after` calls not run', 'an agent\'s report or completion notice moves the run'),
+    ('commands/temper.md', '+', r'Never end a turn with an agent\x27s `after` calls not run', 'the report or completion notice of an agent moves the run'),
     ('commands/temper.md', '-', r'transcript', 'the CLI reads no transcript of Claude Code: usage is the totals Claude Code gives for an agent'),
-    ('commands/temper.md', '+', r'Never wait for the notice', 'an agent\'s report moves the run; Claude Code may start no turn for its notice'),
-    ('commands/fix.md', '-', r'--agent', 'the RCA agent\'s usage is the totals Claude Code gives, not looked up by an agent id'),
+    ('commands/temper.md', '+', r'Never wait for the notice', 'the report of an agent moves the run; Claude Code may start no turn for its notice'),
+    ('commands/fix.md', '-', r'--agent', 'the usage of the RCA agent is the totals Claude Code gives, not looked up by an agent id'),
     ('commands/temper.md', '+', r'copy what it printed into\s+your reply', 'the person sees the end of run report in the reply, not in a Bash output'),
     ('commands/temper.md', '-', r'foreground-agents', 'Temper never edits a Claude Code settings file: the person sets the variable'),
     ('commands/fix.md', '+', r'the mod stands aside in a `/temper:fix` run', 'a fix run asks its own questions with the mod'),
