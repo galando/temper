@@ -130,8 +130,8 @@ def load(path, kind=dict):
         return kind()
 
 
-NO_REPAIR = ("  This run recorded no commit of its own (a fix run, or a Build with no groups). Until a later release "
-             "records a repair commit, a finding ends by the person's accept, or by a loop back and a second Review.")
+NO_REPAIR = ("  This run recorded no commit of its own (a fix run, or a Build with no groups), and such a run is never "
+             "repaired by rule: a finding ends by the person's accept, or by a loop back and a second Review.")
 
 
 def fixed_by(name, state_path, groups_path, fid=None):
