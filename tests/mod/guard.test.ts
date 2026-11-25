@@ -414,7 +414,7 @@ describe('the trivial window: the Intent agent writes the one change while the v
 describe('the files that turn a gate row', () => {
   const FILES = [
     '.git/temper-results.json', '.temper/decisions.json',
-    '.temper/check/ahead.json',
+    '.temper/check/ahead.json', '.temper/rule-log.json',
   ]
   const guarded = (r: RuleResult): boolean => isDeny(r) && r.deny.startsWith('Temper: ') && r.deny.includes('by hand')
   for (const f of FILES) {
