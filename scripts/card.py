@@ -441,10 +441,11 @@ def approval(b, nxt):
 # ---- the commit ------------------------------------------------------------------------------------------------------
 
 def last_check(name, spec=""):
+    import runs   # rule 5: a value an agent recorded with `evidence add` is no measure and is not read (rules 5 and 6)
     rows = [x for x in load(os.path.join(TEMPER, "evidence", "check.json"), [])
-            if isinstance(x, dict) and not x.get("scenario")]
+            if isinstance(x, dict) and not x.get("scenario")
+            and (name == "tests" or runs.counts(x))]   # tests keeps the stronger filter below (runs.gate_runs)
     if name == "tests":   # rule 5: THE SUITE is the run the row `tests pass` reads (runs.gate_runs), never another
-        import runs
         rows = runs.gate_runs(rows, os.getcwd(), spec)
     rx = {"tests": r"\btests?\b|unittest|pytest|jest", "coverage": r"coverage", "mutation": r"mutation|planted"}[name]
     hits = [x for x in rows if re.search(rx, str(x.get("claim", "")), re.I)]

@@ -52,6 +52,18 @@ assert_eq "review 3: a coverage value recorded with evidence add passes no cover
   "before=not measured|after=None:not measured|view=not measured" \
   "before=$_c83_before|after=$(_g83 "r = '%s:%s' % (row('coverage').get('pass'), row('coverage').get('state'))")|view=$(vw "next((x.get('state') for x in d.get('checks') or [] if str(x.get('name', '')).startswith('coverage')), None)")"
 
+# --- DEVIATIONS-1: the commit card reads only a coverage the CLI measured, never a value an agent recorded ---
+fresh; _repo83; printf 'check:\n  commands:\n    test: "true"\n    coverage: echo "TOTAL 100 60 85%%"\n' >> .claude/temper.config
+gpass intent plan build review; _at check
+"$TEMPER" check run >/dev/null 2>&1; "$TEMPER" gate check >/dev/null 2>&1
+"$TEMPER" next >/dev/null 2>&1
+_c83_card="$("$TEMPER" card | grep -i 'COVERAGE' | head -1)"
+"$TEMPER" evidence add --stage check --claim coverage --value 99 >/dev/null 2>&1
+"$TEMPER" next >/dev/null 2>&1
+assert_eq "DEVIATIONS-1: the card's COVERAGE line keeps the CLI's measure after an agent records a coverage with evidence add" \
+  "before=COVERAGE: 85.0% (rule threshold, floor 80.0%)|after=COVERAGE: 85.0% (rule threshold, floor 80.0%)" \
+  "before=$_c83_card|after=$("$TEMPER" card | grep -i 'COVERAGE' | head -1)"
+
 # --- rule 5: a Check verdict names a tree on which the suite never ran; the pass it counts is of the tree before ---
 _py83() { # a git repository with a Python module and a unittest suite (the stack Check detects), declared by the plan
   rm -rf .git src unit; git init -q . 2>/dev/null; git checkout -q -B master 2>/dev/null
