@@ -98,7 +98,7 @@ json.dump(d, open(p, 'w'), indent=2)"
 _r82_cfg="rule=$(_x82 "r = 'auto group fix' if d.get('action') == 'auto' and any(c.endswith('group fix G1') for c in d.get('calls') or []) else d.get('action')")"
 _go82   # the rule takes the group fix; next launches the fix agent
 _wt82=.claude/worktrees/temper-demo-G1
-sed -i 's/coverage-threshold: 80/coverage-threshold: 0/' "$_wt82/.claude/temper.config"   # what the fix agent changed
+sed -i.bak 's/coverage-threshold: 80/coverage-threshold: 0/' "$_wt82/.claude/temper.config" && rm -f "$_wt82/.claude/temper.config.bak"   # what the fix agent changed
 while IFS= read -r _c82; do [[ -n "$_c82" ]] && bash -c "${_c82//\{ms\}/1}" >/dev/null 2>&1; done \
   < <(_x82 "r = '\n'.join(c for a in d.get('agents') or [] for c in a.get('after') or [])")   # the agent's after calls
 _go82   # the group check, Continue, the merge and the Build check, as the run makes them by itself
@@ -114,8 +114,16 @@ N82="$WORKDIR/r2-nested"; rm -rf "$N82"; mkdir -p "$N82/packages/app/src"
 (
   cd "$N82" && git init -q . && echo r > README && echo 'echo demo' > packages/app/src/demo.sh
   git add -A && git -c user.email=t@example.com -c user.name=T commit -qm init && git checkout -q -b feature/demo
-  cd packages/app && mkdir -p .claude .temper/specs/demo && cp "$REPO_ROOT/templates/temper.config.default" .claude/temper.config
-  "$TEMPER" init >/dev/null 2>&1 && "$TEMPER" state init demo >/dev/null 2>&1
+  cd packages/app && mkdir -p .claude .temper/specs/demo
+  cat > .claude/temper.config <<'CFG'
+stack: auto
+check:
+  coverage-threshold: 80
+upgrade:
+  asked: "9.8.5"
+CFG
+  printf '{"9.8.5": "the selftest"}\n' > .temper/notice.json
+  "$TEMPER" state init demo >/dev/null 2>&1
   cat > .temper/specs/demo/tasks.md <<'TASKS'
 # Tasks: demo
 
@@ -149,15 +157,16 @@ json.dump(d, open(p, 'w'), indent=2)"
 ) >/dev/null 2>&1
 _wt82n="$(cd "$N82/packages/app" && python3 -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('worktree') or '')" 2>/dev/null)"
 [[ -n "$_wt82n" && "$_wt82n" != /* ]] && _wt82n="$N82/packages/app/$_wt82n"
-_r82_nest="fix=$((cd "$N82/packages/app" && "$TEMPER" group fix G1 >/dev/null 2>&1; echo $?)"
-sed -i 's/coverage-threshold: 80/coverage-threshold: 0/' "$_wt82n/packages/app/.claude/temper.config" 2>/dev/null
-_r82_nest+="|commit=$(cd "$N82/packages/app" && "$TEMPER" group fix G1 --commit 2>&1 | grep -o 'is the config' | head -n 1); ${_r82_nest##*fix=}"   # the refusal names the config
-_r82_nest="${_r82_nest%%; *}|commits=$(git -C "$N82" log --all --format=%s -- packages/app/.claude/temper.config 2>/dev/null | grep -c 'G1 group check')"
+(cd "$N82/packages/app" && "$TEMPER" group fix G1 >/dev/null 2>&1); _fix_rc=$?
+sed -i.bak 's/coverage-threshold: 80/coverage-threshold: 0/' "$_wt82n/packages/app/.claude/temper.config" 2>/dev/null && rm -f "$_wt82n/packages/app/.claude/temper.config.bak"
+_commit_out="$(cd "$N82/packages/app" && "$TEMPER" group fix G1 --commit 2>&1)"
+_r82_nest="fix=$_fix_rc|commit=$(printf '%s' "$_commit_out" | grep -o 'is the config' | head -n 1)|commits=$(git -C "$N82" log --all --format=%s -- packages/app/.claude/temper.config 2>/dev/null | grep -c 'G1 group check')"
 _r82_nest+="|threshold=$(cd "$N82/packages/app" && "$TEMPER" config get check.coverage-threshold 2>/dev/null)"
 (cd "$N82/packages/app" && "$TEMPER" group fix G1 >/dev/null 2>&1)   # the request again, for Temper's own kept copy
+sed -i.bak 's/coverage-threshold: 0/coverage-threshold: 80/' "$_wt82n/packages/app/.claude/temper.config" && rm -f "$_wt82n/packages/app/.claude/temper.config.bak"
 printf 'stack: auto\n' > "$_wt82n/packages/app/.claude/temper.config.before-1"
-_r82_nest+="|copy=$(cd "$N82/packages/app" && "$TEMPER" group fix G1 --commit 2>&1 | grep -o "is Temper's own file" | head -n 1); x"
-_r82_nest="${_r82_nest%%; x}|copy-commits=$(git -C "$N82" log --all --format=%s -- "packages/app/.claude/temper.config.before-*" 2>/dev/null | grep -c 'G1 group check')"
+_copy_out="$(cd "$N82/packages/app" && "$TEMPER" group fix G1 --commit 2>&1)"
+_r82_nest+="|copy=$(printf '%s' "$_copy_out" | grep -o "is Temper's own file" | head -n 1)|copy-commits=$(git -C "$N82" log --all --format=%s -- 'packages/app/.claude/temper.config.before-*' 2>/dev/null | grep -c 'G1 group check')"
 assert_eq "review 2: below the top of the repository the group fix still refuses the config, and Temper's own kept copy, and commits neither" \
   "fix=0|commit=is the config|commits=0|threshold=80|copy=is Temper's own file|copy-commits=0" "$_r82_nest"
 
