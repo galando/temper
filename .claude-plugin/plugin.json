@@ -57,7 +57,7 @@
     "enforcement": {
       "type": "string",
       "title": "Temper enforcement",
-      "description": "on refuses writes outside the stage, --no-verify, a changed hooks path, and a step only the person may take without their answer; off keeps the drawing only. Values: on or off.",
+      "description": "on refuses writes outside the stage, --no-verify, a changed hooks path, and a step only the person may take without their answer; off keeps the drawing only, while the plugin's classic write hook still refuses a project file write before the plan approval. Values: on or off.",
       "default": "on",
       "sensitive": false
     },
