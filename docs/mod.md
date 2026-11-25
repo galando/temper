@@ -90,7 +90,11 @@ so it goes with the change.
 
 A step back is a loop: you choose "Loop back to {stage}" with a reason, and the run does that stage
 again. "Save for later" stops the run where it is; every rule still holds. To work without the
-rules for a while, turn the Temper enforcement option off in `/config`.
+rules for a while, turn the Temper enforcement option off in `/config`. Enforcement off lifts the
+mod's rules only: the plugin's classic hook `scripts/guards/hold_before_approval.py` still refuses a
+write of a project file by the file writer tools at Intent, Plan and Design of a `/temper:temper` run,
+until the plan is approved, and the native pre-commit hook keeps running. Disabling the plugin (then
+`temper guards uninstall`) lifts that too.
 
 Build is held to the plan you approved: the CLI keeps the plan's files and the digest of `tasks.md` with
 your approval, so a `plan.md` edited during Build does not widen it, and a `tasks.md` changed after the
