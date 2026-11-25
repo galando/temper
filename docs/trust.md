@@ -29,8 +29,7 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   command and looks for that folder. `PreToolUse` on the tools that write a file (Write, Edit, MultiEdit, NotebookEdit)
   runs `scripts/guards/hold_before_approval.py` (9.8.5), which holds rule 1 with the mod off: at Intent, Plan and Design
   of a `/temper:temper` run, before you approve the plan, it refuses a write of a project file (a path of the project
-  outside `.temper/`, where the spec folder is), as the mod's own rule does. A `/temper:fix` run and a shell command
-  that writes a file are outside it; for those the commit hook still refuses a commit of a project file before the
+  outside `.temper/`, where the spec folder is), as the mod's own rule does. A `/temper:fix` run and a shell command that writes a file are outside it; for those the commit hook still refuses a commit of a project file before the
   approval. It reads the run state and the path, and only ever answers deny. All four fail open.
 - **The approval is bound to what was shown (9.8.5).** The approving call carries the digests of `intent.md` and
   `tasks.md` as the question showed them — for `tasks.md`, the plan (its files, Depends, Test, Validate, Interfaces,
