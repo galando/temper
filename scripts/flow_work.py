@@ -600,10 +600,12 @@ class WorkPart:
         if int(d.get("launches") or 0) >= check_run.ACC_MAX_LAUNCHES:
             why = "the acceptance writer locked no tests in %d launches" % int(d.get("launches") or 0)
             # WP32 (rules 3 and 4): a run that goes on by itself never skips a check; it stops, and the skip is the
-            # person's option at that stop (`acceptance skip` then ends the unattended run, as an override does)
+            # person's option at that stop (`acceptance skip` then ends the unattended run, as an override does).
+            # NEW-FLOW-1: that holds after the stop's ask-every-stage option too (the run is interactive but was
+            # started unattended, `unattended_from`): the question is asked again, never the rule's own skip
             if r.armed():
                 return self.stop("build", why)
-            if r.state.get("parked") and r.state.get("run_mode") == "autonomous":
+            if r.state.get("unattended_from"):
                 skip = dict(self.override_opt("build", []), calls=[self.c("acceptance skip --reason '{reason}'")])
                 return {"action": "ask", "stage": "build", "ask": self.question(
                     GATE_HEADER, "Build: %s. Go on without them, with your reason (Check shows the skip)?" % why,

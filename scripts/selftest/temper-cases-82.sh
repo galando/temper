@@ -69,6 +69,16 @@ while IFS= read -r _c82; do [[ -n "$_c82" ]] && bash -c "${_c82//\{reason\}/I ac
   < <(_x82 "r = '\n'.join((opt(d, 'override') or {}).get('calls') or [])")
 assert_eq "review 2: the person's skip of the acceptance tests at that stop is recorded and ends the unattended run" \
   "skipped,interactive" "$(python3 -c 'import json; print("skipped" if json.load(open(".temper/evidence/acceptance-lock.json")).get("skipped") else "not skipped")'),$(_mode82)"
+
+# --- review 2 (NEW-FLOW-1): the option "Ask me at every stage from here" at that stop switches the run to interactive;
+#     the next step must ask the skip question again, never run the rule's own acceptance skip with no question ---
+_unattended build
+printf '{"spec": ".temper/specs/demo", "launches": 2}\n' > .temper/evidence/acceptance-lock.json
+"$TEMPER" go >/dev/null 2>&1   # the stop: the park call ran, next is the question
+while IFS= read -r _c82; do [[ -n "$_c82" ]] && bash -c "$_c82" >/dev/null 2>&1; done \
+  < <(_x82 "r = '\n'.join((opt(d, 'ask-every-stage') or {}).get('calls') or [])")
+assert_eq "review 2: after Ask me at every stage at that stop, next asks a question and carries no acceptance skip call" \
+  "ask,no-skip" "$(_x82 "r = ('ask' if d.get('action') == 'ask' else d.get('action')) + ',' + ('no-skip' if not any('acceptance skip' in c for c in list(d.get('calls') or []) + [c for x in d.get('agents') or [] for c in (x.get('before') or []) + (x.get('after') or [])]) else 'skip')")"
 #     approve-run (risk H with no fresh review, row D18d), the session's typed call is the only way to start one, and the
 #     CLI must refuse it, as it does under never-unattended ---
 fresh; sed -i '/^  enabled: false$/d' .claude/temper.config
