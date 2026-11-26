@@ -830,8 +830,9 @@ assert_exit "the mod's back command is accepted by the CLI" 0 "$TEMPER" state se
 assert_exit "the old form 'state advance intent plan' is refused by the CLI" 1 "$TEMPER" state advance intent plan
 
 # --- mods: per-criterion status.json written after each gate; temper status --json ---
+# The passed criterion's row is one the CLI ran: a row an agent wrote shows nothing as passed (the block after this one).
 setup
-"$TEMPER" evidence add --stage check --claim "AC-01 shown" --criterion AC-01 --cmd "echo ok" --exit 0 >/dev/null
+"$TEMPER" evidence run --stage build --scenario first --claim "scenario first" -- true >/dev/null
 "$TEMPER" gate check >/dev/null 2>&1 || true
 assert_eq "gate writes .temper/status.json" "yes" "$([[ -f .temper/status.json ]] && echo yes || echo no)"
 assert_eq "status.json: AC-01 passed, AC-02 open" "AC-01:required:passed|AC-02:required:open" \
@@ -843,11 +844,36 @@ OUT_JSON="$("$TEMPER" status --json)"
 assert_exit "temper status --json exits 0" 0 "$TEMPER" status --json
 assert_eq "temper status --json prints the same criteria as the file" "$(python3 -c 'import json; print(json.dumps(json.load(open(".temper/status.json"))["criteria"], sort_keys=True))')" \
   "$(echo "$OUT_JSON" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["criteria"], sort_keys=True))')"
+# 9.8.5 (the build's gaps): the status view counts a row as a gate counts it (runs.counts): one the CLI ran or the person
+# gave. A row an agent wrote with evidence add, for the criterion or for its scenario, is a claim: it leaves the criterion
+# open, as the Check gate reads it. A void run counts no more here than there.
+_crit_view() { # _crit_view: a status JSON on stdin, one criterion per part: id:status:number of evidence references
+  python3 -c 'import json,sys; d=json.load(sys.stdin); print("|".join("%s:%s:%d" % (c["id"], c["status"], len(c["evidence"])) for c in d["criteria"]))'
+}
+setup
+"$TEMPER" evidence add --stage check --claim "AC-01 shown" --criterion AC-01 --cmd "echo ok" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "first passes" --scenario first --cmd "echo ok" --exit 0 >/dev/null
+assert_eq "temper status: an agent's claim rows, for the criterion and for its scenario, leave it open" "AC-01:open:0|AC-02:open:0" \
+  "$("$TEMPER" status --json | _crit_view)"
+assert_eq "temper status: the text a person reads shows the claimed criterion open, with no evidence" "  [ ] AC-01 (required) — no evidence" \
+  "$("$TEMPER" status | grep ' AC-01 ')"
+"$TEMPER" gate check >/dev/null 2>&1 || true
+assert_eq "status.json after a gate: an agent's claim rows leave the criterion open, with no evidence reference" "AC-01:open:0|AC-02:open:0" \
+  "$(_crit_view < .temper/status.json)"
+assert_eq "temper status --json prints the same criteria as the file after a gate no claim could pass" \
+  "$(python3 -c 'import json; print(json.dumps(json.load(open(".temper/status.json"))["criteria"], sort_keys=True))')" \
+  "$("$TEMPER" status --json | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["criteria"], sort_keys=True))')"
+"$TEMPER" evidence add --stage check --claim "AC-01 confirmed" --criterion AC-01 --cmd "the person looked" --exit 0 --person >/dev/null
+assert_eq "temper status: a row the person gave counts, as at a gate" "AC-01:passed:1|AC-02:open:0" "$("$TEMPER" status --json | _crit_view)"
+setup
+"$TEMPER" evidence run --stage build --scenario first --claim "scenario first" -- true >/dev/null
+"$TEMPER" evidence void --stage build --id 1 --reason "a false pass" >/dev/null
+assert_eq "temper status: a void run counts no more than at a gate" "AC-01:open:0|AC-02:open:0" "$("$TEMPER" status --json | _crit_view)"
 # A scenario with a supported passing row passes every criterion it Covers.
 setup
-"$TEMPER" evidence add --stage build --claim "first passes" --scenario first --cmd "echo ok" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage build --claim "second passes" --scenario second --cmd "echo ok" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage build --claim "second regressed" --scenario second --cmd "echo ok" --exit 1 >/dev/null
+"$TEMPER" evidence run --stage build --scenario first --claim "first passes" -- true >/dev/null
+"$TEMPER" evidence run --stage build --scenario second --claim "second passes" -- true >/dev/null
+"$TEMPER" evidence run --stage build --scenario second --claim "second regressed" -- false >/dev/null
 "$TEMPER" gate build >/dev/null 2>&1 || true
 assert_eq "scenario evidence: first covers AC-01 (passed), a later failing row leaves AC-02 open" "passed|open" \
   "$(python3 -c 'import json; d=json.load(open(".temper/status.json")); print("|".join(c["status"] for c in d["criteria"]))')"

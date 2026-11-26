@@ -267,13 +267,22 @@ def status_report(intent_path, ev_dir):
     """Per-criterion status for the live view (`temper status --json`)."""
     import datetime
     import os
+    # runs.py sits beside this file (as gate_rows.py imports it); this module is also exec'd from
+    # elsewhere (intent_closure_rows.py) with its folder off sys.path, so load it by its full path.
+    import importlib.util
+    _rspec = importlib.util.spec_from_file_location(
+        "runs", os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs.py"))
+    runs = importlib.util.module_from_spec(_rspec)
+    _rspec.loader.exec_module(runs)
     lines = open(intent_path).read().splitlines()
     real = [c for c in parse_criteria(section_lines(lines, "Success Criteria"))
             if not c.get("placeholder") and c.get("id")]
     rows = []
     for stage in EVIDENCE_STAGES:
         for i, r in enumerate(load_evidence(os.path.join(ev_dir, stage + ".json")), 1):
-            if isinstance(r, dict):
+            # 9.8.5: the status counts a row as a gate counts it (runs.counts) — one the CLI ran or the person
+            # gave; a row an agent typed with evidence add is a claim, and it leaves the criterion open.
+            if isinstance(r, dict) and runs.counts(r):
                 rows.append((r.get("ts") or "", stage, i, r))
     rows.sort(key=lambda t: t[0])   # stable: equal ts keeps file order
 
