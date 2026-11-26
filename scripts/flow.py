@@ -96,7 +96,10 @@ class Builder(AskPart, WorkPart, BuildPart, CommitPart, RepairPart, RevisePart):
                 if isinstance(x.get(k), dict):
                     walk(x[k])
         walk(q)
-        q["question"]["question"] = "%s After your answer the run goes on by itself." % q["question"]["question"].rstrip()
+        # NEW-FLOW-1: the acceptance-lock stop's own question keeps the sentence off (it holds for none of its
+        # options: the skip ends the unattended run, ask-every-stage turns it interactive, and save stops)
+        if not (q.get("id") == "build.fail" and "acceptance writer locked no tests" in q["question"]["question"]):
+            q["question"]["question"] = "%s After your answer the run goes on by itself." % q["question"]["question"].rstrip()
         shown = list(q.get("options") or []) + list((q.get("more") or {}).get("options") or [])
         if not any(o.get("id") == "ask-every-stage" for o in shown):
             self.add_option(q, self.opt("Ask me at every stage from here", "Answer this question yourself, and every later stage asks you.",
