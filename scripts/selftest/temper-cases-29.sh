@@ -5,6 +5,21 @@ _pp() { # _pp: a run at Build with group G1 started (the plan approved, its hash
        # so the plan passes every static row a patch runs on its result
   f9_tasks | sed '/^- [ab] holds$/a - a bad input is refused' | m_setup
 }
+_bound29() { # _bound29: the state's shown_hash against the digest of tasks.md as it is, and the pass of the Build gate's
+             # row intent unchanged since the approval. R2-3: a patch or an amendment moves the plan's digest, and the
+             # digest of what the card showed (it holds the plan's) must move with it, or Build stops on the row
+  "$TEMPER" gate build >/dev/null 2>&1
+  python3 -I - "$REPO_ROOT/scripts" <<'PY'
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import approval, tasks_md
+s = json.load(open(".temper/build-state.json")).get("shown_hash")
+now = approval.tasks_digest(tasks_md.parse(".temper/specs/demo/tasks.md"))
+row = next((x for x in (json.load(open(".temper/gates.json")).get("build") or {}).get("requirements") or []
+            if x.get("name") == "intent unchanged since the approval"), {})
+print("shown=%s|row=%s" % ("digest" if s == now else "other" if now else "none", row.get("pass")))
+PY
+}
 _pp
 assert_eq "9.8.5 patch: plan_patch's digest is the CLI's own _plan_digest" "$(python3 -c "import json; print(json.load(open('.temper/build-state.json')).get('plan_hash') or json.load(open('.temper/groups.json')).get('plan_hash'))")" \
   "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import plan_patch, tasks_md; print(plan_patch.digest(tasks_md.parse('.temper/specs/demo/tasks.md')))" "$REPO_ROOT/scripts")"
@@ -17,6 +32,8 @@ print(json.load(open('.temper/build-state.json'))['plan_hash'] == plan_patch.dig
 assert_eq "9.8.5 patch: no loop is spent" "$loops_before" "$(cat .temper/feedback-loops.json 2>/dev/null | cksum)"
 assert_eq "9.8.5 patch: Build reads the patched plan as the approved one" "0" \
   "$("$TEMPER" group gate G1 --timeout-s 30 2>&1 | grep -c 'the approved plan changed')"
+assert_eq "9.8.5 patch: the digest of what the card showed moves with the plan, so the Build gate's row intent unchanged since the approval passes after a patch (R2-3)" \
+  "shown=digest|row=True" "$(_bound29)"
 sed -i '0,/^\*\*File:\*\* `src\/a.sh`/s//**File:** `src\/other.sh`/' .temper/specs/demo/tasks.md
 assert_exit "9.8.5 patch: a tasks.md that differs in more than the line is refused" 1 "$TEMPER" plan patch G1 --cmd 'true'
 assert_exit "9.8.5 patch: a command with a backquote is refused" 1 "$TEMPER" plan patch integration --cmd 'echo `x`'
@@ -255,6 +272,8 @@ print("%s|state=%s|groups=%s" % ("moved" if now != sys.argv[1] else "not moved",
                                   "digest" if g == now else "other"))
 PY
 )"
+assert_eq "amend: the digest of what the card showed moves with the plan, so the Build gate's row intent unchanged since the approval passes after an amendment (R2-3)" \
+  "shown=digest|row=True" "$(_bound29)"
 assert_eq "amend: the call spends one repeat of the budget, the key task:2 and the kind plan amend" "task:2,plan amend" \
   "$(python3 -c "
 import json, sys

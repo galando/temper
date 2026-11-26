@@ -169,10 +169,14 @@ def ledger_row(ledger, claim, approved):
     save(ledger, rows)
 
 
-def move_hashes(state, groups, h):
-    """The approved plan's digest follows the change in the run state and in groups.json, so _plan_fresh holds."""
+def move_hashes(state, groups, h, shown=None):
+    """The approved plan's digest follows the change in the run state and in groups.json, so _plan_fresh holds. The
+    digest of what the card showed follows with it where the approval recorded one (R2-3: `shown_hash` is bound beside
+    the plan, and it holds the plan's digest, so it moves whenever the plan does)."""
     st = load(state, {})
     st["plan_hash"] = h
+    if st.get("shown_hash") and shown:
+        st["shown_hash"] = shown
     save(state, st)
     g = load(groups, None)
     if isinstance(g, dict) and g.get("plan_hash"):
@@ -356,7 +360,7 @@ def main(argv):
     path = os.path.join(spec, "tasks.md")
     write_text(path, p["new"])
     before, after = r.state.get("plan_hash"), approval.plan_digest(p["after"])
-    move_hashes(state, groups, after)
+    move_hashes(state, groups, after, approval.tasks_digest(p["after"]))
     grp = next((t.get("group") for t in p["after"]["tasks"] if t["n"] == n), "")
     reopened = [n] if reopen_unbuilt(groups, n, grp) else []
     owners = ", ".join("Task %d" % m for m in p["owners"])
