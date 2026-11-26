@@ -86,7 +86,11 @@ def parse(path):
             if cur_g is not None:
                 ctx_open = False
                 if key == 'Depends': cur_g['depends'] = re.findall(r'G\d+', val)
-                elif key == 'Validate': cur_g['validate'] = cmd_of(val)
+                # a group's Validate is the backquoted command of its line: prose with no backquote is no command
+                # (the plan gate's row group validate command fails it, R4-7)
+                elif key == 'Validate':
+                    vm = re.search(r'`([^`]+)`', val)
+                    cur_g['validate'] = vm.group(1).strip() if vm else ''
                 elif key == 'Interfaces':
                     cur_g['interfaces'] += [{'path': a, 'literal': b} for a, b in
                                             re.findall(r'`([^`]+)`\s*[—\-]+\s*`([^`]+)`', val)]
