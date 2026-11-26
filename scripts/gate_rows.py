@@ -91,11 +91,18 @@ def acceptance_row(rows, lock_cmd=""):
         return {"name": "acceptance tests written before Build", "pass": None, "state": "skipped",
                 "detail": "skipped: %s" % one_line(last.get("output"))}
     if last.get("exit_code") != 0:
-        return row("acceptance tests written before Build", False, one_line(last.get("output")))
+        return row("acceptance tests written before Build", False, failed_run_detail(last, "locked command"))
     ok = "they pass, unchanged since they were locked"
     if ", corrected after the lock: " in claim:
         ok = "they pass, as the person corrected them after the lock (%s)" % claim.split(", corrected after the lock: ", 1)[1]
     return row("acceptance tests written before Build", True, ok)
+
+
+def failed_run_detail(r, what):
+    """Why a run the row counts fails it: the run's own output. A re-run through `evidence run` keeps the exit code
+    alone (cmd_evidence_run records no output), and then the exit is said: never a blank reason on a gate."""
+    return one_line(r.get("output")) or "the %s exited %s (a re-run through evidence run keeps its exit code, not its output)" % (
+        what, r.get("exit_code"))
 
 
 def regression_row(rows, own=()):
@@ -109,7 +116,9 @@ def regression_row(rows, own=()):
     if not cli:
         return row("regression proof", False, "no regression proof the CLI ran of the suite's command: a proof of "
                    "another command, or written with evidence add, counts nowhere")
-    return row("regression proof", cli[-1].get("exit_code") == 0, one_line(cli[-1].get("output")))
+    if cli[-1].get("exit_code") != 0:
+        return row("regression proof", False, failed_run_detail(cli[-1], "suite's command"))
+    return row("regression proof", True, one_line(cli[-1].get("output")))
 
 
 def fix_run():
