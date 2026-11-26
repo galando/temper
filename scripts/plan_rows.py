@@ -6,6 +6,8 @@ Called by _grouped_plan_reqs in scripts/temper; it lived inside the CLI until 9.
 under the plugin directory's 256 KiB limit for a file. Standard library only.
 """
 import json, os, re, shlex, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tasks_md import is_test   # the plan gate's rule of a test file, in the one module both readers import
 max_blast, ctx_max, blk_max = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
 m = json.loads(sys.argv[4])
 groups, tasks = m['groups'], m['tasks']
@@ -175,12 +177,8 @@ for g in groups:
 row('group validate order', vo, "no group's Validate runs a file a task of another group edits")
 # 9.8.4: more than two tasks of one group on the same production file is one task cut in pieces: each piece passes its own
 # gate on its own slice while the file as a whole is never checked until the group's Validate (a measured run had twelve
-# tasks on a few files). Two tasks on one file, ordered by Depends, stay allowed; a shared test file does not count.
-def is_test(f):
-    parts = f.lower().split('/')
-    base = parts[-1]
-    return (any(p in ('test', 'tests', 'spec', 'specs', '__tests__', 'selftest', 'testing') for p in parts[:-1])
-            or base.startswith(('test_', 'test-')) or re.search(r'[._-](test|tests|spec)\.[\w]+$', base) is not None)
+# tasks on a few files). Two tasks on one file, ordered by Depends, stay allowed; a shared test file does not count
+# (tasks_md.is_test).
 shared = []
 for g in groups:
     owners = {}

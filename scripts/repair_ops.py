@@ -173,6 +173,41 @@ def is_test(p, gate=False):
     return bool(commit_rows.TEST_RE.search(p) or (not gate and re.search(r"_test\.sh$", p)))
 
 
+def test_file(p, plan=()):
+    """A test file by every rule the CLI has (done.md D37, the audit's R4-2): the commit gate's pattern, a shell test, the
+    plan gate's folder and name rule (tasks_md.is_test), the source rule of run_env, or a file of the plan that its own
+    Test, Validate or Integration command names (`plan`, what plan_test_files lists). A repair reads this one rule: the
+    lines it may not remove, the files that may move before a RED, and what a command that names no file is proven by."""
+    import commit_rows
+    import run_env
+    import tasks_md
+    if p in plan:
+        return True
+    return bool(commit_rows.TEST_RE.search(p) or re.search(r"_test\.sh$", p) or tasks_md.is_test(p)
+                or run_env.is_test_path(p))
+
+
+def plan_test_files(r):
+    """The files the plan declares that its own Test, Validate and Integration commands name (scenario_ops.cmd_files reads
+    a command as the scenario rows do): a test file under a name no rule knows, as the plan runs it. A command may name a
+    file for another reason (a build file it runs with), so a file the plan does not declare is not one. Nothing when the
+    run has no tasks.md a plan wrote."""
+    import flow_base
+    import scenario_ops
+    import tasks_md
+    try:
+        plan = tasks_md.parse(os.path.join(r.spec, "tasks.md"))
+        cmds = [t.get("test") or "" for t in plan["tasks"]] + [g.get("validate") or "" for g in plan["groups"]]
+        cmds.append(plan.get("integration") or "")
+        declared = {os.path.normpath(f) for f in flow_base.plan_set(r.state, r.spec)}
+    except (OSError, AttributeError, IndexError, KeyError, TypeError, ValueError):
+        return set()
+    out_ = set()
+    for c in cmds:
+        out_ |= {f for f in scenario_ops.cmd_files(str(c)) if f in declared}
+    return out_
+
+
 def step_of(d):
     return d.get("step")
 
@@ -482,11 +517,12 @@ def staged_files(*base):
     return [p for p in git("diff", "--cached", "--name-only", "--no-renames", "-z", *base)[1].split("\0") if p]
 
 
-def removed_test_lines(base, files):
-    """The lines a diff removes from a test file that existed at the base, and the test files it deletes."""
+def removed_test_lines(base, files, plan=()):
+    """The lines a diff removes from a test file that existed at the base, and the test files it deletes (a test file by
+    every rule: test_file)."""
     lines = []
     for f in files:
-        if not is_test(f) or git("cat-file", "-e", "%s:%s" % (base, f))[0]:
+        if not test_file(f, plan) or git("cat-file", "-e", "%s:%s" % (base, f))[0]:
             continue
         if not os.path.exists(f):
             lines.append("%s: the whole file is deleted" % f)
@@ -586,7 +622,8 @@ def start(r, stage, again):
 
 def test(argv):
     """repair test ID --phase red|green -- CMD: the CLI runs the command; a RED counts when it fails on an assertion (the
-    task gate's rule), a GREEN only when the test files the command names are unchanged since the RED."""
+    task gate's rule), a GREEN only when the test files the command names are unchanged since the RED (the test files the
+    repair changed, when the command names none: R4-3)."""
     if "--" not in argv or "--phase" not in argv:
         print("FAIL: usage: temper repair test ID --phase red|green -- <command>", file=sys.stderr)
         return 2
@@ -605,21 +642,39 @@ def test(argv):
     import task_ops
     text = " ".join(shlex.quote(c) for c in cmd) if len(cmd) > 1 else cmd[0]
     output, rc = run_env.run_cmd(os.getcwd(), 600, list(cmd))
+    r = run_of(None)
+    plan = plan_test_files(r)
     named = sorted({t for c in cmd for t in shlex.split(c) if os.path.isfile(t)})
+    if not named:   # R4-3: a command that names no file is proven by the test files the repair changed since its base
+        named = sorted(f for f in changed(w, r.spec, r.ctx.get("config_file") or os.path.join(".claude", "temper.config"))
+                       if os.path.isfile(f) and test_file(f, plan))
     row = {"id": int(fid), "phase": phase, "cmd": text, "exit_code": rc, "hashes": digests(named), "ts": now()}
     if phase == "red":
         # As the task gate's red_staged (adversarial review R7c): a RED counts only on the code as the window found it, so
         # a RED made after the fix is no failing-first proof. Test files may change; any other file may not.
         import adhoc_ops
         was, cur = w.get("dirty") or {}, adhoc_ops.dirty()
-        moved = sorted(p for p in set(was) | set(cur) if was.get(p) != cur.get(p) and not is_test(p))
+        moved = sorted(p for p in set(was) | set(cur) if was.get(p) != cur.get(p) and not test_file(p, plan))
         row["ok"] = task_ops.red_ok(row) and not moved
         if moved:
             row["why"] = "the RED run came after a change to %s: write the test first, see it fail, then the fix" % ", ".join(moved[:3])
     else:
         reds = [x for x in w.get("tests") or [] if x.get("id") == int(fid) and x.get("phase") == "red" and x.get("ok")]
-        row["ok"] = (rc == 0 and bool(reds) and reds[-1].get("hashes") == row["hashes"] and bool(named)
-                     and reds[-1].get("cmd") == text)   # the GREEN runs the command the RED ran
+        red = reds[-1] if reds else {}
+        row["ok"] = (rc == 0 and bool(reds) and red.get("hashes") == row["hashes"] and red.get("cmd") == text)
+        if not row["ok"]:   # the reason is said here and, when the repair is taken back, in the question (R4-3)
+            was = red.get("hashes") or {}
+            moved = sorted(p for p in set(was) | set(row["hashes"]) if was.get(p) != row["hashes"].get(p))
+            if rc != 0:
+                row["why"] = "the command exited %s" % rc
+            elif not reds:
+                row["why"] = "no RED of the finding counts"
+            elif moved:
+                row["why"] = "a test file changed since the RED (%s)" % ", ".join(moved[:5])
+            elif red.get("cmd") != text:
+                row["why"] = "it is not the command the RED ran"
+            else:
+                row["why"] = "its test files are not those of the RED"
 
     def add(d):
         d["repair"].setdefault("tests", []).append(row)
@@ -689,7 +744,7 @@ def commit(r, cli_path):
         print("STOP: repair %s is not committed: %s; the change stays in the work tree and the run asks" % (
             w["n"], "; ".join(y for _, y in bad)))
         return 0
-    gone = removed_test_lines(w["base"], files)
+    gone = removed_test_lines(w["base"], files, plan_test_files(r))
     if gone:
         stop("tests", "repair %s removes lines of a test file that existed at the reviewed HEAD: %s" % (
             w["n"], "; ".join(gone[:6])), lines=gone[:20])
@@ -720,7 +775,7 @@ def commit(r, cli_path):
         with open(os.path.join(r.spec, "repair-%s.diff" % w["n"]), "w", encoding="utf-8") as f:
             f.write(diff + "\n")
     named = {str(x.get("file")) for x in r.findings() if x["id"] in (w.get("findings") or [])}
-    code = [f for f in files if not is_test(f)]
+    code = [f for f in files if not test_file(f, plan_test_files(r))]
     if w["stage"] == "check" and not code:
         recheck = "none"
     elif lines > LARGE or (w["stage"] == "review" and any(f not in named for f in code)):
@@ -806,7 +861,7 @@ def close(r, cli_path):
     block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", r.cfg("review.block-on")) if s.strip()]
     new = [x for _, x in after if str(x.get("severity") or "").lower() in block and not RECHECK.match(str(x.get("claim") or ""))]
     rows = ledger()
-    fixed, held = [], []
+    fixed, held, unproven = [], [], []
     for fid in w.get("findings") or []:
         e = rows[fid - 1] if 0 < fid <= len(rows) and isinstance(rows[fid - 1], dict) else {}
         why = None
@@ -822,6 +877,10 @@ def close(r, cli_path):
             greens = [i for i, x in enumerate(ts) if x.get("phase") == "green" and x.get("ok")]
             if not reds or not greens or greens[-1] < reds[0]:
                 why = "a behaviour finding needs a RED before the fix and a GREEN after it, on unchanged test files"
+                late = [x for x in ts if x.get("phase") == "green" and not x.get("ok")]
+                if late and late[-1].get("why"):
+                    why = "its GREEN did not count: %s" % late[-1]["why"]
+                unproven.append("#%d %s" % (fid, why))
         (held if why else fixed).append((fid, why))
     before = int((w.get("before") or {}).get("blocking") or 0)
     left = len(targets(run_of(r.ctx.get("config_file")), w["stage"])) - len(fixed)
@@ -850,7 +909,7 @@ def close(r, cli_path):
     head = "repair %s at %s (%s; files %s, %s lines changed): the recheck: %s" % (
         w["n"], w["stage"].capitalize(), claims, files, w.get("lines"), answer)
     if worse:
-        why = "; ".join(worse)
+        why = "; ".join(worse + unproven)   # R4-3: why a GREEN did not count is said in the question that follows
         rule_log(w["stage"], "%s; reverted: %s" % (head, why))
         return revert(r, cli_path, why)
     resolved, kept = [], {}
