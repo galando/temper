@@ -3194,8 +3194,9 @@ cmd_gate() {
     local rb cb; rb="$(cmd_state_get branch "")"; cb="$(git branch --show-current 2>/dev/null)"
     # WP12 (rule 1): before the approval a feature run stands on the branch it started from; the gate holds there too
     if [[ -n "$rb" && -n "$cb" && "$cb" != "$rb" ]] && ! { [[ "$cb" == "$(cmd_state_get from_branch "")" ]] \
-        && [[ "$(cmd_state_get command temper)" == temper ]] \
-        && [[ " intent plan design " == *" $(cmd_state_get next_stage "") "* ]]; }; then
+        && { [[ "$(cmd_state_get next_stage "")" == rca ]] \
+          || { [[ "$(cmd_state_get command temper)" == temper ]] \
+            && [[ " intent plan design " == *" $(cmd_state_get next_stage "") "* ]]; }; }; }; then
       echo "Temper: the run $(cmd_state_get spec "") is on $rb; this commit is on $cb, so the commit gate does not apply."
       return 0
     fi
