@@ -329,7 +329,7 @@ builds it with the package; none of them is a new stage, agent or question.
 - [x] U20 (WP08 its own lines, done; WP18 `agents/review.md:27`; WP31 the rest): documents that disagree with the code. WP32: the lock comment of `scripts/temper` said a held lock is written past with a WARN after 60 s; it now says what the code does (a wait of up to 120 s, then exit 75 and nothing written).
 - [x] U21 (WP08 the policy run, done; WP07 the scripted promises, done; WP30 the fixture): no end to end test ran the policy, a failing preflight, a setup block or a plan patch; the shared selftest fixture counts claimed runs. Checked at WP32: holds: the scenarios policy-run, plan-command-fails, setup-at-build and blocked-outside-plan, run by CI.
 - [x] U22 (WP16): the mod counts a typed answer of at most 100 characters; the CLI takes 2,000.
-- [ ] U23 kept as shipped (WP32 names it in the pull request text, for the owner): the Interfaces check matches any `send(msg)`.
+- [ ] U23 kept as shipped: the Interfaces check matches any `send(msg)`. The owner decided on 2026-11-26: it stays for 9.8.5 and becomes a warning in the next release.
 - [x] U24 (WP25): the plan digest has three copies that must agree. Checked at WP32: holds: one plan digest, `approval.plan_digest`; case 20 "the three digests are one function".
 - [x] U25 (WP08): the policy's tests ran without `park-on-touch`; the merging reader of M8 keeps it.
 - [x] U26 (WP21): at Check the setup offer reads the Plan stage's stored faults. Checked at WP32: holds: at Check the setup question reads Check's own failure records; D50 and D53a.
