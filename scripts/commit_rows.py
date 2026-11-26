@@ -55,6 +55,40 @@ def blast_radius(argv):
     else: print('PASS %d changed, all declared' % len(changed))
 
 
+def fix_plan(argv):
+    # BLACKBOX-1: a fix run's declared set as blast_radius reads a plan: the files rca.md names (the file of AT, the
+    # Blast radius and the Read first items, as card.py's fix_files reads them) plus the recorded regression test.
+    # The rca.md fields are read here the way panel.py's rca_fields does: this module stays isolated (case 32).
+    import json, re
+    try:
+        text = open(argv[1], encoding="utf-8").read()
+    except OSError:
+        text = ""
+    plain = lambda t: re.sub(r"[*`]", "", t).strip()
+
+    def items(name):
+        lines = text.splitlines()
+        for i, l in enumerate(lines):
+            m = re.match(r"^(#{1,6})\s+(.*?)\s*$", l)
+            if m and m.group(2).lower().startswith(name.lower()):
+                lvl = len(m.group(1))
+                end = next((j for j in range(i + 1, len(lines))
+                            if (lambda h: h and len(h.group(1)) <= lvl)(re.match(r"^(#{1,6})\s", lines[j]))), len(lines))
+                return [plain(re.sub(r"^\s*[-*]\s+", "", x)) for x in lines[i + 1:end]
+                        if re.match(r"^\s*[-*]\s+\S", x)]
+        return []
+    m_at = re.search(r"^\**AT:?\**:?\s*(.+)$", text, re.M | re.I)
+    names = []
+    for x in [(plain(m_at.group(1)).split(":")[0].strip() if m_at else "")] + items("Blast radius") + items("Read first"):
+        x = x.split()[0].strip("`") if x.strip() else ""
+        if x and x not in names:
+            names.append(x)
+    rt = str(argv[2] if len(argv) > 2 else "").strip()
+    if rt and rt not in names:
+        names.append(rt)
+    print(json.dumps({"tasks": [{"files": names}]}))
+
+
 def declared_list(argv):
     import json,sys; print('\n'.join(sorted({f for t in json.loads(argv[1]).get('tasks', []) for f in t.get('files', [])})))
 
@@ -62,6 +96,7 @@ def declared_list(argv):
 WORDS = {n.replace("_", "-"): f for n, f in (
     ('override_covers', override_covers),
     ('blast_radius', blast_radius),
+    ('fix_plan', fix_plan),
     ('declared_list', declared_list),
 )}
 

@@ -457,4 +457,30 @@ assert_eq "fix: an rca.md with a CAUSE and a FIX is the approval; with no FIX li
   "whole=ask:rca.approve:approve-run,ask-every-stage,save|no-fix=ask:rca.approve:redo,save|no-cause=ask:rca.approve:redo,save|none=ask:rca.approve:redo,save" "$_s58"
 assert_eq "fix: with nothing to approve the question says what rca.md lacks and offers the root cause agent again with a note" \
   "RCA: rca.md gives no FIX line, so there is nothing to approve yet. Run the root cause agent again with your note, or save the run?" "$_t58"
+
+# --- BLACKBOX-1: a bug run's approved file set is held by the commit gate (the scope row a fix run has too) ---
+_bb58() { # an approved fix run whose gates passed, the fix at AT applied and a file staged: the commit gate's rc
+  _fix58; _run58 approve-run >/dev/null; gpass build review check commit
+  printf 'def total_of(lines):\n    return round(sum(lines), 2)\n' > src/auth/totals.py
+  [[ -z "${1:-}" ]] || { echo 'echo b4' >> src/b.sh; git add src/b.sh >/dev/null 2>&1; }
+  _gc58; echo "$_gc58_rc"
+}
+_fix58; _run58 approve-run >/dev/null; gpass build review check commit
+printf 'def total_of(lines):\n    return round(sum(lines), 2)\n' > src/auth/totals.py
+echo 'echo b4' >> src/b.sh; git add src/b.sh >/dev/null 2>&1
+_gc58
+assert_eq "BLACKBOX-1: the commit gate of a fix run with no tasks.md holds the files rca.md names: a file outside them fails the scope row" \
+  "fail=1|changed outside declared files: src/b.sh" \
+  "fail=$_gc58_rc|$([[ "$_gc58_out" == *"changed outside declared files: src/b.sh"* ]] \
+    && echo "changed outside declared files: src/b.sh" || echo "$_gc58_out")"
+_fix58; _run58 ask-every-stage >/dev/null   # interactive: the Scope drift question is asked, no park first (R2-1)
+printf 'def total_of(lines):\n    return round(sum(lines), 2)\n' > src/auth/totals.py
+echo 'echo b4' >> src/b.sh; git add src/b.sh >/dev/null 2>&1
+"$TEMPER" drift ask --path src/b.sh --why 'the parser needs it' --change 'one line' >/dev/null 2>&1
+_rev58="$(_x58 "r = (d.get('ask') or {}).get('id')")|$(_run58 revert)"   # Revert: the row of the ledger, then the agent undoes the file
+git checkout -q -- src/b.sh; git reset -q src/b.sh >/dev/null 2>&1 || true; git checkout -q -- src/b.sh
+gpass build review check commit
+git add -A -- . ':(exclude).temper' ':(exclude).claude' >/dev/null 2>&1; git commit -q -m 'fix(bug): the fix' >/dev/null 2>&1
+assert_eq "BLACKBOX-1: the drift answered with Revert, the outside file back, the gate passes and the commit lands" \
+  "scope.drift|ran|pass=0|2" "$_rev58|pass=$(_gc58; echo "$_gc58_rc")|$(git rev-list --count HEAD)"
 setup
