@@ -40,9 +40,12 @@ rm -rf "$CLI_PLUGIN" "$WORKDIR/sub-link" "$WORKDIR/bin"
 setup
 assert_exit "state init accepts an uppercase ticket key prefix" 0 "$TEMPER" state init PROJ-123-login
 assert_eq "the uppercase slug names its spec folder" ".temper/specs/PROJ-123-login" "$("$TEMPER" state get spec_path)"
-assert_exit "state set accepts an uppercase spec_path slug" 0 "$TEMPER" state set spec_path .temper/specs/PROJ-9-x
+# the value is lost first: then only the slug's grammar can refuse the repair, never the guard of NEW-RULES-2
+python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d.pop('spec_path', None); json.dump(d, open(p, 'w'))"
 assert_exit "state set still refuses a spec_path slug with a '/'" 1 "$TEMPER" state set spec_path .temper/specs/PROJ/9
 assert_exit "state set still refuses a spec_path slug with '..'" 1 "$TEMPER" state set spec_path .temper/specs/PROJ..9
+assert_exit "state set refuses a folder the run's slug does not name" 1 "$TEMPER" state set spec_path .temper/specs/PROJ-9-x
+assert_exit "state set accepts an uppercase spec_path slug as the repair of a lost value" 0 "$TEMPER" state set spec_path .temper/specs/PROJ-123-login
 # A run started by 9.6.4 with an uppercase slug still archives its gate ledger.
 setup
 mkdir -p .temper/specs/PROJ-123-login

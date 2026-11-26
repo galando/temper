@@ -152,7 +152,7 @@ assert_eq "w16 drift: an unattended run records the stop first: the park call co
   "auto|park --verdict PARKED-NEEDS-DECISION" \
   "$(_x57 "c = [str(x).split('/temper ', 1)[-1] for x in d.get('calls') or []]
 pk = next((x for x in c if x.startswith('park --verdict') and '--end' not in x), '')
-r = '%s|%s' % (d.get('action'), pk[:34] if pk else 'none')")"
+r = '%s|%s' % (d.get('action'), pk.split(' --reason')[0] if pk else 'none')")"
 while IFS= read -r _c57; do [[ -n "$_c57" ]] && bash -c "$_c57" >/dev/null 2>&1; done < <(_x57 "r = '\n'.join(c for c in d.get('calls') or [] if ' park ' in ' %s ' % c and '--end' not in c) if d.get('action') == 'auto' else ''")
 assert_eq "w16 drift: the park is the recorded stop: parked is set and the rule log holds it" "yes|yes" \
   "$(python3 -B -c "
@@ -178,10 +178,11 @@ except ValueError:
     g = {}
 moved = [c for c in g.get('ran') or [] if ' state advance ' in ' %s ' % c]
 print('%s|%s|%d' % (g.get('action'), (g.get('ask') or {}).get('id'), len(moved)))" "$_go57")"
-assert_eq "w16 drift: the question at the stop ends with park --end --answer on every option, and says the run goes on by itself" \
-  "3|goes on by itself" \
+# R2-2: the question offers the budget's grant too, so it has four options, each ending with the park's end
+assert_eq "w16 drift: the question at the stop has four options, the budget's grant among them, each ends with park --end --answer, and it says the run goes on by itself" \
+  "4|4|goes on by itself" \
   "$(_x57 "os = d.get('ask', {}).get('options') or []
-r = '%d|%s' % (sum(1 for o in os if any('park --end --answer %s' % o.get('id') in c for c in o.get('calls') or [])),
+r = '%d|%d|%s' % (len(os), sum(1 for o in os if any('park --end --answer %s' % o.get('id') in c for c in o.get('calls') or [])),
     'goes on by itself' if 'goes on by itself' in str((d.get('ask', {}).get('question') or {}).get('question', '')) else 'no notice')")"
 
 # --- the report step and the no record note are kinds (step 4): `step_kinds` beside `steps`, in next and in go ---

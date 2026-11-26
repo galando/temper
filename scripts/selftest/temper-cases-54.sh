@@ -158,7 +158,7 @@ _a54_order="$(_x54 "h1 = '$_a54_h1'
 def kind(c):
     if c.split(' --shown ')[0] == 'state set run_mode autonomous':
         return 'mode'
-    if c == 'spec branch':
+    if c.split(' --shown ')[0] == 'spec branch':   # R2-4: the branch call carries the digest the card showed
         return 'branch'
     if c.startswith('intent accept'):
         return 'accept' if h1 and c == 'intent accept --digest %s' % h1 else 'accept(%s)' % c[14:30]

@@ -602,6 +602,7 @@ fresh; _tasks71; gpass intent; "$TEMPER" state advance intent_complete plan >/de
 sed -i 's|^\*\*File:\*\* `src/report.sh`, `unit/report_test.sh`|**File:** `src/auth/login.sh`, `unit/report_test.sh`|' .temper/specs/demo/tasks.md
 rm -f .temper/specs/demo/plan.md; "$TEMPER" state set complexity simple >/dev/null 2>&1
 "$TEMPER" risk >/dev/null 2>&1 || true
+"$TEMPER" gate plan >/dev/null 2>&1   # the planner's last call: the flow reads the verdict the gate recorded, it runs no gate
 _w27_11e="risk=$("$TEMPER" state get risk 2>/dev/null)|$(nx "'%s,agents=%d,%s' % (d.get('action'), len(d.get('agents') or []), ';'.join(__import__('re').sub(r'^\S*/temper ', '', c) for c in d.get('calls') or []))")"
 while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done < <(nx "chr(10).join(d.get('calls') or [])")
 _w27_11e+="|tier=$("$TEMPER" state get complexity 2>/dev/null)"
@@ -630,7 +631,24 @@ _notes71() { # _notes71: three notes at a green gate, each driven through its la
 }
 assert_eq "w27 notes at a green gate: every one is the narrow revise agent, the third no less, and none spends an entry" \
   "temper:temper-plan-revise|temper:temper-plan-revise|temper:temper-plan-revise|used=0,run=0" \
-  "$(_notes71)|$(_room71 plan-revise:note)"
+  "$(_notes71)$(_room71 plan-revise:note)"   # _notes71 ends each launch with its separator
+# R5-2: the fall back counts only the revises made since the plan gate last passed. After two counted revises of a failed
+# gate and a pass, a note at the passed gate is still the narrow revise agent's: the planner comes only after two
+# revisions in a row left the gate failing
+_plan71 one-case; "$TEMPER" gate plan >/dev/null 2>&1
+for _i71 in 1 2; do   # two revises of the failed gate, each one counted launch of the key
+  "$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71 (note $_i71)" >/dev/null 2>&1
+  while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done \
+    < <(_agent71 "'\n'.join(c for a in d.get('agents') or [] for c in (a.get('before') or []) + (a.get('after') or []))")
+done
+_w27_11d="failed=$(_room71 plan-revise:note)"
+_tasks71   # the plan is mended and the gate passes for real: its verdict carries a time, and a note is read only
+"$TEMPER" gate plan >/dev/null 2>&1   # when it is newer than that time (gpass writes no time)
+"$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71 (note 3)" >/dev/null 2>&1
+_w27_11d+="|$(_agent71 "a.get('type') if d.get('action') == 'work' else 'ask %s' % (d.get('ask') or {}).get('id')")"
+_w27_11d+="|$(_room71 plan-revise:note)"
+assert_eq "w27 the fall back counts only the revises since the plan gate last passed: after two counted revises of a failed gate and a pass, a note at the passed gate is the narrow revise agent's, not the planner's (R5-2)" \
+  "failed=used=2,run=2|temper:temper-plan-revise|used=2,run=2" "$_w27_11d"
 # WP27-R2: the revise the person picks at a failed plan gate is one launch and one spend: the run again paid for it, and
 # the launch still counts for its reason (the fall back comes after two)
 _plan71 one-case; "$TEMPER" gate plan >/dev/null 2>&1

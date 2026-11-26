@@ -94,10 +94,16 @@ _approved53() { # _approved53 [option id]: an approved run at Build, from the ap
   _intent53; _run53 "${1:-ask-every-stage}"
 }
 _criterion53() { sed -i "s/demo criterion one/demo criterion one, $1/" .temper/specs/demo/intent.md; }
-_hashes53() { # "ok" when the state's intent_hash and plan_hash are the digests scripts/approval.py makes of the files
-  local h1 h2; h1="$(_dg53 .temper/specs/demo/intent.md)"; h2="$(_dg53 .temper/specs/demo/tasks.md)"
-  if [[ -n "$h1" && -n "$h2" && "$("$TEMPER" state get intent_hash 2>/dev/null)" == "$h1" \
-    && "$("$TEMPER" state get plan_hash 2>/dev/null)" == "$h2" ]]; then echo ok; else echo "no"; fi
+_hashes53() { # "ok" when the state holds the approval's digests of the files as they are, each as scripts/approval.py makes
+              # it: intent_hash of intent.md, plan_hash of the parsed plan and shown_hash of what the card showed of
+              # tasks.md (R2-3: the titles and the Cases are bound beside the plan digest)
+  local h1 h2 h3 parsed; h1="$(_dg53 .temper/specs/demo/intent.md)"
+  parsed="$(python3 -B "$REPO_ROOT/scripts/tasks_md.py" parse .temper/specs/demo/tasks.md 2>/dev/null)"
+  h2="$(python3 -B "$REPO_ROOT/scripts/approval.py" plan-digest "$parsed" 2>/dev/null)"
+  h3="$(python3 -B "$REPO_ROOT/scripts/approval.py" tasks-digest "$parsed" 2>/dev/null)"
+  if [[ -n "$h1" && -n "$h2" && -n "$h3" && "$("$TEMPER" state get intent_hash 2>/dev/null)" == "$h1" \
+    && "$("$TEMPER" state get plan_hash 2>/dev/null)" == "$h2" && "$("$TEMPER" state get shown_hash 2>/dev/null)" == "$h3" ]]
+  then echo ok; else echo "no"; fi
 }
 
 # --- the approving options carry both digests, at the plan question and at the Design question ---

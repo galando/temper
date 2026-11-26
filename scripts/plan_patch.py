@@ -173,6 +173,9 @@ def main(argv):
     h = digest(after)
     if approved:
         st["plan_hash"] = h
+        shown = approval.tasks_digest(after)   # R2-3: the digest of what the card showed holds the plan's, so it moves with it
+        if st.get("shown_hash") and shown:
+            st["shown_hash"] = shown
     if add and cmd not in (st.get("approved_files") or []):
         st["approved_files"] = list(st.get("approved_files") or []) + [cmd]
     save(state, st)

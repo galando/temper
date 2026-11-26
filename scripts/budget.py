@@ -227,7 +227,10 @@ def key_of(words, facts):
         t = (facts.groups().get("tasks") or {}).get(c)
         failed = isinstance(t, dict) and (t.get("status") == "failed" or any(
             isinstance(x, dict) and x.get("outcome") == "FAIL" for x in t.get("attempts") or []))
-        return ("task:" + c, "task relaunch") if c.isdigit() and failed else None
+        # A task of a parked group cannot start whatever the budget holds: `task start` refuses it and names the group
+        # (as task gate and task test are refused while the group is parked, D-08), so no repeat is counted for it.
+        parked = isinstance(t, dict) and ((facts.groups().get("groups") or {}).get(t.get("group")) or {}).get("status") == "parked"
+        return ("task:" + c, "task relaunch") if c.isdigit() and failed and not parked else None
     if a == "task" and b == "test":
         green = any(x == "--phase" and y == "green" for x, y in zip(words, list(words[1:]))) or "--phase=green" in words
         task = (facts.groups().get("tasks") or {}).get(c)

@@ -396,7 +396,15 @@ export const pyjokesFull = (w: World): void => {
   w.run(`${TEMPER} state clear`)
   const bug = '.temper/specs/bug'
   const fixAgents: Script['agents'] = {
-    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: every category is looked up upper cased\n\n## Root cause\n\nget_jokes upper cases the category before the lookup, and every key is lower case.\n\n## Fix\n\nLook the category up as given.\n'),
+    // R3-1: rca.md as agents/rca.md asks for it: the fields the CLI's card and question read, not headings only
+    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: every category is looked up upper cased\n\n'
+      + 'CAUSE: get_jokes upper cases the category before the lookup, and every key is lower case.\n'
+      + 'AT: pyjokes/core.py:1\nCONFIDENCE: HIGH\nSINCE: unknown\n'
+      + 'CHAIN: get_jokes -> the upper cased category -> no joke is found\n'
+      + 'FIX: Look the category up as given.\n'
+      + 'TEST: the regression test locks that a category is found as given\n\n'
+      + '## Root cause\n\nget_jokes upper cases the category before the lookup, and every key is lower case.\n\n'
+      + '## Blast radius\n\n- pyjokes/core.py\n'),
     'temper:temper-fix': wd => {
       wd.write('unit/test_case.py', 'import unittest\n\nfrom pyjokes import get_jokes\n\n\nclass CaseTest(unittest.TestCase):\n    def test_neutral_is_found_as_given(self):\n        self.assertTrue(get_jokes("neutral"))\n')
       t(wd, `evidence run --stage build --phase red --claim 'regression test: a category is found as given' -- python3 -m unittest unit.test_case`)

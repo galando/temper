@@ -454,11 +454,14 @@ assert_eq "the run files of pull request 115 are listed and cleared" "yes yes ye
 
 # --- a /temper:fix run ---
 setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1; _base_known
-assert_eq "next: a fix run starts at the RCA question, read by its id and the advance of its options (WP17)" \
-  "rca.approve|state advance rca_complete fix" \
-  "$(nx "import re; a = d['ask']; cs = [re.sub(r' --shown \\S+', '', c.split('temper ', 1)[1])
-  for o in a['options'] for c in o.get('calls') or []]; adv = 'state advance rca_complete fix'; a['id'] + '|' + (
-  adv if adv in cs else ','.join(cs))")"
+# R3-1: with no rca.md written there is nothing to approve, so the same question offers the root cause agent again, or Save
+assert_eq "next: a fix run starts at the RCA question with nothing to approve yet, read by its id and its options (WP17)" \
+  "rca.approve|redo,save" "$(nx "a = d['ask']; a['id'] + '|' + ','.join(o.get('id') for o in a['options'])")"
+mkdir -p .temper/specs/demo-bug; printf 'CAUSE: the demo bug\nFIX: the demo fix\n' > .temper/specs/demo-bug/rca.md   # as the root cause agent writes it
+assert_eq "next: with a cause and a fix on rca.md the RCA question's approve option advances the run" \
+  "state advance rca_complete fix" \
+  "$(nx "import re; cs = [re.sub(r' --shown \\S+', '', c.split('temper ', 1)[1])
+  for o in d['ask']['options'] for c in o.get('calls') or []]; adv = 'state advance rca_complete fix'; adv if adv in cs else ','.join(cs)")"
 mkdir -p .temper/specs/demo-bug; "$TEMPER" state advance rca_complete fix >/dev/null 2>&1
 assert_eq "next: Fix runs its brief and is judged by the build gate" "temper:temper-fix|gate build" \
   "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
