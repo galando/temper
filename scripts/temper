@@ -3105,8 +3105,14 @@ gate_commit() {
   # interactive run could commit files nobody planned (an ADR, run state written in docs/); now the person sees them.
   local gspec; gspec="$(_spec_path "")"
   local plan_json='{"tasks": []}'
-  [[ -n "$gspec" && -f "$gspec/tasks.md" ]] && plan_json="$(_grouped_parse "$gspec/tasks.md")"
   if [[ -n "$gspec" && -f "$gspec/tasks.md" ]]; then
+    plan_json="$(_grouped_parse "$gspec/tasks.md")"
+  elif [[ "$(cmd_state_get command temper)" == "fix" && -n "$gspec" && -f "$gspec/rca.md" ]]; then
+    # BLACKBOX-1: a bug run holds its approved set too: the files rca.md names and the recorded regression test are
+    # the declared files of the scope row, so a file outside them fails the row a feature run already has
+    plan_json="$(python3 -I "$SCRIPTS_DIR/commit_rows.py" fix-plan "$gspec/rca.md" "$(cmd_state_get regression_test "")")"
+  fi
+  if [[ "$plan_json" != '{"tasks": []}' ]]; then
     local gverdict
     gverdict="$(_changed_since_base | python3 -I "$SCRIPTS_DIR/commit_rows.py" blast-radius "$plan_json" "${gspec#"$REPO_ROOT"/}" "$(_evidence_file build)")"
     if [[ "$gverdict" == PASS* ]]; then
