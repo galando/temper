@@ -337,13 +337,23 @@ _v29() { # G1's Validate line(s) as they stand: how many, and the first
     "$(awk '/^## Group G1/{g=1; next} /^## /{g=0} g && /^\*\*Validate:\*\*/{c++} END{print c+0}' .temper/specs/demo/tasks.md)" \
     "$(awk '/^## Group G1/{g=1; next} /^## /{g=0} g && /^\*\*Validate:\*\*/{print; exit}' .temper/specs/demo/tasks.md)"
 }
+_row29() { # the plan gate's row group validate command and its verdict, as row|verdict, run on the plan as it stands
+  "$TEMPER" gate plan >/dev/null 2>&1
+  python3 -I -c "
+import json
+g = json.load(open('.temper/gates.json')).get('plan') or {}
+x = next((x for x in g.get('requirements') or [] if x.get('name') == 'group validate command'), None)
+print('%s|%s' % (x.get('pass') if x is not None else 'absent', g.get('verdict')))" 2>/dev/null || echo absent
+}
 _broken29 '**Validate:**'
-"$TEMPER" plan patch G1 --cmd 'bash v.sh' >/dev/null 2>&1; _p29_e_rc=$?; _p29_e="$(_v29)"
+_p29_e_before="$(_row29)"
+"$TEMPER" plan patch G1 --cmd 'bash v.sh' >/dev/null 2>&1; _p29_e_rc=$?; _p29_e="$(_v29)"; _p29_e_after="$(_row29)"
 _broken29 '**Validate:** run the suite'
-"$TEMPER" plan patch G1 --cmd 'bash v.sh' >/dev/null 2>&1; _p29_p_rc=$?; _p29_p="$(_v29)"
-assert_eq "patch: a Validate line with no backquoted command, empty or prose, is replaced by the patched one" \
-  "empty=0|1 line(s), first: **Validate:** \`bash v.sh\`|prose=0|1 line(s), first: **Validate:** \`bash v.sh\`" \
-  "empty=$_p29_e_rc|$_p29_e|prose=$_p29_p_rc|$_p29_p"
+_p29_p_before="$(_row29)"
+"$TEMPER" plan patch G1 --cmd 'bash v.sh' >/dev/null 2>&1; _p29_p_rc=$?; _p29_p="$(_v29)"; _p29_p_after="$(_row29)"
+assert_eq "patch: a Validate line with no backquoted command, empty or prose, is replaced by the patched one, and the plan gate fails its row before and passes after" \
+  "empty=0|before=False|FAIL|after=True|PASS|1 line(s), first: **Validate:** \`bash v.sh\`|prose=0|before=False|FAIL|after=True|PASS|1 line(s), first: **Validate:** \`bash v.sh\`" \
+  "empty=$_p29_e_rc|before=$_p29_e_before|after=$_p29_e_after|$_p29_e|prose=$_p29_p_rc|before=$_p29_p_before|after=$_p29_p_after|$_p29_p"
 _amplan29 | m_setup; _built29 1 src/a.sh
 _p29_before="$(_g29 "d['tasks']['1'].get('status')")"
 "$TEMPER" plan patch task 1 --cmd 'test -s src/a.sh' >/dev/null 2>&1; _p29_rc=$?
