@@ -191,6 +191,25 @@ assert_eq "fix: no branch and no commit before the approval" "same|feature=$_BUG
   "$([[ "$(git branch --show-current),$(git rev-parse HEAD),$(git branch --list | wc -l | tr -d ' ')" == "$_b58" ]] \
     && echo same || echo "moved")|feature=$("$TEMPER" state get feature 2>/dev/null)"
 
+# --- rule 1 with the mod off (R3-4, RULES-3): the commit hook holds the branch a fix run stands on before its approval ---
+# a line of a file rca.md names, staged at the root cause question: on the branch the run started from the commit hook
+# refuses it. After the approval's calls the run is on its own branch and the same commit lands there; and the branch
+# it started from is no longer the run's, so a commit there is not gated (the hook gates the run's branch only)
+_c58() { # _c58: the staged file committed as the fix, through the hook: committed or refused, then the branch
+  echo "$(git commit -q -m 'fix(bug): the fix' >/dev/null 2>&1 && echo committed || echo refused)|$(git branch --show-current)"; }
+_fix58; bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+echo 'echo a4' >> src/a.sh; git add src/a.sh >/dev/null 2>&1
+assert_eq "fix: with the mod off a project file staged before the approval is not committed: the commit hook refuses it" \
+  "refused|main|1" "$(_c58)|$(git rev-list --count HEAD)"
+_fix58; bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1; _run58 approve-run >/dev/null
+echo 'echo a4' >> src/a.sh; git add src/a.sh >/dev/null 2>&1; gpass build review check commit
+assert_eq "fix: the same commit after the approval's calls goes through the gate on the run's branch and lands" \
+  "committed|fix/bug|2" "$(_c58)|$(git rev-list --count HEAD)"
+git checkout -q main; echo 'echo a4' >> src/a.sh; git add src/a.sh >/dev/null 2>&1
+assert_eq "fix: after the approval the branch the run started on is not the run's: a commit there is not gated" \
+  "committed|main|2" "$(_c58)|$(git rev-list --count HEAD)"
+git config --unset core.hooksPath 2>/dev/null
+
 # --- in between: a passed Fix, Review and Check move on by rule; next stops at the commit question ---
 _approved58; gpass build
 _m58="fix=$(_moves58 fix review)"; gpass review
