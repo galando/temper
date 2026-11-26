@@ -474,8 +474,12 @@ assert_eq "w20 go on is a recorded skip: a new fail line after the eighth fails 
   "eight=skipped|a ninth=none|exit 127=none|exit 125=none|exit 1, no line=skipped" "$_c61"
 # NEW-FLOW-3 site 2: a failed run of another command stands beside the suite's failed run: the skip reads only the
 # suite's own runs (runs.suite_runs, the runs the row `tests pass` reads), so the skip stands.
-_sk261() { # _sk261 <the suite's lines now, | between> <another command> <its output>: the skip row's state with a failed
-           # run of another command in the ledger beside the suite's
+_sk261() { # _sk261 <the suite's lines now, | between> <another command> <its output> [undeclared]: the skip row's state
+            # with a failed run of another command in the ledger beside the suite's. The project declares its suite (so the
+            # row reads the suite's runs alone, rule 5) unless told `undeclared`: then the row reads every test run
+  local cfg=.claude/temper.config undeclared="${4:-}"
+  cp "$cfg" "$cfg.sk261"; printf 'check:\n  commands:\n    test: "bash fail61.sh"\n' > "$cfg"
+  [[ -z "$undeclared" ]] || printf 'stack: auto\n' > "$cfg"
   python3 -B - "$@" <<'PY'
 import json, sys
 now, extra_cmd, extra_out = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -490,6 +494,7 @@ json.dump([{"claim": "full test suite", "cmd": "bash fail61.sh", "exit_code": 1,
           open(".temper/evidence/ledger61.json", "w"))
 PY
   local r; r="$(python3 -B "$REPO_ROOT/scripts/baseline.py" "$PWD" .claude/temper.config "" skip-row "$PWD/.temper/evidence/ledger61.json" 2>/dev/null)"
+  mv "$cfg.sk261" "$cfg"
   python3 -B -c "import json, sys; print(json.loads(sys.argv[1]).get('state') if sys.argv[1].strip() else 'none')" "$r"
 }
 # R6-2: digits that are part of a test's name or bracketed id name a test (a new one fails the row); a number that
@@ -500,8 +505,10 @@ _d61+="|an id 7=$(_sk61 red-base 1 'FAILED t.py::test_add[3] - assert 1 == 2' \
   'FAILED t.py::test_add[3] - assert 1 == 2|FAILED t.py::test_add[7] - assert 5 == 9')"
 _d61+="|numbers=$(_sk61 red-base 1 'FAIL: test_v1 at t.py:12 in 0.03s' 'FAIL: test_v1 at t.py:14 in 1.2s')"
 _d61+="|other command=$(_sk261 'FAIL: test_alpha' 'bash other61.sh' 'FAILED test_other.py::test_o2')"
-assert_eq "w20 go on is a recorded skip: a new failing test whose name or bracketed id differs only in digits fails the skip, numbers do not, and a failed run of another command beside the suite's breaks no skip" \
-  "a v2=none|a swapped v2=none|an id 7=none|numbers=skipped|other command=skipped" "$_d61"
+# with no suite declared the row reads that other run too: a failure the person did not go on from is no skip
+_d61+="|other command, no suite declared=$(_sk261 'FAIL: test_alpha' 'bash other61.sh' 'FAILED test_other.py::test_o2' undeclared)"
+assert_eq "w20 go on is a recorded skip: a new failing test whose name or bracketed id differs only in digits fails the skip, numbers do not, and a failed run of another command beside the suite's breaks no skip while the suite is declared, and breaks it when none is" \
+  "a v2=none|a swapped v2=none|an id 7=none|numbers=skipped|other command=skipped|other command, no suite declared=none" "$_d61"
 rm -f .temper/evidence/ledger61.json .temper/overrides.json
 
 # --- w20 limits: three times the measured seconds, never below the default; a time out doubles once, then asks ---

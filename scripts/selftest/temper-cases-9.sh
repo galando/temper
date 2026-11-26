@@ -311,7 +311,7 @@ while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
 gpass plan
 CALLS="$(nx "'\n'.join(d['ask']['options'][0]['calls'])")"
 assert_eq "live run: the approval switches to the run's branch before its commit" "spec branch|spec commit" \
-  "$(grep -o ' spec branch\| spec commit' <<<"$CALLS" | sed 's/^ //' | paste -sd'|')"
+  "$(grep -o ' spec branch\| spec commit' <<<"$CALLS" | sed 's/^ //' | paste -sd'|' -)"   # BSD paste names no default file
 while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
 assert_eq "live run: the approval's commit is on feature/demo, and main has none; it accepts the intent (WP12, WP13)" \
   "feature/demo|docs(plan): accept the intent and approve the plan of demo|base|accepted" \

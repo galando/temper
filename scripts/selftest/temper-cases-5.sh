@@ -71,6 +71,7 @@ rm -f .temper/.lock
 # are rejected; A group larger than max-blast-radius is rejected at plan time [AC-02, AC-03, AC-05, AC-11]
 gp_base() { # write the valid two-group fixture to the demo spec's tasks.md (a plan not built yet, so no groups.json)
   rm -f .temper/groups.json
+  "$TEMPER" state set complexity medium >/dev/null 2>&1   # two groups are above the simple tier, so a valid fixture records one (R5-3)
   cat > .temper/specs/demo/tasks.md <<'GP'
 # Tasks: demo
 

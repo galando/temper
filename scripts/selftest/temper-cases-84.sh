@@ -9,15 +9,19 @@ _tasks84() { # _tasks84 <Validate> <Integration> <Test>: the demo plan, one grou
     '**Context:**' 'The demo group.' '' '### Task 1: first task' '**File:** `src/demo.sh`, `src/demo_test.sh`' '**Depends:** none' \
     "**Test:** \`$3\`" '**Cases:**' '- a holds' '- [x] done'
 }
-_row84() { # _row84 <stage> <row name>: pass of that row of the stage's verdict in gates.json, or absent
-  python3 - "$1" "$2" <<'PY'
+_row84() { # _row84 <stage> <row name> [python over x, the row, that sets r]: pass of that row of the stage's verdict in
+            # gates.json, or absent; with the third argument, what it makes of the row
+  python3 - "$1" "${2:-}" "${3:-}" <<'PY'
 import json, sys
 try:
     e = json.load(open(".temper/gates.json")).get(sys.argv[1]) or {}
 except (OSError, ValueError):
     e = {}
-r = next((x for x in e.get("requirements") or [] if x.get("name") == sys.argv[2]), None)
-print("absent" if r is None else str(r.get("pass")))
+x = next((x for x in e.get('requirements') or [] if x.get('name') == sys.argv[2]), None)
+env = {'x': x, 'r': x.get('pass') if x is not None else None}
+if x is not None and sys.argv[3]:
+    exec(sys.argv[3], env)
+print("absent" if env["r"] is None else str(env["r"]))
 PY
 }
 _verdict84() { python3 -c "import json,sys; print((json.load(open('.temper/gates.json')).get(sys.argv[1]) or {}).get('verdict', 'none'))" "$1" 2>/dev/null || echo none; }
@@ -155,6 +159,7 @@ assert_eq "review 4: NEW-RULES-2 spec_path is set only as the repair of a lost v
 # A lock of another spec folder than the run's spec_path (state rewritten by hand, as the audit ran it) is a failed
 # acceptance row at the gate, never silence.
 _acc84
+cp -R .temper/specs/demo .temper/specs/demo2   # the audit's scenario: the copy exists, so the checks run on it
 python3 - <<'PY'
 import json
 p = ".temper/build-state.json"

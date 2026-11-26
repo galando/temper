@@ -2,6 +2,7 @@
 # (9.8.5). Made by make-helpers-5.sh; do not edit by hand. temper-cases-6.sh sources it when the helpers are not defined.
 gp_base() { # write the valid two-group fixture to the demo spec's tasks.md (a plan not built yet, so no groups.json)
   rm -f .temper/groups.json
+  "$TEMPER" state set complexity medium >/dev/null 2>&1   # two groups are above the simple tier, so a valid fixture records one (R5-3)
   cat > .temper/specs/demo/tasks.md <<'GP'
 # Tasks: demo
 

@@ -18,7 +18,7 @@ _mark72() { # _mark72 <prompt>: the stage the marker records for that prompt in 
 }
 _hits72() { # _hits72 <lines>: "none", or the count and the first five lines, each cut at 120 characters, joined by ";"
   [[ -z "$1" ]] && { echo none; return 0; }
-  printf '%d hits: %s\n' "$(printf '%s\n' "$1" | wc -l)" "$(printf '%s\n' "$1" | sed -n '1,5p' | cut -c1-120 | paste -sd';')"
+  printf '%d hits: %s\n' "$(printf '%s\n' "$1" | wc -l)" "$(printf '%s\n' "$1" | sed -n '1,5p' | cut -c1-120 | paste -sd';' -)"
 }
 _args72() { # the rows of the Arguments table of commands/temper.md as "first cell<TAB>whole row", one a line
   python3 -I - "$REPO_ROOT/commands/temper.md" <<'PY'

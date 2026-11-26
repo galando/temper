@@ -17,8 +17,9 @@ assert_eq "9.8.5 setup: a failing run line is exit 125 with temper-setup: FAIL, 
 assert_eq "9.8.5 setup: a credential assignment in the run line is masked when shown" "TOKEN=<left out> X=1 go" "$(_re x "print(run_env.mask('TOKEN=abc X=1 go'))")"
 # U18 (WP29): a value of setup.env reaches the command exactly as the file writes it; the reader keeps no float of it
 printf 'setup:\n  env:\n    PYTHON_VERSION: 3.10\n    NODE: 20.10\n    PORT: 5433\n    QUOTED: "1.50"\n' > u18.config
+# the shell prints the four values: printenv of macOS prints the first name only, so a Mac could never see the rest
 assert_eq "9.8.5 setup (U18): an unquoted number of setup.env reaches the command as written (3.10, not 3.1)" "3.10|20.10|5433|1.50" \
-  "$(_re x "o, rc = run_env.run_cmd('.', 10, ['printenv PYTHON_VERSION NODE PORT QUOTED'], run_env.load_setup('u18.config')); print('|'.join(o.decode().split()))")"
+  "$(_re x "o, rc = run_env.run_cmd('.', 10, ['bash', '-c', 'echo \$PYTHON_VERSION \$NODE \$PORT \$QUOTED'], run_env.load_setup('u18.config')); print('|'.join(o.decode().split()))")"
 # U18 (WP20): what is shown hides a URL's password in any value and the names PW and PWD; the command still receives them
 assert_eq "9.8.5 setup (U18): mask hides a URL's password and a PW or PWD name, a display rule only" \
   "DATABASE_URL=postgres://u:<left out>@h/db MY_PW=<left out> DB_PWD=<left out> PWD=/w OLDPWD=/o psql https://u:<left out>@h:5432 https://u@h PWM=1|zzz" \

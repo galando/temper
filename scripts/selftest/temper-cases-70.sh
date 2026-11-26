@@ -286,7 +286,8 @@ label = sys.argv[1]
 if x is None:
     print('%s=absent' % label); sys.exit(0)
 d = str(x.get('detail'))
-bound = {'two groups': r'\bgroups?\b', 'four files': r'production files?', 'risk H': r'\brisk\b.*\bH\b'}.get(label)
+bound = {'two groups': r'\bgroups?\b', 'four files': r'production files?', 'risk H': r'\brisk\b.*\bH\b',
+         'trivial, two groups': r'\bgroups?\b', 'no tier, two groups': r'\bgroups?\b'}.get(label)   # R5-3: every tier below medium
 named = 'bound' if bound and re.search(bound, d, re.I) else 'no bound'
 call = 'call' if 'temper state set complexity medium' in d else 'no call'
 print('%s=%s' % (label, x.get('pass')) if x.get('pass') else '%s=%s,%s,%s' % (label, x.get('pass'), named, call))
@@ -298,11 +299,13 @@ _w26_8+="|$(_w26_tier 'four files')"
 _plan70 simple; sed -i 's|^\*\*File:\*\* `src/a.sh`, `unit/a_test.sh`|**File:** `src/a.sh`, `src/c.sh`, `unit/a_test.sh`|' .temper/specs/demo/tasks.md
 _w26_8+="|$(_w26_tier 'three files')"
 _plan70 simple; riskH; _w26_8+="|$(_w26_tier 'risk H')"
-assert_eq "w26 the tier is bounded: tier simple with two groups, four production files or risk H fails tier recorded, naming the bound and temper state set complexity medium; three files pass" \
-  "two groups=False,bound,call|four files=False,bound,call|three files=True|risk H=False,bound,call" "$_w26_8"
+_plan70 trivial; _group70; _w26_8+="|$(_w26_tier 'trivial, two groups')"   # R5-3: the bound holds for every tier below medium, one not recorded alike
+_plan70 none; _group70; _w26_8+="|$(_w26_tier 'no tier, two groups')"
+assert_eq "w26 the tier is bounded: tier simple with two groups, four production files or risk H fails tier recorded, naming the bound and temper state set complexity medium; three files pass; a trivial tier and no tier recorded fail it the same way (R5-3)" \
+  "two groups=False,bound,call|four files=False,bound,call|three files=True|risk H=False,bound,call|trivial, two groups=False,bound,call|no tier, two groups=False,bound,call" "$_w26_8"
 
 # --- 9. the templates pass their own gate ---
-setup
+setup; "$TEMPER" state set complexity medium >/dev/null 2>&1   # the example has more than one group: above the simple tier (R5-3)
 awk '/^<!-- grouped-example:begin/{f=1;next} /^<!-- grouped-example:end/{f=0} f' "$REPO_ROOT/templates/tasks.md" > .temper/specs/demo/tasks.md
 assert_eq "w26 the templates pass their own gate: the example of templates/tasks.md passes temper gate plan and holds no Traced to" \
   "exit=0|traced=0" \

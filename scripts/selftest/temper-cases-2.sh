@@ -1046,9 +1046,13 @@ for bad in "../../outside" "-lead" "a..b" "a/b" "PROJ/1" ".hidden" "a b" ""; do
 done
 assert_eq "a refused state init keeps the run's state" "demo" "$("$TEMPER" state get spec)"
 assert_exit "state init accepts a lowercase slug with digits, dots, dashes and underscores" 0 "$TEMPER" state init "fix-1.2_b" --command fix
+# the value is lost first: then only the slug's grammar can refuse the repair, never the guard of NEW-RULES-2
+python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d.pop('spec_path', None); json.dump(d, open(p, 'w'))"
 assert_exit "state set refuses a spec_path outside .temper/specs" 1 "$TEMPER" state set spec_path ../../outside
 assert_exit "state set refuses a spec_path whose slug is '..'" 1 "$TEMPER" state set spec_path .temper/specs/..
-assert_exit "state set accepts a spec_path of the form .temper/specs/<slug>" 0 "$TEMPER" state set spec_path .temper/specs/demo
+assert_exit "state set accepts a spec_path of the form .temper/specs/<slug> as the repair of a lost value" 0 "$TEMPER" state set spec_path .temper/specs/fix-1.2_b
+assert_exit "state set refuses a folder the run's slug does not name" 1 "$TEMPER" state set spec_path .temper/specs/demo
+assert_eq "a refused folder leaves the run's spec_path as it was" ".temper/specs/fix-1.2_b" "$("$TEMPER" state get spec_path)"
 assert_exit "state set needs a key and a value" 1 "$TEMPER" state set spec_path
 
 # --- state archive / clear: a hand-edited spec_path writes no ledger outside .temper/specs ---
