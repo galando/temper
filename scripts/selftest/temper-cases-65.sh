@@ -565,11 +565,13 @@ assert_eq "repair: a proof: test command that names no file is proven by the tes
 _c65_swift() { # _c65_swift <review|check>: a repair that empties Tests/DemoTests.swift, a test file the commit gate's
                # name pattern does not know (the plan declares it): not committed, the run asks. Prints what happened
   local head
-  _open65 none Tests/DemoTests.swift
-  if [[ "$1" == check ]]; then
+  if [[ "$1" == check ]]; then   # at Check the run stands on a Review that passed: a failed one is not left by a bare advance
+    _review65 Tests/DemoTests.swift; review_done; "$TEMPER" gate review >/dev/null 2>&1
     "$TEMPER" state advance review_complete check >/dev/null 2>&1
     echo fail > "$P65/suite.mode"
     "$TEMPER" check run >/dev/null 2>&1 || true; "$TEMPER" gate check >/dev/null 2>&1 || true
+  else
+    _open65 none Tests/DemoTests.swift
   fi
   head="$(git rev-parse HEAD)"
   _start65 "$1"

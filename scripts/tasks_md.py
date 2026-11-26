@@ -17,6 +17,16 @@ import re
 import sys
 
 
+def is_test(f):
+    """A declared file that is a test file by its folder or its name: the plan gate's rule (9.8.4: more than two tasks of
+    one group on the same production file is one task cut in pieces, and a shared test file does not count; scripts/
+    plan_rows.py reads it), read by a repair too (repair_ops.test_file, the audit's R4-2)."""
+    parts = f.lower().split('/')
+    base = parts[-1]
+    return (any(p in ('test', 'tests', 'spec', 'specs', '__tests__', 'selftest', 'testing') for p in parts[:-1])
+            or base.startswith(('test_', 'test-')) or re.search(r'[._-](test|tests|spec)\.[\w]+$', base) is not None)
+
+
 def parse(path):
     """tasks.md -> {groups, tasks, integration}, the shape every grouped command reads."""
     try:
