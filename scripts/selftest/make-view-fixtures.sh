@@ -470,7 +470,7 @@ cli(ct, "state", "init", "pw", "--feature", "Password reset by email")
 snap2(ct, "config-tidy", "run-config-tidy")
 
 # A view of the first states printed in the second module, so the first stays under 200,000 bytes (case file 32)
-for name in ("armed-review-pass", "review-fail", "armed-check-fail"):   # WP15: the cards made it grow; WP16: typed calls
+for name in ("armed-review-pass", "review-fail", "armed-check-fail", "design-pass"):   # WP15, WP16; design-pass: the audit fixes
     extra[name] = views.pop(name)
 
 if len(sys.argv) > 3 and sys.argv[3] == "extra":
