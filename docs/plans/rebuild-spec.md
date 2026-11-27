@@ -41,13 +41,13 @@ copy from.
 | D2 | The plugin is the folder `plugin/` of the repository, and only that folder is submitted. | The report itself gives this advice. Tests, bench, docs and CI stay outside and are never scanned. |
 | D3 | The CLI is Python 3, standard library only, started as `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/temper.py"`. No bash. | One language. Every command in the hooks file and in the prompts is fixed text. No file starts with `#!`, and no file lacks an extension. |
 | D4 | The CLI stays the only place where a verdict, a next step or a question's options are computed. | This is Temper. A prompt never decides a gate. |
-| D5 | One Build path. The grouped Build with worktrees is not in version 1. | It is about a quarter of the CLI. It can return later as its own change, measured against the bench. |
-| D6 | Seven agents: intent, plan, acceptance, build, review, rca, fix. | Check is run by the CLI and needs no agent. Design becomes an optional section of the plan. The acceptance agent reads only the intent and writes no code, so the planner cannot shape the tests. |
+| D5 | Groups stay, built one after another on the run's branch. Worktrees and tasks run at the same time are not in version 1. | Stacked pull requests are cut at the commit that ends each group, so they need groups and their order, not worktrees. This keeps the stacked pull requests and drops the merge of worktrees, about a quarter of the CLI. Parallel tasks can return later, measured against the bench. |
+| D6 | Seven agents: intent, plan, acceptance, build, review, rca, fix. | Check is run by the CLI and needs no agent. Design is an optional section of the plan (accepted by the owner), with no stage or question of its own. The acceptance agent reads only the intent and writes no code, so the planner cannot shape the tests. |
 | D7 | No migration code. The new Temper reads no state, config key or folder of an older version. | It is a new product in a new repository. |
 | D8 | No HTML page, no image, no artifact. The report is text. | Each was a finding or a hold. |
 
-Not in version 1, each a later change of its own: grouped Build, the Pipeline stage, the fresh plan review, the
-model table, the budget of repeats, `doctor`, `drift`, the small change at a late stage, the pull request word.
+Not in version 1, each a later change of its own: tasks built at the same time in worktrees, the Pipeline stage, the
+fresh plan review, the model table, the budget of repeats, `doctor`, `drift`, the small change at a late stage.
 
 ## 4. Layout
 
@@ -67,7 +67,7 @@ plugin/                   the only folder the directory reads
   scripts/temper_lib/     state.py ledger.py gates.py flow.py questions.py
                           run.py check.py repair.py report.py config.py githook.py
   scripts/guard_hold.py   the write hold (PreToolUse)
-  packs/<name>/rules.md
+  packs/<name>.md         tdd, security, quality, git, api-design, performance, architecture
   templates/intent.md plan.md temper.config.yaml
 ```
 
@@ -202,7 +202,28 @@ check.prove            a command line, optional
 
 Six keys. A new key needs a decision record.
 
-### 5.9 The words
+### 5.9 Groups and stacked pull requests
+
+The plan puts its tasks into ordered groups: G1, G2 and so on. A group is a part a reviewer can read alone.
+
+- Build takes the groups in order on the run's branch. When the last task of a group is green, the CLI runs the
+  group's test command and makes one commit, `group(<slug>): G<n>`. A failed group gets the one repair of 5.5.
+- At the commit question, a run with two or more groups also offers "Commit and open stacked pull requests", and
+  every run offers "Commit and open a pull request". Both are the person's choice there, and a run never pushes
+  without it.
+- Part k below the last gets the branch `<branch>-part-<k>` at the commit that ended group k; the last part is the
+  run's branch. Part 1 targets the default branch and part k targets part k minus one. No commit is rewritten.
+- Every pull request is a draft. With no `gh`, no login or no `origin`, the commit is kept and the commands are
+  printed for the person.
+- The README's "What Temper runs and changes" names `git push` and `gh pr create` and says when they run.
+
+### 5.10 Packs
+
+A pack is one Markdown file of rules, at most 4 KB, that the agents of its stages read. Seven ship: `tdd` and
+`security` are on by default; `quality`, `git`, `api-design`, `performance` and `architecture` are there to turn on.
+The old guardrails pack does not ship: it was 28 KB, and its extra hooks are a third enforcement mechanism (5.6).
+
+### 5.11 The words
 
 `/temper:temper <feature>` starts or continues a run. Alone: `status`, `report`, `init`. `draft <idea>` writes a
 draft `intent.md` and starts no run. `/temper:fix <fault>` starts a fix run.
@@ -214,9 +235,9 @@ A budget is checked by a test and is raised only in a pull request of its own.
 | Measure | 9.8.5 | Budget |
 |---|---|---|
 | Files in `plugin/` | 838 scanned | 100 |
-| CLI lines (Python) | about 29,000 with bash | 3,500 |
+| CLI lines (Python) | about 29,000 with bash | 4,200 |
 | Agent briefs | 13 | 7 |
-| Gate rows | 81 | 20 |
+| Gate rows | 81 | 22 |
 | Question ids | 38 | 8 |
 | Bytes of prompts (commands, agents, skills, packs) | 250,858 | 80,000 |
 | Config keys | 18 | 6 |
@@ -245,7 +266,7 @@ Each step is one pull request that ends green.
 4. Build with the red then green evidence; the acceptance tests.
 5. Review and Check, with `check.prove`.
 6. The commit gate and its installer; the commit.
-7. The run to the commit, the one repair, the stops.
+7. The run to the commit, the one repair, the stops; groups and the stacked pull requests.
 8. The report with the waiting time.
 9. `/temper:fix`.
 10. Packs, skills, README, the privacy page, the site.
@@ -254,7 +275,6 @@ Each step is one pull request that ends green.
 
 ## 9. Open questions for the owner
 
-1. D5: is a single Build path acceptable for version 1, or is the grouped Build needed on day one?
-2. D6: is Design as an optional section of the plan enough, or does it need its own stage and question?
-3. Which packs ship in version 1? Each is Markdown and costs prompt bytes.
-4. Who holds the copyright line in `NOTICE`, and does Booking ask contributors for an agreement?
+1. D5: are groups built one after another enough for version 1? They keep the stacked pull requests and lose the
+   speed of tasks built at the same time.
+2. Who holds the copyright line in `NOTICE`, and does Booking ask contributors for an agreement?
