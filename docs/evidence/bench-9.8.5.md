@@ -51,6 +51,9 @@ vague lines with the planner on Opus (about 2.7 times the cost for a clear featu
 Where the time goes: the fresh review of the plan launched 52 times in 18 runs (2.9 a run), and the narrow revise
 agent 13 times. These misses are reported as measured, and nothing was tuned to reach the lines.
 
+On 2026-11-27 the owner accepted the three missed lines as measured (`docs/evidence/bench-accepted-9.8.5.json`): the
+bench step of `verify.sh final` passes on those numbers alone, and a round that measures worse is not accepted by them.
+
 ## The model test (rule d)
 
 The rule, fixed before round (c): the default planner becomes Sonnet below risk H only if, against (b), the hidden

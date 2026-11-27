@@ -1,0 +1,35 @@
+{
+ "about": "The bench lines of part H that the release missed and the owner accepted, each with the numbers measured; read by scripts/bench_lines.py in the bench step of verify.sh final. A round that measures other numbers is not accepted by an entry.",
+ "accepted": [
+  {
+   "line": "bug",
+   "measured": {
+    "cost_ratio": 1.681,
+    "time_ratio": 3.226,
+    "runs_over_dialogs": 0,
+    "dialogs_median": 2.0
+   },
+   "reason": "the release ships with the measured cost and time; the owner accepted them on 2026-11-27 (docs/evidence/bench-9.8.5.md)"
+  },
+  {
+   "line": "clear",
+   "measured": {
+    "cost_ratio": 4.007,
+    "time_ratio": 5.916,
+    "runs_over_dialogs": 6,
+    "dialogs_median": 5.0
+   },
+   "reason": "the release ships with the measured cost and time; the owner accepted them on 2026-11-27 (docs/evidence/bench-9.8.5.md)"
+  },
+  {
+   "line": "vague",
+   "measured": {
+    "cost_ratio": 3.63,
+    "time_ratio": 5.011,
+    "runs_over_dialogs": 6,
+    "dialogs_median": 6.5
+   },
+   "reason": "the release ships with the measured cost and time; the owner accepted them on 2026-11-27 (docs/evidence/bench-9.8.5.md)"
+  }
+ ]
+}

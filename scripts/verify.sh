@@ -86,18 +86,11 @@ collect() {
   BG=()
 }
 
-# The bench block of final: the scorecard of the bench round, when it ran, must pass every line of part H of done.md.
+# The bench block of final: the scorecard of the bench round, when it ran, must pass every line of part H of done.md,
+# or name a miss the owner accepted with its measured numbers (scripts/bench_lines.py).
 SCORECARD="docs/evidence/scorecard-9.8.5.json"
 bench_lines() {
-  python3 -I - "$SCORECARD" <<'PY'
-import json, sys
-lines = json.load(open(sys.argv[1], encoding="utf-8")).get("lines") or {}
-bad = [k for k, v in lines.items() if v.get("pass") is not True]
-for k, v in sorted(lines.items()):
-    print("%-10s %s" % (k, {True: "pass", False: "MISS", None: "no data"}.get(v.get("pass"), "?")))
-print("bench: %s" % ("every line of part H passes" if lines and not bad else "outside the lines of part H: %s" % (", ".join(bad) or "no line")))
-sys.exit(0 if lines and not bad else 1)
-PY
+  python3 -I scripts/bench_lines.py "$SCORECARD" docs/evidence/bench-accepted-9.8.5.json
 }
 replay_floor() { bun scripts/e2e/replay.ts final | tail -n 1 | python3 -I scripts/check_floor.py --replay; }
 fixtures_first() { bash scripts/selftest/make-view-fixtures.sh | cmp - scripts/selftest/view-fixtures.ts; }

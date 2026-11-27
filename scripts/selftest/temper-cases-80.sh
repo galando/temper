@@ -251,3 +251,22 @@ r3="$(grep -cE 'usage: live-smoke\.sh \[[^]]*\bapproval\b' "$REPO_ROOT/scripts/e
 r4="$(grep -cE '^#.*TEMPER_E2E_LIVE=1 bash scripts/e2e/live-smoke\.sh approval ' "$REPO_ROOT/scripts/e2e/live-smoke.sh")"
 assert_eq "final: the live smoke knows the word approval and runs nothing unless it is switched on" "0|1|1|1|1" \
   "$r1|$r2|$r3|$r4"
+
+# --- 8: the bench step of final passes a missed line only with the owner's entry for its very numbers (2026-11-27) ---
+_c80_bench() { # _c80_bench <python statement over the entries a>: the exit of bench_lines.py on the release's scorecard
+  python3 -I - "$REPO_ROOT/docs/evidence/bench-accepted-9.8.5.json" "$_c80/acc.json" "$1" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); a = d["accepted"]
+exec(sys.argv[3], {"a": a, "d": d})
+json.dump(d, open(sys.argv[2], "w"))
+PY
+  python3 -I "$REPO_ROOT/scripts/bench_lines.py" "$REPO_ROOT/docs/evidence/scorecard-9.8.5.json" "$_c80/acc.json" >/dev/null 2>&1; echo -n "$?"
+}
+r1="$(_c80_bench 'pass')"
+r2="$(_c80_bench 'a[0]["measured"]["cost_ratio"] -= 0.1')"
+r3="$(_c80_bench 'a[1]["reason"] = ""')"
+r4="$(_c80_bench 'del a[2]')"
+r5="$(python3 -I "$REPO_ROOT/scripts/bench_lines.py" "$REPO_ROOT/docs/evidence/scorecard-9.8.5.json" >/dev/null 2>&1; echo -n "$?")"
+r6="$(grep -c 'python3 -I scripts/bench_lines.py "$SCORECARD" docs/evidence/bench-accepted-9.8.5.json' "$REPO_ROOT/scripts/verify.sh")"
+assert_eq "final: the bench step passes a missed line only with the owner's entry for its very numbers and a reason" \
+  "0|1|1|1|1|1" "$r1|$r2|$r3|$r4|$r5|$r6"
