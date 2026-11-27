@@ -235,7 +235,7 @@ A budget is checked by a test and is raised only in a pull request of its own.
 | Measure | 9.8.5 | Budget |
 |---|---|---|
 | Files in `plugin/` | 838 scanned | 100 |
-| CLI lines (Python) | about 29,000 with bash | 4,200 |
+| CLI lines (Python) | about 29,000 with bash | 4,000 (3,500 for the core, 500 for groups and the stacked pull requests) |
 | Agent briefs | 13 | 7 |
 | Gate rows | 81 | 22 |
 | Question ids | 38 | 8 |
@@ -273,8 +273,11 @@ Each step is one pull request that ends green.
 11. The bench against 9.8.5 on the same tasks. Release only when the new version is no worse on the tasks it covers.
 12. Submit `plugin/` in the portal from Booking's organisation.
 
-## 9. Open questions for the owner
+## 9. Answers of the owner (2026-11-27)
 
-1. D5: are groups built one after another enough for version 1? They keep the stacked pull requests and lose the
-   speed of tasks built at the same time.
-2. Who holds the copyright line in `NOTICE`, and does Booking ask contributors for an agreement?
+- D5: groups built one after another are enough for version 1.
+- D6: Design is an optional section of the plan.
+- Booking holds the copyright. `NOTICE` and the license headers carry Booking's legal name, as its open source
+  office writes it.
+
+Still open: does Booking ask contributors for an agreement?
