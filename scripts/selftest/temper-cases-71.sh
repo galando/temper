@@ -618,11 +618,13 @@ assert_eq "w27 the fall back planner spends: after two revise launches the plann
   "work temper:temper-plan-revise|work temper:temper-plan-revise|before=used=1,run=2|work temper:temper-plan|after=used=2,run=3" "$_w27_11b"
 # R5-2: three notes typed at a passed plan gate (no failure between them): each launches the narrow revise agent, the
 # third no less, and none spends an entry of the budget
+# A note counts at a passed gate only when its time is later than the verdict's, and both times are whole seconds: each
+# note below waits one second, as a note a person types after a verdict does, so no note shares the verdict's second.
 _notes71() { # _notes71: three notes at a green gate, each driven through its launch; prints the agent of each
   local i out=""
   _plan71; "$TEMPER" gate plan >/dev/null 2>&1
   for i in 1 2 3; do
-    "$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71 (note $i)" >/dev/null 2>&1
+    sleep 1; "$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71 (note $i)" >/dev/null 2>&1
     out+="$(_agent71 "a.get('type') if d.get('action') == 'work' else 'ask %s' % (d.get('ask') or {}).get('id')")|"
     while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done \
       < <(_agent71 "'\n'.join(c for a in d.get('agents') or [] for c in (a.get('before') or []) + (a.get('after') or []))")
@@ -637,13 +639,13 @@ assert_eq "w27 notes at a green gate: every one is the narrow revise agent, the 
 # revisions in a row left the gate failing
 _plan71 one-case; "$TEMPER" gate plan >/dev/null 2>&1
 for _i71 in 1 2; do   # two revises of the failed gate, each one counted launch of the key
-  "$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71 (note $_i71)" >/dev/null 2>&1
+  sleep 1; "$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71 (note $_i71)" >/dev/null 2>&1
   while IFS= read -r _c71; do [[ -n "$_c71" ]] && bash -c "$_c71" >/dev/null 2>&1; done \
     < <(_agent71 "'\n'.join(c for a in d.get('agents') or [] for c in (a.get('before') or []) + (a.get('after') or []))")
 done
 _w27_11d="failed=$(_room71 plan-revise:note)"
 _tasks71   # the plan is mended and the gate passes for real: its verdict carries a time, and a note is read only
-"$TEMPER" gate plan >/dev/null 2>&1   # when it is newer than that time (gpass writes no time)
+"$TEMPER" gate plan >/dev/null 2>&1; sleep 1   # when it is newer than that time (gpass writes no time)
 "$TEMPER" evidence add --stage plan --phase note --kind input --claim "$_NOTE71 (note 3)" >/dev/null 2>&1
 _w27_11d+="|$(_agent71 "a.get('type') if d.get('action') == 'work' else 'ask %s' % (d.get('ask') or {}).get('id')")"
 _w27_11d+="|$(_room71 plan-revise:note)"
