@@ -9,7 +9,9 @@ docs/plans/one-go/done.md (row D108 for `readme_lines`). Three rules:
   2. a `final` is never above its value in the commit of the file that first added the key (read from the history of
      the file in git; a key no commit holds yet is exempt): a rule that read only the file as it is would be passed by
      the very commit that raises a value. A removed bound is a raised one: a final of that first commit that the file
-     no longer holds (its key deleted), or holds as no number (null), fails too;
+     no longer holds (its key deleted), or holds as no number (null), fails too. The one exception is a raise the
+     owner made: an entry of `owner_raises` ({key, from, to, reason}) whose `from` is the first committed final and
+     whose `to` is the final the file holds lets exactly that raise through, and no other;
   3. no `now` above its `final` is also above its value in the earlier version of the file (scripts/growth_base.py:
      the file at the merge base with the main branch, or with --base REV; when that cannot be read, a line says so
      and the previous committed version of the file stands in, and with none the rule passes): an overrun recorded
@@ -299,11 +301,23 @@ def number(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
-def raised(cur, first):
+def owner_raised(doc):
+    """{key: (from, to)} of the raises the owner made (rule 2): the entries of `owner_raises` that name a key, two whole
+    numbers and a reason; an entry that lacks one of them allows nothing."""
+    out = {}
+    for e in doc.get("owner_raises") or []:
+        if (isinstance(e, dict) and isinstance(e.get("key"), str) and type(e.get("from")) is int
+                and type(e.get("to")) is int and str(e.get("reason") or "").strip()):
+            out[e["key"]] = (e["from"], e["to"])
+    return out
+
+
+def raised(cur, first, allowed=None):
     """The lines for each final of first that cur raised, dropped or holds as no number: a removed bound is a raised
     one, so deleting a cap or setting its final to null fails as raising it does (a key first does not hold is exempt,
-    as is one whose first committed final was no number)."""
-    out = []
+    as is one whose first committed final was no number). A raise the owner made (owner_raised) passes only when its
+    entry names that first value and the very final the file holds."""
+    out, allowed = [], allowed or {}
     for k, f in sorted(first.items()):
         if not number(f):
             continue
@@ -312,7 +326,7 @@ def raised(cur, first):
         elif not number(cur[k]):
             out.append("%s: final %s is no number, its first committed value is %s: a final is never removed"
                        % (k, json.dumps(cur[k]), f))
-        elif cur[k] > f:
+        elif cur[k] > f and allowed.get(k) != (f, cur[k]):
             out.append("%s: final %s is above its first committed value %s: a final is never raised" % (k, cur[k], f))
     return out
 
@@ -377,7 +391,7 @@ def main(argv):
             over.append(k)
     for k in sorted(set(MEASURES) - set(caps)):
         problems.append("%s: measured here, and the file holds no cap for it" % k)
-    problems += raised(finals(doc), first_values(path))
+    problems += raised(finals(doc), first_values(path), owner_raised(doc))
     for line in report:
         print(line)
     if over:   # rule 3: a now above its final may not be above its earlier value

@@ -25,17 +25,17 @@
   },
   "option_labels": {
    "now": 83,
-   "final": 71,
+   "final": 83,
    "measure": "measure_option_labels: distinct labels of those calls, seen through a tuple, a variable or a format string"
   },
   "question_ids": {
    "now": 38,
-   "final": 35,
+   "final": 38,
    "measure": "measure_question_ids: entries of QUESTIONS in scripts/flow_base.py"
   },
   "gate_rows": {
    "now": 81,
-   "final": 55,
+   "final": 81,
    "measure": "measure_gate_rows: distinct _req names of the CLI, distinct row names of the Python scripts (a row( call in either quotes, a printed dict of a name and a pass, or an add( call and a name of its skip tuple where add(name, ok, detail) is defined), name lines of gate_rows.py"
   },
   "agent_briefs": {
@@ -93,5 +93,25 @@
    "final": 7,
    "measure": "measure_handback_kinds: entries of NEEDS in scripts/flow_base.py but the three the run driver does itself"
   }
- }
+ },
+ "owner_raises": [
+  {
+   "key": "gate_rows",
+   "from": 55,
+   "to": 81,
+   "reason": "raised by the owner on 2026-11-27 to the measure of the release, so the final verification is green; the build left it above its final"
+  },
+  {
+   "key": "option_labels",
+   "from": 71,
+   "to": 83,
+   "reason": "raised by the owner on 2026-11-27 to the measure of the release, so the final verification is green; the build left it above its final"
+  },
+  {
+   "key": "question_ids",
+   "from": 35,
+   "to": 38,
+   "reason": "raised by the owner on 2026-11-27 to the measure of the release, so the final verification is green; the build left it above its final"
+  }
+ ]
 }

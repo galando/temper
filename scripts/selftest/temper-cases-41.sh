@@ -59,6 +59,19 @@ assert_eq "caps: a final value above its first committed value fails" "yes exit 
   "$(grep -q 'question_sites: final 54 is above its first committed value 53' <<< "$_c41_raise" && echo -n yes; echo -n " ${_c41_raise##*$'\n'}|"
      python3 -I "$_c41_caps" --caps "$_c41_dir/hn/caps.json" >/dev/null 2>&1; echo "exit $?")"
 
+# the owner's raise (2026-11-27): an entry of owner_raises that names the first committed final and the final the file
+# holds lets exactly that raise through; an entry for another final, or one with no reason, allows nothing
+cp "$REPO_ROOT/scripts/caps.json" "$_c41_dir/old.json"
+_c41_edit "$_c41_dir/old.json" 'd["caps"]["gate_rows"]["final"] = 55; d.pop("owner_raises", None)'
+_c41_owner() { # _c41_owner <folder> <python statement over the entry e>: the old file committed, then the raise to the measure
+  _c41_hist "$1" caps.json "$_c41_dir/old.json"
+  _c41_edit "$1/caps.json" 'g = d["caps"]["gate_rows"]; g["final"] = g["now"]; e = {"key": "gate_rows", "from": 55, "to": g["now"], "reason": "the owner raised it"}; '"$2"'; d["owner_raises"] = [e]'
+  git -C "$1" -c user.name=t -c user.email=t@example.com commit -qam raise
+  python3 -I "$_c41_caps" --caps "$1/caps.json" >/dev/null 2>&1; echo -n "$?"
+}
+assert_eq "caps: an owner's raise passes only with its own entry: the very from and to and a reason" "0|1|1" \
+  "$(_c41_owner "$_c41_dir/ho" 'pass')|$(_c41_owner "$_c41_dir/hw" 'e["to"] -= 1')|$(_c41_owner "$_c41_dir/hr" 'e["reason"] = ""')"
+
 # a removed bound is a raised one (phase 2 fixes): a cap deleted from the file with its measure, or one whose final is
 # set to null, fails as a raised final does (the check is run with the measure taken out, as a commit that deleted both
 # would leave it)
@@ -162,13 +175,17 @@ assert_eq "caps: the report gives each cap's measure on the base 10e965a beside 
 # such base the previous committed version, and a line says so); an overrun that did not grow, or shrank, passes; a
 # cap that is new and above its final fails; with no history the rule passes and a line says so
 _c41_ci() { git -C "$1" -c user.name=t -c user.email=t@example.com commit -qam "$2"; }
+# the caps file with two nows above their finals, as the build left it before the owner raised them (2026-11-27): the
+# rule needs a cap above its final, and the release has none since that raise
+cp "$REPO_ROOT/scripts/caps.json" "$_c41_dir/over.json"
+_c41_edit "$_c41_dir/over.json" 'd["caps"]["option_labels"]["final"] = 71; d["caps"]["question_ids"]["final"] = 35; d.pop("owner_raises", None)'
 _c41_grow() { # _c41_grow <name> <python statement over d for the first commit> [--base REV]: prints the exit, output in <name>.out
-  cp "$REPO_ROOT/scripts/caps.json" "$_c41_dir/$1.first.json"; _c41_edit "$_c41_dir/$1.first.json" "$2"
+  cp "$_c41_dir/over.json" "$_c41_dir/$1.first.json"; _c41_edit "$_c41_dir/$1.first.json" "$2"
   _c41_hist "$_c41_dir/$1" caps.json "$_c41_dir/$1.first.json"
-  cp "$REPO_ROOT/scripts/caps.json" "$_c41_dir/$1/caps.json"
+  cp "$_c41_dir/over.json" "$_c41_dir/$1/caps.json"
   python3 -I "$_c41_caps" --caps "$_c41_dir/$1/caps.json" "${@:3}" > "$_c41_dir/$1.out" 2>&1; echo -n "$?"
 }
-_c41_ol="$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["caps"]["option_labels"]; print(c["now"], c["final"])' "$REPO_ROOT/scripts/caps.json")"
+_c41_ol="$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["caps"]["option_labels"]; print(c["now"], c["final"])' "$_c41_dir/over.json")"
 _c41_want="option_labels: now ${_c41_ol% *} is above its final ${_c41_ol#* } and above its value $(( ${_c41_ol% *} - 1 )) in the file's previous committed version (HEAD)"
 assert_eq "caps: a now above its final and above its earlier value fails in the mode CI runs; one that did not grow, or shrank, passes"   "1 yes|0|0|1 yes"   "$(_c41_grow gu 'd["caps"]["option_labels"]["now"] -= 1'; grep -qF "$_c41_want" "$_c41_dir/gu.out" && echo -n " yes|" || echo -n " no|"
      _c41_grow gs 'pass'; echo -n "|"

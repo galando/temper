@@ -56,7 +56,7 @@ ledger, by finding id.
 | TESTS-1, TESTS-3, R0-R1-3, DEVIATIONS-3 | Fixed (248796b7, c1724bfe): CI fails a size above its final, every shard compares the floor, and CI runs the cheap steps of `verify.sh` it left out. |
 | TESTS-2, TESTS-5 | Fixed (57315b7f, 0afd75df): the second base holds for every test file the branch added, the missing rows are listed, and `D84` carries the "Proves less" note of what the checker cannot see. |
 | R0-R1-1, DEVIATIONS-5 | Fixed (c5664b88): eight end-to-end shards, a limit of 20 minutes; the median-under-12 line is named as missed under "Not done". |
-| R0-R1-2, DEVIATIONS-2 | Recorded (77713e96, and the WP32 line of PROGRESS.md): a caps row above its final is never printed ok; the three finals stay above, each with its numbers, for the owner. |
+| R0-R1-2, DEVIATIONS-2 | Recorded (77713e96, and the WP32 line of PROGRESS.md): a caps row above its final is never printed ok. On 2026-11-27 the owner raised the three finals to the measure, each with an entry in `scripts/caps.json`. |
 | DEVIATIONS-9 | Fixed (72483540 and later): the help text, the commands page and the owner lines agree with the tree; verified again at the merge (including `temper-help.txt` and `docs/commands.md`). |
 | DEVIATIONS-7 | Resolved by the later work: the bench, the model test and the last steps of WP32 ran and are recorded. |
 
@@ -133,7 +133,7 @@ the fix undone. "As recorded above" means an earlier table of this page names th
 | NEW-RULES-4 (medium), NEW-FLOW-6 (low) | Fixed (6859f77), as recorded above. |
 | NEW-FLOW-1 (medium) | Fixed (7583c596): the acceptance question is asked again after "Ask me at every stage". The view fixtures were regenerated with it. |
 | R0-R1-1, R0-R1-3, TESTS-1, TESTS-3, DEVIATIONS-3, DEVIATIONS-5 (medium) | Fixed (c5664b88, 248796b7, c1724bfe), as recorded above. |
-| R0-R1-2, DEVIATIONS-2 (medium) | Recorded, and the owner's decision: three caps are above their final (gate rows 81 of 55, option labels 83 of 71, question ids 38 of 35). CI blocks any further growth; each is set again in a pull request of its own after the release. |
+| R0-R1-2, DEVIATIONS-2 (medium) | Closed by the owner's decision of 2026-11-27: the three finals are raised to the measure (gate rows 55 to 81, option labels 71 to 83, question ids 35 to 38), each with its entry in `owner_raises` of `scripts/caps.json`; any other raise still fails. |
 | R2-1, R2-2, R2-3, R2-4 (medium) | Fixed (da93d29, 4abf7c4 and 6859f77 and 6df627c, 0df1dfb, b287298). Case 57's two assertions of R2-1 and R2-2 were never green; they read the park call to its end and the drift question's four options now (d22a0e99). |
 | R3-1, R3-2, R3-3 (medium), R3-7 (low) | Fixed (71797af, 9ae6784). Case 8 expects the root cause agent again at the start of a bug run (d22a0e99), and the scripted root cause agent of `pyjokes-full` writes `rca.md` as the brief asks (d22a0e99): the scenario ran in a circle to its time limit before. |
 | R3-4, RULES-3 (medium) | Fixed (1b606807): the commit hook holds a bug run's start branch before the approval, and `docs/trust.md` says so. Case 58. |
@@ -176,8 +176,8 @@ TESTS-5, BLACKBOX-6, BLACKBOX-8, BLACKBOX-9, DEVIATIONS-9, the `state clear` gap
   and the tree's checks are green): NEW-FLOW-3's other assertions, R4-5, R5-4, R5-5, R5-6, R6-3, RULES-9, RULES-10,
   TESTS-2, TESTS-5, BLACKBOX-6, BLACKBOX-8, BLACKBOX-9, DEVIATIONS-9, the `state clear` guard, and the team's
   feedback plan (`docs/plans/fit-the-repository.md`), in the plan's order.
-- The three caps above their finals (`gate_rows` 81/55, `option_labels` 83/71, `question_ids` 38/35): recorded
-  overruns; CI blocks any further growth; each is set again in a pull request of its own after the release.
+- The three caps that were above their finals (`gate_rows` 55, `option_labels` 71, `question_ids` 35): the owner raised
+  them to the measure (81, 83, 38) on 2026-11-27; a further raise needs its own entry in `scripts/caps.json`.
 - U23 (the looser Interfaces check): kept as shipped for 9.8.5; a warning in the next release.
 - The bench's cost and time lines for every kind of task, and the median-under-12 CI line: missed by design,
   `verify.sh final` fails on them.

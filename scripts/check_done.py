@@ -791,8 +791,11 @@ def main(argv):
         for rel in (CAPS, FLOOR):
             doc = caps_doc if rel == CAPS else floor_doc
             first = first_values(root, rel)
+            # a raise the owner made (scripts/check_caps.py, rule 2): its entry names the first value and the final held
+            owned = {(e.get("key"), None): (e.get("from"), e.get("to")) for e in (doc.get("owner_raises") or [])
+                     if isinstance(e, dict) and str(e.get("reason") or "").strip()} if rel == CAPS and isinstance(doc, dict) else {}
             for k, v in finals_of(rel, doc).items():
-                if k in first and above(v, first[k]):
+                if k in first and above(v, first[k]) and owned.get(k) != (first[k], v):
                     problems.append("D75b: %s %s%s: the final %s is above %s, its value in the commit that first "
                                     "added it" % (rel, k[0], " [%s]" % k[1] if k[1] else "", json.dumps(v),
                                                   json.dumps(first[k])))
